@@ -1,0 +1,69 @@
+{
+    "title": "service_tasks",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "service_progress_id": {
+            "type": "integer",
+            "description": "Associated service progress ID"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "Associated customer ID"
+        },
+        "customer_name": {
+            "type": "string",
+            "description": "Customer business name"
+        },
+        "task_name": {
+            "type": "string",
+            "description": "Task name"
+        },
+        "task_type": {
+            "type": "string",
+            "description": "Task type"
+        },
+        "assignee_name": {
+            "type": "string",
+            "description": "Assignee name"
+        },
+        "priority": {
+            "type": "string",
+            "description": "Priority: high, medium, low"
+        },
+        "status": {
+            "type": "string",
+            "description": "Status: pending, in_progress, completed, delayed, waiting_client, cancelled"
+        },
+        "due_date": {
+            "type": "string",
+            "description": "Due date"
+        },
+        "completed_date": {
+            "type": "string",
+            "description": "Completed date"
+        },
+        "notes": {
+            "type": "string",
+            "description": "Task notes"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "created_at": {
+            "type": "string",
+            "description": "Created timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "customer_id",
+        "task_name",
+        "status",
+        "user_id"
+    ]
+}

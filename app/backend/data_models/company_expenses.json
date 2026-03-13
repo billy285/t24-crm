@@ -1,0 +1,58 @@
+{
+    "title": "company_expenses",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "category": {
+            "type": "string",
+            "description": "Expense category key: salary, internet, phone, rent, software, recruitment, travel, other"
+        },
+        "category_name": {
+            "type": "string",
+            "description": "Display name of the category"
+        },
+        "amount": {
+            "type": "number",
+            "description": "Expense amount in USD"
+        },
+        "currency": {
+            "type": "string",
+            "description": "Currency code, default USD"
+        },
+        "expense_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date of the expense"
+        },
+        "expense_month": {
+            "type": "string",
+            "description": "Month of expense in YYYY-MM format"
+        },
+        "notes": {
+            "type": "string",
+            "description": "Notes or remarks"
+        },
+        "recorded_by": {
+            "type": "string",
+            "description": "Person who recorded this expense"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Record creation time"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        }
+    },
+    "required": [
+        "id",
+        "category",
+        "amount",
+        "user_id"
+    ]
+}

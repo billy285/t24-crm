@@ -1,0 +1,66 @@
+{
+    "title": "media_accounts",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "Associated customer ID"
+        },
+        "platform_name": {
+            "type": "string",
+            "description": "Platform name, e.g. Facebook, Instagram, Google Business, Yelp, TikTok"
+        },
+        "account_name": {
+            "type": "string",
+            "description": "Account username or display name"
+        },
+        "login_email": {
+            "type": "string",
+            "description": "Login email for the account"
+        },
+        "login_password": {
+            "type": "string",
+            "description": "Login password (encrypted/sensitive)"
+        },
+        "bound_phone": {
+            "type": "string",
+            "description": "Phone number bound to the account"
+        },
+        "profile_url": {
+            "type": "string",
+            "description": "Profile/homepage URL"
+        },
+        "account_status": {
+            "type": "string",
+            "description": "Account status: active, suspended, disabled, pending"
+        },
+        "notes": {
+            "type": "string",
+            "description": "Additional notes"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Created timestamp"
+        },
+        "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Updated timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "customer_id",
+        "platform_name"
+    ]
+}

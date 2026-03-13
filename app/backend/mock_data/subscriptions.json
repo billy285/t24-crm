@@ -1,0 +1,38 @@
+[
+    {
+        "customer_id": 3,
+        "customer_name": "川味轩",
+        "deal_id": 1,
+        "package_name": "线上点餐+新媒体组合套餐",
+        "package_price": 499.0,
+        "billing_cycle": "monthly",
+        "start_date": "2026-02-01 00:00:00",
+        "end_date": "2027-02-01 00:00:00",
+        "auto_renew": true,
+        "renewal_person": "赵芳",
+        "last_payment_date": "2026-03-01 00:00:00",
+        "next_payment_date": "2026-04-01 00:00:00",
+        "status": "active",
+        "renewal_result": "",
+        "created_at": "2026-02-01 00:00:00",
+        "updated_at": "2026-03-01 00:00:00"
+    },
+    {
+        "customer_id": 6,
+        "customer_name": "丽人美容",
+        "deal_id": 2,
+        "package_name": "新媒体代运营标准版",
+        "package_price": 299.0,
+        "billing_cycle": "semi_annual",
+        "start_date": "2025-11-01 00:00:00",
+        "end_date": "2026-04-30 00:00:00",
+        "auto_renew": false,
+        "renewal_person": "赵芳",
+        "last_payment_date": "2025-11-01 00:00:00",
+        "next_payment_date": "2026-04-01 00:00:00",
+        "status": "expiring_soon",
+        "renewal_result": "",
+        "created_at": "2025-11-01 00:00:00",
+        "updated_at": "2026-03-07 00:00:00"
+    }
+]

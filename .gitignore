@@ -1,0 +1,9 @@
+venv/
+*.log
+node_modules/
+build/
+__pycache__
+dist
+vite.config.ts.timestamp-*
+.DS_Store
+.git.broken-submodule

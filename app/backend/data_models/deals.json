@@ -1,0 +1,88 @@
+{
+    "title": "deals",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "关联客户ID"
+        },
+        "customer_name": {
+            "type": "string",
+            "description": "客户名称"
+        },
+        "sales_employee_id": {
+            "type": "integer",
+            "description": "成交销售ID"
+        },
+        "sales_name": {
+            "type": "string",
+            "description": "成交销售姓名"
+        },
+        "product_type": {
+            "type": "string",
+            "description": "产品类型: ordering_system/social_media/ads/website/combo"
+        },
+        "package_name": {
+            "type": "string",
+            "description": "套餐名称"
+        },
+        "billing_cycle": {
+            "type": "string",
+            "description": "服务周期: monthly/quarterly/semi_annual/annual"
+        },
+        "deal_amount": {
+            "type": "number",
+            "description": "成交金额"
+        },
+        "is_paid": {
+            "type": "boolean",
+            "description": "是否已付款"
+        },
+        "service_start_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "服务开始日期"
+        },
+        "service_end_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "服务到期日期"
+        },
+        "needs_group": {
+            "type": "boolean",
+            "description": "是否需要建群"
+        },
+        "is_handed_over": {
+            "type": "boolean",
+            "description": "是否已完成交接"
+        },
+        "is_transferred_ops": {
+            "type": "boolean",
+            "description": "是否已转运营"
+        },
+        "notes": {
+            "type": "string",
+            "description": "备注"
+        },
+        "deal_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "成交日期"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间"
+        }
+    },
+    "required": [
+        "id",
+        "customer_id",
+        "product_type",
+        "deal_amount"
+    ]
+}

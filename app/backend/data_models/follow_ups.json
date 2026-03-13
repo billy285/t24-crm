@@ -1,0 +1,69 @@
+{
+    "title": "follow_ups",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "关联客户ID"
+        },
+        "employee_id": {
+            "type": "integer",
+            "description": "跟进员工ID"
+        },
+        "employee_name": {
+            "type": "string",
+            "description": "跟进员工姓名"
+        },
+        "contact_method": {
+            "type": "string",
+            "description": "跟进方式: phone/wechat/sms/email"
+        },
+        "content": {
+            "type": "string",
+            "description": "跟进内容"
+        },
+        "customer_needs": {
+            "type": "string",
+            "description": "客户需求"
+        },
+        "customer_pain_points": {
+            "type": "string",
+            "description": "客户痛点"
+        },
+        "has_quoted": {
+            "type": "boolean",
+            "description": "是否报价"
+        },
+        "quote_plan": {
+            "type": "string",
+            "description": "报价方案"
+        },
+        "close_probability": {
+            "type": "integer",
+            "description": "成交概率 0-100"
+        },
+        "stage": {
+            "type": "string",
+            "description": "跟进阶段: new_lead/contacted/communicating/quoted/considering/pending_close/closed/not_closed/lost/follow_later"
+        },
+        "next_follow_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "下次跟进时间"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间"
+        }
+    },
+    "required": [
+        "id",
+        "customer_id",
+        "content"
+    ]
+}

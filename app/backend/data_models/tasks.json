@@ -1,0 +1,73 @@
+{
+    "title": "tasks",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "title": {
+            "type": "string",
+            "description": "任务名称"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "所属客户ID"
+        },
+        "customer_name": {
+            "type": "string",
+            "description": "客户名称"
+        },
+        "assignee_id": {
+            "type": "integer",
+            "description": "负责人ID"
+        },
+        "assignee_name": {
+            "type": "string",
+            "description": "负责人姓名"
+        },
+        "collaborator_names": {
+            "type": "string",
+            "description": "协作人姓名，逗号分隔"
+        },
+        "task_type": {
+            "type": "string",
+            "description": "任务类型: follow_up/design/menu_entry/stripe_setup/google_auth/test_order/report/renewal_reminder/other"
+        },
+        "priority": {
+            "type": "string",
+            "description": "优先级: high/medium/low"
+        },
+        "status": {
+            "type": "string",
+            "description": "状态: pending/in_progress/completed/delayed"
+        },
+        "due_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "截止时间"
+        },
+        "notes": {
+            "type": "string",
+            "description": "备注"
+        },
+        "attachment_link": {
+            "type": "string",
+            "description": "附件链接"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间"
+        },
+        "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间"
+        }
+    },
+    "required": [
+        "id",
+        "title"
+    ]
+}

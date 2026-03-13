@@ -1,0 +1,44 @@
+{
+    "title": "operation_logs",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID who performed the action"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "Associated customer ID, nullable"
+        },
+        "action_type": {
+            "type": "string",
+            "description": "Action type: create_customer, edit_customer, delete_customer, view_password, create_follow_up, edit_follow_up, delete_follow_up, create_media_account, edit_media_account, delete_media_account, export_data"
+        },
+        "action_detail": {
+            "type": "string",
+            "description": "Detailed description of the action"
+        },
+        "operator_name": {
+            "type": "string",
+            "description": "Name of the person who performed the action"
+        },
+        "ip_address": {
+            "type": "string",
+            "description": "IP address"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Created timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "action_type"
+    ]
+}

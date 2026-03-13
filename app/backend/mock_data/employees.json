@@ -1,0 +1,56 @@
+[
+    {
+        "name": "张伟",
+        "user_id": "admin-001",
+        "role": "admin",
+        "phone": "626-888-0001",
+        "email": "zhangwei@t24.com",
+        "status": "active",
+        "created_at": "2025-01-01 00:00:00"
+    },
+    {
+        "name": "李明",
+        "user_id": "sales-001",
+        "role": "sales",
+        "phone": "626-888-0002",
+        "email": "liming@t24.com",
+        "status": "active",
+        "created_at": "2025-01-01 00:00:00"
+    },
+    {
+        "name": "王芳",
+        "user_id": "sales-002",
+        "role": "sales",
+        "phone": "626-888-0003",
+        "email": "wangfang@t24.com",
+        "status": "active",
+        "created_at": "2025-01-01 00:00:00"
+    },
+    {
+        "name": "赵丽",
+        "user_id": "ops-001",
+        "role": "operations",
+        "phone": "626-888-0004",
+        "email": "zhaoli@t24.com",
+        "status": "active",
+        "created_at": "2025-01-01 00:00:00"
+    },
+    {
+        "name": "陈静",
+        "user_id": "design-001",
+        "role": "design",
+        "phone": "626-888-0005",
+        "email": "chenjing@t24.com",
+        "status": "active",
+        "created_at": "2025-01-01 00:00:00"
+    },
+    {
+        "name": "刘洋",
+        "user_id": "finance-001",
+        "role": "finance",
+        "phone": "626-888-0006",
+        "email": "liuyang@t24.com",
+        "status": "active",
+        "created_at": "2025-01-01 00:00:00"
+    }
+]

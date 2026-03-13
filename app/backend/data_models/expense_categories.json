@@ -1,0 +1,40 @@
+{
+    "title": "expense_categories",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "category_key": {
+            "type": "string",
+            "description": "Unique key for the category"
+        },
+        "category_name": {
+            "type": "string",
+            "description": "Display name of the category"
+        },
+        "category_type": {
+            "type": "string",
+            "description": "Type: company or customer"
+        },
+        "is_active": {
+            "type": "boolean",
+            "description": "Whether this category is active"
+        },
+        "sort_order": {
+            "type": "integer",
+            "description": "Sort order for display"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Record creation time"
+        }
+    },
+    "required": [
+        "id",
+        "category_key",
+        "category_name"
+    ]
+}

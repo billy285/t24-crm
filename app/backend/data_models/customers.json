@@ -1,0 +1,122 @@
+{
+    "title": "customers",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "customer_code": {
+            "type": "string",
+            "description": "客户编号"
+        },
+        "business_name": {
+            "type": "string",
+            "description": "商家名称"
+        },
+        "contact_name": {
+            "type": "string",
+            "description": "联系人姓名"
+        },
+        "phone": {
+            "type": "string",
+            "description": "联系电话"
+        },
+        "wechat": {
+            "type": "string",
+            "description": "微信/WhatsApp"
+        },
+        "email": {
+            "type": "string",
+            "description": "邮箱"
+        },
+        "address": {
+            "type": "string",
+            "description": "商家地址"
+        },
+        "city": {
+            "type": "string",
+            "description": "城市"
+        },
+        "state": {
+            "type": "string",
+            "description": "州"
+        },
+        "industry": {
+            "type": "string",
+            "description": "行业类型: restaurant/nail/massage/beauty/supermarket/other"
+        },
+        "website": {
+            "type": "string",
+            "description": "商家官网"
+        },
+        "google_business_link": {
+            "type": "string",
+            "description": "Google Business 链接"
+        },
+        "facebook_link": {
+            "type": "string",
+            "description": "Facebook 链接"
+        },
+        "instagram_link": {
+            "type": "string",
+            "description": "Instagram 链接"
+        },
+        "yelp_link": {
+            "type": "string",
+            "description": "Yelp 链接"
+        },
+        "has_ordering_system": {
+            "type": "boolean",
+            "description": "是否已有线上点餐系统"
+        },
+        "current_platform": {
+            "type": "string",
+            "description": "当前使用平台"
+        },
+        "monthly_orders": {
+            "type": "integer",
+            "description": "月订单量"
+        },
+        "source": {
+            "type": "string",
+            "description": "客户来源: phone/referral/ads/private/returning/other"
+        },
+        "sales_person": {
+            "type": "string",
+            "description": "负责销售人员姓名"
+        },
+        "sales_employee_id": {
+            "type": "integer",
+            "description": "负责销售员工ID"
+        },
+        "level": {
+            "type": "string",
+            "description": "客户等级: high/normal/low/vip"
+        },
+        "status": {
+            "type": "string",
+            "description": "状态: new/following/closed/paused/lost"
+        },
+        "notes": {
+            "type": "string",
+            "description": "备注"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间"
+        },
+        "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间"
+        }
+    },
+    "required": [
+        "id",
+        "business_name",
+        "contact_name",
+        "phone"
+    ]
+}
