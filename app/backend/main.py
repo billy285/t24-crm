@@ -17,6 +17,7 @@ from fastapi.routing import APIRouter
 from services.database import initialize_database, close_database
 from services.mock_data import initialize_mock_data
 from services.auth import initialize_admin_user
+from services.emp_auth import initialize_default_employee_admin
 # MODULE_IMPORTS_END
 
 
@@ -70,6 +71,7 @@ async def lifespan(app: FastAPI):
     await initialize_database()
     await initialize_mock_data()  # re-enabled after user_id autofill
     await initialize_admin_user()
+    await initialize_default_employee_admin()
     # MODULE_STARTUP_END
 
     logger.info("=== Application startup completed successfully ===")

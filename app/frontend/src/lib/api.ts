@@ -1,7 +1,12 @@
 import { createClient } from '@metagptx/web-sdk';
+import { getAPIBaseURL } from './config';
 
 // Create client instance
-export const client = createClient({ baseURL: (import.meta.env && (import.meta.env as any).VITE_API_BASE_URL) || '' } as any, );
+const baseURL =
+  (import.meta.env && (import.meta.env as any).VITE_API_BASE_URL) ||
+  (import.meta.env.DEV ? '' : getAPIBaseURL());
+
+export const client = createClient({ baseURL } as any);
 
 // Reports export helpers
 export async function exportProfitMonthlyCsv(params: { start?: string; end?: string; currency?: 'USD'|'CNY'; base_currency?: string }) {

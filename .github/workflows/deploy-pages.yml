@@ -46,6 +46,7 @@ jobs:
         working-directory: app/frontend
         env:
           VITE_BASE: /t24-crm/
+          VITE_API_BASE_URL: https://billy285-t24-crm-backend.onrender.com
         run: pnpm build
 
       - name: Add SPA fallback

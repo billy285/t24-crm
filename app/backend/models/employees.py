@@ -12,5 +12,6 @@ class Employees(Base):
     role = Column(String, nullable=False)
     phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
+    password = Column(String, nullable=True)
     status = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)

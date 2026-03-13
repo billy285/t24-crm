@@ -8,6 +8,8 @@ from jose import jwt
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.database import db_manager
+
 logger = logging.getLogger(__name__)
 
 # JWT config
@@ -141,8 +143,8 @@ class EmpAuthService:
                 hashed = hash_password("admin123")
                 await self.db.execute(
                     text(
-                        "INSERT INTO employees (user_id, name, role, email, password, status, created_at) "
-                        "VALUES (:uid, :name, :role, :email, :pwd, :status, NOW())"
+                        "INSERT INTO employees (user_id, name, role, email, password, status) "
+                        "VALUES (:uid, :name, :role, :email, :pwd, :status)"
                     ),
                     {
                         "uid": "admin",
@@ -166,3 +168,18 @@ class EmpAuthService:
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Error creating default admin: {e}")
+
+
+async def initialize_default_employee_admin() -> None:
+    """Create the default employee admin account during app startup."""
+    if os.environ.get("MGX_IGNORE_INIT_EMP_ADMIN", "").lower() in ("1", "true", "yes"):
+        logger.info("Ignore initialize default employee admin")
+        return
+
+    if not db_manager.async_session_maker:
+        logger.warning("Database session maker unavailable, skipping employee admin initialization")
+        return
+
+    async with db_manager.async_session_maker() as db:
+        service = EmpAuthService(db)
+        await service.ensure_default_admin()
