@@ -1,0 +1,40 @@
+{
+    "title": "customer_contacts",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "Associated customer ID"
+        },
+        "contact_name": {
+            "type": "string",
+            "description": "Contact person name"
+        },
+        "contact_phone": {
+            "type": "string",
+            "description": "Contact phone number"
+        },
+        "contact_role": {
+            "type": "string",
+            "description": "Contact role, e.g. boss, manager"
+        },
+        "notes": {
+            "type": "string",
+            "description": "Additional notes"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Created timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "customer_id",
+        "contact_name"
+    ]
+}

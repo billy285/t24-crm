@@ -1,0 +1,86 @@
+{
+    "title": "subscriptions",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "关联客户ID"
+        },
+        "customer_name": {
+            "type": "string",
+            "description": "客户名称"
+        },
+        "deal_id": {
+            "type": "integer",
+            "description": "关联成交ID"
+        },
+        "package_name": {
+            "type": "string",
+            "description": "套餐名称"
+        },
+        "package_price": {
+            "type": "number",
+            "description": "套餐价格"
+        },
+        "billing_cycle": {
+            "type": "string",
+            "description": "付款周期: monthly/quarterly/semi_annual/annual"
+        },
+        "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "开始日期"
+        },
+        "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "到期日期"
+        },
+        "auto_renew": {
+            "type": "boolean",
+            "description": "是否自动续费"
+        },
+        "renewal_person": {
+            "type": "string",
+            "description": "续费负责人"
+        },
+        "last_payment_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "上次付款时间"
+        },
+        "next_payment_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "下次付款时间"
+        },
+        "status": {
+            "type": "string",
+            "description": "状态: active/expiring_soon/expired/paused/lost"
+        },
+        "renewal_result": {
+            "type": "string",
+            "description": "续费结果: renewed/refused/delayed/unreachable/downgraded/upgraded"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间"
+        },
+        "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间"
+        }
+    },
+    "required": [
+        "id",
+        "customer_id",
+        "package_name",
+        "package_price"
+    ]
+}

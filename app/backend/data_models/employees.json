@@ -1,0 +1,45 @@
+{
+    "title": "employees",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "Auth user ID from Atoms Cloud"
+        },
+        "name": {
+            "type": "string",
+            "description": "员工姓名"
+        },
+        "role": {
+            "type": "string",
+            "description": "角色: admin/sales/operations/design/finance/hr"
+        },
+        "phone": {
+            "type": "string",
+            "description": "联系电话"
+        },
+        "email": {
+            "type": "string",
+            "description": "邮箱"
+        },
+        "status": {
+            "type": "string",
+            "description": "状态: active/inactive"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "name",
+        "role"
+    ]
+}

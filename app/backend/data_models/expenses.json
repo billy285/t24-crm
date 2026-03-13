@@ -1,0 +1,71 @@
+{
+    "title": "expenses",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "Customer ID, nullable for non-customer expenses"
+        },
+        "customer_name": {
+            "type": "string",
+            "description": "Customer business name"
+        },
+        "expense_category": {
+            "type": "string",
+            "description": "Category: customer or company"
+        },
+        "expense_type": {
+            "type": "string",
+            "description": "Expense type key"
+        },
+        "amount": {
+            "type": "number",
+            "description": "Expense amount"
+        },
+        "currency": {
+            "type": "string",
+            "description": "Currency code, default USD"
+        },
+        "expense_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Expense date"
+        },
+        "expense_month": {
+            "type": "string",
+            "description": "Corresponding month YYYY-MM"
+        },
+        "recorded_by": {
+            "type": "string",
+            "description": "Person who recorded this"
+        },
+        "payment_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Payment date"
+        },
+        "notes": {
+            "type": "string",
+            "description": "Notes"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Record creation time"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        }
+    },
+    "required": [
+        "id",
+        "expense_type",
+        "amount",
+        "user_id"
+    ]
+}

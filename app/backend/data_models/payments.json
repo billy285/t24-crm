@@ -1,0 +1,97 @@
+{
+    "title": "payments",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "Customer ID"
+        },
+        "customer_name": {
+            "type": "string",
+            "description": "Customer business name"
+        },
+        "income_type": {
+            "type": "string",
+            "description": "Income type: management_fee, ads_fee, website_fee, ordering_fee, renewal_fee, other_income"
+        },
+        "product_name": {
+            "type": "string",
+            "description": "Product or service name"
+        },
+        "amount_due": {
+            "type": "number",
+            "description": "Amount due"
+        },
+        "amount_paid": {
+            "type": "number",
+            "description": "Amount paid"
+        },
+        "currency": {
+            "type": "string",
+            "description": "Currency code, default USD"
+        },
+        "payment_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Payment date"
+        },
+        "payment_method": {
+            "type": "string",
+            "description": "Payment method"
+        },
+        "billing_cycle": {
+            "type": "string",
+            "description": "Billing cycle"
+        },
+        "coverage_start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Coverage start date"
+        },
+        "coverage_end": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Coverage end date"
+        },
+        "has_invoice": {
+            "type": "boolean",
+            "description": "Whether invoice was issued"
+        },
+        "outstanding_amount": {
+            "type": "number",
+            "description": "Outstanding amount"
+        },
+        "expense_month": {
+            "type": "string",
+            "description": "Corresponding month YYYY-MM"
+        },
+        "recorded_by": {
+            "type": "string",
+            "description": "Person who recorded this"
+        },
+        "notes": {
+            "type": "string",
+            "description": "Notes"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Record creation time"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        }
+    },
+    "required": [
+        "id",
+        "customer_id",
+        "amount_due",
+        "amount_paid",
+        "user_id"
+    ]
+}

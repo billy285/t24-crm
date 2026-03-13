@@ -1,0 +1,100 @@
+{
+    "title": "service_progresses",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "customer_id": {
+            "type": "integer",
+            "description": "Associated customer ID"
+        },
+        "service_type": {
+            "type": "string",
+            "description": "Service type: social_media, website, ordering_system, other"
+        },
+        "service_stage": {
+            "type": "string",
+            "description": "Current service stage"
+        },
+        "progress_percent": {
+            "type": "integer",
+            "description": "Progress percentage 0-100"
+        },
+        "sales_person": {
+            "type": "string",
+            "description": "Sales person name"
+        },
+        "ops_person": {
+            "type": "string",
+            "description": "Operations person name"
+        },
+        "design_person": {
+            "type": "string",
+            "description": "Design person name"
+        },
+        "service_start_date": {
+            "type": "string",
+            "description": "Service start date"
+        },
+        "service_end_date": {
+            "type": "string",
+            "description": "Service end date"
+        },
+        "last_update_time": {
+            "type": "string",
+            "description": "Last update timestamp"
+        },
+        "last_update_person": {
+            "type": "string",
+            "description": "Last update person name"
+        },
+        "last_work_summary": {
+            "type": "string",
+            "description": "Latest work summary"
+        },
+        "issue_status": {
+            "type": "string",
+            "description": "Issue status: none, waiting_client, waiting_material, account_issue, permission_issue, platform_review, internal_pending, overdue"
+        },
+        "issue_description": {
+            "type": "string",
+            "description": "Issue description"
+        },
+        "issue_found_date": {
+            "type": "string",
+            "description": "Issue found date"
+        },
+        "issue_owner": {
+            "type": "string",
+            "description": "Issue responsible person"
+        },
+        "issue_resolved": {
+            "type": "boolean",
+            "description": "Whether issue is resolved"
+        },
+        "issue_resolved_date": {
+            "type": "string",
+            "description": "Issue resolved date"
+        },
+        "notes": {
+            "type": "string",
+            "description": "Additional notes"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "created_at": {
+            "type": "string",
+            "description": "Created timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "customer_id",
+        "service_stage",
+        "user_id"
+    ]
+}
