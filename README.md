@@ -31,6 +31,18 @@ Notes:
    curl https://billy285-t24-crm-backend.onrender.com/health
    ```
 
+### 默认登录账号（首次部署）
+
+可以，默认情况下可直接用系统预置员工管理员账号登录：
+
+- 登录入口：`/api/v1/emp-auth/login`（前端登录页即调用此接口）
+- 账号：`admin@company.com`
+- 密码：`admin123`
+
+该账号由启动流程里的 `initialize_default_employee_admin()` 自动创建（受 `MGX_IGNORE_INIT_EMP_ADMIN` 控制）。
+
+> 安全建议：首次登录后立即修改密码；生产环境不要长期保留默认密码。
+
 ### 2) 配置后端环境变量（Render Dashboard）
 
 `render.yaml` 已内置关键变量，建议上线前重点确认：
