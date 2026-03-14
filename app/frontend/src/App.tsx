@@ -22,12 +22,32 @@ import NotFound from './pages/NotFound';
 
 const queryClient = new QueryClient();
 
+function resolveRouterBasename(): string {
+  const rawBase = import.meta.env.BASE_URL || '/';
+
+  // Standard vite base like /t24-crm/
+  if (rawBase.startsWith('/')) {
+    return rawBase.replace(/\/$/, '') || '/';
+  }
+
+  // Relative vite base (./) used for static hosting; infer from current path.
+  if (rawBase === './' || rawBase === '.') {
+    if (typeof window !== 'undefined') {
+      const firstSegment = window.location.pathname.split('/').filter(Boolean)[0];
+      return firstSegment ? `/${firstSegment}` : '/';
+    }
+    return '/';
+  }
+
+  return '/';
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <RoleProvider>
-        <BrowserRouter basename={import.meta.env.BASE_URL}>
+        <BrowserRouter basename={resolveRouterBasename()}>
           <Routes>
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/auth/error" element={<AuthError />} />
