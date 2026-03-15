@@ -22,7 +22,37 @@ import MediaAccountsTab from '@/components/MediaAccountsTab';
 import OperationLogsTab from '@/components/OperationLogsTab';
 import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../lib/customer-code-settings';
 
-const defaultIndustryLabels: Record<string, string> = { restaurant: '餐厅', nail: '美甲', massage: '按摩', beauty: '美容', supermarket: '超市', other: '其他' };
+const defaultIndustryLabels: Record<string, string> = { restaurant: '餐厅', beauty_services: '美业', retail: '零售', education: '教育', other: '其他' };
+
+// For Customer Status
+const customerStatusOptions = [
+  { value: '', label: '请选择客户状态' },
+  { value: 'potential_customer', label: '潜在客户' },
+  { value: 'new_customer', label: '新客户' },
+  { value: 'in_service', label: '服务中' },
+  { value: 'paused_service', label: '暂停服务' },
+  { value: 'lost_customer', label: '已流失' },
+];
+
+// For Customer Level
+const customerLevelOptions = [
+  { value: '', label: '请选择客户等级' },
+  { value: 'normal', label: '普通' },
+  { value: 'important', label: '重要' },
+  { value: 'vip', label: 'VIP' },
+];
+
+// For Customer Source
+const customerSourceOptions = [
+  { value: '', label: '请选择客户来源' },
+  { value: 'phone_sales', label: '电话销售' },
+  { value: 'customer_referral', label: '客户推荐' },
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'xiaohongshu', label: '小红书' },
+  { value: 'google_ads', label: 'Google' },
+  { value: 'website_consultation', label: '网站咨询' },
+  { value: 'other', label: '其他' },
+];
 const CUSTOM_INDUSTRIES_KEY = 'crm_custom_industries';
 function loadIndustryLabels(): Record<string, string> {
   try {
@@ -58,10 +88,16 @@ const contactRoleLabels: Record<string, string> = { boss: '老板', manager: '�
 
 const emptyForm = {
   customer_code: '', business_name: '', contact_name: '', phone: '', wechat: '', email: '',
-  address: '', city: '', state: 'CA', country: 'US', industry: 'restaurant', website: '',
+  address: '', city: '', state: 'CA', country: 'US',
+  industry: '', // Default to empty for "请选择"
+  website: '',
   google_business_link: '', facebook_link: '', instagram_link: '', yelp_link: '', tiktok_link: '',
   has_ordering_system: false, current_platform: '无', monthly_orders: 0,
-  source: 'phone', sales_person: '', sales_employee_id: '' as string | number, level: 'normal', status: 'new', notes: '',
+  customer_source: '', // New field
+  sales_person: '', sales_employee_id: '' as string | number,
+  customer_level: '', // New field
+  customer_status: '', // New field
+  notes: '',
 };
 
 const allColumns = [
@@ -331,7 +367,7 @@ export default function Customers() {
         logOperation({ customerId: res?.data?.id, actionType: 'create_customer', actionDetail: `新增客户: ${form.business_name}`, operatorName: op });
       }
       setShowForm(false); loadCustomers();
-    } catch { toast.error('保存失败'); } finally { setSaving(false); }
+    } catch (error) { console.error('保存客户失败:', error); toast.error('保存失败: ' + (error instanceof Error ? error.message : String(error))); } finally { setSaving(false); }
   };
 
   const handleDelete = async () => {
@@ -660,10 +696,9 @@ export default function Customers() {
         </CardContent></Card>
       )}
 
-      <div className="flex gap-2 flex-wrap">{Object.entries(statusLabels).map(([k, v]) => (
-        <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`h-7 text-xs ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(filterStatus === k ? 'all' : k)}>{v}</Button>
-      ))}</div>
 
+
+      {!selectedCustomer && !showForm && (
       <Card className="border-slate-200"><CardContent className="p-3 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索编号、名称、联系人、电话..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
@@ -708,6 +743,7 @@ export default function Customers() {
           </div>
         )}
       </CardContent></Card>
+      )}
 
       <div className="text-xs text-slate-500">共 {filtered.length} 条{filtered.length !== customers.length ? ` (筛选自 ${customers.length} 条)` : ''}</div>
 
