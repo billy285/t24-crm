@@ -340,7 +340,7 @@ export default function Customers() {
 
   const openCreate = () => { setForm(emptyForm); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
   const openEdit = (c: any) => {
-    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
+    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', monthly_orders: c.monthly_orders || 0, customer_source: c.customer_source || '', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', customer_level: c.customer_level || '', customer_status: c.customer_status || '', notes: c.notes || '' });
     setEditingId(c.id); setDuplicateWarning(null); setShowForm(true);
   };
 
@@ -355,14 +355,21 @@ export default function Customers() {
     try {
       const now = new Date().toISOString();
       const op = employee?.name || '管理员';
+
+      // Prepare data for saving
+      const dataToSave: any = { ...form };
+      if (dataToSave.sales_employee_id === '') {
+        dataToSave.sales_employee_id = null;
+      }
+
       if (editingId) {
-        await client.entities.customers.update({ id: String(editingId), data: { ...form, updated_at: now } });
+        await client.entities.customers.update({ id: String(editingId), data: { ...dataToSave, updated_at: now } });
         toast.success('客户信息已更新');
         logOperation({ customerId: editingId, actionType: 'edit_customer', actionDetail: `编辑客户: ${form.business_name}`, operatorName: op });
       } else {
         const code = form.customer_code.trim() || getNextAutoCode(form.industry);
         if (customers.some(c => c.customer_code === code)) { toast.error(`编号「${code}」已存在`); setSaving(false); return; }
-        const res = await client.entities.customers.create({ data: { ...form, customer_code: code, created_at: now, updated_at: now } });
+        const res = await client.entities.customers.create({ data: { ...dataToSave, customer_code: code, created_at: now, updated_at: now } });
         toast.success('客户创建成功');
         logOperation({ customerId: res?.data?.id, actionType: 'create_customer', actionDetail: `新增客户: ${form.business_name}`, operatorName: op });
       }
@@ -870,9 +877,9 @@ export default function Customers() {
               )}
             </div>
             <div><Label>地址</Label><Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
-            <div><Label>来源</Label><NativeSelect value={form.source} onChange={v => setForm({ ...form, source: v })} options={Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            <div><Label>等级</Label><NativeSelect value={form.level} onChange={v => setForm({ ...form, level: v })} options={Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div><Label>来源</Label><NativeSelect value={form.customer_source} onChange={v => setForm({ ...form, customer_source: v })} options={Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div><Label>等级</Label><NativeSelect value={form.customer_level} onChange={v => setForm({ ...form, customer_level: v })} options={Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div><Label>状态</Label><NativeSelect value={form.customer_status} onChange={v => setForm({ ...form, customer_status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
             <div><Label>负责销售</Label><NativeSelect value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
             <div><Label>官网</Label><Input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
             <div><Label>当前平台</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} /></div>
