@@ -15,6 +15,7 @@ import Finance from './pages/Finance';
 import Tasks from './pages/Tasks';
 import Employees from './pages/Employees';
 import Settings from './pages/Settings';
+import SystemOptions from './pages/SystemOptions';
 import Permissions from './pages/Permissions';
 import ServiceBoard from './pages/ServiceBoard';
 import Callbacks from './pages/Callbacks';
@@ -39,6 +40,7 @@ const App = () => (
             <Route path="/tasks" element={<Layout><Tasks /></Layout>} />
             <Route path="/employees" element={<Layout><Employees /></Layout>} />
             <Route path="/settings" element={<Layout><Settings /></Layout>} />
+              <Route path="/system-options" element={<Layout><SystemOptions /></Layout>} />
             <Route path="/permissions" element={<Layout><Permissions /></Layout>} />
             <Route path="/service-board" element={<Layout><ServiceBoard /></Layout>} />
             <Route path="/callbacks" element={<Layout><Callbacks /></Layout>} />

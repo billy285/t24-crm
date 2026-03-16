@@ -5,7 +5,7 @@ import { pageLabels } from '../lib/permissions';
 import {
   LayoutDashboard, Users, PhoneCall, Handshake, DollarSign,
   ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
-  ShieldCheck, Lock, KeyRound, ClipboardList
+  ShieldCheck, Lock, KeyRound, ClipboardList, ListTree
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,6 +33,7 @@ const allNavItems = [
   { path: '/callbacks', label: '电话回访', icon: PhoneCall },
   { path: '/employees', label: '员工管理', icon: UserCog },
   { path: '/settings', label: '系统设置', icon: Settings },
+  { path: '/system-options', label: '选项管理', icon: ListTree },
   { path: '/permissions', label: '权限设置', icon: ShieldCheck },
 ];
 
