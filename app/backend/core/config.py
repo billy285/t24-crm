@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
+    database_url: str = "sqlite:///./crm_dev.db"
 
     # AWS Lambda Configuration
     is_lambda: bool = False

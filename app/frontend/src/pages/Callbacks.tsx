@@ -18,25 +18,8 @@ import {
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ExportButton from '@/components/ExportButton';
+import { useBusinessDicts } from '../lib/dict-config';
 
-// Callback types
-const callbackTypeLabels: Record<string, string> = {
-  satisfaction: '满意度回访',
-  renewal: '续费提醒',
-  upsell: '增值服务推荐',
-  maintenance: '售后维护',
-  feedback: '意见收集',
-  other: '其他',
-};
-
-// Callback status
-const callbackStatusLabels: Record<string, string> = {
-  pending: '待回访',
-  completed: '已完成',
-  no_answer: '未接通',
-  rescheduled: '已改期',
-  cancelled: '已取消',
-};
 const callbackStatusColors: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
   completed: 'bg-green-100 text-green-700',
@@ -52,18 +35,13 @@ const callbackStatusIcons: Record<string, React.ReactNode> = {
   cancelled: <AlertCircle className="w-3.5 h-3.5" />,
 };
 
-// Result labels
-const resultLabels: Record<string, string> = {
-  satisfied: '满意',
-  neutral: '一般',
-  unsatisfied: '不满意',
-  interested: '有意向',
-  not_interested: '无意向',
-  need_followup: '需再跟进',
-};
-
 export default function Callbacks() {
   const { role, employee, dataScope } = useRole();
+  const {
+    callbackTypes: callbackTypeLabels,
+    callbackStatuses: callbackStatusLabels,
+    callbackResults: resultLabels,
+  } = useBusinessDicts();
   const navigate = useNavigate();
   const [callbacks, setCallbacks] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);

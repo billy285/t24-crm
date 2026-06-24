@@ -26,6 +26,10 @@
             "type": "string",
             "description": "邮箱"
         },
+        "password": {
+            "type": "string",
+            "description": "员工登录密码（哈希值存储）"
+        },
         "status": {
             "type": "string",
             "description": "状态: active/inactive"

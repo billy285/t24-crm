@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from services.deals import DealsService
+from services.deal_payment_sync import delete_synced_payment_for_deal, sync_payment_from_deal
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ router = APIRouter(prefix="/api/v1/entities/deals", tags=["deals"])
 # ---------- Pydantic Schemas ----------
 class DealsData(BaseModel):
     """Entity data schema (for create/update)"""
+    source_payment_id: Optional[int] = None
     customer_id: int
     customer_name: Optional[str] = None
     sales_employee_id: Optional[int] = None
@@ -41,6 +43,7 @@ class DealsData(BaseModel):
 
 class DealsUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
+    source_payment_id: Optional[int] = None
     customer_id: Optional[int] = None
     customer_name: Optional[str] = None
     sales_employee_id: Optional[int] = None
@@ -63,6 +66,7 @@ class DealsUpdateData(BaseModel):
 class DealsResponse(BaseModel):
     """Entity response schema"""
     id: int
+    source_payment_id: Optional[int] = None
     customer_id: int
     customer_name: Optional[str] = None
     sales_employee_id: Optional[int] = None
@@ -226,6 +230,12 @@ async def create_deals(
         result = await service.create(data.model_dump())
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create deals")
+
+        try:
+            await sync_payment_from_deal(db, result)
+        except Exception as sync_err:
+            logger.error(f"Failed to sync payment from deal {result.id}: {sync_err}", exc_info=True)
+            raise HTTPException(status_code=500, detail="成交已保存，但同步收入记录失败")
         
         logger.info(f"Deals created successfully with id: {result.id}")
         return result
@@ -252,6 +262,7 @@ async def create_dealss_batch(
         for item_data in request.items:
             result = await service.create(item_data.model_dump())
             if result:
+                await sync_payment_from_deal(db, result)
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} dealss successfully")
@@ -279,6 +290,7 @@ async def update_dealss_batch(
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
             result = await service.update(item.id, update_dict)
             if result:
+                await sync_payment_from_deal(db, result)
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} dealss successfully")
@@ -306,6 +318,12 @@ async def update_deals(
         if not result:
             logger.warning(f"Deals with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Deals not found")
+
+        try:
+            await sync_payment_from_deal(db, result)
+        except Exception as sync_err:
+            logger.error(f"Failed to sync payment from deal {id}: {sync_err}", exc_info=True)
+            raise HTTPException(status_code=500, detail="成交已更新，但同步收入记录失败")
         
         logger.info(f"Deals {id} updated successfully")
         return result
@@ -334,6 +352,7 @@ async def delete_dealss_batch(
         for item_id in request.ids:
             success = await service.delete(item_id)
             if success:
+                await delete_synced_payment_for_deal(db, item_id)
                 deleted_count += 1
         
         logger.info(f"Batch deleted {deleted_count} dealss successfully")
@@ -358,6 +377,8 @@ async def delete_deals(
         if not success:
             logger.warning(f"Deals with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Deals not found")
+
+        await delete_synced_payment_for_deal(db, id)
         
         logger.info(f"Deals {id} deleted successfully")
         return {"message": "Deals deleted successfully", "id": id}

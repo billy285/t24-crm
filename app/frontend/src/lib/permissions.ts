@@ -1,3 +1,5 @@
+import { readCachedAppConfig, writeCachedAppConfig } from './app-config';
+
 // ==================== 权限系统核心配置 ====================
 
 // 系统角色类型
@@ -30,7 +32,7 @@ export const PAGE_PATHS = {
 export const pageLabels: Record<string, string> = {
   '/': '仪表盘',
   '/customers': '客户管理',
-  '/sales': '销售跟进',
+  '/sales': '成交客户管理',
   '/deals': '成交管理',
   '/finance': '财务管理',
   '/tasks': '任务协作',
@@ -187,54 +189,48 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
 const PERMISSIONS_STORAGE_KEY = 'crm_role_permissions';
 const PERMISSIONS_VERSION_KEY = 'crm_role_permissions_version';
 // Bump this version whenever default permissions change (e.g., new pages added)
-const CURRENT_PERMISSIONS_VERSION = 2;
+const CURRENT_PERMISSIONS_VERSION = 3;
+
+function uniq<T>(items: T[]): T[] {
+  return Array.from(new Set(items));
+}
+
+export function normalizeRolePermissions(
+  config?: Partial<Record<SystemRole, Partial<RolePermissionConfig>>>
+): Record<SystemRole, RolePermissionConfig> {
+  const normalized = {} as Record<SystemRole, RolePermissionConfig>;
+
+  for (const role of Object.keys(defaultRolePermissions) as SystemRole[]) {
+    const merged = {
+      ...defaultRolePermissions[role],
+      ...(config?.[role] || {}),
+      sensitiveFields: {
+        ...defaultRolePermissions[role].sensitiveFields,
+        ...(config?.[role]?.sensitiveFields || {}),
+      },
+    };
+
+    normalized[role] = {
+      pages: uniq(['/', ...(merged.pages || defaultRolePermissions[role].pages)]),
+      buttons: uniq((merged.buttons || defaultRolePermissions[role].buttons) as ButtonPermission[]),
+      dataScope: merged.dataScope || defaultRolePermissions[role].dataScope,
+      sensitiveFields: merged.sensitiveFields,
+    };
+  }
+
+  return normalized;
+}
 
 export function loadRolePermissions(): Record<SystemRole, RolePermissionConfig> {
-  try {
-    // Check if stored permissions are outdated
-    const storedVersion = localStorage.getItem(PERMISSIONS_VERSION_KEY);
-    const version = storedVersion ? parseInt(storedVersion, 10) : 0;
-
-    // If version mismatch, clear old permissions and use fresh defaults
-    if (version < CURRENT_PERMISSIONS_VERSION) {
-      localStorage.removeItem(PERMISSIONS_STORAGE_KEY);
-      localStorage.setItem(PERMISSIONS_VERSION_KEY, String(CURRENT_PERMISSIONS_VERSION));
-      return { ...defaultRolePermissions };
-    }
-
-    const stored = localStorage.getItem(PERMISSIONS_STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // Deep merge with defaults to ensure new pages/buttons are included
-      const merged: Record<string, RolePermissionConfig> = {};
-      for (const role of Object.keys(defaultRolePermissions) as SystemRole[]) {
-        if (parsed[role]) {
-          const defaultPages = defaultRolePermissions[role].pages;
-          const storedPages: string[] = parsed[role].pages || [];
-          // Add any new default pages that are missing from stored config
-          const mergedPages = [...storedPages];
-          for (const page of defaultPages) {
-            if (!mergedPages.includes(page)) {
-              mergedPages.push(page);
-            }
-          }
-          merged[role] = {
-            ...defaultRolePermissions[role],
-            ...parsed[role],
-            pages: mergedPages,
-          };
-        } else {
-          merged[role] = defaultRolePermissions[role];
-        }
-      }
-      return merged as Record<SystemRole, RolePermissionConfig>;
-    }
-  } catch { /* ignore */ }
-  return { ...defaultRolePermissions };
+  const parsed = readCachedAppConfig<Partial<Record<SystemRole, Partial<RolePermissionConfig>>>>(
+    'role_permissions',
+    defaultRolePermissions
+  );
+  return normalizeRolePermissions(parsed);
 }
 
 export function saveRolePermissions(config: Record<SystemRole, RolePermissionConfig>): void {
-  localStorage.setItem(PERMISSIONS_STORAGE_KEY, JSON.stringify(config));
+  writeCachedAppConfig('role_permissions', normalizeRolePermissions(config));
   localStorage.setItem(PERMISSIONS_VERSION_KEY, String(CURRENT_PERMISSIONS_VERSION));
 }
 

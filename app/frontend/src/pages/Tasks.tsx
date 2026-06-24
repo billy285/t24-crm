@@ -11,18 +11,10 @@ import { toast } from 'sonner';
 import { Plus, Search, CheckCircle2, Edit, Trash2 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { useBusinessDicts } from '../lib/dict-config';
 
-const taskTypeLabels: Record<string, string> = {
-  follow_up: '跟进客户', design: '设计页面', menu_entry: '菜单录入',
-  stripe_setup: 'Stripe配置', google_auth: 'Google权限', test_order: '测试订单',
-  report: '周报提交', renewal_reminder: '续费催款', other: '其他',
-};
-const priorityLabels: Record<string, string> = { high: '高', medium: '中', low: '低' };
 const priorityColors: Record<string, string> = {
   high: 'bg-red-100 text-red-700', medium: 'bg-amber-100 text-amber-700', low: 'bg-slate-100 text-slate-600',
-};
-const statusLabels: Record<string, string> = {
-  pending: '待处理', in_progress: '进行中', completed: '已完成', delayed: '延期',
 };
 const statusColors: Record<string, string> = {
   pending: 'bg-blue-100 text-blue-700', in_progress: 'bg-amber-100 text-amber-700',
@@ -30,6 +22,11 @@ const statusColors: Record<string, string> = {
 };
 
 export default function Tasks() {
+  const {
+    taskTypes: taskTypeLabels,
+    taskPriorities: priorityLabels,
+    taskStatuses: statusLabels,
+  } = useBusinessDicts();
   const [tasks, setTasks] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);

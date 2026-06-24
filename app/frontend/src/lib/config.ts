@@ -6,9 +6,16 @@ let runtimeConfig: {
 // Configuration loading state
 let configLoading = true;
 
+const fallbackOrigin =
+  typeof window !== 'undefined' &&
+  typeof window.location?.origin === 'string' &&
+  window.location.origin.startsWith('http')
+    ? window.location.origin
+    : 'http://127.0.0.1:8000';
+
 // Default fallback configuration
 const defaultConfig = {
-  API_BASE_URL: 'http://127.0.0.1:8000', // Only used if runtime config fails to load
+  API_BASE_URL: fallbackOrigin, // Prefer same-origin if runtime config fails to load
 };
 
 // Function to load runtime configuration

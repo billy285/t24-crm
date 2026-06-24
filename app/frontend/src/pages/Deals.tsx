@@ -14,16 +14,21 @@ import { Plus, Search, Edit, Trash2 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { saveRemoteAppConfig } from '../lib/app-config';
+import { buildOptionKey, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
 
-const productLabels: Record<string, string> = {
-  ordering_system: '线上点餐系统', social_media: '新媒体代运营', ads: '广告投放', website: '网站设计', combo: '组合套餐',
-};
-const cycleLabels: Record<string, string> = {
-  monthly: '月付', quarterly: '季付', semi_annual: '半年付', annual: '年付',
-};
+function parseMultiValue(value?: string | null) {
+  return (value || '').split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function parseDealPackageLabels(value?: string | null) {
+  return (value || '').split(/[、,，]/).map(item => item.trim()).filter(Boolean);
+}
 
 export default function Deals() {
   const { employee, dataScope, hasPermission } = useRole();
+  const dictConfig = useDictConfig();
+  const { products: productLabels, billingCycles: cycleLabels, customerPackages: customerPackageLabels } = useBusinessDicts();
   const [deals, setDeals] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,13 +43,20 @@ export default function Deals() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showPackageManager, setShowPackageManager] = useState(false);
+  const [newPackageName, setNewPackageName] = useState('');
+  const [packageDrafts, setPackageDrafts] = useState<Array<{ key: string; label: string }>>([]);
+  const [savingPackages, setSavingPackages] = useState(false);
+  const [packageOverrideLabels, setPackageOverrideLabels] = useState<Record<string, string>>({});
   const emptyDealForm = {
-    customer_id: '', product_type: 'ordering_system', package_name: '',
+    customer_id: '', product_type: 'ordering_system', package_name: '', package_keys: [] as string[],
     billing_cycle: 'monthly', deal_amount: '', is_paid: false,
     service_start_date: '', service_end_date: '', needs_group: false,
     is_handed_over: false, is_transferred_ops: false, notes: '',
   };
   const [form, setForm] = useState(emptyDealForm);
+  const dealPackageLabels = { ...customerPackageLabels, ...packageOverrideLabels };
+  const dealPackageOptions = Object.entries(dealPackageLabels).map(([value, label]) => ({ value, label }));
 
   useEffect(() => { loadData(); }, []);
 
@@ -125,11 +137,125 @@ export default function Deals() {
 
   const totalAmount = deals.reduce((s, d) => s + (d.deal_amount || 0), 0);
 
+  useEffect(() => {
+    if (!showForm && !editingId) {
+      setPackageOverrideLabels({});
+    }
+  }, [showForm, editingId]);
+
+  const openPackageManager = () => {
+    setPackageDrafts(Object.entries(customerPackageLabels).map(([key, label]) => ({ key, label })));
+    setNewPackageName('');
+    setShowPackageManager(true);
+  };
+
+  const handleAddPackageDraft = () => {
+    const label = newPackageName.trim();
+    if (!label) {
+      toast.error('请输入套餐名称');
+      return;
+    }
+    if (packageDrafts.some(item => item.label.trim() === label)) {
+      toast.error('该套餐已存在');
+      return;
+    }
+    let key = buildOptionKey(label);
+    while (packageDrafts.some(item => item.key === key)) {
+      key = `${key}_${Date.now()}`;
+    }
+    setPackageDrafts(prev => [...prev, { key, label }]);
+    setNewPackageName('');
+  };
+
+  const handleRemovePackageDraft = (key: string) => {
+    if (packageDrafts.length <= 1) {
+      toast.error('至少保留一个套餐');
+      return;
+    }
+    const label = packageDrafts.find(item => item.key === key)?.label || customerPackageLabels[key];
+    const usedInDeals = !!label && deals.some(item => parseDealPackageLabels(item.package_name).includes(label));
+    const usedInCustomers = customers.some(item => parseMultiValue(item.interested_packages).includes(key));
+    if (usedInDeals || usedInCustomers) {
+      toast.error('该套餐已有客户或成交记录在使用，请先调整历史数据后再删除');
+      return;
+    }
+    const remaining = packageDrafts.filter(item => item.key !== key);
+    setPackageDrafts(remaining);
+    if (form.package_keys.includes(key)) {
+      setForm(prev => ({ ...prev, package_keys: prev.package_keys.filter(item => item !== key) }));
+    }
+  };
+
+  const handleSavePackages = async () => {
+    const normalizedEntries = packageDrafts.reduce<Record<string, string>>((acc, item) => {
+      const label = item.label.trim();
+      if (label) {
+        acc[item.key] = label;
+      }
+      return acc;
+    }, {});
+    const labels = Object.values(normalizedEntries);
+    if (labels.length === 0) {
+      toast.error('请至少保留一个套餐');
+      return;
+    }
+    if (new Set(labels).size !== labels.length) {
+      toast.error('套餐名称不能重复');
+      return;
+    }
+
+    setSavingPackages(true);
+    try {
+      await saveRemoteAppConfig('dict_config', {
+        ...dictConfig,
+        customerPackages: serializeDictEntries(normalizedEntries),
+      });
+      const availableKeys = new Set(Object.keys(normalizedEntries));
+      setForm(prev => ({
+        ...prev,
+        package_keys: prev.package_keys.filter(key => availableKeys.has(key) || packageOverrideLabels[key]),
+      }));
+      setShowPackageManager(false);
+      setNewPackageName('');
+      toast.success('套餐配置已更新');
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '保存套餐配置失败';
+      toast.error(detail);
+    } finally {
+      setSavingPackages(false);
+    }
+  };
+
+  const togglePackageKey = (key: string) => {
+    setForm(prev => ({
+      ...prev,
+      package_keys: prev.package_keys.includes(key)
+        ? prev.package_keys.filter(item => item !== key)
+        : [...prev.package_keys, key],
+    }));
+  };
+
   const openEditDeal = (d: any) => {
+    const selectedLabels = parseDealPackageLabels(d.package_name);
+    const labelToKey = new Map<string, string>();
+    Object.entries(customerPackageLabels).forEach(([key, label]) => labelToKey.set(label, key));
+    const customLabels: Record<string, string> = {};
+    const packageKeys = selectedLabels.map((label, index) => {
+      const matchedKey = labelToKey.get(label);
+      if (matchedKey) return matchedKey;
+      let tempKey = buildOptionKey(label || `package_${index + 1}`);
+      while (customerPackageLabels[tempKey] || customLabels[tempKey]) {
+        tempKey = `${tempKey}_${index + 1}`;
+      }
+      customLabels[tempKey] = label;
+      return tempKey;
+    });
+    setPackageOverrideLabels(customLabels);
     setForm({
       customer_id: String(d.customer_id || ''),
       product_type: d.product_type || 'ordering_system',
       package_name: d.package_name || '',
+      package_keys: packageKeys,
       billing_cycle: d.billing_cycle || 'monthly',
       deal_amount: String(d.deal_amount || ''),
       is_paid: d.is_paid || false,
@@ -145,7 +271,7 @@ export default function Deals() {
   };
 
   const handleSave = async () => {
-    if (!form.customer_id || !form.package_name || !form.deal_amount) {
+    if (!form.customer_id || form.package_keys.length === 0 || !form.deal_amount) {
       toast.error('请填写必填字段');
       return;
     }
@@ -158,7 +284,7 @@ export default function Deals() {
         customer_name: cust?.business_name || '',
         sales_name: cust?.sales_person || '',
         product_type: form.product_type,
-        package_name: form.package_name,
+        package_name: form.package_keys.map(key => dealPackageLabels[key] || key).filter(Boolean).join('、'),
         billing_cycle: form.billing_cycle,
         deal_amount: Number(form.deal_amount),
         is_paid: form.is_paid,
@@ -170,6 +296,8 @@ export default function Deals() {
         notes: form.notes,
       };
 
+      delete (payload as any).package_keys;
+
       if (editingId) {
         await client.entities.deals.update({ id: String(editingId), data: payload });
         toast.success('成交记录已更新');
@@ -179,7 +307,7 @@ export default function Deals() {
           await client.entities.subscriptions.create({
             data: {
               customer_id: Number(form.customer_id), customer_name: cust?.business_name || '',
-              package_name: form.package_name, package_price: Number(form.deal_amount),
+              package_name: form.package_keys.map(key => dealPackageLabels[key] || key).filter(Boolean).join('、'), package_price: Number(form.deal_amount),
               billing_cycle: form.billing_cycle, start_date: form.service_start_date,
               end_date: form.service_end_date, auto_renew: false,
               renewal_person: cust?.sales_person || '', status: 'active',
@@ -192,6 +320,7 @@ export default function Deals() {
         }
         toast.success('成交记录已创建');
       }
+      setPackageOverrideLabels({});
       setShowForm(false);
       setEditingId(null);
       setForm(emptyDealForm);
@@ -250,7 +379,7 @@ export default function Deals() {
             filename={`成交记录_${new Date().toISOString().slice(0, 10)}`}
             sheetName="成交记录"
           />
-          <Button onClick={() => { setForm(emptyDealForm); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={() => { setPackageOverrideLabels({}); setForm(emptyDealForm); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
             <Plus className="w-4 h-4 mr-1" /> 录入成交
           </Button>
         </div>
@@ -352,6 +481,55 @@ export default function Deals() {
         </CardContent>
       </Card>
 
+      <Dialog open={showPackageManager} onOpenChange={(open) => { setShowPackageManager(open); if (!open) setNewPackageName(''); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>管理套餐</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex items-center gap-2">
+              <Input
+                value={newPackageName}
+                onChange={e => setNewPackageName(e.target.value)}
+                placeholder="新增套餐，例如：Google商家管理"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddPackageDraft();
+                  }
+                }}
+              />
+              <Button type="button" onClick={handleAddPackageDraft}>
+                添加
+              </Button>
+            </div>
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {packageDrafts.map(item => (
+                <div key={item.key} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-700">{item.label}</p>
+                    <p className="truncate text-xs text-slate-400">{item.key}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
+                    onClick={() => handleRemovePackageDraft(item.key)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowPackageManager(false)}>取消</Button>
+              <Button onClick={handleSavePackages} disabled={savingPackages}>
+                {savingPackages ? '保存中...' : '保存'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
@@ -362,7 +540,7 @@ export default function Deals() {
       />
 
       {/* Add/Edit deal dialog */}
-      <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setEditingId(null); setForm(emptyDealForm); } }}>
+      <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setPackageOverrideLabels({}); setEditingId(null); setForm(emptyDealForm); } }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingId ? '编辑成交记录' : '录入成交'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -396,7 +574,38 @@ export default function Deals() {
                 />
               </div>
             </div>
-            <div><Label>套餐名称 *</Label><Input value={form.package_name} onChange={e => setForm({ ...form, package_name: e.target.value })} placeholder="如：线上点餐标准版" /></div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label>套餐名称 *</Label>
+                <Button type="button" variant="outline" size="sm" onClick={openPackageManager}>
+                  管理套餐
+                </Button>
+              </div>
+              <div className="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-3">
+                {dealPackageOptions.length === 0 ? (
+                  <p className="text-sm text-slate-500">暂无可选套餐，请先添加套餐。</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {dealPackageOptions.map(option => (
+                      <label key={option.value} className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={form.package_keys.includes(option.value)}
+                          onChange={() => togglePackageKey(option.value)}
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">
+                已选套餐：
+                {form.package_keys.length > 0
+                  ? ` ${form.package_keys.map(key => dealPackageLabels[key] || key).join('、')}`
+                  : ' 暂未选择'}
+              </p>
+            </div>
             <div><Label>成交金额 *</Label><Input type="number" value={form.deal_amount} onChange={e => setForm({ ...form, deal_amount: e.target.value })} placeholder="0.00" /></div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>服务开始日期</Label><Input type="date" value={form.service_start_date} onChange={e => setForm({ ...form, service_start_date: e.target.value })} /></div>

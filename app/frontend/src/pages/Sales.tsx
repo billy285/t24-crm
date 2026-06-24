@@ -1,256 +1,294 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
+import { getCountryLabel, getStateLabel } from '../lib/country-state-data';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { toast } from 'sonner';
-import { Plus, Search, AlertCircle, Edit, Trash2, ExternalLink } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Search, ExternalLink } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
-import ConfirmDialog from '@/components/ConfirmDialog';
 import ExportButton from '@/components/ExportButton';
+import { useBusinessDicts } from '../lib/dict-config';
 
-const stageLabels: Record<string, string> = {
-  new_lead: '新线索', contacted: '已联系', communicating: '沟通中', quoted: '已报价',
-  considering: '考虑中', pending_close: '待成交', closed: '已成交', not_closed: '未成交',
-  lost: '流失', follow_later: '后续再跟进',
+const subStatusColors: Record<string, string> = {
+  active: 'bg-green-100 text-green-700',
+  expiring_soon: 'bg-amber-100 text-amber-700',
+  expired: 'bg-red-100 text-red-700',
+  paused: 'bg-slate-100 text-slate-600',
+  lost: 'bg-red-100 text-red-700',
+  none: 'bg-slate-100 text-slate-500',
 };
-const stageColors: Record<string, string> = {
-  new_lead: 'bg-blue-100 text-blue-700', contacted: 'bg-sky-100 text-sky-700',
-  communicating: 'bg-amber-100 text-amber-700', quoted: 'bg-purple-100 text-purple-700',
-  considering: 'bg-orange-100 text-orange-700', pending_close: 'bg-lime-100 text-lime-700',
-  closed: 'bg-green-100 text-green-700', not_closed: 'bg-slate-100 text-slate-600',
-  lost: 'bg-red-100 text-red-700', follow_later: 'bg-gray-100 text-gray-600',
+
+const serviceStatusLabels: Record<string, string> = {
+  none: '未建服务',
 };
-const methodLabels: Record<string, string> = { phone: '电话', wechat: '微信', sms: '短信', email: '邮件' };
+
+const fmt = (value: number) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+function computeSubscriptionStatus(subscription: any): string {
+  if (!subscription) return 'none';
+  if (!subscription.end_date) return subscription.status || 'active';
+  if (subscription.status === 'paused' || subscription.status === 'lost') return subscription.status;
+
+  const endDate = new Date(subscription.end_date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((endDate.getTime() - today.getTime()) / 86400000);
+
+  if (diffDays <= 0) return 'expired';
+  if (diffDays <= 7) return 'expiring_soon';
+  return 'active';
+}
 
 export default function Sales() {
-  const { role, employee, hasPermission, dataScope } = useRole();
+  const { employee, dataScope } = useRole();
+  const { billingCycles: cycleLabels, subscriptionStatuses: subStatusLabels } = useBusinessDicts();
   const navigate = useNavigate();
-  const [followUps, setFollowUps] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
+  const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [filterStage, setFilterStage] = useState('all');
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<any>(null);
-  const [deleting, setDeleting] = useState(false);
-  const emptyFollowForm = {
-    customer_id: '', contact_method: 'phone', content: '', customer_needs: '',
-    customer_pain_points: '', has_quoted: false, quote_plan: '', close_probability: 30,
-    stage: 'new_lead', next_follow_date: '',
-  };
-  const [form, setForm] = useState(emptyFollowForm);
+  const [filterServiceStatus, setFilterServiceStatus] = useState('all');
+  const [filterSalesPerson, setFilterSalesPerson] = useState('all');
+  const [filterCountry, setFilterCountry] = useState('all');
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
-      const [fuRes, cRes] = await Promise.all([
-        client.entities.follow_ups.query({ limit: 200, sort: '-created_at' }),
-        client.entities.customers.query({ limit: 200 }),
+      const [customerRes, dealRes, subRes, paymentRes] = await Promise.all([
+        client.entities.customers.query({ limit: 500, sort: '-updated_at' }),
+        client.entities.deals.query({ limit: 500, sort: '-deal_date' }),
+        client.entities.subscriptions.query({ limit: 500, sort: '-end_date' }),
+        client.entities.payments.queryAll({ limit: 500, sort: '-payment_date' }),
       ]);
-      let fus = fuRes?.data?.items || [];
-      const custs = cRes?.data?.items || [];
 
-      // Filter by data scope: 'self' means only show own follow-ups
+      let customerItems = customerRes?.data?.items || [];
+      const dealItems = dealRes?.data?.items || [];
+      const subscriptionItems = subRes?.data?.items || [];
+      const paymentItems = paymentRes?.data?.items || [];
+
       if (dataScope === 'self' && employee) {
-        fus = fus.filter((f: any) => f.employee_name === employee.name);
+        customerItems = customerItems.filter(
+          (customer: any) => customer.sales_person === employee.name || customer.sales_employee_id === employee.id,
+        );
       }
 
-      setFollowUps(fus);
-      setCustomers(custs);
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+      const latestDealByCustomer: Record<number, any> = {};
+      dealItems.forEach((deal: any) => {
+        if (deal.customer_id && !latestDealByCustomer[deal.customer_id]) {
+          latestDealByCustomer[deal.customer_id] = deal;
+        }
+      });
+
+      const latestSubscriptionByCustomer: Record<number, any> = {};
+      subscriptionItems.forEach((subscription: any) => {
+        if (subscription.customer_id && !latestSubscriptionByCustomer[subscription.customer_id]) {
+          latestSubscriptionByCustomer[subscription.customer_id] = subscription;
+        }
+      });
+
+      const latestPaymentByCustomer: Record<number, any> = {};
+      const outstandingByCustomer: Record<number, number> = {};
+      paymentItems.forEach((payment: any) => {
+        if (!payment.customer_id) return;
+        if (!latestPaymentByCustomer[payment.customer_id]) {
+          latestPaymentByCustomer[payment.customer_id] = payment;
+        }
+        outstandingByCustomer[payment.customer_id] = (outstandingByCustomer[payment.customer_id] || 0) + Number(payment.outstanding_amount || 0);
+      });
+
+      const closedCustomerIds = new Set<number>();
+      customerItems.forEach((customer: any) => {
+        if (customer.status === 'closed') closedCustomerIds.add(customer.id);
+      });
+      dealItems.forEach((deal: any) => {
+        if (deal.customer_id) closedCustomerIds.add(deal.customer_id);
+      });
+
+      const closedRows = customerItems
+        .filter((customer: any) => closedCustomerIds.has(customer.id))
+        .map((customer: any) => {
+          const latestDeal = latestDealByCustomer[customer.id];
+          const latestSubscription = latestSubscriptionByCustomer[customer.id];
+          const latestPayment = latestPaymentByCustomer[customer.id];
+          const serviceStatus = computeSubscriptionStatus(latestSubscription);
+
+          return {
+            id: customer.id,
+            customer_code: customer.customer_code || '',
+            business_name: customer.business_name || '',
+            contact_name: customer.contact_name || '',
+            phone: customer.phone || '',
+            sales_person: customer.sales_person || '',
+            country: customer.country || '',
+            country_label: customer.country ? getCountryLabel(customer.country) : '-',
+            state: customer.state || '',
+            state_label: customer.country && customer.state ? getStateLabel(customer.country, customer.state) : (customer.state || '-'),
+            latest_package_name: latestSubscription?.package_name || latestDeal?.package_name || '-',
+            latest_deal_amount: Number(latestDeal?.deal_amount || latestPayment?.amount_due || 0),
+            latest_deal_date: latestDeal?.deal_date || latestPayment?.payment_date || customer.updated_at || customer.created_at,
+            latest_payment_date: latestPayment?.payment_date || '',
+            latest_payment_amount: Number(latestPayment?.amount_paid || 0),
+            service_status: serviceStatus,
+            service_end_date: latestSubscription?.end_date || '',
+            next_payment_date: latestSubscription?.next_payment_date || '',
+            billing_cycle: latestSubscription?.billing_cycle || latestDeal?.billing_cycle || '',
+            outstanding_amount: Number(outstandingByCustomer[customer.id] || 0),
+          };
+        })
+        .sort((a: any, b: any) => {
+          const aTime = a.latest_deal_date ? new Date(a.latest_deal_date).getTime() : 0;
+          const bTime = b.latest_deal_date ? new Date(b.latest_deal_date).getTime() : 0;
+          return bTime - aTime;
+        });
+
+      setRows(closedRows);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const customerMap = Object.fromEntries(customers.map(c => [c.id, c]));
+  const salesPersonOptions = Array.from(new Set(rows.map(row => row.sales_person).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    .map(name => ({ value: name, label: name }));
 
-  const filtered = followUps.filter(f => {
-    const cust = customerMap[f.customer_id];
-    const matchSearch = !search || cust?.business_name?.includes(search) || f.content?.includes(search) || f.employee_name?.includes(search);
-    const matchStage = filterStage === 'all' || f.stage === filterStage;
-    return matchSearch && matchStage;
+  const countryOptions = Array.from(new Set(rows.map(row => row.country).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, 'en-US'))
+    .map(code => ({ value: code, label: getCountryLabel(code) }));
+
+  const filtered = rows.filter(row => {
+    const searchValue = search.trim().toLowerCase();
+    const matchesSearch = !searchValue || [
+      row.customer_code,
+      row.business_name,
+      row.contact_name,
+      row.phone,
+      row.sales_person,
+      row.latest_package_name,
+      row.country_label,
+      row.state,
+      row.state_label,
+    ].some(field => String(field || '').toLowerCase().includes(searchValue));
+
+    const matchesServiceStatus = filterServiceStatus === 'all' || row.service_status === filterServiceStatus;
+    const matchesSalesPerson = filterSalesPerson === 'all' || row.sales_person === filterSalesPerson;
+    const matchesCountry = filterCountry === 'all' || row.country === filterCountry;
+
+    return matchesSearch && matchesServiceStatus && matchesSalesPerson && matchesCountry;
   });
 
-  // Reminders: overdue follow-ups
-  const now = new Date();
-  const overdueFollowUps = followUps.filter(f => f.next_follow_date && new Date(f.next_follow_date) < now && f.stage !== 'closed' && f.stage !== 'lost');
+  const totalClosedCustomers = rows.length;
+  const activeCustomers = rows.filter(row => row.service_status === 'active').length;
+  const renewalCustomers = rows.filter(row => row.service_status === 'expiring_soon' || row.service_status === 'expired').length;
+  const outstandingCustomers = rows.filter(row => row.outstanding_amount > 0).length;
 
-  const openEditFollow = (f: any) => {
-    setForm({
-      customer_id: String(f.customer_id || ''),
-      contact_method: f.contact_method || 'phone',
-      content: f.content || '',
-      customer_needs: f.customer_needs || '',
-      customer_pain_points: f.customer_pain_points || '',
-      has_quoted: f.has_quoted || false,
-      quote_plan: f.quote_plan || '',
-      close_probability: f.close_probability || 30,
-      stage: f.stage || 'new_lead',
-      next_follow_date: f.next_follow_date?.slice(0, 10) || '',
-    });
-    setEditingId(f.id);
-    setShowForm(true);
-  };
+  const exportData = filtered.map(row => ({
+    customer_code: row.customer_code,
+    business_name: row.business_name,
+    contact_name: row.contact_name,
+    phone: row.phone,
+    state: row.state || '',
+    country: row.country_label,
+    latest_package_name: row.latest_package_name,
+    latest_deal_amount: row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-',
+    latest_deal_date: row.latest_deal_date?.slice(0, 10) || '',
+    latest_payment_date: row.latest_payment_date?.slice(0, 10) || '',
+    latest_payment_amount: row.latest_payment_amount ? fmt(row.latest_payment_amount) : '-',
+    service_status: subStatusLabels[row.service_status] || serviceStatusLabels[row.service_status] || row.service_status,
+    billing_cycle: cycleLabels[row.billing_cycle] || row.billing_cycle || '',
+    service_end_date: row.service_end_date?.slice(0, 10) || '',
+    next_payment_date: row.next_payment_date?.slice(0, 10) || '',
+    outstanding_amount: row.outstanding_amount > 0 ? fmt(row.outstanding_amount) : '-',
+    sales_person: row.sales_person || '',
+  }));
 
-  const handleSave = async () => {
-    if (!form.customer_id || !form.content) {
-      toast.error('请选择客户并填写跟进内容');
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        customer_id: Number(form.customer_id),
-        contact_method: form.contact_method,
-        content: form.content,
-        customer_needs: form.customer_needs,
-        customer_pain_points: form.customer_pain_points,
-        has_quoted: form.has_quoted,
-        quote_plan: form.quote_plan,
-        close_probability: form.close_probability,
-        stage: form.stage,
-        next_follow_date: form.next_follow_date || null,
-      };
-      if (editingId) {
-        await client.entities.follow_ups.update({ id: String(editingId), data: payload });
-        toast.success('跟进记录已更新');
-      } else {
-        await client.entities.follow_ups.create({
-          data: {
-            ...payload,
-            employee_name: employee?.name || '',
-            created_at: new Date().toISOString(),
-          },
-        });
-        toast.success('跟进记录已添加');
-      }
-      setShowForm(false);
-      setEditingId(null);
-      setForm(emptyFollowForm);
-      loadData();
-    } catch (err) { toast.error('保存失败'); console.error(err); }
-    finally { setSaving(false); }
-  };
-
-  const handleDeleteFollow = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await client.entities.follow_ups.delete({ id: String(deleteTarget.id) });
-      toast.success('跟进记录已删除');
-      setDeleteTarget(null);
-      loadData();
-    } catch (err) { toast.error('删除失败'); console.error(err); }
-    finally { setDeleting(false); }
-  };
-
-  // Navigate to customer detail page
-  const goToCustomerDetail = (customerId: number) => {
+  const openCustomerDetail = (customerId: number) => {
     navigate(`/customers?detail=${customerId}`);
   };
-
-  // Export data
-  const exportData = filtered.map(f => {
-    const cust = customerMap[f.customer_id];
-    return {
-      customer_name: cust?.business_name || `客户#${f.customer_id}`,
-      contact_method_label: methodLabels[f.contact_method] || f.contact_method,
-      stage_label: stageLabels[f.stage] || f.stage,
-      content: f.content,
-      customer_needs: f.customer_needs || '',
-      customer_pain_points: f.customer_pain_points || '',
-      close_probability: `${f.close_probability}%`,
-      has_quoted_label: f.has_quoted ? '是' : '否',
-      quote_plan: f.quote_plan || '',
-      employee_name: f.employee_name || '',
-      next_follow_date: f.next_follow_date?.slice(0, 10) || '',
-      created_at: f.created_at?.slice(0, 16) || '',
-    };
-  });
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold text-slate-800">销售跟进</h2>
-        <div className="flex gap-2">
-          <ExportButton
-            data={exportData}
-            columns={[
-              { key: 'customer_name', label: '客户名称' },
-              { key: 'stage_label', label: '跟进阶段' },
-              { key: 'contact_method_label', label: '跟进方式' },
-              { key: 'content', label: '跟进内容' },
-              { key: 'customer_needs', label: '客户需求' },
-              { key: 'customer_pain_points', label: '客户痛点' },
-              { key: 'close_probability', label: '成交概率' },
-              { key: 'has_quoted_label', label: '是否报价' },
-              { key: 'quote_plan', label: '报价方案' },
-              { key: 'employee_name', label: '跟进人' },
-              { key: 'next_follow_date', label: '下次跟进日期' },
-              { key: 'created_at', label: '创建时间' },
-            ]}
-            filename={`跟进记录_${new Date().toISOString().slice(0, 10)}`}
-            sheetName="跟进记录"
-          />
-          <Button onClick={() => { setForm(emptyFollowForm); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
-            <Plus className="w-4 h-4 mr-1" /> 新增跟进
-          </Button>
+        <div>
+          <h2 className="text-xl font-semibold text-slate-800">成交客户管理</h2>
+          <p className="text-sm text-slate-500 mt-1">这里只展示已经成交的客户，用于查看服务状态、到期时间和收款情况。</p>
         </div>
+        <ExportButton
+          data={exportData}
+          columns={[
+            { key: 'customer_code', label: '编号' },
+            { key: 'business_name', label: '商家名称' },
+            { key: 'contact_name', label: '联系人' },
+            { key: 'phone', label: '电话' },
+            { key: 'state', label: '州/省' },
+            { key: 'country', label: '国家' },
+            { key: 'latest_package_name', label: '当前套餐' },
+            { key: 'latest_deal_amount', label: '成交金额' },
+            { key: 'latest_deal_date', label: '最近成交时间' },
+            { key: 'latest_payment_date', label: '最近收款时间' },
+            { key: 'latest_payment_amount', label: '最近收款金额' },
+            { key: 'service_status', label: '服务状态' },
+            { key: 'billing_cycle', label: '服务周期' },
+            { key: 'service_end_date', label: '到期时间' },
+            { key: 'next_payment_date', label: '下次付款时间' },
+            { key: 'outstanding_amount', label: '未收尾款' },
+            { key: 'sales_person', label: '负责销售' },
+          ]}
+          filename={`成交客户_${new Date().toISOString().slice(0, 10)}`}
+          sheetName="成交客户"
+        />
       </div>
 
-      {/* Reminders */}
-      {overdueFollowUps.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-amber-700 mb-2">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm font-medium">跟进提醒 ({overdueFollowUps.length})</span>
-            </div>
-            <div className="space-y-1">
-              {overdueFollowUps.slice(0, 3).map(f => (
-                <p key={f.id} className="text-xs text-amber-600">
-                  <button
-                    className="text-amber-700 font-medium hover:underline cursor-pointer"
-                    onClick={() => goToCustomerDetail(f.customer_id)}
-                  >
-                    {customerMap[f.customer_id]?.business_name || '未知客户'}
-                  </button>
-                  {' '}- 计划跟进日期: {f.next_follow_date?.slice(0, 10)}
-                </p>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">成交客户</p><p className="text-2xl font-semibold text-slate-800 mt-1">{totalClosedCustomers}</p></CardContent></Card>
+        <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">服务中客户</p><p className="text-2xl font-semibold text-green-600 mt-1">{activeCustomers}</p></CardContent></Card>
+        <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">续费关注</p><p className="text-2xl font-semibold text-amber-600 mt-1">{renewalCustomers}</p></CardContent></Card>
+        <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">待收尾款客户</p><p className="text-2xl font-semibold text-red-600 mt-1">{outstandingCustomers}</p></CardContent></Card>
+      </div>
 
-      {/* Filters */}
       <Card className="border-slate-200">
         <CardContent className="p-3">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px_180px_180px] gap-3">
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input placeholder="搜索客户名称、跟进内容..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+              <Input
+                placeholder="搜索商家、联系人、电话、套餐、负责人..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9"
+              />
             </div>
             <NativeSelect
-              value={filterStage}
-              onChange={setFilterStage}
-              className="w-[160px]"
-              options={[{ value: 'all', label: '全部阶段' }, ...Object.entries(stageLabels).map(([k, v]) => ({ value: k, label: v }))]}
+              value={filterServiceStatus}
+              onChange={setFilterServiceStatus}
+              options={[
+                { value: 'all', label: '全部服务状态' },
+                { value: 'active', label: subStatusLabels.active || '正常' },
+                { value: 'expiring_soon', label: subStatusLabels.expiring_soon || '即将到期' },
+                { value: 'expired', label: subStatusLabels.expired || '已到期' },
+                { value: 'paused', label: subStatusLabels.paused || '暂停' },
+                { value: 'lost', label: subStatusLabels.lost || '流失' },
+                { value: 'none', label: '未建服务' },
+              ]}
+            />
+            <NativeSelect
+              value={filterSalesPerson}
+              onChange={setFilterSalesPerson}
+              options={[{ value: 'all', label: '全部负责人' }, ...salesPersonOptions]}
+            />
+            <NativeSelect
+              value={filterCountry}
+              onChange={setFilterCountry}
+              options={[{ value: 'all', label: '全部国家' }, ...countryOptions]}
             />
           </div>
         </CardContent>
       </Card>
 
-      {/* Follow-up list */}
       <Card className="border-slate-200">
         <CardContent className="p-0">
           {loading ? (
@@ -258,116 +296,88 @@ export default function Sales() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
             </div>
           ) : filtered.length === 0 ? (
-            <p className="text-center text-slate-400 py-12">暂无跟进记录</p>
+            <p className="text-center text-slate-400 py-12">暂无符合条件的成交客户</p>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {filtered.map(f => {
-                const cust = customerMap[f.customer_id];
-                return (
-                  <div key={f.id} className="p-4 hover:bg-slate-50 transition-colors">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-1">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-slate-50 text-left text-slate-500">
+                    <th className="px-4 py-3 font-medium">商家名称</th>
+                    <th className="px-4 py-3 font-medium">联系人</th>
+                    <th className="px-4 py-3 font-medium">州/国家</th>
+                    <th className="px-4 py-3 font-medium">当前套餐</th>
+                    <th className="px-4 py-3 font-medium">最近成交</th>
+                    <th className="px-4 py-3 font-medium">服务状态</th>
+                    <th className="px-4 py-3 font-medium">最近收款</th>
+                    <th className="px-4 py-3 font-medium">尾款</th>
+                    <th className="px-4 py-3 font-medium">负责销售</th>
+                    <th className="px-4 py-3 font-medium text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(row => (
+                    <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-4 py-3">
                         <button
-                          className="font-medium text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-1"
-                          onClick={() => goToCustomerDetail(f.customer_id)}
-                          title="点击查看客户详情"
+                          className="text-left text-blue-600 hover:text-blue-800 hover:underline"
+                          onClick={() => openCustomerDetail(row.id)}
                         >
-                          {cust?.business_name || `客户#${f.customer_id}`}
-                          <ExternalLink className="w-3 h-3 opacity-50" />
+                          <div className="font-medium">{row.business_name}</div>
+                          <div className="text-xs text-slate-400 mt-1">{row.customer_code || `客户#${row.id}`}</div>
                         </button>
-                        <span className="text-xs text-slate-400 ml-2">{f.created_at?.slice(0, 16)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge className={`text-xs ${stageColors[f.stage]}`}>{stageLabels[f.stage] || f.stage}</Badge>
-                        <Badge variant="outline" className="text-xs">{methodLabels[f.contact_method] || f.contact_method}</Badge>
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEditFollow(f)}><Edit className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteTarget(f)}><Trash2 className="w-3 h-3" /></Button>
-                      </div>
-                    </div>
-                    <p className="text-sm text-slate-700 mb-1">{f.content}</p>
-                    <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                      {f.employee_name && <span>跟进人: {f.employee_name}</span>}
-                      <span>成交概率: {f.close_probability}%</span>
-                      {f.has_quoted && <span className="text-green-600">已报价: {f.quote_plan}</span>}
-                      {f.next_follow_date && <span className="text-amber-600">下次跟进: {f.next_follow_date.slice(0, 10)}</span>}
-                    </div>
-                  </div>
-                );
-              })}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <div>{row.contact_name || '-'}</div>
+                        <div className="text-xs text-slate-400 mt-1">{row.phone || '-'}</div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <div>{row.state || '-'}</div>
+                        <div className="text-xs text-slate-400 mt-1">{row.country_label}</div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <div>{row.latest_package_name}</div>
+                        <div className="text-xs text-slate-400 mt-1">{cycleLabels[row.billing_cycle] || row.billing_cycle || '-'}</div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <div className="font-medium text-slate-700">{row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-'}</div>
+                        <div className="text-xs text-slate-400 mt-1">{row.latest_deal_date?.slice(0, 10) || '-'}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge className={subStatusColors[row.service_status] || subStatusColors.none}>
+                          {subStatusLabels[row.service_status] || serviceStatusLabels[row.service_status] || row.service_status}
+                        </Badge>
+                        <div className="text-xs text-slate-400 mt-1">
+                          到期: {row.service_end_date?.slice(0, 10) || '-'}
+                        </div>
+                        <div className="text-xs text-slate-400 mt-1">
+                          下次付款: {row.next_payment_date?.slice(0, 10) || '-'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <div className="font-medium text-slate-700">{row.latest_payment_amount ? fmt(row.latest_payment_amount) : '-'}</div>
+                        <div className="text-xs text-slate-400 mt-1">{row.latest_payment_date?.slice(0, 10) || '-'}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.outstanding_amount > 0 ? (
+                          <span className="font-medium text-red-600">{fmt(row.outstanding_amount)}</span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{row.sales_person || '-'}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700" onClick={() => openCustomerDetail(row.id)}>
+                          <ExternalLink className="w-3.5 h-3.5 mr-1" /> 查看详情
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
       </Card>
-
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
-        title="确认删除跟进记录"
-        description="确定要删除此跟进记录吗？此操作不可撤销。建议先导出数据备份。"
-        onConfirm={handleDeleteFollow}
-        loading={deleting}
-      />
-
-      {/* Add/Edit follow-up dialog */}
-      <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setEditingId(null); setForm(emptyFollowForm); } }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingId ? '编辑跟进记录' : '新增跟进记录'}</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>选择客户 *</Label>
-              <NativeSelect
-                value={form.customer_id}
-                onChange={v => setForm({ ...form, customer_id: v })}
-                placeholder="请选择客户"
-                options={[{ value: '', label: '请选择客户' }, ...(dataScope === 'self' && employee
-                  ? customers.filter(c => c.sales_person === employee.name || c.sales_employee_id === employee.id)
-                  : customers
-                ).map(c => ({ value: String(c.id), label: `${c.business_name} - ${c.contact_name}` }))]}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>跟进方式</Label>
-                <NativeSelect
-                  value={form.contact_method}
-                  onChange={v => setForm({ ...form, contact_method: v })}
-                  options={Object.entries(methodLabels).map(([k, v]) => ({ value: k, label: v }))}
-                />
-              </div>
-              <div>
-                <Label>跟进阶段</Label>
-                <NativeSelect
-                  value={form.stage}
-                  onChange={v => setForm({ ...form, stage: v })}
-                  options={Object.entries(stageLabels).map(([k, v]) => ({ value: k, label: v }))}
-                />
-              </div>
-            </div>
-            <div><Label>跟进内容 *</Label><Textarea value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} rows={3} /></div>
-            <div><Label>客户需求</Label><Input value={form.customer_needs} onChange={e => setForm({ ...form, customer_needs: e.target.value })} /></div>
-            <div><Label>客户痛点</Label><Input value={form.customer_pain_points} onChange={e => setForm({ ...form, customer_pain_points: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>成交概率 ({form.close_probability}%)</Label>
-                <Input type="range" min={0} max={100} step={10} value={form.close_probability} onChange={e => setForm({ ...form, close_probability: Number(e.target.value) })} />
-              </div>
-              <div>
-                <Label>下次跟进日期</Label>
-                <Input type="date" value={form.next_follow_date} onChange={e => setForm({ ...form, next_follow_date: e.target.value })} />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={form.has_quoted} onChange={e => setForm({ ...form, has_quoted: e.target.checked })} className="rounded" />
-              <Label>已报价</Label>
-              {form.has_quoted && <Input placeholder="报价方案" value={form.quote_plan} onChange={e => setForm({ ...form, quote_plan: e.target.value })} className="flex-1" />}
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowForm(false)}>取消</Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

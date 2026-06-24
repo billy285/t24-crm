@@ -1,6 +1,8 @@
+import os
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from pydantic import BaseModel
-from datetime import timedelta
 from jose import jwt, JWTError
 from core.security import create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM, REFRESH_TOKEN_EXPIRE_DAYS
 
@@ -16,12 +18,23 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
 
+
+def ensure_legacy_auth_enabled() -> None:
+    enabled = (os.getenv("ENABLE_LEGACY_AUTH") or "").strip().lower() in {"1", "true", "yes", "on"}
+    if not enabled:
+        raise HTTPException(
+            status_code=410,
+            detail="Legacy auth is disabled. Use /api/v1/emp-auth/login instead.",
+        )
+
+
 def verify_user(username: str, password: str) -> bool:
     # TODO: replace with real user lookup; for now accept any non-empty
     return bool(username and password)
 
 @router.post("/login", response_model=TokenResponse)
 def login(req: LoginRequest, res: Response):
+    ensure_legacy_auth_enabled()
     if not verify_user(req.username, req.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     access_token = create_access_token(req.username)
@@ -33,6 +46,7 @@ def login(req: LoginRequest, res: Response):
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh(request: Request):
+    ensure_legacy_auth_enabled()
     token = request.cookies.get("refresh_token")
     if not token:
         raise HTTPException(status_code=401, detail="No refresh token")
@@ -48,5 +62,6 @@ def refresh(request: Request):
 
 @router.post("/logout")
 def logout(res: Response):
+    ensure_legacy_auth_enabled()
     res.set_cookie("refresh_token", "", max_age=0, httponly=True, samesite="lax", path="/")
     return {"ok": True}

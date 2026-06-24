@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from core.database import get_db
+from utils.monthly_deduction_sql import create_default_sql, create_rates_sql
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -24,13 +25,7 @@ def ym_key(dt: date) -> str:
 
 async def _get_default_deduction_rate(db: AsyncSession) -> float:
     # Default 0.15 if no override
-    await db.execute(text("""
-CREATE TABLE IF NOT EXISTS monthly_deduction_defaults (
-  id SERIAL PRIMARY KEY,
-  rate NUMERIC(5,4) NOT NULL DEFAULT 0.15,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)
-"""))
+    await db.execute(text(create_default_sql(db)))
     res = await db.execute(text("SELECT rate FROM monthly_deduction_defaults ORDER BY id DESC LIMIT 1"))
     row = res.fetchone()
     if row and row[0] is not None:
@@ -53,21 +48,18 @@ async def _get_monthly_deduction_map(db: AsyncSession, start_ym: Optional[str], 
         params["e"] = date(y_e, m_e, 1)
 
     # Ensure table exists in a separate statement (asyncpg disallows multi-statement prepared exec)
-    await db.execute(text("""
-CREATE TABLE IF NOT EXISTS monthly_deduction_rates (
-  id SERIAL PRIMARY KEY,
-  year_month DATE UNIQUE NOT NULL,
-  rate NUMERIC(5,4) NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)
-"""))
+    await db.execute(text(create_rates_sql(db)))
 
     rows = await db.execute(text(f"SELECT year_month, rate FROM monthly_deduction_rates WHERE 1=1 {where}"), params)
     mapped: Dict[str, float] = {}
     for r in rows.mappings().all():
         ym = r["year_month"]
-        k = f"{ym.year:04d}-{ym.month:02d}"
+        if isinstance(ym, datetime):
+            ym = ym.date()
+        if isinstance(ym, date):
+            k = f"{ym.year:04d}-{ym.month:02d}"
+        else:
+            k = str(ym)[:7]
         mapped[k] = float(r["rate"])
     return mapped
 

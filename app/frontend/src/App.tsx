@@ -18,6 +18,7 @@ import Settings from './pages/Settings';
 import Permissions from './pages/Permissions';
 import ServiceBoard from './pages/ServiceBoard';
 import Callbacks from './pages/Callbacks';
+import LoginPage from './pages/LoginPage';
 import NotFound from './pages/NotFound';
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
       <RoleProvider>
         <BrowserRouter>
           <Routes>
+            <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/auth/error" element={<AuthError />} />
             <Route path="/" element={<Layout><Dashboard /></Layout>} />
@@ -42,7 +44,7 @@ const App = () => (
             <Route path="/permissions" element={<Layout><Permissions /></Layout>} />
             <Route path="/service-board" element={<Layout><ServiceBoard /></Layout>} />
             <Route path="/callbacks" element={<Layout><Callbacks /></Layout>} />
-            <Route path="/settings/deduction" element={<MonthlyDeduction />} />
+            <Route path="/settings/deduction" element={<Layout><MonthlyDeduction /></Layout>} />
         <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

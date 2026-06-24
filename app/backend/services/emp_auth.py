@@ -8,6 +8,8 @@ from jose import jwt
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.database import db_manager
+
 logger = logging.getLogger(__name__)
 
 # JWT config
@@ -54,8 +56,22 @@ class EmpAuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def ensure_password_column(self) -> None:
+        """Ensure employee auth schema includes the password column."""
+        try:
+            await self.db.execute(text("SELECT password FROM employees LIMIT 1"))
+        except Exception:
+            logger.warning("employees.password column missing, applying local schema repair")
+            await self.db.execute(text("ALTER TABLE employees ADD COLUMN password VARCHAR"))
+            await self.db.commit()
+
+    def _current_timestamp_sql(self) -> str:
+        bind = self.db.get_bind()
+        return "CURRENT_TIMESTAMP" if bind and bind.dialect.name == "sqlite" else "NOW()"
+
     async def authenticate(self, email: str, password: str) -> Optional[Dict[str, Any]]:
         """Authenticate an employee by email and password. Returns dict with employee data."""
+        await self.ensure_password_column()
         try:
             result = await self.db.execute(
                 text("SELECT id, user_id, name, role, phone, email, status, password FROM employees WHERE email = :email"),
@@ -93,6 +109,7 @@ class EmpAuthService:
 
     async def get_employee_by_id(self, emp_id: int) -> Optional[Dict[str, Any]]:
         """Get employee by ID using raw SQL."""
+        await self.ensure_password_column()
         try:
             result = await self.db.execute(
                 text("SELECT id, user_id, name, role, phone, email, status, password FROM employees WHERE id = :id"),
@@ -117,6 +134,7 @@ class EmpAuthService:
 
     async def update_password(self, emp_id: int, new_password: str) -> bool:
         """Update employee password."""
+        await self.ensure_password_column()
         try:
             hashed = hash_password(new_password)
             await self.db.execute(
@@ -132,7 +150,9 @@ class EmpAuthService:
 
     async def ensure_default_admin(self) -> None:
         """Ensure a default admin account exists."""
+        await self.ensure_password_column()
         try:
+            now_sql = self._current_timestamp_sql()
             result = await self.db.execute(
                 text("SELECT id, password FROM employees WHERE email = 'admin@company.com'")
             )
@@ -142,7 +162,7 @@ class EmpAuthService:
                 await self.db.execute(
                     text(
                         "INSERT INTO employees (user_id, name, role, email, password, status, created_at) "
-                        "VALUES (:uid, :name, :role, :email, :pwd, :status, NOW())"
+                        f"VALUES (:uid, :name, :role, :email, :pwd, :status, {now_sql})"
                     ),
                     {
                         "uid": "admin",
@@ -166,3 +186,14 @@ class EmpAuthService:
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Error creating default admin: {e}")
+
+
+async def initialize_default_employee_admin() -> None:
+    """Ensure the employee-login admin account exists for local/dev usage."""
+    if not db_manager.async_session_maker:
+        logger.warning("Database session maker unavailable, skipping employee admin initialization")
+        return
+
+    async with db_manager.async_session_maker() as db:
+        service = EmpAuthService(db)
+        await service.ensure_default_admin()

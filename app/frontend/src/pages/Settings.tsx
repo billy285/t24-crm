@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { client } from '../lib/api';
-import { useRole, roleLabels, departmentLabels, positionLabels } from '../lib/role-context';
+import { useRole } from '../lib/role-context';
 import { systemRoleLabels } from '../lib/permissions';
+import { loadRemoteAppConfig, readCachedAppConfig, saveRemoteAppConfig } from '../lib/app-config';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,105 +12,170 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Settings as SettingsIcon, Hash, Eye, RotateCcw, Save, Building2, BookOpen, Shield, Bell, FileText, Download, Lock } from 'lucide-react';
+import { Settings as SettingsIcon, Hash, Eye, RotateCcw, Save, Building2, BookOpen, Bell, FileText, Download, Lock } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import { actionTypeLabels } from '../lib/operation-log-helper';
 import { type CustomerCodeSettings, defaultSettings, defaultIndustryPrefixes, loadSettings, saveSettings, previewCode } from '../lib/customer-code-settings';
+import { type BusinessDictConfig, defaultBusinessDictConfig, normalizeDictConfig } from '../lib/dict-config';
+import { settingsApi, type EnvConfig } from '../api/settings';
 
 const industryLabels: Record<string, string> = { restaurant: '餐厅', nail: '美甲', massage: '按摩', beauty: '美容', supermarket: '超市', other: '其他' };
+type EnvScope = 'backend_vars' | 'frontend_vars';
 
-// Local storage keys for settings
-const COMPANY_KEY = 'crm_company_info';
-const DICT_KEY = 'crm_dict_config';
-const DASHBOARD_KEY = 'crm_dashboard_config';
-const REMINDER_KEY = 'crm_reminder_config';
-const SECURITY_KEY = 'crm_security_config';
-const NOTIFICATION_KEY = 'crm_notification_config';
-const EXPORT_KEY = 'crm_export_config';
-
-function loadJson(key: string, def: any) { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : def; } catch { return def; } }
-function saveJson(key: string, val: any) { localStorage.setItem(key, JSON.stringify(val)); }
+const defaultCompany = { name: '', address: '', phone: '', email: '', website: '', logo: '', description: '' };
+const defaultDashboardConfig = {
+  showTotalCustomers: true, showFollowing: true, showClosedMonth: true,
+  showExpiring: true, showRevenue: true, showOverdue: true,
+  showPendingTasks: true, showLost: true, showReminders: true,
+  showRecentCustomers: true, showUpcomingTasks: true,
+};
+const defaultReminderConfig = {
+  enableFollowUpReminder: true, followUpDaysBefore: 0,
+  enableExpiryReminder: true, expiryDaysBefore: 30,
+  enableNoFollowReminder: true, noFollowDays: 7,
+  enableOverduePayment: true, enableDelayedTask: true,
+};
+const defaultSecurityConfig = {
+  passwordViewRoles: ['super_admin', 'admin'] as string[],
+  logPasswordViews: true,
+  requireConfirmDelete: true,
+  enableSoftDelete: false,
+};
+const defaultNotificationConfig = {
+  enableBrowserNotif: false,
+  enableEmailNotif: false,
+  notifEmail: '',
+};
+const defaultExportConfig = {
+  exportRoles: ['super_admin', 'admin', 'sales', 'finance'] as string[],
+  defaultFormat: 'xlsx',
+  includeNotes: true,
+  includeSocialLinks: true,
+};
 
 export default function Settings() {
-  const { role, isAdmin, hasPermission } = useRole();
+  const { isAdmin, hasPermission } = useRole();
+  const canEditSettings = isAdmin || hasPermission('settings_edit');
 
   // Customer code settings
   const [codeSettings, setCodeSettings] = useState<CustomerCodeSettings>(defaultSettings);
   const [codeChanged, setCodeChanged] = useState(false);
 
   // Company info
-  const [company, setCompany] = useState({ name: '', address: '', phone: '', email: '', website: '', logo: '', description: '' });
+  const [company, setCompany] = useState(defaultCompany);
   const [companyChanged, setCompanyChanged] = useState(false);
 
   // Dictionary config
-  const [dictConfig, setDictConfig] = useState({
-    industries: 'restaurant:餐厅,nail:美甲,massage:按摩,beauty:美容,supermarket:超市,other:其他',
-    statuses: 'new:新线索,following:跟进中,closed:已成交,paused:暂停,lost:流失',
-    sources: 'phone:电话销售,referral:转介绍,ads:广告,private:私域,returning:老客户,other:其他',
-    levels: 'high:高意向,normal:普通,low:低意向,vip:VIP',
-    products: 'ordering_system:线上点餐系统,social_media:新媒体代运营,ads:广告投放,website:网站设计,combo:组合套餐',
-    countries: 'US:美国,CA:加拿大,GB:英国,AU:澳大利亚',
-  });
+  const [dictConfig, setDictConfig] = useState<BusinessDictConfig>(defaultBusinessDictConfig);
   const [dictChanged, setDictChanged] = useState(false);
 
   // Dashboard config
-  const [dashboardConfig, setDashboardConfig] = useState({
-    showTotalCustomers: true, showFollowing: true, showClosedMonth: true,
-    showExpiring: true, showRevenue: true, showOverdue: true,
-    showPendingTasks: true, showLost: true, showReminders: true,
-    showRecentCustomers: true, showUpcomingTasks: true,
-  });
+  const [dashboardConfig, setDashboardConfig] = useState(defaultDashboardConfig);
   const [dashChanged, setDashChanged] = useState(false);
 
   // Reminder config
-  const [reminderConfig, setReminderConfig] = useState({
-    enableFollowUpReminder: true, followUpDaysBefore: 0,
-    enableExpiryReminder: true, expiryDaysBefore: 30,
-    enableNoFollowReminder: true, noFollowDays: 7,
-    enableOverduePayment: true, enableDelayedTask: true,
-  });
+  const [reminderConfig, setReminderConfig] = useState(defaultReminderConfig);
   const [reminderChanged, setReminderChanged] = useState(false);
 
   // Security config
-  const [securityConfig, setSecurityConfig] = useState({
-    passwordViewRoles: ['boss'] as string[],
-    logPasswordViews: true,
-    requireConfirmDelete: true,
-    enableSoftDelete: false,
-  });
+  const [securityConfig, setSecurityConfig] = useState(defaultSecurityConfig);
   const [securityChanged, setSecurityChanged] = useState(false);
 
   // Notification config
-  const [notifConfig, setNotifConfig] = useState({
-    enableBrowserNotif: false,
-    enableEmailNotif: false,
-    notifEmail: '',
-  });
+  const [notifConfig, setNotifConfig] = useState(defaultNotificationConfig);
   const [notifChanged, setNotifChanged] = useState(false);
 
   // Export config
-  const [exportConfig, setExportConfig] = useState({
-    exportRoles: ['boss', 'sales'] as string[],
-    defaultFormat: 'xlsx',
-    includeNotes: true,
-    includeSocialLinks: true,
-  });
+  const [exportConfig, setExportConfig] = useState(defaultExportConfig);
   const [exportChanged, setExportChanged] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(true);
 
   // Operation logs
   const [logs, setLogs] = useState<any[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
+  // Environment config (backend-powered)
+  const [envConfig, setEnvConfig] = useState<EnvConfig>({ backend_vars: {}, frontend_vars: {} });
+  const [envLoading, setEnvLoading] = useState(false);
+  const [envSavingKey, setEnvSavingKey] = useState<string | null>(null);
+
+  const loadEnvConfig = async () => {
+    setEnvLoading(true);
+    try {
+      const data = await settingsApi.getConfig();
+      setEnvConfig(data);
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '加载环境配置失败';
+      toast.error(detail);
+    } finally {
+      setEnvLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setCodeSettings(loadSettings());
-    setCompany(loadJson(COMPANY_KEY, company));
-    setDictConfig(loadJson(DICT_KEY, dictConfig));
-    setDashboardConfig(loadJson(DASHBOARD_KEY, dashboardConfig));
-    setReminderConfig(loadJson(REMINDER_KEY, reminderConfig));
-    setSecurityConfig(loadJson(SECURITY_KEY, securityConfig));
-    setNotifConfig(loadJson(NOTIFICATION_KEY, notifConfig));
-    setExportConfig(loadJson(EXPORT_KEY, exportConfig));
-  }, []);
+    let active = true;
+
+    const loadSettingsData = async () => {
+      setSettingsLoading(true);
+      try {
+        const [
+          remoteCode,
+          remoteCompany,
+          remoteDict,
+          remoteDashboard,
+          remoteReminder,
+          remoteSecurity,
+          remoteNotif,
+          remoteExport,
+        ] = await Promise.all([
+          loadRemoteAppConfig('customer_code_settings', defaultSettings),
+          loadRemoteAppConfig('company_info', defaultCompany),
+          loadRemoteAppConfig('dict_config', defaultBusinessDictConfig),
+          loadRemoteAppConfig('dashboard_config', defaultDashboardConfig),
+          loadRemoteAppConfig('reminder_config', defaultReminderConfig),
+          loadRemoteAppConfig('security_config', defaultSecurityConfig),
+          loadRemoteAppConfig('notification_config', defaultNotificationConfig),
+          loadRemoteAppConfig('export_config', defaultExportConfig),
+        ]);
+
+        if (!active) return;
+
+        setCodeSettings(remoteCode);
+        setCompany(remoteCompany);
+        setDictConfig(normalizeDictConfig(remoteDict));
+        setDashboardConfig(remoteDashboard);
+        setReminderConfig(remoteReminder);
+        setSecurityConfig(remoteSecurity);
+        setNotifConfig(remoteNotif);
+        setExportConfig(remoteExport);
+      } catch {
+        if (!active) return;
+        setCodeSettings(loadSettings());
+        setCompany(readCachedAppConfig('company_info', defaultCompany));
+        setDictConfig(normalizeDictConfig(readCachedAppConfig('dict_config', defaultBusinessDictConfig)));
+        setDashboardConfig(readCachedAppConfig('dashboard_config', defaultDashboardConfig));
+        setReminderConfig(readCachedAppConfig('reminder_config', defaultReminderConfig));
+        setSecurityConfig(readCachedAppConfig('security_config', defaultSecurityConfig));
+        setNotifConfig(readCachedAppConfig('notification_config', defaultNotificationConfig));
+        setExportConfig(readCachedAppConfig('export_config', defaultExportConfig));
+        toast.error('加载系统设置失败，已回退到缓存配置');
+      } finally {
+        if (active) {
+          setSettingsLoading(false);
+        }
+      }
+
+      if (canEditSettings) {
+        await loadEnvConfig();
+      }
+    };
+
+    void loadSettingsData();
+
+    return () => {
+      active = false;
+    };
+  }, [canEditSettings]);
 
   const loadLogs = async () => {
     setLogsLoading(true);
@@ -126,21 +192,132 @@ export default function Settings() {
     setCodeChanged(true);
   };
 
-  const saveCodeSettings = () => {
+  const saveCodeSettings = async () => {
     if (!codeSettings.defaultPrefix.trim()) { toast.error('默认前缀不能为空'); return; }
-    saveSettings(codeSettings); setCodeChanged(false); toast.success('编号格式已保存');
+    try {
+      const saved = await saveRemoteAppConfig('customer_code_settings', codeSettings);
+      saveSettings(saved);
+      setCodeSettings(saved);
+      setCodeChanged(false);
+      toast.success('编号格式已保存');
+    } catch {
+      toast.error('保存编号格式失败');
+    }
   };
 
-  const saveCompany = () => { saveJson(COMPANY_KEY, company); setCompanyChanged(false); toast.success('公司信息已保存'); };
-  const saveDict = () => { saveJson(DICT_KEY, dictConfig); setDictChanged(false); toast.success('字典配置已保存'); };
-  const saveDash = () => { saveJson(DASHBOARD_KEY, dashboardConfig); setDashChanged(false); toast.success('仪表盘配置已保存'); };
-  const saveReminder = () => { saveJson(REMINDER_KEY, reminderConfig); setReminderChanged(false); toast.success('提醒规则已保存'); };
-  const saveSecurity = () => { saveJson(SECURITY_KEY, securityConfig); setSecurityChanged(false); toast.success('安全设置已保存'); };
-  const saveNotif = () => { saveJson(NOTIFICATION_KEY, notifConfig); setNotifChanged(false); toast.success('通知设置已保存'); };
-  const saveExport = () => { saveJson(EXPORT_KEY, exportConfig); setExportChanged(false); toast.success('导出配置已保存'); };
+  const saveCompany = async () => {
+    try {
+      const saved = await saveRemoteAppConfig('company_info', company);
+      setCompany(saved);
+      setCompanyChanged(false);
+      toast.success('公司信息已保存');
+    } catch {
+      toast.error('保存公司信息失败');
+    }
+  };
+  const saveDict = async () => {
+    try {
+      const saved = normalizeDictConfig(await saveRemoteAppConfig('dict_config', dictConfig));
+      setDictConfig(saved);
+      setDictChanged(false);
+      toast.success('字典配置已保存');
+    } catch {
+      toast.error('保存字典配置失败');
+    }
+  };
+  const saveDash = async () => {
+    try {
+      const saved = await saveRemoteAppConfig('dashboard_config', dashboardConfig);
+      setDashboardConfig(saved);
+      setDashChanged(false);
+      toast.success('仪表盘配置已保存');
+    } catch {
+      toast.error('保存仪表盘配置失败');
+    }
+  };
+  const saveReminder = async () => {
+    try {
+      const saved = await saveRemoteAppConfig('reminder_config', reminderConfig);
+      setReminderConfig(saved);
+      setReminderChanged(false);
+      toast.success('提醒规则已保存');
+    } catch {
+      toast.error('保存提醒规则失败');
+    }
+  };
+  const saveSecurity = async () => {
+    try {
+      const saved = await saveRemoteAppConfig('security_config', securityConfig);
+      setSecurityConfig(saved);
+      setSecurityChanged(false);
+      toast.success('安全设置已保存');
+    } catch {
+      toast.error('保存安全设置失败');
+    }
+  };
+  const saveNotif = async () => {
+    try {
+      const saved = await saveRemoteAppConfig('notification_config', notifConfig);
+      setNotifConfig(saved);
+      setNotifChanged(false);
+      toast.success('通知设置已保存');
+    } catch {
+      toast.error('保存通知设置失败');
+    }
+  };
+  const saveExport = async () => {
+    try {
+      const saved = await saveRemoteAppConfig('export_config', exportConfig);
+      setExportConfig(saved);
+      setExportChanged(false);
+      toast.success('导出配置已保存');
+    } catch {
+      toast.error('保存导出配置失败');
+    }
+  };
 
-  if (!isAdmin && !hasPermission('settings_edit')) {
+  const updateEnvValue = (scope: EnvScope, key: string, value: string) => {
+    setEnvConfig(prev => ({
+      ...prev,
+      [scope]: {
+        ...prev[scope],
+        [key]: {
+          ...prev[scope][key],
+          value,
+        },
+      },
+    }));
+  };
+
+  const saveEnvValue = async (scope: EnvScope, key: string) => {
+    const savingKey = `${scope}:${key}`;
+    setEnvSavingKey(savingKey);
+    try {
+      const value = envConfig[scope][key]?.value ?? '';
+      const action = scope === 'backend_vars'
+        ? settingsApi.updateBackendConfig(key, value)
+        : settingsApi.updateFrontendConfig(key, value);
+      const response = await action;
+      toast.success(response.message || '配置已保存');
+      await loadEnvConfig();
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '保存失败';
+      toast.error(detail);
+    } finally {
+      setEnvSavingKey(null);
+    }
+  };
+
+  if (!canEditSettings) {
     return <div className="flex items-center justify-center h-64"><p className="text-slate-400">仅管理员可访问系统设置</p></div>;
+  }
+
+  if (settingsLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
   }
 
   return (
@@ -149,6 +326,7 @@ export default function Settings() {
 
       <Tabs defaultValue="company" className="w-full">
         <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="env" className="text-xs">环境配置</TabsTrigger>
           <TabsTrigger value="company" className="text-xs">公司信息</TabsTrigger>
           <TabsTrigger value="dict" className="text-xs">字典配置</TabsTrigger>
           <TabsTrigger value="code" className="text-xs">编号规则</TabsTrigger>
@@ -159,6 +337,79 @@ export default function Settings() {
           <TabsTrigger value="export" className="text-xs">导出配置</TabsTrigger>
           <TabsTrigger value="logs" className="text-xs" onClick={loadLogs}>操作日志</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="env">
+          <div className="space-y-4">
+            <Card className="border-slate-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <SettingsIcon className="w-4 h-4 text-blue-600" />
+                  运行环境配置
+                </CardTitle>
+                <CardDescription>
+                  这里的配置会直接写入后端 `.env` 与前端 `.env`。保存后通常需要重启对应服务才会生效。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={loadEnvConfig} disabled={envLoading}>
+                  刷新配置
+                </Button>
+              </CardContent>
+            </Card>
+
+            {([
+              { scope: 'backend_vars' as const, title: '后端环境变量', description: '数据库、JWT、回调地址等运行参数' },
+              { scope: 'frontend_vars' as const, title: '前端环境变量', description: '前端 API 地址等浏览器端运行参数' },
+            ]).map(section => (
+              <Card key={section.scope} className="border-slate-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">{section.title}</CardTitle>
+                  <CardDescription>{section.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {envLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                    </div>
+                  ) : Object.keys(envConfig[section.scope]).length === 0 ? (
+                    <p className="text-sm text-slate-400 py-4">暂无配置项</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {Object.entries(envConfig[section.scope]).map(([key, item]) => {
+                        const savingKey = `${section.scope}:${key}`;
+                        return (
+                          <div key={key} className="p-3 bg-slate-50 rounded-lg space-y-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-slate-800 break-all">{key}</p>
+                                {item.description && (
+                                  <p className="text-xs text-slate-500 mt-0.5">{item.description}</p>
+                                )}
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => saveEnvValue(section.scope, key)}
+                                disabled={envSavingKey === savingKey}
+                                className="shrink-0 bg-blue-600 hover:bg-blue-700"
+                              >
+                                保存
+                              </Button>
+                            </div>
+                            <Input
+                              value={item.value}
+                              onChange={e => updateEnvValue(section.scope, key, e.target.value)}
+                              placeholder={`请输入 ${key}`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
 
         {/* Company Info */}
         <TabsContent value="company">
@@ -185,7 +436,21 @@ export default function Settings() {
             <div><Label>客户来源</Label><Textarea value={dictConfig.sources} onChange={e => { setDictConfig({ ...dictConfig, sources: e.target.value }); setDictChanged(true); }} rows={2} /></div>
             <div><Label>客户等级</Label><Textarea value={dictConfig.levels} onChange={e => { setDictConfig({ ...dictConfig, levels: e.target.value }); setDictChanged(true); }} rows={2} /></div>
             <div><Label>产品类型</Label><Textarea value={dictConfig.products} onChange={e => { setDictConfig({ ...dictConfig, products: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>客户意向套餐</Label><Textarea value={dictConfig.customerPackages} onChange={e => { setDictConfig({ ...dictConfig, customerPackages: e.target.value }); setDictChanged(true); }} rows={2} /></div>
             <div><Label>国家</Label><Textarea value={dictConfig.countries} onChange={e => { setDictConfig({ ...dictConfig, countries: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>计费周期</Label><Textarea value={dictConfig.billingCycles} onChange={e => { setDictConfig({ ...dictConfig, billingCycles: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>收款模式</Label><Textarea value={dictConfig.paymentModes} onChange={e => { setDictConfig({ ...dictConfig, paymentModes: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>收款方式</Label><Textarea value={dictConfig.paymentMethods} onChange={e => { setDictConfig({ ...dictConfig, paymentMethods: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>公司支出类型</Label><Textarea value={dictConfig.companyExpenseTypes} onChange={e => { setDictConfig({ ...dictConfig, companyExpenseTypes: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>套餐状态</Label><Textarea value={dictConfig.subscriptionStatuses} onChange={e => { setDictConfig({ ...dictConfig, subscriptionStatuses: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>跟进阶段</Label><Textarea value={dictConfig.followUpStages} onChange={e => { setDictConfig({ ...dictConfig, followUpStages: e.target.value }); setDictChanged(true); }} rows={3} /></div>
+            <div><Label>跟进方式</Label><Textarea value={dictConfig.followUpMethods} onChange={e => { setDictConfig({ ...dictConfig, followUpMethods: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>回访类型</Label><Textarea value={dictConfig.callbackTypes} onChange={e => { setDictConfig({ ...dictConfig, callbackTypes: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>回访状态</Label><Textarea value={dictConfig.callbackStatuses} onChange={e => { setDictConfig({ ...dictConfig, callbackStatuses: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>回访结果</Label><Textarea value={dictConfig.callbackResults} onChange={e => { setDictConfig({ ...dictConfig, callbackResults: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>任务类型</Label><Textarea value={dictConfig.taskTypes} onChange={e => { setDictConfig({ ...dictConfig, taskTypes: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>任务优先级</Label><Textarea value={dictConfig.taskPriorities} onChange={e => { setDictConfig({ ...dictConfig, taskPriorities: e.target.value }); setDictChanged(true); }} rows={2} /></div>
+            <div><Label>任务状态</Label><Textarea value={dictConfig.taskStatuses} onChange={e => { setDictConfig({ ...dictConfig, taskStatuses: e.target.value }); setDictChanged(true); }} rows={2} /></div>
             <div className="flex justify-end"><Button onClick={saveDict} disabled={!dictChanged} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" /> 保存</Button></div>
           </CardContent></Card>
         </TabsContent>
@@ -213,7 +478,7 @@ export default function Settings() {
             )}
             <div><Label>编号位数</Label><NativeSelect value={String(codeSettings.digitCount)} onChange={v => updateCode({ digitCount: parseInt(v, 10) })} className="w-40" options={[2, 3, 4, 5, 6].map(n => ({ value: String(n), label: `${n} 位` }))} /></div>
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"><div><Label>包含年份</Label></div><Switch checked={codeSettings.includeYear} onCheckedChange={v => updateCode({ includeYear: v })} /></div>
-            <div><Label>分隔符</Label><NativeSelect value={codeSettings.separator} onChange={v => updateCode({ separator: v })} className="w-40" options={[{ value: 'all', label: '无' }, { value: '-', label: '-' }, { value: '_', label: '_' }]} /></div>
+            <div><Label>分隔符</Label><NativeSelect value={codeSettings.separator} onChange={v => updateCode({ separator: v })} className="w-40" options={[{ value: '', label: '无' }, { value: '-', label: '-' }, { value: '_', label: '_' }]} /></div>
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg"><div className="flex items-center gap-2 mb-2"><Eye className="w-4 h-4 text-blue-600" /><span className="text-sm font-medium text-blue-800">预览</span></div>
               <code className="text-sm font-mono bg-white px-2 py-0.5 rounded border border-blue-200 text-blue-800">{previewCode(codeSettings, 'restaurant')}</code>
             </div>

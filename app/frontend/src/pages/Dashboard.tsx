@@ -11,6 +11,7 @@ import {
   Clock, TrendingUp, ListTodo, Bell, CalendarClock, CreditCard, PackageCheck,
   Palette, Truck, CheckCircle2, Timer, PhoneCall
 } from 'lucide-react';
+import { useBusinessDicts } from '../lib/dict-config';
 
 interface Reminder {
   id: string;
@@ -24,6 +25,7 @@ interface Reminder {
 
 export default function Dashboard() {
   const { role, employee, isAdmin } = useRole();
+  const { statuses: statusLabels } = useBusinessDicts();
   const navigate = useNavigate();
   const [data, setData] = useState<any>({});
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -305,7 +307,6 @@ export default function Dashboard() {
     setReminders(newReminders);
   };
 
-  const statusLabels: Record<string, string> = { new: '新线索', following: '跟进中', closed: '已成交', paused: '暂停', lost: '流失' };
   const statusColors: Record<string, string> = {
     new: 'bg-blue-100 text-blue-700', following: 'bg-amber-100 text-amber-700',
     closed: 'bg-green-100 text-green-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700',

@@ -6,9 +6,9 @@ import { atoms } from '@metagptx/web-sdk/plugins';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  // Use relative base in production to avoid absolute /assets paths causing 404 under subpaths.
-  // Can be overridden by environment variable VITE_BASE when needed.
-  base: process.env.VITE_BASE || './',
+  // Default to root so the built SPA can be served directly by FastAPI on one origin.
+  // Can still be overridden for subpath deployments.
+  base: process.env.VITE_BASE || '/',
   plugins: [
     viteSourceLocator({
       prefix: 'mgx', // 前缀用于标识源代码位置，不能修改

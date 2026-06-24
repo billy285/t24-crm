@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Plus, Edit, Search, ArrowLeft, ShieldCheck, ShieldOff, UserX, ArrowRightLeft, Phone, Mail, KeyRound, Calendar, Trash2 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { useBusinessDicts } from '../lib/dict-config';
 
 const allRoleOptions = Object.entries(systemRoleLabels).map(([k, v]) => ({ value: k, label: v }));
 
@@ -26,6 +27,7 @@ const emptyForm = {
 
 export default function Employees() {
   const { isAdmin, employee: currentEmp, hasPermission } = useRole();
+  const { statuses: statusLabels, taskStatuses: taskStatusLabels } = useBusinessDicts();
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -215,8 +217,6 @@ export default function Employees() {
     return <div className="flex items-center justify-center h-64"><p className="text-slate-400">仅管理员可管理员工</p></div>;
   }
 
-  const statusLabels: Record<string, string> = { new: '新线索', following: '跟进中', closed: '已成交', paused: '暂停', lost: '流失' };
-  const taskStatusLabels: Record<string, string> = { pending: '待处理', in_progress: '进行中', completed: '已完成', delayed: '延期' };
   const actionTypeLabels: Record<string, string> = { create_customer: '新增客户', edit_customer: '编辑客户', delete_customer: '删除客户', view_password: '查看密码', create_follow_up: '新增跟进', edit_follow_up: '编辑跟进', delete_follow_up: '删除跟进', create_media_account: '新增媒体账号', edit_media_account: '编辑媒体账号', delete_media_account: '删除媒体账号', export_data: '导出', other: '其他' };
 
   const canCreate = hasPermission('employee_create');

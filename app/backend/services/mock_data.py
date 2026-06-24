@@ -17,10 +17,19 @@ MOCK_DATA_DIR = Path(__file__).resolve().parent.parent / "mock_data"
 MAX_CONCURRENT_LOADS = 5
 
 
+def is_mock_data_enabled() -> bool:
+    """Mock data is opt-in for development only."""
+    if "MGX_IGNORE_INIT_DATA" in os.environ:
+        return False
+
+    raw = (os.getenv("ENABLE_MOCK_DATA") or os.getenv("MGX_LOAD_INIT_DATA") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 async def initialize_mock_data():
     """Populate tables with mock JSON data when they are empty."""
-    if "MGX_IGNORE_INIT_DATA" in os.environ:
-        logger.info("Ignore initialize data")
+    if not is_mock_data_enabled():
+        logger.info("Mock data initialization disabled; set ENABLE_MOCK_DATA=true to enable")
         return
     if not db_manager.engine:
         logger.warning("Database engine is not ready; skipping mock data initialization")

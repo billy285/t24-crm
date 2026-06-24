@@ -7,6 +7,7 @@ class Deals(Base):
     __table_args__ = {"extend_existing": True}
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
+    source_payment_id = Column(Integer, nullable=True)
     customer_id = Column(Integer, nullable=False)
     customer_name = Column(String, nullable=True)
     sales_employee_id = Column(Integer, nullable=True)

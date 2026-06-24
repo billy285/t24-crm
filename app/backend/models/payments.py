@@ -7,6 +7,7 @@ class Payments(Base):
     __table_args__ = {"extend_existing": True}
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
+    source_deal_id = Column(Integer, nullable=True)
     customer_id = Column(Integer, nullable=False)
     customer_name = Column(String, nullable=True)
     income_type = Column(String, nullable=True)
@@ -15,6 +16,7 @@ class Payments(Base):
     amount_paid = Column(Float, nullable=False)
     currency = Column(String, nullable=True)
     payment_date = Column(DateTime(timezone=True), nullable=True)
+    payment_mode = Column(String, nullable=True)
     payment_method = Column(String, nullable=True)
     billing_cycle = Column(String, nullable=True)
     coverage_start = Column(DateTime(timezone=True), nullable=True)

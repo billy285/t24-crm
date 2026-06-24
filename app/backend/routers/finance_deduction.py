@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, date
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile
 from pydantic import BaseModel, Field, validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -12,6 +12,7 @@ from sqlalchemy import text
 from core.database import get_db
 from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
+from utils.monthly_deduction_sql import create_audit_sql, create_default_sql, create_rates_sql, current_timestamp_sql, is_sqlite
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/deductions-monthly", tags=["finance-deductions"])
@@ -51,36 +52,6 @@ class ImportResult(BaseModel):
     skipped: int
 
 
-# ---- Table helpers ----
-CREATE_RATES_SQL = """
-CREATE TABLE IF NOT EXISTS monthly_deduction_rates (
-  id SERIAL PRIMARY KEY,
-  year_month DATE UNIQUE NOT NULL,
-  rate NUMERIC(5,4) NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-"""
-
-CREATE_DEFAULT_SQL = """
-CREATE TABLE IF NOT EXISTS monthly_deduction_defaults (
-  id SERIAL PRIMARY KEY,
-  rate NUMERIC(5,4) NOT NULL DEFAULT 0.15,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-"""
-
-CREATE_AUDIT_SQL = """
-CREATE TABLE IF NOT EXISTS monthly_deduction_audits (
-  id SERIAL PRIMARY KEY,
-  action TEXT NOT NULL,
-  actor_id BIGINT,
-  before_json JSONB,
-  after_json JSONB,
-  at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-"""
-
 def ym_to_date(ym: str) -> str:
     return f"{ym}-01"
 
@@ -88,9 +59,9 @@ def date_to_ym(d: date) -> str:
     return f"{d.year:04d}-{d.month:02d}"
 
 async def ensure_tables(session: AsyncSession):
-    await session.execute(text(CREATE_RATES_SQL))
-    await session.execute(text(CREATE_DEFAULT_SQL))
-    await session.execute(text(CREATE_AUDIT_SQL))
+    await session.execute(text(create_rates_sql(session)))
+    await session.execute(text(create_default_sql(session)))
+    await session.execute(text(create_audit_sql(session)))
 
 def is_admin_user(u: UserResponse) -> bool:
     # Assume UserResponse has role or is_admin
@@ -109,13 +80,16 @@ async def write_audit(session: AsyncSession, action: str, actor_id: Optional[int
     except Exception:
         before_json = "null"
         after_json = "null"
-    await session.execute(
-        text("INSERT INTO monthly_deduction_audits (action, actor_id, before_json, after_json) VALUES (:a, :uid, CAST(:b AS JSONB), CAST(:c AS JSONB))"),
-        {"a": action, "uid": actor_id, "b": before_json, "c": after_json},
+    insert_sql = (
+        "INSERT INTO monthly_deduction_audits (action, actor_id, before_json, after_json) VALUES (:a, :uid, :b, :c)"
+        if is_sqlite(session)
+        else "INSERT INTO monthly_deduction_audits (action, actor_id, before_json, after_json) VALUES (:a, :uid, CAST(:b AS JSONB), CAST(:c AS JSONB))"
     )
+    await session.execute(text(insert_sql), {"a": action, "uid": actor_id, "b": before_json, "c": after_json})
 
 # ---- CRUD ----
-@router.get("/", response_model=List[MonthlyDeductionRateResponse])
+@router.get("", response_model=List[MonthlyDeductionRateResponse])
+@router.get("/", response_model=List[MonthlyDeductionRateResponse], include_in_schema=False)
 async def list_deductions(
     start: Optional[str] = Query(None, description="YYYY-MM"),
     end: Optional[str] = Query(None, description="YYYY-MM"),
@@ -147,102 +121,6 @@ async def list_deductions(
             updated_at=r.get("updated_at"),
         ))
     return result
-
-
-@router.get("/{ym}", response_model=MonthlyDeductionRateResponse)
-async def get_deduction(ym: str, db: AsyncSession = Depends(get_db)):
-    await ensure_tables(db)
-    res = await db.execute(text("SELECT year_month, rate, created_at, updated_at FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
-    r = res.mappings().first()
-    if not r:
-        raise HTTPException(status_code=404, detail="Not found")
-    ym_str = date_to_ym(r["year_month"]) if isinstance(r["year_month"], date) else str(r["year_month"])[:7]
-    return MonthlyDeductionRateResponse(year_month=ym_str, rate=float(r["rate"]), created_at=r.get("created_at"), updated_at=r.get("updated_at"))
-
-
-@router.post("/", response_model=MonthlyDeductionRateResponse)
-async def create_deduction(
-    payload: MonthlyDeductionRateCreate,
-    current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await ensure_tables(db)
-    if not is_admin_user(current_user):
-        raise HTTPException(status_code=403, detail="Admin only")
-    before = None
-    try:
-        res = await db.execute(text("""
-            INSERT INTO monthly_deduction_rates (year_month, rate)
-            VALUES (:ym, :rate)
-            ON CONFLICT (year_month) DO UPDATE SET rate = EXCLUDED.rate, updated_at = NOW()
-            RETURNING year_month, rate, created_at, updated_at
-        """), {"ym": ym_to_date(payload.year_month), "rate": payload.rate})
-        row = res.mappings().first()
-        after = {"year_month": payload.year_month, "rate": payload.rate}
-        await write_audit(db, "create_or_upsert", getattr(current_user, "id", None), before, after)
-        await db.commit()
-        return MonthlyDeductionRateResponse(
-            year_month=date_to_ym(row["year_month"]) if isinstance(row["year_month"], date) else str(row["year_month"])[:7],
-            rate=float(row["rate"]),
-            created_at=row.get("created_at"),
-            updated_at=row.get("updated_at"),
-        )
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Create deduction failed: {e}")
-        raise HTTPException(status_code=500, detail="Create failed")
-
-
-@router.put("/{ym}", response_model=MonthlyDeductionRateResponse)
-async def update_deduction(
-    ym: str,
-    payload: MonthlyDeductionRateUpdate,
-    current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await ensure_tables(db)
-    if not is_admin_user(current_user):
-        raise HTTPException(status_code=403, detail="Admin only")
-    # before
-    res0 = await db.execute(text("SELECT year_month, rate FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
-    before_row = res0.mappings().first()
-    before = {"year_month": ym, "rate": float(before_row["rate"])} if before_row else None
-
-    res = await db.execute(text("""
-        UPDATE monthly_deduction_rates SET rate = :rate, updated_at = NOW()
-        WHERE year_month = :ym
-        RETURNING year_month, rate, created_at, updated_at
-    """), {"rate": payload.rate, "ym": ym_to_date(ym)})
-    row = res.mappings().first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
-    after = {"year_month": ym, "rate": float(row["rate"])}
-    await write_audit(db, "update", getattr(current_user, "id", None), before, after)
-    await db.commit()
-    return MonthlyDeductionRateResponse(
-        year_month=date_to_ym(row["year_month"]) if isinstance(row["year_month"], date) else str(row["year_month"])[:7],
-        rate=float(row["rate"]),
-        created_at=row.get("created_at"),
-        updated_at=row.get("updated_at"),
-    )
-
-
-@router.delete("/{ym}")
-async def delete_deduction(
-    ym: str,
-    current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await ensure_tables(db)
-    if not is_admin_user(current_user):
-        raise HTTPException(status_code=403, detail="Admin only")
-    res0 = await db.execute(text("SELECT year_month, rate FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
-    before_row = res0.mappings().first()
-    before = {"year_month": ym, "rate": float(before_row["rate"])} if before_row else None
-    await db.execute(text("DELETE FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
-    await write_audit(db, "delete", getattr(current_user, "id", None), before, None)
-    await db.commit()
-    return {"success": True}
 
 
 # ---- Default rate ----
@@ -281,6 +159,107 @@ async def update_default_deduction(
         raise
 
 
+@router.get("/{ym}", response_model=MonthlyDeductionRateResponse)
+async def get_deduction(
+    ym: str = Path(..., pattern=r"^\d{4}-\d{2}$", description="YYYY-MM"),
+    db: AsyncSession = Depends(get_db),
+):
+    await ensure_tables(db)
+    res = await db.execute(text("SELECT year_month, rate, created_at, updated_at FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
+    r = res.mappings().first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Not found")
+    ym_str = date_to_ym(r["year_month"]) if isinstance(r["year_month"], date) else str(r["year_month"])[:7]
+    return MonthlyDeductionRateResponse(year_month=ym_str, rate=float(r["rate"]), created_at=r.get("created_at"), updated_at=r.get("updated_at"))
+
+
+@router.post("", response_model=MonthlyDeductionRateResponse)
+@router.post("/", response_model=MonthlyDeductionRateResponse, include_in_schema=False)
+async def create_deduction(
+    payload: MonthlyDeductionRateCreate,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await ensure_tables(db)
+    if not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin only")
+    before = None
+    try:
+        now_sql = current_timestamp_sql(db)
+        res = await db.execute(text(f"""
+            INSERT INTO monthly_deduction_rates (year_month, rate)
+            VALUES (:ym, :rate)
+            ON CONFLICT (year_month) DO UPDATE SET rate = EXCLUDED.rate, updated_at = {now_sql}
+            RETURNING year_month, rate, created_at, updated_at
+        """), {"ym": ym_to_date(payload.year_month), "rate": payload.rate})
+        row = res.mappings().first()
+        after = {"year_month": payload.year_month, "rate": payload.rate}
+        await write_audit(db, "create_or_upsert", getattr(current_user, "id", None), before, after)
+        await db.commit()
+        return MonthlyDeductionRateResponse(
+            year_month=date_to_ym(row["year_month"]) if isinstance(row["year_month"], date) else str(row["year_month"])[:7],
+            rate=float(row["rate"]),
+            created_at=row.get("created_at"),
+            updated_at=row.get("updated_at"),
+        )
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Create deduction failed: {e}")
+        raise HTTPException(status_code=500, detail="Create failed")
+
+
+@router.put("/{ym}", response_model=MonthlyDeductionRateResponse)
+async def update_deduction(
+    payload: MonthlyDeductionRateUpdate,
+    ym: str = Path(..., pattern=r"^\d{4}-\d{2}$", description="YYYY-MM"),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await ensure_tables(db)
+    if not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin only")
+    # before
+    res0 = await db.execute(text("SELECT year_month, rate FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
+    before_row = res0.mappings().first()
+    before = {"year_month": ym, "rate": float(before_row["rate"])} if before_row else None
+
+    now_sql = current_timestamp_sql(db)
+    res = await db.execute(text(f"""
+        UPDATE monthly_deduction_rates SET rate = :rate, updated_at = {now_sql}
+        WHERE year_month = :ym
+        RETURNING year_month, rate, created_at, updated_at
+    """), {"rate": payload.rate, "ym": ym_to_date(ym)})
+    row = res.mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    after = {"year_month": ym, "rate": float(row["rate"])}
+    await write_audit(db, "update", getattr(current_user, "id", None), before, after)
+    await db.commit()
+    return MonthlyDeductionRateResponse(
+        year_month=date_to_ym(row["year_month"]) if isinstance(row["year_month"], date) else str(row["year_month"])[:7],
+        rate=float(row["rate"]),
+        created_at=row.get("created_at"),
+        updated_at=row.get("updated_at"),
+    )
+
+
+@router.delete("/{ym}")
+async def delete_deduction(
+    ym: str = Path(..., pattern=r"^\d{4}-\d{2}$", description="YYYY-MM"),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await ensure_tables(db)
+    if not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin only")
+    res0 = await db.execute(text("SELECT year_month, rate FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
+    before_row = res0.mappings().first()
+    before = {"year_month": ym, "rate": float(before_row["rate"])} if before_row else None
+    await db.execute(text("DELETE FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
+    await write_audit(db, "delete", getattr(current_user, "id", None), before, None)
+    await db.commit()
+    return {"success": True}
+
 # ---- CSV import ----
 @router.post("/import", response_model=ImportResult)
 async def import_monthly_deductions(
@@ -316,7 +295,11 @@ async def import_monthly_deductions(
         ex = existing.fetchone()
         if ex:
             if overwrite:
-                await db.execute(text("UPDATE monthly_deduction_rates SET rate=:r, updated_at=NOW() WHERE year_month=:ym"), {"r": rate, "ym": ym_to_date(ym)})
+                now_sql = current_timestamp_sql(db)
+                await db.execute(
+                    text(f"UPDATE monthly_deduction_rates SET rate=:r, updated_at={now_sql} WHERE year_month=:ym"),
+                    {"r": rate, "ym": ym_to_date(ym)},
+                )
                 updated += 1
                 await write_audit(db, "import_update", getattr(current_user, "id", None), {"year_month": ym, "rate": float(ex[0])}, {"year_month": ym, "rate": rate})
             else:

@@ -4,6 +4,7 @@ import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
 import { countries, getStatesForCountry, getCitiesForState, getCountryLabel, getStateLabel } from '../lib/country-state-data';
 import { logOperation } from '../lib/operation-log-helper';
+import { allStageLabels, issueStatusColors, issueStatusLabels, priorityColors, priorityLabels, serviceTypeLabels, taskStatusColors, taskStatusLabels, taskTypeLabels } from '../lib/service-board-config';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ImportCustomers from '@/components/ImportCustomers';
@@ -21,67 +22,136 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import MediaAccountsTab from '@/components/MediaAccountsTab';
 import OperationLogsTab from '@/components/OperationLogsTab';
 import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../lib/customer-code-settings';
+import { saveRemoteAppConfig } from '../lib/app-config';
+import { buildOptionKey, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
+import { getPaymentMethodLabel, getPaymentModeLabel } from '../lib/payment-utils';
 
-const defaultIndustryLabels: Record<string, string> = { restaurant: '餐厅', nail: '美甲', massage: '按摩', beauty: '美容', supermarket: '超市', other: '其他' };
-const CUSTOM_INDUSTRIES_KEY = 'crm_custom_industries';
-function loadIndustryLabels(): Record<string, string> {
-  try {
-    const stored = localStorage.getItem(CUSTOM_INDUSTRIES_KEY);
-    if (stored) {
-      const custom = JSON.parse(stored) as Record<string, string>;
-      return { ...defaultIndustryLabels, ...custom };
-    }
-  } catch { /* ignore */ }
-  return { ...defaultIndustryLabels };
-}
-function saveCustomIndustry(key: string, label: string) {
-  try {
-    const stored = localStorage.getItem(CUSTOM_INDUSTRIES_KEY);
-    const custom = stored ? JSON.parse(stored) : {};
-    custom[key] = label;
-    localStorage.setItem(CUSTOM_INDUSTRIES_KEY, JSON.stringify(custom));
-  } catch { /* ignore */ }
-}
-const statusLabels: Record<string, string> = { new: '新线索', following: '跟进中', closed: '已成交', paused: '暂停', lost: '流失' };
 const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', following: 'bg-amber-100 text-amber-700', closed: 'bg-green-100 text-green-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
-const levelLabels: Record<string, string> = { high: '高意向', normal: '普通', low: '低意向', vip: 'VIP' };
 const levelColors: Record<string, string> = { high: 'bg-orange-100 text-orange-700', normal: 'bg-slate-100 text-slate-600', low: 'bg-gray-100 text-gray-500', vip: 'bg-purple-100 text-purple-700' };
-const sourceLabels: Record<string, string> = { phone: '电话销售', referral: '转介绍', ads: '广告', private: '私域', returning: '老客户', other: '其他' };
-const stageLabels: Record<string, string> = { new_lead: '新线索', contacted: '已联系', communicating: '沟通中', quoted: '已报价', considering: '考虑中', pending_close: '待成交', closed: '已成交', not_closed: '未成交', lost: '流失', follow_later: '后续再跟进' };
-const productLabels: Record<string, string> = { ordering_system: '线上点餐系统', social_media: '新媒体代运营', ads: '广告投放', website: '网站设计', combo: '组合套餐' };
-const cycleLabels: Record<string, string> = { monthly: '月付', quarterly: '季付', semi_annual: '半年付', annual: '年付' };
-const payMethodLabels: Record<string, string> = { cash: '现金', check: '支票', zelle: 'Zelle', wire: '电汇', credit_card: '信用卡', other: '其他' };
-const subStatusLabels: Record<string, string> = { active: '正常', expiring_soon: '即将到期', expired: '已到期', paused: '暂停', lost: '流失' };
 const subStatusColors: Record<string, string> = { active: 'bg-green-100 text-green-700', expiring_soon: 'bg-amber-100 text-amber-700', expired: 'bg-red-100 text-red-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
-const methodLabels: Record<string, string> = { phone: '电话', wechat: '微信', sms: '短信', email: '邮件' };
 const contactRoleLabels: Record<string, string> = { boss: '老板', manager: '经理', staff: '员工', other: '其他' };
+const defaultLevelColorClass = 'bg-slate-100 text-slate-700';
 
 const emptyForm = {
   customer_code: '', business_name: '', contact_name: '', phone: '', wechat: '', email: '',
   address: '', city: '', state: 'CA', country: 'US', industry: 'restaurant', website: '',
   google_business_link: '', facebook_link: '', instagram_link: '', yelp_link: '', tiktok_link: '',
-  has_ordering_system: false, current_platform: '无', monthly_orders: 0,
+  has_ordering_system: false, current_platform: '无', interested_packages: [] as string[], monthly_orders: 0,
   source: 'phone', sales_person: '', sales_employee_id: '' as string | number, level: 'normal', status: 'new', notes: '',
 };
 
 const allColumns = [
   { key: 'customer_code', label: '编号', d: true }, { key: 'business_name', label: '商家名称', d: true },
   { key: 'contact_name', label: '联系人', d: true }, { key: 'phone', label: '电话', d: true },
-  { key: 'city', label: '城市', d: true }, { key: 'industry', label: '行业', d: true },
+  { key: 'state', label: '州/省', d: true }, { key: 'country', label: '国家', d: true },
+  { key: 'industry', label: '行业', d: true }, { key: 'city', label: '城市', d: false },
   { key: 'status', label: '状态', d: true }, { key: 'level', label: '等级', d: true },
-  { key: 'sales_person', label: '负责人', d: true }, { key: 'country', label: '国家', d: false },
-  { key: 'state', label: '州/省', d: false }, { key: 'email', label: '邮箱', d: false },
+  { key: 'sales_person', label: '负责人', d: true }, { key: 'email', label: '邮箱', d: false },
   { key: 'wechat', label: '微信', d: false }, { key: 'source', label: '来源', d: false },
 ];
 
 const COLS_KEY = 'crm_visible_columns';
+const legacyDefaultColumns = ['customer_code', 'business_name', 'contact_name', 'phone', 'city', 'industry', 'status', 'level', 'sales_person'];
+const preferredDefaultColumns = allColumns.filter(c => c.d).map(c => c.key);
+
 function loadCols(): string[] {
-  try { const s = localStorage.getItem(COLS_KEY); if (s) return JSON.parse(s); } catch { /* */ }
-  return allColumns.filter(c => c.d).map(c => c.key);
+  try {
+    const s = localStorage.getItem(COLS_KEY);
+    if (s) {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) {
+        const validKeys = new Set(allColumns.map(col => col.key));
+        const sanitized = parsed.filter((key): key is string => typeof key === 'string' && validKeys.has(key));
+        const isLegacyDefault = sanitized.length === legacyDefaultColumns.length
+          && legacyDefaultColumns.every(key => sanitized.includes(key))
+          && !sanitized.includes('state')
+          && !sanitized.includes('country');
+        if (isLegacyDefault) {
+          localStorage.setItem(COLS_KEY, JSON.stringify(preferredDefaultColumns));
+          return preferredDefaultColumns;
+        }
+        return sanitized;
+      }
+    }
+  } catch { /* */ }
+  return preferredDefaultColumns;
+}
+
+const emptyAdvancedFilters = {
+  customer_code: '',
+  business_name: '',
+  contact_name: '',
+  phone: '',
+  city: '',
+  industry: '',
+  status: '',
+  level: '',
+  sales_person: '',
+  source: '',
+  wechat: '',
+  email: '',
+  country: '',
+  state: '',
+};
+
+const inlineSelectClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
+const inlineInputClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
+
+function buildInlineOptions(value: string | undefined, labels: Record<string, string>) {
+  const options = Object.entries(labels).map(([key, label]) => ({ value: key, label }));
+  if (value && !labels[value]) {
+    options.unshift({ value, label: value });
+  }
+  return options;
+}
+
+function getLevelColorClass(level?: string) {
+  return levelColors[level || ''] || defaultLevelColorClass;
+}
+
+function parseMultiValue(value?: string | null) {
+  return (value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function formatCurrency(value: number) {
+  return `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+function computeSubscriptionState(subscription: any) {
+  if (!subscription) return 'active';
+  if (!subscription.end_date) return subscription.status || 'active';
+  if (subscription.status === 'paused' || subscription.status === 'lost') return subscription.status;
+
+  const endDate = new Date(subscription.end_date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((endDate.getTime() - today.getTime()) / 86400000);
+
+  if (diffDays <= 0) return 'expired';
+  if (diffDays <= 7) return 'expiring_soon';
+  return 'active';
 }
 
 export default function Customers() {
   const { role, employee, hasPermission, isAdmin, dataScope } = useRole();
+  const dictConfig = useDictConfig();
+  const businessDicts = useBusinessDicts();
+  const industryLabels = businessDicts.industries;
+  const statusLabels = businessDicts.statuses;
+  const levelLabels = businessDicts.levels;
+  const sourceLabels = businessDicts.sources;
+  const stageLabels = businessDicts.followUpStages;
+  const productLabels = businessDicts.products;
+  const customerPackageLabels = businessDicts.customerPackages;
+  const cycleLabels = businessDicts.billingCycles;
+  const payModeLabels = businessDicts.paymentModes;
+  const payMethodLabels = businessDicts.paymentMethods;
+  const subStatusLabels = businessDicts.subscriptionStatuses;
+  const methodLabels = businessDicts.followUpMethods;
+  const canManageDict = isAdmin || hasPermission('settings_edit');
   const [searchParams] = useSearchParams();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +161,7 @@ export default function Customers() {
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterSource, setFilterSource] = useState('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [advFilters, setAdvFilters] = useState({ business_name: '', contact_name: '', phone: '', wechat: '', email: '', country: '', state: '', city: '' });
+  const [advFilters, setAdvFilters] = useState(emptyAdvancedFilters);
   const advFilterCount = Object.values(advFilters).filter(v => v.trim()).length;
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -101,6 +171,9 @@ export default function Customers() {
   const [deals, setDeals] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [serviceProgresses, setServiceProgresses] = useState<any[]>([]);
+  const [serviceTasks, setServiceTasks] = useState<any[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
@@ -127,25 +200,205 @@ export default function Customers() {
   const [contactForm, setContactForm] = useState(emptyContactForm);
 
   // Dynamic industry labels
-  const [industryLabels, setIndustryLabels] = useState<Record<string, string>>(loadIndustryLabels);
   const [showAddIndustry, setShowAddIndustry] = useState(false);
   const [newIndustryName, setNewIndustryName] = useState('');
+  const [showLevelManager, setShowLevelManager] = useState(false);
+  const [newLevelName, setNewLevelName] = useState('');
+  const [levelDrafts, setLevelDrafts] = useState<Array<{ key: string; label: string }>>([]);
+  const [savingLevels, setSavingLevels] = useState(false);
+  const [showPackageManager, setShowPackageManager] = useState(false);
+  const [newPackageName, setNewPackageName] = useState('');
+  const [packageDrafts, setPackageDrafts] = useState<Array<{ key: string; label: string }>>([]);
+  const [savingPackages, setSavingPackages] = useState(false);
 
-  const handleAddIndustry = () => {
+  const handleAddIndustry = async () => {
     const name = newIndustryName.trim();
     if (!name) { toast.error('请输入行业名称'); return; }
-    // Generate a key from the name (use pinyin-like or just the name itself as key)
-    const key = 'custom_' + name.toLowerCase().replace(/\s+/g, '_');
-    if (industryLabels[key] || Object.values(industryLabels).includes(name)) {
+    if (!canManageDict) {
+      toast.error('仅管理员可新增全局行业，请在系统设置中维护');
+      return;
+    }
+    let key = buildOptionKey(name);
+    if (industryLabels[key]) {
+      key = `${key}_${Date.now()}`;
+    }
+    if (Object.values(industryLabels).includes(name)) {
       toast.error('该行业已存在'); return;
     }
-    saveCustomIndustry(key, name);
-    const updated = loadIndustryLabels();
-    setIndustryLabels(updated);
-    setForm({ ...form, industry: key });
-    setNewIndustryName('');
-    setShowAddIndustry(false);
-    toast.success(`已添加行业「${name}」`);
+    try {
+      const nextDictConfig = {
+        ...dictConfig,
+        industries: serializeDictEntries({ ...industryLabels, [key]: name }),
+      };
+      await saveRemoteAppConfig('dict_config', nextDictConfig);
+      setForm({ ...form, industry: key });
+      setNewIndustryName('');
+      setShowAddIndustry(false);
+      toast.success(`已添加行业「${name}」`);
+    } catch {
+      toast.error('新增行业失败');
+    }
+  };
+
+  const openLevelManager = () => {
+    setLevelDrafts(Object.entries(levelLabels).map(([key, label]) => ({ key, label })));
+    setNewLevelName('');
+    setShowLevelManager(true);
+  };
+
+  const handleAddLevelDraft = () => {
+    const label = newLevelName.trim();
+    if (!label) { toast.error('请输入等级名称'); return; }
+    if (levelDrafts.some(item => item.label.trim() === label)) {
+      toast.error('该等级已存在');
+      return;
+    }
+    let key = buildOptionKey(label);
+    while (levelDrafts.some(item => item.key === key)) {
+      key = `${key}_${Date.now()}`;
+    }
+    setLevelDrafts(prev => [...prev, { key, label }]);
+    setNewLevelName('');
+  };
+
+  const handleRemoveLevelDraft = (key: string) => {
+    if (levelDrafts.length <= 1) {
+      toast.error('至少保留一个客户等级');
+      return;
+    }
+    if (customers.some(customer => customer.level === key)) {
+      toast.error('该等级已有客户在使用，请先调整客户等级后再删除');
+      return;
+    }
+    const remaining = levelDrafts.filter(item => item.key !== key);
+    setLevelDrafts(remaining);
+    if (form.level === key) {
+      setForm(prev => ({ ...prev, level: remaining[0]?.key || '' }));
+    }
+  };
+
+  const handleSaveLevels = async () => {
+    const normalizedEntries = levelDrafts.reduce<Record<string, string>>((acc, item) => {
+      const label = item.label.trim();
+      if (label) {
+        acc[item.key] = label;
+      }
+      return acc;
+    }, {});
+
+    const labels = Object.values(normalizedEntries);
+    if (labels.length === 0) {
+      toast.error('请至少保留一个客户等级');
+      return;
+    }
+    if (new Set(labels).size !== labels.length) {
+      toast.error('客户等级名称不能重复');
+      return;
+    }
+
+    setSavingLevels(true);
+    try {
+      const nextDictConfig = {
+        ...dictConfig,
+        levels: serializeDictEntries(normalizedEntries),
+      };
+      await saveRemoteAppConfig('dict_config', nextDictConfig);
+      const firstLevelKey = Object.keys(normalizedEntries)[0] || '';
+      if (!normalizedEntries[form.level]) {
+        setForm(prev => ({ ...prev, level: firstLevelKey }));
+      }
+      setShowLevelManager(false);
+      setNewLevelName('');
+      toast.success('客户等级已更新');
+    } catch {
+      toast.error('保存客户等级失败');
+    } finally {
+      setSavingLevels(false);
+    }
+  };
+
+  const openPackageManager = () => {
+    setPackageDrafts(Object.entries(customerPackageLabels).map(([key, label]) => ({ key, label })));
+    setNewPackageName('');
+    setShowPackageManager(true);
+  };
+
+  const handleAddPackageDraft = () => {
+    const label = newPackageName.trim();
+    if (!label) { toast.error('请输入套餐名称'); return; }
+    if (packageDrafts.some(item => item.label.trim() === label)) {
+      toast.error('该套餐已存在');
+      return;
+    }
+    let key = buildOptionKey(label);
+    while (packageDrafts.some(item => item.key === key)) {
+      key = `${key}_${Date.now()}`;
+    }
+    setPackageDrafts(prev => [...prev, { key, label }]);
+    setNewPackageName('');
+  };
+
+  const handleRemovePackageDraft = (key: string) => {
+    if (packageDrafts.length <= 1) {
+      toast.error('至少保留一个客户意向套餐');
+      return;
+    }
+    if (customers.some(customer => parseMultiValue(customer.interested_packages).includes(key))) {
+      toast.error('该套餐已有客户在使用，请先调整客户资料后再删除');
+      return;
+    }
+    const remaining = packageDrafts.filter(item => item.key !== key);
+    setPackageDrafts(remaining);
+    setForm(prev => ({ ...prev, interested_packages: prev.interested_packages.filter(item => item !== key) }));
+  };
+
+  const handleSavePackages = async () => {
+    const normalizedEntries = packageDrafts.reduce<Record<string, string>>((acc, item) => {
+      const label = item.label.trim();
+      if (label) {
+        acc[item.key] = label;
+      }
+      return acc;
+    }, {});
+
+    const labels = Object.values(normalizedEntries);
+    if (labels.length === 0) {
+      toast.error('请至少保留一个客户意向套餐');
+      return;
+    }
+    if (new Set(labels).size !== labels.length) {
+      toast.error('套餐名称不能重复');
+      return;
+    }
+
+    setSavingPackages(true);
+    try {
+      const nextDictConfig = {
+        ...dictConfig,
+        customerPackages: serializeDictEntries(normalizedEntries),
+      };
+      await saveRemoteAppConfig('dict_config', nextDictConfig);
+      setForm(prev => ({
+        ...prev,
+        interested_packages: prev.interested_packages.filter(item => normalizedEntries[item]),
+      }));
+      setShowPackageManager(false);
+      setNewPackageName('');
+      toast.success('客户意向套餐已更新');
+    } catch {
+      toast.error('保存客户意向套餐失败');
+    } finally {
+      setSavingPackages(false);
+    }
+  };
+
+  const toggleInterestedPackage = (key: string, checked: boolean) => {
+    setForm(prev => ({
+      ...prev,
+      interested_packages: checked
+        ? [...prev.interested_packages, key]
+        : prev.interested_packages.filter(item => item !== key),
+    }));
   };
 
   // Employees list for sales person dropdown
@@ -155,6 +408,20 @@ export default function Customers() {
   const [assignTarget, setAssignTarget] = useState<any>(null);
   const [assignEmployeeId, setAssignEmployeeId] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const [inlineSavingKey, setInlineSavingKey] = useState('');
+  const [cityDrafts, setCityDrafts] = useState<Record<number, string>>({});
+  const salesPersonOptions = useMemo(() => {
+    const names = new Set<string>();
+    customers.forEach(customer => {
+      const name = customer.sales_person?.trim();
+      if (name) names.add(name);
+    });
+    employeesList.forEach(emp => {
+      const name = emp.name?.trim();
+      if (name) names.add(name);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b, 'zh-CN')).map(name => ({ value: name, label: name }));
+  }, [customers, employeesList]);
 
   // Advanced filter cascading state
   const advStates = advFilters.country ? getStatesForCountry(advFilters.country) : [];
@@ -169,7 +436,7 @@ export default function Customers() {
       const target = customers.find(c => c.id === Number(detailId));
       if (target) openDetail(target);
     }
-  }, [searchParams, customers]);
+  }, [searchParams, customers, statusLabels]);
 
   const toggleCol = (key: string) => {
     const nc = visibleCols.includes(key) ? visibleCols.filter(c => c !== key) : [...visibleCols, key];
@@ -187,6 +454,38 @@ export default function Customers() {
       const r = await client.entities.customer_contacts.queryAll({ query: { customer_id: cid }, sort: '-created_at', limit: 50 });
       setContacts(r?.data?.items || []);
     } catch (err) { console.error('Load contacts error:', err); setContacts([]); }
+  };
+
+  const loadCustomerDetail = async (customerId: number, fallbackCustomer?: any) => {
+    setDetailLoading(true);
+    try {
+      const [customerRes, fuRes, dRes, pRes, sRes, progressRes, taskRes] = await Promise.all([
+        client.entities.customers.query({ query: { id: customerId }, limit: 1 }),
+        client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }),
+        client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 50 }),
+        client.entities.payments.queryAll({ query: { customer_id: customerId }, sort: '-payment_date', limit: 100 }),
+        client.entities.subscriptions.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }),
+        client.entities.service_progresses.queryAll({ query: { customer_id: customerId }, sort: '-last_update_time', limit: 50 }),
+        client.entities.service_tasks.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 200 }),
+      ]);
+
+      const latestCustomer = customerRes?.data?.items?.[0] || fallbackCustomer || null;
+      if (latestCustomer) {
+        setSelectedCustomer(latestCustomer);
+        setCustomers(prev => prev.map(item => (item.id === latestCustomer.id ? { ...item, ...latestCustomer } : item)));
+      }
+      setFollowUps(fuRes?.data?.items || []);
+      setDeals(dRes?.data?.items || []);
+      setPayments(pRes?.data?.items || []);
+      setSubscriptions(sRes?.data?.items || []);
+      setServiceProgresses(progressRes?.data?.items || []);
+      setServiceTasks(taskRes?.data?.items || []);
+      await reloadContacts(customerId);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   const openEditFollow = (f: any) => {
@@ -297,14 +596,27 @@ export default function Customers() {
       const ml = filterLevel === 'all' || c.level === filterLevel;
       const mso = filterSource === 'all' || c.source === filterSource;
       const af = advFilters;
-      const ma = (!af.business_name || (c.business_name || '').toLowerCase().includes(af.business_name.toLowerCase())) && (!af.contact_name || (c.contact_name || '').toLowerCase().includes(af.contact_name.toLowerCase())) && (!af.phone || (c.phone || '').includes(af.phone)) && (!af.wechat || (c.wechat || '').toLowerCase().includes(af.wechat.toLowerCase())) && (!af.email || (c.email || '').toLowerCase().includes(af.email.toLowerCase())) && (!af.country || c.country === af.country) && (!af.state || c.state === af.state) && (!af.city || (c.city || '').toLowerCase().includes(af.city.toLowerCase()));
+      const ma = (!af.customer_code || (c.customer_code || '').toLowerCase().includes(af.customer_code.toLowerCase()))
+        && (!af.business_name || (c.business_name || '').toLowerCase().includes(af.business_name.toLowerCase()))
+        && (!af.contact_name || (c.contact_name || '').toLowerCase().includes(af.contact_name.toLowerCase()))
+        && (!af.phone || (c.phone || '').includes(af.phone))
+        && (!af.city || (c.city || '').toLowerCase().includes(af.city.toLowerCase()))
+        && (!af.industry || c.industry === af.industry)
+        && (!af.status || c.status === af.status)
+        && (!af.level || c.level === af.level)
+        && (!af.sales_person || c.sales_person === af.sales_person)
+        && (!af.source || c.source === af.source)
+        && (!af.wechat || (c.wechat || '').toLowerCase().includes(af.wechat.toLowerCase()))
+        && (!af.email || (c.email || '').toLowerCase().includes(af.email.toLowerCase()))
+        && (!af.country || c.country === af.country)
+        && (!af.state || c.state === af.state);
       return ms && mst && mi && ml && mso && ma;
     });
   }, [customers, search, filterStatus, filterIndustry, filterLevel, filterSource, advFilters]);
 
-  const openCreate = () => { setForm(emptyForm); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
+  const openCreate = () => { setForm({ ...emptyForm, interested_packages: [] }); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
   const openEdit = (c: any) => {
-    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
+    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', interested_packages: parseMultiValue(c.interested_packages), monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
     setEditingId(c.id); setDuplicateWarning(null); setShowForm(true);
   };
 
@@ -319,18 +631,26 @@ export default function Customers() {
     try {
       const now = new Date().toISOString();
       const op = employee?.name || '管理员';
+      const payload = {
+        ...form,
+        interested_packages: form.interested_packages.join(','),
+      };
       if (editingId) {
-        await client.entities.customers.update({ id: String(editingId), data: { ...form, updated_at: now } });
+        await client.entities.customers.update({ id: String(editingId), data: { ...payload, updated_at: now } });
         toast.success('客户信息已更新');
         logOperation({ customerId: editingId, actionType: 'edit_customer', actionDetail: `编辑客户: ${form.business_name}`, operatorName: op });
       } else {
         const code = form.customer_code.trim() || getNextAutoCode(form.industry);
         if (customers.some(c => c.customer_code === code)) { toast.error(`编号「${code}」已存在`); setSaving(false); return; }
-        const res = await client.entities.customers.create({ data: { ...form, customer_code: code, created_at: now, updated_at: now } });
+        const res = await client.entities.customers.create({ data: { ...payload, customer_code: code, created_at: now, updated_at: now } });
         toast.success('客户创建成功');
         logOperation({ customerId: res?.data?.id, actionType: 'create_customer', actionDetail: `新增客户: ${form.business_name}`, operatorName: op });
       }
-      setShowForm(false); loadCustomers();
+      setShowForm(false);
+      await loadCustomers();
+      if (editingId && selectedCustomer?.id === editingId) {
+        await loadCustomerDetail(editingId, { ...selectedCustomer, ...payload, updated_at: now });
+      }
     } catch { toast.error('保存失败'); } finally { setSaving(false); }
   };
 
@@ -382,20 +702,70 @@ export default function Customers() {
     } catch { toast.error('分配失败'); } finally { setAssigning(false); }
   };
 
+  const syncCustomerState = (customerId: number, updates: Record<string, any>) => {
+    setCustomers(prev => prev.map(item => (item.id === customerId ? { ...item, ...updates } : item)));
+    setSelectedCustomer(prev => (prev?.id === customerId ? { ...prev, ...updates } : prev));
+  };
+
+  const handleInlineCustomerUpdate = async (
+    customer: any,
+    updates: Record<string, any>,
+    successMessage: string,
+    actionDetail: string,
+  ) => {
+    const nextUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([key, value]) => (customer[key] ?? '') !== (value ?? '')),
+    );
+    if (Object.keys(nextUpdates).length === 0) {
+      return;
+    }
+
+    const savingKey = `${customer.id}:${Object.keys(nextUpdates).join(',')}`;
+    setInlineSavingKey(savingKey);
+    try {
+      await client.entities.customers.update({
+        id: String(customer.id),
+        data: { ...nextUpdates, updated_at: new Date().toISOString() },
+      });
+      syncCustomerState(customer.id, nextUpdates);
+      toast.success(successMessage);
+      logOperation({
+        customerId: customer.id,
+        actionType: 'edit_customer',
+        actionDetail,
+        operatorName: employee?.name || '管理员',
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error('更新失败');
+      throw err;
+    } finally {
+      setInlineSavingKey(current => (current === savingKey ? '' : current));
+    }
+  };
+
+  const handleInlineCitySave = async (customer: any) => {
+    const nextCity = (cityDrafts[customer.id] ?? customer.city ?? '').trim();
+    try {
+      await handleInlineCustomerUpdate(
+        customer,
+        { city: nextCity },
+        '城市已更新',
+        `快捷更新城市: ${customer.business_name} -> ${nextCity || '未填写'}`,
+      );
+      setCityDrafts(prev => {
+        const next = { ...prev };
+        delete next[customer.id];
+        return next;
+      });
+    } catch {
+      setCityDrafts(prev => ({ ...prev, [customer.id]: customer.city || '' }));
+    }
+  };
+
   const openDetail = async (c: any) => {
     setSelectedCustomer(c);
-    try {
-      const [fuRes, dRes, pRes, sRes] = await Promise.all([
-        client.entities.follow_ups.query({ query: { customer_id: c.id }, sort: '-created_at', limit: 50 }),
-        client.entities.deals.query({ query: { customer_id: c.id }, sort: '-deal_date', limit: 50 }),
-        client.entities.payments.query({ query: { customer_id: c.id }, sort: '-payment_date', limit: 50 }),
-        client.entities.subscriptions.query({ query: { customer_id: c.id }, sort: '-created_at', limit: 50 }),
-      ]);
-      setFollowUps(fuRes?.data?.items || []); setDeals(dRes?.data?.items || []);
-      setPayments(pRes?.data?.items || []); setSubscriptions(sRes?.data?.items || []);
-    } catch (err) { console.error(err); }
-    // Load contacts
-    reloadContacts(c.id);
+    await loadCustomerDetail(c.id, c);
   };
 
   const countryStates = getStatesForCountry(form.country);
@@ -404,13 +774,54 @@ export default function Customers() {
   // ========== DETAIL VIEW ==========
   if (selectedCustomer) {
     const c = selectedCustomer;
+    const detailAddress = [
+      c.address,
+      c.city,
+      c.country && c.state ? getStateLabel(c.country, c.state) : (c.state || ''),
+      c.country ? getCountryLabel(c.country) : '',
+    ].filter(Boolean).join(', ');
+    const totalDealAmount = deals.reduce((sum, item) => sum + Number(item.deal_amount || 0), 0);
+    const totalAmountDue = payments.reduce((sum, item) => sum + Number(item.amount_due || 0), 0);
+    const totalAmountPaid = payments.reduce((sum, item) => sum + Number(item.amount_paid || 0), 0);
+    const totalOutstanding = payments.reduce((sum, item) => sum + Number(item.outstanding_amount || 0), 0);
+    const latestPaymentDate = payments[0]?.payment_date?.slice(0, 10) || '-';
+    const latestDealDate = deals[0]?.deal_date?.slice(0, 10) || '-';
+    const serviceRecordCount = serviceProgresses.length > 0 ? serviceProgresses.length : subscriptions.length;
+    const activeSubscriptionCount = subscriptions.filter(item => computeSubscriptionState(item) === 'active').length;
+    const pendingServiceTasks = serviceTasks.filter(item => !['completed', 'cancelled'].includes(item.status || '')).length;
+    const overdueServiceTasks = serviceTasks.filter(item => item.due_date && item.due_date < new Date().toISOString().slice(0, 10) && !['completed', 'cancelled'].includes(item.status || '')).length;
+    const openServiceIssues = serviceProgresses.filter(item => item.issue_status && item.issue_status !== 'none' && !item.issue_resolved).length;
+    const renewalRows = subscriptions
+      .map(item => {
+        const status = computeSubscriptionState(item);
+        const endDate = item.end_date ? new Date(item.end_date) : null;
+        const daysLeft = endDate ? Math.ceil((endDate.getTime() - Date.now()) / 86400000) : null;
+        return { ...item, computed_status: status, days_left: daysLeft };
+      })
+      .sort((a, b) => {
+        const aTime = a.end_date ? new Date(a.end_date).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b.end_date ? new Date(b.end_date).getTime() : Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      });
+    const upcomingRenewalCount = renewalRows.filter(item => item.days_left != null && item.days_left <= 30).length;
+    const autoRenewCount = renewalRows.filter(item => item.auto_renew).length;
+
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           <Button variant="ghost" size="sm" onClick={() => setSelectedCustomer(null)}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
           <h2 className="text-lg font-semibold">{c.business_name}</h2>
           <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
-          <Badge className={levelColors[c.level]}>{levelLabels[c.level]}</Badge>
+          <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> 刷新数据
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计成交</p><p className="text-2xl font-semibold text-slate-800 mt-1">{formatCurrency(totalDealAmount)}</p><p className="text-xs text-slate-400 mt-1">最近成交: {latestDealDate}</p></CardContent></Card>
+          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计实收</p><p className="text-2xl font-semibold text-green-600 mt-1">{formatCurrency(totalAmountPaid)}</p><p className="text-xs text-slate-400 mt-1">最近收款: {latestPaymentDate}</p></CardContent></Card>
+          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">当前尾款</p><p className="text-2xl font-semibold text-red-600 mt-1">{formatCurrency(totalOutstanding)}</p><p className="text-xs text-slate-400 mt-1">累计应收: {formatCurrency(totalAmountDue)}</p></CardContent></Card>
+          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">服务概况</p><p className="text-2xl font-semibold text-blue-600 mt-1">{serviceRecordCount}</p><p className="text-xs text-slate-400 mt-1">在服 {activeSubscriptionCount} · 待处理任务 {pendingServiceTasks}</p></CardContent></Card>
         </div>
         <Tabs defaultValue="info" className="w-full">
           <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
@@ -418,9 +829,9 @@ export default function Customers() {
             <TabsTrigger value="contacts" className="text-xs">联系人 ({contacts.length})</TabsTrigger>
             <TabsTrigger value="followups" className="text-xs">跟进记录 ({followUps.length})</TabsTrigger>
             <TabsTrigger value="deals" className="text-xs">成交记录 ({deals.length})</TabsTrigger>
-            <TabsTrigger value="subscriptions" className="text-xs">服务信息 ({subscriptions.length})</TabsTrigger>
+            <TabsTrigger value="subscriptions" className="text-xs">服务信息 ({serviceRecordCount})</TabsTrigger>
             <TabsTrigger value="payments" className="text-xs">财务信息 ({payments.length})</TabsTrigger>
-            <TabsTrigger value="renewals" className="text-xs">续费信息</TabsTrigger>
+            <TabsTrigger value="renewals" className="text-xs">续费信息 ({renewalRows.length})</TabsTrigger>
             <TabsTrigger value="media" className="text-xs">媒体账号</TabsTrigger>
             <TabsTrigger value="logs" className="text-xs">操作日志</TabsTrigger>
           </TabsList>
@@ -445,6 +856,7 @@ export default function Customers() {
                 {c.website && <div className="flex gap-2 items-center col-span-2"><Globe className="w-3 h-3 text-slate-400" /><a href={c.website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{c.website}</a></div>}
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">负责销售:</span><span>{c.sales_person || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">当前平台:</span><span>{c.current_platform || '-'}</span></div>
+                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">意向套餐:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => customerPackageLabels[item] || item).join('、') : '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">月订单量:</span><span>{c.monthly_orders || 0}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">已有点餐:</span><span>{c.has_ordering_system ? '是' : '否'}</span></div>
               </div>
@@ -605,8 +1017,8 @@ export default function Customers() {
           <TabsContent value="payments">
             <Card className="border-slate-200"><CardContent className="p-5">
               {payments.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无财务记录</p> : (
-                <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">产品</th><th className="pb-2 font-medium">应收</th><th className="pb-2 font-medium">实收</th><th className="pb-2 font-medium">欠款</th><th className="pb-2 font-medium">方式</th><th className="pb-2 font-medium">日期</th></tr></thead>
-                <tbody>{payments.map((p: any) => (<tr key={p.id} className="border-b border-slate-100"><td className="py-2">{p.product_name}</td><td className="py-2">${p.amount_due}</td><td className="py-2 text-green-600">${p.amount_paid}</td><td className="py-2">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600">${p.outstanding_amount}</span> : '-'}</td><td className="py-2">{payMethodLabels[p.payment_method] || p.payment_method}</td><td className="py-2 text-slate-500">{p.payment_date?.slice(0, 10)}</td></tr>))}</tbody></table></div>
+                <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">产品</th><th className="pb-2 font-medium">应收</th><th className="pb-2 font-medium">实收</th><th className="pb-2 font-medium">欠款</th><th className="pb-2 font-medium">模式</th><th className="pb-2 font-medium">方式</th><th className="pb-2 font-medium">日期</th></tr></thead>
+                <tbody>{payments.map((p: any) => (<tr key={p.id} className="border-b border-slate-100"><td className="py-2">{p.product_name}</td><td className="py-2">${p.amount_due}</td><td className="py-2 text-green-600">${p.amount_paid}</td><td className="py-2">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600">${p.outstanding_amount}</span> : '-'}</td><td className="py-2">{getPaymentModeLabel(p, payModeLabels)}</td><td className="py-2">{getPaymentMethodLabel(p, payMethodLabels)}</td><td className="py-2 text-slate-500">{p.payment_date?.slice(0, 10)}</td></tr>))}</tbody></table></div>
               )}
             </CardContent></Card>
           </TabsContent>
@@ -677,11 +1089,32 @@ export default function Customers() {
         </div>
         {showAdvanced && (
           <div className="border-t border-slate-200 pt-3">
-            <div className="flex items-center justify-between mb-3"><span className="text-sm font-medium text-slate-600">精确筛选</span>{advFilterCount > 0 && <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-500 hover:text-red-600 gap-1" onClick={() => setAdvFilters({ business_name: '', contact_name: '', phone: '', wechat: '', email: '', country: '', state: '', city: '' })}><X className="w-3 h-3" /> 清除</Button>}</div>
+            <div className="flex items-center justify-between mb-3"><span className="text-sm font-medium text-slate-600">精确筛选</span>{advFilterCount > 0 && <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-500 hover:text-red-600 gap-1" onClick={() => setAdvFilters(emptyAdvancedFilters)}><X className="w-3 h-3" /> 清除</Button>}</div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div><label className="text-xs text-slate-500 mb-1 block">编号</label><Input placeholder="客户编号" value={advFilters.customer_code} onChange={e => setAdvFilters({ ...advFilters, customer_code: e.target.value })} className="h-9 text-sm" /></div>
               <div><label className="text-xs text-slate-500 mb-1 block">商家名称</label><Input placeholder="商家名称" value={advFilters.business_name} onChange={e => setAdvFilters({ ...advFilters, business_name: e.target.value })} className="h-9 text-sm" /></div>
               <div><label className="text-xs text-slate-500 mb-1 block">联系人</label><Input placeholder="联系人" value={advFilters.contact_name} onChange={e => setAdvFilters({ ...advFilters, contact_name: e.target.value })} className="h-9 text-sm" /></div>
               <div><label className="text-xs text-slate-500 mb-1 block">电话</label><Input placeholder="电话" value={advFilters.phone} onChange={e => setAdvFilters({ ...advFilters, phone: e.target.value })} className="h-9 text-sm" /></div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">行业</label>
+                <NativeSelect value={advFilters.industry} onChange={v => setAdvFilters({ ...advFilters, industry: v })} options={[{ value: '', label: '全部行业' }, ...Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">状态</label>
+                <NativeSelect value={advFilters.status} onChange={v => setAdvFilters({ ...advFilters, status: v })} options={[{ value: '', label: '全部状态' }, ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">等级</label>
+                <NativeSelect value={advFilters.level} onChange={v => setAdvFilters({ ...advFilters, level: v })} options={[{ value: '', label: '全部等级' }, ...Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">负责人</label>
+                <NativeSelect value={advFilters.sales_person} onChange={v => setAdvFilters({ ...advFilters, sales_person: v })} options={[{ value: '', label: '全部负责人' }, ...salesPersonOptions]} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">来源</label>
+                <NativeSelect value={advFilters.source} onChange={v => setAdvFilters({ ...advFilters, source: v })} options={[{ value: '', label: '全部来源' }, ...Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              </div>
               <div><label className="text-xs text-slate-500 mb-1 block">微信</label><Input placeholder="微信" value={advFilters.wechat} onChange={e => setAdvFilters({ ...advFilters, wechat: e.target.value })} className="h-9 text-sm" /></div>
               <div><label className="text-xs text-slate-500 mb-1 block">邮箱</label><Input placeholder="邮箱" value={advFilters.email} onChange={e => setAdvFilters({ ...advFilters, email: e.target.value })} className="h-9 text-sm" /></div>
               <div>
@@ -690,7 +1123,7 @@ export default function Customers() {
               </div>
               <div>
                 <label className="text-xs text-slate-500 mb-1 block">州/省</label>
-                <NativeSelect value={advFilters.state} onChange={v => setAdvFilters({ ...advFilters, state: v, city: '' })} options={[{ value: '', label: advFilters.country ? '全部州/省' : '请先选择国家' }, ...advStates.map(s => ({ value: s.code, label: s.label }))]} />
+                <NativeSelect value={advFilters.state} onChange={v => setAdvFilters({ ...advFilters, state: v, city: '' })} options={[{ value: '', label: advFilters.country ? '全部州/省' : '请先选择国家' }, ...advStates.map(s => ({ value: s.code, label: s.code }))]} />
               </div>
               <div>
                 <label className="text-xs text-slate-500 mb-1 block">城市</label>
@@ -699,10 +1132,6 @@ export default function Customers() {
                 ) : (
                   <Input placeholder={advFilters.state ? '输入城市名' : '请先选择州/省'} value={advFilters.city} onChange={e => setAdvFilters({ ...advFilters, city: e.target.value })} className="h-9 text-sm" />
                 )}
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">等级</label>
-                <NativeSelect value={filterLevel} onChange={setFilterLevel} options={[{ value: 'all', label: '全部等级' }, ...Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))]} />
               </div>
             </div>
           </div>
@@ -720,10 +1149,10 @@ export default function Customers() {
             {visibleCols.includes('business_name') && <th className="px-4 py-3 font-medium">商家名称</th>}
             {visibleCols.includes('contact_name') && <th className="px-4 py-3 font-medium">联系人</th>}
             {visibleCols.includes('phone') && <th className="px-4 py-3 font-medium">电话</th>}
-            {visibleCols.includes('city') && <th className="px-4 py-3 font-medium hidden md:table-cell">城市</th>}
-            {visibleCols.includes('country') && <th className="px-4 py-3 font-medium hidden md:table-cell">国家</th>}
             {visibleCols.includes('state') && <th className="px-4 py-3 font-medium hidden md:table-cell">州/省</th>}
+            {visibleCols.includes('country') && <th className="px-4 py-3 font-medium hidden md:table-cell">国家</th>}
             {visibleCols.includes('industry') && <th className="px-4 py-3 font-medium hidden md:table-cell">行业</th>}
+            {visibleCols.includes('city') && <th className="px-4 py-3 font-medium hidden md:table-cell">城市</th>}
             {visibleCols.includes('status') && <th className="px-4 py-3 font-medium">状态</th>}
             {visibleCols.includes('level') && <th className="px-4 py-3 font-medium hidden lg:table-cell">等级</th>}
             {visibleCols.includes('sales_person') && <th className="px-4 py-3 font-medium hidden lg:table-cell">负责人</th>}
@@ -738,12 +1167,137 @@ export default function Customers() {
               {visibleCols.includes('business_name') && <td className="px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(c)}>{c.business_name}</td>}
               {visibleCols.includes('contact_name') && <td className="px-4 py-3" onClick={() => openDetail(c)}>{c.contact_name}</td>}
               {visibleCols.includes('phone') && <td className="px-4 py-3 text-slate-500" onClick={() => openDetail(c)}>{c.phone}</td>}
-              {visibleCols.includes('city') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.city}</td>}
-              {visibleCols.includes('country') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.country || '-'}</td>}
               {visibleCols.includes('state') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.state || '-'}</td>}
-              {visibleCols.includes('industry') && <td className="px-4 py-3 hidden md:table-cell" onClick={() => openDetail(c)}>{industryLabels[c.industry] || c.industry}</td>}
-              {visibleCols.includes('status') && <td className="px-4 py-3" onClick={() => openDetail(c)}><Badge className={`text-xs ${statusColors[c.status]}`}>{statusLabels[c.status]}</Badge></td>}
-              {visibleCols.includes('level') && <td className="px-4 py-3 hidden lg:table-cell" onClick={() => openDetail(c)}><Badge className={`text-xs ${levelColors[c.level]}`}>{levelLabels[c.level]}</Badge></td>}
+              {visibleCols.includes('country') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.country || '-'}</td>}
+              {visibleCols.includes('industry') && (
+                <td className="px-4 py-3 hidden md:table-cell" onClick={() => !hasPermission('customer_edit') && openDetail(c)}>
+                  {hasPermission('customer_edit') ? (
+                    <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+                      <select
+                        value={c.industry || ''}
+                        disabled={inlineSavingKey === `${c.id}:industry`}
+                        onChange={e => {
+                          const nextValue = e.target.value;
+                          void handleInlineCustomerUpdate(
+                            c,
+                            { industry: nextValue },
+                            '行业已更新',
+                            `快捷更新行业: ${c.business_name} -> ${industryLabels[nextValue] || nextValue}`,
+                          );
+                        }}
+                        className={inlineSelectClassName}
+                      >
+                        {buildInlineOptions(c.industry, industryLabels).map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    industryLabels[c.industry] || c.industry || '-'
+                  )}
+                </td>
+              )}
+              {visibleCols.includes('city') && (
+                <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => !hasPermission('customer_edit') && openDetail(c)}>
+                  {hasPermission('customer_edit') ? (
+                    <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+                      {getCitiesForState(c.country || 'US', c.state || '').length > 0 ? (
+                        <select
+                          value={c.city || ''}
+                          disabled={inlineSavingKey === `${c.id}:city`}
+                          onChange={e => {
+                            void handleInlineCustomerUpdate(
+                              c,
+                              { city: e.target.value },
+                              '城市已更新',
+                              `快捷更新城市: ${c.business_name} -> ${e.target.value || '未填写'}`,
+                            );
+                          }}
+                          className={inlineSelectClassName}
+                        >
+                          <option value="">请选择城市</option>
+                          {getCitiesForState(c.country || 'US', c.state || '').map(city => (
+                            <option key={city.label} value={city.label}>{city.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Input
+                          value={cityDrafts[c.id] ?? c.city ?? ''}
+                          disabled={inlineSavingKey === `${c.id}:city`}
+                          onChange={e => setCityDrafts(prev => ({ ...prev, [c.id]: e.target.value }))}
+                          onBlur={() => { void handleInlineCitySave(c); }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void handleInlineCitySave(c);
+                            }
+                          }}
+                          className={inlineInputClassName}
+                          placeholder="输入城市"
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    c.city || '-'
+                  )}
+                </td>
+              )}
+              {visibleCols.includes('status') && (
+                <td className="px-4 py-3" onClick={() => !hasPermission('customer_edit') && openDetail(c)}>
+                  {hasPermission('customer_edit') ? (
+                    <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+                      <select
+                        value={c.status || ''}
+                        disabled={inlineSavingKey === `${c.id}:status`}
+                        onChange={e => {
+                          const nextValue = e.target.value;
+                          void handleInlineCustomerUpdate(
+                            c,
+                            { status: nextValue },
+                            '状态已更新',
+                            `快捷更新状态: ${c.business_name} -> ${statusLabels[nextValue] || nextValue}`,
+                          );
+                        }}
+                        className={`${inlineSelectClassName} ${statusColors[c.status] || ''}`}
+                      >
+                        {buildInlineOptions(c.status, statusLabels).map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <Badge className={`text-xs ${statusColors[c.status]}`}>{statusLabels[c.status]}</Badge>
+                  )}
+                </td>
+              )}
+              {visibleCols.includes('level') && (
+                <td className="px-4 py-3 hidden lg:table-cell" onClick={() => !hasPermission('customer_edit') && openDetail(c)}>
+                  {hasPermission('customer_edit') ? (
+                    <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+                      <select
+                        value={c.level || ''}
+                        disabled={inlineSavingKey === `${c.id}:level`}
+                        onChange={e => {
+                          const nextValue = e.target.value;
+                          void handleInlineCustomerUpdate(
+                            c,
+                            { level: nextValue },
+                            '等级已更新',
+                            `快捷更新等级: ${c.business_name} -> ${levelLabels[nextValue] || nextValue}`,
+                          );
+                        }}
+                        className={`${inlineSelectClassName} ${getLevelColorClass(c.level)}`}
+                      >
+                        {buildInlineOptions(c.level, levelLabels).map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <Badge className={`text-xs ${getLevelColorClass(c.level)}`}>{levelLabels[c.level]}</Badge>
+                  )}
+                </td>
+              )}
               {visibleCols.includes('sales_person') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.sales_person || '-'}</td>}
               {visibleCols.includes('email') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.email || '-'}</td>}
               {visibleCols.includes('wechat') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.wechat || '-'}</td>}
@@ -824,7 +1378,7 @@ export default function Customers() {
               )}
             </div>
             <div><Label>国家</Label><NativeSelect value={form.country} onChange={v => { setForm({ ...form, country: v, state: getStatesForCountry(v)[0]?.code || '', city: '' }); }} options={countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))} /></div>
-            <div><Label>州/省</Label><NativeSelect value={form.state} onChange={v => setForm({ ...form, state: v, city: '' })} options={countryStates.length > 0 ? countryStates.map(s => ({ value: s.code, label: s.label })) : [{ value: '', label: '请先选择国家' }]} /></div>
+            <div><Label>州/省</Label><NativeSelect value={form.state} onChange={v => setForm({ ...form, state: v, city: '' })} options={countryStates.length > 0 ? countryStates.map(s => ({ value: s.code, label: s.code })) : [{ value: '', label: '请先选择国家' }]} /></div>
             <div>
               <Label>城市</Label>
               {formCities.length > 0 ? (
@@ -835,8 +1389,140 @@ export default function Customers() {
             </div>
             <div><Label>地址</Label><Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
             <div><Label>来源</Label><NativeSelect value={form.source} onChange={v => setForm({ ...form, source: v })} options={Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            <div><Label>等级</Label><NativeSelect value={form.level} onChange={v => setForm({ ...form, level: v })} options={Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div>
+              <Label>等级</Label>
+              <div className="flex gap-1.5">
+                <NativeSelect value={form.level} onChange={v => setForm({ ...form, level: v })} options={Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))} className="flex-1" />
+                <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={openLevelManager}><Plus className="w-3.5 h-3.5" /></Button>
+              </div>
+              {showLevelManager && (
+                <div className="mt-2 p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs text-blue-700">管理客户等级</Label>
+                    <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setShowLevelManager(false); setNewLevelName(''); }}>
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {levelDrafts.map((item) => (
+                      <div key={item.key} className="flex items-center gap-2">
+                        <Input
+                          value={item.label}
+                          onChange={e => setLevelDrafts(prev => prev.map(level => (level.key === item.key ? { ...level, label: e.target.value } : level)))}
+                          className="h-8 text-sm flex-1"
+                          placeholder="等级名称"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
+                          onClick={() => handleRemoveLevelDraft(item.key)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newLevelName}
+                      onChange={e => setNewLevelName(e.target.value)}
+                      placeholder="新增等级，例如：A类客户"
+                      className="h-8 text-sm flex-1"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddLevelDraft();
+                        }
+                      }}
+                    />
+                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleAddLevelDraft}>添加</Button>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setShowLevelManager(false); setNewLevelName(''); }}>取消</Button>
+                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleSaveLevels} disabled={savingLevels}>{savingLevels ? '保存中...' : '保存等级'}</Button>
+                  </div>
+                </div>
+              )}
+            </div>
             <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div className="col-span-2">
+              <Label>客户意向套餐</Label>
+              <div className="mt-1 space-y-2">
+                <div className="flex items-start gap-1.5">
+                  <div className="flex-1 rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {Object.entries(customerPackageLabels).map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={form.interested_packages.includes(key)}
+                            onChange={e => toggleInterestedPackage(key, e.target.checked)}
+                            className="rounded"
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-3">
+                      已选: {form.interested_packages.length > 0 ? form.interested_packages.map(item => customerPackageLabels[item] || item).join('、') : '未选择'}
+                    </p>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={openPackageManager}><Plus className="w-3.5 h-3.5" /></Button>
+                </div>
+                {showPackageManager && (
+                  <div className="p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-xs text-blue-700">管理客户意向套餐</Label>
+                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setShowPackageManager(false); setNewPackageName(''); }}>
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      {packageDrafts.map((item) => (
+                        <div key={item.key} className="flex items-center gap-2">
+                          <Input
+                            value={item.label}
+                            onChange={e => setPackageDrafts(prev => prev.map(pkg => (pkg.key === item.key ? { ...pkg, label: e.target.value } : pkg)))}
+                            className="h-8 text-sm flex-1"
+                            placeholder="套餐名称"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
+                            onClick={() => handleRemovePackageDraft(item.key)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newPackageName}
+                        onChange={e => setNewPackageName(e.target.value)}
+                        placeholder="新增套餐，例如：Google商家管理"
+                        className="h-8 text-sm flex-1"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddPackageDraft();
+                          }
+                        }}
+                      />
+                      <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleAddPackageDraft}>添加</Button>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setShowPackageManager(false); setNewPackageName(''); }}>取消</Button>
+                      <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleSavePackages} disabled={savingPackages}>{savingPackages ? '保存中...' : '保存套餐'}</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
             <div><Label>负责销售</Label><NativeSelect value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
             <div><Label>官网</Label><Input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
             <div><Label>当前平台</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} /></div>

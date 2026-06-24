@@ -1,4 +1,3 @@
-from fastapi.middleware.cors import CORSMiddleware
 import importlib
 import logging
 import os
@@ -6,17 +5,21 @@ import pkgutil
 import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
 from core.config import settings
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.routing import APIRouter
 
 # MODULE_IMPORTS_START
 from services.database import initialize_database, close_database
 from services.mock_data import initialize_mock_data
 from services.auth import initialize_admin_user
+from services.emp_auth import initialize_default_employee_admin
+from services.deal_payment_sync import backfill_missing_payments_from_deals
+from core.database import db_manager
 # MODULE_IMPORTS_END
 
 
@@ -69,6 +72,9 @@ async def lifespan(app: FastAPI):
     # MODULE_STARTUP_START
     await initialize_database()
     await initialize_mock_data()  # re-enabled after user_id autofill
+    async with db_manager.async_session_maker() as db:
+        await backfill_missing_payments_from_deals(db)
+    await initialize_default_employee_admin()
     await initialize_admin_user()
     # MODULE_STARTUP_END
 
@@ -86,10 +92,21 @@ title="FastAPI Modular Template",
     lifespan=lifespan,
 )
 
+FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
-# CORS: allow specific frontend origins via env, default to localhost dev
-origins_str = os.getenv("FRONTEND_ORIGINS", "http://localhost:5173")
-allow_origins = [o.strip() for o in origins_str.split(",") if o.strip()]
+
+# CORS: allow specific frontend origins via env, or the common local dev/preview origins by default.
+origins_str = os.getenv("FRONTEND_ORIGINS")
+allow_origins = (
+    [o.strip() for o in origins_str.split(",") if o.strip()]
+    if origins_str
+    else [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ]
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
@@ -190,14 +207,79 @@ async def general_exception_handler(request: Request, exc: Exception):
         )
 
 
-@app.get("/")
+def _frontend_index_response():
+    index_path = FRONTEND_DIST_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "detail": "Frontend build is missing. Run `corepack pnpm build` in app/frontend to generate frontend/dist."
+        },
+    )
+
+
+def _frontend_file_response(requested_path: str):
+    safe_path = requested_path.lstrip("/")
+    candidate = (FRONTEND_DIST_DIR / safe_path).resolve()
+
+    try:
+        candidate.relative_to(FRONTEND_DIST_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    if candidate.is_file():
+        return FileResponse(candidate)
+
+    index_candidate = candidate / "index.html"
+    if candidate.is_dir() and index_candidate.exists():
+        return FileResponse(index_candidate)
+
+    return None
+
+
+@app.get("/", include_in_schema=False)
 def root():
-    return {"message": "FastAPI Modular Template is running"}
+    return _frontend_index_response()
 
 
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/api/config")
+def runtime_config(request: Request):
+    """Expose the minimal runtime config required by the frontend."""
+    request_origin = str(request.base_url).rstrip("/")
+    configured_api_base = os.environ.get("VITE_API_BASE_URL") or os.environ.get("PYTHON_BACKEND_URL")
+
+    # When the frontend is being served by this same FastAPI app on localhost/127.0.0.1,
+    # prefer the page origin so browser requests stay same-origin and avoid CORS preflights.
+    if request.url.hostname in {"localhost", "127.0.0.1"} and request_origin.startswith(("http://", "https://")):
+        api_base_url = request_origin
+    else:
+        api_base_url = configured_api_base or settings.backend_url
+
+    if not isinstance(api_base_url, str) or not api_base_url.startswith(("http://", "https://")):
+        api_base_url = request_origin if request_origin.startswith(("http://", "https://")) else "http://127.0.0.1:8000"
+
+    response = JSONResponse(content={"API_BASE_URL": api_base_url})
+    response.headers["Cache-Control"] = "public, max-age=300"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def frontend_catch_all(full_path: str):
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    file_response = _frontend_file_response(full_path)
+    if file_response is not None:
+        return file_response
+
+    return _frontend_index_response()
 
 
 def run_in_debug_mode(app: FastAPI):

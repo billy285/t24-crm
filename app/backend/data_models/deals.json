@@ -6,6 +6,10 @@
             "type": "integer",
             "description": "Primary key, auto-increment"
         },
+        "source_payment_id": {
+            "type": "integer",
+            "description": "来源收款ID，用于财务收款与成交记录同步"
+        },
         "customer_id": {
             "type": "integer",
             "description": "关联客户ID"

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from services.payments import PaymentsService
+from services.payment_deal_sync import delete_synced_deal_for_payment, sync_deal_from_payment
 from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
 
@@ -22,6 +23,7 @@ router = APIRouter(prefix="/api/v1/entities/payments", tags=["payments"])
 # ---------- Pydantic Schemas ----------
 class PaymentsData(BaseModel):
     """Entity data schema (for create/update)"""
+    source_deal_id: Optional[int] = None
     customer_id: int
     customer_name: Optional[str] = None
     income_type: Optional[str] = None
@@ -30,6 +32,7 @@ class PaymentsData(BaseModel):
     amount_paid: float
     currency: Optional[str] = None
     payment_date: Optional[datetime] = None
+    payment_mode: Optional[str] = None
     payment_method: Optional[str] = None
     billing_cycle: Optional[str] = None
     coverage_start: Optional[datetime] = None
@@ -44,6 +47,7 @@ class PaymentsData(BaseModel):
 
 class PaymentsUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
+    source_deal_id: Optional[int] = None
     customer_id: Optional[int] = None
     customer_name: Optional[str] = None
     income_type: Optional[str] = None
@@ -52,6 +56,7 @@ class PaymentsUpdateData(BaseModel):
     amount_paid: Optional[float] = None
     currency: Optional[str] = None
     payment_date: Optional[datetime] = None
+    payment_mode: Optional[str] = None
     payment_method: Optional[str] = None
     billing_cycle: Optional[str] = None
     coverage_start: Optional[datetime] = None
@@ -67,6 +72,7 @@ class PaymentsUpdateData(BaseModel):
 class PaymentsResponse(BaseModel):
     """Entity response schema"""
     id: int
+    source_deal_id: Optional[int] = None
     customer_id: int
     customer_name: Optional[str] = None
     income_type: Optional[str] = None
@@ -75,6 +81,7 @@ class PaymentsResponse(BaseModel):
     amount_paid: float
     currency: Optional[str] = None
     payment_date: Optional[datetime] = None
+    payment_mode: Optional[str] = None
     payment_method: Optional[str] = None
     billing_cycle: Optional[str] = None
     coverage_start: Optional[datetime] = None
@@ -236,6 +243,12 @@ async def create_payments(
         result = await service.create(data.model_dump(), user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create payments")
+
+        try:
+            await sync_deal_from_payment(db, result)
+        except Exception as sync_err:
+            logger.error(f"Failed to sync deal from payment {result.id}: {sync_err}", exc_info=True)
+            raise HTTPException(status_code=500, detail="收款已保存，但同步成交记录失败")
         
         logger.info(f"Payments created successfully with id: {result.id}")
         return result
@@ -263,6 +276,7 @@ async def create_paymentss_batch(
         for item_data in request.items:
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
+                await sync_deal_from_payment(db, result)
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} paymentss successfully")
@@ -291,6 +305,7 @@ async def update_paymentss_batch(
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
             result = await service.update(item.id, update_dict)
             if result:
+                await sync_deal_from_payment(db, result)
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} paymentss successfully")
@@ -319,6 +334,12 @@ async def update_payments(
         if not result:
             logger.warning(f"Payments with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Payments not found")
+
+        try:
+            await sync_deal_from_payment(db, result)
+        except Exception as sync_err:
+            logger.error(f"Failed to sync deal from payment {id}: {sync_err}", exc_info=True)
+            raise HTTPException(status_code=500, detail="收款已更新，但同步成交记录失败")
         
         logger.info(f"Payments {id} updated successfully")
         return result
@@ -348,6 +369,7 @@ async def delete_paymentss_batch(
         for item_id in request.ids:
             success = await service.delete(item_id)
             if success:
+                await delete_synced_deal_for_payment(db, item_id)
                 deleted_count += 1
         
         logger.info(f"Batch deleted {deleted_count} paymentss successfully")
@@ -373,6 +395,8 @@ async def delete_payments(
         if not success:
             logger.warning(f"Payments with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Payments not found")
+
+        await delete_synced_deal_for_payment(db, id)
         
         logger.info(f"Payments {id} deleted successfully")
         return {"message": "Payments deleted successfully", "id": id}

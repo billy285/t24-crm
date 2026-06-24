@@ -6,6 +6,7 @@ import {
   getDataScope, canViewSensitive, isAdminRole, mapToSystemRole,
   type RolePermissionConfig,
 } from './permissions';
+import { APP_CONFIG_UPDATED_EVENT, syncAppConfigCache } from './app-config';
 import { getToken, setToken as setAccessToken, clearToken as clearTokenStore, refreshToken, invokeWithAuth } from './tokenStore';
 
 export type RoleType = 'super_admin' | 'admin' | 'sales' | 'ops' | 'design' | 'finance' | '';
@@ -89,10 +90,17 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<RoleType>('');
   const [loading, setLoading] = useState(true);
   const [isDisabled, setIsDisabled] = useState(false);
+  const [, setPermissionsVersion] = useState(0);
 
   useEffect(() => {
     checkAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const refreshPermissions = () => setPermissionsVersion((value) => value + 1);
+    window.addEventListener(APP_CONFIG_UPDATED_EVENT, refreshPermissions as EventListener);
+    return () => window.removeEventListener(APP_CONFIG_UPDATED_EVENT, refreshPermissions as EventListener);
   }, []);
 
   const checkAuth = async () => {
@@ -127,6 +135,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           if (emp && emp.id) {
             localStorage.setItem(EMP_DATA_KEY, JSON.stringify(emp));
             applyEmployee(emp);
+            await syncAppConfigCache();
           } else {
             clearAuth();
           }
@@ -147,6 +156,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           const emp = response.data;
           if (emp && emp.id) {
             applyEmployee(emp);
+            await syncAppConfigCache();
           } else {
             clearAuth();
           }
@@ -156,6 +166,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
             const emp = JSON.parse(savedEmp);
             if (emp && emp.id) {
               applyEmployee(emp);
+              await syncAppConfigCache();
             } else {
               clearAuth();
             }
@@ -188,6 +199,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     setAccessToken(token);
     localStorage.setItem(EMP_DATA_KEY, JSON.stringify(emp));
     applyEmployee(emp);
+    void syncAppConfigCache();
   };
 
   const clearAuth = () => {
@@ -239,6 +251,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       if (emp && emp.id) {
         localStorage.setItem(EMP_DATA_KEY, JSON.stringify(emp));
         applyEmployee(emp);
+        await syncAppConfigCache();
       }
     } catch {
       // ignore

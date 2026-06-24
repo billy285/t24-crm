@@ -6,6 +6,10 @@
             "type": "integer",
             "description": "Primary key, auto-increment"
         },
+        "source_deal_id": {
+            "type": "integer",
+            "description": "Source deal ID for payments auto-synced from deals"
+        },
         "customer_id": {
             "type": "integer",
             "description": "Customer ID"
@@ -38,6 +42,10 @@
             "type": "string",
             "format": "date-time",
             "description": "Payment date"
+        },
+        "payment_mode": {
+            "type": "string",
+            "description": "Payment mode: subscription_auto or manual_collection"
         },
         "payment_method": {
             "type": "string",

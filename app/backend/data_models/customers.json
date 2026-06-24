@@ -42,6 +42,10 @@
             "type": "string",
             "description": "州"
         },
+        "country": {
+            "type": "string",
+            "description": "国家代码"
+        },
         "industry": {
             "type": "string",
             "description": "行业类型: restaurant/nail/massage/beauty/supermarket/other"
@@ -66,6 +70,10 @@
             "type": "string",
             "description": "Yelp 链接"
         },
+        "tiktok_link": {
+            "type": "string",
+            "description": "TikTok 链接"
+        },
         "has_ordering_system": {
             "type": "boolean",
             "description": "是否已有线上点餐系统"
@@ -73,6 +81,10 @@
         "current_platform": {
             "type": "string",
             "description": "当前使用平台"
+        },
+        "interested_packages": {
+            "type": "string",
+            "description": "客户意向套餐，逗号分隔的套餐键"
         },
         "monthly_orders": {
             "type": "integer",

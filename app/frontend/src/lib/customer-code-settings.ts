@@ -1,4 +1,5 @@
 // Customer code format settings - stored in localStorage
+import { readCachedAppConfig, writeCachedAppConfig } from './app-config';
 
 export interface IndustryPrefix {
   industry: string;
@@ -14,8 +15,6 @@ export interface CustomerCodeSettings {
   includeYear: boolean; // Whether to include year in the code
   separator: string; // Separator between prefix and number (e.g. "-", "", etc.)
 }
-
-const STORAGE_KEY = 'crm_customer_code_settings';
 
 export const defaultIndustryPrefixes: IndustryPrefix[] = [
   { industry: 'restaurant', prefix: 'R', label: '餐厅' },
@@ -36,21 +35,16 @@ export const defaultSettings: CustomerCodeSettings = {
 };
 
 export function loadSettings(): CustomerCodeSettings {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // Merge with defaults to ensure all fields exist
-      return { ...defaultSettings, ...parsed };
-    }
-  } catch {
-    // ignore
-  }
-  return { ...defaultSettings };
+  const parsed = readCachedAppConfig<Partial<CustomerCodeSettings>>('customer_code_settings', defaultSettings);
+  return {
+    ...defaultSettings,
+    ...parsed,
+    industryPrefixes: parsed.industryPrefixes?.length ? parsed.industryPrefixes : defaultIndustryPrefixes,
+  };
 }
 
 export function saveSettings(settings: CustomerCodeSettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  writeCachedAppConfig('customer_code_settings', settings);
 }
 
 /**

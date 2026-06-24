@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '@/lib/tokenStore';
+import { useRole } from '../lib/role-context';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,16 @@ import {
 import ExportButton from '@/components/ExportButton';
 import { exportProfitMonthlyCsv, exportProfitMonthlyXlsx } from '../lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { saveRemoteAppConfig } from '../lib/app-config';
+import { buildOptionKey, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
+import {
+  AUTO_PAYMENT_METHOD_KEYS,
+  getPaymentMethodLabel,
+  getPaymentModeLabel,
+  inferPaymentModeKey,
+  normalizePaymentMethodKey,
+  normalizePaymentMethodOptions,
+} from '../lib/payment-utils';
 
 // ─── Constants ───────────────────────────────────────────────────────
 const incomeTypeLabels: Record<string, string> = {
@@ -42,10 +53,6 @@ const CUSTOMER_EXPENSE_COLORS: Record<string, string> = {
   management_fee: '#3b82f6', ads_fee: '#f59e0b', website_fee: '#10b981', other: '#94a3b8',
 };
 
-const companyExpenseTypeLabels: Record<string, string> = {
-  salary: '工资', internet: '网络费', phone: '电话费', rent: '办公室租金',
-  software: '软件订阅费', recruitment: '招聘费', travel: '差旅费', other_company: '其他支出',
-};
 const COMPANY_EXPENSE_COLORS: Record<string, string> = {
   salary: '#ef4444', internet: '#3b82f6', phone: '#10b981', rent: '#f59e0b',
   software: '#8b5cf6', recruitment: '#ec4899', travel: '#06b6d4', other_company: '#94a3b8',
@@ -63,19 +70,20 @@ const productOptions = [
   { value: 'Meta Ads', label: 'Meta Ads' },
 ];
 
-const payMethodLabels: Record<string, string> = {
-  cash: '现金', check: '支票', zelle: 'Zelle', wire: '电汇',
-  credit_card: '信用卡', subscription_debit: '订阅扣款', other: '其他',
-};
 const PAY_METHOD_COLORS: Record<string, string> = {
-  cash: '#10b981', check: '#3b82f6', zelle: '#8b5cf6', wire: '#f59e0b',
-  credit_card: '#ef4444', subscription_debit: '#06b6d4', other: '#94a3b8',
+  stripe: '#06b6d4',
+  check: '#3b82f6',
+  zelle: '#8b5cf6',
+  apple_cash: '#0f172a',
+  venmo: '#2563eb',
+  wire: '#f59e0b',
+  cash: '#10b981',
+  credit_card: '#ef4444',
+  other: '#94a3b8',
 };
-const cycleLabels: Record<string, string> = {
-  monthly: '月付', quarterly: '季付', semi_annual: '半年付', annual: '年付',
-};
-const subStatusLabels: Record<string, string> = {
-  active: '正常', expiring_soon: '即将到期', expired: '已到期', paused: '暂停', lost: '流失',
+const PAYMENT_MODE_COLORS: Record<string, string> = {
+  subscription_auto: '#06b6d4',
+  manual_collection: '#64748b',
 };
 const subStatusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-700', expiring_soon: 'bg-amber-100 text-amber-700',
@@ -83,6 +91,16 @@ const subStatusColors: Record<string, string> = {
 };
 
 const PIE_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1'];
+
+const pickColorByKey = (key: string, palette: string[], fixedColors?: Record<string, string>) => {
+  if (fixedColors?.[key]) return fixedColors[key];
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) {
+    hash = ((hash << 5) - hash) + key.charCodeAt(i);
+    hash |= 0;
+  }
+  return palette[Math.abs(hash) % palette.length] || '#94a3b8';
+};
 
 // ─── Helper: format currency ─────────────────────────────────────────
 const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -139,6 +157,21 @@ const safeQuery = async (queryFn: () => Promise<any>): Promise<any[]> => {
 };
 
 export default function Finance() {
+  const { isAdmin, hasPermission } = useRole();
+  const dictConfig = useDictConfig();
+  const {
+    paymentModes: payModeLabels,
+    paymentMethods: payMethodLabels,
+    billingCycles: cycleLabels,
+    companyExpenseTypes: companyExpenseTypeLabels,
+    subscriptionStatuses: subStatusLabels,
+  } = useBusinessDicts();
+  const canManageCompanyExpenseTypes = isAdmin || hasPermission('settings_edit');
+  const companyExpenseTypeOptions = useMemo(
+    () => Object.entries(companyExpenseTypeLabels).map(([value, label]) => ({ value, label })),
+    [companyExpenseTypeLabels],
+  );
+  const defaultCompanyExpenseType = companyExpenseTypeOptions[0]?.value || 'salary';
   const [exporting, setExporting] = useState(false);
   const doExport = async (fmt: 'csv'|'xlsx') => {
     try {
@@ -205,7 +238,7 @@ export default function Finance() {
   const [editingPayId, setEditingPayId] = useState<number | null>(null);
   const emptyPayForm = {
     customer_id: '', product_names: [] as string[], income_type: 'management_fee',
-    amount_due: '', amount_paid: '', payment_method: 'zelle', billing_cycle: 'monthly',
+    amount_due: '', amount_paid: '', payment_mode: 'manual_collection', payment_method: 'zelle', billing_cycle: 'monthly',
     coverage_start: '', coverage_end: '', has_invoice: false, notes: '',
   };
   const [payForm, setPayForm] = useState(emptyPayForm);
@@ -229,8 +262,12 @@ export default function Finance() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
-  const emptyCompanyExpenseForm = { category: 'salary', amount: '', expense_month: companyExpenseMonth, expense_date: '', notes: '' };
+  const emptyCompanyExpenseForm = { category: defaultCompanyExpenseType, amount: '', expense_month: companyExpenseMonth, expense_date: '', notes: '' };
   const [companyExpenseForm, setCompanyExpenseForm] = useState(emptyCompanyExpenseForm);
+  const [showCompanyExpenseTypeManager, setShowCompanyExpenseTypeManager] = useState(false);
+  const [newCompanyExpenseTypeName, setNewCompanyExpenseTypeName] = useState('');
+  const [companyExpenseTypeDrafts, setCompanyExpenseTypeDrafts] = useState<Array<{ key: string; label: string }>>([]);
+  const [savingCompanyExpenseTypes, setSavingCompanyExpenseTypes] = useState(false);
 
   // Delete targets
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'payment' | 'subscription'; item: any } | null>(null);
@@ -299,6 +336,139 @@ export default function Finance() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!companyExpenseTypeLabels[companyExpenseForm.category]) {
+      setCompanyExpenseForm(prev => ({ ...prev, category: defaultCompanyExpenseType }));
+    }
+  }, [companyExpenseForm.category, companyExpenseTypeLabels, defaultCompanyExpenseType]);
+
+  const openCompanyExpenseTypeManager = () => {
+    setCompanyExpenseTypeDrafts(Object.entries(companyExpenseTypeLabels).map(([key, label]) => ({ key, label })));
+    setNewCompanyExpenseTypeName('');
+    setShowCompanyExpenseTypeManager(true);
+  };
+
+  const handleAddCompanyExpenseTypeDraft = () => {
+    const label = newCompanyExpenseTypeName.trim();
+    if (!label) {
+      toast.error('请输入支出类型名称');
+      return;
+    }
+    if (companyExpenseTypeDrafts.some(item => item.label.trim() === label)) {
+      toast.error('该支出类型已存在');
+      return;
+    }
+    let key = buildOptionKey(label);
+    while (companyExpenseTypeDrafts.some(item => item.key === key)) {
+      key = `${key}_${Date.now()}`;
+    }
+    setCompanyExpenseTypeDrafts(prev => [...prev, { key, label }]);
+    setNewCompanyExpenseTypeName('');
+  };
+
+  const handleRemoveCompanyExpenseTypeDraft = (key: string) => {
+    if (companyExpenseTypeDrafts.length <= 1) {
+      toast.error('至少保留一个公司支出类型');
+      return;
+    }
+    if (companyExpenses.some(item => item.category === key)) {
+      toast.error('该支出类型已有记录在使用，请先调整历史记录后再删除');
+      return;
+    }
+    const remaining = companyExpenseTypeDrafts.filter(item => item.key !== key);
+    setCompanyExpenseTypeDrafts(remaining);
+    if (companyExpenseForm.category === key) {
+      setCompanyExpenseForm(prev => ({ ...prev, category: remaining[0]?.key || defaultCompanyExpenseType }));
+    }
+  };
+
+  const handleSaveCompanyExpenseTypes = async () => {
+    const normalizedEntries = companyExpenseTypeDrafts.reduce<Record<string, string>>((acc, item) => {
+      const label = item.label.trim();
+      if (label) {
+        acc[item.key] = label;
+      }
+      return acc;
+    }, {});
+    const labels = Object.values(normalizedEntries);
+    if (labels.length === 0) {
+      toast.error('请至少保留一个公司支出类型');
+      return;
+    }
+    if (new Set(labels).size !== labels.length) {
+      toast.error('公司支出类型名称不能重复');
+      return;
+    }
+
+    setSavingCompanyExpenseTypes(true);
+    try {
+      const nextDictConfig = {
+        ...dictConfig,
+        companyExpenseTypes: serializeDictEntries(normalizedEntries),
+      };
+      await saveRemoteAppConfig('dict_config', nextDictConfig);
+      const fallbackKey = Object.keys(normalizedEntries)[0] || defaultCompanyExpenseType;
+      if (!normalizedEntries[companyExpenseForm.category]) {
+        setCompanyExpenseForm(prev => ({ ...prev, category: fallbackKey }));
+      }
+      setShowCompanyExpenseTypeManager(false);
+      setNewCompanyExpenseTypeName('');
+      toast.success('公司支出类型已更新');
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '保存公司支出类型失败';
+      toast.error(detail);
+    } finally {
+      setSavingCompanyExpenseTypes(false);
+    }
+  };
+
+  const paymentModeOptions = useMemo(
+    () => Object.entries(payModeLabels).map(([value, label]) => ({ value, label })),
+    [payModeLabels],
+  );
+
+  const paymentMethodOptions = useMemo(
+    () => normalizePaymentMethodOptions(payMethodLabels),
+    [payMethodLabels],
+  );
+
+  const manualPaymentMethodOptions = useMemo(
+    () => paymentMethodOptions.filter((option) => !AUTO_PAYMENT_METHOD_KEYS.has(option.value)),
+    [paymentMethodOptions],
+  );
+
+  const defaultSubscriptionPaymentMethod = paymentMethodOptions.find((option) => AUTO_PAYMENT_METHOD_KEYS.has(option.value))?.value || 'stripe';
+  const defaultManualPaymentMethod = manualPaymentMethodOptions.find((option) => option.value === 'zelle')?.value
+    || manualPaymentMethodOptions[0]?.value
+    || 'other';
+
+  const availablePaymentMethodOptions = useMemo(() => (
+    payForm.payment_mode === 'subscription_auto'
+      ? paymentMethodOptions.filter((option) => AUTO_PAYMENT_METHOD_KEYS.has(option.value))
+      : manualPaymentMethodOptions
+  ), [manualPaymentMethodOptions, payForm.payment_mode, paymentMethodOptions]);
+
+  useEffect(() => {
+    const allowedValues = new Set(availablePaymentMethodOptions.map((option) => option.value));
+    const normalizedCurrentMethod = normalizePaymentMethodKey(payForm.payment_method);
+    if (allowedValues.has(normalizedCurrentMethod)) {
+      if (normalizedCurrentMethod !== payForm.payment_method) {
+        setPayForm((prev) => ({ ...prev, payment_method: normalizedCurrentMethod }));
+      }
+      return;
+    }
+    setPayForm((prev) => ({
+      ...prev,
+      payment_method: prev.payment_mode === 'subscription_auto' ? defaultSubscriptionPaymentMethod : defaultManualPaymentMethod,
+    }));
+  }, [
+    availablePaymentMethodOptions,
+    defaultManualPaymentMethod,
+    defaultSubscriptionPaymentMethod,
+    payForm.payment_method,
+    payForm.payment_mode,
+  ]);
 
   // ─── Filtering ───────────────────────────────────────────────────
   const filterByDate = (items: any[], dateField: string) => {
@@ -494,7 +664,7 @@ export default function Finance() {
     const countMap: Record<string, number> = {};
     const amountMap: Record<string, number> = {};
     payments.forEach(p => {
-      const method = p.payment_method || 'other';
+      const method = normalizePaymentMethodKey(p.payment_method);
       countMap[method] = (countMap[method] || 0) + 1;
       amountMap[method] = (amountMap[method] || 0) + (p.amount_paid || 0);
     });
@@ -502,7 +672,23 @@ export default function Finance() {
       name: payMethodLabels[method] || method, method, count,
       amount: Math.round((amountMap[method] || 0) * 100) / 100,
     })).sort((a, b) => b.amount - a.amount);
-  }, [payments]);
+  }, [payMethodLabels, payments]);
+
+  const payModeData = useMemo(() => {
+    const countMap: Record<string, number> = {};
+    const amountMap: Record<string, number> = {};
+    payments.forEach((payment) => {
+      const mode = inferPaymentModeKey(payment);
+      countMap[mode] = (countMap[mode] || 0) + 1;
+      amountMap[mode] = (amountMap[mode] || 0) + (payment.amount_paid || 0);
+    });
+    return Object.entries(countMap).map(([mode, count]) => ({
+      mode,
+      count,
+      amount: Math.round((amountMap[mode] || 0) * 100) / 100,
+      name: payModeLabels[mode] || mode,
+    })).sort((a, b) => b.amount - a.amount);
+  }, [payModeLabels, payments]);
 
   // ─── Customer map for lookups ────────────────────────────────────
   const customerMap = useMemo(() => Object.fromEntries(customers.map(c => [c.id, c])), [customers]);
@@ -514,7 +700,9 @@ export default function Finance() {
       customer_id: String(p.customer_id || ''), product_names: names,
       income_type: p.income_type || 'management_fee',
       amount_due: String(p.amount_due || ''), amount_paid: String(p.amount_paid || ''),
-      payment_method: p.payment_method || 'zelle', billing_cycle: p.billing_cycle || 'monthly',
+      payment_mode: inferPaymentModeKey(p),
+      payment_method: normalizePaymentMethodKey(p.payment_method),
+      billing_cycle: p.billing_cycle || 'monthly',
       coverage_start: p.coverage_start?.slice(0, 10) || '', coverage_end: p.coverage_end?.slice(0, 10) || '',
       has_invoice: p.has_invoice || false, notes: p.notes || '',
     });
@@ -532,13 +720,16 @@ export default function Finance() {
       const amountPaid = Number(payForm.amount_paid);
       const coverageStartISO = toISODatetime(payForm.coverage_start);
       const coverageEndISO = toISODatetime(payForm.coverage_end);
+      const normalizedPaymentMethod = normalizePaymentMethodKey(payForm.payment_method);
       const payload: Record<string, any> = {
         customer_id: Number(payForm.customer_id),
         customer_name: cust?.business_name || '',
         income_type: payForm.income_type,
         product_name: payForm.product_names.join('、'),
         amount_due: amountDue, amount_paid: amountPaid,
-        payment_method: payForm.payment_method, billing_cycle: payForm.billing_cycle,
+        payment_mode: payForm.payment_mode,
+        payment_method: normalizedPaymentMethod,
+        billing_cycle: payForm.billing_cycle,
         coverage_start: coverageStartISO, coverage_end: coverageEndISO,
         has_invoice: payForm.has_invoice,
         outstanding_amount: Math.max(0, amountDue - amountPaid),
@@ -546,12 +737,20 @@ export default function Finance() {
         notes: payForm.notes || null,
       };
       if (editingPayId) {
-        await client.entities.payments.update({ id: String(editingPayId), data: payload });
+        await invokeWithAuth({
+          url: `/api/v1/entities/payments/${editingPayId}`,
+          method: 'PUT',
+          data: payload,
+        });
         toast.success('收款记录已更新');
       } else {
         payload.payment_date = new Date().toISOString();
         payload.created_at = new Date().toISOString();
-        await client.entities.payments.create({ data: payload });
+        await invokeWithAuth({
+          url: '/api/v1/entities/payments',
+          method: 'POST',
+          data: payload,
+        });
         toast.success('收款记录已添加');
       }
       // Auto-create or update subscription
@@ -633,12 +832,20 @@ export default function Finance() {
         notes: expenseForm.notes || null,
       };
       if (editingExpenseId) {
-        await client.entities.expenses.update({ id: String(editingExpenseId), data: payload });
+        await invokeWithAuth({
+          url: `/api/v1/entities/expenses/${editingExpenseId}`,
+          method: 'PUT',
+          data: payload,
+        });
         toast.success('费用记录已更新');
       } else {
         payload.payment_date = new Date().toISOString();
         payload.created_at = new Date().toISOString();
-        await client.entities.expenses.create({ data: payload });
+        await invokeWithAuth({
+          url: '/api/v1/entities/expenses',
+          method: 'POST',
+          data: payload,
+        });
         toast.success('费用记录已添加');
       }
       setShowExpenseForm(false); setEditingExpenseId(null); setExpenseForm(emptyExpenseForm);
@@ -654,7 +861,10 @@ export default function Finance() {
     if (!deleteExpenseTarget) return;
     setDeletingExpense(true);
     try {
-      await client.entities.expenses.delete({ id: String(deleteExpenseTarget.id) });
+      await invokeWithAuth({
+        url: `/api/v1/entities/expenses/${deleteExpenseTarget.id}`,
+        method: 'DELETE',
+      });
       toast.success('费用记录已删除'); setDeleteExpenseTarget(null); loadData();
     } catch (err) { toast.error('删除失败'); console.error(err); } finally { setDeletingExpense(false); }
   };
@@ -662,7 +872,7 @@ export default function Finance() {
   // ─── Company Expense CRUD ────────────────────────────────────────
   const openEditCompanyExpense = (e: any) => {
     setCompanyExpenseForm({
-      category: e.category || 'salary', amount: String(e.amount || ''),
+      category: e.category || defaultCompanyExpenseType, amount: String(e.amount || ''),
       expense_month: e.expense_month || companyExpenseMonth,
       expense_date: e.expense_date?.slice(0, 10) || '', notes: e.notes || '',
     });
@@ -678,16 +888,25 @@ export default function Finance() {
         category: companyExpenseForm.category,
         category_name: companyExpenseTypeLabels[companyExpenseForm.category] || companyExpenseForm.category,
         amount: Number(companyExpenseForm.amount),
+        currency: 'CNY',
         expense_month: companyExpenseForm.expense_month,
         expense_date: toISODatetime(companyExpenseForm.expense_date) || new Date().toISOString(),
         notes: companyExpenseForm.notes || null,
       };
       if (editingCompanyExpenseId) {
-        await client.entities.company_expenses.update({ id: String(editingCompanyExpenseId), data: payload });
+        await invokeWithAuth({
+          url: `/api/v1/entities/company_expenses/${editingCompanyExpenseId}`,
+          method: 'PUT',
+          data: payload,
+        });
         toast.success('公司支出已更新');
       } else {
         payload.created_at = new Date().toISOString();
-        await client.entities.company_expenses.create({ data: payload });
+        await invokeWithAuth({
+          url: '/api/v1/entities/company_expenses',
+          method: 'POST',
+          data: payload,
+        });
         toast.success('公司支出已添加');
       }
       setShowCompanyExpenseForm(false); setEditingCompanyExpenseId(null); setCompanyExpenseForm(emptyCompanyExpenseForm);
@@ -703,7 +922,10 @@ export default function Finance() {
     if (!deleteCompanyExpenseTarget) return;
     setDeletingCompanyExpense(true);
     try {
-      await client.entities.company_expenses.delete({ id: String(deleteCompanyExpenseTarget.id) });
+      await invokeWithAuth({
+        url: `/api/v1/entities/company_expenses/${deleteCompanyExpenseTarget.id}`,
+        method: 'DELETE',
+      });
       toast.success('公司支出已删除'); setDeleteCompanyExpenseTarget(null); loadData();
     } catch (err) { toast.error('删除失败'); console.error(err); } finally { setDeletingCompanyExpense(false); }
   };
@@ -714,7 +936,10 @@ export default function Finance() {
     setDeleting(true);
     try {
       if (deleteTarget.type === 'payment') {
-        await client.entities.payments.delete({ id: String(deleteTarget.item.id) });
+        await invokeWithAuth({
+          url: `/api/v1/entities/payments/${deleteTarget.item.id}`,
+          method: 'DELETE',
+        });
         toast.success('收款记录已删除');
       } else {
         await client.entities.subscriptions.delete({ id: String(deleteTarget.item.id) });
@@ -902,7 +1127,8 @@ export default function Finance() {
                         <th className="px-3 py-2.5 font-medium">应收</th>
                         <th className="px-3 py-2.5 font-medium">实收</th>
                         <th className="px-3 py-2.5 font-medium">欠款</th>
-                        <th className="px-3 py-2.5 font-medium hidden md:table-cell">方式</th>
+                        <th className="px-3 py-2.5 font-medium hidden md:table-cell">模式</th>
+                        <th className="px-3 py-2.5 font-medium hidden lg:table-cell">方式</th>
                         <th className="px-3 py-2.5 font-medium hidden md:table-cell">日期</th>
                         <th className="px-3 py-2.5 font-medium hidden lg:table-cell">发票</th>
                         <th className="px-3 py-2.5 font-medium w-20">操作</th>
@@ -921,7 +1147,18 @@ export default function Finance() {
                           <td className="px-3 py-2.5">{fmt(p.amount_due)}</td>
                           <td className="px-3 py-2.5 text-green-600 font-medium">{fmt(p.amount_paid)}</td>
                           <td className="px-3 py-2.5">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600 font-medium">{fmt(p.outstanding_amount)}</span> : '-'}</td>
-                          <td className="px-3 py-2.5 text-slate-500 hidden md:table-cell">{payMethodLabels[p.payment_method] || p.payment_method}</td>
+                          <td className="px-3 py-2.5 hidden md:table-cell">
+                            <Badge
+                              style={{
+                                backgroundColor: `${PAYMENT_MODE_COLORS[inferPaymentModeKey(p)] || '#94a3b8'}20`,
+                                color: PAYMENT_MODE_COLORS[inferPaymentModeKey(p)] || '#94a3b8',
+                              }}
+                              className="text-xs"
+                            >
+                              {getPaymentModeLabel(p, payModeLabels)}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2.5 text-slate-500 hidden lg:table-cell">{getPaymentMethodLabel(p, payMethodLabels)}</td>
                           <td className="px-3 py-2.5 text-slate-500 hidden md:table-cell">{p.payment_date?.slice(0, 10)}</td>
                           <td className="px-3 py-2.5 hidden lg:table-cell">{p.has_invoice ? '✅' : '-'}</td>
                           <td className="px-3 py-2.5">
@@ -1028,9 +1265,16 @@ export default function Finance() {
                   </div>
                   {companyExpenseMonth && <Button variant="ghost" size="sm" className="h-8 text-xs text-slate-500" onClick={() => setCompanyExpenseMonth('')}>查看全部</Button>}
                 </div>
-                <Button size="sm" onClick={() => { setCompanyExpenseForm({ ...emptyCompanyExpenseForm, expense_month: companyExpenseMonth }); setEditingCompanyExpenseId(null); setShowCompanyExpenseForm(true); }} className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="w-4 h-4 mr-1" /> 录入公司支出
-                </Button>
+                <div className="flex items-center gap-2">
+                  {canManageCompanyExpenseTypes && (
+                    <Button type="button" variant="outline" size="sm" onClick={openCompanyExpenseTypeManager}>
+                      管理类型
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={() => { setCompanyExpenseForm({ ...emptyCompanyExpenseForm, category: defaultCompanyExpenseType, expense_month: companyExpenseMonth }); setEditingCompanyExpenseId(null); setShowCompanyExpenseForm(true); }} className="bg-blue-600 hover:bg-blue-700">
+                    <Plus className="w-4 h-4 mr-1" /> 录入公司支出
+                  </Button>
+                </div>
               </div>
 
               {/* Summary */}
@@ -1042,7 +1286,7 @@ export default function Finance() {
                 {companyExpenseByType.map(et => (
                   <div key={et.type} className="p-3 bg-slate-50 rounded-lg">
                     <p className="text-xs text-slate-500">{et.name}</p>
-                    <p className="text-lg font-bold" style={{ color: COMPANY_EXPENSE_COLORS[et.type] || '#64748b' }}>{fmtRMB(et.amount)}</p>
+                    <p className="text-lg font-bold" style={{ color: pickColorByKey(et.type, PIE_COLORS, COMPANY_EXPENSE_COLORS) }}>{fmtRMB(et.amount)}</p>
                   </div>
                 ))}
               </div>
@@ -1066,7 +1310,13 @@ export default function Finance() {
                       {filteredCompanyExpenses.map(e => (
                         <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2.5">
-                            <Badge style={{ backgroundColor: `${COMPANY_EXPENSE_COLORS[e.category] || '#94a3b8'}20`, color: COMPANY_EXPENSE_COLORS[e.category] || '#94a3b8' }} className="text-xs">
+                            <Badge
+                              style={{
+                                backgroundColor: `${pickColorByKey(e.category, PIE_COLORS, COMPANY_EXPENSE_COLORS)}20`,
+                                color: pickColorByKey(e.category, PIE_COLORS, COMPANY_EXPENSE_COLORS),
+                              }}
+                              className="text-xs"
+                            >
                               {companyExpenseTypeLabels[e.category] || e.category_name || e.category}
                             </Badge>
                           </td>
@@ -1237,10 +1487,40 @@ export default function Finance() {
               </CardContent>
             </Card>
 
+            {/* Payment Mode Summary */}
+            <Card className="border-slate-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold text-slate-700">收款模式结构</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {payModeData.length === 0 ? (
+                  <p className="text-center text-slate-400 py-12">暂无数据</p>
+                ) : (
+                  <div className="space-y-3">
+                    {payModeData.map((mode) => (
+                      <div key={mode.mode} className="flex items-center justify-between p-3 rounded-lg bg-slate-50">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: PAYMENT_MODE_COLORS[mode.mode] || '#94a3b8' }}
+                          />
+                          <span className="text-sm font-medium text-slate-700">{mode.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold text-slate-800">{fmt(mode.amount)}</div>
+                          <div className="text-xs text-slate-500">{mode.count} 笔</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Payment Method Pie */}
             <Card className="border-slate-200">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold text-slate-700">支付方式分布</CardTitle>
+                <CardTitle className="text-base font-semibold text-slate-700">收款渠道分布</CardTitle>
               </CardHeader>
               <CardContent>
                 {payMethodData.length === 0 ? (
@@ -1329,7 +1609,7 @@ export default function Finance() {
                           label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                           labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}>
                           {companyExpenseByType.map((d) => (
-                            <Cell key={d.type} fill={COMPANY_EXPENSE_COLORS[d.type] || '#94a3b8'} />
+                            <Cell key={d.type} fill={pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS)} />
                           ))}
                         </Pie>
                         <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }} formatter={(value: number) => [fmtRMB(value), '支出']} />
@@ -1341,7 +1621,7 @@ export default function Finance() {
                         return (
                           <div key={d.type} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
                             <div className="flex items-center gap-2">
-                              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COMPANY_EXPENSE_COLORS[d.type] || '#94a3b8' }} />
+                              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS) }} />
                               <span className="text-sm text-slate-700">{d.name}</span>
                             </div>
                             <div className="flex items-center gap-3">
@@ -1465,21 +1745,39 @@ export default function Finance() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>支付方式</Label>
-                <NativeSelect value={payForm.payment_method} onChange={v => setPayForm({ ...payForm, payment_method: v })}
-                  options={Object.entries(payMethodLabels).map(([k, label]) => ({ value: k, label }))} />
+                <Label>收款模式</Label>
+                <NativeSelect
+                  value={payForm.payment_mode}
+                  onChange={v => setPayForm({ ...payForm, payment_mode: v })}
+                  options={paymentModeOptions}
+                />
               </div>
               <div>
-                <Label>周期类型</Label>
+                <Label>收款方式</Label>
+                <NativeSelect
+                  value={normalizePaymentMethodKey(payForm.payment_method)}
+                  onChange={v => setPayForm({ ...payForm, payment_method: v })}
+                  options={availablePaymentMethodOptions}
+                />
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              {payForm.payment_mode === 'subscription_auto'
+                ? '自动订阅适合 Stripe 每月主动扣款客户，系统会将这类收入单独归类。'
+                : '手动收款适合支票、Zelle、Apple Cash、Venmo 等线下或手机转账客户。'}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>计费周期</Label>
                 <NativeSelect value={payForm.billing_cycle} onChange={v => setPayForm({ ...payForm, billing_cycle: v })}
                   options={Object.entries(cycleLabels).map(([k, v]) => ({ value: k, label: v }))} />
               </div>
+              <div className="flex items-center gap-2 pt-6"><Switch checked={payForm.has_invoice} onCheckedChange={v => setPayForm({ ...payForm, has_invoice: v })} /><Label>已开票</Label></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>覆盖开始</Label><Input type="date" value={payForm.coverage_start} onChange={e => setPayForm({ ...payForm, coverage_start: e.target.value })} /></div>
               <div><Label>覆盖结束</Label><Input type="date" value={payForm.coverage_end} onChange={e => setPayForm({ ...payForm, coverage_end: e.target.value })} /></div>
             </div>
-            <div className="flex items-center gap-2"><Switch checked={payForm.has_invoice} onCheckedChange={v => setPayForm({ ...payForm, has_invoice: v })} /><Label>已开票</Label></div>
             <div><Label>备注</Label><Textarea value={payForm.notes} onChange={e => setPayForm({ ...payForm, notes: e.target.value })} rows={2} /></div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
@@ -1544,8 +1842,18 @@ export default function Finance() {
           <div className="space-y-4">
             <div>
               <Label>支出类型 *</Label>
-              <NativeSelect value={companyExpenseForm.category} onChange={v => setCompanyExpenseForm({ ...companyExpenseForm, category: v })}
-                options={Object.entries(companyExpenseTypeLabels).map(([k, v]) => ({ value: k, label: v }))} />
+              <div className="flex items-center gap-2">
+                <NativeSelect
+                  value={companyExpenseForm.category}
+                  onChange={v => setCompanyExpenseForm({ ...companyExpenseForm, category: v })}
+                  options={companyExpenseTypeOptions}
+                />
+                {canManageCompanyExpenseTypes && (
+                  <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={openCompanyExpenseTypeManager}>
+                    管理
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1570,6 +1878,49 @@ export default function Finance() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={showCompanyExpenseTypeManager} onOpenChange={(v) => { setShowCompanyExpenseTypeManager(v); if (!v) setNewCompanyExpenseTypeName(''); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>管理公司支出类型</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Input
+                value={newCompanyExpenseTypeName}
+                onChange={e => setNewCompanyExpenseTypeName(e.target.value)}
+                placeholder="新增类型，例如：法务费"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddCompanyExpenseTypeDraft();
+                  }
+                }}
+              />
+              <Button type="button" size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleAddCompanyExpenseTypeDraft}>
+                添加
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {companyExpenseTypeDrafts.map(item => (
+                <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                    <p className="text-xs text-slate-400">{item.key}</p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => handleRemoveCompanyExpenseTypeDraft(item.key)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowCompanyExpenseTypeManager(false)}>取消</Button>
+            <Button onClick={handleSaveCompanyExpenseTypes} disabled={savingCompanyExpenseTypes} className="bg-blue-600 hover:bg-blue-700">
+              {savingCompanyExpenseTypes ? '保存中...' : '保存'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Confirm Dialogs */}
       <ConfirmDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
         title={deleteTarget?.type === 'payment' ? '确认删除收款记录' : '确认删除套餐记录'}
@@ -1583,7 +1934,7 @@ export default function Finance() {
 
       <ConfirmDialog open={!!deleteCompanyExpenseTarget} onOpenChange={(v) => { if (!v) setDeleteCompanyExpenseTarget(null); }}
         title="确认删除公司支出记录"
-        description={`确定要删除「${companyExpenseTypeLabels[deleteCompanyExpenseTarget?.category] || ''}」的公司支出记录吗？`}
+        description={`确定要删除「${companyExpenseTypeLabels[deleteCompanyExpenseTarget?.category] || deleteCompanyExpenseTarget?.category_name || deleteCompanyExpenseTarget?.category || ''}」的公司支出记录吗？`}
         onConfirm={handleDeleteCompanyExpense} loading={deletingCompanyExpense} />
     </div>
   );

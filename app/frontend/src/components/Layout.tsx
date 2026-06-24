@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
 import { pageLabels } from '../lib/permissions';
 import {
@@ -16,7 +16,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { client } from '@/lib/api';
-import Login from '../pages/Login';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -25,7 +24,7 @@ interface LayoutProps {
 const allNavItems = [
   { path: '/', label: '仪表盘', icon: LayoutDashboard },
   { path: '/customers', label: '客户管理', icon: Users },
-  { path: '/sales', label: '销售跟进', icon: PhoneCall },
+  { path: '/sales', label: '成交客户', icon: Handshake },
   { path: '/deals', label: '成交管理', icon: Handshake },
   { path: '/finance', label: '财务管理', icon: DollarSign },
   { path: '/tasks', label: '任务协作', icon: ListTodo },
@@ -40,14 +39,14 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { employee, role, loading, isLoggedIn, isDisabled, login, logout, canAccess } = useRole();
+  const { employee, role, loading, isLoggedIn, isDisabled, logout, canAccess } = useRole();
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: '', newPwd: '', confirm: '' });
   const [changingPwd, setChangingPwd] = useState(false);
 
   const handleLogout = () => {
     logout();
-    navigate('/');
+    navigate('/login');
   };
 
   const handleChangePassword = async () => {
@@ -89,10 +88,6 @@ export default function Layout({ children }: LayoutProps) {
     }
   };
 
-  const handleLoginSuccess = (token: string, emp: any) => {
-    login(token, emp);
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -102,7 +97,7 @@ export default function Layout({ children }: LayoutProps) {
   }
 
   if (!isLoggedIn && !isDisabled) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
   // Disabled account - block access

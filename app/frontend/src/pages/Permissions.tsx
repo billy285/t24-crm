@@ -3,8 +3,9 @@ import { useRole } from '../lib/role-context';
 import {
   type SystemRole, type ButtonPermission, type DataScope, type RolePermissionConfig,
   systemRoleLabels, buttonPermissionLabels, dataScopeLabels, pageLabels,
-  loadRolePermissions, saveRolePermissions, defaultRolePermissions, PAGE_PATHS,
+  loadRolePermissions, normalizeRolePermissions, defaultRolePermissions,
 } from '../lib/permissions';
+import { loadRemoteAppConfig, saveRemoteAppConfig } from '../lib/app-config';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,9 +38,33 @@ export default function Permissions() {
   const [config, setConfig] = useState<Record<SystemRole, RolePermissionConfig>>(defaultRolePermissions);
   const [selectedRole, setSelectedRole] = useState<SystemRole>('sales');
   const [changed, setChanged] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setConfig(loadRolePermissions());
+    let active = true;
+    const loadConfig = async () => {
+      setLoading(true);
+      try {
+        const remote = await loadRemoteAppConfig('role_permissions', defaultRolePermissions);
+        if (active) {
+          setConfig(normalizeRolePermissions(remote));
+        }
+      } catch {
+        if (active) {
+          setConfig(loadRolePermissions());
+          toast.error('加载权限配置失败，已回退到本地缓存');
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadConfig();
+    return () => {
+      active = false;
+    };
   }, []);
 
   if (!isAdmin) {
@@ -47,6 +72,14 @@ export default function Permissions() {
       <div className="flex flex-col items-center justify-center h-64 text-center">
         <Lock className="w-12 h-12 text-slate-300 mb-4" />
         <p className="text-slate-400">仅管理员可访问权限设置</p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     );
   }
@@ -87,16 +120,22 @@ export default function Permissions() {
     setChanged(true);
   };
 
-  const handleSave = () => {
-    saveRolePermissions(config);
-    setChanged(false);
-    toast.success('权限配置已保存');
-    const op = employee?.name || '管理员';
-    logOperation({ actionType: 'other', actionDetail: `修改角色权限: ${systemRoleLabels[selectedRole]}`, operatorName: op });
+  const handleSave = async () => {
+    try {
+      const normalized = normalizeRolePermissions(config);
+      await saveRemoteAppConfig('role_permissions', normalized);
+      setConfig(normalized);
+      setChanged(false);
+      toast.success('权限配置已保存');
+      const op = employee?.name || '管理员';
+      logOperation({ actionType: 'other', actionDetail: `修改角色权限: ${systemRoleLabels[selectedRole]}`, operatorName: op });
+    } catch {
+      toast.error('保存权限配置失败');
+    }
   };
 
   const handleReset = () => {
-    setConfig({ ...defaultRolePermissions });
+    setConfig(normalizeRolePermissions(defaultRolePermissions));
     setChanged(true);
     toast.info('已恢复默认权限配置，请保存');
   };
