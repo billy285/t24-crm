@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -20,6 +20,15 @@ router = APIRouter(prefix="/api/v1/entities/customers", tags=["customers"], depe
 
 CUSTOMER_WRITE_ROLES = {"admin", "super_admin", "sales", "ops", "operations"}
 CUSTOMER_OWNER_FIELDS = {"sales_person", "sales_employee_id"}
+
+
+class CustomerPayloadMixin(BaseModel):
+    @field_validator("sales_employee_id", "monthly_orders", mode="before", check_fields=False)
+    @classmethod
+    def blank_string_to_none(cls, value):
+        if value == "":
+            return None
+        return value
 
 
 def _is_admin_role(user: UserResponse) -> bool:
@@ -52,7 +61,7 @@ def _strip_owner_fields_for_non_admin(update_dict: dict, user: UserResponse) -> 
 
 
 # ---------- Pydantic Schemas ----------
-class CustomersData(BaseModel):
+class CustomersData(CustomerPayloadMixin):
     """Entity data schema (for create/update)"""
     customer_code: Optional[str] = None
     business_name: str
@@ -85,7 +94,7 @@ class CustomersData(BaseModel):
     updated_at: Optional[datetime] = None
 
 
-class CustomersUpdateData(BaseModel):
+class CustomersUpdateData(CustomerPayloadMixin):
     """Update entity data (partial updates allowed)"""
     customer_code: Optional[str] = None
     business_name: Optional[str] = None

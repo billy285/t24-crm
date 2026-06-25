@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from backend.main import app
+from backend.routers.customers import CustomersData
 from backend.services.emp_auth import create_access_token
 from core.database import Base
 from services.customers import CustomersService
@@ -20,6 +21,21 @@ def _auth_headers(role: str, emp_id: int = 6001, name: str | None = None) -> dic
         "name": name or role,
     })
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_customer_payload_accepts_blank_optional_numeric_fields():
+    payload = CustomersData(
+        business_name="Blank Owner Cafe",
+        contact_name="Owner",
+        phone="555",
+        sales_employee_id="",
+        monthly_orders="",
+        interested_packages="google_business_management",
+    )
+
+    assert payload.sales_employee_id is None
+    assert payload.monthly_orders is None
+    assert payload.interested_packages == "google_business_management"
 
 
 @pytest_asyncio.fixture

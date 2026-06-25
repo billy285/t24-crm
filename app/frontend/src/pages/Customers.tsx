@@ -129,6 +129,10 @@ function parseMultiValue(value?: string | null) {
     .filter(Boolean);
 }
 
+function getErrorDetail(err: any, fallback: string) {
+  return err?.data?.detail || err?.response?.data?.detail || err?.message || fallback;
+}
+
 function formatCurrency(value: number) {
   return `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
@@ -314,8 +318,8 @@ export default function Customers() {
       setShowLevelManager(false);
       setNewLevelName('');
       toast.success('客户等级已更新');
-    } catch {
-      toast.error('保存客户等级失败');
+    } catch (err: any) {
+      toast.error(getErrorDetail(err, '保存客户等级失败'));
     } finally {
       setSavingLevels(false);
     }
@@ -357,7 +361,21 @@ export default function Customers() {
   };
 
   const handleSavePackages = async () => {
-    const normalizedEntries = packageDrafts.reduce<Record<string, string>>((acc, item) => {
+    const pendingLabel = newPackageName.trim();
+    let draftsToSave = packageDrafts;
+    if (pendingLabel) {
+      if (packageDrafts.some(item => item.label.trim() === pendingLabel)) {
+        toast.error('该套餐已存在');
+        return;
+      }
+      let key = buildOptionKey(pendingLabel);
+      while (packageDrafts.some(item => item.key === key)) {
+        key = `${key}_${Date.now()}`;
+      }
+      draftsToSave = [...packageDrafts, { key, label: pendingLabel }];
+    }
+
+    const normalizedEntries = draftsToSave.reduce<Record<string, string>>((acc, item) => {
       const label = item.label.trim();
       if (label) {
         acc[item.key] = label;
@@ -389,8 +407,8 @@ export default function Customers() {
       setShowPackageManager(false);
       setNewPackageName('');
       toast.success('客户意向套餐已更新');
-    } catch {
-      toast.error('保存客户意向套餐失败');
+    } catch (err: any) {
+      toast.error(getErrorDetail(err, '保存客户意向套餐失败'));
     } finally {
       setSavingPackages(false);
     }
@@ -676,6 +694,8 @@ export default function Customers() {
       const payload = {
         ...form,
         interested_packages: form.interested_packages.join(','),
+        sales_employee_id: form.sales_employee_id === '' ? null : Number(form.sales_employee_id),
+        monthly_orders: String(form.monthly_orders ?? '').trim() === '' ? null : Number(form.monthly_orders || 0),
       };
       if (editingId) {
         await client.entities.customers.update({ id: String(editingId), data: { ...payload, updated_at: now } });
@@ -693,7 +713,7 @@ export default function Customers() {
       if (editingId && selectedCustomer?.id === editingId) {
         await loadCustomerDetail(editingId, { ...selectedCustomer, ...payload, updated_at: now });
       }
-    } catch { toast.error('保存失败'); } finally { setSaving(false); }
+    } catch (err: any) { toast.error(getErrorDetail(err, '保存失败')); } finally { setSaving(false); }
   };
 
   const handleDelete = async () => {

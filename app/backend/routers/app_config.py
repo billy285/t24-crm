@@ -2,7 +2,7 @@ import json
 from typing import Any, Dict
 
 from core.database import get_db
-from dependencies.auth import get_admin_user, get_current_user
+from dependencies.auth import get_current_user
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from schemas.auth import UserResponse
@@ -10,6 +10,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/v1/app-config", tags=["app-config"])
+
+ADMIN_CONFIG_ROLES = {"admin", "super_admin"}
+BUSINESS_DICT_CONFIG_ROLES = {"admin", "super_admin", "sales", "ops", "operations", "finance"}
 
 
 DEFAULT_APP_CONFIGS: Dict[str, Any] = {
@@ -256,6 +259,18 @@ def get_default_config(key: str) -> Any:
     return DEFAULT_APP_CONFIGS[key]
 
 
+def ensure_can_update_config(key: str, user: UserResponse) -> None:
+    """Keep sensitive settings admin-only while allowing business teams to maintain dictionaries."""
+    if user.role in ADMIN_CONFIG_ROLES:
+        return
+
+    if key == "dict_config" and user.role in BUSINESS_DICT_CONFIG_ROLES:
+        return
+
+    detail = "当前账号没有维护业务字典的权限" if key == "dict_config" else "Admin access required"
+    raise HTTPException(status_code=403, detail=detail)
+
+
 async def read_config_value(db: AsyncSession, key: str) -> AppConfigValue:
     default_value = get_default_config(key)
     result = await db.execute(
@@ -300,10 +315,11 @@ async def get_app_config(
 async def update_app_config(
     key: str,
     payload: AppConfigUpdate,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     get_default_config(key)
+    ensure_can_update_config(key, current_user)
     await ensure_app_config_table(db)
     value_json = json.dumps(payload.value, ensure_ascii=False)
     await db.execute(
