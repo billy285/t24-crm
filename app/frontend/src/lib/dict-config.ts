@@ -96,13 +96,18 @@ export function parseDictEntries(value: string): Record<string, string> {
 export function serializeDictEntries(entries: Record<string, string>): string {
   return Object.entries(entries)
     .filter(([, label]) => Boolean(label?.trim()))
-    .map(([key, label]) => `${key}:${label.trim()}`)
+    .map(([key, label]) => `${key}:${sanitizeDictLabel(label)}`)
     .join(',');
+}
+
+export function sanitizeDictLabel(label: string): string {
+  // The dictionary string uses "," and ":" as separators, so keep labels readable without breaking parsing.
+  return label.trim().replace(/,/g, '，').replace(/:/g, '：');
 }
 
 export function buildOptionKey(label: string): string {
   const normalized = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-  return normalized ? `custom_${normalized}` : `custom_${Date.now()}`;
+  return normalized ? `custom_${normalized}` : `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export function loadDictConfig(): BusinessDictConfig {
