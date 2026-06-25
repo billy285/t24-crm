@@ -76,8 +76,6 @@ export default function Deals() {
   const dealPackageLabels = { ...customerPackageLabels, ...packageOverrideLabels };
   const dealPackageOptions = Object.entries(dealPackageLabels).map(([value, label]) => ({ value, label }));
 
-  useEffect(() => { loadData(); }, []);
-
   const loadData = async () => {
     try {
       const [dRes, cRes] = await Promise.all([
@@ -105,6 +103,11 @@ export default function Deals() {
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
+
+  useEffect(() => {
+    setLoading(true);
+    void loadData();
+  }, [dataScope, employee?.id, employee?.name]);
 
   // Build a customer lookup map for quick access to phone, email, zip etc.
   const customerMap = new Map<number, any>();
@@ -205,7 +208,21 @@ export default function Deals() {
   };
 
   const handleSavePackages = async () => {
-    const normalizedEntries = packageDrafts.reduce<Record<string, string>>((acc, item) => {
+    const pendingLabel = newPackageName.trim();
+    let draftsToSave = packageDrafts;
+    if (pendingLabel) {
+      if (packageDrafts.some(item => item.label.trim() === pendingLabel)) {
+        toast.error('该套餐已存在');
+        return;
+      }
+      let key = buildOptionKey(pendingLabel);
+      while (packageDrafts.some(item => item.key === key)) {
+        key = `${key}_${Date.now()}`;
+      }
+      draftsToSave = [...packageDrafts, { key, label: pendingLabel }];
+    }
+
+    const normalizedEntries = draftsToSave.reduce<Record<string, string>>((acc, item) => {
       const label = item.label.trim();
       if (label) {
         acc[item.key] = label;
@@ -229,6 +246,7 @@ export default function Deals() {
         customerPackages: serializeDictEntries(normalizedEntries),
       });
       const availableKeys = new Set(Object.keys(normalizedEntries));
+      setPackageDrafts(Object.entries(normalizedEntries).map(([key, label]) => ({ key, label })));
       setForm(prev => ({
         ...prev,
         package_keys: prev.package_keys.filter(key => availableKeys.has(key) || packageOverrideLabels[key]),
@@ -319,11 +337,16 @@ export default function Deals() {
       delete (payload as any).package_keys;
 
       if (editingId) {
-        await client.entities.deals.update({ id: String(editingId), data: payload });
+        const updatedDealRes = await client.entities.deals.update({ id: String(editingId), data: payload });
+        const updatedDeal = updatedDealRes?.data || { ...payload, id: editingId, updated_at: now };
+        setDeals(prev => prev.map(item => (item.id === editingId ? { ...item, ...updatedDeal } : item)));
         toast.success('成交记录已更新');
       } else {
         const createdDealRes = await client.entities.deals.create({ data: { ...payload, created_at: now } });
         const createdDeal = createdDealRes?.data;
+        if (createdDeal) {
+          setDeals(prev => [createdDeal, ...prev]);
+        }
         if (form.service_start_date && form.service_end_date) {
           await client.entities.subscriptions.create({
             data: {
@@ -339,6 +362,7 @@ export default function Deals() {
         }
         if (cust) {
           await client.entities.customers.update({ id: String(cust.id), data: { status: 'closed', updated_at: now } });
+          setCustomers(prev => prev.map(item => (item.id === cust.id ? { ...item, status: 'closed', updated_at: now } : item)));
         }
         toast.success('成交记录已创建');
       }
@@ -346,7 +370,7 @@ export default function Deals() {
       setShowForm(false);
       setEditingId(null);
       setForm(buildEmptyDealForm());
-      loadData();
+      await loadData();
     } catch (err) { toast.error('保存失败'); console.error(err); }
     finally { setSaving(false); }
   };

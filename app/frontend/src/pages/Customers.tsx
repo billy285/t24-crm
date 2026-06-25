@@ -615,7 +615,6 @@ export default function Customers() {
     } catch { toast.error('删除失败'); } finally { setDeletingContact(false); }
   };
 
-  useEffect(() => { loadCustomers(); loadEmployees(); }, []);
   useEffect(() => { if (showForm) setCodeSettings(loadSettings()); }, [showForm]);
 
   const loadEmployees = async () => {
@@ -633,6 +632,12 @@ export default function Customers() {
       setCustomers(items);
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
+
+  useEffect(() => {
+    setLoading(true);
+    void loadCustomers();
+    void loadEmployees();
+  }, [dataScope, employee?.id, employee?.name]);
 
   const checkDuplicate = (name: string, phone: string) => {
     if (!name && !phone) { setDuplicateWarning(null); return; }
@@ -698,13 +703,18 @@ export default function Customers() {
         monthly_orders: String(form.monthly_orders ?? '').trim() === '' ? null : Number(form.monthly_orders || 0),
       };
       if (editingId) {
-        await client.entities.customers.update({ id: String(editingId), data: { ...payload, updated_at: now } });
+        const updatedRes = await client.entities.customers.update({ id: String(editingId), data: { ...payload, updated_at: now } });
+        const updatedCustomer = updatedRes?.data || { ...payload, id: editingId, updated_at: now };
+        setCustomers(prev => prev.map(item => (item.id === editingId ? { ...item, ...updatedCustomer } : item)));
         toast.success('客户信息已更新');
         logOperation({ customerId: editingId, actionType: 'edit_customer', actionDetail: `编辑客户: ${form.business_name}`, operatorName: op });
       } else {
         const code = form.customer_code.trim() || getNextAutoCode(form.industry);
         if (customers.some(c => c.customer_code === code)) { toast.error(`编号「${code}」已存在`); setSaving(false); return; }
         const res = await client.entities.customers.create({ data: { ...payload, customer_code: code, created_at: now, updated_at: now } });
+        if (res?.data) {
+          setCustomers(prev => [res.data, ...prev]);
+        }
         toast.success('客户创建成功');
         logOperation({ customerId: res?.data?.id, actionType: 'create_customer', actionDetail: `新增客户: ${form.business_name}`, operatorName: op });
       }

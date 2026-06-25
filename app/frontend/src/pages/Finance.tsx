@@ -1128,7 +1128,7 @@ export default function Finance() {
         }
       }
       setShowPaymentForm(false); setEditingPayId(null); setPayForm(emptyPayForm);
-      loadData();
+      await loadData();
     } catch (err: any) {
       const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '保存失败';
       toast.error(`保存失败: ${detail}`);
@@ -1187,7 +1187,7 @@ export default function Finance() {
         });
       }
       setShowExpenseForm(false); setEditingExpenseId(null); setExpenseForm(emptyExpenseForm);
-      loadData();
+      await loadData();
     } catch (err: any) {
       const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '保存失败';
       toast.error(`保存失败: ${detail}`);
@@ -1210,7 +1210,7 @@ export default function Finance() {
         actionDetail: `删除客户支出：${deleteExpenseTarget.customer_name || ''} ${customerExpenseTypeLabels[deleteExpenseTarget.expense_type] || deleteExpenseTarget.expense_type} ${fmt(Number(deleteExpenseTarget.amount || 0))}`,
         operatorName,
       });
-      setDeleteExpenseTarget(null); loadData();
+      setDeleteExpenseTarget(null); await loadData();
     } catch (err) { toast.error('删除失败'); console.error(err); } finally { setDeletingExpense(false); }
   };
 
@@ -1267,7 +1267,7 @@ export default function Finance() {
         });
       }
       setShowCompanyExpenseForm(false); setEditingCompanyExpenseId(null); setCompanyExpenseForm(emptyCompanyExpenseForm);
-      loadData();
+      await loadData();
     } catch (err: any) {
       const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '保存失败';
       toast.error(`保存失败: ${detail}`);
@@ -1290,7 +1290,7 @@ export default function Finance() {
         actionDetail: `删除运营支出：${companyExpenseTypeLabels[deleteCompanyExpenseTarget.category] || deleteCompanyExpenseTarget.category} ${formatMoney(Number(deleteCompanyExpenseTarget.amount || 0), currency)}`,
         operatorName,
       });
-      setDeleteCompanyExpenseTarget(null); loadData();
+      setDeleteCompanyExpenseTarget(null); await loadData();
     } catch (err) { toast.error('删除失败'); console.error(err); } finally { setDeletingCompanyExpense(false); }
   };
 
@@ -1324,7 +1324,7 @@ export default function Finance() {
           operatorName,
         });
       }
-      setDeleteTarget(null); loadData();
+      setDeleteTarget(null); await loadData();
     } catch (err) { toast.error('删除失败'); console.error(err); } finally { setDeleting(false); }
   };
 
