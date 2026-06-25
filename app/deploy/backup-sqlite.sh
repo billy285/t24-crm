@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/opt/t24-crm}"
+APP_DIR="${APP_DIR:-/opt/t24-crm/app}"
 DB_FILE="${DB_FILE:-$APP_DIR/data/crm_prod.db}"
 BACKUP_DIR="${BACKUP_DIR:-$APP_DIR/backups}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"
