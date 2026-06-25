@@ -4,13 +4,19 @@ import { getAPIBaseURL } from './config';
 // Create client instance
 export const client = createClient({ baseURL: getAPIBaseURL() } as any);
 
+function getStoredAuthHeaders() {
+  if (typeof window === 'undefined') return {};
+  const token = window.localStorage.getItem('emp_auth_token') || window.localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 // Reports export helpers
 export async function exportProfitMonthlyCsv(params: { start?: string; end?: string; currency?: 'USD'|'CNY'; base_currency?: string }) {
   const res = await client.apiCall.invoke({
     url: '/api/v1/reports/profit-monthly.csv',
     method: 'GET',
     data: params,
-    options: { responseType: 'blob' as any },
+    options: { responseType: 'blob' as any, headers: getStoredAuthHeaders() },
   });
   return res;
 }
@@ -20,7 +26,7 @@ export async function exportProfitMonthlyXlsx(params: { start?: string; end?: st
     url: '/api/v1/reports/profit-monthly.xlsx',
     method: 'GET',
     data: params,
-    options: { responseType: 'blob' as any },
+    options: { responseType: 'blob' as any, headers: getStoredAuthHeaders() },
   });
   return res;
 }
@@ -51,5 +57,6 @@ export async function getProfitMonthly(params: { start: string; end: string; cur
     url: '/api/v1/reports/profit-monthly.json',
     method: 'GET',
     data: params,
+    options: { headers: getStoredAuthHeaders() },
   });
 }

@@ -1,12 +1,68 @@
 import logging
 from typing import Optional, Dict, Any, List
 
+from core.mask_crypto import decrypt_text, encrypt_text, key_prefix
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.media_accounts import Media_accounts
 
 logger = logging.getLogger(__name__)
+
+
+def has_media_account_password(value: Optional[str]) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def encrypt_media_account_password(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if raw.startswith(key_prefix):
+        return raw
+    return encrypt_text(raw)
+
+
+def decrypt_media_account_password(value: Optional[str]) -> str:
+    if not has_media_account_password(value):
+        return ""
+    raw = str(value)
+    if not raw.startswith(key_prefix):
+        return raw
+    try:
+        return decrypt_text(raw)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to decrypt media account password: %s", exc)
+        return ""
+
+
+def normalize_media_account_payload(
+    data: Dict[str, Any],
+    *,
+    preserve_existing_password: bool = False,
+) -> Dict[str, Any]:
+    normalized = dict(data)
+    if "login_password" not in normalized:
+        return normalized
+
+    password_value = normalized.get("login_password")
+    if password_value is None:
+        if preserve_existing_password:
+            normalized.pop("login_password", None)
+        return normalized
+
+    encrypted = encrypt_media_account_password(password_value)
+    if encrypted is None:
+        if preserve_existing_password:
+            normalized.pop("login_password", None)
+        else:
+            normalized["login_password"] = None
+        return normalized
+
+    normalized["login_password"] = encrypted
+    return normalized
 
 
 # ------------------ Service Layer ------------------
@@ -19,6 +75,7 @@ class Media_accountsService:
     async def create(self, data: Dict[str, Any], user_id: Optional[str] = None) -> Optional[Media_accounts]:
         """Create a new media_accounts"""
         try:
+            data = normalize_media_account_payload(data)
             if user_id:
                 data['user_id'] = user_id
             obj = Media_accounts(**data)
@@ -110,6 +167,7 @@ class Media_accountsService:
             if not obj:
                 logger.warning(f"Media_accounts {obj_id} not found for update")
                 return None
+            update_data = normalize_media_account_payload(update_data, preserve_existing_password=True)
             for key, value in update_data.items():
                 if hasattr(obj, key) and key != 'user_id':
                     setattr(obj, key, value)

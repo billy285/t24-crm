@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.payments import PaymentsService
 from services.payment_deal_sync import delete_synced_deal_for_payment, sync_deal_from_payment
-from dependencies.auth import get_current_user
+from dependencies.auth import get_finance_user
 from schemas.auth import UserResponse
 
 # Set up logging
@@ -135,7 +135,7 @@ async def query_paymentss(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Query paymentss with filtering, sorting, and pagination (user can only see their own records)"""
@@ -174,6 +174,7 @@ async def query_paymentss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Query paymentss with filtering, sorting, and pagination without user limitation
@@ -208,7 +209,7 @@ async def query_paymentss_all(
 async def get_payments(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single payments by ID"""
@@ -232,7 +233,7 @@ async def get_payments(
 @router.post("", response_model=PaymentsResponse, status_code=201)
 async def create_payments(
     data: PaymentsData,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new payments"""
@@ -263,7 +264,7 @@ async def create_payments(
 @router.post("/batch", response_model=List[PaymentsResponse], status_code=201)
 async def create_paymentss_batch(
     request: PaymentsBatchCreateRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple paymentss in a single request"""
@@ -290,7 +291,7 @@ async def create_paymentss_batch(
 @router.put("/batch", response_model=List[PaymentsResponse])
 async def update_paymentss_batch(
     request: PaymentsBatchUpdateRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple paymentss in a single request (requires ownership)"""
@@ -320,7 +321,7 @@ async def update_paymentss_batch(
 async def update_payments(
     id: int,
     data: PaymentsUpdateData,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing payments"""
@@ -356,7 +357,7 @@ async def update_payments(
 @router.delete("/batch")
 async def delete_paymentss_batch(
     request: PaymentsBatchDeleteRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple paymentss by their IDs (requires ownership)"""
@@ -383,7 +384,7 @@ async def delete_paymentss_batch(
 @router.delete("/{id}")
 async def delete_payments(
     id: int,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single payments by ID"""

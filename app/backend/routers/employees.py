@@ -9,24 +9,34 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from dependencies.auth import get_admin_user, get_current_user
+from schemas.auth import UserResponse
 from services.employees import EmployeesService
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/entities/employees", tags=["employees"])
+router = APIRouter(prefix="/api/v1/entities/employees", tags=["employees"], dependencies=[Depends(get_current_user)])
 
 
 # ---------- Pydantic Schemas ----------
 class EmployeesData(BaseModel):
     """Entity data schema (for create/update)"""
-    user_id: str
+    user_id: Optional[str] = None
     name: str
     role: str
     phone: Optional[str] = None
     email: Optional[str] = None
     status: Optional[str] = None
+    employee_code: Optional[str] = None
+    department: Optional[str] = None
+    position: Optional[str] = None
+    login_username: Optional[str] = None
+    hire_date: Optional[str] = None
+    supervisor: Optional[str] = None
+    notes: Optional[str] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class EmployeesUpdateData(BaseModel):
@@ -37,7 +47,15 @@ class EmployeesUpdateData(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     status: Optional[str] = None
+    employee_code: Optional[str] = None
+    department: Optional[str] = None
+    position: Optional[str] = None
+    login_username: Optional[str] = None
+    hire_date: Optional[str] = None
+    supervisor: Optional[str] = None
+    notes: Optional[str] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class EmployeesResponse(BaseModel):
@@ -49,7 +67,15 @@ class EmployeesResponse(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     status: Optional[str] = None
+    employee_code: Optional[str] = None
+    department: Optional[str] = None
+    position: Optional[str] = None
+    login_username: Optional[str] = None
+    hire_date: Optional[str] = None
+    supervisor: Optional[str] = None
+    notes: Optional[str] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -186,6 +212,7 @@ async def get_employees(
 @router.post("", response_model=EmployeesResponse, status_code=201)
 async def create_employees(
     data: EmployeesData,
+    _admin: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new employees"""
@@ -193,7 +220,17 @@ async def create_employees(
     
     service = EmployeesService(db)
     try:
-        result = await service.create(data.model_dump())
+        payload = data.model_dump()
+        if not payload.get("user_id"):
+            payload["user_id"] = (
+                payload.get("login_username")
+                or payload.get("email")
+                or payload.get("employee_code")
+                or f"emp_{int(datetime.utcnow().timestamp())}"
+            )
+        if not payload.get("status"):
+            payload["status"] = "active"
+        result = await service.create(payload)
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create employees")
         
@@ -210,6 +247,7 @@ async def create_employees(
 @router.post("/batch", response_model=List[EmployeesResponse], status_code=201)
 async def create_employeess_batch(
     request: EmployeesBatchCreateRequest,
+    _admin: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple employeess in a single request"""
@@ -235,6 +273,7 @@ async def create_employeess_batch(
 @router.put("/batch", response_model=List[EmployeesResponse])
 async def update_employeess_batch(
     request: EmployeesBatchUpdateRequest,
+    _admin: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple employeess in a single request"""
@@ -263,6 +302,7 @@ async def update_employeess_batch(
 async def update_employees(
     id: int,
     data: EmployeesUpdateData,
+    _admin: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing employees"""
@@ -292,6 +332,7 @@ async def update_employees(
 @router.delete("/batch")
 async def delete_employeess_batch(
     request: EmployeesBatchDeleteRequest,
+    _admin: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple employeess by their IDs"""
@@ -317,6 +358,7 @@ async def delete_employeess_batch(
 @router.delete("/{id}")
 async def delete_employees(
     id: int,
+    _admin: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single employees by ID"""

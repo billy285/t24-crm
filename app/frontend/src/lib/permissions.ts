@@ -162,7 +162,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
       'media_account_create', 'media_account_edit',
       'follow_up_create', 'follow_up_edit',
     ],
-    dataScope: 'self',
+    dataScope: 'all',
     sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
   },
   design: {
@@ -189,7 +189,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
 const PERMISSIONS_STORAGE_KEY = 'crm_role_permissions';
 const PERMISSIONS_VERSION_KEY = 'crm_role_permissions_version';
 // Bump this version whenever default permissions change (e.g., new pages added)
-const CURRENT_PERMISSIONS_VERSION = 3;
+const CURRENT_PERMISSIONS_VERSION = 4;
 
 function uniq<T>(items: T[]): T[] {
   return Array.from(new Set(items));

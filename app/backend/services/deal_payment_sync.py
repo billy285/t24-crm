@@ -44,18 +44,38 @@ async def _load_customer(db: AsyncSession, customer_id: Optional[int]) -> Option
 
 
 async def _load_subscription_for_deal(db: AsyncSession, deal: Deals) -> Optional[Subscriptions]:
-    result = await db.execute(select(Subscriptions).where(Subscriptions.deal_id == deal.id))
-    subscription = result.scalar_one_or_none()
-    if subscription:
-        return subscription
+    result = await db.execute(
+        select(Subscriptions)
+        .where(Subscriptions.deal_id == deal.id)
+        .order_by(Subscriptions.id.desc())
+        .limit(2)
+    )
+    subscriptions = result.scalars().all()
+    if len(subscriptions) > 1:
+        logger.warning(
+            "Multiple subscriptions found for deal %s, using latest subscription %s",
+            deal.id,
+            subscriptions[0].id,
+        )
+    if subscriptions:
+        return subscriptions[0]
 
     result = await db.execute(
         select(Subscriptions)
         .where(Subscriptions.customer_id == deal.customer_id)
         .where(Subscriptions.package_name == deal.package_name)
         .order_by(Subscriptions.id.desc())
+        .limit(2)
     )
-    return result.scalar_one_or_none()
+    subscriptions = result.scalars().all()
+    if len(subscriptions) > 1:
+        logger.warning(
+            "Multiple matching subscriptions found for customer %s package %s, using latest subscription %s",
+            deal.customer_id,
+            deal.package_name,
+            subscriptions[0].id,
+        )
+    return subscriptions[0] if subscriptions else None
 
 
 async def _load_synced_payment(db: AsyncSession, deal_id: int) -> Optional[Payments]:

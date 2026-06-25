@@ -25,6 +25,29 @@ function parseDealPackageLabels(value?: string | null) {
   return (value || '').split(/[、,，]/).map(item => item.trim()).filter(Boolean);
 }
 
+function getTodayDateInput() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function buildEmptyDealForm() {
+  return {
+    customer_id: '',
+    product_type: 'ordering_system',
+    package_name: '',
+    package_keys: [] as string[],
+    billing_cycle: 'monthly',
+    deal_amount: '',
+    deal_date: getTodayDateInput(),
+    is_paid: false,
+    service_start_date: '',
+    service_end_date: '',
+    needs_group: false,
+    is_handed_over: false,
+    is_transferred_ops: false,
+    notes: '',
+  };
+}
+
 export default function Deals() {
   const { employee, dataScope, hasPermission } = useRole();
   const dictConfig = useDictConfig();
@@ -48,12 +71,7 @@ export default function Deals() {
   const [packageDrafts, setPackageDrafts] = useState<Array<{ key: string; label: string }>>([]);
   const [savingPackages, setSavingPackages] = useState(false);
   const [packageOverrideLabels, setPackageOverrideLabels] = useState<Record<string, string>>({});
-  const emptyDealForm = {
-    customer_id: '', product_type: 'ordering_system', package_name: '', package_keys: [] as string[],
-    billing_cycle: 'monthly', deal_amount: '', is_paid: false,
-    service_start_date: '', service_end_date: '', needs_group: false,
-    is_handed_over: false, is_transferred_ops: false, notes: '',
-  };
+  const emptyDealForm = buildEmptyDealForm();
   const [form, setForm] = useState(emptyDealForm);
   const dealPackageLabels = { ...customerPackageLabels, ...packageOverrideLabels };
   const dealPackageOptions = Object.entries(dealPackageLabels).map(([value, label]) => ({ value, label }));
@@ -258,6 +276,7 @@ export default function Deals() {
       package_keys: packageKeys,
       billing_cycle: d.billing_cycle || 'monthly',
       deal_amount: String(d.deal_amount || ''),
+      deal_date: d.deal_date?.slice(0, 10) || getTodayDateInput(),
       is_paid: d.is_paid || false,
       service_start_date: d.service_start_date?.slice(0, 10) || '',
       service_end_date: d.service_end_date?.slice(0, 10) || '',
@@ -287,6 +306,7 @@ export default function Deals() {
         package_name: form.package_keys.map(key => dealPackageLabels[key] || key).filter(Boolean).join('、'),
         billing_cycle: form.billing_cycle,
         deal_amount: Number(form.deal_amount),
+        deal_date: form.deal_date || null,
         is_paid: form.is_paid,
         service_start_date: form.service_start_date || null,
         service_end_date: form.service_end_date || null,
@@ -302,10 +322,12 @@ export default function Deals() {
         await client.entities.deals.update({ id: String(editingId), data: payload });
         toast.success('成交记录已更新');
       } else {
-        await client.entities.deals.create({ data: { ...payload, deal_date: now, created_at: now } });
+        const createdDealRes = await client.entities.deals.create({ data: { ...payload, created_at: now } });
+        const createdDeal = createdDealRes?.data;
         if (form.service_start_date && form.service_end_date) {
           await client.entities.subscriptions.create({
             data: {
+              deal_id: createdDeal?.id || null,
               customer_id: Number(form.customer_id), customer_name: cust?.business_name || '',
               package_name: form.package_keys.map(key => dealPackageLabels[key] || key).filter(Boolean).join('、'), package_price: Number(form.deal_amount),
               billing_cycle: form.billing_cycle, start_date: form.service_start_date,
@@ -323,7 +345,7 @@ export default function Deals() {
       setPackageOverrideLabels({});
       setShowForm(false);
       setEditingId(null);
-      setForm(emptyDealForm);
+      setForm(buildEmptyDealForm());
       loadData();
     } catch (err) { toast.error('保存失败'); console.error(err); }
     finally { setSaving(false); }
@@ -379,7 +401,7 @@ export default function Deals() {
             filename={`成交记录_${new Date().toISOString().slice(0, 10)}`}
             sheetName="成交记录"
           />
-          <Button onClick={() => { setPackageOverrideLabels({}); setForm(emptyDealForm); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={() => { setPackageOverrideLabels({}); setForm(buildEmptyDealForm()); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
             <Plus className="w-4 h-4 mr-1" /> 录入成交
           </Button>
         </div>
@@ -540,7 +562,7 @@ export default function Deals() {
       />
 
       {/* Add/Edit deal dialog */}
-      <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setPackageOverrideLabels({}); setEditingId(null); setForm(emptyDealForm); } }}>
+      <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setPackageOverrideLabels({}); setEditingId(null); setForm(buildEmptyDealForm()); } }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingId ? '编辑成交记录' : '录入成交'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -606,7 +628,10 @@ export default function Deals() {
                   : ' 暂未选择'}
               </p>
             </div>
-            <div><Label>成交金额 *</Label><Input type="number" value={form.deal_amount} onChange={e => setForm({ ...form, deal_amount: e.target.value })} placeholder="0.00" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>成交金额 *</Label><Input type="number" value={form.deal_amount} onChange={e => setForm({ ...form, deal_amount: e.target.value })} placeholder="0.00" /></div>
+              <div><Label>成交日期</Label><Input type="date" value={form.deal_date} onChange={e => setForm({ ...form, deal_date: e.target.value })} /></div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>服务开始日期</Label><Input type="date" value={form.service_start_date} onChange={e => setForm({ ...form, service_start_date: e.target.value })} /></div>
               <div><Label>服务到期日期</Label><Input type="date" value={form.service_end_date} onChange={e => setForm({ ...form, service_end_date: e.target.value })} /></div>

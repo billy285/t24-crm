@@ -15,7 +15,11 @@ from services.service_tasks import Service_tasksService
 # Set up logging
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/entities/service_tasks", tags=["service_tasks"])
+router = APIRouter(
+    prefix="/api/v1/entities/service_tasks",
+    tags=["service_tasks"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 # ---------- Pydantic Schemas ----------

@@ -27,6 +27,7 @@ import { exportProfitMonthlyCsv, exportProfitMonthlyXlsx } from '../lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { saveRemoteAppConfig } from '../lib/app-config';
 import { buildOptionKey, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
+import { logOperation } from '../lib/operation-log-helper';
 import {
   AUTO_PAYMENT_METHOD_KEYS,
   getPaymentMethodLabel,
@@ -35,6 +36,12 @@ import {
   normalizePaymentMethodKey,
   normalizePaymentMethodOptions,
 } from '../lib/payment-utils';
+import {
+  computeSubscriptionStatus,
+  decorateEffectiveSubscriptions,
+  findMatchingSubscription,
+  getSubscriptionRemainingDays,
+} from '../lib/subscription-utils';
 
 // ─── Constants ───────────────────────────────────────────────────────
 const incomeTypeLabels: Record<string, string> = {
@@ -46,29 +53,16 @@ const INCOME_TYPE_COLORS: Record<string, string> = {
   ordering_fee: '#8b5cf6', renewal_fee: '#06b6d4', other_income: '#94a3b8',
 };
 
-const customerExpenseTypeLabels: Record<string, string> = {
-  management_fee: '管理费', ads_fee: '投流费', website_fee: '网站费', other: '其他',
-};
 const CUSTOMER_EXPENSE_COLORS: Record<string, string> = {
-  management_fee: '#3b82f6', ads_fee: '#f59e0b', website_fee: '#10b981', other: '#94a3b8',
+  ads_fee: '#f59e0b', website_fee: '#10b981', domain_fee: '#6366f1', hosting_fee: '#0ea5e9',
+  design_fee: '#8b5cf6', management_fee: '#3b82f6', other: '#94a3b8',
 };
 
 const COMPANY_EXPENSE_COLORS: Record<string, string> = {
   salary: '#ef4444', internet: '#3b82f6', phone: '#10b981', rent: '#f59e0b',
-  software: '#8b5cf6', recruitment: '#ec4899', travel: '#06b6d4', other_company: '#94a3b8',
+  software: '#8b5cf6', ai_tools: '#6366f1', cloud_services: '#0ea5e9', operations_tools: '#14b8a6',
+  recruitment: '#ec4899', travel: '#06b6d4', other_company: '#94a3b8',
 };
-
-const productOptions = [
-  { value: 'Google商家', label: 'Google商家' },
-  { value: 'Facebook商家', label: 'Facebook商家' },
-  { value: 'Instagram商家', label: 'Instagram商家' },
-  { value: 'Yelp商家', label: 'Yelp商家' },
-  { value: 'Tiktok商家', label: 'Tiktok商家' },
-  { value: '小红书商家', label: '小红书商家' },
-  { value: '品牌官网', label: '品牌官网' },
-  { value: 'Google Ads', label: 'Google Ads' },
-  { value: 'Meta Ads', label: 'Meta Ads' },
-];
 
 const PAY_METHOD_COLORS: Record<string, string> = {
   stripe: '#06b6d4',
@@ -105,31 +99,93 @@ const pickColorByKey = (key: string, palette: string[], fixedColors?: Record<str
 // ─── Helper: format currency ─────────────────────────────────────────
 const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 const fmtRMB = (n: number) => `¥${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+type CurrencyCode = 'USD' | 'CNY';
+const currencyLabels: Record<CurrencyCode, string> = { USD: '美元 USD', CNY: '人民币 CNY' };
+const normalizeCurrency = (currency?: string | null, fallback: CurrencyCode = 'USD'): CurrencyCode => (
+  currency === 'CNY' || currency === 'USD' ? currency : fallback
+);
+const getCompanyExpenseCurrency = (expense: any): CurrencyCode => normalizeCurrency(expense?.currency, 'CNY');
+const formatMoney = (amount: number, currency: CurrencyCode) => (currency === 'CNY' ? fmtRMB(amount) : fmt(amount));
+const roundMoney = (amount: number) => Math.round(Number(amount || 0) * 100) / 100;
 
-// Compute profit (USD) with monthly deduction rates
-function computeProfitUSD(paymentsList: any[], customerExpensesUSD: any[]) {
-  // group revenue by YYYY-MM
-  const byMonth: Record<string, { revenue: number; custExp: number }> = {};
-  for (const p of paymentsList) {
-    const ym = (p.payment_date || '').slice(0,7);
-    if (!/^\d{4}-\d{2}$/.test(ym)) continue;
-    byMonth[ym] = byMonth[ym] || { revenue: 0, custExp: 0 };
-    byMonth[ym].revenue += Number(p.amount_paid || 0);
+const MANAGEMENT_FEE_KEY = 'management_fee';
+const ADS_FEE_KEY = 'ads_fee';
+const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
+
+type MonthlyFinanceBucket = {
+  revenue: number;
+  managementRevenue: number;
+  adsRevenue: number;
+  customerCost: number;
+  operatingCostUsd: number;
+  cost: number;
+};
+
+const getDeductionRate = (rates: Record<string, number>, ym: string) => (
+  typeof rates[ym] === 'number' ? rates[ym] : 0.15
+);
+
+const getOrCreateMonthlyFinanceBucket = (
+  map: Record<string, MonthlyFinanceBucket>,
+  ym: string,
+): MonthlyFinanceBucket => {
+  if (!map[ym]) {
+    map[ym] = { revenue: 0, managementRevenue: 0, adsRevenue: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
   }
-  for (const e of customerExpensesUSD) {
-    const ym = (e.expense_month || '').slice(0,7);
-    if (!/^\d{4}-\d{2}$/.test(ym)) continue;
-    byMonth[ym] = byMonth[ym] || { revenue: 0, custExp: 0 };
-    byMonth[ym].custExp += Number(e.amount || 0);
-  }
-  let total = 0;
-  for (const ym of Object.keys(byMonth)) {
-    const r = byMonth[ym];
-    const rate = (deductionRates && typeof deductionRates[ym] === 'number') ? deductionRates[ym] : 0.15; // default 15%
-    total += (r.revenue * (1 - rate)) - r.custExp;
-  }
-  return total;
-}
+  return map[ym];
+};
+
+const buildMonthlyFinanceBuckets = (paymentsList: any[], customerExpenses: any[], companyExpenseList: any[] = []) => {
+  const map: Record<string, MonthlyFinanceBucket> = {};
+
+  paymentsList.forEach((payment) => {
+    const ym = (payment.payment_date || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return;
+    const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
+    const amount = Number(payment.amount_paid || 0);
+    bucket.revenue += amount;
+    if (payment.income_type === MANAGEMENT_FEE_KEY) {
+      bucket.managementRevenue += amount;
+    }
+    if (payment.income_type === ADS_FEE_KEY) {
+      bucket.adsRevenue += amount;
+    }
+  });
+
+  customerExpenses.forEach((expense) => {
+    const ym = (expense.expense_month || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return;
+    const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
+    const amount = Number(expense.amount || 0);
+    bucket.customerCost += amount;
+    bucket.cost += amount;
+  });
+
+  companyExpenseList.forEach((expense) => {
+    const ym = (expense.expense_month || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return;
+    if (getCompanyExpenseCurrency(expense) !== 'USD') return;
+    const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
+    const amount = Number(expense.amount || 0);
+    bucket.operatingCostUsd += amount;
+    bucket.cost += amount;
+  });
+
+  return map;
+};
+
+const calculateMonthlyProfit = (bucket: MonthlyFinanceBucket, rate: number) => {
+  const managementDeduction = bucket.managementRevenue * rate;
+  const adsDeduction = bucket.adsRevenue * ADS_RECHARGE_DEDUCTION_RATE;
+  const deductionAmount = managementDeduction + adsDeduction;
+  return {
+    managementDeduction,
+    adsDeduction,
+    deductionAmount,
+    effectiveRate: bucket.revenue > 0 ? deductionAmount / bucket.revenue : 0,
+    profit: bucket.revenue - deductionAmount - bucket.cost,
+  };
+};
 
 
 // ─── Helper: convert date string to ISO datetime ─────────────────────
@@ -145,6 +201,20 @@ const toISODatetime = (dateStr: string | null | undefined): string | null => {
   }
 };
 
+const parsePackageLabels = (value?: string | null) => (
+  (value || '')
+    .split(/[、,，]/)
+    .map(item => item.trim())
+    .filter(Boolean)
+);
+
+const parseMultiValue = (value?: string | null) => (
+  (value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+);
+
 // ─── Helper: safe query ─────────────────────────────────────────────
 const safeQuery = async (queryFn: () => Promise<any>): Promise<any[]> => {
   try {
@@ -157,16 +227,26 @@ const safeQuery = async (queryFn: () => Promise<any>): Promise<any[]> => {
 };
 
 export default function Finance() {
-  const { isAdmin, hasPermission } = useRole();
+  const { isAdmin, hasPermission, employee } = useRole();
   const dictConfig = useDictConfig();
   const {
     paymentModes: payModeLabels,
     paymentMethods: payMethodLabels,
     billingCycles: cycleLabels,
+    customerExpenseTypes: customerExpenseTypeLabels,
     companyExpenseTypes: companyExpenseTypeLabels,
     subscriptionStatuses: subStatusLabels,
+    customerPackages: customerPackageLabels,
   } = useBusinessDicts();
+  const operatorName = employee?.name || '管理员';
+  const canManageCustomerExpenseTypes = isAdmin || hasPermission('settings_edit');
   const canManageCompanyExpenseTypes = isAdmin || hasPermission('settings_edit');
+  const canManageCustomerPackages = isAdmin || hasPermission('settings_edit');
+  const customerExpenseTypeOptions = useMemo(
+    () => Object.entries(customerExpenseTypeLabels).map(([value, label]) => ({ value, label })),
+    [customerExpenseTypeLabels],
+  );
+  const defaultCustomerExpenseType = customerExpenseTypeOptions[0]?.value || 'ads_fee';
   const companyExpenseTypeOptions = useMemo(
     () => Object.entries(companyExpenseTypeLabels).map(([value, label]) => ({ value, label })),
     [companyExpenseTypeLabels],
@@ -227,6 +307,7 @@ export default function Finance() {
   const [payments, setPayments] = useState<any[]>([]);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [deals, setDeals] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [companyExpenses, setCompanyExpenses] = useState<any[]>([]);
   const [deductionRates, setDeductionRates] = useState<Record<string, number>>({});
@@ -242,6 +323,10 @@ export default function Finance() {
     coverage_start: '', coverage_end: '', has_invoice: false, notes: '',
   };
   const [payForm, setPayForm] = useState(emptyPayForm);
+  const [showPaymentPackageManager, setShowPaymentPackageManager] = useState(false);
+  const [paymentPackageDrafts, setPaymentPackageDrafts] = useState<Array<{ key: string; label: string }>>([]);
+  const [newPaymentPackageName, setNewPaymentPackageName] = useState('');
+  const [savingPaymentPackages, setSavingPaymentPackages] = useState(false);
 
   // Customer expense form
   const [showExpenseForm, setShowExpenseForm] = useState(false);
@@ -251,8 +336,12 @@ export default function Finance() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
-  const emptyExpenseForm = { customer_id: '', expense_type: 'management_fee', amount: '', expense_month: expenseMonth, notes: '' };
+  const emptyExpenseForm = { customer_id: '', expense_type: defaultCustomerExpenseType, amount: '', expense_month: expenseMonth, notes: '' };
   const [expenseForm, setExpenseForm] = useState(emptyExpenseForm);
+  const [showCustomerExpenseTypeManager, setShowCustomerExpenseTypeManager] = useState(false);
+  const [newCustomerExpenseTypeName, setNewCustomerExpenseTypeName] = useState('');
+  const [customerExpenseTypeDrafts, setCustomerExpenseTypeDrafts] = useState<Array<{ key: string; label: string }>>([]);
+  const [savingCustomerExpenseTypes, setSavingCustomerExpenseTypes] = useState(false);
 
   // Company expense form
   const [showCompanyExpenseForm, setShowCompanyExpenseForm] = useState(false);
@@ -262,8 +351,9 @@ export default function Finance() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
-  const emptyCompanyExpenseForm = { category: defaultCompanyExpenseType, amount: '', expense_month: companyExpenseMonth, expense_date: '', notes: '' };
+  const emptyCompanyExpenseForm = { category: defaultCompanyExpenseType, currency: 'USD' as CurrencyCode, amount: '', expense_month: companyExpenseMonth, expense_date: '', notes: '' };
   const [companyExpenseForm, setCompanyExpenseForm] = useState(emptyCompanyExpenseForm);
+  const [companyExpenseCurrencyFilter, setCompanyExpenseCurrencyFilter] = useState<'all' | CurrencyCode>('all');
   const [showCompanyExpenseTypeManager, setShowCompanyExpenseTypeManager] = useState(false);
   const [newCompanyExpenseTypeName, setNewCompanyExpenseTypeName] = useState('');
   const [companyExpenseTypeDrafts, setCompanyExpenseTypeDrafts] = useState<Array<{ key: string; label: string }>>([]);
@@ -287,31 +377,21 @@ export default function Finance() {
 
   useEffect(() => { loadData(); }, []);
 
-  const computeSubStatus = (sub: any): string => {
-    if (!sub.end_date) return sub.status || 'active';
-    if (sub.status === 'paused' || sub.status === 'lost') return sub.status;
-    const endDate = new Date(sub.end_date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const diffDays = Math.ceil((endDate.getTime() - today.getTime()) / 86400000);
-    if (diffDays <= 0) return 'expired';
-    if (diffDays <= 7) return 'expiring_soon';
-    return 'active';
-  };
-
   const loadData = async () => {
     try {
       // Load each data source independently so one failure doesn't block others
-      const [pItems, sItems, cItems, eItems, ceItems] = await Promise.all([
+      const [pItems, sItems, cItems, dItems, eItems, ceItems] = await Promise.all([
         safeQuery(() => client.entities.payments.queryAll({ limit: 500, sort: '-payment_date' })),
         safeQuery(() => client.entities.subscriptions.query({ limit: 500, sort: '-end_date' })),
         safeQuery(() => client.entities.customers.query({ limit: 500 })),
+        safeQuery(() => client.entities.deals.query({ limit: 500, sort: '-deal_date' })),
         safeQuery(() => client.entities.expenses.queryAll({ limit: 500, sort: '-created_at' })),
         safeQuery(() => client.entities.company_expenses.queryAll({ limit: 500, sort: '-created_at' })),
       ]);
       setPayments(pItems);
-      setSubscriptions(sItems.map((s: any) => ({ ...s, status: computeSubStatus(s) })));
+      setSubscriptions(decorateEffectiveSubscriptions(sItems));
       setCustomers(cItems);
+      setDeals(dItems);
       setExpenses(eItems);
       setCompanyExpenses(ceItems);
       try {
@@ -334,6 +414,92 @@ export default function Finance() {
       console.error('loadData error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!customerExpenseTypeLabels[expenseForm.expense_type] && expenseForm.expense_type !== defaultCustomerExpenseType) {
+      setExpenseForm(prev => ({ ...prev, expense_type: defaultCustomerExpenseType }));
+    }
+  }, [defaultCustomerExpenseType, expenseForm.expense_type, customerExpenseTypeLabels]);
+
+  const openCustomerExpenseTypeManager = () => {
+    setCustomerExpenseTypeDrafts(Object.entries(customerExpenseTypeLabels).map(([key, label]) => ({ key, label })));
+    setNewCustomerExpenseTypeName('');
+    setShowCustomerExpenseTypeManager(true);
+  };
+
+  const handleAddCustomerExpenseTypeDraft = () => {
+    const label = newCustomerExpenseTypeName.trim();
+    if (!label) {
+      toast.error('请输入客户支出类型名称');
+      return;
+    }
+    if (customerExpenseTypeDrafts.some(item => item.label.trim() === label)) {
+      toast.error('该客户支出类型已存在');
+      return;
+    }
+    let key = buildOptionKey(label);
+    while (customerExpenseTypeDrafts.some(item => item.key === key)) {
+      key = `${key}_${Date.now()}`;
+    }
+    setCustomerExpenseTypeDrafts(prev => [...prev, { key, label }]);
+    setNewCustomerExpenseTypeName('');
+  };
+
+  const handleRemoveCustomerExpenseTypeDraft = (key: string) => {
+    if (customerExpenseTypeDrafts.length <= 1) {
+      toast.error('至少保留一个客户支出类型');
+      return;
+    }
+    if (expenses.some(item => item.expense_type === key)) {
+      toast.error('该客户支出类型已有记录在使用，请先调整历史记录后再删除');
+      return;
+    }
+    const remaining = customerExpenseTypeDrafts.filter(item => item.key !== key);
+    setCustomerExpenseTypeDrafts(remaining);
+    if (expenseForm.expense_type === key) {
+      setExpenseForm(prev => ({ ...prev, expense_type: remaining[0]?.key || defaultCustomerExpenseType }));
+    }
+  };
+
+  const handleSaveCustomerExpenseTypes = async () => {
+    const normalizedEntries = customerExpenseTypeDrafts.reduce<Record<string, string>>((acc, item) => {
+      const label = item.label.trim();
+      if (label) {
+        acc[item.key] = label;
+      }
+      return acc;
+    }, {});
+    const labels = Object.values(normalizedEntries);
+    if (labels.length === 0) {
+      toast.error('请至少保留一个客户支出类型');
+      return;
+    }
+    if (new Set(labels).size !== labels.length) {
+      toast.error('客户支出类型名称不能重复');
+      return;
+    }
+
+    setSavingCustomerExpenseTypes(true);
+    try {
+      const nextDictConfig = {
+        ...dictConfig,
+        customerExpenseTypes: serializeDictEntries(normalizedEntries),
+      };
+      await saveRemoteAppConfig('dict_config', nextDictConfig);
+      const fallbackKey = Object.keys(normalizedEntries)[0] || defaultCustomerExpenseType;
+      if (!normalizedEntries[expenseForm.expense_type]) {
+        setExpenseForm(prev => ({ ...prev, expense_type: fallbackKey }));
+      }
+      setShowCustomerExpenseTypeManager(false);
+      setNewCustomerExpenseTypeName('');
+      toast.success('客户支出类型已更新');
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '保存客户支出类型失败';
+      toast.error(detail);
+    } finally {
+      setSavingCustomerExpenseTypes(false);
     }
   };
 
@@ -369,7 +535,7 @@ export default function Finance() {
 
   const handleRemoveCompanyExpenseTypeDraft = (key: string) => {
     if (companyExpenseTypeDrafts.length <= 1) {
-      toast.error('至少保留一个公司支出类型');
+      toast.error('至少保留一个运营支出类型');
       return;
     }
     if (companyExpenses.some(item => item.category === key)) {
@@ -393,11 +559,11 @@ export default function Finance() {
     }, {});
     const labels = Object.values(normalizedEntries);
     if (labels.length === 0) {
-      toast.error('请至少保留一个公司支出类型');
+      toast.error('请至少保留一个运营支出类型');
       return;
     }
     if (new Set(labels).size !== labels.length) {
-      toast.error('公司支出类型名称不能重复');
+      toast.error('运营支出类型名称不能重复');
       return;
     }
 
@@ -414,12 +580,100 @@ export default function Finance() {
       }
       setShowCompanyExpenseTypeManager(false);
       setNewCompanyExpenseTypeName('');
-      toast.success('公司支出类型已更新');
+      toast.success('运营支出类型已更新');
     } catch (err: any) {
-      const detail = err?.data?.detail || err?.message || '保存公司支出类型失败';
+      const detail = err?.data?.detail || err?.message || '保存运营支出类型失败';
       toast.error(detail);
     } finally {
       setSavingCompanyExpenseTypes(false);
+    }
+  };
+
+  const openPaymentPackageManager = () => {
+    setPaymentPackageDrafts(Object.entries(customerPackageLabels).map(([key, label]) => ({ key, label })));
+    setNewPaymentPackageName('');
+    setShowPaymentPackageManager(true);
+  };
+
+  const handleAddPaymentPackageDraft = () => {
+    const label = newPaymentPackageName.trim();
+    if (!label) {
+      toast.error('请输入套餐名称');
+      return;
+    }
+    if (paymentPackageDrafts.some(item => item.label.trim() === label)) {
+      toast.error('该套餐已存在');
+      return;
+    }
+    let key = buildOptionKey(label);
+    while (paymentPackageDrafts.some(item => item.key === key)) {
+      key = `${key}_${Date.now()}`;
+    }
+    setPaymentPackageDrafts(prev => [...prev, { key, label }]);
+    setNewPaymentPackageName('');
+  };
+
+  const handleRemovePaymentPackageDraft = (key: string) => {
+    if (paymentPackageDrafts.length <= 1) {
+      toast.error('至少保留一个套餐');
+      return;
+    }
+    const label = paymentPackageDrafts.find(item => item.key === key)?.label || customerPackageLabels[key];
+    const usedInCustomers = customers.some(customer => parseMultiValue(customer.interested_packages).includes(key));
+    const usedInDeals = !!label && deals.some(item => parsePackageLabels(item.package_name).includes(label));
+    const usedInPayments = !!label && payments.some(item => parsePackageLabels(item.product_name).includes(label));
+    const usedInSubscriptions = !!label && subscriptions.some(item => parsePackageLabels(item.package_name).includes(label));
+    if (usedInCustomers || usedInDeals || usedInPayments || usedInSubscriptions) {
+      toast.error('该套餐已有客户、成交或财务记录在使用，请先调整历史数据后再删除');
+      return;
+    }
+    const remaining = paymentPackageDrafts.filter(item => item.key !== key);
+    const remainingLabels = new Set(remaining.map(item => item.label));
+    setPaymentPackageDrafts(remaining);
+    setPayForm(prev => ({
+      ...prev,
+      product_names: prev.product_names.filter(item => remainingLabels.has(item)),
+    }));
+  };
+
+  const handleSavePaymentPackages = async () => {
+    const normalizedEntries = paymentPackageDrafts.reduce<Record<string, string>>((acc, item) => {
+      const label = item.label.trim();
+      if (label) {
+        acc[item.key] = label;
+      }
+      return acc;
+    }, {});
+    const labels = Object.values(normalizedEntries);
+    if (labels.length === 0) {
+      toast.error('请至少保留一个套餐');
+      return;
+    }
+    if (new Set(labels).size !== labels.length) {
+      toast.error('套餐名称不能重复');
+      return;
+    }
+
+    setSavingPaymentPackages(true);
+    try {
+      const nextDictConfig = {
+        ...dictConfig,
+        customerPackages: serializeDictEntries(normalizedEntries),
+      };
+      await saveRemoteAppConfig('dict_config', nextDictConfig);
+      const allowedLabels = new Set(Object.values(normalizedEntries));
+      setPayForm(prev => ({
+        ...prev,
+        product_names: prev.product_names.filter(item => allowedLabels.has(item)),
+      }));
+      setShowPaymentPackageManager(false);
+      setNewPaymentPackageName('');
+      toast.success('收款套餐已更新');
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '保存套餐失败';
+      toast.error(detail);
+    } finally {
+      setSavingPaymentPackages(false);
     }
   };
 
@@ -432,6 +686,22 @@ export default function Finance() {
     () => normalizePaymentMethodOptions(payMethodLabels),
     [payMethodLabels],
   );
+
+  const paymentPackageOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: Array<{ value: string; label: string }> = [];
+    Object.values(customerPackageLabels).forEach((label) => {
+      if (!label || seen.has(label)) return;
+      seen.add(label);
+      options.push({ value: label, label });
+    });
+    payForm.product_names.forEach((label) => {
+      if (!label || seen.has(label)) return;
+      seen.add(label);
+      options.push({ value: label, label });
+    });
+    return options;
+  }, [customerPackageLabels, payForm.product_names]);
 
   const manualPaymentMethodOptions = useMemo(
     () => paymentMethodOptions.filter((option) => !AUTO_PAYMENT_METHOD_KEYS.has(option.value)),
@@ -507,16 +777,27 @@ export default function Finance() {
   }, [subscriptions, dateFilterMode, filterStartDate, filterEndDate]);
 
   const filteredExpenses = expenses.filter(e => !expenseMonth || e.expense_month === expenseMonth);
-  const filteredCompanyExpenses = companyExpenses.filter(e => !companyExpenseMonth || e.expense_month === companyExpenseMonth);
+  const filteredCompanyExpenses = companyExpenses.filter(e => {
+    const matchesMonth = !companyExpenseMonth || e.expense_month === companyExpenseMonth;
+    const matchesCurrency = companyExpenseCurrencyFilter === 'all' || getCompanyExpenseCurrency(e) === companyExpenseCurrencyFilter;
+    return matchesMonth && matchesCurrency;
+  });
+  const monthlyFinanceBuckets = useMemo(() => buildMonthlyFinanceBuckets(payments, expenses, companyExpenses), [payments, expenses, companyExpenses]);
 
   // ─── Stats ───────────────────────────────────────────────────────
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const monthlyIncome = payments.filter(p => p.payment_date?.slice(0, 7) === currentMonthKey).reduce((s, p) => s + (p.amount_paid || 0), 0);
-  const monthlyCustomerExpense = expenses.filter(e => e.expense_month === currentMonthKey).reduce((s, e) => s + (e.amount || 0), 0); // USD
-  const monthlyCompanyExpense = companyExpenses.filter(e => e.expense_month === currentMonthKey).reduce((s, e) => s + (e.amount || 0), 0); // CNY
-  // IMPORTANT: Do not mix currencies. Profit here is USD-only: income (USD) - customer expense (USD).
-  const monthlyProfitUsd = monthlyIncome - monthlyCustomerExpense;
+  const currentMonthFinance = monthlyFinanceBuckets[currentMonthKey] || { revenue: 0, managementRevenue: 0, adsRevenue: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
+  const currentMonthDeductionRate = getDeductionRate(deductionRates, currentMonthKey);
+  const currentMonthProfit = calculateMonthlyProfit(currentMonthFinance, currentMonthDeductionRate);
+  const monthlyIncome = currentMonthFinance.revenue;
+  const monthlyCustomerExpense = currentMonthFinance.customerCost; // USD direct customer costs
+  const monthlyCompanyExpenseUsd = currentMonthFinance.operatingCostUsd; // USD operating costs
+  const monthlyCompanyExpenseCny = companyExpenses
+    .filter(e => e.expense_month === currentMonthKey && getCompanyExpenseCurrency(e) === 'CNY')
+    .reduce((s, e) => s + Number(e.amount || 0), 0); // CNY operating costs, not mixed into USD profit
+  // USD profit includes USD customer costs and USD operating costs. CNY remains separate until FX conversion is added.
+  const monthlyProfitUsd = currentMonthProfit.profit;
   const totalOutstanding = payments.reduce((s, p) => s + (p.outstanding_amount || 0), 0);
   const expiringSubs = subscriptions.filter(s => s.status === 'expiring_soon' || s.status === 'expired');
   const activeSubs = subscriptions.filter(s => s.status === 'active').length;
@@ -531,30 +812,46 @@ export default function Finance() {
     })).sort((a, b) => b.amount - a.amount);
   }, [filteredExpenses]);
 
-  const totalCompanyExpense = filteredCompanyExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const totalCompanyExpenseByCurrency = useMemo(() => ({
+    USD: roundMoney(filteredCompanyExpenses.filter(e => getCompanyExpenseCurrency(e) === 'USD').reduce((s, e) => s + Number(e.amount || 0), 0)),
+    CNY: roundMoney(filteredCompanyExpenses.filter(e => getCompanyExpenseCurrency(e) === 'CNY').reduce((s, e) => s + Number(e.amount || 0), 0)),
+  }), [filteredCompanyExpenses]);
   const companyExpenseByType = useMemo(() => {
-    const map: Record<string, number> = {};
-    filteredCompanyExpenses.forEach(e => { map[e.category] = (map[e.category] || 0) + (e.amount || 0); });
-    return Object.entries(map).map(([type, amount]) => ({
-      type, name: companyExpenseTypeLabels[type] || type, amount: Math.round(amount * 100) / 100,
-    })).sort((a, b) => b.amount - a.amount);
-  }, [filteredCompanyExpenses]);
+    const map: Record<string, { type: string; currency: CurrencyCode; amount: number }> = {};
+    filteredCompanyExpenses.forEach(e => {
+      const currency = getCompanyExpenseCurrency(e);
+      const type = e.category || 'other_company';
+      const key = `${currency}:${type}`;
+      map[key] = map[key] || { type, currency, amount: 0 };
+      map[key].amount += Number(e.amount || 0);
+    });
+    return Object.values(map).map(item => ({
+      ...item,
+      name: companyExpenseTypeLabels[item.type] || item.type,
+      amount: roundMoney(item.amount),
+    })).sort((a, b) => a.currency.localeCompare(b.currency) || b.amount - a.amount);
+  }, [companyExpenseTypeLabels, filteredCompanyExpenses]);
 
   // ─── Chart Data ──────────────────────────────────────────────────
   const monthlyTrendData = useMemo(() => {
-    const months: { key: string; label: string; income: number; customerExp: number; companyExp: number; profitUsd: number }[] = [];
+    const months: { key: string; label: string; income: number; customerExp: number; companyExpUsd: number; companyExpCny: number; profitUsd: number }[] = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const label = `${d.getMonth() + 1}月`;
-      const income = payments.filter(p => p.payment_date?.slice(0, 7) === key).reduce((s, p) => s + (p.amount_paid || 0), 0);
-      const custExp = expenses.filter(e => e.expense_month === key).reduce((s, e) => s + (e.amount || 0), 0); // USD
-      const compExp = companyExpenses.filter(e => e.expense_month === key).reduce((s, e) => s + (e.amount || 0), 0); // CNY
-      // Do not mix currencies. Profit is USD-only.
-      months.push({ key, label, income, customerExp: custExp, companyExp: compExp, profitUsd: income - custExp });
+      const bucket = monthlyFinanceBuckets[key] || { revenue: 0, managementRevenue: 0, adsRevenue: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
+      const income = bucket.revenue;
+      const custExp = bucket.customerCost; // USD
+      const compExpUsd = bucket.operatingCostUsd; // USD operating costs
+      const compExpCny = companyExpenses
+        .filter(e => e.expense_month === key && getCompanyExpenseCurrency(e) === 'CNY')
+        .reduce((s, e) => s + Number(e.amount || 0), 0); // CNY operating costs
+      const rate = getDeductionRate(deductionRates, key);
+      const { profit } = calculateMonthlyProfit(bucket, rate);
+      months.push({ key, label, income, customerExp: custExp, companyExpUsd: compExpUsd, companyExpCny: compExpCny, profitUsd: roundMoney(profit) });
     }
     return months;
-  }, [payments, expenses, companyExpenses]);
+  }, [companyExpenses, deductionRates, monthlyFinanceBuckets, now]);
 
   // ─── Monthly Detail (USD by default, no cross-currency mix) ───────────────────
   const monthlyDetail = useMemo(() => {
@@ -593,40 +890,50 @@ export default function Finance() {
       return true;
     };
 
-    const map: Record<string, { revenue: number; cost: number }> = {};
-    payments.forEach((p: any) => {
-      const ym = p.payment_date?.slice(0, 7);
-      if (!/^\d{4}-\d{2}$/.test(ym || '')) return;
-      if (!inRange(ym!)) return;
-      map[ym!] = map[ym!] || { revenue: 0, cost: 0 };
-      map[ym!].revenue += Number(p.amount_paid || 0);
+    const scopedPayments = payments.filter((payment: any) => {
+      const ym = payment.payment_date?.slice(0, 7);
+      return /^\d{4}-\d{2}$/.test(ym || '') && inRange(ym!);
     });
-    expenses.forEach((e: any) => {
-      const ym = e.expense_month;
-      if (!/^\d{4}-\d{2}$/.test(ym || '')) return;
-      if (!inRange(ym!)) return;
-      map[ym!] = map[ym!] || { revenue: 0, cost: 0 };
-      map[ym!].cost += Number(e.amount || 0);
+    const scopedExpenses = expenses.filter((expense: any) => {
+      const ym = expense.expense_month;
+      return /^\d{4}-\d{2}$/.test(ym || '') && inRange(ym!);
     });
+    const scopedCompanyExpenses = companyExpenses.filter((expense: any) => {
+      const ym = expense.expense_month;
+      return /^\d{4}-\d{2}$/.test(ym || '') && inRange(ym!);
+    });
+    const map = buildMonthlyFinanceBuckets(scopedPayments, scopedExpenses, scopedCompanyExpenses);
 
     const rows = Object.keys(map).sort().map(ym => {
-      const revenue = map[ym].revenue;
-      const cost = map[ym].cost;
-      const rate = (deductionRates && typeof deductionRates[ym] === 'number') ? deductionRates[ym] : 0.15;
-      const deduction_amount = revenue * rate;
-      const profit = revenue - deduction_amount - cost;
+      const bucket = map[ym];
+      const revenue = bucket.revenue;
+      const cost = bucket.cost;
+      const rate = getDeductionRate(deductionRates, ym);
+      const {
+        managementDeduction,
+        adsDeduction,
+        deductionAmount,
+        effectiveRate,
+        profit,
+      } = calculateMonthlyProfit(bucket, rate);
       return {
         month: ym,
         revenue_gross: Math.round(revenue * 100) / 100,
-        deduction_rate: rate,
-        deduction_amount: Math.round(deduction_amount * 100) / 100,
+        management_rate: bucket.managementRevenue > 0 ? rate : 0,
+        ads_recharge_rate: bucket.adsRevenue > 0 ? ADS_RECHARGE_DEDUCTION_RATE : 0,
+        management_deduction_amount: Math.round(managementDeduction * 100) / 100,
+        ads_recharge_deduction_amount: Math.round(adsDeduction * 100) / 100,
+        deduction_rate: Math.round(effectiveRate * 10000) / 10000,
+        deduction_amount: Math.round(deductionAmount * 100) / 100,
+        customer_cost: Math.round(bucket.customerCost * 100) / 100,
+        operating_cost_usd: Math.round(bucket.operatingCostUsd * 100) / 100,
         cost: Math.round(cost * 100) / 100,
         profit: Math.round(profit * 100) / 100,
       };
     });
 
     return { rows, range: { start, end } };
-  }, [payments, expenses, deductionRates, dateFilterMode, filterStartDate, filterEndDate]);
+  }, [payments, expenses, companyExpenses, deductionRates, dateFilterMode, filterStartDate, filterEndDate]);
 
 
   const incomeByTypeData = useMemo(() => {
@@ -743,6 +1050,12 @@ export default function Finance() {
           data: payload,
         });
         toast.success('收款记录已更新');
+        void logOperation({
+          customerId: Number(payForm.customer_id),
+          actionType: 'edit_payment',
+          actionDetail: `编辑收款：${cust?.business_name || ''} ${payForm.product_names.join('、')} ${fmt(amountPaid)}`,
+          operatorName,
+        });
       } else {
         payload.payment_date = new Date().toISOString();
         payload.created_at = new Date().toISOString();
@@ -752,54 +1065,67 @@ export default function Finance() {
           data: payload,
         });
         toast.success('收款记录已添加');
+        void logOperation({
+          customerId: Number(payForm.customer_id),
+          actionType: 'create_payment',
+          actionDetail: `新增收款：${cust?.business_name || ''} ${payForm.product_names.join('、')} ${fmt(amountPaid)}`,
+          operatorName,
+        });
       }
       // Auto-create or update subscription
       if (coverageEndISO) {
         try {
-          const endDate = new Date(coverageEndISO);
-          const today = new Date(); today.setHours(0, 0, 0, 0);
-          const diffDays = Math.ceil((endDate.getTime() - today.getTime()) / 86400000);
-          let status = 'active';
-          if (diffDays <= 0) status = 'expired';
-          else if (diffDays <= 7) status = 'expiring_soon';
-
-          const subData = {
-            customer_id: Number(payForm.customer_id), customer_name: cust?.business_name || '',
-            package_name: payForm.product_names.join('、'), package_price: amountDue,
+          const matchingSub = findMatchingSubscription(subscriptions, {
+            customerId: Number(payForm.customer_id),
+            packageName: payForm.product_names,
+          });
+          const paymentDateISO = payload.payment_date || new Date().toISOString();
+          const subStartDate = coverageStartISO || matchingSub?.start_date || paymentDateISO;
+          const subBaseData = {
+            customer_id: Number(payForm.customer_id),
+            customer_name: cust?.business_name || '',
+            package_name: payForm.product_names.join('、'),
+            package_price: amountDue,
             billing_cycle: payForm.billing_cycle,
-            start_date: coverageStartISO || new Date().toISOString(),
-            end_date: coverageEndISO, status, auto_renew: false,
-            renewal_person: '', next_payment_date: coverageEndISO,
+            start_date: subStartDate,
+            end_date: coverageEndISO,
+            auto_renew: false,
+            renewal_person: cust?.sales_person || matchingSub?.renewal_person || '',
+            last_payment_date: paymentDateISO,
+            next_payment_date: coverageEndISO,
+            updated_at: new Date().toISOString(),
+          };
+          const subData = {
+            ...subBaseData,
+            status: computeSubscriptionStatus(subBaseData),
           };
 
-          if (editingPayId) {
-            // When editing a payment, find the existing subscription for this customer and update it
-            const existingSubs = subscriptions.filter(
-              s => s.customer_id === Number(payForm.customer_id)
-            );
-            // Find the most recent subscription that matches the customer
-            const matchingSub = existingSubs.length > 0
-              ? existingSubs.sort((a: any, b: any) => (b.id || 0) - (a.id || 0))[0]
-              : null;
-
-            if (matchingSub) {
-              await client.entities.subscriptions.update({
-                id: String(matchingSub.id),
-                data: subData,
-              });
-            } else {
-              // No existing subscription found, create a new one
-              await client.entities.subscriptions.create({
-                data: { ...subData, created_at: new Date().toISOString() },
-              });
-            }
+          if (matchingSub) {
+            await client.entities.subscriptions.update({
+              id: String(matchingSub.id),
+              data: subData,
+            });
+            void logOperation({
+              customerId: Number(payForm.customer_id),
+              actionType: 'edit_subscription',
+              actionDetail: `同步套餐续费：${cust?.business_name || ''} ${payForm.product_names.join('、')} 截止 ${payForm.coverage_end || ''}`,
+              operatorName,
+            });
           } else {
-            // Creating a new payment, create a new subscription
             await client.entities.subscriptions.create({
               data: { ...subData, created_at: new Date().toISOString() },
             });
+            void logOperation({
+              customerId: Number(payForm.customer_id),
+              actionType: 'create_subscription',
+              actionDetail: `新增套餐续费：${cust?.business_name || ''} ${payForm.product_names.join('、')} 截止 ${payForm.coverage_end || ''}`,
+              operatorName,
+            });
           }
-        } catch (subErr) { console.error('Auto-create/update subscription failed:', subErr); }
+        } catch (subErr) {
+          console.error('Auto-create/update subscription failed:', subErr);
+          toast.error('收款已保存，但套餐续费同步失败，请检查续费信息');
+        }
       }
       setShowPaymentForm(false); setEditingPayId(null); setPayForm(emptyPayForm);
       loadData();
@@ -838,6 +1164,12 @@ export default function Finance() {
           data: payload,
         });
         toast.success('费用记录已更新');
+        void logOperation({
+          customerId: Number(expenseForm.customer_id),
+          actionType: 'edit_customer_expense',
+          actionDetail: `编辑客户支出：${cust?.business_name || ''} ${customerExpenseTypeLabels[expenseForm.expense_type] || expenseForm.expense_type} ${fmt(Number(expenseForm.amount))}`,
+          operatorName,
+        });
       } else {
         payload.payment_date = new Date().toISOString();
         payload.created_at = new Date().toISOString();
@@ -847,6 +1179,12 @@ export default function Finance() {
           data: payload,
         });
         toast.success('费用记录已添加');
+        void logOperation({
+          customerId: Number(expenseForm.customer_id),
+          actionType: 'create_customer_expense',
+          actionDetail: `新增客户支出：${cust?.business_name || ''} ${customerExpenseTypeLabels[expenseForm.expense_type] || expenseForm.expense_type} ${fmt(Number(expenseForm.amount))}`,
+          operatorName,
+        });
       }
       setShowExpenseForm(false); setEditingExpenseId(null); setExpenseForm(emptyExpenseForm);
       loadData();
@@ -865,7 +1203,14 @@ export default function Finance() {
         url: `/api/v1/entities/expenses/${deleteExpenseTarget.id}`,
         method: 'DELETE',
       });
-      toast.success('费用记录已删除'); setDeleteExpenseTarget(null); loadData();
+      toast.success('费用记录已删除');
+      void logOperation({
+        customerId: deleteExpenseTarget.customer_id || undefined,
+        actionType: 'delete_customer_expense',
+        actionDetail: `删除客户支出：${deleteExpenseTarget.customer_name || ''} ${customerExpenseTypeLabels[deleteExpenseTarget.expense_type] || deleteExpenseTarget.expense_type} ${fmt(Number(deleteExpenseTarget.amount || 0))}`,
+        operatorName,
+      });
+      setDeleteExpenseTarget(null); loadData();
     } catch (err) { toast.error('删除失败'); console.error(err); } finally { setDeletingExpense(false); }
   };
 
@@ -873,6 +1218,7 @@ export default function Finance() {
   const openEditCompanyExpense = (e: any) => {
     setCompanyExpenseForm({
       category: e.category || defaultCompanyExpenseType, amount: String(e.amount || ''),
+      currency: getCompanyExpenseCurrency(e),
       expense_month: e.expense_month || companyExpenseMonth,
       expense_date: e.expense_date?.slice(0, 10) || '', notes: e.notes || '',
     });
@@ -888,18 +1234,24 @@ export default function Finance() {
         category: companyExpenseForm.category,
         category_name: companyExpenseTypeLabels[companyExpenseForm.category] || companyExpenseForm.category,
         amount: Number(companyExpenseForm.amount),
-        currency: 'CNY',
+        currency: companyExpenseForm.currency,
         expense_month: companyExpenseForm.expense_month,
         expense_date: toISODatetime(companyExpenseForm.expense_date) || new Date().toISOString(),
         notes: companyExpenseForm.notes || null,
       };
+      const formattedAmount = formatMoney(Number(companyExpenseForm.amount), companyExpenseForm.currency);
       if (editingCompanyExpenseId) {
         await invokeWithAuth({
           url: `/api/v1/entities/company_expenses/${editingCompanyExpenseId}`,
           method: 'PUT',
           data: payload,
         });
-        toast.success('公司支出已更新');
+        toast.success('运营支出已更新');
+        void logOperation({
+          actionType: 'edit_company_expense',
+          actionDetail: `编辑运营支出：${companyExpenseTypeLabels[companyExpenseForm.category] || companyExpenseForm.category} ${formattedAmount}`,
+          operatorName,
+        });
       } else {
         payload.created_at = new Date().toISOString();
         await invokeWithAuth({
@@ -907,7 +1259,12 @@ export default function Finance() {
           method: 'POST',
           data: payload,
         });
-        toast.success('公司支出已添加');
+        toast.success('运营支出已添加');
+        void logOperation({
+          actionType: 'create_company_expense',
+          actionDetail: `新增运营支出：${companyExpenseTypeLabels[companyExpenseForm.category] || companyExpenseForm.category} ${formattedAmount}`,
+          operatorName,
+        });
       }
       setShowCompanyExpenseForm(false); setEditingCompanyExpenseId(null); setCompanyExpenseForm(emptyCompanyExpenseForm);
       loadData();
@@ -926,7 +1283,14 @@ export default function Finance() {
         url: `/api/v1/entities/company_expenses/${deleteCompanyExpenseTarget.id}`,
         method: 'DELETE',
       });
-      toast.success('公司支出已删除'); setDeleteCompanyExpenseTarget(null); loadData();
+      toast.success('运营支出已删除');
+      const currency = getCompanyExpenseCurrency(deleteCompanyExpenseTarget);
+      void logOperation({
+        actionType: 'delete_company_expense',
+        actionDetail: `删除运营支出：${companyExpenseTypeLabels[deleteCompanyExpenseTarget.category] || deleteCompanyExpenseTarget.category} ${formatMoney(Number(deleteCompanyExpenseTarget.amount || 0), currency)}`,
+        operatorName,
+      });
+      setDeleteCompanyExpenseTarget(null); loadData();
     } catch (err) { toast.error('删除失败'); console.error(err); } finally { setDeletingCompanyExpense(false); }
   };
 
@@ -941,9 +1305,24 @@ export default function Finance() {
           method: 'DELETE',
         });
         toast.success('收款记录已删除');
+        void logOperation({
+          customerId: deleteTarget.item.customer_id || undefined,
+          actionType: 'delete_payment',
+          actionDetail: `删除收款：${deleteTarget.item.customer_name || ''} ${deleteTarget.item.product_name || ''} ${fmt(Number(deleteTarget.item.amount_paid || 0))}`,
+          operatorName,
+        });
       } else {
-        await client.entities.subscriptions.delete({ id: String(deleteTarget.item.id) });
+        await invokeWithAuth({
+          url: `/api/v1/entities/subscriptions/${deleteTarget.item.id}`,
+          method: 'DELETE',
+        });
         toast.success('套餐记录已删除');
+        void logOperation({
+          customerId: deleteTarget.item.customer_id || undefined,
+          actionType: 'delete_subscription',
+          actionDetail: `删除套餐续费：${deleteTarget.item.customer_name || ''} ${deleteTarget.item.package_name || ''}`,
+          operatorName,
+        });
       }
       setDeleteTarget(null); loadData();
     } catch (err) { toast.error('删除失败'); console.error(err); } finally { setDeleting(false); }
@@ -997,7 +1376,15 @@ export default function Finance() {
   // Handler for customer select in payment form
   const handlePayCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
-    setPayForm(prev => ({ ...prev, customer_id: val }));
+    const selectedCustomer = customers.find(customer => String(customer.id) === val);
+    const suggestedPackages = parseMultiValue(selectedCustomer?.interested_packages)
+      .map(key => customerPackageLabels[key])
+      .filter(Boolean);
+    setPayForm(prev => ({
+      ...prev,
+      customer_id: val,
+      product_names: prev.product_names.length > 0 ? prev.product_names : suggestedPackages,
+    }));
   };
 
   // Handler for customer select in expense form
@@ -1055,11 +1442,15 @@ export default function Finance() {
             <div><p className="text-[11px] text-slate-500">本月收入</p><p className="text-base font-bold text-green-600">{fmt(monthlyIncome)}</p></div>
           </CardContent>
         </Card>
-        {/* 本月公司支出(CNY) */}
+        {/* 本月运营支出 */}
         <Card className="border-slate-200">
           <CardContent className="p-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center"><ArrowDownRight className="w-4 h-4 text-red-600" /></div>
-            <div><p className="text-[11px] text-slate-500">本月公司支出 (CNY)</p><p className="text-base font-bold text-red-600">{fmtRMB(monthlyCompanyExpense)}</p></div>
+            <div>
+              <p className="text-[11px] text-slate-500">本月运营支出</p>
+              <p className="text-base font-bold text-red-600">{fmt(monthlyCompanyExpenseUsd)}</p>
+              <p className="text-[11px] text-slate-400">{fmtRMB(monthlyCompanyExpenseCny)} 单独统计</p>
+            </div>
           </CardContent>
         </Card>
         {/* 本月客户成本(USD) */}
@@ -1102,7 +1493,7 @@ export default function Finance() {
         <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
           <TabsTrigger value="income" className="text-xs sm:text-sm"><DollarSign className="w-3.5 h-3.5 mr-1 hidden sm:inline" />收入管理 ({filteredPayments.length})</TabsTrigger>
           <TabsTrigger value="customer_expense" className="text-xs sm:text-sm"><Users className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户支出 ({filteredExpenses.length})</TabsTrigger>
-          <TabsTrigger value="company_expense" className="text-xs sm:text-sm"><Building2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />公司支出 ({filteredCompanyExpenses.length})</TabsTrigger>
+          <TabsTrigger value="company_expense" className="text-xs sm:text-sm"><Building2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />运营支出 ({filteredCompanyExpenses.length})</TabsTrigger>
           <TabsTrigger value="subscriptions" className="text-xs sm:text-sm"><Receipt className="w-3.5 h-3.5 mr-1 hidden sm:inline" />套餐续费 ({filteredSubscriptions.length})</TabsTrigger>
           <TabsTrigger value="charts" className="text-xs sm:text-sm"><PieChartIcon className="w-3.5 h-3.5 mr-1 hidden sm:inline" />数据分析</TabsTrigger>
           <TabsTrigger value="monthly_detail" className="text-xs sm:text-sm">按月明细</TabsTrigger>
@@ -1190,9 +1581,16 @@ export default function Finance() {
                   </div>
                   {expenseMonth && <Button variant="ghost" size="sm" className="h-8 text-xs text-slate-500" onClick={() => setExpenseMonth('')}>查看全部</Button>}
                 </div>
-                <Button size="sm" onClick={() => { setExpenseForm({ ...emptyExpenseForm, expense_month: expenseMonth }); setEditingExpenseId(null); setShowExpenseForm(true); }} className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="w-4 h-4 mr-1" /> 录入客户支出
-                </Button>
+                <div className="flex items-center gap-2">
+                  {canManageCustomerExpenseTypes && (
+                    <Button type="button" variant="outline" size="sm" onClick={openCustomerExpenseTypeManager}>
+                      管理类型
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={() => { setExpenseForm({ ...emptyExpenseForm, expense_month: expenseMonth }); setEditingExpenseId(null); setShowExpenseForm(true); }} className="bg-blue-600 hover:bg-blue-700">
+                    <Plus className="w-4 h-4 mr-1" /> 录入客户支出
+                  </Button>
+                </div>
               </div>
 
               {/* Summary */}
@@ -1204,7 +1602,7 @@ export default function Finance() {
                 {customerExpenseByType.map(et => (
                   <div key={et.type} className="p-3 bg-slate-50 rounded-lg">
                     <p className="text-xs text-slate-500">{et.name}</p>
-                    <p className="text-lg font-bold" style={{ color: CUSTOMER_EXPENSE_COLORS[et.type] || '#64748b' }}>{fmt(et.amount)}</p>
+                    <p className="text-lg font-bold" style={{ color: pickColorByKey(et.type, PIE_COLORS, CUSTOMER_EXPENSE_COLORS) }}>{fmt(et.amount)}</p>
                   </div>
                 ))}
               </div>
@@ -1229,7 +1627,7 @@ export default function Finance() {
                         <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2.5 font-medium">{e.customer_name || customerMap[e.customer_id]?.business_name || '-'}</td>
                           <td className="px-3 py-2.5">
-                            <Badge style={{ backgroundColor: `${CUSTOMER_EXPENSE_COLORS[e.expense_type] || '#94a3b8'}20`, color: CUSTOMER_EXPENSE_COLORS[e.expense_type] || '#94a3b8' }} className="text-xs">
+                            <Badge style={{ backgroundColor: `${pickColorByKey(e.expense_type, PIE_COLORS, CUSTOMER_EXPENSE_COLORS)}20`, color: pickColorByKey(e.expense_type, PIE_COLORS, CUSTOMER_EXPENSE_COLORS) }} className="text-xs">
                               {customerExpenseTypeLabels[e.expense_type] || e.expense_type}
                             </Badge>
                           </td>
@@ -1263,6 +1661,16 @@ export default function Finance() {
                     <span className="text-sm font-medium text-slate-600">支出月份:</span>
                     <Input type="month" value={companyExpenseMonth} onChange={e => setCompanyExpenseMonth(e.target.value)} className="w-[180px] h-9" />
                   </div>
+                  <NativeSelect
+                    value={companyExpenseCurrencyFilter}
+                    onChange={v => setCompanyExpenseCurrencyFilter(v as 'all' | CurrencyCode)}
+                    options={[
+                      { value: 'all', label: '全部币种' },
+                      { value: 'USD', label: '美元 USD' },
+                      { value: 'CNY', label: '人民币 CNY' },
+                    ]}
+                    className="w-[150px]"
+                  />
                   {companyExpenseMonth && <Button variant="ghost" size="sm" className="h-8 text-xs text-slate-500" onClick={() => setCompanyExpenseMonth('')}>查看全部</Button>}
                 </div>
                 <div className="flex items-center gap-2">
@@ -1271,8 +1679,8 @@ export default function Finance() {
                       管理类型
                     </Button>
                   )}
-                  <Button size="sm" onClick={() => { setCompanyExpenseForm({ ...emptyCompanyExpenseForm, category: defaultCompanyExpenseType, expense_month: companyExpenseMonth }); setEditingCompanyExpenseId(null); setShowCompanyExpenseForm(true); }} className="bg-blue-600 hover:bg-blue-700">
-                    <Plus className="w-4 h-4 mr-1" /> 录入公司支出
+                  <Button size="sm" onClick={() => { setCompanyExpenseForm({ ...emptyCompanyExpenseForm, category: defaultCompanyExpenseType, currency: companyExpenseCurrencyFilter === 'all' ? 'USD' : companyExpenseCurrencyFilter, expense_month: companyExpenseMonth }); setEditingCompanyExpenseId(null); setShowCompanyExpenseForm(true); }} className="bg-blue-600 hover:bg-blue-700">
+                    <Plus className="w-4 h-4 mr-1" /> 录入运营支出
                   </Button>
                 </div>
               </div>
@@ -1280,19 +1688,25 @@ export default function Finance() {
               {/* Summary */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                 <div className="p-3 bg-slate-50 rounded-lg">
-                  <p className="text-xs text-slate-500">总支出</p>
-                  <p className="text-lg font-bold text-slate-800">{fmtRMB(totalCompanyExpense)}</p>
+                  <p className="text-xs text-slate-500">总支出 USD</p>
+                  <p className="text-lg font-bold text-slate-800">{fmt(totalCompanyExpenseByCurrency.USD)}</p>
+                  <p className="text-[11px] text-slate-400">计入 USD 利润</p>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <p className="text-xs text-slate-500">总支出 CNY</p>
+                  <p className="text-lg font-bold text-slate-800">{fmtRMB(totalCompanyExpenseByCurrency.CNY)}</p>
+                  <p className="text-[11px] text-slate-400">暂不混入美元利润</p>
                 </div>
                 {companyExpenseByType.map(et => (
-                  <div key={et.type} className="p-3 bg-slate-50 rounded-lg">
-                    <p className="text-xs text-slate-500">{et.name}</p>
-                    <p className="text-lg font-bold" style={{ color: pickColorByKey(et.type, PIE_COLORS, COMPANY_EXPENSE_COLORS) }}>{fmtRMB(et.amount)}</p>
+                  <div key={`${et.currency}:${et.type}`} className="p-3 bg-slate-50 rounded-lg">
+                    <p className="text-xs text-slate-500">{et.name} · {et.currency}</p>
+                    <p className="text-lg font-bold" style={{ color: pickColorByKey(et.type, PIE_COLORS, COMPANY_EXPENSE_COLORS) }}>{formatMoney(et.amount, et.currency)}</p>
                   </div>
                 ))}
               </div>
 
               {filteredCompanyExpenses.length === 0 ? (
-                <p className="text-center text-slate-400 py-12">{companyExpenseMonth ? `${companyExpenseMonth} 暂无公司支出记录` : '暂无公司支出记录'}</p>
+                <p className="text-center text-slate-400 py-12">{companyExpenseMonth ? `${companyExpenseMonth} 暂无运营支出记录` : '暂无运营支出记录'}</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -1300,6 +1714,7 @@ export default function Finance() {
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
                         <th className="px-3 py-2.5 font-medium">支出类型</th>
                         <th className="px-3 py-2.5 font-medium">金额</th>
+                        <th className="px-3 py-2.5 font-medium">币种</th>
                         <th className="px-3 py-2.5 font-medium">月份</th>
                         <th className="px-3 py-2.5 font-medium hidden md:table-cell">支出日期</th>
                         <th className="px-3 py-2.5 font-medium hidden md:table-cell">备注</th>
@@ -1307,7 +1722,9 @@ export default function Finance() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredCompanyExpenses.map(e => (
+                      {filteredCompanyExpenses.map(e => {
+                        const currency = getCompanyExpenseCurrency(e);
+                        return (
                         <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2.5">
                             <Badge
@@ -1320,7 +1737,8 @@ export default function Finance() {
                               {companyExpenseTypeLabels[e.category] || e.category_name || e.category}
                             </Badge>
                           </td>
-                          <td className="px-3 py-2.5 font-medium">{fmtRMB(e.amount || 0)}</td>
+                          <td className="px-3 py-2.5 font-medium">{formatMoney(Number(e.amount || 0), currency)}</td>
+                          <td className="px-3 py-2.5 text-slate-500">{currency}</td>
                           <td className="px-3 py-2.5 text-slate-500">{e.expense_month}</td>
                           <td className="px-3 py-2.5 text-slate-500 hidden md:table-cell">{e.expense_date?.slice(0, 10) || '-'}</td>
                           <td className="px-3 py-2.5 text-slate-500 hidden md:table-cell max-w-[200px] truncate">{e.notes || '-'}</td>
@@ -1331,7 +1749,8 @@ export default function Finance() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1364,11 +1783,9 @@ export default function Finance() {
                     </thead>
                     <tbody>
                       {filteredSubscriptions.map(s => {
-                        const endDate = s.end_date ? new Date(s.end_date) : null;
-                        const today = new Date(); today.setHours(0, 0, 0, 0);
-                        const remainDays = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / 86400000) : null;
+                        const remainDays = getSubscriptionRemainingDays(s);
                         return (
-                          <tr key={s.id} className={`border-b border-slate-100 hover:bg-slate-50 ${s.status === 'expiring_soon' ? 'bg-amber-50/50' : s.status === 'expired' ? 'bg-red-50/50' : ''}`}>
+                          <tr key={s.id} className={`border-b border-slate-100 hover:bg-slate-50 ${remainDays !== null && remainDays <= 0 ? 'bg-red-50/50' : remainDays !== null && remainDays <= 7 ? 'bg-amber-50/50' : ''}`}>
                             <td className="px-3 py-2.5 font-medium">{s.customer_name}</td>
                             <td className="px-3 py-2.5">{s.package_name}</td>
                             <td className="px-3 py-2.5">{fmt(s.package_price)}</td>
@@ -1417,18 +1834,31 @@ export default function Finance() {
                       <Tooltip
                         contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
                         formatter={(value: number, name: string) => {
-                          const labels: Record<string, string> = { income: '收入(USD)', customerExp: '客户支出(USD)', companyExp: '公司支出(CNY)', profitUsd: '利润(USD)' };
-                          const formatted = name === 'companyExp' ? fmtRMB(value) : fmt(value);
+                          const labels: Record<string, string> = {
+                            income: '收入(USD)',
+                            customerExp: '客户支出(USD)',
+                            companyExpUsd: '运营支出(USD)',
+                            companyExpCny: '运营支出(CNY)',
+                            profitUsd: '利润(USD)',
+                          };
+                          const formatted = name === 'companyExpCny' ? fmtRMB(value) : fmt(value);
                           return [formatted, labels[name] || name];
                         }}
                       />
                       <Legend formatter={(value) => {
-                        const labels: Record<string, string> = { income: '收入(USD)', customerExp: '客户支出(USD)', companyExp: '公司支出(CNY)', profitUsd: '利润(USD)' };
+                        const labels: Record<string, string> = {
+                          income: '收入(USD)',
+                          customerExp: '客户支出(USD)',
+                          companyExpUsd: '运营支出(USD)',
+                          companyExpCny: '运营支出(CNY)',
+                          profitUsd: '利润(USD)',
+                        };
                         return <span className="text-xs text-slate-600">{labels[value] || value}</span>;
                       }} />
                       <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Bar dataKey="customerExp" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={24} />
-                      <Bar dataKey="companyExp" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                      <Bar dataKey="companyExpUsd" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                      <Bar dataKey="companyExpCny" fill="#94a3b8" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Line type="monotone" dataKey="profitUsd" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3 }} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -1596,36 +2026,40 @@ export default function Finance() {
             {/* Company Expense Breakdown */}
             <Card className="border-slate-200 lg:col-span-2">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold text-slate-700">公司支出明细</CardTitle>
+                <CardTitle className="text-base font-semibold text-slate-700">运营支出明细</CardTitle>
               </CardHeader>
               <CardContent>
                 {companyExpenseByType.length === 0 ? (
-                  <p className="text-center text-slate-400 py-12">暂无公司支出数据</p>
+                  <p className="text-center text-slate-400 py-12">暂无运营支出数据</p>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <ResponsiveContainer width="100%" height={260}>
                       <PieChart>
-                        <Pie data={companyExpenseByType.map(d => ({ name: d.name, value: d.amount, type: d.type }))} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2} dataKey="value"
+                        <Pie data={companyExpenseByType.map(d => ({ name: `${d.name} (${d.currency})`, value: d.amount, type: d.type, currency: d.currency }))} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2} dataKey="value"
                           label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                           labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}>
                           {companyExpenseByType.map((d) => (
-                            <Cell key={d.type} fill={pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS)} />
+                            <Cell key={`${d.currency}:${d.type}`} fill={pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS)} />
                           ))}
                         </Pie>
-                        <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }} formatter={(value: number) => [fmtRMB(value), '支出']} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }}
+                          formatter={(value: number, _name: string, props: any) => [formatMoney(value, props.payload.currency), '支出']}
+                        />
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="space-y-2">
                       {companyExpenseByType.map(d => {
-                        const pct = totalCompanyExpense > 0 ? ((d.amount / totalCompanyExpense) * 100).toFixed(1) : '0';
+                        const currencyTotal = totalCompanyExpenseByCurrency[d.currency] || 0;
+                        const pct = currencyTotal > 0 ? ((d.amount / currencyTotal) * 100).toFixed(1) : '0';
                         return (
-                          <div key={d.type} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                          <div key={`${d.currency}:${d.type}`} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
                             <div className="flex items-center gap-2">
                               <span className="w-3 h-3 rounded-full" style={{ backgroundColor: pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS) }} />
-                              <span className="text-sm text-slate-700">{d.name}</span>
+                              <span className="text-sm text-slate-700">{d.name} · {d.currency}</span>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className="text-sm font-medium text-slate-800">{fmtRMB(d.amount)}</span>
+                              <span className="text-sm font-medium text-slate-800">{formatMoney(d.amount, d.currency)}</span>
                               <span className="text-xs text-slate-500 w-12 text-right">{pct}%</span>
                             </div>
                           </div>
@@ -1645,6 +2079,9 @@ export default function Finance() {
               <CardTitle className="text-base font-semibold text-slate-700">
                 按月明细 <span className="ml-2 text-xs align-middle text-slate-400">(默认币种: USD)</span>
               </CardTitle>
+              <p className="text-xs text-slate-500">
+                管理费按月度扣点比例计算；投流费按充值金额扣 1%。
+              </p>
             </CardHeader>
             <CardContent className="p-0">
               {loading ? (
@@ -1661,10 +2098,14 @@ export default function Finance() {
                     <thead>
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
                         <th className="px-3 py-2.5 font-medium">月份</th>
-                        <th className="px-3 py-2.5 font-medium">收入收入 (revenue_gross)</th>
-                        <th className="px-3 py-2.5 font-medium">扣点率</th>
-                        <th className="px-3 py-2.5 font-medium">扣点金额</th>
-                        <th className="px-3 py-2.5 font-medium">成本 (cost)</th>
+                        <th className="px-3 py-2.5 font-medium">收入 (revenue_gross)</th>
+                        <th className="px-3 py-2.5 font-medium">管理费扣点率</th>
+                        <th className="px-3 py-2.5 font-medium">管理费扣点</th>
+                        <th className="px-3 py-2.5 font-medium">投流充值 1%</th>
+                        <th className="px-3 py-2.5 font-medium">总扣点</th>
+                        <th className="px-3 py-2.5 font-medium">客户成本</th>
+                        <th className="px-3 py-2.5 font-medium">USD运营支出</th>
+                        <th className="px-3 py-2.5 font-medium">总成本 (cost)</th>
                         <th className="px-3 py-2.5 font-medium">利润 (profit)</th>
                       </tr>
                     </thead>
@@ -1673,8 +2114,12 @@ export default function Finance() {
                         <tr key={r.month} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2.5 font-medium">{r.month}</td>
                           <td className="px-3 py-2.5">{fmt(r.revenue_gross)}</td>
-                          <td className="px-3 py-2.5">{Math.round(r.deduction_rate * 100)}%</td>
+                          <td className="px-3 py-2.5">{r.management_rate > 0 ? `${Math.round(r.management_rate * 100)}%` : '-'}</td>
+                          <td className="px-3 py-2.5">{fmt(r.management_deduction_amount)}</td>
+                          <td className="px-3 py-2.5">{fmt(r.ads_recharge_deduction_amount)}</td>
                           <td className="px-3 py-2.5">{fmt(r.deduction_amount)}</td>
+                          <td className="px-3 py-2.5">{fmt(r.customer_cost || 0)}</td>
+                          <td className="px-3 py-2.5">{fmt(r.operating_cost_usd || 0)}</td>
                           <td className="px-3 py-2.5">{fmt(r.cost)}</td>
                           <td className="px-3 py-2.5 font-semibold" style={{ color: r.profit >= 0 ? '#059669' : '#ef4444' }}>
                             {fmt(r.profit)}
@@ -1723,20 +2168,31 @@ export default function Finance() {
                 options={Object.entries(incomeTypeLabels).map(([k, v]) => ({ value: k, label: v }))} />
             </div>
             <div>
-              <Label>产品名称 *（可多选）</Label>
-              <div className="grid grid-cols-3 gap-2 mt-2 p-3 border rounded-md bg-slate-50">
-                {productOptions.map(opt => (
-                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer text-sm hover:text-blue-600">
-                    <input type="checkbox" className="rounded border-slate-300"
-                      checked={payForm.product_names.includes(opt.value)}
-                      onChange={(e) => {
-                        if (e.target.checked) setPayForm({ ...payForm, product_names: [...payForm.product_names, opt.value] });
-                        else setPayForm({ ...payForm, product_names: payForm.product_names.filter(n => n !== opt.value) });
-                      }} />
-                    {opt.label}
-                  </label>
-                ))}
+              <div className="flex items-center justify-between gap-2">
+                <Label>产品名称 *（可多选）</Label>
+                {canManageCustomerPackages && (
+                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0" onClick={openPaymentPackageManager}>
+                    管理套餐
+                  </Button>
+                )}
               </div>
+              {paymentPackageOptions.length === 0 ? (
+                <p className="mt-2 text-sm text-amber-600">暂无可选套餐，请先添加套餐。</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 mt-2 p-3 border rounded-md bg-slate-50">
+                  {paymentPackageOptions.map(opt => (
+                    <label key={opt.value} className="flex items-center gap-2 cursor-pointer text-sm hover:text-blue-600">
+                      <input type="checkbox" className="rounded border-slate-300"
+                        checked={payForm.product_names.includes(opt.value)}
+                        onChange={(e) => {
+                          if (e.target.checked) setPayForm({ ...payForm, product_names: [...payForm.product_names, opt.value] });
+                          else setPayForm({ ...payForm, product_names: payForm.product_names.filter(n => n !== opt.value) });
+                        }} />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              )}
               {payForm.product_names.length > 0 && <p className="text-xs text-slate-500 mt-1">已选: {payForm.product_names.join('、')}</p>}
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -1787,6 +2243,94 @@ export default function Finance() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={showPaymentPackageManager} onOpenChange={(v) => { setShowPaymentPackageManager(v); if (!v) setNewPaymentPackageName(''); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>管理收款套餐</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Input
+                value={newPaymentPackageName}
+                onChange={e => setNewPaymentPackageName(e.target.value)}
+                placeholder="新增套餐，例如：Google商家管理"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddPaymentPackageDraft();
+                  }
+                }}
+              />
+              <Button type="button" size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleAddPaymentPackageDraft}>
+                添加
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {paymentPackageDrafts.map(item => (
+                <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                    <p className="text-xs text-slate-400">{item.key}</p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => handleRemovePaymentPackageDraft(item.key)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">这里维护的套餐会同步用于客户意向套餐、成交录入和财务收款选择。</p>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowPaymentPackageManager(false)}>取消</Button>
+            <Button onClick={handleSavePaymentPackages} disabled={savingPaymentPackages} className="bg-blue-600 hover:bg-blue-700">
+              {savingPaymentPackages ? '保存中...' : '保存套餐'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCustomerExpenseTypeManager} onOpenChange={(v) => { setShowCustomerExpenseTypeManager(v); if (!v) setNewCustomerExpenseTypeName(''); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>管理客户支出类型</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Input
+                value={newCustomerExpenseTypeName}
+                onChange={e => setNewCustomerExpenseTypeName(e.target.value)}
+                placeholder="新增类型，例如：域名费"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddCustomerExpenseTypeDraft();
+                  }
+                }}
+              />
+              <Button type="button" size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleAddCustomerExpenseTypeDraft}>
+                添加
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {customerExpenseTypeDrafts.map(item => (
+                <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                    <p className="text-xs text-slate-400">{item.key}</p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => handleRemoveCustomerExpenseTypeDraft(item.key)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">客户支出类型用于绑定具体客户的成本，例如投流成本、网站成本、域名费、主机/服务器费。</p>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowCustomerExpenseTypeManager(false)}>取消</Button>
+            <Button onClick={handleSaveCustomerExpenseTypes} disabled={savingCustomerExpenseTypes} className="bg-blue-600 hover:bg-blue-700">
+              {savingCustomerExpenseTypes ? '保存中...' : '保存'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Customer Expense Form */}
       <Dialog open={showExpenseForm} onOpenChange={(v) => { setShowExpenseForm(v); if (!v) { setEditingExpenseId(null); setExpenseForm(emptyExpenseForm); } }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
@@ -1813,9 +2357,20 @@ export default function Finance() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>费用类型 *</Label>
-                <NativeSelect value={expenseForm.expense_type} onChange={v => setExpenseForm({ ...expenseForm, expense_type: v })}
-                  options={Object.entries(customerExpenseTypeLabels).map(([k, v]) => ({ value: k, label: v }))} />
+                <div className="flex items-center justify-between gap-2">
+                  <Label>费用类型 *</Label>
+                  {canManageCustomerExpenseTypes && (
+                    <Button type="button" variant="outline" size="sm" className="h-8 shrink-0" onClick={openCustomerExpenseTypeManager}>
+                      管理
+                    </Button>
+                  )}
+                </div>
+                <NativeSelect
+                  value={expenseForm.expense_type}
+                  onChange={v => setExpenseForm({ ...expenseForm, expense_type: v })}
+                  options={customerExpenseTypeOptions}
+                  className="mt-1"
+                />
               </div>
               <div>
                 <Label>金额 *</Label>
@@ -1838,7 +2393,7 @@ export default function Finance() {
       {/* Company Expense Form */}
       <Dialog open={showCompanyExpenseForm} onOpenChange={(v) => { setShowCompanyExpenseForm(v); if (!v) { setEditingCompanyExpenseId(null); setCompanyExpenseForm(emptyCompanyExpenseForm); } }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingCompanyExpenseId ? '编辑公司支出' : '录入公司支出'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingCompanyExpenseId ? '编辑运营支出' : '录入运营支出'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
               <Label>支出类型 *</Label>
@@ -1861,13 +2416,26 @@ export default function Finance() {
                 <Input type="number" value={companyExpenseForm.amount} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, amount: e.target.value })} placeholder="0.00" />
               </div>
               <div>
+                <Label>币种 *</Label>
+                <NativeSelect
+                  value={companyExpenseForm.currency}
+                  onChange={v => setCompanyExpenseForm({ ...companyExpenseForm, currency: normalizeCurrency(v) })}
+                  options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
                 <Label>支出日期</Label>
                 <Input type="date" value={companyExpenseForm.expense_date} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, expense_date: e.target.value })} />
               </div>
+              <div>
+                <Label>支出月份</Label>
+                <Input type="month" value={companyExpenseForm.expense_month} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, expense_month: e.target.value })} />
+              </div>
             </div>
-            <div>
-              <Label>支出月份</Label>
-              <Input type="month" value={companyExpenseForm.expense_month} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, expense_month: e.target.value })} />
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              USD 运营支出会计入美元利润；CNY 支出会单独统计，暂不和美元利润混算。
             </div>
             <div><Label>备注</Label><Textarea value={companyExpenseForm.notes} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, notes: e.target.value })} rows={2} /></div>
           </div>
@@ -1880,13 +2448,13 @@ export default function Finance() {
 
       <Dialog open={showCompanyExpenseTypeManager} onOpenChange={(v) => { setShowCompanyExpenseTypeManager(v); if (!v) setNewCompanyExpenseTypeName(''); }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>管理公司支出类型</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>管理运营支出类型</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Input
                 value={newCompanyExpenseTypeName}
                 onChange={e => setNewCompanyExpenseTypeName(e.target.value)}
-                placeholder="新增类型，例如：法务费"
+                placeholder="新增类型，例如：AI工具费、法务费"
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -1933,8 +2501,8 @@ export default function Finance() {
         onConfirm={handleDeleteExpense} loading={deletingExpense} />
 
       <ConfirmDialog open={!!deleteCompanyExpenseTarget} onOpenChange={(v) => { if (!v) setDeleteCompanyExpenseTarget(null); }}
-        title="确认删除公司支出记录"
-        description={`确定要删除「${companyExpenseTypeLabels[deleteCompanyExpenseTarget?.category] || deleteCompanyExpenseTarget?.category_name || deleteCompanyExpenseTarget?.category || ''}」的公司支出记录吗？`}
+        title="确认删除运营支出记录"
+        description={`确定要删除「${companyExpenseTypeLabels[deleteCompanyExpenseTarget?.category] || deleteCompanyExpenseTarget?.category_name || deleteCompanyExpenseTarget?.category || ''}」的运营支出记录吗？`}
         onConfirm={handleDeleteCompanyExpense} loading={deletingCompanyExpense} />
     </div>
   );

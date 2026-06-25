@@ -177,12 +177,14 @@ async def set_employee_password(
 
 @router.post("/init-admin")
 async def init_admin(db: AsyncSession = Depends(get_db)):
-    """Initialize default admin account if not exists."""
+    """Initialize a configured admin account if explicitly enabled."""
     import os
 
     if os.environ.get("ALLOW_INIT_ADMIN", "").lower() != "true":
         raise HTTPException(status_code=403, detail="初始化管理员接口已禁用")
+    if not os.environ.get("DEFAULT_ADMIN_PASSWORD"):
+        raise HTTPException(status_code=400, detail="请先设置 DEFAULT_ADMIN_PASSWORD")
 
     service = EmpAuthService(db)
     await service.ensure_default_admin()
-    return {"message": "Default admin initialized"}
+    return {"message": "Configured admin initialization checked"}

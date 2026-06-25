@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,12 @@ const statusColors: Record<string, string> = {
   pending: 'bg-blue-100 text-blue-700', in_progress: 'bg-amber-100 text-amber-700',
   completed: 'bg-green-100 text-green-700', delayed: 'bg-red-100 text-red-700',
 };
+const taskReminderMessages: Record<string, { title: string; description: string }> = {
+  delayed_task: {
+    title: '延期任务提醒',
+    description: '这里已经自动筛选出延期任务，并尽量聚焦到工作台提醒里那一条。',
+  },
+};
 
 export default function Tasks() {
   const {
@@ -27,6 +34,7 @@ export default function Tasks() {
     taskPriorities: priorityLabels,
     taskStatuses: statusLabels,
   } = useBusinessDicts();
+  const [searchParams] = useSearchParams();
   const [tasks, setTasks] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -39,6 +47,7 @@ export default function Tasks() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
+  const [focusTaskId, setFocusTaskId] = useState<number | null>(null);
   const emptyTaskForm = {
     title: '', customer_id: '', assignee_name: '', collaborator_names: '',
     task_type: 'other', priority: 'medium', status: 'pending',
@@ -47,6 +56,26 @@ export default function Tasks() {
   const [form, setForm] = useState(emptyTaskForm);
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    const nextStatus = searchParams.get('status');
+    if (nextStatus === 'all' || (nextStatus && statusLabels[nextStatus])) {
+      setFilterStatus(nextStatus);
+    }
+
+    const nextPriority = searchParams.get('priority');
+    if (nextPriority === 'all' || (nextPriority && priorityLabels[nextPriority])) {
+      setFilterPriority(nextPriority);
+    }
+
+    const nextSearch = searchParams.get('search');
+    if (nextSearch !== null) {
+      setSearch(nextSearch);
+    }
+
+    const rawTaskId = Number(searchParams.get('task_id') || 0);
+    setFocusTaskId(Number.isFinite(rawTaskId) && rawTaskId > 0 ? rawTaskId : null);
+  }, [priorityLabels, searchParams, statusLabels]);
 
   const loadData = async () => {
     try {
@@ -72,6 +101,16 @@ export default function Tasks() {
   const pendingCount = tasks.filter(t => t.status === 'pending').length;
   const inProgressCount = tasks.filter(t => t.status === 'in_progress').length;
   const completedCount = tasks.filter(t => t.status === 'completed').length;
+  const activeReminder = searchParams.get('reminder') || '';
+  const activeReminderMessage = taskReminderMessages[activeReminder];
+
+  useEffect(() => {
+    if (!focusTaskId) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`task-row-${focusTaskId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [filtered.length, focusTaskId]);
 
   const openEditTask = (t: any) => {
     setForm({
@@ -157,6 +196,15 @@ export default function Tasks() {
         </Button>
       </div>
 
+      {activeReminderMessage && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="p-3">
+            <p className="text-sm font-medium text-blue-700">{activeReminderMessage.title}</p>
+            <p className="text-xs text-blue-600 mt-1">{activeReminderMessage.description}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filters */}
       <Card className="border-slate-200">
         <CardContent className="p-3">
@@ -191,7 +239,11 @@ export default function Tasks() {
           ) : (
             <div className="divide-y divide-slate-100">
               {filtered.map(t => (
-                <div key={t.id} className="p-4 hover:bg-slate-50 transition-colors">
+                <div
+                  key={t.id}
+                  id={`task-row-${t.id}`}
+                  className={`p-4 transition-colors ${t.id === focusTaskId ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">

@@ -1,0 +1,27 @@
+services:
+  crm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: t24-crm
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/crm_prod.db}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_ENV: ${APP_ENV:-production}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/app/backend/data
+      - ./logs:/app/backend/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

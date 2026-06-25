@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
 import { logOperation } from '../lib/operation-log-helper';
+import { invokeWithAuth } from '../lib/tokenStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -57,16 +58,18 @@ const emptyForm = {
 };
 
 export default function MediaAccountsTab({ customerId, customerName }: Props) {
-  const { role, employee, hasPermission, canViewPassword } = useRole();
+  const { employee, canViewPassword } = useRole();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingHasPassword, setEditingHasPassword] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
-  const [visiblePasswords, setVisiblePasswords] = useState<Set<number>>(new Set());
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<number, string>>({});
+  const [revealingId, setRevealingId] = useState<number | null>(null);
 
   useEffect(() => {
     loadAccounts();
@@ -80,6 +83,7 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
         limit: 100,
       });
       setAccounts(res?.data?.items || []);
+      setVisiblePasswords({});
     } catch (err) {
       console.error(err);
     } finally {
@@ -90,6 +94,7 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
   const openCreate = () => {
     setForm(emptyForm);
     setEditingId(null);
+    setEditingHasPassword(false);
     setShowForm(true);
   };
 
@@ -98,13 +103,15 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
       platform_name: a.platform_name || 'Facebook',
       account_name: a.account_name || '',
       login_email: a.login_email || '',
-      login_password: a.login_password || '',
+      // Never prefill the real password back into the form.
+      login_password: '',
       bound_phone: a.bound_phone || '',
       profile_url: a.profile_url || '',
       account_status: a.account_status || 'active',
       notes: a.notes || '',
     });
     setEditingId(a.id);
+    setEditingHasPassword(Boolean(a.has_password));
     setShowForm(true);
   };
 
@@ -175,16 +182,27 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
     }
   };
 
-  const togglePassword = (id: number) => {
+  const togglePassword = async (id: number) => {
     if (!canViewPassword) {
       toast.error('您没有查看密码的权限');
       return;
     }
-    const newSet = new Set(visiblePasswords);
-    if (newSet.has(id)) {
-      newSet.delete(id);
-    } else {
-      newSet.add(id);
+
+    if (visiblePasswords[id]) {
+      const nextPasswords = { ...visiblePasswords };
+      delete nextPasswords[id];
+      setVisiblePasswords(nextPasswords);
+      return;
+    }
+
+    setRevealingId(id);
+    try {
+      const response = await invokeWithAuth({
+        url: `/api/v1/entities/media_accounts/${id}/password`,
+        method: 'GET',
+      });
+      const password = response?.data?.login_password || '';
+      setVisiblePasswords(prev => ({ ...prev, [id]: password }));
       const operatorName = employee?.name || '管理员';
       logOperation({
         customerId,
@@ -192,8 +210,12 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
         actionDetail: `查看媒体账号密码: ${accounts.find(a => a.id === id)?.platform_name || ''} - ${accounts.find(a => a.id === id)?.account_name || ''}`,
         operatorName,
       });
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '查看密码失败';
+      toast.error(detail);
+    } finally {
+      setRevealingId(null);
     }
-    setVisiblePasswords(newSet);
   };
 
   if (loading) {
@@ -227,7 +249,13 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
             </div>
             <div>
               <Label className="text-xs">登录密码</Label>
-              <Input type="password" value={form.login_password} onChange={e => setForm({ ...form, login_password: e.target.value })} placeholder="登录密码" />
+              <Input
+                type="password"
+                value={form.login_password}
+                onChange={e => setForm({ ...form, login_password: e.target.value })}
+                placeholder={editingId && editingHasPassword ? '留空则保留原密码，填写则更新' : '登录密码'}
+              />
+              {editingId && editingHasPassword && <p className="text-[11px] text-slate-500 mt-1">当前密码已安全保存，如不修改可直接留空。</p>}
             </div>
             <div>
               <Label className="text-xs">绑定手机号</Label>
@@ -285,11 +313,15 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
               </div>
               <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
                 {a.login_email && <span>邮箱: {a.login_email}</span>}
-                {a.login_password && (
+                {a.has_password && (
                   <span className="flex items-center gap-1">
-                    密码: {visiblePasswords.has(a.id) ? a.login_password : '••••••••'}
-                    <button onClick={() => togglePassword(a.id)} className="text-slate-400 hover:text-blue-600">
-                      {visiblePasswords.has(a.id) ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    密码: {visiblePasswords[a.id] || '••••••••'}
+                    <button
+                      onClick={() => togglePassword(a.id)}
+                      className="text-slate-400 hover:text-blue-600 disabled:opacity-60"
+                      disabled={revealingId === a.id}
+                    >
+                      {visiblePasswords[a.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                     </button>
                   </span>
                 )}

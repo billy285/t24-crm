@@ -12,6 +12,7 @@ from services.emp_auth import decode_access_token as decode_employee_access_toke
 logger = logging.getLogger(__name__)
 
 bearer_scheme = HTTPBearer(auto_error=False)
+FINANCE_ROLES = {"admin", "super_admin", "finance"}
 
 
 async def get_bearer_token(
@@ -76,4 +77,11 @@ async def get_admin_user(current_user: UserResponse = Depends(get_current_user))
     """Dependency to ensure current user has admin role."""
     if current_user.role not in {"admin", "super_admin"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return current_user
+
+
+async def get_finance_user(current_user: UserResponse = Depends(get_current_user)) -> UserResponse:
+    """Dependency to ensure current user can access raw finance records."""
+    if current_user.role not in FINANCE_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Finance access required")
     return current_user

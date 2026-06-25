@@ -9,8 +9,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Search, ExternalLink } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
+import { Combobox } from '@/components/ui/combobox';
 import ExportButton from '@/components/ExportButton';
 import { useBusinessDicts } from '../lib/dict-config';
+import {
+  computeSubscriptionStatus,
+  decorateEffectiveSubscriptions,
+  getSubscriptionRemainingDays,
+} from '../lib/subscription-utils';
 
 const subStatusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
@@ -27,28 +33,40 @@ const serviceStatusLabels: Record<string, string> = {
 
 const fmt = (value: number) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
-function computeSubscriptionStatus(subscription: any): string {
-  if (!subscription) return 'none';
-  if (!subscription.end_date) return subscription.status || 'active';
-  if (subscription.status === 'paused' || subscription.status === 'lost') return subscription.status;
+const parseMultiValue = (value: any): string[] => {
+  if (Array.isArray(value)) return value.map(item => String(item).trim()).filter(Boolean);
+  return String(value || '').split(',').map(item => item.trim()).filter(Boolean);
+};
 
-  const endDate = new Date(subscription.end_date);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffDays = Math.ceil((endDate.getTime() - today.getTime()) / 86400000);
+const getLatestTime = (item: any, dateFields: string[]) => {
+  if (!item) return 0;
+  return dateFields.reduce((latest, field) => {
+    const value = item[field];
+    if (!value) return latest;
+    const time = new Date(value).getTime();
+    return Number.isNaN(time) ? latest : Math.max(latest, time);
+  }, 0);
+};
 
-  if (diffDays <= 0) return 'expired';
-  if (diffDays <= 7) return 'expiring_soon';
-  return 'active';
-}
+const packageSourceLabels: Record<string, string> = {
+  deal: '来自成交记录',
+  payment: '来自收款记录',
+  subscription: '来自续费记录',
+  customer: '来自客户资料',
+};
 
 export default function Sales() {
-  const { employee, dataScope } = useRole();
-  const { billingCycles: cycleLabels, subscriptionStatuses: subStatusLabels } = useBusinessDicts();
+  const { employee, dataScope, canViewFinance } = useRole();
+  const {
+    billingCycles: cycleLabels,
+    customerPackages: customerPackageLabels,
+    subscriptionStatuses: subStatusLabels,
+  } = useBusinessDicts();
   const navigate = useNavigate();
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [filterCustomerId, setFilterCustomerId] = useState('all');
   const [filterServiceStatus, setFilterServiceStatus] = useState('all');
   const [filterSalesPerson, setFilterSalesPerson] = useState('all');
   const [filterCountry, setFilterCountry] = useState('all');
@@ -61,12 +79,14 @@ export default function Sales() {
         client.entities.customers.query({ limit: 500, sort: '-updated_at' }),
         client.entities.deals.query({ limit: 500, sort: '-deal_date' }),
         client.entities.subscriptions.query({ limit: 500, sort: '-end_date' }),
-        client.entities.payments.queryAll({ limit: 500, sort: '-payment_date' }),
+        canViewFinance
+          ? client.entities.payments.queryAll({ limit: 500, sort: '-payment_date' })
+          : Promise.resolve({ data: { items: [] } }),
       ]);
 
       let customerItems = customerRes?.data?.items || [];
       const dealItems = dealRes?.data?.items || [];
-      const subscriptionItems = subRes?.data?.items || [];
+      const subscriptionItems = decorateEffectiveSubscriptions(subRes?.data?.items || []);
       const paymentItems = paymentRes?.data?.items || [];
 
       if (dataScope === 'self' && employee) {
@@ -77,14 +97,18 @@ export default function Sales() {
 
       const latestDealByCustomer: Record<number, any> = {};
       dealItems.forEach((deal: any) => {
-        if (deal.customer_id && !latestDealByCustomer[deal.customer_id]) {
+        const customerId = Number(deal.customer_id || 0);
+        if (!customerId) return;
+        if (!latestDealByCustomer[customerId] || getLatestTime(deal, ['deal_date', 'created_at', 'updated_at']) > getLatestTime(latestDealByCustomer[customerId], ['deal_date', 'created_at', 'updated_at'])) {
           latestDealByCustomer[deal.customer_id] = deal;
         }
       });
 
       const latestSubscriptionByCustomer: Record<number, any> = {};
       subscriptionItems.forEach((subscription: any) => {
-        if (subscription.customer_id && !latestSubscriptionByCustomer[subscription.customer_id]) {
+        const customerId = Number(subscription.customer_id || 0);
+        if (!customerId) return;
+        if (!latestSubscriptionByCustomer[customerId] || getLatestTime(subscription, ['end_date', 'updated_at', 'created_at']) > getLatestTime(latestSubscriptionByCustomer[customerId], ['end_date', 'updated_at', 'created_at'])) {
           latestSubscriptionByCustomer[subscription.customer_id] = subscription;
         }
       });
@@ -92,11 +116,12 @@ export default function Sales() {
       const latestPaymentByCustomer: Record<number, any> = {};
       const outstandingByCustomer: Record<number, number> = {};
       paymentItems.forEach((payment: any) => {
-        if (!payment.customer_id) return;
-        if (!latestPaymentByCustomer[payment.customer_id]) {
-          latestPaymentByCustomer[payment.customer_id] = payment;
+        const customerId = Number(payment.customer_id || 0);
+        if (!customerId) return;
+        if (!latestPaymentByCustomer[customerId] || getLatestTime(payment, ['payment_date', 'created_at', 'updated_at']) > getLatestTime(latestPaymentByCustomer[customerId], ['payment_date', 'created_at', 'updated_at'])) {
+          latestPaymentByCustomer[customerId] = payment;
         }
-        outstandingByCustomer[payment.customer_id] = (outstandingByCustomer[payment.customer_id] || 0) + Number(payment.outstanding_amount || 0);
+        outstandingByCustomer[customerId] = (outstandingByCustomer[customerId] || 0) + Number(payment.outstanding_amount || 0);
       });
 
       const closedCustomerIds = new Set<number>();
@@ -113,7 +138,25 @@ export default function Sales() {
           const latestDeal = latestDealByCustomer[customer.id];
           const latestSubscription = latestSubscriptionByCustomer[customer.id];
           const latestPayment = latestPaymentByCustomer[customer.id];
-          const serviceStatus = computeSubscriptionStatus(latestSubscription);
+          const serviceStatus = latestSubscription ? computeSubscriptionStatus(latestSubscription) : 'none';
+          const customerPackageName = parseMultiValue(customer.interested_packages)
+            .map(key => customerPackageLabels[key] || key)
+            .filter(Boolean)
+            .join('、');
+          const selectedPackage =
+            latestDeal?.package_name
+              ? { name: latestDeal.package_name, source: 'deal' }
+              : latestPayment?.product_name
+                ? { name: latestPayment.product_name, source: 'payment' }
+                : latestSubscription?.package_name
+                  ? { name: latestSubscription.package_name, source: 'subscription' }
+                  : customerPackageName
+                    ? { name: customerPackageName, source: 'customer' }
+                    : { name: '-', source: '' };
+          const currentPackage =
+            latestSubscription?.package_name
+              ? { name: latestSubscription.package_name, source: 'subscription' }
+              : selectedPackage;
 
           return {
             id: customer.id,
@@ -126,13 +169,17 @@ export default function Sales() {
             country_label: customer.country ? getCountryLabel(customer.country) : '-',
             state: customer.state || '',
             state_label: customer.country && customer.state ? getStateLabel(customer.country, customer.state) : (customer.state || '-'),
-            latest_package_name: latestSubscription?.package_name || latestDeal?.package_name || '-',
+            selected_package_name: selectedPackage.name,
+            selected_package_source: selectedPackage.source ? packageSourceLabels[selectedPackage.source] : '',
+            latest_package_name: currentPackage.name,
+            latest_package_source: currentPackage.source ? packageSourceLabels[currentPackage.source] : '',
             latest_deal_amount: Number(latestDeal?.deal_amount || latestPayment?.amount_due || 0),
             latest_deal_date: latestDeal?.deal_date || latestPayment?.payment_date || customer.updated_at || customer.created_at,
             latest_payment_date: latestPayment?.payment_date || '',
             latest_payment_amount: Number(latestPayment?.amount_paid || 0),
             service_status: serviceStatus,
             service_end_date: latestSubscription?.end_date || '',
+            service_remaining_days: getSubscriptionRemainingDays(latestSubscription),
             next_payment_date: latestSubscription?.next_payment_date || '',
             billing_cycle: latestSubscription?.billing_cycle || latestDeal?.billing_cycle || '',
             outstanding_amount: Number(outstandingByCustomer[customer.id] || 0),
@@ -160,6 +207,18 @@ export default function Sales() {
     .sort((a, b) => a.localeCompare(b, 'en-US'))
     .map(code => ({ value: code, label: getCountryLabel(code) }));
 
+  const customerOptions = rows
+    .map(row => ({
+      value: String(row.id),
+      label: [
+        row.business_name || `客户#${row.id}`,
+        row.customer_code,
+        row.contact_name,
+        row.phone,
+      ].filter(Boolean).join(' · '),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'));
+
   const filtered = rows.filter(row => {
     const searchValue = search.trim().toLowerCase();
     const matchesSearch = !searchValue || [
@@ -168,17 +227,19 @@ export default function Sales() {
       row.contact_name,
       row.phone,
       row.sales_person,
+      row.selected_package_name,
       row.latest_package_name,
       row.country_label,
       row.state,
       row.state_label,
     ].some(field => String(field || '').toLowerCase().includes(searchValue));
 
+    const matchesCustomer = filterCustomerId === 'all' || String(row.id) === filterCustomerId;
     const matchesServiceStatus = filterServiceStatus === 'all' || row.service_status === filterServiceStatus;
     const matchesSalesPerson = filterSalesPerson === 'all' || row.sales_person === filterSalesPerson;
     const matchesCountry = filterCountry === 'all' || row.country === filterCountry;
 
-    return matchesSearch && matchesServiceStatus && matchesSalesPerson && matchesCountry;
+    return matchesCustomer && matchesSearch && matchesServiceStatus && matchesSalesPerson && matchesCountry;
   });
 
   const totalClosedCustomers = rows.length;
@@ -193,7 +254,10 @@ export default function Sales() {
     phone: row.phone,
     state: row.state || '',
     country: row.country_label,
+    selected_package_name: row.selected_package_name,
+    selected_package_source: row.selected_package_source,
     latest_package_name: row.latest_package_name,
+    latest_package_source: row.latest_package_source,
     latest_deal_amount: row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-',
     latest_deal_date: row.latest_deal_date?.slice(0, 10) || '',
     latest_payment_date: row.latest_payment_date?.slice(0, 10) || '',
@@ -201,6 +265,11 @@ export default function Sales() {
     service_status: subStatusLabels[row.service_status] || serviceStatusLabels[row.service_status] || row.service_status,
     billing_cycle: cycleLabels[row.billing_cycle] || row.billing_cycle || '',
     service_end_date: row.service_end_date?.slice(0, 10) || '',
+    service_remaining_text: row.service_remaining_days == null
+      ? '-'
+      : row.service_remaining_days <= 0
+        ? `已超期 ${Math.abs(row.service_remaining_days)} 天`
+        : `剩余 ${row.service_remaining_days} 天`,
     next_payment_date: row.next_payment_date?.slice(0, 10) || '',
     outstanding_amount: row.outstanding_amount > 0 ? fmt(row.outstanding_amount) : '-',
     sales_person: row.sales_person || '',
@@ -226,7 +295,10 @@ export default function Sales() {
             { key: 'phone', label: '电话' },
             { key: 'state', label: '州/省' },
             { key: 'country', label: '国家' },
-            { key: 'latest_package_name', label: '当前套餐' },
+            { key: 'selected_package_name', label: '成交套餐' },
+            { key: 'selected_package_source', label: '成交套餐来源' },
+            { key: 'latest_package_name', label: '当前服务套餐' },
+            { key: 'latest_package_source', label: '当前服务套餐来源' },
             { key: 'latest_deal_amount', label: '成交金额' },
             { key: 'latest_deal_date', label: '最近成交时间' },
             { key: 'latest_payment_date', label: '最近收款时间' },
@@ -234,6 +306,7 @@ export default function Sales() {
             { key: 'service_status', label: '服务状态' },
             { key: 'billing_cycle', label: '服务周期' },
             { key: 'service_end_date', label: '到期时间' },
+            { key: 'service_remaining_text', label: '剩余/超期' },
             { key: 'next_payment_date', label: '下次付款时间' },
             { key: 'outstanding_amount', label: '未收尾款' },
             { key: 'sales_person', label: '负责销售' },
@@ -252,7 +325,15 @@ export default function Sales() {
 
       <Card className="border-slate-200">
         <CardContent className="p-3">
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px_180px_180px] gap-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-[300px_minmax(0,1fr)_170px_170px_170px] gap-3">
+            <Combobox
+              value={filterCustomerId}
+              onValueChange={setFilterCustomerId}
+              options={[{ value: 'all', label: '全部成交客户' }, ...customerOptions]}
+              placeholder="选择成交客户"
+              searchPlaceholder="输入商家名、编号、联系人或电话"
+              emptyText="没有找到成交客户"
+            />
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -305,11 +386,12 @@ export default function Sales() {
                     <th className="px-4 py-3 font-medium">商家名称</th>
                     <th className="px-4 py-3 font-medium">联系人</th>
                     <th className="px-4 py-3 font-medium">州/国家</th>
-                    <th className="px-4 py-3 font-medium">当前套餐</th>
+                    <th className="px-4 py-3 font-medium">成交套餐</th>
+                    <th className="px-4 py-3 font-medium">当前服务</th>
                     <th className="px-4 py-3 font-medium">最近成交</th>
                     <th className="px-4 py-3 font-medium">服务状态</th>
-                    <th className="px-4 py-3 font-medium">最近收款</th>
-                    <th className="px-4 py-3 font-medium">尾款</th>
+                    {canViewFinance && <th className="px-4 py-3 font-medium">最近收款</th>}
+                    {canViewFinance && <th className="px-4 py-3 font-medium">尾款</th>}
                     <th className="px-4 py-3 font-medium">负责销售</th>
                     <th className="px-4 py-3 font-medium text-right">操作</th>
                   </tr>
@@ -335,8 +417,15 @@ export default function Sales() {
                         <div className="text-xs text-slate-400 mt-1">{row.country_label}</div>
                       </td>
                       <td className="px-4 py-3 text-slate-600">
+                        <div className="font-medium text-slate-700">{row.selected_package_name}</div>
+                        <div className="text-xs text-slate-400 mt-1">{row.selected_package_source || '-'}</div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
                         <div>{row.latest_package_name}</div>
-                        <div className="text-xs text-slate-400 mt-1">{cycleLabels[row.billing_cycle] || row.billing_cycle || '-'}</div>
+                        <div className="text-xs text-slate-400 mt-1">
+                          {cycleLabels[row.billing_cycle] || row.billing_cycle || '-'}
+                          {row.latest_package_source ? ` · ${row.latest_package_source}` : ''}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-slate-600">
                         <div className="font-medium text-slate-700">{row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-'}</div>
@@ -349,21 +438,42 @@ export default function Sales() {
                         <div className="text-xs text-slate-400 mt-1">
                           到期: {row.service_end_date?.slice(0, 10) || '-'}
                         </div>
+                        <div
+                          className={`text-xs mt-1 ${
+                            row.service_remaining_days == null
+                              ? 'text-slate-400'
+                              : row.service_remaining_days <= 0
+                                ? 'text-red-600 font-medium'
+                                : row.service_remaining_days <= 7
+                                  ? 'text-amber-600 font-medium'
+                                  : 'text-slate-500'
+                          }`}
+                        >
+                          {row.service_remaining_days == null
+                            ? '剩余: -'
+                            : row.service_remaining_days <= 0
+                              ? `已超期 ${Math.abs(row.service_remaining_days)} 天`
+                              : `剩余 ${row.service_remaining_days} 天`}
+                        </div>
                         <div className="text-xs text-slate-400 mt-1">
                           下次付款: {row.next_payment_date?.slice(0, 10) || '-'}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        <div className="font-medium text-slate-700">{row.latest_payment_amount ? fmt(row.latest_payment_amount) : '-'}</div>
-                        <div className="text-xs text-slate-400 mt-1">{row.latest_payment_date?.slice(0, 10) || '-'}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {row.outstanding_amount > 0 ? (
-                          <span className="font-medium text-red-600">{fmt(row.outstanding_amount)}</span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
+                      {canViewFinance && (
+                        <td className="px-4 py-3 text-slate-600">
+                          <div className="font-medium text-slate-700">{row.latest_payment_amount ? fmt(row.latest_payment_amount) : '-'}</div>
+                          <div className="text-xs text-slate-400 mt-1">{row.latest_payment_date?.slice(0, 10) || '-'}</div>
+                        </td>
+                      )}
+                      {canViewFinance && (
+                        <td className="px-4 py-3">
+                          {row.outstanding_amount > 0 ? (
+                            <span className="font-medium text-red-600">{fmt(row.outstanding_amount)}</span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-slate-600">{row.sales_person || '-'}</td>
                       <td className="px-4 py-3 text-right">
                         <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700" onClick={() => openCustomerDetail(row.id)}>

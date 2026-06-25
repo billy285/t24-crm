@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +34,16 @@ const callbackStatusIcons: Record<string, React.ReactNode> = {
   rescheduled: <CalendarClock className="w-3.5 h-3.5" />,
   cancelled: <AlertCircle className="w-3.5 h-3.5" />,
 };
+const callbackReminderMessages: Record<string, { title: string; description: string }> = {
+  callback_today: {
+    title: '今日回访提醒',
+    description: '页面已自动切到今日待办，并定位到对应客户的待回访记录。',
+  },
+  callback_overdue: {
+    title: '逾期回访提醒',
+    description: '页面已自动切到逾期待处理记录，方便你直接补回访。',
+  },
+};
 
 export default function Callbacks() {
   const { role, employee, dataScope } = useRole();
@@ -43,6 +53,7 @@ export default function Callbacks() {
     callbackResults: resultLabels,
   } = useBusinessDicts();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [callbacks, setCallbacks] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -50,6 +61,8 @@ export default function Callbacks() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [filterCustomerId, setFilterCustomerId] = useState('all');
+  const [filterSchedule, setFilterSchedule] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -69,6 +82,33 @@ export default function Callbacks() {
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    const nextStatus = searchParams.get('status');
+    if (nextStatus === 'all' || (nextStatus && callbackStatusLabels[nextStatus])) {
+      setFilterStatus(nextStatus);
+    }
+
+    const nextType = searchParams.get('type');
+    if (nextType === 'all' || (nextType && callbackTypeLabels[nextType])) {
+      setFilterType(nextType);
+    }
+
+    const nextCustomerId = searchParams.get('customer_id');
+    if (nextCustomerId) {
+      setFilterCustomerId(nextCustomerId);
+    }
+
+    const nextSchedule = searchParams.get('schedule');
+    if (nextSchedule === 'all' || nextSchedule === 'today' || nextSchedule === 'overdue') {
+      setFilterSchedule(nextSchedule);
+    }
+
+    const nextSearch = searchParams.get('search');
+    if (nextSearch !== null) {
+      setSearch(nextSearch);
+    }
+  }, [callbackStatusLabels, callbackTypeLabels, searchParams]);
 
   const loadData = async () => {
     try {
@@ -113,6 +153,7 @@ export default function Callbacks() {
 
   // Filtered list
   const filtered = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
     return callbacks.filter(cb => {
       const cust = customerMap[cb.customer_id];
       const matchSearch = !search ||
@@ -122,9 +163,14 @@ export default function Callbacks() {
         cb.employee_name?.includes(search);
       const matchStatus = filterStatus === 'all' || cb.status === filterStatus;
       const matchType = filterType === 'all' || cb.callback_type === filterType;
-      return matchSearch && matchStatus && matchType;
+      const matchCustomer = filterCustomerId === 'all' || String(cb.customer_id) === filterCustomerId;
+      const callbackDate = cb.callback_date?.slice(0, 10) || '';
+      const matchSchedule = filterSchedule === 'all'
+        || (filterSchedule === 'today' && cb.status === 'pending' && callbackDate === today)
+        || (filterSchedule === 'overdue' && cb.status === 'pending' && callbackDate < today);
+      return matchSearch && matchStatus && matchType && matchCustomer && matchSchedule;
     });
-  }, [callbacks, customerMap, search, filterStatus, filterType]);
+  }, [callbacks, customerMap, search, filterStatus, filterType, filterCustomerId, filterSchedule]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -277,6 +323,13 @@ export default function Callbacks() {
     };
   });
 
+  const activeReminder = searchParams.get('reminder') || '';
+  const activeReminderMessage = callbackReminderMessages[activeReminder];
+  const customerFilterOptions = useMemo(() => [
+    { value: 'all', label: '全部客户' },
+    ...closedCustomers.map(c => ({ value: String(c.id), label: c.business_name })),
+  ], [closedCustomers]);
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -313,6 +366,15 @@ export default function Callbacks() {
           </Button>
         </div>
       </div>
+
+      {activeReminderMessage && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="p-3">
+            <p className="text-sm font-medium text-blue-700">{activeReminderMessage.title}</p>
+            <p className="text-xs text-blue-600 mt-1">{activeReminderMessage.description}</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -420,6 +482,22 @@ export default function Callbacks() {
                 { value: 'all', label: '全部类型' },
                 ...Object.entries(callbackTypeLabels).map(([k, v]) => ({ value: k, label: v })),
               ]}
+            />
+            <NativeSelect
+              value={filterSchedule}
+              onChange={setFilterSchedule}
+              className="w-[150px]"
+              options={[
+                { value: 'all', label: '全部时间' },
+                { value: 'today', label: '今日待办' },
+                { value: 'overdue', label: '已逾期' },
+              ]}
+            />
+            <NativeSelect
+              value={filterCustomerId}
+              onChange={setFilterCustomerId}
+              className="w-[180px]"
+              options={customerFilterOptions}
             />
           </div>
         </CardContent>

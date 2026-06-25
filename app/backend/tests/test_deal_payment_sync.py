@@ -182,6 +182,56 @@ async def test_sync_payment_from_deal_updates_existing_payment_without_duplicate
 
 
 @pytest.mark.asyncio
+async def test_sync_payment_from_deal_uses_latest_matching_subscription_when_duplicates_exist(db_session):
+    customer = await seed_customer(db_session, business_name="Ads Lab")
+    deal = await seed_deal(
+        db_session,
+        customer,
+        product_type="ads",
+        package_name="Google广告投放",
+        deal_amount=2000.0,
+        is_paid=True,
+        service_start_date=datetime(2026, 6, 1, 0, 0, 0),
+        service_end_date=datetime(2026, 6, 30, 0, 0, 0),
+        deal_date=datetime(2026, 6, 24, 8, 0, 0),
+    )
+    db_session.add_all([
+        Subscriptions(
+            customer_id=customer.id,
+            customer_name=customer.business_name,
+            package_name=deal.package_name,
+            package_price=3000.0,
+            billing_cycle=deal.billing_cycle,
+            start_date=deal.service_start_date,
+            end_date=deal.service_end_date,
+            last_payment_date=datetime(2026, 6, 5, 9, 0, 0),
+            status="active",
+            created_at=datetime(2026, 6, 5, 9, 0, 0),
+        ),
+        Subscriptions(
+            customer_id=customer.id,
+            customer_name=customer.business_name,
+            package_name=deal.package_name,
+            package_price=2000.0,
+            billing_cycle=deal.billing_cycle,
+            start_date=deal.service_start_date,
+            end_date=deal.service_end_date,
+            last_payment_date=datetime(2026, 6, 20, 9, 0, 0),
+            status="active",
+            created_at=datetime(2026, 6, 20, 9, 0, 0),
+        ),
+    ])
+    await db_session.commit()
+
+    synced_payment = await sync_payment_from_deal(db_session, deal)
+
+    assert synced_payment.source_deal_id == deal.id
+    assert synced_payment.amount_due == 2000.0
+    assert synced_payment.amount_paid == 2000.0
+    assert synced_payment.payment_date == datetime(2026, 6, 20, 9, 0, 0)
+
+
+@pytest.mark.asyncio
 async def test_sync_deal_from_payment_reuses_source_deal_id_instead_of_creating_duplicate(db_session):
     customer = await seed_customer(db_session, business_name="Nail World")
     deal = await seed_deal(

@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { client } from '../lib/api';
+import { invokeWithAuth } from '../lib/tokenStore';
 import { useRole, roleLabels, empStatusLabels, empStatusColors, departmentLabels, positionLabels } from '../lib/role-context';
 import { systemRoleLabels } from '../lib/permissions';
-import { logOperation } from '../lib/operation-log-helper';
+import { actionTypeLabels, logOperation } from '../lib/operation-log-helper';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,7 @@ const emptyForm = {
   name: '', role: 'sales', phone: '', email: '', status: 'active',
   department: 'sales', position: 'specialist', employee_code: '', notes: '',
   login_username: '', hire_date: '', supervisor: '',
+  initial_password: '',
 };
 
 export default function Employees() {
@@ -54,6 +56,7 @@ export default function Employees() {
 
   const [resetPwdTarget, setResetPwdTarget] = useState<any>(null);
   const [newPassword, setNewPassword] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
@@ -87,27 +90,75 @@ export default function Employees() {
       status: e.status || 'active', department: e.department || 'sales', position: e.position || 'specialist',
       employee_code: e.employee_code || '', notes: e.notes || '',
       login_username: e.login_username || '', hire_date: e.hire_date || '', supervisor: e.supervisor || '',
+      initial_password: '',
     });
     setEditingId(e.id); setShowForm(true);
   };
 
   const handleSave = async () => {
     if (!form.name || !form.role) { toast.error('请填写姓名和角色'); return; }
+    if (form.email && employees.some(emp => emp.id !== editingId && (emp.email || '').trim().toLowerCase() === form.email.trim().toLowerCase())) {
+      toast.error('该邮箱已被其他员工使用');
+      return;
+    }
+    if (form.login_username && employees.some(emp => emp.id !== editingId && (emp.login_username || '').trim().toLowerCase() === form.login_username.trim().toLowerCase())) {
+      toast.error('该登录用户名已存在');
+      return;
+    }
     setSaving(true);
     try {
       const now = new Date().toISOString();
       const op = currentEmp?.name || '管理员';
+      const normalizedUserId = (form.login_username || form.email || form.employee_code || `emp_${Date.now()}`)
+        .trim()
+        .replace(/\s+/g, '_');
+      const payload = {
+        user_id: normalizedUserId || `emp_${Date.now()}`,
+        name: form.name,
+        role: form.role,
+        phone: form.phone || null,
+        email: form.email || null,
+        status: form.status,
+        department: form.department || null,
+        position: form.position || null,
+        employee_code: form.employee_code || null,
+        notes: form.notes || null,
+        login_username: form.login_username || null,
+        hire_date: form.hire_date || null,
+        supervisor: form.supervisor || null,
+        updated_at: now,
+      };
       if (editingId) {
-        await client.entities.employees.update({ id: String(editingId), data: { ...form, updated_at: now } });
+        await client.entities.employees.update({ id: String(editingId), data: payload });
         toast.success('员工信息已更新');
         logOperation({ actionType: 'other', actionDetail: `编辑员工: ${form.name}`, operatorName: op });
       } else {
-        await client.entities.employees.create({ data: { ...form, user_id: 'pending', created_at: now, updated_at: now } });
-        toast.success('员工已添加');
+        const created = await client.entities.employees.create({
+          data: {
+            ...payload,
+            created_at: now,
+          },
+        });
+        if (form.initial_password && form.initial_password.length >= 6 && created?.data?.id) {
+          await invokeWithAuth({
+            url: '/api/v1/emp-auth/set-password',
+            method: 'POST',
+            data: {
+              employee_id: created.data.id,
+              new_password: form.initial_password,
+            },
+          });
+          toast.success('员工已添加并设置初始密码');
+        } else {
+          toast.success('员工已添加，请为该员工设置登录密码');
+        }
         logOperation({ actionType: 'other', actionDetail: `新增员工: ${form.name}`, operatorName: op });
       }
       setShowForm(false); loadEmployees();
-    } catch { toast.error('保存失败'); } finally { setSaving(false); }
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '保存失败';
+      toast.error(detail);
+    } finally { setSaving(false); }
   };
 
   const toggleStatus = async (emp: any, newStatus: string) => {
@@ -157,12 +208,28 @@ export default function Employees() {
     } catch { toast.error('交接失败'); } finally { setTransferring(false); }
   };
 
-  const handleResetPassword = () => {
+  const handleResetPassword = async () => {
     if (!resetPwdTarget) return;
-    toast.success(`已重置 ${resetPwdTarget.name} 的密码（演示模式）`);
-    logOperation({ actionType: 'other', actionDetail: `重置员工密码: ${resetPwdTarget.name}`, operatorName: currentEmp?.name || '管理员' });
-    setResetPwdTarget(null);
-    setNewPassword('');
+    setResettingPassword(true);
+    try {
+      await invokeWithAuth({
+        url: '/api/v1/emp-auth/set-password',
+        method: 'POST',
+        data: {
+          employee_id: resetPwdTarget.id,
+          new_password: newPassword,
+        },
+      });
+      toast.success(`已重置 ${resetPwdTarget.name} 的登录密码`);
+      logOperation({ actionType: 'other', actionDetail: `重置员工密码: ${resetPwdTarget.name}`, operatorName: currentEmp?.name || '管理员' });
+      setResetPwdTarget(null);
+      setNewPassword('');
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '重置密码失败';
+      toast.error(detail);
+    } finally {
+      setResettingPassword(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -191,7 +258,15 @@ export default function Employees() {
         client.entities.customers.query({ query: { sales_person: emp.name }, limit: 100, sort: '-created_at' }),
         client.entities.tasks.query({ query: { assignee_name: emp.name }, limit: 100, sort: '-created_at' }),
         client.entities.deals.query({ query: { sales_name: emp.name }, limit: 100, sort: '-deal_date' }),
-        client.entities.operation_logs.query({ query: { operator_name: emp.name }, limit: 50, sort: '-created_at' }),
+        invokeWithAuth({
+          url: '/api/v1/entities/operation_logs/all',
+          method: 'GET',
+          data: {
+            query: JSON.stringify({ operator_name: emp.name }),
+            limit: 50,
+            sort: '-created_at',
+          },
+        }),
       ]);
       setEmpCustomers(custRes?.data?.items || []);
       setEmpTasks(taskRes?.data?.items || []);
@@ -216,8 +291,6 @@ export default function Employees() {
   if (!isAdmin) {
     return <div className="flex items-center justify-center h-64"><p className="text-slate-400">仅管理员可管理员工</p></div>;
   }
-
-  const actionTypeLabels: Record<string, string> = { create_customer: '新增客户', edit_customer: '编辑客户', delete_customer: '删除客户', view_password: '查看密码', create_follow_up: '新增跟进', edit_follow_up: '编辑跟进', delete_follow_up: '删除跟进', create_media_account: '新增媒体账号', edit_media_account: '编辑媒体账号', delete_media_account: '删除媒体账号', export_data: '导出', other: '其他' };
 
   const canCreate = hasPermission('employee_create');
   const canEdit = hasPermission('employee_edit');
@@ -447,7 +520,7 @@ export default function Employees() {
         onConfirm={handleResign} loading={resigning} />
 
       {/* Reset Password Dialog */}
-      <Dialog open={!!resetPwdTarget} onOpenChange={v => { if (!v) { setResetPwdTarget(null); setNewPassword(''); } }}>
+      <Dialog open={!!resetPwdTarget} onOpenChange={v => { if (!v) { setResetPwdTarget(null); setNewPassword(''); setResettingPassword(false); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>重置密码</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -459,8 +532,10 @@ export default function Employees() {
             <p className="text-xs text-amber-600">重置后请通知该员工使用新密码登录</p>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => { setResetPwdTarget(null); setNewPassword(''); }}>取消</Button>
-            <Button onClick={handleResetPassword} disabled={!newPassword || newPassword.length < 6} className="bg-blue-600 hover:bg-blue-700">确认重置</Button>
+            <Button variant="outline" onClick={() => { setResetPwdTarget(null); setNewPassword(''); setResettingPassword(false); }}>取消</Button>
+            <Button onClick={handleResetPassword} disabled={resettingPassword || !newPassword || newPassword.length < 6} className="bg-blue-600 hover:bg-blue-700">
+              {resettingPassword ? '重置中...' : '确认重置'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -486,8 +561,12 @@ export default function Employees() {
             <div><Label>直属上级</Label><NativeSelect value={form.supervisor} onChange={v => setForm({ ...form, supervisor: v })} options={[{ value: '', label: '无' }, ...employees.filter(emp => emp.id !== editingId).map(emp => ({ value: emp.name, label: `${emp.name} (${getRoleDisplay(emp.role)})` }))]} /></div>
             <div><Label>电话</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
             <div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+            {!editingId && (
+              <div><Label>初始密码</Label><Input type="password" value={form.initial_password} onChange={e => setForm({ ...form, initial_password: e.target.value })} placeholder="可选，至少6位" /></div>
+            )}
             <div className="col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
           </div>
+          {!editingId && <p className="text-xs text-slate-500 mt-3">如果这里不填写初始密码，员工创建后可通过“重置密码”为其开通登录。</p>}
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setShowForm(false)}>取消</Button>
             <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>

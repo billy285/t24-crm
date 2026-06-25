@@ -241,10 +241,10 @@ async def create_operation_logss_batch(
 @router.put("/batch", response_model=List[Operation_logsResponse])
 async def update_operation_logss_batch(
     request: Operation_logsBatchUpdateRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    _admin: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update multiple operation_logss in a single request (requires ownership)"""
+    """Update multiple operation_logss in a single request (admin only)"""
     logger.debug(f"Batch updating {len(request.items)} operation_logss")
     
     service = Operation_logsService(db)
@@ -254,7 +254,7 @@ async def update_operation_logss_batch(
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            result = await service.update(item.id, update_dict, user_id=str(current_user.id))
+            result = await service.update(item.id, update_dict)
             if result:
                 results.append(result)
         
@@ -270,17 +270,17 @@ async def update_operation_logss_batch(
 async def update_operation_logs(
     id: int,
     data: Operation_logsUpdateData,
-    current_user: UserResponse = Depends(get_current_user),
+    _admin: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update an existing operation_logs (requires ownership)"""
+    """Update an existing operation_logs (admin only)"""
     logger.debug(f"Updating operation_logs {id} with data: {data}")
 
     service = Operation_logsService(db)
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        result = await service.update(id, update_dict, user_id=str(current_user.id))
+        result = await service.update(id, update_dict)
         if not result:
             logger.warning(f"Operation_logs with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Operation_logs not found")
@@ -300,10 +300,10 @@ async def update_operation_logs(
 @router.delete("/batch")
 async def delete_operation_logss_batch(
     request: Operation_logsBatchDeleteRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    _admin: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete multiple operation_logss by their IDs (requires ownership)"""
+    """Delete multiple operation_logss by their IDs (admin only)"""
     logger.debug(f"Batch deleting {len(request.ids)} operation_logss")
     
     service = Operation_logsService(db)
@@ -311,7 +311,7 @@ async def delete_operation_logss_batch(
     
     try:
         for item_id in request.ids:
-            success = await service.delete(item_id, user_id=str(current_user.id))
+            success = await service.delete(item_id)
             if success:
                 deleted_count += 1
         
@@ -326,15 +326,15 @@ async def delete_operation_logss_batch(
 @router.delete("/{id}")
 async def delete_operation_logs(
     id: int,
-    current_user: UserResponse = Depends(get_current_user),
+    _admin: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a single operation_logs by ID (requires ownership)"""
+    """Delete a single operation_logs by ID (admin only)"""
     logger.debug(f"Deleting operation_logs with id: {id}")
     
     service = Operation_logsService(db)
     try:
-        success = await service.delete(id, user_id=str(current_user.id))
+        success = await service.delete(id)
         if not success:
             logger.warning(f"Operation_logs with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Operation_logs not found")

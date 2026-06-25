@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from core.database import get_db
-from dependencies.auth import get_current_user
+from dependencies.auth import get_finance_user
 from schemas.auth import UserResponse
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -41,7 +41,7 @@ async def profit_monthly_json(
     end: str = Query(..., description="YYYY-MM-DD"),
     currency: Optional[str] = Query(None, description="e.g., USD or CNY. Default: split by currency, this endpoint returns USD part only unless base_currency specified."),
     base_currency: Optional[str] = Query(None, description="If provided, aggregate into base currency (reserved for future use)"),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db)
 ):
     """

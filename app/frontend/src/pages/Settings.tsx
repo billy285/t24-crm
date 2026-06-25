@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { client } from '../lib/api';
+import { invokeWithAuth } from '../lib/tokenStore';
 import { useRole } from '../lib/role-context';
 import { systemRoleLabels } from '../lib/permissions';
 import { loadRemoteAppConfig, readCachedAppConfig, saveRemoteAppConfig } from '../lib/app-config';
@@ -31,10 +32,15 @@ const defaultDashboardConfig = {
 };
 const defaultReminderConfig = {
   enableFollowUpReminder: true, followUpDaysBefore: 0,
-  enableExpiryReminder: true, expiryDaysBefore: 30,
+  enableExpiryReminder: true, expiryDaysBefore: 7,
   enableNoFollowReminder: true, noFollowDays: 7,
   enableOverduePayment: true, enableDelayedTask: true,
 };
+const normalizeReminderConfig = (config: Partial<typeof defaultReminderConfig> | undefined | null) => ({
+  ...defaultReminderConfig,
+  ...(config || {}),
+  expiryDaysBefore: Number(config?.expiryDaysBefore) === 30 ? 7 : Number(config?.expiryDaysBefore ?? defaultReminderConfig.expiryDaysBefore),
+});
 const defaultSecurityConfig = {
   passwordViewRoles: ['super_admin', 'admin'] as string[],
   logPasswordViews: true,
@@ -144,7 +150,7 @@ export default function Settings() {
         setCompany(remoteCompany);
         setDictConfig(normalizeDictConfig(remoteDict));
         setDashboardConfig(remoteDashboard);
-        setReminderConfig(remoteReminder);
+        setReminderConfig(normalizeReminderConfig(remoteReminder));
         setSecurityConfig(remoteSecurity);
         setNotifConfig(remoteNotif);
         setExportConfig(remoteExport);
@@ -154,7 +160,7 @@ export default function Settings() {
         setCompany(readCachedAppConfig('company_info', defaultCompany));
         setDictConfig(normalizeDictConfig(readCachedAppConfig('dict_config', defaultBusinessDictConfig)));
         setDashboardConfig(readCachedAppConfig('dashboard_config', defaultDashboardConfig));
-        setReminderConfig(readCachedAppConfig('reminder_config', defaultReminderConfig));
+        setReminderConfig(normalizeReminderConfig(readCachedAppConfig('reminder_config', defaultReminderConfig)));
         setSecurityConfig(readCachedAppConfig('security_config', defaultSecurityConfig));
         setNotifConfig(readCachedAppConfig('notification_config', defaultNotificationConfig));
         setExportConfig(readCachedAppConfig('export_config', defaultExportConfig));
@@ -180,7 +186,19 @@ export default function Settings() {
   const loadLogs = async () => {
     setLogsLoading(true);
     try {
-      const res = await client.entities.operation_logs.query({ sort: '-created_at', limit: 100 });
+      const res = isAdmin
+        ? await invokeWithAuth({
+            url: '/api/v1/entities/operation_logs/all',
+            method: 'GET',
+            data: {
+              sort: '-created_at',
+              limit: 100,
+            },
+          })
+        : await client.entities.operation_logs.query({
+            sort: '-created_at',
+            limit: 100,
+          });
       setLogs(res?.data?.items || []);
     } catch (err) { console.error(err); }
     finally { setLogsLoading(false); }

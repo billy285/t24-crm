@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
+import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
 import { getCountryLabel, getStateLabel } from '../lib/country-state-data';
 import { logOperation } from '../lib/operation-log-helper';
 import {
@@ -112,13 +113,22 @@ interface SubscriptionRecord {
 
 // ==================== Helpers ====================
 const todayStr = () => new Date().toISOString().slice(0, 10);
-const isOverdue = (sp: ServiceProgress) => sp.service_end_date && sp.service_end_date < todayStr() && sp.service_stage !== 'ended';
-const isExpiringSoon = (sp: ServiceProgress) => {
-  if (!sp.service_end_date) return false;
+const SERVICE_EXPIRY_WARNING_DAYS = 7;
+const getServiceRemainingDays = (sp: Pick<ServiceProgress, 'service_end_date'>) => {
+  if (!sp.service_end_date) return null;
   const end = new Date(sp.service_end_date);
-  const now = new Date();
-  const diff = (end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  return diff > 0 && diff <= 30;
+  if (Number.isNaN(end.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((end.getTime() - today.getTime()) / 86400000);
+};
+const isOverdue = (sp: ServiceProgress) => {
+  const remainDays = getServiceRemainingDays(sp);
+  return remainDays !== null && remainDays <= 0 && sp.service_stage !== 'ended';
+};
+const isExpiringSoon = (sp: ServiceProgress) => {
+  const remainDays = getServiceRemainingDays(sp);
+  return remainDays !== null && remainDays > 0 && remainDays <= SERVICE_EXPIRY_WARNING_DAYS;
 };
 const isUpdatedThisWeek = (sp: ServiceProgress) => {
   if (!sp.last_update_time) return false;
@@ -230,7 +240,7 @@ export default function ServiceBoard() {
       setAllTasks(tRes?.data?.items || []);
       setAllCustomers(cRes?.data?.items || []);
       setAllEmployees(eRes?.data?.items || []);
-      setAllSubscriptions(sRes?.data?.items || []);
+      setAllSubscriptions(decorateEffectiveSubscriptions(sRes?.data?.items || []));
     } catch (err) {
       console.error(err);
       toast.error('加载数据失败');
@@ -760,11 +770,12 @@ export default function ServiceBoard() {
     const expiring = isExpiringSoon(sp);
     const issue = hasIssue(sp);
     const nextStage = getNextStage(sp.service_type, sp.service_stage);
+    const remainDays = getServiceRemainingDays(sp);
 
     return (
       <div
         className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
-          issue ? 'border-red-300 bg-red-50/50' : overdue ? 'border-amber-300 bg-amber-50/50' : expiring ? 'border-yellow-300 bg-yellow-50/50' : 'border-slate-200 bg-white'
+          issue ? 'border-red-300 bg-red-50/50' : overdue ? 'border-red-300 bg-red-50/50' : expiring ? 'border-yellow-300 bg-yellow-50/50' : 'border-slate-200 bg-white'
         }`}
         onClick={() => openDetail(sp)}
       >
@@ -774,10 +785,25 @@ export default function ServiceBoard() {
               <span className="font-semibold text-sm text-slate-800 truncate">{sp.customer_name}</span>
               <Badge className="text-[10px] bg-blue-100 text-blue-700">{serviceTypeLabels[sp.service_type] || sp.service_type}</Badge>
               {issue && <Badge className="text-[10px] bg-red-100 text-red-700 flex items-center gap-0.5"><AlertTriangle className="w-2.5 h-2.5" />卡点</Badge>}
-              {overdue && <Badge className="text-[10px] bg-amber-100 text-amber-700">逾期</Badge>}
+              {overdue && <Badge className="text-[10px] bg-red-100 text-red-700">已逾期</Badge>}
               {expiring && <Badge className="text-[10px] bg-yellow-100 text-yellow-700">即将到期</Badge>}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">{sp.city}{sp.state ? `, ${sp.state}` : ''} · {industryLabels[sp.industry] || sp.industry}</p>
+            <p className={`text-xs mt-1 ${
+              remainDays == null
+                ? 'text-slate-400'
+                : remainDays <= 0
+                  ? 'text-red-600 font-medium'
+                  : remainDays <= SERVICE_EXPIRY_WARNING_DAYS
+                    ? 'text-yellow-700 font-medium'
+                    : 'text-slate-500'
+            }`}>
+              {remainDays == null
+                ? '到期剩余: -'
+                : remainDays <= 0
+                  ? `已逾期 ${Math.abs(remainDays)} 天`
+                  : `剩余 ${remainDays} 天`}
+            </p>
           </div>
           <div className="text-right shrink-0 ml-2">
             <div className="text-lg font-bold text-blue-600">{sp.progress_percent}%</div>
@@ -862,7 +888,7 @@ export default function ServiceBoard() {
           <h2 className="text-lg font-semibold">{sp.customer_name}</h2>
           <Badge className="bg-blue-100 text-blue-700">{serviceTypeLabels[sp.service_type]}</Badge>
           <Badge className={issueStatusColors[sp.issue_status]}>{issueStatusLabels[sp.issue_status]}</Badge>
-          {isOverdue(sp) && <Badge className="bg-amber-100 text-amber-700">已逾期</Badge>}
+          {isOverdue(sp) && <Badge className="bg-red-100 text-red-700">已逾期</Badge>}
           {isExpiringSoon(sp) && <Badge className="bg-yellow-100 text-yellow-700">即将到期</Badge>}
         </div>
 
@@ -909,7 +935,25 @@ export default function ServiceBoard() {
                   <div className="flex justify-between"><span className="text-slate-500">行业</span><span>{industryLabels[sp.industry] || sp.industry}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">地区</span><span>{[sp.city, sp.state ? getStateLabel(sp.country, sp.state) : '', displayCountry(sp.country)].filter(Boolean).join(', ')}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">开始日期</span><span>{sp.service_start_date?.slice(0, 10) || '-'}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">到期日期</span><span className={isOverdue(sp) ? 'text-red-600 font-medium' : ''}>{sp.service_end_date?.slice(0, 10) || '-'}{isOverdue(sp) ? ' (已逾期)' : ''}</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">到期日期</span>
+                    <span className={
+                      isOverdue(sp)
+                        ? 'text-red-600 font-medium'
+                        : isExpiringSoon(sp)
+                          ? 'text-yellow-700 font-medium'
+                          : ''
+                    }>
+                      {sp.service_end_date?.slice(0, 10) || '-'}
+                      {(() => {
+                        const remainDays = getServiceRemainingDays(sp);
+                        if (remainDays == null) return '';
+                        if (remainDays <= 0) return ` (已逾期 ${Math.abs(remainDays)} 天)`;
+                        if (remainDays <= SERVICE_EXPIRY_WARNING_DAYS) return ` (剩余 ${remainDays} 天)`;
+                        return '';
+                      })()}
+                    </span>
+                  </div>
                 </div>
               </CardContent></Card>
 
@@ -1222,7 +1266,7 @@ export default function ServiceBoard() {
                         <div className="flex items-center gap-2 text-xs text-slate-500">
                           <span>{sp.ops_person || '-'}</span>
                           {hasIssue(sp) && <AlertTriangle className="w-3 h-3 text-red-500" />}
-                          {isOverdue(sp) && <Clock className="w-3 h-3 text-amber-500" />}
+                          {isOverdue(sp) && <Clock className="w-3 h-3 text-red-500" />}
                         </div>
                         {/* Kanban quick actions */}
                         {canEdit && (
@@ -1264,7 +1308,7 @@ export default function ServiceBoard() {
                     <h3 className="text-sm font-semibold text-slate-700">{opsName}</h3>
                     <Badge variant="secondary">{items.length} 客户</Badge>
                     <Badge className="bg-red-100 text-red-700 text-xs">{items.filter(i => hasIssue(i)).length} 卡点</Badge>
-                    <Badge className="bg-amber-100 text-amber-700 text-xs">{items.filter(i => isOverdue(i)).length} 逾期</Badge>
+                    <Badge className="bg-red-100 text-red-700 text-xs">{items.filter(i => isOverdue(i)).length} 逾期</Badge>
                     {opsStats && opsStats.pending > 0 && <Badge className="bg-blue-100 text-blue-700 text-xs">{opsStats.pending} 待办任务</Badge>}
                   </div>
                   <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">

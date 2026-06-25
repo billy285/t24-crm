@@ -12,6 +12,7 @@ export interface BusinessDictConfig {
   billingCycles: string;
   paymentModes: string;
   paymentMethods: string;
+  customerExpenseTypes: string;
   companyExpenseTypes: string;
   subscriptionStatuses: string;
   followUpStages: string;
@@ -35,7 +36,8 @@ export const defaultBusinessDictConfig: BusinessDictConfig = {
   billingCycles: 'monthly:月付,quarterly:季付,semi_annual:半年付,annual:年付',
   paymentModes: 'subscription_auto:自动订阅扣款,manual_collection:手动收款',
   paymentMethods: 'stripe:Stripe自动扣款,check:支票,zelle:Zelle,apple_cash:Apple Cash,venmo:Venmo,wire:电汇,cash:现金,credit_card:信用卡,other:其他',
-  companyExpenseTypes: 'salary:工资,internet:网络费,phone:电话费,rent:办公室租金,software:软件订阅费,recruitment:招聘费,travel:差旅费,other_company:其他支出',
+  customerExpenseTypes: 'ads_fee:投流成本,website_fee:网站成本,domain_fee:域名费,hosting_fee:主机/服务器费,design_fee:设计制作费,other:其他客户成本',
+  companyExpenseTypes: 'salary:工资,internet:网络费,phone:电话费,rent:办公室租金,software:软件订阅费,ai_tools:AI工具费,cloud_services:云服务费,operations_tools:运营工具费,recruitment:招聘费,travel:差旅费,other_company:其他支出',
   subscriptionStatuses: 'active:正常,expiring_soon:即将到期,expired:已到期,paused:暂停,lost:流失',
   followUpStages: 'new_lead:新线索,contacted:已联系,communicating:沟通中,quoted:已报价,considering:考虑中,pending_close:待成交,closed:已成交,not_closed:未成交,lost:流失,follow_later:后续再跟进',
   followUpMethods: 'phone:电话,wechat:微信,sms:短信,email:邮件',
@@ -58,6 +60,7 @@ export interface BusinessDictMaps {
   billingCycles: Record<string, string>;
   paymentModes: Record<string, string>;
   paymentMethods: Record<string, string>;
+  customerExpenseTypes: Record<string, string>;
   companyExpenseTypes: Record<string, string>;
   subscriptionStatuses: Record<string, string>;
   followUpStages: Record<string, string>;
@@ -124,6 +127,7 @@ export function buildBusinessDicts(config = loadDictConfig()): BusinessDictMaps 
     billingCycles: parseDictEntries(normalized.billingCycles),
     paymentModes: parseDictEntries(normalized.paymentModes),
     paymentMethods: parseDictEntries(normalized.paymentMethods),
+    customerExpenseTypes: parseDictEntries(normalized.customerExpenseTypes),
     companyExpenseTypes: parseDictEntries(normalized.companyExpenseTypes),
     subscriptionStatuses: parseDictEntries(normalized.subscriptionStatuses),
     followUpStages: parseDictEntries(normalized.followUpStages),

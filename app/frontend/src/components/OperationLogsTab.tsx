@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { client } from '../lib/api';
+import { invokeWithAuth } from '../lib/tokenStore';
 import { actionTypeLabels } from '../lib/operation-log-helper';
+import { useRole } from '../lib/role-context';
 import { Badge } from '@/components/ui/badge';
 import {
-  UserPlus, Edit, Trash2, Eye, MessageSquare, Share2, Download, FileText
+  UserPlus, Edit, Trash2, Eye, MessageSquare, Share2, Download, FileText, Receipt, Wallet
 } from 'lucide-react';
 
 const actionIcons: Record<string, any> = {
@@ -17,6 +19,18 @@ const actionIcons: Record<string, any> = {
   create_media_account: Share2,
   edit_media_account: Edit,
   delete_media_account: Trash2,
+  create_payment: Wallet,
+  edit_payment: Edit,
+  delete_payment: Trash2,
+  create_subscription: Receipt,
+  edit_subscription: Edit,
+  delete_subscription: Trash2,
+  create_customer_expense: Wallet,
+  edit_customer_expense: Edit,
+  delete_customer_expense: Trash2,
+  create_company_expense: Wallet,
+  edit_company_expense: Edit,
+  delete_company_expense: Trash2,
   export_data: Download,
   other: FileText,
 };
@@ -32,6 +46,18 @@ const actionColors: Record<string, string> = {
   create_media_account: 'bg-green-100 text-green-700',
   edit_media_account: 'bg-blue-100 text-blue-700',
   delete_media_account: 'bg-red-100 text-red-700',
+  create_payment: 'bg-green-100 text-green-700',
+  edit_payment: 'bg-blue-100 text-blue-700',
+  delete_payment: 'bg-red-100 text-red-700',
+  create_subscription: 'bg-green-100 text-green-700',
+  edit_subscription: 'bg-blue-100 text-blue-700',
+  delete_subscription: 'bg-red-100 text-red-700',
+  create_customer_expense: 'bg-green-100 text-green-700',
+  edit_customer_expense: 'bg-blue-100 text-blue-700',
+  delete_customer_expense: 'bg-red-100 text-red-700',
+  create_company_expense: 'bg-green-100 text-green-700',
+  edit_company_expense: 'bg-blue-100 text-blue-700',
+  delete_company_expense: 'bg-red-100 text-red-700',
   export_data: 'bg-purple-100 text-purple-700',
   other: 'bg-slate-100 text-slate-600',
 };
@@ -41,21 +67,36 @@ interface Props {
 }
 
 export default function OperationLogsTab({ customerId }: Props) {
+  const { isAdmin } = useRole();
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadLogs();
-  }, [customerId]);
+    void loadLogs();
+  }, [customerId, isAdmin]);
 
   const loadLogs = async () => {
+    setLoading(true);
     try {
-      const res = await client.entities.operation_logs.query({
-        query: { customer_id: customerId },
-        sort: '-created_at',
-        limit: 100,
-      });
-      setLogs(res?.data?.items || []);
+      if (isAdmin) {
+        const res = await invokeWithAuth({
+          url: '/api/v1/entities/operation_logs/all',
+          method: 'GET',
+          data: {
+            query: JSON.stringify({ customer_id: customerId }),
+            sort: '-created_at',
+            limit: 100,
+          },
+        });
+        setLogs(res?.data?.items || []);
+      } else {
+        const res = await client.entities.operation_logs.query({
+          query: { customer_id: customerId },
+          sort: '-created_at',
+          limit: 100,
+        });
+        setLogs(res?.data?.items || []);
+      }
     } catch (err) {
       console.error(err);
     } finally {

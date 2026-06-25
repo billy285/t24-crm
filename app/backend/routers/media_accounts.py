@@ -6,12 +6,17 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from services.media_accounts import Media_accountsService
-from dependencies.auth import get_current_user
+from dependencies.auth import get_admin_user, get_current_user
 from schemas.auth import UserResponse
+from services.media_accounts import (
+    Media_accountsService,
+    decrypt_media_account_password,
+    has_media_account_password,
+)
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -59,6 +64,7 @@ class Media_accountsResponse(BaseModel):
     account_name: Optional[str] = None
     login_email: Optional[str] = None
     login_password: Optional[str] = None
+    has_password: bool = False
     bound_phone: Optional[str] = None
     profile_url: Optional[str] = None
     account_status: Optional[str] = None
@@ -99,6 +105,74 @@ class Media_accountsBatchDeleteRequest(BaseModel):
     ids: List[int]
 
 
+class MediaAccountPasswordResponse(BaseModel):
+    id: int
+    login_password: str
+
+
+DEFAULT_PASSWORD_VIEW_ROLES = {"super_admin", "admin"}
+
+
+async def read_app_setting(db: AsyncSession, key: str, default: object):
+    await db.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+              config_key TEXT PRIMARY KEY,
+              value_json TEXT NOT NULL,
+              updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    )
+    await db.commit()
+
+    result = await db.execute(
+        text("SELECT value_json FROM app_settings WHERE config_key = :key"),
+        {"key": key},
+    )
+    row = result.fetchone()
+    if not row:
+        return default
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return default
+
+
+async def can_view_media_account_password(current_user: UserResponse, db: AsyncSession) -> bool:
+    role = (current_user.role or "").strip()
+    if not role:
+        return False
+
+    role_permissions = await read_app_setting(db, "role_permissions", {})
+    if isinstance(role_permissions, dict):
+        role_config = role_permissions.get(role) or {}
+        sensitive_fields = role_config.get("sensitiveFields") or {}
+        if bool(sensitive_fields.get("viewPassword")):
+            return True
+
+    security_config = await read_app_setting(
+        db,
+        "security_config",
+        {"passwordViewRoles": sorted(DEFAULT_PASSWORD_VIEW_ROLES)},
+    )
+    if isinstance(security_config, dict):
+        password_view_roles = security_config.get("passwordViewRoles") or []
+        if isinstance(password_view_roles, list) and role in password_view_roles:
+            return True
+
+    return role in DEFAULT_PASSWORD_VIEW_ROLES
+
+
+def serialize_media_account(item, *, include_password: bool = False) -> dict:
+    raw_password = getattr(item, "login_password", None)
+    data = Media_accountsResponse.model_validate(item, from_attributes=True).model_dump()
+    data["has_password"] = has_media_account_password(raw_password)
+    data["login_password"] = decrypt_media_account_password(raw_password) if include_password else None
+    return data
+
+
 # ---------- Routes ----------
 @router.get("", response_model=Media_accountsListResponse)
 async def query_media_accountss(
@@ -131,6 +205,7 @@ async def query_media_accountss(
             user_id=str(current_user.id),
         )
         logger.debug(f"Found {result['total']} media_accountss")
+        result["items"] = [serialize_media_account(item) for item in result["items"]]
         return result
     except HTTPException:
         raise
@@ -146,6 +221,7 @@ async def query_media_accountss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Query media_accountss with filtering, sorting, and pagination without user limitation
@@ -168,6 +244,7 @@ async def query_media_accountss_all(
             sort=sort
         )
         logger.debug(f"Found {result['total']} media_accountss")
+        result["items"] = [serialize_media_account(item) for item in result["items"]]
         return result
     except HTTPException:
         raise
@@ -193,11 +270,39 @@ async def get_media_accounts(
             logger.warning(f"Media_accounts with id {id} not found")
             raise HTTPException(status_code=404, detail="Media_accounts not found")
         
-        return result
+        return serialize_media_account(result)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error fetching media_accounts {id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/{id}/password", response_model=MediaAccountPasswordResponse)
+async def get_media_account_password(
+    id: int,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reveal a media account password for authorized roles only."""
+    if not await can_view_media_account_password(current_user, db):
+        raise HTTPException(status_code=403, detail="You do not have permission to view passwords")
+
+    service = Media_accountsService(db)
+    try:
+        result = await service.get_by_id(id, user_id=str(current_user.id))
+        if not result:
+            logger.warning(f"Media_accounts with id {id} not found for password reveal")
+            raise HTTPException(status_code=404, detail="Media_accounts not found")
+
+        return {
+            "id": result.id,
+            "login_password": decrypt_media_account_password(result.login_password),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error revealing media_accounts password {id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -217,7 +322,7 @@ async def create_media_accounts(
             raise HTTPException(status_code=400, detail="Failed to create media_accounts")
         
         logger.info(f"Media_accounts created successfully with id: {result.id}")
-        return result
+        return serialize_media_account(result)
     except ValueError as e:
         logger.error(f"Validation error creating media_accounts: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -242,7 +347,7 @@ async def create_media_accountss_batch(
         for item_data in request.items:
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
-                results.append(result)
+                results.append(serialize_media_account(result))
         
         logger.info(f"Batch created {len(results)} media_accountss successfully")
         return results
@@ -300,7 +405,7 @@ async def update_media_accounts(
             raise HTTPException(status_code=404, detail="Media_accounts not found")
         
         logger.info(f"Media_accounts {id} updated successfully")
-        return result
+        return serialize_media_account(result)
     except HTTPException:
         raise
     except ValueError as e:

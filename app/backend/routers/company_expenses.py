@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_current_user
+from dependencies.auth import get_finance_user
 from schemas.auth import UserResponse
 from services.company_expenses import Company_expensesService
 
@@ -102,6 +102,7 @@ async def query_company_expensess(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Query company_expensess with filtering, sorting, and pagination"""
@@ -139,6 +140,7 @@ async def query_company_expensess_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Query company_expensess with filtering, sorting, and pagination without user limitation
@@ -173,6 +175,7 @@ async def query_company_expensess_all(
 async def get_company_expenses(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single company_expenses by ID"""
@@ -196,7 +199,7 @@ async def get_company_expenses(
 @router.post("", response_model=Company_expensesResponse, status_code=201)
 async def create_company_expenses(
     data: Company_expensesData,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new company_expenses"""
@@ -221,7 +224,7 @@ async def create_company_expenses(
 @router.post("/batch", response_model=List[Company_expensesResponse], status_code=201)
 async def create_company_expensess_batch(
     request: Company_expensesBatchCreateRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple company_expensess in a single request"""
@@ -247,6 +250,7 @@ async def create_company_expensess_batch(
 @router.put("/batch", response_model=List[Company_expensesResponse])
 async def update_company_expensess_batch(
     request: Company_expensesBatchUpdateRequest,
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple company_expensess in a single request"""
@@ -275,6 +279,7 @@ async def update_company_expensess_batch(
 async def update_company_expenses(
     id: int,
     data: Company_expensesUpdateData,
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing company_expenses"""
@@ -304,6 +309,7 @@ async def update_company_expenses(
 @router.delete("/batch")
 async def delete_company_expensess_batch(
     request: Company_expensesBatchDeleteRequest,
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple company_expensess by their IDs"""
@@ -329,6 +335,7 @@ async def delete_company_expensess_batch(
 @router.delete("/{id}")
 async def delete_company_expenses(
     id: int,
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single company_expenses by ID"""

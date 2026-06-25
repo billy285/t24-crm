@@ -1,5 +1,5 @@
 from core.database import Base
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Column, DateTime, Integer, String, Text
 
 
 class Employees(Base):
@@ -14,4 +14,12 @@ class Employees(Base):
     email = Column(String, nullable=True)
     password = Column(String, nullable=True)
     status = Column(String, nullable=True)
+    employee_code = Column(String, nullable=True)
+    department = Column(String, nullable=True)
+    position = Column(String, nullable=True)
+    login_username = Column(String, nullable=True)
+    hire_date = Column(String, nullable=True)
+    supervisor = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=True)

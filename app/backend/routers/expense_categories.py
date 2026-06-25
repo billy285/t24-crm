@@ -9,12 +9,14 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from dependencies.auth import get_current_user, get_finance_user
+from schemas.auth import UserResponse
 from services.expense_categories import Expense_categoriesService
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/entities/expense_categories", tags=["expense_categories"])
+router = APIRouter(prefix="/api/v1/entities/expense_categories", tags=["expense_categories"], dependencies=[Depends(get_current_user)])
 
 
 # ---------- Pydantic Schemas ----------
@@ -183,6 +185,7 @@ async def get_expense_categories(
 @router.post("", response_model=Expense_categoriesResponse, status_code=201)
 async def create_expense_categories(
     data: Expense_categoriesData,
+    _finance: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new expense_categories"""
@@ -207,6 +210,7 @@ async def create_expense_categories(
 @router.post("/batch", response_model=List[Expense_categoriesResponse], status_code=201)
 async def create_expense_categoriess_batch(
     request: Expense_categoriesBatchCreateRequest,
+    _finance: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple expense_categoriess in a single request"""
@@ -232,6 +236,7 @@ async def create_expense_categoriess_batch(
 @router.put("/batch", response_model=List[Expense_categoriesResponse])
 async def update_expense_categoriess_batch(
     request: Expense_categoriesBatchUpdateRequest,
+    _finance: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple expense_categoriess in a single request"""
@@ -260,6 +265,7 @@ async def update_expense_categoriess_batch(
 async def update_expense_categories(
     id: int,
     data: Expense_categoriesUpdateData,
+    _finance: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing expense_categories"""
@@ -289,6 +295,7 @@ async def update_expense_categories(
 @router.delete("/batch")
 async def delete_expense_categoriess_batch(
     request: Expense_categoriesBatchDeleteRequest,
+    _finance: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple expense_categoriess by their IDs"""
@@ -314,6 +321,7 @@ async def delete_expense_categoriess_batch(
 @router.delete("/{id}")
 async def delete_expense_categories(
     id: int,
+    _finance: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single expense_categories by ID"""

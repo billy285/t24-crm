@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, Dict, Any, List
 
-from sqlalchemy import select, func
+from sqlalchemy import false, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customers import Customers
@@ -15,6 +15,28 @@ class CustomersService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    def _scope_filter(self, scope_user: Optional[Any] = None):
+        """Return a customer ownership filter for non-all-data roles."""
+        if not scope_user:
+            return None
+
+        role = str(getattr(scope_user, "role", "") or "").lower()
+        if role in {"admin", "super_admin", "finance", "ops", "operations"}:
+            return None
+
+        conditions = []
+        raw_user_id = getattr(scope_user, "id", None)
+        try:
+            conditions.append(Customers.sales_employee_id == int(raw_user_id))
+        except (TypeError, ValueError):
+            pass
+
+        user_name = (getattr(scope_user, "name", None) or "").strip()
+        if user_name:
+            conditions.append(Customers.sales_person == user_name)
+
+        return or_(*conditions) if conditions else false()
 
     async def create(self, data: Dict[str, Any]) -> Optional[Customers]:
         """Create a new customers"""
@@ -30,10 +52,13 @@ class CustomersService:
             logger.error(f"Error creating customers: {str(e)}")
             raise
 
-    async def get_by_id(self, obj_id: int) -> Optional[Customers]:
+    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None) -> Optional[Customers]:
         """Get customers by ID"""
         try:
             query = select(Customers).where(Customers.id == obj_id)
+            scope_filter = self._scope_filter(scope_user)
+            if scope_filter is not None:
+                query = query.where(scope_filter)
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -46,11 +71,16 @@ class CustomersService:
         limit: int = 20, 
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        scope_user: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of customerss"""
         try:
             query = select(Customers)
             count_query = select(func.count(Customers.id))
+            scope_filter = self._scope_filter(scope_user)
+            if scope_filter is not None:
+                query = query.where(scope_filter)
+                count_query = count_query.where(scope_filter)
             
             if query_dict:
                 for field, value in query_dict.items():
@@ -85,10 +115,12 @@ class CustomersService:
             logger.error(f"Error fetching customers list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any]) -> Optional[Customers]:
+    async def update(
+        self, obj_id: int, update_data: Dict[str, Any], scope_user: Optional[Any] = None
+    ) -> Optional[Customers]:
         """Update customers"""
         try:
-            obj = await self.get_by_id(obj_id)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 logger.warning(f"Customers {obj_id} not found for update")
                 return None
@@ -105,10 +137,10 @@ class CustomersService:
             logger.error(f"Error updating customers {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int) -> bool:
+    async def delete(self, obj_id: int, scope_user: Optional[Any] = None) -> bool:
         """Delete customers"""
         try:
-            obj = await self.get_by_id(obj_id)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 logger.warning(f"Customers {obj_id} not found for deletion")
                 return False

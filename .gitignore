@@ -7,3 +7,8 @@ dist
 vite.config.ts.timestamp-*
 .DS_Store
 .git.broken-submodule
+*.db
+.env
+.env.*
+!.env.example
+!.env.*.example

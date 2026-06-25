@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from services.expenses import ExpensesService
-from dependencies.auth import get_current_user
+from dependencies.auth import get_finance_user
 from schemas.auth import UserResponse
 
 # Set up logging
@@ -110,7 +110,7 @@ async def query_expensess(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Query expensess with filtering, sorting, and pagination (user can only see their own records)"""
@@ -149,6 +149,7 @@ async def query_expensess_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Query expensess with filtering, sorting, and pagination without user limitation
@@ -183,7 +184,7 @@ async def query_expensess_all(
 async def get_expenses(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single expenses by ID"""
@@ -207,7 +208,7 @@ async def get_expenses(
 @router.post("", response_model=ExpensesResponse, status_code=201)
 async def create_expenses(
     data: ExpensesData,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new expenses"""
@@ -232,7 +233,7 @@ async def create_expenses(
 @router.post("/batch", response_model=List[ExpensesResponse], status_code=201)
 async def create_expensess_batch(
     request: ExpensesBatchCreateRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple expensess in a single request"""
@@ -258,7 +259,7 @@ async def create_expensess_batch(
 @router.put("/batch", response_model=List[ExpensesResponse])
 async def update_expensess_batch(
     request: ExpensesBatchUpdateRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple expensess in a single request (requires ownership)"""
@@ -287,7 +288,7 @@ async def update_expensess_batch(
 async def update_expenses(
     id: int,
     data: ExpensesUpdateData,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing expenses"""
@@ -317,7 +318,7 @@ async def update_expenses(
 @router.delete("/batch")
 async def delete_expensess_batch(
     request: ExpensesBatchDeleteRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple expensess by their IDs (requires ownership)"""
@@ -343,7 +344,7 @@ async def delete_expensess_batch(
 @router.delete("/{id}")
 async def delete_expenses(
     id: int,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single expenses by ID"""

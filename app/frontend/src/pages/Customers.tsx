@@ -25,6 +25,11 @@ import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../li
 import { saveRemoteAppConfig } from '../lib/app-config';
 import { buildOptionKey, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
 import { getPaymentMethodLabel, getPaymentModeLabel } from '../lib/payment-utils';
+import {
+  computeSubscriptionStatus,
+  decorateEffectiveSubscriptions,
+  getSubscriptionRemainingDays,
+} from '../lib/subscription-utils';
 
 const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', following: 'bg-amber-100 text-amber-700', closed: 'bg-green-100 text-green-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
 const levelColors: Record<string, string> = { high: 'bg-orange-100 text-orange-700', normal: 'bg-slate-100 text-slate-600', low: 'bg-gray-100 text-gray-500', vip: 'bg-purple-100 text-purple-700' };
@@ -96,6 +101,14 @@ const emptyAdvancedFilters = {
 
 const inlineSelectClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
 const inlineInputClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
+const customerDetailTabValues = new Set(['info', 'contacts', 'followups', 'deals', 'subscriptions', 'payments', 'renewals', 'media', 'logs']);
+const customerReminderMessages: Record<string, { title: string; description: string }> = {
+  follow_up_today: { title: '今日跟进提醒', description: '这位客户今天需要继续跟进，已为你直接打开跟进记录。' },
+  follow_up_overdue: { title: '逾期跟进提醒', description: '这位客户的计划跟进时间已过，建议尽快补跟进并更新下一次时间。' },
+  no_follow_7d: { title: '长期未跟进提醒', description: '这位客户最近 7 天没有新的跟进记录，建议先补充沟通情况。' },
+  renewal_due: { title: '续费提醒', description: '这位客户的服务临近到期，已为你打开续费信息方便处理。' },
+  overdue_payment: { title: '欠费提醒', description: '这位客户存在未结清款项，已为你打开财务信息方便核对。' },
+};
 
 function buildInlineOptions(value: string | undefined, labels: Record<string, string>) {
   const options = Object.entries(labels).map(([key, label]) => ({ value: key, label }));
@@ -121,22 +134,11 @@ function formatCurrency(value: number) {
 }
 
 function computeSubscriptionState(subscription: any) {
-  if (!subscription) return 'active';
-  if (!subscription.end_date) return subscription.status || 'active';
-  if (subscription.status === 'paused' || subscription.status === 'lost') return subscription.status;
-
-  const endDate = new Date(subscription.end_date);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffDays = Math.ceil((endDate.getTime() - today.getTime()) / 86400000);
-
-  if (diffDays <= 0) return 'expired';
-  if (diffDays <= 7) return 'expiring_soon';
-  return 'active';
+  return computeSubscriptionStatus(subscription);
 }
 
 export default function Customers() {
-  const { role, employee, hasPermission, isAdmin, dataScope } = useRole();
+  const { role, employee, hasPermission, isAdmin, dataScope, canViewFinance } = useRole();
   const dictConfig = useDictConfig();
   const businessDicts = useBusinessDicts();
   const industryLabels = businessDicts.industries;
@@ -152,7 +154,7 @@ export default function Customers() {
   const subStatusLabels = businessDicts.subscriptionStatuses;
   const methodLabels = businessDicts.followUpMethods;
   const canManageDict = isAdmin || hasPermission('settings_edit');
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -166,7 +168,9 @@ export default function Customers() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [manualCityInput, setManualCityInput] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [selectedCustomerTab, setSelectedCustomerTab] = useState('info');
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [deals, setDeals] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
@@ -426,17 +430,29 @@ export default function Customers() {
   // Advanced filter cascading state
   const advStates = advFilters.country ? getStatesForCountry(advFilters.country) : [];
   const advCities = advFilters.country && advFilters.state ? getCitiesForState(advFilters.country, advFilters.state) : [];
+  const activeReminder = searchParams.get('reminder') || '';
+  const activeReminderMessage = customerReminderMessages[activeReminder];
+  const normalizeCustomerDetailTab = (tab?: string | null) => {
+    if (tab === 'payments' && !canViewFinance) return 'info';
+    return tab && customerDetailTabValues.has(tab) ? tab : 'info';
+  };
 
   useEffect(() => {
     const sp = searchParams.get('status');
     if (sp && statusLabels[sp]) setFilterStatus(sp);
     // Handle deep link from Sales page
     const detailId = searchParams.get('detail');
+    const nextTab = normalizeCustomerDetailTab(searchParams.get('tab'));
     if (detailId && customers.length > 0) {
       const target = customers.find(c => c.id === Number(detailId));
-      if (target) openDetail(target);
+      if (target) {
+        setSelectedCustomerTab(nextTab);
+        if (selectedCustomer?.id !== target.id) {
+          openDetail(target, nextTab);
+        }
+      }
     }
-  }, [searchParams, customers, statusLabels]);
+  }, [searchParams, customers, selectedCustomer?.id, statusLabels, canViewFinance]);
 
   const toggleCol = (key: string) => {
     const nc = visibleCols.includes(key) ? visibleCols.filter(c => c !== key) : [...visibleCols, key];
@@ -446,7 +462,9 @@ export default function Customers() {
 
   const reloadFollowUps = async (cid: number) => {
     const r = await client.entities.follow_ups.query({ query: { customer_id: cid }, sort: '-created_at', limit: 50 });
-    setFollowUps(r?.data?.items || []);
+    const items = r?.data?.items || [];
+    setFollowUps(items);
+    return items;
   };
 
   const reloadContacts = async (cid: number) => {
@@ -463,7 +481,9 @@ export default function Customers() {
         client.entities.customers.query({ query: { id: customerId }, limit: 1 }),
         client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }),
         client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 50 }),
-        client.entities.payments.queryAll({ query: { customer_id: customerId }, sort: '-payment_date', limit: 100 }),
+        canViewFinance
+          ? client.entities.payments.queryAll({ query: { customer_id: customerId }, sort: '-payment_date', limit: 100 })
+          : Promise.resolve({ data: { items: [] } }),
         client.entities.subscriptions.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }),
         client.entities.service_progresses.queryAll({ query: { customer_id: customerId }, sort: '-last_update_time', limit: 50 }),
         client.entities.service_tasks.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 200 }),
@@ -477,7 +497,7 @@ export default function Customers() {
       setFollowUps(fuRes?.data?.items || []);
       setDeals(dRes?.data?.items || []);
       setPayments(pRes?.data?.items || []);
-      setSubscriptions(sRes?.data?.items || []);
+      setSubscriptions(decorateEffectiveSubscriptions(sRes?.data?.items || []));
       setServiceProgresses(progressRes?.data?.items || []);
       setServiceTasks(taskRes?.data?.items || []);
       await reloadContacts(customerId);
@@ -511,7 +531,28 @@ export default function Customers() {
         logOperation({ customerId: selectedCustomer.id, actionType: 'create_follow_up', actionDetail: '新增跟进记录', operatorName: op });
       }
       setShowFollowForm(false); setEditingFollowId(null); setFollowForm(emptyFollowForm);
-      await reloadFollowUps(selectedCustomer.id);
+      const nextFollowUps = await reloadFollowUps(selectedCustomer.id);
+      const followReminderType = searchParams.get('reminder') || '';
+      if (['follow_up_today', 'follow_up_overdue', 'no_follow_7d'].includes(followReminderType)) {
+        const nextParams = new URLSearchParams(searchParams);
+        let shouldClearReminder = followReminderType === 'no_follow_7d';
+
+        if (!shouldClearReminder) {
+          const latestFollowUp = nextFollowUps[0];
+          const latestNextDate = latestFollowUp?.next_follow_date?.slice(0, 10) || '';
+          const todayStr = new Date().toISOString().slice(0, 10);
+          if (followReminderType === 'follow_up_today') {
+            shouldClearReminder = latestNextDate !== todayStr;
+          } else if (followReminderType === 'follow_up_overdue') {
+            shouldClearReminder = !latestNextDate || latestNextDate >= todayStr;
+          }
+        }
+
+        if (shouldClearReminder) {
+          nextParams.delete('reminder');
+          setSearchParams(nextParams);
+        }
+      }
     } catch { toast.error('保存失败'); } finally { setSavingFollow(false); }
   };
 
@@ -614,9 +655,10 @@ export default function Customers() {
     });
   }, [customers, search, filterStatus, filterIndustry, filterLevel, filterSource, advFilters]);
 
-  const openCreate = () => { setForm({ ...emptyForm, interested_packages: [] }); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
+  const openCreate = () => { setForm({ ...emptyForm, interested_packages: [] }); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
   const openEdit = (c: any) => {
     setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', interested_packages: parseMultiValue(c.interested_packages), monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
+    setManualCityInput(false);
     setEditingId(c.id); setDuplicateWarning(null); setShowForm(true);
   };
 
@@ -763,13 +805,295 @@ export default function Customers() {
     }
   };
 
-  const openDetail = async (c: any) => {
+  const openDetail = async (c: any, nextTab = 'info') => {
+    setSelectedCustomerTab(normalizeCustomerDetailTab(nextTab));
     setSelectedCustomer(c);
     await loadCustomerDetail(c.id, c);
   };
 
+  const closeDetail = () => {
+    setSelectedCustomer(null);
+    setSelectedCustomerTab('info');
+    if (searchParams.get('detail') || searchParams.get('tab') || searchParams.get('reminder')) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('detail');
+      nextParams.delete('tab');
+      nextParams.delete('reminder');
+      setSearchParams(nextParams);
+    }
+  };
+
+  const handleDetailTabChange = (nextTab: string) => {
+    const safeTab = normalizeCustomerDetailTab(nextTab);
+    setSelectedCustomerTab(safeTab);
+    if (searchParams.get('detail')) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('tab', safeTab);
+      setSearchParams(nextParams);
+    }
+  };
+
   const countryStates = getStatesForCountry(form.country);
   const formCities = getCitiesForState(form.country, form.state);
+  const formCityLabels = new Set(formCities.map(city => city.label));
+  const isCustomFormCity = Boolean(form.city && formCities.length > 0 && !formCityLabels.has(form.city));
+  const showManualCityField = formCities.length === 0 || manualCityInput || isCustomFormCity;
+  const sharedCustomerDialogs = (
+    <>
+      <ConfirmDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }} title="确认删除客户" description={`确定要删除「${deleteTarget?.business_name}」吗？`} onConfirm={handleDelete} loading={deleting} />
+      <ConfirmDialog open={!!deleteFollowTarget} onOpenChange={v => { if (!v) setDeleteFollowTarget(null); }} title="确认删除跟进记录" description="确定要删除这条跟进记录吗？" onConfirm={handleDeleteFollow} loading={deletingFollow} />
+      <ConfirmDialog open={!!deleteContactTarget} onOpenChange={v => { if (!v) setDeleteContactTarget(null); }} title="确认删除联系人" description={`确定要删除联系人「${deleteContactTarget?.contact_name}」吗？`} onConfirm={handleDeleteContact} loading={deletingContact} />
+
+      <Dialog open={showAssignDialog} onOpenChange={v => { if (!v) { setShowAssignDialog(false); setAssignTarget(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>分配负责人</DialogTitle></DialogHeader>
+          {assignTarget && (
+            <div className="space-y-4">
+              <div className="p-3 bg-slate-50 rounded-lg">
+                <p className="text-sm font-medium">{assignTarget.business_name}</p>
+                <p className="text-xs text-slate-500 mt-1">当前负责人: {assignTarget.sales_person || '未分配'}</p>
+              </div>
+              <div>
+                <Label>选择新负责人</Label>
+                <NativeSelect
+                  value={assignEmployeeId}
+                  onChange={setAssignEmployeeId}
+                  options={[{ value: '', label: '请选择员工' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}${e.role ? ' (' + e.role + ')' : ''}` }))]}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => { setShowAssignDialog(false); setAssignTarget(null); }}>取消</Button>
+                <Button onClick={handleAssign} disabled={assigning || !assignEmployeeId} className="bg-indigo-600 hover:bg-indigo-700">{assigning ? '分配中...' : '确认分配'}</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle></DialogHeader>
+          {duplicateWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><AlertCircle className="w-4 h-4 flex-shrink-0" />{duplicateWarning}</div>}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <Label>客户编号</Label>
+              <div className="flex gap-2 items-center">
+                <Input value={form.customer_code} onChange={e => setForm({ ...form, customer_code: e.target.value })} placeholder={editingId ? '修改编号' : `留空自动生成`} className="font-mono" />
+                {!editingId && <Button type="button" size="sm" variant="outline" className="shrink-0 text-xs" onClick={() => setForm({ ...form, customer_code: getNextAutoCode(form.industry) })}>自动生成</Button>}
+              </div>
+            </div>
+            <div><Label>商家名称 *</Label><Input value={form.business_name} onChange={e => { setForm({ ...form, business_name: e.target.value }); checkDuplicate(e.target.value, form.phone); }} /></div>
+            <div><Label>联系人 *</Label><Input value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })} /></div>
+            <div><Label>电话 *</Label><Input value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
+            <div><Label>微信/WhatsApp</Label><Input value={form.wechat} onChange={e => setForm({ ...form, wechat: e.target.value })} /></div>
+            <div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+            <div>
+              <Label>行业</Label>
+              <div className="flex gap-1.5">
+                <NativeSelect value={form.industry} onChange={v => setForm({ ...form, industry: v })} options={Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))} className="flex-1" />
+                <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={() => setShowAddIndustry(true)}><Plus className="w-3.5 h-3.5" /></Button>
+              </div>
+              {showAddIndustry && (
+                <div className="mt-2 p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-2">
+                  <Label className="text-xs text-blue-700">添加新行业分类</Label>
+                  <div className="flex gap-2">
+                    <Input value={newIndustryName} onChange={e => setNewIndustryName(e.target.value)} placeholder="输入行业名称，如：教育" className="h-8 text-sm flex-1" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddIndustry(); } }} />
+                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleAddIndustry}>添加</Button>
+                    <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setShowAddIndustry(false); setNewIndustryName(''); }}>取消</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div><Label>国家</Label><NativeSelect value={form.country} onChange={v => { setManualCityInput(false); setForm({ ...form, country: v, state: getStatesForCountry(v)[0]?.code || '', city: '' }); }} options={countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))} /></div>
+            <div><Label>州/省</Label><NativeSelect value={form.state} onChange={v => { setManualCityInput(false); setForm({ ...form, state: v, city: '' }); }} options={countryStates.length > 0 ? countryStates.map(s => ({ value: s.code, label: s.code })) : [{ value: '', label: '请先选择国家' }]} /></div>
+            <div>
+              <Label>城市</Label>
+              {formCities.length > 0 && (
+                <NativeSelect
+                  value={formCityLabels.has(form.city) && !manualCityInput ? form.city : ''}
+                  onChange={v => {
+                    if (v === '__manual__') {
+                      setManualCityInput(true);
+                      return;
+                    }
+                    setManualCityInput(false);
+                    setForm({ ...form, city: v });
+                  }}
+                  options={[
+                    { value: '', label: '请选择城市' },
+                    ...formCities.map(ct => ({ value: ct.label, label: ct.label })),
+                    { value: '__manual__', label: '列表没有，手动输入其他城市' },
+                  ]}
+                />
+              )}
+              {showManualCityField && (
+                <Input
+                  value={form.city}
+                  onChange={e => setForm({ ...form, city: e.target.value })}
+                  placeholder={formCities.length > 0 ? '输入其他城市名' : '输入城市名'}
+                  className={formCities.length > 0 ? 'mt-2' : ''}
+                />
+              )}
+            </div>
+            <div><Label>地址</Label><Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
+            <div><Label>来源</Label><NativeSelect value={form.source} onChange={v => setForm({ ...form, source: v })} options={Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div>
+              <Label>等级</Label>
+              <div className="flex gap-1.5">
+                <NativeSelect value={form.level} onChange={v => setForm({ ...form, level: v })} options={Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))} className="flex-1" />
+                <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={openLevelManager}><Plus className="w-3.5 h-3.5" /></Button>
+              </div>
+              {showLevelManager && (
+                <div className="mt-2 p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs text-blue-700">管理客户等级</Label>
+                    <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setShowLevelManager(false); setNewLevelName(''); }}>
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {levelDrafts.map((item) => (
+                      <div key={item.key} className="flex items-center gap-2">
+                        <Input
+                          value={item.label}
+                          onChange={e => setLevelDrafts(prev => prev.map(level => (level.key === item.key ? { ...level, label: e.target.value } : level)))}
+                          className="h-8 text-sm flex-1"
+                          placeholder="等级名称"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
+                          onClick={() => handleRemoveLevelDraft(item.key)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newLevelName}
+                      onChange={e => setNewLevelName(e.target.value)}
+                      placeholder="新增等级，例如：A类客户"
+                      className="h-8 text-sm flex-1"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddLevelDraft();
+                        }
+                      }}
+                    />
+                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleAddLevelDraft}>添加</Button>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setShowLevelManager(false); setNewLevelName(''); }}>取消</Button>
+                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleSaveLevels} disabled={savingLevels}>{savingLevels ? '保存中...' : '保存等级'}</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div className="col-span-2">
+              <Label>客户意向套餐</Label>
+              <div className="mt-1 space-y-2">
+                <div className="flex items-start gap-1.5">
+                  <div className="flex-1 rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {Object.entries(customerPackageLabels).map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={form.interested_packages.includes(key)}
+                            onChange={e => toggleInterestedPackage(key, e.target.checked)}
+                            className="rounded"
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-3">
+                      已选: {form.interested_packages.length > 0 ? form.interested_packages.map(item => customerPackageLabels[item] || item).join('、') : '未选择'}
+                    </p>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={openPackageManager}><Plus className="w-3.5 h-3.5" /></Button>
+                </div>
+                {showPackageManager && (
+                  <div className="p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-xs text-blue-700">管理客户意向套餐</Label>
+                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setShowPackageManager(false); setNewPackageName(''); }}>
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      {packageDrafts.map((item) => (
+                        <div key={item.key} className="flex items-center gap-2">
+                          <Input
+                            value={item.label}
+                            onChange={e => setPackageDrafts(prev => prev.map(pkg => (pkg.key === item.key ? { ...pkg, label: e.target.value } : pkg)))}
+                            className="h-8 text-sm flex-1"
+                            placeholder="套餐名称"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
+                            onClick={() => handleRemovePackageDraft(item.key)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newPackageName}
+                        onChange={e => setNewPackageName(e.target.value)}
+                        placeholder="新增套餐，例如：Google商家管理"
+                        className="h-8 text-sm flex-1"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddPackageDraft();
+                          }
+                        }}
+                      />
+                      <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleAddPackageDraft}>添加</Button>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setShowPackageManager(false); setNewPackageName(''); }}>取消</Button>
+                      <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleSavePackages} disabled={savingPackages}>{savingPackages ? '保存中...' : '保存套餐'}</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div><Label>负责销售</Label><NativeSelect value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
+            <div><Label>官网</Label><Input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
+            <div><Label>当前平台</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} /></div>
+            <div className="col-span-2 border-t border-slate-200 pt-3 mt-1">
+              <h4 className="text-sm font-medium text-slate-600 mb-3">社交媒体链接</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Facebook</Label><Input value={form.facebook_link} onChange={e => setForm({ ...form, facebook_link: e.target.value })} placeholder="https://facebook.com/..." /></div>
+                <div><Label className="text-xs">Instagram</Label><Input value={form.instagram_link} onChange={e => setForm({ ...form, instagram_link: e.target.value })} placeholder="https://instagram.com/..." /></div>
+                <div><Label className="text-xs">Google Business</Label><Input value={form.google_business_link} onChange={e => setForm({ ...form, google_business_link: e.target.value })} placeholder="https://business.google.com/..." /></div>
+                <div><Label className="text-xs">Yelp</Label><Input value={form.yelp_link} onChange={e => setForm({ ...form, yelp_link: e.target.value })} placeholder="https://yelp.com/biz/..." /></div>
+                <div><Label className="text-xs">TikTok</Label><Input value={form.tiktok_link} onChange={e => setForm({ ...form, tiktok_link: e.target.value })} placeholder="https://tiktok.com/@..." /></div>
+              </div>
+            </div>
+            <div className="col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowForm(false)}>取消</Button>
+            <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 
   // ========== DETAIL VIEW ==========
   if (selectedCustomer) {
@@ -794,8 +1118,7 @@ export default function Customers() {
     const renewalRows = subscriptions
       .map(item => {
         const status = computeSubscriptionState(item);
-        const endDate = item.end_date ? new Date(item.end_date) : null;
-        const daysLeft = endDate ? Math.ceil((endDate.getTime() - Date.now()) / 86400000) : null;
+        const daysLeft = getSubscriptionRemainingDays(item);
         return { ...item, computed_status: status, days_left: daysLeft };
       })
       .sort((a, b) => {
@@ -803,13 +1126,13 @@ export default function Customers() {
         const bTime = b.end_date ? new Date(b.end_date).getTime() : Number.MAX_SAFE_INTEGER;
         return aTime - bTime;
       });
-    const upcomingRenewalCount = renewalRows.filter(item => item.days_left != null && item.days_left <= 30).length;
+    const upcomingRenewalCount = renewalRows.filter(item => item.computed_status === 'expiring_soon').length;
     const autoRenewCount = renewalRows.filter(item => item.auto_renew).length;
 
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
-          <Button variant="ghost" size="sm" onClick={() => setSelectedCustomer(null)}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
+          <Button variant="ghost" size="sm" onClick={closeDetail}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
           <h2 className="text-lg font-semibold">{c.business_name}</h2>
           <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
           <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
@@ -817,20 +1140,28 @@ export default function Customers() {
             <RefreshCw className={`w-3.5 h-3.5 mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> 刷新数据
           </Button>
         </div>
+        {activeReminderMessage && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardContent className="p-4">
+              <p className="text-sm font-medium text-blue-700">{activeReminderMessage.title}</p>
+              <p className="text-xs text-blue-600 mt-1">{activeReminderMessage.description}</p>
+            </CardContent>
+          </Card>
+        )}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计成交</p><p className="text-2xl font-semibold text-slate-800 mt-1">{formatCurrency(totalDealAmount)}</p><p className="text-xs text-slate-400 mt-1">最近成交: {latestDealDate}</p></CardContent></Card>
-          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计实收</p><p className="text-2xl font-semibold text-green-600 mt-1">{formatCurrency(totalAmountPaid)}</p><p className="text-xs text-slate-400 mt-1">最近收款: {latestPaymentDate}</p></CardContent></Card>
-          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">当前尾款</p><p className="text-2xl font-semibold text-red-600 mt-1">{formatCurrency(totalOutstanding)}</p><p className="text-xs text-slate-400 mt-1">累计应收: {formatCurrency(totalAmountDue)}</p></CardContent></Card>
+          {canViewFinance && <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计实收</p><p className="text-2xl font-semibold text-green-600 mt-1">{formatCurrency(totalAmountPaid)}</p><p className="text-xs text-slate-400 mt-1">最近收款: {latestPaymentDate}</p></CardContent></Card>}
+          {canViewFinance && <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">当前尾款</p><p className="text-2xl font-semibold text-red-600 mt-1">{formatCurrency(totalOutstanding)}</p><p className="text-xs text-slate-400 mt-1">累计应收: {formatCurrency(totalAmountDue)}</p></CardContent></Card>}
           <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">服务概况</p><p className="text-2xl font-semibold text-blue-600 mt-1">{serviceRecordCount}</p><p className="text-xs text-slate-400 mt-1">在服 {activeSubscriptionCount} · 待处理任务 {pendingServiceTasks}</p></CardContent></Card>
         </div>
-        <Tabs defaultValue="info" className="w-full">
+        <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
           <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="info" className="text-xs">基础信息</TabsTrigger>
             <TabsTrigger value="contacts" className="text-xs">联系人 ({contacts.length})</TabsTrigger>
             <TabsTrigger value="followups" className="text-xs">跟进记录 ({followUps.length})</TabsTrigger>
             <TabsTrigger value="deals" className="text-xs">成交记录 ({deals.length})</TabsTrigger>
             <TabsTrigger value="subscriptions" className="text-xs">服务信息 ({serviceRecordCount})</TabsTrigger>
-            <TabsTrigger value="payments" className="text-xs">财务信息 ({payments.length})</TabsTrigger>
+            {canViewFinance && <TabsTrigger value="payments" className="text-xs">财务信息 ({payments.length})</TabsTrigger>}
             <TabsTrigger value="renewals" className="text-xs">续费信息 ({renewalRows.length})</TabsTrigger>
             <TabsTrigger value="media" className="text-xs">媒体账号</TabsTrigger>
             <TabsTrigger value="logs" className="text-xs">操作日志</TabsTrigger>
@@ -1014,24 +1345,41 @@ export default function Customers() {
             </CardContent></Card>
           </TabsContent>
 
-          <TabsContent value="payments">
-            <Card className="border-slate-200"><CardContent className="p-5">
-              {payments.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无财务记录</p> : (
-                <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">产品</th><th className="pb-2 font-medium">应收</th><th className="pb-2 font-medium">实收</th><th className="pb-2 font-medium">欠款</th><th className="pb-2 font-medium">模式</th><th className="pb-2 font-medium">方式</th><th className="pb-2 font-medium">日期</th></tr></thead>
-                <tbody>{payments.map((p: any) => (<tr key={p.id} className="border-b border-slate-100"><td className="py-2">{p.product_name}</td><td className="py-2">${p.amount_due}</td><td className="py-2 text-green-600">${p.amount_paid}</td><td className="py-2">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600">${p.outstanding_amount}</span> : '-'}</td><td className="py-2">{getPaymentModeLabel(p, payModeLabels)}</td><td className="py-2">{getPaymentMethodLabel(p, payMethodLabels)}</td><td className="py-2 text-slate-500">{p.payment_date?.slice(0, 10)}</td></tr>))}</tbody></table></div>
-              )}
-            </CardContent></Card>
-          </TabsContent>
+          {canViewFinance && (
+            <TabsContent value="payments">
+              <Card className="border-slate-200"><CardContent className="p-5">
+                {payments.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无财务记录</p> : (
+                  <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">产品</th><th className="pb-2 font-medium">应收</th><th className="pb-2 font-medium">实收</th><th className="pb-2 font-medium">欠款</th><th className="pb-2 font-medium">模式</th><th className="pb-2 font-medium">方式</th><th className="pb-2 font-medium">日期</th></tr></thead>
+                  <tbody>{payments.map((p: any) => (<tr key={p.id} className="border-b border-slate-100"><td className="py-2">{p.product_name}</td><td className="py-2">${p.amount_due}</td><td className="py-2 text-green-600">${p.amount_paid}</td><td className="py-2">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600">${p.outstanding_amount}</span> : '-'}</td><td className="py-2">{getPaymentModeLabel(p, payModeLabels)}</td><td className="py-2">{getPaymentMethodLabel(p, payMethodLabels)}</td><td className="py-2 text-slate-500">{p.payment_date?.slice(0, 10)}</td></tr>))}</tbody></table></div>
+                )}
+              </CardContent></Card>
+            </TabsContent>
+          )}
 
           <TabsContent value="renewals">
             <Card className="border-slate-200"><CardContent className="p-5">
               {subscriptions.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无续费信息</p> : (
                 <div className="space-y-3">{subscriptions.map((s: any) => {
-                  const isExp = s.end_date && new Date(s.end_date) < new Date();
-                  const isSoon = s.end_date && !isExp && new Date(s.end_date) <= new Date(Date.now() + 30 * 86400000);
-                  return (<div key={s.id} className={`p-3 rounded-lg border ${isExp ? 'border-red-200 bg-red-50' : isSoon ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
-                    <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={isExp ? 'bg-red-100 text-red-700' : isSoon ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>{isExp ? '已到期' : isSoon ? '即将到期' : '正常'}</Badge></div>
+                  const computedStatus = computeSubscriptionState(s);
+                  const remainDays = getSubscriptionRemainingDays(s);
+                  return (<div key={s.id} className={`p-3 rounded-lg border ${computedStatus === 'expired' ? 'border-red-200 bg-red-50' : computedStatus === 'expiring_soon' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+                    <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={computedStatus === 'expired' ? 'bg-red-100 text-red-700' : computedStatus === 'expiring_soon' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>{computedStatus === 'expired' ? '已到期' : computedStatus === 'expiring_soon' ? '即将到期' : '正常'}</Badge></div>
                     <div className="grid grid-cols-2 gap-1 text-xs text-slate-500"><span>到期: {s.end_date?.slice(0, 10) || '-'}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span><span>续费负责: {s.renewal_person || '-'}</span><span>下次付款: {s.next_payment_date?.slice(0, 10) || '-'}</span></div>
+                    <div className={`text-xs mt-2 ${
+                      remainDays == null
+                        ? 'text-slate-400'
+                        : remainDays <= 0
+                          ? 'text-red-600 font-medium'
+                          : remainDays <= 7
+                            ? 'text-amber-600 font-medium'
+                            : 'text-slate-500'
+                    }`}>
+                      {remainDays == null
+                        ? '剩余: -'
+                        : remainDays <= 0
+                          ? `已逾期 ${Math.abs(remainDays)} 天`
+                          : `剩余 ${remainDays} 天`}
+                    </div>
                   </div>);
                 })}</div>
               )}
@@ -1046,6 +1394,7 @@ export default function Customers() {
             <Card className="border-slate-200"><CardContent className="p-5"><OperationLogsTab customerId={c.id} /></CardContent></Card>
           </TabsContent>
         </Tabs>
+        {sharedCustomerDialogs}
       </div>
     );
   }
@@ -1312,238 +1661,7 @@ export default function Customers() {
         )}
       </CardContent></Card>
 
-      <ConfirmDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }} title="确认删除客户" description={`确定要删除「${deleteTarget?.business_name}」吗？`} onConfirm={handleDelete} loading={deleting} />
-      <ConfirmDialog open={!!deleteFollowTarget} onOpenChange={v => { if (!v) setDeleteFollowTarget(null); }} title="确认删除跟进记录" description="确定要删除这条跟进记录吗？" onConfirm={handleDeleteFollow} loading={deletingFollow} />
-      <ConfirmDialog open={!!deleteContactTarget} onOpenChange={v => { if (!v) setDeleteContactTarget(null); }} title="确认删除联系人" description={`确定要删除联系人「${deleteContactTarget?.contact_name}」吗？`} onConfirm={handleDeleteContact} loading={deletingContact} />
-
-      {/* Assign dialog */}
-      <Dialog open={showAssignDialog} onOpenChange={v => { if (!v) { setShowAssignDialog(false); setAssignTarget(null); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>分配负责人</DialogTitle></DialogHeader>
-          {assignTarget && (
-            <div className="space-y-4">
-              <div className="p-3 bg-slate-50 rounded-lg">
-                <p className="text-sm font-medium">{assignTarget.business_name}</p>
-                <p className="text-xs text-slate-500 mt-1">当前负责人: {assignTarget.sales_person || '未分配'}</p>
-              </div>
-              <div>
-                <Label>选择新负责人</Label>
-                <NativeSelect
-                  value={assignEmployeeId}
-                  onChange={setAssignEmployeeId}
-                  options={[{ value: '', label: '请选择员工' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}${e.role ? ' (' + e.role + ')' : ''}` }))]}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => { setShowAssignDialog(false); setAssignTarget(null); }}>取消</Button>
-                <Button onClick={handleAssign} disabled={assigning || !assignEmployeeId} className="bg-indigo-600 hover:bg-indigo-700">{assigning ? '分配中...' : '确认分配'}</Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle></DialogHeader>
-          {duplicateWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><AlertCircle className="w-4 h-4 flex-shrink-0" />{duplicateWarning}</div>}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <Label>客户编号</Label>
-              <div className="flex gap-2 items-center">
-                <Input value={form.customer_code} onChange={e => setForm({ ...form, customer_code: e.target.value })} placeholder={editingId ? '修改编号' : `留空自动生成`} className="font-mono" />
-                {!editingId && <Button type="button" size="sm" variant="outline" className="shrink-0 text-xs" onClick={() => setForm({ ...form, customer_code: getNextAutoCode(form.industry) })}>自动生成</Button>}
-              </div>
-            </div>
-            <div><Label>商家名称 *</Label><Input value={form.business_name} onChange={e => { setForm({ ...form, business_name: e.target.value }); checkDuplicate(e.target.value, form.phone); }} /></div>
-            <div><Label>联系人 *</Label><Input value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })} /></div>
-            <div><Label>电话 *</Label><Input value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
-            <div><Label>微信/WhatsApp</Label><Input value={form.wechat} onChange={e => setForm({ ...form, wechat: e.target.value })} /></div>
-            <div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
-            <div>
-              <Label>行业</Label>
-              <div className="flex gap-1.5">
-                <NativeSelect value={form.industry} onChange={v => setForm({ ...form, industry: v })} options={Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))} className="flex-1" />
-                <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={() => setShowAddIndustry(true)}><Plus className="w-3.5 h-3.5" /></Button>
-              </div>
-              {showAddIndustry && (
-                <div className="mt-2 p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-2">
-                  <Label className="text-xs text-blue-700">添加新行业分类</Label>
-                  <div className="flex gap-2">
-                    <Input value={newIndustryName} onChange={e => setNewIndustryName(e.target.value)} placeholder="输入行业名称，如：教育" className="h-8 text-sm flex-1" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddIndustry(); } }} />
-                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleAddIndustry}>添加</Button>
-                    <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setShowAddIndustry(false); setNewIndustryName(''); }}>取消</Button>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div><Label>国家</Label><NativeSelect value={form.country} onChange={v => { setForm({ ...form, country: v, state: getStatesForCountry(v)[0]?.code || '', city: '' }); }} options={countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))} /></div>
-            <div><Label>州/省</Label><NativeSelect value={form.state} onChange={v => setForm({ ...form, state: v, city: '' })} options={countryStates.length > 0 ? countryStates.map(s => ({ value: s.code, label: s.code })) : [{ value: '', label: '请先选择国家' }]} /></div>
-            <div>
-              <Label>城市</Label>
-              {formCities.length > 0 ? (
-                <NativeSelect value={form.city} onChange={v => setForm({ ...form, city: v })} options={[{ value: '', label: '请选择城市' }, ...formCities.map(ct => ({ value: ct.label, label: ct.label }))]} />
-              ) : (
-                <Input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="输入城市名" />
-              )}
-            </div>
-            <div><Label>地址</Label><Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
-            <div><Label>来源</Label><NativeSelect value={form.source} onChange={v => setForm({ ...form, source: v })} options={Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            <div>
-              <Label>等级</Label>
-              <div className="flex gap-1.5">
-                <NativeSelect value={form.level} onChange={v => setForm({ ...form, level: v })} options={Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))} className="flex-1" />
-                <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={openLevelManager}><Plus className="w-3.5 h-3.5" /></Button>
-              </div>
-              {showLevelManager && (
-                <div className="mt-2 p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label className="text-xs text-blue-700">管理客户等级</Label>
-                    <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setShowLevelManager(false); setNewLevelName(''); }}>
-                      <X className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {levelDrafts.map((item) => (
-                      <div key={item.key} className="flex items-center gap-2">
-                        <Input
-                          value={item.label}
-                          onChange={e => setLevelDrafts(prev => prev.map(level => (level.key === item.key ? { ...level, label: e.target.value } : level)))}
-                          className="h-8 text-sm flex-1"
-                          placeholder="等级名称"
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
-                          onClick={() => handleRemoveLevelDraft(item.key)}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <Input
-                      value={newLevelName}
-                      onChange={e => setNewLevelName(e.target.value)}
-                      placeholder="新增等级，例如：A类客户"
-                      className="h-8 text-sm flex-1"
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddLevelDraft();
-                        }
-                      }}
-                    />
-                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleAddLevelDraft}>添加</Button>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setShowLevelManager(false); setNewLevelName(''); }}>取消</Button>
-                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleSaveLevels} disabled={savingLevels}>{savingLevels ? '保存中...' : '保存等级'}</Button>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            <div className="col-span-2">
-              <Label>客户意向套餐</Label>
-              <div className="mt-1 space-y-2">
-                <div className="flex items-start gap-1.5">
-                  <div className="flex-1 rounded-md border border-slate-200 bg-slate-50 p-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {Object.entries(customerPackageLabels).map(([key, label]) => (
-                        <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={form.interested_packages.includes(key)}
-                            onChange={e => toggleInterestedPackage(key, e.target.checked)}
-                            className="rounded"
-                          />
-                          <span>{label}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <p className="text-xs text-slate-500 mt-3">
-                      已选: {form.interested_packages.length > 0 ? form.interested_packages.map(item => customerPackageLabels[item] || item).join('、') : '未选择'}
-                    </p>
-                  </div>
-                  <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={openPackageManager}><Plus className="w-3.5 h-3.5" /></Button>
-                </div>
-                {showPackageManager && (
-                  <div className="p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label className="text-xs text-blue-700">管理客户意向套餐</Label>
-                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setShowPackageManager(false); setNewPackageName(''); }}>
-                        <X className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                    <div className="space-y-2">
-                      {packageDrafts.map((item) => (
-                        <div key={item.key} className="flex items-center gap-2">
-                          <Input
-                            value={item.label}
-                            onChange={e => setPackageDrafts(prev => prev.map(pkg => (pkg.key === item.key ? { ...pkg, label: e.target.value } : pkg)))}
-                            className="h-8 text-sm flex-1"
-                            placeholder="套餐名称"
-                          />
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
-                            onClick={() => handleRemovePackageDraft(item.key)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
-                      <Input
-                        value={newPackageName}
-                        onChange={e => setNewPackageName(e.target.value)}
-                        placeholder="新增套餐，例如：Google商家管理"
-                        className="h-8 text-sm flex-1"
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddPackageDraft();
-                          }
-                        }}
-                      />
-                      <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleAddPackageDraft}>添加</Button>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setShowPackageManager(false); setNewPackageName(''); }}>取消</Button>
-                      <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleSavePackages} disabled={savingPackages}>{savingPackages ? '保存中...' : '保存套餐'}</Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div><Label>负责销售</Label><NativeSelect value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
-            <div><Label>官网</Label><Input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
-            <div><Label>当前平台</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} /></div>
-            <div className="col-span-2 border-t border-slate-200 pt-3 mt-1">
-              <h4 className="text-sm font-medium text-slate-600 mb-3">社交媒体链接</h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label className="text-xs">Facebook</Label><Input value={form.facebook_link} onChange={e => setForm({ ...form, facebook_link: e.target.value })} placeholder="https://facebook.com/..." /></div>
-                <div><Label className="text-xs">Instagram</Label><Input value={form.instagram_link} onChange={e => setForm({ ...form, instagram_link: e.target.value })} placeholder="https://instagram.com/..." /></div>
-                <div><Label className="text-xs">Google Business</Label><Input value={form.google_business_link} onChange={e => setForm({ ...form, google_business_link: e.target.value })} placeholder="https://business.google.com/..." /></div>
-                <div><Label className="text-xs">Yelp</Label><Input value={form.yelp_link} onChange={e => setForm({ ...form, yelp_link: e.target.value })} placeholder="https://yelp.com/biz/..." /></div>
-                <div><Label className="text-xs">TikTok</Label><Input value={form.tiktok_link} onChange={e => setForm({ ...form, tiktok_link: e.target.value })} placeholder="https://tiktok.com/@..." /></div>
-              </div>
-            </div>
-            <div className="col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowForm(false)}>取消</Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {sharedCustomerDialogs}
     </div>
   );
 }

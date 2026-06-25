@@ -12,6 +12,7 @@ import {
   Palette, Truck, CheckCircle2, Timer, PhoneCall
 } from 'lucide-react';
 import { useBusinessDicts } from '../lib/dict-config';
+import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
 
 interface Reminder {
   id: string;
@@ -22,6 +23,17 @@ interface Reminder {
   date?: string;
   link?: string;
 }
+
+const buildReminderLink = (path: string, params: Record<string, string | number | null | undefined>) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && String(value).trim() !== '') {
+      query.set(key, String(value));
+    }
+  });
+  const queryString = query.toString();
+  return queryString ? `${path}?${queryString}` : path;
+};
 
 export default function Dashboard() {
   const { role, employee, isAdmin } = useRole();
@@ -98,7 +110,7 @@ export default function Dashboard() {
       let customers = customersRes?.data?.items || [];
       let deals = dealsRes?.data?.items || [];
       const followUps = followUpsRes?.data?.items || [];
-      const subs = subsRes?.data?.items || [];
+      const subs = decorateEffectiveSubscriptions(subsRes?.data?.items || []);
       const payments = paymentsRes?.data?.items || [];
       const expenses = expensesRes?.data?.items || [];
       const companyExpenses = companyExpensesRes?.data?.items || [];
@@ -124,8 +136,6 @@ export default function Dashboard() {
 
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const sevenDaysLater = new Date(now.getTime() + 7 * 86400000);
-      const thirtyDaysLater = new Date(now.getTime() + 30 * 86400000);
       const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
       const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
@@ -135,9 +145,7 @@ export default function Dashboard() {
       const lostCustomers = customers.filter((c: any) => c.status === 'lost').length;
       const newThisMonth = customers.filter((c: any) => new Date(c.created_at) >= monthStart).length;
 
-      const expiringSoon = subs.filter((s: any) =>
-        s.end_date && new Date(s.end_date) <= thirtyDaysLater && new Date(s.end_date) >= now && s.status !== 'expired'
-      ).length;
+      const expiringSoon = subs.filter((s: any) => s.status === 'expiring_soon').length;
 
       const monthlyPayments = payments.filter((p: any) => new Date(p.payment_date) >= monthStart);
       const monthlyRevenue = monthlyPayments.reduce((sum: number, p: any) => sum + (p.amount_paid || 0), 0);
@@ -151,9 +159,7 @@ export default function Dashboard() {
       const monthlyDealAmount = deals.filter((d: any) => new Date(d.deal_date) >= monthStart).reduce((s: number, d: any) => s + (d.deal_amount || 0), 0);
 
       // Expired not renewed
-      const expiredNotRenewed = subs.filter((s: any) =>
-        s.end_date && new Date(s.end_date) < now && (s.status === 'expired' || s.status === 'expiring_soon')
-      ).length;
+      const expiredNotRenewed = subs.filter((s: any) => s.status === 'expired').length;
 
       const monthlyCustomerExpenseUSD = (expenses || []).filter((e: any) => e.expense_month === currentMonthKey).reduce((s: number, e: any) => s + (e.amount || 0), 0);
       const monthlyCompanyExpenseCNY = (companyExpenses || []).filter((e: any) => e.expense_month === currentMonthKey).reduce((s: number, e: any) => s + (e.amount || 0), 0);
@@ -169,7 +175,7 @@ export default function Dashboard() {
       });
 
       // Build reminders
-      buildReminders(customers, followUps, subs, payments, tasks, now, sevenDaysLater, sevenDaysAgo, callbacksList);
+      buildReminders(customers, followUps, subs, payments, tasks, now, sevenDaysAgo, callbacksList);
     } catch (err) {
       console.error('Failed to load dashboard:', err);
     } finally {
@@ -177,14 +183,25 @@ export default function Dashboard() {
     }
   };
 
-  const buildReminders = (customers: any[], followUps: any[], subs: any[], payments: any[], tasks: any[], now: Date, sevenDaysLater: Date, sevenDaysAgo: Date, callbacksList?: any[]) => {
+  const buildReminders = (customers: any[], followUps: any[], subs: any[], payments: any[], tasks: any[], now: Date, sevenDaysAgo: Date, callbacksList?: any[]) => {
     const newReminders: Reminder[] = [];
     const customerMap = Object.fromEntries(customers.map((c: any) => [c.id, c]));
     const todayStr = now.toISOString().slice(0, 10);
+    const latestFollowUps = Object.values(
+      followUps.reduce<Record<string, any>>((acc, followUp) => {
+        const customerId = String(followUp.customer_id || '');
+        if (!customerId) return acc;
+        const currentBest = acc[customerId];
+        if (!currentBest || (followUp.created_at || '') > (currentBest.created_at || '')) {
+          acc[customerId] = followUp;
+        }
+        return acc;
+      }, {}),
+    );
 
     // Today's follow-ups
     if (isAdm || isSales) {
-      const todayFollowUps = followUps.filter((f: any) =>
+      const todayFollowUps = latestFollowUps.filter((f: any) =>
         f.next_follow_date?.slice(0, 10) === todayStr && f.stage !== 'closed' && f.stage !== 'lost'
       );
       todayFollowUps.slice(0, 5).forEach((f: any) => {
@@ -193,12 +210,18 @@ export default function Dashboard() {
           id: `fu-today-${f.id}`, type: 'follow_up', urgency: 'high',
           title: `今日待跟进: ${cust?.business_name || '未知客户'}`,
           description: f.content?.slice(0, 50) || '请及时跟进',
-          date: todayStr, link: '/customers?status=following',
+          date: todayStr,
+          link: buildReminderLink('/customers', {
+            status: 'following',
+            detail: f.customer_id,
+            tab: 'followups',
+            reminder: 'follow_up_today',
+          }),
         });
       });
 
       // Overdue follow-ups
-      const overdueFollowUps = followUps.filter((f: any) =>
+      const overdueFollowUps = latestFollowUps.filter((f: any) =>
         f.next_follow_date && new Date(f.next_follow_date) < now && f.next_follow_date?.slice(0, 10) !== todayStr && f.stage !== 'closed' && f.stage !== 'lost'
       );
       overdueFollowUps.slice(0, 5).forEach((f: any) => {
@@ -207,13 +230,19 @@ export default function Dashboard() {
           id: `fu-${f.id}`, type: 'follow_up', urgency: 'high',
           title: `逾期跟进: ${cust?.business_name || '未知客户'}`,
           description: `计划跟进日期 ${f.next_follow_date?.slice(0, 10)} 已过期`,
-          date: f.next_follow_date?.slice(0, 10), link: '/customers?status=following',
+          date: f.next_follow_date?.slice(0, 10),
+          link: buildReminderLink('/customers', {
+            status: 'following',
+            detail: f.customer_id,
+            tab: 'followups',
+            reminder: 'follow_up_overdue',
+          }),
         });
       });
 
       // 7-day no follow-up
       const customerLastFollowUp: Record<number, string> = {};
-      followUps.forEach((f: any) => {
+      latestFollowUps.forEach((f: any) => {
         if (!customerLastFollowUp[f.customer_id] || f.created_at > customerLastFollowUp[f.customer_id]) {
           customerLastFollowUp[f.customer_id] = f.created_at;
         }
@@ -229,23 +258,34 @@ export default function Dashboard() {
         newReminders.push({
           id: `nofu-${c.id}`, type: 'no_follow_7d', urgency: 'medium',
           title: `7天未跟进: ${c.business_name}`,
-          description: `上次跟进: ${lastDate}`, link: '/customers?status=following',
+          description: `上次跟进: ${lastDate}`,
+          link: buildReminderLink('/customers', {
+            status: 'following',
+            detail: c.id,
+            tab: 'followups',
+            reminder: 'no_follow_7d',
+          }),
         });
       });
     }
 
     // Expiring subscriptions
     if (isAdm || isFinance) {
-      const expiringSubs = subs.filter((s: any) =>
-        s.end_date && new Date(s.end_date) <= sevenDaysLater && new Date(s.end_date) >= now && s.status !== 'expired'
-      );
+      const expiringSubs = [...subs]
+        .filter((s: any) => s.status === 'expiring_soon')
+        .sort((a: any, b: any) => new Date(a.end_date || 0).getTime() - new Date(b.end_date || 0).getTime());
       expiringSubs.slice(0, 5).forEach((s: any) => {
         const cust = customerMap[s.customer_id];
         newReminders.push({
           id: `sub-${s.id}`, type: 'renewal', urgency: 'high',
           title: `即将到期: ${cust?.business_name || '未知客户'}`,
           description: `${s.package_name} 将于 ${s.end_date?.slice(0, 10)} 到期`,
-          date: s.end_date?.slice(0, 10), link: '/finance',
+          date: s.end_date?.slice(0, 10),
+          link: buildReminderLink('/customers', {
+            detail: s.customer_id,
+            tab: 'renewals',
+            reminder: 'renewal_due',
+          }),
         });
       });
 
@@ -256,7 +296,12 @@ export default function Dashboard() {
         newReminders.push({
           id: `pay-${p.id}`, type: 'overdue_payment', urgency: 'high',
           title: `欠费: ${cust?.business_name || '未知客户'}`,
-          description: `${p.product_name} 欠款 $${p.outstanding_amount}`, link: '/finance',
+          description: `${p.product_name} 欠款 $${p.outstanding_amount}`,
+          link: buildReminderLink('/customers', {
+            detail: p.customer_id,
+            tab: 'payments',
+            reminder: 'overdue_payment',
+          }),
         });
       });
     }
@@ -273,7 +318,13 @@ export default function Dashboard() {
           id: `cb-today-${cb.id}`, type: 'callback', urgency: 'high',
           title: `今日回访: ${cust?.business_name || '未知客户'}`,
           description: cb.content?.slice(0, 50) || '请及时回访',
-          date: todayStr2, link: '/callbacks',
+          date: todayStr2,
+          link: buildReminderLink('/callbacks', {
+            customer_id: cb.customer_id,
+            status: 'pending',
+            schedule: 'today',
+            reminder: 'callback_today',
+          }),
         });
       });
 
@@ -286,7 +337,13 @@ export default function Dashboard() {
           id: `cb-overdue-${cb.id}`, type: 'callback', urgency: 'high',
           title: `逾期回访: ${cust?.business_name || '未知客户'}`,
           description: `计划回访日期 ${cb.callback_date?.slice(0, 10)} 已过期`,
-          date: cb.callback_date?.slice(0, 10), link: '/callbacks',
+          date: cb.callback_date?.slice(0, 10),
+          link: buildReminderLink('/callbacks', {
+            customer_id: cb.customer_id,
+            status: 'pending',
+            schedule: 'overdue',
+            reminder: 'callback_overdue',
+          }),
         });
       });
     }
@@ -298,7 +355,13 @@ export default function Dashboard() {
         id: `task-${t.id}`, type: 'pending_task', urgency: 'high',
         title: `延期任务: ${t.title}`,
         description: `负责人: ${t.assignee_name || '-'}`,
-        date: t.due_date?.slice(0, 10), link: '/tasks',
+        date: t.due_date?.slice(0, 10),
+        link: buildReminderLink('/tasks', {
+          task_id: t.id,
+          status: 'delayed',
+          search: t.title || '',
+          reminder: 'delayed_task',
+        }),
       });
     });
 
@@ -390,6 +453,9 @@ export default function Dashboard() {
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Bell className="w-4 h-4 text-red-500" /> 智能提醒 ({reminders.length})
           </CardTitle>
+          <p className="text-xs text-slate-500">
+            自动汇总跟进、回访、欠费、续费和延期任务。点击后会直接进入对应客户或待处理页面。
+          </p>
         </CardHeader>
         <CardContent className="pt-0">
           <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -403,6 +469,7 @@ export default function Dashboard() {
                     <p className={`text-sm font-medium ${urgencyTextColors[r.urgency]}`}>{r.title}</p>
                     <p className="text-xs text-slate-500">{r.description}</p>
                   </div>
+                  <span className="text-xs text-blue-600 font-medium flex-shrink-0 self-center">去处理</span>
                   {r.date && <span className="text-xs text-slate-400 flex-shrink-0">{r.date}</span>}
                 </div>
               );

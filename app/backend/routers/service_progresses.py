@@ -15,7 +15,11 @@ from services.service_progresses import Service_progressesService
 # Set up logging
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/entities/service_progresses", tags=["service_progresses"])
+router = APIRouter(
+    prefix="/api/v1/entities/service_progresses",
+    tags=["service_progresses"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 # ---------- Pydantic Schemas ----------

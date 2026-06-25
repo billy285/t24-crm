@@ -143,6 +143,123 @@ export const citiesByState: Record<string, CityOption[]> = {
   'US-HI': [
     { label: 'Honolulu' }, { label: 'Hilo' },
   ],
+  'US-AL': [
+    { label: 'Birmingham' }, { label: 'Montgomery' }, { label: 'Huntsville' }, { label: 'Mobile' },
+    { label: 'Tuscaloosa' },
+  ],
+  'US-AK': [
+    { label: 'Anchorage' }, { label: 'Fairbanks' }, { label: 'Juneau' }, { label: 'Wasilla' },
+  ],
+  'US-AR': [
+    { label: 'Little Rock' }, { label: 'Fayetteville' }, { label: 'Fort Smith' }, { label: 'Springdale' },
+    { label: 'Jonesboro' },
+  ],
+  'US-CT': [
+    { label: 'Bridgeport' }, { label: 'New Haven' }, { label: 'Stamford' }, { label: 'Hartford' },
+    { label: 'Waterbury' },
+  ],
+  'US-DE': [
+    { label: 'Wilmington' }, { label: 'Dover' }, { label: 'Newark' }, { label: 'Middletown' },
+  ],
+  'US-DC': [
+    { label: 'Washington' },
+  ],
+  'US-ID': [
+    { label: 'Boise' }, { label: 'Meridian' }, { label: 'Nampa' }, { label: 'Idaho Falls' },
+    { label: 'Pocatello' },
+  ],
+  'US-IN': [
+    { label: 'Indianapolis' }, { label: 'Fort Wayne' }, { label: 'Evansville' }, { label: 'South Bend' },
+    { label: 'Carmel' },
+  ],
+  'US-IA': [
+    { label: 'Des Moines' }, { label: 'Cedar Rapids' }, { label: 'Davenport' }, { label: 'Sioux City' },
+    { label: 'Iowa City' },
+  ],
+  'US-KS': [
+    { label: 'Wichita' }, { label: 'Overland Park' }, { label: 'Kansas City' }, { label: 'Topeka' },
+    { label: 'Olathe' },
+  ],
+  'US-KY': [
+    { label: 'Louisville' }, { label: 'Lexington' }, { label: 'Bowling Green' }, { label: 'Owensboro' },
+    { label: 'Covington' },
+  ],
+  'US-LA': [
+    { label: 'New Orleans' }, { label: 'Baton Rouge' }, { label: 'Shreveport' }, { label: 'Lafayette' },
+    { label: 'Lake Charles' },
+  ],
+  'US-ME': [
+    { label: 'Portland' }, { label: 'Lewiston' }, { label: 'Bangor' }, { label: 'South Portland' },
+    { label: 'Augusta' },
+  ],
+  'US-MS': [
+    { label: 'Jackson' }, { label: 'Gulfport' }, { label: 'Southaven' }, { label: 'Biloxi' },
+    { label: 'Hattiesburg' },
+  ],
+  'US-MO': [
+    { label: 'Kansas City' }, { label: 'St. Louis' }, { label: 'Springfield' }, { label: 'Columbia' },
+    { label: 'Independence' },
+  ],
+  'US-MT': [
+    { label: 'Billings' }, { label: 'Missoula' }, { label: 'Great Falls' }, { label: 'Bozeman' },
+    { label: 'Helena' },
+  ],
+  'US-NE': [
+    { label: 'Omaha' }, { label: 'Lincoln' }, { label: 'Bellevue' }, { label: 'Grand Island' },
+    { label: 'Kearney' },
+  ],
+  'US-NH': [
+    { label: 'Manchester' }, { label: 'Nashua' }, { label: 'Concord' }, { label: 'Derry' },
+    { label: 'Portsmouth' },
+  ],
+  'US-NM': [
+    { label: 'Albuquerque' }, { label: 'Santa Fe' }, { label: 'Las Cruces' }, { label: 'Rio Rancho' },
+    { label: 'Roswell' },
+  ],
+  'US-ND': [
+    { label: 'Fargo' }, { label: 'Bismarck' }, { label: 'Grand Forks' }, { label: 'Minot' },
+    { label: 'West Fargo' },
+  ],
+  'US-OK': [
+    { label: 'Oklahoma City' }, { label: 'Tulsa' }, { label: 'Norman' }, { label: 'Broken Arrow' },
+    { label: 'Edmond' },
+  ],
+  'US-RI': [
+    { label: 'Providence' }, { label: 'Warwick' }, { label: 'Cranston' }, { label: 'Pawtucket' },
+    { label: 'Newport' },
+  ],
+  'US-SC': [
+    { label: 'Charleston' }, { label: 'Columbia' }, { label: 'Greenville' }, { label: 'Myrtle Beach' },
+    { label: 'Rock Hill' },
+  ],
+  'US-SD': [
+    { label: 'Sioux Falls' }, { label: 'Rapid City' }, { label: 'Aberdeen' }, { label: 'Brookings' },
+    { label: 'Watertown' },
+  ],
+  'US-TN': [
+    { label: 'Nashville' }, { label: 'Memphis' }, { label: 'Knoxville' }, { label: 'Chattanooga' },
+    { label: 'Franklin' },
+  ],
+  'US-UT': [
+    { label: 'Salt Lake City' }, { label: 'West Valley City' }, { label: 'Provo' }, { label: 'Ogden' },
+    { label: 'St. George' },
+  ],
+  'US-VT': [
+    { label: 'Burlington' }, { label: 'South Burlington' }, { label: 'Rutland' }, { label: 'Montpelier' },
+    { label: 'Bennington' },
+  ],
+  'US-WV': [
+    { label: 'Charleston' }, { label: 'Huntington' }, { label: 'Morgantown' }, { label: 'Parkersburg' },
+    { label: 'Wheeling' },
+  ],
+  'US-WI': [
+    { label: 'Milwaukee' }, { label: 'Madison' }, { label: 'Green Bay' }, { label: 'Kenosha' },
+    { label: 'Racine' },
+  ],
+  'US-WY': [
+    { label: 'Cheyenne' }, { label: 'Casper' }, { label: 'Laramie' }, { label: 'Gillette' },
+    { label: 'Rock Springs' },
+  ],
   // Canada
   'CA-BC': [
     { label: 'Vancouver' }, { label: 'Victoria' }, { label: 'Richmond' }, { label: 'Burnaby' },

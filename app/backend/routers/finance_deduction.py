@@ -10,12 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from core.database import get_db
-from dependencies.auth import get_current_user
+from dependencies.auth import get_current_user, get_finance_user
 from schemas.auth import UserResponse
 from utils.monthly_deduction_sql import create_audit_sql, create_default_sql, create_rates_sql, current_timestamp_sql, is_sqlite
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1/deductions-monthly", tags=["finance-deductions"])
+router = APIRouter(
+    prefix="/api/v1/deductions-monthly",
+    tags=["finance-deductions"],
+    dependencies=[Depends(get_finance_user)],
+)
 
 # ---- Schemas ----
 class MonthlyDeductionRateBase(BaseModel):

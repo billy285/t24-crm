@@ -23,6 +23,19 @@ from core.database import db_manager
 # MODULE_IMPORTS_END
 
 
+def _is_truthy_env(name: str) -> bool:
+    return (os.environ.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_log_level(raw_level: str | None, default: int = logging.INFO) -> int:
+    if not raw_level:
+        return default
+
+    level_name = raw_level.strip().upper()
+    level = getattr(logging, level_name, None)
+    return level if isinstance(level, int) else default
+
+
 def setup_logging():
     """Configure the logging system."""
     if os.environ.get("IS_LAMBDA") == "true":
@@ -39,10 +52,11 @@ def setup_logging():
 
     # Configure log format
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    log_level = _resolve_log_level(os.environ.get("LOG_LEVEL"), logging.INFO)
 
     # Configure the root logger
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=log_level,
         format=log_format,
         handlers=[
             # File handler
@@ -52,15 +66,25 @@ def setup_logging():
         ],
     )
 
-    # Set log levels for specific modules
-    logging.getLogger("uvicorn").setLevel(logging.DEBUG)
-    logging.getLogger("fastapi").setLevel(logging.DEBUG)
+    # Keep noisy infrastructure loggers quiet by default so customer/business
+    # data is not sprayed into logs through SQL/debug traces.
+    framework_level = logging.DEBUG if log_level <= logging.DEBUG else logging.INFO
+    logging.getLogger("uvicorn").setLevel(framework_level)
+    logging.getLogger("fastapi").setLevel(framework_level)
+    logging.getLogger("aiosqlite").setLevel(logging.DEBUG if _is_truthy_env("ENABLE_SQL_DEBUG_LOGS") else logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(
+        logging.DEBUG if _is_truthy_env("ENABLE_SQL_DEBUG_LOGS") else logging.WARNING
+    )
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+    logging.getLogger("multipart").setLevel(logging.WARNING)
 
     # Log configuration details
     logger = logging.getLogger(__name__)
     logger.info("=== Logging system initialized ===")
     logger.info(f"Log file: {log_file}")
-    logger.info("Log level: INFO")
+    logger.info("Log level: %s", logging.getLevelName(log_level))
+    if os.environ.get("LOG_LEVEL") and log_level == logging.INFO and os.environ["LOG_LEVEL"].strip().upper() != "INFO":
+        logger.warning("Invalid LOG_LEVEL=%s; falling back to INFO", os.environ["LOG_LEVEL"])
     logger.info(f"Timestamp: {timestamp}")
 
 

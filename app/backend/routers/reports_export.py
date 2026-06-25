@@ -12,15 +12,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from core.database import get_db
+from dependencies.auth import get_finance_user
+from schemas.auth import UserResponse
 from utils.monthly_deduction_sql import create_default_sql, create_rates_sql
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
+MANAGEMENT_FEE_KEY = "management_fee"
+ADS_FEE_KEY = "ads_fee"
+ADS_RECHARGE_DEDUCTION_RATE = 0.01
 
 
 # Utilities
 def ym_key(dt: date) -> str:
     return f"{dt.year:04d}-{dt.month:02d}"
+
+
+def _coerce_date(value: object) -> Optional[date]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        text_value = value.strip()
+        if not text_value:
+            return None
+        try:
+            return datetime.fromisoformat(text_value.replace("Z", "+00:00")).date()
+        except ValueError:
+            try:
+                return datetime.strptime(text_value[:10], "%Y-%m-%d").date()
+            except ValueError:
+                return None
+    return None
 
 
 async def _get_default_deduction_rate(db: AsyncSession) -> float:
@@ -64,7 +90,39 @@ async def _get_monthly_deduction_map(db: AsyncSession, start_ym: Optional[str], 
     return mapped
 
 
-async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Optional[str]) -> Tuple[Dict[str, Dict[str, float]], List[str]]:
+def _calculate_deductions(
+    revenue: float,
+    management_revenue: float,
+    ads_recharge_revenue: float,
+    management_rate: float,
+) -> Tuple[float, float, float, float]:
+    management_deduction = management_revenue * management_rate
+    ads_deduction = ads_recharge_revenue * ADS_RECHARGE_DEDUCTION_RATE
+    deduction_amount = management_deduction + ads_deduction
+    effective_rate = (deduction_amount / revenue) if revenue > 0 else 0.0
+    return management_deduction, ads_deduction, deduction_amount, effective_rate
+
+
+def _build_deduction_note(
+    management_revenue: float,
+    ads_recharge_revenue: float,
+    management_rate: float,
+    fallback_note: Optional[str] = None,
+    base_currency: Optional[str] = None,
+) -> str:
+    parts: List[str] = []
+    if management_revenue > 0:
+        parts.append(f"management_fee {round(management_rate * 100)}%")
+    if ads_recharge_revenue > 0:
+        parts.append("ads recharge 1%")
+    if fallback_note:
+        parts.append(fallback_note)
+    if base_currency is not None:
+        parts.append("FX N/A (awaiting design)")
+    return "; ".join(parts)
+
+
+async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Optional[str]) -> Tuple[Dict[str, Dict[str, Dict[str, float]]], List[str]]:
     """
     Returns:
       data[currency][YYYY-MM] = dict(revenue_gross, cost)
@@ -72,10 +130,12 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
     Assumptions:
       - payments.amount_paid (USD), payments.payment_date
       - expenses.amount (USD), expenses.expense_month (YYYY-MM string) fallback created_at
-      - company_expenses.amount (CNY), company_expenses.expense_month (YYYY-MM string) fallback created_at
+      - company_expenses.amount (native currency; legacy blank currency treated as CNY), company_expenses.expense_month (YYYY-MM string) fallback created_at
     """
     # Revenue (USD)
     revenue_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    management_revenue_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    ads_recharge_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
     cost_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
     months_set = set()
 
@@ -84,19 +144,14 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
     end_dt = datetime.strptime(end, "%Y-%m-%d").date() if end else None
 
     # Payments -> USD revenue by month
-    q = "SELECT amount_paid, payment_date FROM payments"
+    q = "SELECT customer_id, customer_name, income_type, amount_paid, payment_date FROM payments"
     # naive filter on backend side after fetch to keep SQL simple/portable
     res = await db.execute(text(q))
     for row in res.fetchall():
-        amt = float(row[0] or 0)
-        pdt = row[1] or None
-        if not pdt:
-            continue
-        if isinstance(pdt, datetime):
-            d = pdt.date()
-        elif isinstance(pdt, date):
-            d = pdt
-        else:
+        income_type = row[2] or None
+        amt = float(row[3] or 0)
+        d = _coerce_date(row[4] or None)
+        if not d:
             continue
         if start_dt and d < start_dt:
             continue
@@ -105,18 +160,21 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
         ym = ym_key(d)
         months_set.add(ym)
         revenue_map["USD"][ym] += amt
+        if income_type == MANAGEMENT_FEE_KEY:
+            management_revenue_map["USD"][ym] += amt
+        elif income_type == ADS_FEE_KEY:
+            ads_recharge_map["USD"][ym] += amt
 
     # Customer expenses (USD)
-    res = await db.execute(text("SELECT amount, expense_month, created_at FROM expenses"))
+    res = await db.execute(text("SELECT customer_id, customer_name, expense_type, amount, expense_month, created_at FROM expenses"))
     for row in res.mappings().all():
         amt = float(row["amount"] or 0)
         ym = None
         if row["expense_month"] and isinstance(row["expense_month"], str) and len(row["expense_month"]) >= 7:
             ym = row["expense_month"][:7]
         else:
-            ca = row.get("created_at")
-            if ca:
-                d = ca if isinstance(ca, date) else ca.date()
+            d = _coerce_date(row.get("created_at"))
+            if d:
                 ym = ym_key(d)
         if not ym:
             continue
@@ -126,22 +184,22 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
             d = date(int(y), int(m), 1)
             if start_dt and d < date(start_dt.year, start_dt.month, 1):
                 continue
-            if end_dt and d > date(end_dt.year, end_dt.month, 1):
-                continue
+        if end_dt and d > date(end_dt.year, end_dt.month, 1):
+            continue
         months_set.add(ym)
         cost_map["USD"][ym] += amt
 
-    # Company expenses (CNY)
-    res = await db.execute(text("SELECT amount, expense_month, created_at FROM company_expenses"))
+    # Company operating expenses. Legacy rows created before currency support are treated as CNY.
+    res = await db.execute(text("SELECT amount, currency, expense_month, created_at FROM company_expenses"))
     for row in res.mappings().all():
         amt = float(row["amount"] or 0)
+        currency = row.get("currency") if row.get("currency") in ("USD", "CNY") else "CNY"
         ym = None
         if row["expense_month"] and isinstance(row["expense_month"], str) and len(row["expense_month"]) >= 7:
             ym = row["expense_month"][:7]
         else:
-            ca = row.get("created_at")
-            if ca:
-                d = ca if isinstance(ca, date) else ca.date()
+            d = _coerce_date(row.get("created_at"))
+            if d:
                 ym = ym_key(d)
         if not ym:
             continue
@@ -153,7 +211,7 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
             if end_dt and d > date(end_dt.year, end_dt.month, 1):
                 continue
         months_set.add(ym)
-        cost_map["CNY"][ym] += amt
+        cost_map[currency][ym] += amt
 
     # Combine
     all_data: Dict[str, Dict[str, Dict[str, float]]] = {}
@@ -162,6 +220,8 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
         for ym in months_set:
             all_data[cur][ym] = {
                 "revenue_gross": revenue_map[cur].get(ym, 0.0),
+                "management_revenue": management_revenue_map[cur].get(ym, 0.0),
+                "ads_recharge_revenue": ads_recharge_map[cur].get(ym, 0.0),
                 "cost": cost_map[cur].get(ym, 0.0),
             }
 
@@ -209,19 +269,26 @@ def _apply_deductions(rows_in: Dict[str, Dict[str, Dict[str, float]]], months: L
     for cur, per_month in rows_in.items():
         for ym in months:
             revenue = float(per_month.get(ym, {}).get("revenue_gross", 0.0))
+            management_revenue = float(per_month.get(ym, {}).get("management_revenue", 0.0))
+            ads_recharge_revenue = float(per_month.get(ym, {}).get("ads_recharge_revenue", 0.0))
             cost = float(per_month.get(ym, {}).get("cost", 0.0))
             rate = float(rate_map.get(ym, default_rate))
-            deduction_amt = revenue * rate
+            _, _, deduction_amt, effective_rate = _calculate_deductions(
+                revenue,
+                management_revenue,
+                ads_recharge_revenue,
+                rate,
+            )
             profit = revenue - deduction_amt - cost
             result.append({
                 "month": ym,
                 "currency_or_base": base_currency or cur,
                 "revenue_gross": f"{revenue:.2f}",
-                "deduction_rate": f"{rate:.4f}",
+                "deduction_rate": f"{effective_rate:.4f}",
                 "deduction_amount": f"{deduction_amt:.2f}",
                 "cost": f"{cost:.2f}",
                 "profit": f"{profit:.2f}",
-                "notes": "" if base_currency is None else "FX N/A (awaiting design)",
+                "notes": _build_deduction_note(management_revenue, ads_recharge_revenue, rate, base_currency=base_currency),
             })
     # stable sort by month then label
     result.sort(key=lambda r: (r["month"], r["currency_or_base"]))
@@ -235,6 +302,7 @@ async def export_profit_monthly_csv(
     end: Optional[str] = Query(None, description="YYYY-MM-DD"),
     currency: Optional[str] = Query(None, description="Filter currency: USD or CNY"),
     base_currency: Optional[str] = Query(None, description="If provided, target base currency for display (FX conversion pending)"),
+    _current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -259,6 +327,7 @@ async def export_profit_monthly_xlsx(
     end: Optional[str] = Query(None, description="YYYY-MM-DD"),
     currency: Optional[str] = Query(None, description="Filter currency: USD or CNY"),
     base_currency: Optional[str] = Query(None, description="If provided, target base currency for display (FX conversion pending)"),
+    _current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -295,6 +364,7 @@ async def profit_monthly_json(
     end: str = Query(..., description="YYYY-MM-DD"),
     currency: Optional[str] = Query(None, description="USD or CNY; default returns USD only unless base_currency specified"),
     base_currency: Optional[str] = Query(None, description="If provided, aggregate to base currency (FX conversion reserved)"),
+    _current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -332,23 +402,31 @@ async def profit_monthly_json(
         for cur, per_month in selected.items():
             for ym in sorted(months):
                 revenue = float(per_month.get(ym, {}).get("revenue_gross", 0.0))
+                management_revenue = float(per_month.get(ym, {}).get("management_revenue", 0.0))
+                ads_recharge_revenue = float(per_month.get(ym, {}).get("ads_recharge_revenue", 0.0))
                 cost = float(per_month.get(ym, {}).get("cost", 0.0))
                 if revenue == 0.0 and cost == 0.0:
                     continue
                 rate = float(rate_map.get(ym, default_rate))
-                deduction_amt = round(revenue * rate, 2)
+                _, _, deduction_amt_raw, effective_rate = _calculate_deductions(
+                    revenue,
+                    management_revenue,
+                    ads_recharge_revenue,
+                    rate,
+                )
+                deduction_amt = round(deduction_amt_raw, 2)
                 profit = round(revenue - deduction_amt - cost, 2)
-                note = None if ym in rate_map else "rate from monthly config or default 0.15"
+                fallback_note = None if ym in rate_map else "rate from monthly config or default 0.15"
                 rows.append(ProfitMonthlyJSONRow(
                     month=ym,
                     currency=None if base_currency else cur,
                     base_currency=base_currency if base_currency else None,
                     revenue_gross=round(revenue, 2),
-                    deduction_rate=rate,
+                    deduction_rate=round(effective_rate, 4),
                     deduction_amount=deduction_amt,
                     cost=round(cost, 2),
                     profit=profit,
-                    notes=note
+                    notes=_build_deduction_note(management_revenue, ads_recharge_revenue, rate, fallback_note=fallback_note, base_currency=base_currency)
                 ))
         return rows
     except HTTPException:

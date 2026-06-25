@@ -6,7 +6,7 @@ import {
   getDataScope, canViewSensitive, isAdminRole, mapToSystemRole,
   type RolePermissionConfig,
 } from './permissions';
-import { APP_CONFIG_UPDATED_EVENT, syncAppConfigCache } from './app-config';
+import { APP_CONFIG_UPDATED_EVENT, readCachedAppConfig, syncAppConfigCache } from './app-config';
 import { getToken, setToken as setAccessToken, clearToken as clearTokenStore, refreshToken, invokeWithAuth } from './tokenStore';
 
 export type RoleType = 'super_admin' | 'admin' | 'sales' | 'ops' | 'design' | 'finance' | '';
@@ -122,6 +122,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       }
 
       const effectiveToken = token || getToken();
+      if (effectiveToken) {
+        setAccessToken(effectiveToken);
+      }
       if (!effectiveToken && !savedEmp) {
         setLoading(false);
         return;
@@ -273,7 +276,10 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   }, [role]);
 
   const ds = role ? getDataScope(role) : 'all' as DataScope;
-  const cvp = role ? canViewSensitive(role, 'viewPassword') : true;
+  const securityConfig = readCachedAppConfig('security_config', { passwordViewRoles: ['super_admin', 'admin'] as string[] });
+  const cvp = role
+    ? canViewSensitive(role, 'viewPassword') || (securityConfig.passwordViewRoles || []).includes(role)
+    : true;
   const ccp = role ? canViewSensitive(role, 'copyPassword') : true;
   const cvf = role ? canViewSensitive(role, 'viewFinance') : true;
 

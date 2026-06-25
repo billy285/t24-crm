@@ -9,12 +9,13 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from dependencies.auth import get_current_user
 from services.customer_callbacks import Customer_callbacksService
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/entities/customer_callbacks", tags=["customer_callbacks"])
+router = APIRouter(prefix="/api/v1/entities/customer_callbacks", tags=["customer_callbacks"], dependencies=[Depends(get_current_user)])
 
 
 # ---------- Pydantic Schemas ----------

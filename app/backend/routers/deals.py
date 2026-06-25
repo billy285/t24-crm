@@ -9,13 +9,14 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from dependencies.auth import get_current_user
 from services.deals import DealsService
 from services.deal_payment_sync import delete_synced_payment_for_deal, sync_payment_from_deal
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/entities/deals", tags=["deals"])
+router = APIRouter(prefix="/api/v1/entities/deals", tags=["deals"], dependencies=[Depends(get_current_user)])
 
 
 # ---------- Pydantic Schemas ----------

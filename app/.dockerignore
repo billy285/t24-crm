@@ -1,0 +1,15 @@
+.git
+.pytest_cache
+**/.pytest_cache
+**/__pycache__
+**/*.pyc
+backend/logs
+backend/*.db
+backend/data
+crm_dev.db
+frontend/node_modules
+frontend/dist
+frontend/.vite
+.env
+.env.*
+!.env.production.example
