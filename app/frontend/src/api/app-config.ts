@@ -32,6 +32,15 @@ async function parseErrorDetail(response: Response, fallback: string) {
 }
 
 function buildAppConfigUrl(path: string) {
+  if (
+    typeof window !== 'undefined' &&
+    window.location?.origin?.startsWith('http') &&
+    path.startsWith('/api/')
+  ) {
+    // Config writes are served by the same FastAPI app in production and via Vite proxy locally.
+    // Keeping them same-origin avoids browser CORS/mixed-origin "Failed to fetch" failures.
+    return path;
+  }
   const baseUrl = getAPIBaseURL().replace(/\/$/, '');
   return `${baseUrl}${path}`;
 }
@@ -45,6 +54,7 @@ async function requestAppConfig<T>(
   try {
     const response = await fetch(buildAppConfigUrl(path), {
       ...init,
+      credentials: 'include',
       headers: {
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),

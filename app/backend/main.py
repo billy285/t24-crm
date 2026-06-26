@@ -278,9 +278,9 @@ def runtime_config(request: Request):
     request_origin = str(request.base_url).rstrip("/")
     configured_api_base = os.environ.get("VITE_API_BASE_URL") or os.environ.get("PYTHON_BACKEND_URL")
 
-    # When the frontend is being served by this same FastAPI app on localhost/127.0.0.1,
-    # prefer the page origin so browser requests stay same-origin and avoid CORS preflights.
-    if request.url.hostname in {"localhost", "127.0.0.1"} and request_origin.startswith(("http://", "https://")):
+    # The production frontend is served by this same FastAPI app. Prefer the page origin so
+    # browser requests stay same-origin and do not fail due to CORS or mixed-origin caching.
+    if request_origin.startswith(("http://", "https://")):
         api_base_url = request_origin
     else:
         api_base_url = configured_api_base or settings.backend_url
