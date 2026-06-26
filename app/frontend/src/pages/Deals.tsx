@@ -15,10 +15,61 @@ import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { saveRemoteAppConfig } from '../lib/app-config';
-import { buildOptionKey, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
+import { buildOptionKey, sanitizeDictLabel, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
 
 function parseMultiValue(value?: string | null) {
   return (value || '').split(',').map(item => item.trim()).filter(Boolean);
+}
+
+type PackageDraft = { key: string; label: string };
+
+function normalizePackageLabel(label: string) {
+  return sanitizeDictLabel(label).replace(/\s+/g, ' ').trim();
+}
+
+function parsePackageNameInput(value: string) {
+  return value
+    .split(/[\n,，;；]+/)
+    .map(normalizePackageLabel)
+    .filter(Boolean);
+}
+
+function buildUniquePackageKey(label: string, usedKeys: Set<string>) {
+  const baseKey = buildOptionKey(label);
+  let key = baseKey;
+  while (usedKeys.has(key)) {
+    key = `${baseKey}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  }
+  usedKeys.add(key);
+  return key;
+}
+
+function appendPackageDrafts(baseDrafts: PackageDraft[], rawInput: string) {
+  const labels = parsePackageNameInput(rawInput);
+  const nextDrafts = [...baseDrafts];
+  const usedKeys = new Set(nextDrafts.map(item => item.key));
+  const seenLabels = new Set(
+    nextDrafts
+      .map(item => normalizePackageLabel(item.label).toLowerCase())
+      .filter(Boolean)
+  );
+  const duplicates: string[] = [];
+
+  labels.forEach(label => {
+    const normalizedKey = label.toLowerCase();
+    if (seenLabels.has(normalizedKey)) {
+      if (!duplicates.includes(label)) duplicates.push(label);
+      return;
+    }
+    seenLabels.add(normalizedKey);
+    nextDrafts.push({ key: buildUniquePackageKey(label, usedKeys), label });
+  });
+
+  return {
+    drafts: nextDrafts,
+    addedCount: nextDrafts.length - baseDrafts.length,
+    duplicates,
+  };
 }
 
 function parseDealPackageLabels(value?: string | null) {
@@ -68,7 +119,7 @@ export default function Deals() {
   const [deleting, setDeleting] = useState(false);
   const [showPackageManager, setShowPackageManager] = useState(false);
   const [newPackageName, setNewPackageName] = useState('');
-  const [packageDrafts, setPackageDrafts] = useState<Array<{ key: string; label: string }>>([]);
+  const [packageDrafts, setPackageDrafts] = useState<PackageDraft[]>([]);
   const [savingPackages, setSavingPackages] = useState(false);
   const [packageOverrideLabels, setPackageOverrideLabels] = useState<Record<string, string>>({});
   const emptyDealForm = buildEmptyDealForm();
@@ -170,22 +221,65 @@ export default function Deals() {
     setShowPackageManager(true);
   };
 
-  const handleAddPackageDraft = () => {
-    const label = newPackageName.trim();
-    if (!label) {
+  const savePackageDrafts = async (draftsToSave: PackageDraft[]) => {
+    const normalizedEntries = draftsToSave.reduce<Record<string, string>>((acc, item) => {
+      const label = normalizePackageLabel(item.label);
+      if (label) {
+        acc[item.key] = label;
+      }
+      return acc;
+    }, {});
+    const labels = Object.values(normalizedEntries);
+    if (labels.length === 0) {
+      throw new Error('请至少保留一个套餐');
+    }
+    if (new Set(labels.map(label => label.toLowerCase())).size !== labels.length) {
+      throw new Error('套餐名称不能重复');
+    }
+
+    await saveRemoteAppConfig('dict_config', {
+      ...dictConfig,
+      customerPackages: serializeDictEntries(normalizedEntries),
+    });
+    const availableKeys = new Set(Object.keys(normalizedEntries));
+    const savedDrafts = Object.entries(normalizedEntries).map(([key, label]) => ({ key, label }));
+    setPackageDrafts(savedDrafts);
+    setForm(prev => ({
+      ...prev,
+      package_keys: prev.package_keys.filter(key => availableKeys.has(key) || packageOverrideLabels[key]),
+    }));
+    return savedDrafts;
+  };
+
+  const handleAddPackageDraft = async () => {
+    if (savingPackages) return;
+    const pendingLabel = newPackageName.trim();
+    if (!pendingLabel) {
       toast.error('请输入套餐名称');
       return;
     }
-    if (packageDrafts.some(item => item.label.trim() === label)) {
-      toast.error('该套餐已存在');
+
+    const result = appendPackageDrafts(packageDrafts, pendingLabel);
+    if (result.addedCount === 0) {
+      toast.error(result.duplicates.length > 0 ? `该套餐已存在：${result.duplicates.join('、')}` : '请输入套餐名称');
       return;
     }
-    let key = buildOptionKey(label);
-    while (packageDrafts.some(item => item.key === key)) {
-      key = `${key}_${Date.now()}`;
+
+    setSavingPackages(true);
+    try {
+      await savePackageDrafts(result.drafts);
+      setNewPackageName('');
+      toast.success(
+        result.duplicates.length > 0
+          ? `已添加 ${result.addedCount} 个套餐，已跳过重复：${result.duplicates.join('、')}`
+          : `已添加 ${result.addedCount} 个套餐`
+      );
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '添加套餐配置失败';
+      toast.error(detail);
+    } finally {
+      setSavingPackages(false);
     }
-    setPackageDrafts(prev => [...prev, { key, label }]);
-    setNewPackageName('');
   };
 
   const handleRemovePackageDraft = (key: string) => {
@@ -208,52 +302,27 @@ export default function Deals() {
   };
 
   const handleSavePackages = async () => {
+    if (savingPackages) return;
     const pendingLabel = newPackageName.trim();
-    let draftsToSave = packageDrafts;
-    if (pendingLabel) {
-      if (packageDrafts.some(item => item.label.trim() === pendingLabel)) {
-        toast.error('该套餐已存在');
-        return;
-      }
-      let key = buildOptionKey(pendingLabel);
-      while (packageDrafts.some(item => item.key === key)) {
-        key = `${key}_${Date.now()}`;
-      }
-      draftsToSave = [...packageDrafts, { key, label: pendingLabel }];
-    }
+    const result = pendingLabel
+      ? appendPackageDrafts(packageDrafts, pendingLabel)
+      : { drafts: packageDrafts, addedCount: 0, duplicates: [] as string[] };
 
-    const normalizedEntries = draftsToSave.reduce<Record<string, string>>((acc, item) => {
-      const label = item.label.trim();
-      if (label) {
-        acc[item.key] = label;
-      }
-      return acc;
-    }, {});
-    const labels = Object.values(normalizedEntries);
-    if (labels.length === 0) {
-      toast.error('请至少保留一个套餐');
-      return;
-    }
-    if (new Set(labels).size !== labels.length) {
-      toast.error('套餐名称不能重复');
+    if (pendingLabel && result.addedCount === 0) {
+      toast.error(result.duplicates.length > 0 ? `该套餐已存在：${result.duplicates.join('、')}` : '请输入套餐名称');
       return;
     }
 
     setSavingPackages(true);
     try {
-      await saveRemoteAppConfig('dict_config', {
-        ...dictConfig,
-        customerPackages: serializeDictEntries(normalizedEntries),
-      });
-      const availableKeys = new Set(Object.keys(normalizedEntries));
-      setPackageDrafts(Object.entries(normalizedEntries).map(([key, label]) => ({ key, label })));
-      setForm(prev => ({
-        ...prev,
-        package_keys: prev.package_keys.filter(key => availableKeys.has(key) || packageOverrideLabels[key]),
-      }));
+      await savePackageDrafts(result.drafts);
       setShowPackageManager(false);
       setNewPackageName('');
-      toast.success('套餐配置已更新');
+      toast.success(
+        result.duplicates.length > 0
+          ? `套餐配置已更新，已跳过重复：${result.duplicates.join('、')}`
+          : '套餐配置已更新'
+      );
     } catch (err: any) {
       const detail = err?.data?.detail || err?.message || '保存套餐配置失败';
       toast.error(detail);
@@ -537,14 +606,14 @@ export default function Deals() {
                 onChange={e => setNewPackageName(e.target.value)}
                 placeholder="新增套餐，例如：Google商家管理"
                 onKeyDown={e => {
-                  if (e.key === 'Enter') {
+                  if (e.key === 'Enter' && !savingPackages) {
                     e.preventDefault();
-                    handleAddPackageDraft();
+                    void handleAddPackageDraft();
                   }
                 }}
               />
-              <Button type="button" onClick={handleAddPackageDraft}>
-                添加
+              <Button type="button" onClick={() => void handleAddPackageDraft()} disabled={savingPackages}>
+                {savingPackages ? '保存中...' : '添加'}
               </Button>
             </div>
             <div className="max-h-72 space-y-2 overflow-y-auto">
