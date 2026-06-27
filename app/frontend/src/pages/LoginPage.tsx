@@ -34,8 +34,8 @@ export default function LoginPage() {
 
   return (
     <Login
-      onLoginSuccess={(token, employee) => {
-        login(token, employee);
+      onLoginSuccess={async (token, employee) => {
+        await login(token, employee);
         navigate(redirectTo, { replace: true });
       }}
     />

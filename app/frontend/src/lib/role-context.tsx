@@ -20,7 +20,7 @@ interface RoleContextType {
   isLoggedIn: boolean;
   isAdmin: boolean;
   isDisabled: boolean;
-  login: (token: string, emp: any) => void;
+  login: (token: string, emp: any) => Promise<void>;
   logout: () => void;
   refreshEmployee: () => Promise<void>;
   // Permission helpers
@@ -36,7 +36,7 @@ interface RoleContextType {
 const RoleContext = createContext<RoleContextType>({
   user: null, employee: null, role: '', systemRole: null,
   loading: true, isLoggedIn: false, isAdmin: false, isDisabled: false,
-  login: () => {}, logout: () => {}, refreshEmployee: async () => {},
+  login: async () => {}, logout: () => {}, refreshEmployee: async () => {},
   canAccess: () => true, hasPermission: () => true,
   dataScope: 'all', canViewPassword: true, canCopyPassword: true, canViewFinance: true,
   permissions: null,
@@ -198,11 +198,19 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     setRole(mappedRole as RoleType);
   };
 
-  const handleLogin = (token: string, emp: any) => {
-    setAccessToken(token);
-    localStorage.setItem(EMP_DATA_KEY, JSON.stringify(emp));
-    applyEmployee(emp);
-    void syncAppConfigCache();
+  const handleLogin = async (token: string, emp: any) => {
+    setLoading(true);
+    try {
+      setAccessToken(token);
+      localStorage.setItem(EMP_DATA_KEY, JSON.stringify(emp));
+      applyEmployee(emp);
+      await syncAppConfigCache();
+    } catch (err) {
+      // Keep the login usable even if non-critical app config sync is temporarily unavailable.
+      console.warn('Initial app config sync failed after login:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const clearAuth = () => {

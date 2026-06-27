@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { client } from '@/lib/api';
 
 interface LoginProps {
-  onLoginSuccess: (token: string, employee: any) => void;
+  onLoginSuccess: (token: string, employee: any) => void | Promise<void>;
 }
 
 export default function Login({ onLoginSuccess }: LoginProps) {
@@ -53,7 +53,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           // 忽略 Cookie 设置失败，仍然允许本次登录
         }
         toast.success(`欢迎回来，${data.employee.name}！`);
-        onLoginSuccess(data.token, data.employee);
+        await onLoginSuccess(data.token, data.employee);
       } else {
         toast.error('登录失败，请重试');
       }
