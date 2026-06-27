@@ -21,6 +21,11 @@ router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 MANAGEMENT_FEE_KEY = "management_fee"
 ADS_FEE_KEY = "ads_fee"
 ADS_RECHARGE_DEDUCTION_RATE = 0.01
+STRIPE_PLATFORM_FEE_RATE = 0.029
+STRIPE_PLATFORM_FEE_FIXED = 0.3
+LEGACY_PAYMENT_METHOD_MAP = {
+    "subscription_debit": "stripe",
+}
 
 
 # Utilities
@@ -103,10 +108,28 @@ def _calculate_deductions(
     return management_deduction, ads_deduction, deduction_amount, effective_rate
 
 
+def _normalize_payment_method(method: Optional[str]) -> str:
+    if not method:
+        return "other"
+    return LEGACY_PAYMENT_METHOD_MAP.get(method, method)
+
+
+def _is_stripe_subscription_payment(payment_method: Optional[str], payment_mode: Optional[str]) -> bool:
+    method = _normalize_payment_method(payment_method)
+    return method == "stripe" or (payment_mode == "subscription_auto" and not payment_method)
+
+
+def _calculate_stripe_platform_fee(amount_paid: float, payment_method: Optional[str], payment_mode: Optional[str]) -> float:
+    if amount_paid <= 0 or not _is_stripe_subscription_payment(payment_method, payment_mode):
+        return 0.0
+    return round(amount_paid * STRIPE_PLATFORM_FEE_RATE + STRIPE_PLATFORM_FEE_FIXED, 2)
+
+
 def _build_deduction_note(
     management_revenue: float,
     ads_recharge_revenue: float,
     management_rate: float,
+    stripe_platform_fee: float = 0.0,
     fallback_note: Optional[str] = None,
     base_currency: Optional[str] = None,
 ) -> str:
@@ -115,6 +138,8 @@ def _build_deduction_note(
         parts.append(f"management_fee {round(management_rate * 100)}%")
     if ads_recharge_revenue > 0:
         parts.append("ads recharge 1%")
+    if stripe_platform_fee > 0:
+        parts.append("Stripe fee 2.9% + 0.30/payment")
     if fallback_note:
         parts.append(fallback_note)
     if base_currency is not None:
@@ -137,6 +162,7 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
     management_revenue_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
     ads_recharge_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
     cost_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    stripe_platform_fee_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
     months_set = set()
 
     # Date filtering
@@ -144,7 +170,7 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
     end_dt = datetime.strptime(end, "%Y-%m-%d").date() if end else None
 
     # Payments -> USD revenue by month
-    q = "SELECT customer_id, customer_name, income_type, amount_paid, payment_date FROM payments"
+    q = "SELECT customer_id, customer_name, income_type, amount_paid, payment_date, payment_method, payment_mode FROM payments"
     # naive filter on backend side after fetch to keep SQL simple/portable
     res = await db.execute(text(q))
     for row in res.fetchall():
@@ -160,6 +186,10 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
         ym = ym_key(d)
         months_set.add(ym)
         revenue_map["USD"][ym] += amt
+        stripe_platform_fee = _calculate_stripe_platform_fee(amt, row[5] or None, row[6] or None)
+        if stripe_platform_fee > 0:
+            stripe_platform_fee_map["USD"][ym] += stripe_platform_fee
+            cost_map["USD"][ym] += stripe_platform_fee
         if income_type == MANAGEMENT_FEE_KEY:
             management_revenue_map["USD"][ym] += amt
         elif income_type == ADS_FEE_KEY:
@@ -222,6 +252,7 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
                 "revenue_gross": revenue_map[cur].get(ym, 0.0),
                 "management_revenue": management_revenue_map[cur].get(ym, 0.0),
                 "ads_recharge_revenue": ads_recharge_map[cur].get(ym, 0.0),
+                "stripe_platform_fee": stripe_platform_fee_map[cur].get(ym, 0.0),
                 "cost": cost_map[cur].get(ym, 0.0),
             }
 
@@ -231,7 +262,7 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
 
 def _build_csv(rows: List[Dict[str, str]]) -> io.BytesIO:
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=["month", "currency_or_base", "revenue_gross", "deduction_rate", "deduction_amount", "cost", "profit", "notes"])
+    writer = csv.DictWriter(buf, fieldnames=["month", "currency_or_base", "revenue_gross", "deduction_rate", "deduction_amount", "stripe_platform_fee", "cost", "profit", "notes"])
     writer.writeheader()
     for r in rows:
         writer.writerow(r)
@@ -249,7 +280,7 @@ def _build_xlsx(rows: List[Dict[str, str]]) -> io.BytesIO:
     wb = Workbook()
     ws = wb.active
     ws.title = "profit_monthly"
-    headers = ["month", "currency_or_base", "revenue_gross", "deduction_rate", "deduction_amount", "cost", "profit", "notes"]
+    headers = ["month", "currency_or_base", "revenue_gross", "deduction_rate", "deduction_amount", "stripe_platform_fee", "cost", "profit", "notes"]
     ws.append(headers)
     for r in rows:
         ws.append([r.get(h, "") for h in headers])
@@ -271,6 +302,7 @@ def _apply_deductions(rows_in: Dict[str, Dict[str, Dict[str, float]]], months: L
             revenue = float(per_month.get(ym, {}).get("revenue_gross", 0.0))
             management_revenue = float(per_month.get(ym, {}).get("management_revenue", 0.0))
             ads_recharge_revenue = float(per_month.get(ym, {}).get("ads_recharge_revenue", 0.0))
+            stripe_platform_fee = float(per_month.get(ym, {}).get("stripe_platform_fee", 0.0))
             cost = float(per_month.get(ym, {}).get("cost", 0.0))
             rate = float(rate_map.get(ym, default_rate))
             _, _, deduction_amt, effective_rate = _calculate_deductions(
@@ -286,9 +318,10 @@ def _apply_deductions(rows_in: Dict[str, Dict[str, Dict[str, float]]], months: L
                 "revenue_gross": f"{revenue:.2f}",
                 "deduction_rate": f"{effective_rate:.4f}",
                 "deduction_amount": f"{deduction_amt:.2f}",
+                "stripe_platform_fee": f"{stripe_platform_fee:.2f}",
                 "cost": f"{cost:.2f}",
                 "profit": f"{profit:.2f}",
-                "notes": _build_deduction_note(management_revenue, ads_recharge_revenue, rate, base_currency=base_currency),
+                "notes": _build_deduction_note(management_revenue, ads_recharge_revenue, rate, stripe_platform_fee=stripe_platform_fee, base_currency=base_currency),
             })
     # stable sort by month then label
     result.sort(key=lambda r: (r["month"], r["currency_or_base"]))
@@ -353,6 +386,7 @@ class ProfitMonthlyJSONRow(BaseModel):
     revenue_gross: float
     deduction_rate: float
     deduction_amount: float
+    stripe_platform_fee: float
     cost: float
     profit: float
     notes: Optional[str] = None
@@ -404,6 +438,7 @@ async def profit_monthly_json(
                 revenue = float(per_month.get(ym, {}).get("revenue_gross", 0.0))
                 management_revenue = float(per_month.get(ym, {}).get("management_revenue", 0.0))
                 ads_recharge_revenue = float(per_month.get(ym, {}).get("ads_recharge_revenue", 0.0))
+                stripe_platform_fee = float(per_month.get(ym, {}).get("stripe_platform_fee", 0.0))
                 cost = float(per_month.get(ym, {}).get("cost", 0.0))
                 if revenue == 0.0 and cost == 0.0:
                     continue
@@ -424,9 +459,10 @@ async def profit_monthly_json(
                     revenue_gross=round(revenue, 2),
                     deduction_rate=round(effective_rate, 4),
                     deduction_amount=deduction_amt,
+                    stripe_platform_fee=round(stripe_platform_fee, 2),
                     cost=round(cost, 2),
                     profit=profit,
-                    notes=_build_deduction_note(management_revenue, ads_recharge_revenue, rate, fallback_note=fallback_note, base_currency=base_currency)
+                    notes=_build_deduction_note(management_revenue, ads_recharge_revenue, rate, stripe_platform_fee=stripe_platform_fee, fallback_note=fallback_note, base_currency=base_currency)
                 ))
         return rows
     except HTTPException:

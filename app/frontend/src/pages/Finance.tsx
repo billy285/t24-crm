@@ -111,11 +111,14 @@ const roundMoney = (amount: number) => Math.round(Number(amount || 0) * 100) / 1
 const MANAGEMENT_FEE_KEY = 'management_fee';
 const ADS_FEE_KEY = 'ads_fee';
 const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
+const STRIPE_PLATFORM_FEE_RATE = 0.029;
+const STRIPE_PLATFORM_FEE_FIXED = 0.3;
 
 type MonthlyFinanceBucket = {
   revenue: number;
   managementRevenue: number;
   adsRevenue: number;
+  stripePlatformFee: number;
   customerCost: number;
   operatingCostUsd: number;
   cost: number;
@@ -130,9 +133,20 @@ const getOrCreateMonthlyFinanceBucket = (
   ym: string,
 ): MonthlyFinanceBucket => {
   if (!map[ym]) {
-    map[ym] = { revenue: 0, managementRevenue: 0, adsRevenue: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
+    map[ym] = { revenue: 0, managementRevenue: 0, adsRevenue: 0, stripePlatformFee: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
   }
   return map[ym];
+};
+
+const isStripeSubscriptionPayment = (payment: any) => {
+  const method = normalizePaymentMethodKey(payment?.payment_method);
+  return method === 'stripe' || (inferPaymentModeKey(payment || {}) === 'subscription_auto' && !payment?.payment_method);
+};
+
+const calculateStripePlatformFee = (payment: any) => {
+  const amount = Number(payment?.amount_paid || 0);
+  if (amount <= 0 || !isStripeSubscriptionPayment(payment)) return 0;
+  return roundMoney(amount * STRIPE_PLATFORM_FEE_RATE + STRIPE_PLATFORM_FEE_FIXED);
 };
 
 const buildMonthlyFinanceBuckets = (paymentsList: any[], customerExpenses: any[], companyExpenseList: any[] = []) => {
@@ -143,7 +157,10 @@ const buildMonthlyFinanceBuckets = (paymentsList: any[], customerExpenses: any[]
     if (!/^\d{4}-\d{2}$/.test(ym)) return;
     const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
     const amount = Number(payment.amount_paid || 0);
+    const stripeFee = calculateStripePlatformFee(payment);
     bucket.revenue += amount;
+    bucket.stripePlatformFee += stripeFee;
+    bucket.cost += stripeFee;
     if (payment.income_type === MANAGEMENT_FEE_KEY) {
       bucket.managementRevenue += amount;
     }
@@ -787,10 +804,11 @@ export default function Finance() {
   // ─── Stats ───────────────────────────────────────────────────────
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const currentMonthFinance = monthlyFinanceBuckets[currentMonthKey] || { revenue: 0, managementRevenue: 0, adsRevenue: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
+  const currentMonthFinance = monthlyFinanceBuckets[currentMonthKey] || { revenue: 0, managementRevenue: 0, adsRevenue: 0, stripePlatformFee: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
   const currentMonthDeductionRate = getDeductionRate(deductionRates, currentMonthKey);
   const currentMonthProfit = calculateMonthlyProfit(currentMonthFinance, currentMonthDeductionRate);
   const monthlyIncome = currentMonthFinance.revenue;
+  const monthlyStripePlatformFee = currentMonthFinance.stripePlatformFee;
   const monthlyCustomerExpense = currentMonthFinance.customerCost; // USD direct customer costs
   const monthlyCompanyExpenseUsd = currentMonthFinance.operatingCostUsd; // USD operating costs
   const monthlyCompanyExpenseCny = companyExpenses
@@ -834,21 +852,22 @@ export default function Finance() {
 
   // ─── Chart Data ──────────────────────────────────────────────────
   const monthlyTrendData = useMemo(() => {
-    const months: { key: string; label: string; income: number; customerExp: number; companyExpUsd: number; companyExpCny: number; profitUsd: number }[] = [];
+    const months: { key: string; label: string; income: number; customerExp: number; stripeFee: number; companyExpUsd: number; companyExpCny: number; profitUsd: number }[] = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const label = `${d.getMonth() + 1}月`;
-      const bucket = monthlyFinanceBuckets[key] || { revenue: 0, managementRevenue: 0, adsRevenue: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
+      const bucket = monthlyFinanceBuckets[key] || { revenue: 0, managementRevenue: 0, adsRevenue: 0, stripePlatformFee: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
       const income = bucket.revenue;
       const custExp = bucket.customerCost; // USD
+      const stripeFee = bucket.stripePlatformFee;
       const compExpUsd = bucket.operatingCostUsd; // USD operating costs
       const compExpCny = companyExpenses
         .filter(e => e.expense_month === key && getCompanyExpenseCurrency(e) === 'CNY')
         .reduce((s, e) => s + Number(e.amount || 0), 0); // CNY operating costs
       const rate = getDeductionRate(deductionRates, key);
       const { profit } = calculateMonthlyProfit(bucket, rate);
-      months.push({ key, label, income, customerExp: custExp, companyExpUsd: compExpUsd, companyExpCny: compExpCny, profitUsd: roundMoney(profit) });
+      months.push({ key, label, income, customerExp: custExp, stripeFee, companyExpUsd: compExpUsd, companyExpCny: compExpCny, profitUsd: roundMoney(profit) });
     }
     return months;
   }, [companyExpenses, deductionRates, monthlyFinanceBuckets, now]);
@@ -925,6 +944,7 @@ export default function Finance() {
         ads_recharge_deduction_amount: Math.round(adsDeduction * 100) / 100,
         deduction_rate: Math.round(effectiveRate * 10000) / 10000,
         deduction_amount: Math.round(deductionAmount * 100) / 100,
+        stripe_platform_fee: Math.round(bucket.stripePlatformFee * 100) / 100,
         customer_cost: Math.round(bucket.customerCost * 100) / 100,
         operating_cost_usd: Math.round(bucket.operatingCostUsd * 100) / 100,
         cost: Math.round(cost * 100) / 100,
@@ -1435,7 +1455,7 @@ export default function Finance() {
       <DateFilterBar />
 
       {/* Overview Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         <Card className="border-slate-200">
           <CardContent className="p-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center"><ArrowUpRight className="w-4 h-4 text-green-600" /></div>
@@ -1458,6 +1478,16 @@ export default function Finance() {
           <CardContent className="p-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center"><ArrowDownRight className="w-4 h-4 text-amber-600" /></div>
             <div><p className="text-[11px] text-slate-500">本月客户成本 (USD)</p><p className="text-base font-bold text-amber-600">{fmt(monthlyCustomerExpense)}</p></div>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200">
+          <CardContent className="p-3 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-cyan-50 flex items-center justify-center"><Receipt className="w-4 h-4 text-cyan-600" /></div>
+            <div>
+              <p className="text-[11px] text-slate-500">Stripe手续费</p>
+              <p className="text-base font-bold text-cyan-600">{fmt(monthlyStripePlatformFee)}</p>
+              <p className="text-[11px] text-slate-400">2.9% + $0.30/笔</p>
+            </div>
           </CardContent>
         </Card>
         <Card className="border-slate-200">
@@ -1517,6 +1547,7 @@ export default function Finance() {
                         <th className="px-3 py-2.5 font-medium">产品</th>
                         <th className="px-3 py-2.5 font-medium">应收</th>
                         <th className="px-3 py-2.5 font-medium">实收</th>
+                        <th className="px-3 py-2.5 font-medium hidden lg:table-cell">Stripe手续费</th>
                         <th className="px-3 py-2.5 font-medium">欠款</th>
                         <th className="px-3 py-2.5 font-medium hidden md:table-cell">模式</th>
                         <th className="px-3 py-2.5 font-medium hidden lg:table-cell">方式</th>
@@ -1537,6 +1568,9 @@ export default function Finance() {
                           <td className="px-3 py-2.5 max-w-[160px] truncate">{p.product_name}</td>
                           <td className="px-3 py-2.5">{fmt(p.amount_due)}</td>
                           <td className="px-3 py-2.5 text-green-600 font-medium">{fmt(p.amount_paid)}</td>
+                          <td className="px-3 py-2.5 text-cyan-600 hidden lg:table-cell">
+                            {calculateStripePlatformFee(p) > 0 ? fmt(calculateStripePlatformFee(p)) : '-'}
+                          </td>
                           <td className="px-3 py-2.5">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600 font-medium">{fmt(p.outstanding_amount)}</span> : '-'}</td>
                           <td className="px-3 py-2.5 hidden md:table-cell">
                             <Badge
@@ -1837,6 +1871,7 @@ export default function Finance() {
                           const labels: Record<string, string> = {
                             income: '收入(USD)',
                             customerExp: '客户支出(USD)',
+                            stripeFee: 'Stripe手续费(USD)',
                             companyExpUsd: '运营支出(USD)',
                             companyExpCny: '运营支出(CNY)',
                             profitUsd: '利润(USD)',
@@ -1849,6 +1884,7 @@ export default function Finance() {
                         const labels: Record<string, string> = {
                           income: '收入(USD)',
                           customerExp: '客户支出(USD)',
+                          stripeFee: 'Stripe手续费(USD)',
                           companyExpUsd: '运营支出(USD)',
                           companyExpCny: '运营支出(CNY)',
                           profitUsd: '利润(USD)',
@@ -1857,6 +1893,7 @@ export default function Finance() {
                       }} />
                       <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Bar dataKey="customerExp" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                      <Bar dataKey="stripeFee" fill="#06b6d4" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Bar dataKey="companyExpUsd" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Bar dataKey="companyExpCny" fill="#94a3b8" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Line type="monotone" dataKey="profitUsd" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3 }} />
@@ -2102,6 +2139,7 @@ export default function Finance() {
                         <th className="px-3 py-2.5 font-medium">管理费扣点率</th>
                         <th className="px-3 py-2.5 font-medium">管理费扣点</th>
                         <th className="px-3 py-2.5 font-medium">投流充值 1%</th>
+                        <th className="px-3 py-2.5 font-medium">Stripe手续费</th>
                         <th className="px-3 py-2.5 font-medium">总扣点</th>
                         <th className="px-3 py-2.5 font-medium">客户成本</th>
                         <th className="px-3 py-2.5 font-medium">USD运营支出</th>
@@ -2117,6 +2155,7 @@ export default function Finance() {
                           <td className="px-3 py-2.5">{r.management_rate > 0 ? `${Math.round(r.management_rate * 100)}%` : '-'}</td>
                           <td className="px-3 py-2.5">{fmt(r.management_deduction_amount)}</td>
                           <td className="px-3 py-2.5">{fmt(r.ads_recharge_deduction_amount)}</td>
+                          <td className="px-3 py-2.5">{fmt(r.stripe_platform_fee || 0)}</td>
                           <td className="px-3 py-2.5">{fmt(r.deduction_amount)}</td>
                           <td className="px-3 py-2.5">{fmt(r.customer_cost || 0)}</td>
                           <td className="px-3 py-2.5">{fmt(r.operating_cost_usd || 0)}</td>
