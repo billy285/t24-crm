@@ -6,6 +6,7 @@ Provides Generate Text (gentxt) and Generate Image (genimg) capabilities using t
 import base64
 import io
 import logging
+import os
 from typing import AsyncGenerator
 
 from core.config import settings
@@ -22,13 +23,20 @@ class InvalidImageInputError(ValueError):
 class AIHubService:
     """AI Hub service class that wraps LLM calls based on the OpenAI SDK."""
 
-    def __init__(self):
-        if not settings.app_ai_base_url or not settings.app_ai_key:
-            raise ValueError("AI service not configured. Set APP_AI_BASE_URL and APP_AI_KEY.")
+    def __init__(self, api_key: str | None = None, base_url: str | None = None):
+        api_key = api_key or getattr(settings, "app_ai_key", None) or os.getenv("OPENAI_API_KEY")
+        base_url = (
+            base_url
+            or getattr(settings, "app_ai_base_url", None)
+            or os.getenv("OPENAI_BASE_URL")
+            or "https://api.openai.com/v1"
+        )
+        if not api_key:
+            raise ValueError("AI service not configured. Set OPENAI_API_KEY or APP_AI_KEY.")
 
         self.client = AsyncOpenAI(
-            api_key=settings.app_ai_key,
-            base_url=settings.app_ai_base_url.rstrip("/"),
+            api_key=api_key,
+            base_url=base_url.rstrip("/"),
         )
 
     def _convert_message(self, msg) -> dict:

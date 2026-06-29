@@ -13,12 +13,12 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Settings as SettingsIcon, Hash, Eye, RotateCcw, Save, Building2, BookOpen, Bell, FileText, Download, Lock } from 'lucide-react';
+import { Settings as SettingsIcon, Hash, Eye, RotateCcw, Save, Building2, BookOpen, Bell, FileText, Download, Lock, Bot, KeyRound, TestTube2 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import { actionTypeLabels } from '../lib/operation-log-helper';
 import { type CustomerCodeSettings, defaultSettings, defaultIndustryPrefixes, loadSettings, saveSettings, previewCode } from '../lib/customer-code-settings';
 import { type BusinessDictConfig, defaultBusinessDictConfig, normalizeDictConfig } from '../lib/dict-config';
-import { settingsApi, type EnvConfig } from '../api/settings';
+import { settingsApi, type AiSettings, type EnvConfig } from '../api/settings';
 
 const industryLabels: Record<string, string> = { restaurant: '餐厅', nail: '美甲', massage: '按摩', beauty: '美容', supermarket: '超市', other: '其他' };
 type EnvScope = 'backend_vars' | 'frontend_vars';
@@ -57,6 +57,16 @@ const defaultExportConfig = {
   defaultFormat: 'xlsx',
   includeNotes: true,
   includeSocialLinks: true,
+};
+const defaultAiSettings: AiSettings = {
+  enabled: false,
+  provider: 'openai',
+  base_url: 'https://api.openai.com/v1',
+  model: 'gpt-5.4-mini',
+  api_key_set: false,
+  api_key_preview: '',
+  source: 'default',
+  updated_at: null,
 };
 
 export default function Settings() {
@@ -105,6 +115,14 @@ export default function Settings() {
   const [envLoading, setEnvLoading] = useState(false);
   const [envSavingKey, setEnvSavingKey] = useState<string | null>(null);
 
+  // AI config
+  const [aiSettings, setAiSettings] = useState<AiSettings>(defaultAiSettings);
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [aiChanged, setAiChanged] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiTesting, setAiTesting] = useState(false);
+
   const loadEnvConfig = async () => {
     setEnvLoading(true);
     try {
@@ -115,6 +133,21 @@ export default function Settings() {
       toast.error(detail);
     } finally {
       setEnvLoading(false);
+    }
+  };
+
+  const loadAiSettings = async () => {
+    setAiLoading(true);
+    try {
+      const data = await settingsApi.getAiSettings();
+      setAiSettings(data);
+      setAiApiKey('');
+      setAiChanged(false);
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '加载 AI 配置失败';
+      toast.error(detail);
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -172,7 +205,7 @@ export default function Settings() {
       }
 
       if (canEditSettings) {
-        await loadEnvConfig();
+        await Promise.all([loadEnvConfig(), loadAiSettings()]);
       }
     };
 
@@ -326,6 +359,51 @@ export default function Settings() {
     }
   };
 
+  const updateAiSettings = (patch: Partial<AiSettings>) => {
+    setAiSettings(prev => ({ ...prev, ...patch }));
+    setAiChanged(true);
+  };
+
+  const saveAiSettings = async (options?: { clearApiKey?: boolean }) => {
+    setAiSaving(true);
+    try {
+      const saved = await settingsApi.updateAiSettings({
+        enabled: aiSettings.enabled,
+        provider: aiSettings.provider || 'openai',
+        base_url: aiSettings.base_url,
+        model: aiSettings.model,
+        api_key: aiApiKey.trim() || undefined,
+        clear_api_key: Boolean(options?.clearApiKey),
+      });
+      setAiSettings(saved);
+      setAiApiKey('');
+      setAiChanged(false);
+      toast.success(options?.clearApiKey ? 'OpenAI Key 已清空' : 'OpenAI 配置已保存');
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '保存 OpenAI 配置失败';
+      toast.error(detail);
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
+  const testAiSettings = async () => {
+    if (aiChanged || aiApiKey.trim()) {
+      toast.error('请先保存 OpenAI 配置，再测试连接');
+      return;
+    }
+    setAiTesting(true);
+    try {
+      const result = await settingsApi.testAiSettings();
+      toast.success(result.message || 'OpenAI 连接正常');
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || 'OpenAI 连接测试失败';
+      toast.error(detail);
+    } finally {
+      setAiTesting(false);
+    }
+  };
+
   if (!canEditSettings) {
     return <div className="flex items-center justify-center h-64"><p className="text-slate-400">仅管理员可访问系统设置</p></div>;
   }
@@ -344,6 +422,7 @@ export default function Settings() {
 
       <Tabs defaultValue="company" className="w-full">
         <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="ai" className="text-xs">AI配置</TabsTrigger>
           <TabsTrigger value="env" className="text-xs">环境配置</TabsTrigger>
           <TabsTrigger value="company" className="text-xs">公司信息</TabsTrigger>
           <TabsTrigger value="dict" className="text-xs">字典配置</TabsTrigger>
@@ -355,6 +434,131 @@ export default function Settings() {
           <TabsTrigger value="export" className="text-xs">导出配置</TabsTrigger>
           <TabsTrigger value="logs" className="text-xs" onClick={loadLogs}>操作日志</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="ai">
+          <Card className="border-slate-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Bot className="w-4 h-4 text-blue-600" />
+                OpenAI 文案生成配置
+              </CardTitle>
+              <CardDescription>
+                用于客户详情里的 AI 文案生成。密钥只保存在后端，页面不会回显完整 Key。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {aiLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                    <div>
+                      <Label className="text-sm font-medium">启用 OpenAI</Label>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        开启后，客户 AI 文案会调用 OpenAI；关闭时仍会生成可编辑模板草稿。
+                      </p>
+                    </div>
+                    <Switch
+                      checked={aiSettings.enabled}
+                      onCheckedChange={v => updateAiSettings({ enabled: v })}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>OpenAI Base URL</Label>
+                      <Input
+                        value={aiSettings.base_url}
+                        onChange={e => updateAiSettings({ base_url: e.target.value })}
+                        placeholder="https://api.openai.com/v1"
+                      />
+                      <p className="text-xs text-slate-400 mt-1">
+                        官方 OpenAI 保持默认即可；兼容代理服务可填写对应地址。
+                      </p>
+                    </div>
+                    <div>
+                      <Label>文案模型</Label>
+                      <Input
+                        value={aiSettings.model}
+                        onChange={e => updateAiSettings({ model: e.target.value })}
+                        placeholder="gpt-5.4-mini"
+                      />
+                      <p className="text-xs text-slate-400 mt-1">
+                        文案生成建议用 mini 类模型，速度快、成本更低。
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 border border-blue-100 bg-blue-50/60 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label className="flex items-center gap-1.5">
+                          <KeyRound className="w-3.5 h-3.5 text-blue-600" />
+                          OpenAI API Key
+                        </Label>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {aiSettings.api_key_set
+                            ? `当前已保存：${aiSettings.api_key_preview}`
+                            : '当前未保存 API Key'}
+                        </p>
+                      </div>
+                      {aiSettings.api_key_set && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => saveAiSettings({ clearApiKey: true })}
+                          disabled={aiSaving}
+                        >
+                          清空Key
+                        </Button>
+                      )}
+                    </div>
+                    <Input
+                      type="password"
+                      value={aiApiKey}
+                      onChange={e => {
+                        setAiApiKey(e.target.value);
+                        setAiChanged(true);
+                      }}
+                      placeholder={aiSettings.api_key_set ? '如需更换 Key，请输入新的 OpenAI API Key' : '请输入 OpenAI API Key'}
+                    />
+                    <p className="text-xs text-slate-500">
+                      不更换 Key 时这里留空即可。为了安全，系统不会把完整 Key 显示出来。
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t">
+                    <div className="text-xs text-slate-500">
+                      状态：
+                      {aiSettings.enabled && aiSettings.api_key_set ? (
+                        <Badge className="ml-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">已启用</Badge>
+                      ) : aiSettings.api_key_set ? (
+                        <Badge variant="secondary" className="ml-1">已保存Key，未启用</Badge>
+                      ) : (
+                        <Badge variant="outline" className="ml-1">未配置</Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={loadAiSettings} disabled={aiLoading || aiSaving}>
+                        刷新
+                      </Button>
+                      <Button variant="outline" onClick={testAiSettings} disabled={aiTesting || aiSaving || !aiSettings.enabled || !aiSettings.api_key_set}>
+                        <TestTube2 className="w-4 h-4 mr-1" />
+                        测试连接
+                      </Button>
+                      <Button onClick={() => saveAiSettings()} disabled={!aiChanged || aiSaving} className="bg-blue-600 hover:bg-blue-700">
+                        <Save className="w-4 h-4 mr-1" />
+                        保存配置
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="env">
           <div className="space-y-4">

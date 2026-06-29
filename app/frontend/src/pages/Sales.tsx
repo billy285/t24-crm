@@ -21,14 +21,23 @@ import {
 const subStatusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
   expiring_soon: 'bg-amber-100 text-amber-700',
+  renewal_pending: 'bg-cyan-100 text-cyan-700',
   expired: 'bg-red-100 text-red-700',
   paused: 'bg-slate-100 text-slate-600',
   lost: 'bg-red-100 text-red-700',
+  renewed: 'bg-emerald-100 text-emerald-700',
   none: 'bg-slate-100 text-slate-500',
 };
 
 const serviceStatusLabels: Record<string, string> = {
   none: '未建服务',
+  active: '正常',
+  expiring_soon: '即将到期',
+  renewal_pending: '待扣款确认',
+  expired: '已到期',
+  renewed: '已续费',
+  paused: '暂停',
+  lost: '流失',
 };
 
 const fmt = (value: number) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -181,6 +190,7 @@ export default function Sales() {
             service_end_date: latestSubscription?.end_date || '',
             service_remaining_days: getSubscriptionRemainingDays(latestSubscription),
             next_payment_date: latestSubscription?.next_payment_date || '',
+            auto_renew: Boolean(latestSubscription?.auto_renew),
             billing_cycle: latestSubscription?.billing_cycle || latestDeal?.billing_cycle || '',
             outstanding_amount: Number(outstandingByCustomer[customer.id] || 0),
           };
@@ -244,7 +254,7 @@ export default function Sales() {
 
   const totalClosedCustomers = rows.length;
   const activeCustomers = rows.filter(row => row.service_status === 'active').length;
-  const renewalCustomers = rows.filter(row => row.service_status === 'expiring_soon' || row.service_status === 'expired').length;
+  const renewalCustomers = rows.filter(row => ['expiring_soon', 'expired', 'renewal_pending'].includes(row.service_status)).length;
   const outstandingCustomers = rows.filter(row => row.outstanding_amount > 0).length;
 
   const exportData = filtered.map(row => ({
@@ -350,6 +360,7 @@ export default function Sales() {
                 { value: 'all', label: '全部服务状态' },
                 { value: 'active', label: subStatusLabels.active || '正常' },
                 { value: 'expiring_soon', label: subStatusLabels.expiring_soon || '即将到期' },
+                { value: 'renewal_pending', label: subStatusLabels.renewal_pending || serviceStatusLabels.renewal_pending },
                 { value: 'expired', label: subStatusLabels.expired || '已到期' },
                 { value: 'paused', label: subStatusLabels.paused || '暂停' },
                 { value: 'lost', label: subStatusLabels.lost || '流失' },
@@ -435,6 +446,11 @@ export default function Sales() {
                         <Badge className={subStatusColors[row.service_status] || subStatusColors.none}>
                           {subStatusLabels[row.service_status] || serviceStatusLabels[row.service_status] || row.service_status}
                         </Badge>
+                        {row.auto_renew && (
+                          <Badge className="ml-1 bg-cyan-50 text-cyan-700 border border-cyan-100">
+                            Stripe订阅
+                          </Badge>
+                        )}
                         <div className="text-xs text-slate-400 mt-1">
                           到期: {row.service_end_date?.slice(0, 10) || '-'}
                         </div>

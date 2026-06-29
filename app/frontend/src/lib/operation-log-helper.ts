@@ -6,6 +6,8 @@ export type ActionType =
   | 'view_password'
   | 'create_follow_up' | 'edit_follow_up' | 'delete_follow_up'
   | 'create_media_account' | 'edit_media_account' | 'delete_media_account'
+  | 'create_material' | 'edit_material' | 'delete_material'
+  | 'complete_service_task'
   | 'export_data'
   | 'create_deal' | 'edit_deal'
   | 'create_payment' | 'edit_payment' | 'delete_payment'
@@ -25,6 +27,10 @@ export const actionTypeLabels: Record<string, string> = {
   create_media_account: '新增媒体账号',
   edit_media_account: '编辑媒体账号',
   delete_media_account: '删除媒体账号',
+  create_material: '新增素材',
+  edit_material: '编辑素材',
+  delete_material: '删除素材',
+  complete_service_task: '完成服务任务',
   export_data: '导出数据',
   create_deal: '新增成交',
   edit_deal: '编辑成交',

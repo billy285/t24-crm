@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
 import { countries, getStatesForCountry, getCitiesForState, getCountryLabel, getStateLabel } from '../lib/country-state-data';
@@ -21,6 +21,8 @@ import ImportCustomers from '@/components/ImportCustomers';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import MediaAccountsTab from '@/components/MediaAccountsTab';
 import OperationLogsTab from '@/components/OperationLogsTab';
+import CustomerAiCopyTab from '@/components/CustomerAiCopyTab';
+import CustomerMaterialsTab from '@/components/CustomerMaterialsTab';
 import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../lib/customer-code-settings';
 import { saveRemoteAppConfig } from '../lib/app-config';
 import { buildOptionKey, sanitizeDictLabel, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
@@ -101,7 +103,7 @@ const emptyAdvancedFilters = {
 
 const inlineSelectClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
 const inlineInputClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
-const customerDetailTabValues = new Set(['info', 'contacts', 'followups', 'deals', 'subscriptions', 'payments', 'renewals', 'media', 'logs']);
+const customerDetailTabValues = new Set(['info', 'contacts', 'followups', 'deals', 'subscriptions', 'payments', 'renewals', 'materials', 'ai_copy', 'media', 'logs']);
 const customerReminderMessages: Record<string, { title: string; description: string }> = {
   follow_up_today: { title: '今日跟进提醒', description: '这位客户今天需要继续跟进，已为你直接打开跟进记录。' },
   follow_up_overdue: { title: '逾期跟进提醒', description: '这位客户的计划跟进时间已过，建议尽快补跟进并更新下一次时间。' },
@@ -188,11 +190,29 @@ function formatCurrency(value: number) {
   return `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+function formatCurrencyByCode(value: number, currency?: string | null) {
+  if (currency === 'CNY') {
+    return `¥${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  }
+  return formatCurrency(value);
+}
+
 function computeSubscriptionState(subscription: any) {
   return computeSubscriptionStatus(subscription);
 }
 
+const subscriptionStatusView: Record<string, { label: string; cardClass: string; badgeClass: string }> = {
+  active: { label: '正常', cardClass: 'border-slate-200 bg-slate-50', badgeClass: 'bg-green-100 text-green-700' },
+  expiring_soon: { label: '即将到期', cardClass: 'border-amber-200 bg-amber-50', badgeClass: 'bg-amber-100 text-amber-700' },
+  renewal_pending: { label: '待扣款确认', cardClass: 'border-cyan-200 bg-cyan-50', badgeClass: 'bg-cyan-100 text-cyan-700' },
+  expired: { label: '已到期', cardClass: 'border-red-200 bg-red-50', badgeClass: 'bg-red-100 text-red-700' },
+  renewed: { label: '已续费', cardClass: 'border-emerald-200 bg-emerald-50', badgeClass: 'bg-emerald-100 text-emerald-700' },
+  paused: { label: '暂停', cardClass: 'border-slate-200 bg-slate-50', badgeClass: 'bg-slate-100 text-slate-600' },
+  lost: { label: '流失', cardClass: 'border-red-200 bg-red-50', badgeClass: 'bg-red-100 text-red-700' },
+};
+
 export default function Customers() {
+  const navigate = useNavigate();
   const { role, employee, hasPermission, isAdmin, dataScope, canViewFinance } = useRole();
   const dictConfig = useDictConfig();
   const businessDicts = useBusinessDicts();
@@ -206,6 +226,7 @@ export default function Customers() {
   const cycleLabels = businessDicts.billingCycles;
   const payModeLabels = businessDicts.paymentModes;
   const payMethodLabels = businessDicts.paymentMethods;
+  const customerExpenseTypeLabels = businessDicts.customerExpenseTypes;
   const subStatusLabels = businessDicts.subscriptionStatuses;
   const methodLabels = businessDicts.followUpMethods;
   const canManageDict = isAdmin || hasPermission('settings_edit');
@@ -229,6 +250,7 @@ export default function Customers() {
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [deals, setDeals] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [customerExpenses, setCustomerExpenses] = useState<any[]>([]);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [serviceProgresses, setServiceProgresses] = useState<any[]>([]);
   const [serviceTasks, setServiceTasks] = useState<any[]>([]);
@@ -519,6 +541,7 @@ export default function Customers() {
   const advCities = advFilters.country && advFilters.state ? getCitiesForState(advFilters.country, advFilters.state) : [];
   const activeReminder = searchParams.get('reminder') || '';
   const activeReminderMessage = customerReminderMessages[activeReminder];
+  const detailFromFinance = searchParams.get('from') === 'finance';
   const normalizeCustomerDetailTab = (tab?: string | null) => {
     if (tab === 'payments' && !canViewFinance) return 'info';
     return tab && customerDetailTabValues.has(tab) ? tab : 'info';
@@ -564,12 +587,15 @@ export default function Customers() {
   const loadCustomerDetail = async (customerId: number, fallbackCustomer?: any) => {
     setDetailLoading(true);
     try {
-      const [customerRes, fuRes, dRes, pRes, sRes, progressRes, taskRes] = await Promise.all([
+      const [customerRes, fuRes, dRes, pRes, expenseRes, sRes, progressRes, taskRes] = await Promise.all([
         client.entities.customers.query({ query: { id: customerId }, limit: 1 }),
         client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }),
         client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 50 }),
         canViewFinance
           ? client.entities.payments.queryAll({ query: { customer_id: customerId }, sort: '-payment_date', limit: 100 })
+          : Promise.resolve({ data: { items: [] } }),
+        canViewFinance
+          ? client.entities.expenses.queryAll({ query: { customer_id: customerId }, sort: '-expense_date', limit: 100 })
           : Promise.resolve({ data: { items: [] } }),
         client.entities.subscriptions.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }),
         client.entities.service_progresses.queryAll({ query: { customer_id: customerId }, sort: '-last_update_time', limit: 50 }),
@@ -584,6 +610,7 @@ export default function Customers() {
       setFollowUps(fuRes?.data?.items || []);
       setDeals(dRes?.data?.items || []);
       setPayments(pRes?.data?.items || []);
+      setCustomerExpenses(expenseRes?.data?.items || []);
       setSubscriptions(decorateEffectiveSubscriptions(sRes?.data?.items || []));
       setServiceProgresses(progressRes?.data?.items || []);
       setServiceTasks(taskRes?.data?.items || []);
@@ -911,13 +938,20 @@ export default function Customers() {
   };
 
   const closeDetail = () => {
+    if (detailFromFinance) {
+      const financeTab = searchParams.get('financeTab');
+      navigate(`/finance${financeTab ? `?tab=${encodeURIComponent(financeTab)}` : ''}`);
+      return;
+    }
     setSelectedCustomer(null);
     setSelectedCustomerTab('info');
-    if (searchParams.get('detail') || searchParams.get('tab') || searchParams.get('reminder')) {
+    if (searchParams.get('detail') || searchParams.get('tab') || searchParams.get('reminder') || searchParams.get('from') || searchParams.get('financeTab')) {
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('detail');
       nextParams.delete('tab');
       nextParams.delete('reminder');
+      nextParams.delete('from');
+      nextParams.delete('financeTab');
       setSearchParams(nextParams);
     }
   };
@@ -1207,6 +1241,8 @@ export default function Customers() {
     const totalAmountDue = payments.reduce((sum, item) => sum + Number(item.amount_due || 0), 0);
     const totalAmountPaid = payments.reduce((sum, item) => sum + Number(item.amount_paid || 0), 0);
     const totalOutstanding = payments.reduce((sum, item) => sum + Number(item.outstanding_amount || 0), 0);
+    const totalCustomerExpenseAmount = customerExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const customerFinanceRecordCount = payments.length + customerExpenses.length;
     const latestPaymentDate = payments[0]?.payment_date?.slice(0, 10) || '-';
     const latestDealDate = deals[0]?.deal_date?.slice(0, 10) || '-';
     const serviceRecordCount = serviceProgresses.length > 0 ? serviceProgresses.length : subscriptions.length;
@@ -1231,7 +1267,7 @@ export default function Customers() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
-          <Button variant="ghost" size="sm" onClick={closeDetail}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
+          <Button variant="ghost" size="sm" onClick={closeDetail}><ArrowLeft className="w-4 h-4 mr-1" /> {detailFromFinance ? '返回财务' : '返回列表'}</Button>
           <h2 className="text-lg font-semibold">{c.business_name}</h2>
           <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
           <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
@@ -1260,8 +1296,10 @@ export default function Customers() {
             <TabsTrigger value="followups" className="text-xs">跟进记录 ({followUps.length})</TabsTrigger>
             <TabsTrigger value="deals" className="text-xs">成交记录 ({deals.length})</TabsTrigger>
             <TabsTrigger value="subscriptions" className="text-xs">服务信息 ({serviceRecordCount})</TabsTrigger>
-            {canViewFinance && <TabsTrigger value="payments" className="text-xs">财务信息 ({payments.length})</TabsTrigger>}
+            {canViewFinance && <TabsTrigger value="payments" className="text-xs">财务信息 ({customerFinanceRecordCount})</TabsTrigger>}
             <TabsTrigger value="renewals" className="text-xs">续费信息 ({renewalRows.length})</TabsTrigger>
+            <TabsTrigger value="materials" className="text-xs">素材管理</TabsTrigger>
+            <TabsTrigger value="ai_copy" className="text-xs">AI文案</TabsTrigger>
             <TabsTrigger value="media" className="text-xs">媒体账号</TabsTrigger>
             <TabsTrigger value="logs" className="text-xs">操作日志</TabsTrigger>
           </TabsList>
@@ -1447,9 +1485,31 @@ export default function Customers() {
           {canViewFinance && (
             <TabsContent value="payments">
               <Card className="border-slate-200"><CardContent className="p-5">
-                {payments.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无财务记录</p> : (
-                  <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">产品</th><th className="pb-2 font-medium">应收</th><th className="pb-2 font-medium">实收</th><th className="pb-2 font-medium">欠款</th><th className="pb-2 font-medium">模式</th><th className="pb-2 font-medium">方式</th><th className="pb-2 font-medium">日期</th></tr></thead>
-                  <tbody>{payments.map((p: any) => (<tr key={p.id} className="border-b border-slate-100"><td className="py-2">{p.product_name}</td><td className="py-2">${p.amount_due}</td><td className="py-2 text-green-600">${p.amount_paid}</td><td className="py-2">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600">${p.outstanding_amount}</span> : '-'}</td><td className="py-2">{getPaymentModeLabel(p, payModeLabels)}</td><td className="py-2">{getPaymentMethodLabel(p, payMethodLabels)}</td><td className="py-2 text-slate-500">{p.payment_date?.slice(0, 10)}</td></tr>))}</tbody></table></div>
+                {customerFinanceRecordCount === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无财务记录</p> : (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">累计应收</p><p className="text-lg font-semibold text-slate-800">{formatCurrency(totalAmountDue)}</p></div>
+                      <div className="rounded-lg bg-green-50 p-3"><p className="text-xs text-green-700">累计实收</p><p className="text-lg font-semibold text-green-700">{formatCurrency(totalAmountPaid)}</p></div>
+                      <div className="rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-700">客户支出</p><p className="text-lg font-semibold text-amber-700">{formatCurrency(totalCustomerExpenseAmount)}</p></div>
+                      <div className="rounded-lg bg-red-50 p-3"><p className="text-xs text-red-700">当前尾款</p><p className="text-lg font-semibold text-red-700">{formatCurrency(totalOutstanding)}</p></div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-700 mb-2">收款记录</h4>
+                      {payments.length === 0 ? <p className="text-sm text-slate-400 py-4">暂无收款记录</p> : (
+                        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">产品</th><th className="pb-2 font-medium">应收</th><th className="pb-2 font-medium">实收</th><th className="pb-2 font-medium">欠款</th><th className="pb-2 font-medium">模式</th><th className="pb-2 font-medium">方式</th><th className="pb-2 font-medium">日期</th></tr></thead>
+                        <tbody>{payments.map((p: any) => (<tr key={p.id} className="border-b border-slate-100"><td className="py-2">{p.product_name}</td><td className="py-2">{formatCurrency(p.amount_due)}</td><td className="py-2 text-green-600">{formatCurrency(p.amount_paid)}</td><td className="py-2">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600">{formatCurrency(p.outstanding_amount)}</span> : '-'}</td><td className="py-2">{getPaymentModeLabel(p, payModeLabels)}</td><td className="py-2">{getPaymentMethodLabel(p, payMethodLabels)}</td><td className="py-2 text-slate-500">{p.payment_date?.slice(0, 10)}</td></tr>))}</tbody></table></div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-700 mb-2">客户支出记录</h4>
+                      {customerExpenses.length === 0 ? <p className="text-sm text-slate-400 py-4">暂无客户支出记录</p> : (
+                        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">费用类型</th><th className="pb-2 font-medium">金额</th><th className="pb-2 font-medium">月份</th><th className="pb-2 font-medium">日期</th><th className="pb-2 font-medium">备注</th></tr></thead>
+                        <tbody>{customerExpenses.map((e: any) => (<tr key={e.id} className="border-b border-slate-100"><td className="py-2">{customerExpenseTypeLabels[e.expense_type] || e.expense_type || '-'}</td><td className="py-2 text-amber-600 font-medium">{formatCurrencyByCode(e.amount, e.currency)}</td><td className="py-2 text-slate-500">{e.expense_month || '-'}</td><td className="py-2 text-slate-500">{e.expense_date?.slice(0, 10) || '-'}</td><td className="py-2 text-slate-500 max-w-[240px] truncate">{e.notes || '-'}</td></tr>))}</tbody></table></div>
+                      )}
+                    </div>
+                  </div>
                 )}
               </CardContent></Card>
             </TabsContent>
@@ -1460,9 +1520,10 @@ export default function Customers() {
               {subscriptions.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无续费信息</p> : (
                 <div className="space-y-3">{subscriptions.map((s: any) => {
                   const computedStatus = computeSubscriptionState(s);
+                  const statusView = subscriptionStatusView[computedStatus] || subscriptionStatusView.active;
                   const remainDays = getSubscriptionRemainingDays(s);
-                  return (<div key={s.id} className={`p-3 rounded-lg border ${computedStatus === 'expired' ? 'border-red-200 bg-red-50' : computedStatus === 'expiring_soon' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
-                    <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={computedStatus === 'expired' ? 'bg-red-100 text-red-700' : computedStatus === 'expiring_soon' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>{computedStatus === 'expired' ? '已到期' : computedStatus === 'expiring_soon' ? '即将到期' : '正常'}</Badge></div>
+                  return (<div key={s.id} className={`p-3 rounded-lg border ${statusView.cardClass}`}>
+                    <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={statusView.badgeClass}>{subStatusLabels[computedStatus] || statusView.label}</Badge></div>
                     <div className="grid grid-cols-2 gap-1 text-xs text-slate-500"><span>到期: {s.end_date?.slice(0, 10) || '-'}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span><span>续费负责: {s.renewal_person || '-'}</span><span>下次付款: {s.next_payment_date?.slice(0, 10) || '-'}</span></div>
                     <div className={`text-xs mt-2 ${
                       remainDays == null
@@ -1483,6 +1544,14 @@ export default function Customers() {
                 })}</div>
               )}
             </CardContent></Card>
+          </TabsContent>
+
+          <TabsContent value="ai_copy">
+            <CustomerAiCopyTab customer={c} />
+          </TabsContent>
+
+          <TabsContent value="materials">
+            <CustomerMaterialsTab customerId={c.id} customerName={c.business_name} />
           </TabsContent>
 
           <TabsContent value="media">

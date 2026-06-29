@@ -1,15 +1,20 @@
 import json
 import logging
+from datetime import datetime
 from typing import List, Optional
 
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
+from services.customer_ai_copies import Customer_ai_copiesService
+from services.customer_materials import Customer_materialsService
+from services.operation_logs import Operation_logsService
+from services.service_progresses import Service_progressesService
 from services.service_tasks import Service_tasksService
 
 # Set up logging
@@ -30,11 +35,20 @@ class Service_tasksData(BaseModel):
     customer_name: Optional[str] = None
     task_name: str
     task_type: Optional[str] = None
+    platform: Optional[str] = None
     assignee_name: Optional[str] = None
     priority: Optional[str] = None
     status: str
     due_date: Optional[str] = None
     completed_date: Optional[str] = None
+    completed_at: Optional[str] = None
+    completed_by: Optional[str] = None
+    selected_copy_id: Optional[int] = None
+    selected_copy_title: Optional[str] = None
+    selected_material_id: Optional[int] = None
+    selected_material_title: Optional[str] = None
+    completion_quality: Optional[str] = None
+    completion_note: Optional[str] = None
     notes: Optional[str] = None
     created_at: Optional[str] = None
 
@@ -46,11 +60,20 @@ class Service_tasksUpdateData(BaseModel):
     customer_name: Optional[str] = None
     task_name: Optional[str] = None
     task_type: Optional[str] = None
+    platform: Optional[str] = None
     assignee_name: Optional[str] = None
     priority: Optional[str] = None
     status: Optional[str] = None
     due_date: Optional[str] = None
     completed_date: Optional[str] = None
+    completed_at: Optional[str] = None
+    completed_by: Optional[str] = None
+    selected_copy_id: Optional[int] = None
+    selected_copy_title: Optional[str] = None
+    selected_material_id: Optional[int] = None
+    selected_material_title: Optional[str] = None
+    completion_quality: Optional[str] = None
+    completion_note: Optional[str] = None
     notes: Optional[str] = None
     user_id: Optional[str] = None
     created_at: Optional[str] = None
@@ -64,11 +87,20 @@ class Service_tasksResponse(BaseModel):
     customer_name: Optional[str] = None
     task_name: str
     task_type: Optional[str] = None
+    platform: Optional[str] = None
     assignee_name: Optional[str] = None
     priority: Optional[str] = None
     status: str
     due_date: Optional[str] = None
     completed_date: Optional[str] = None
+    completed_at: Optional[str] = None
+    completed_by: Optional[str] = None
+    selected_copy_id: Optional[int] = None
+    selected_copy_title: Optional[str] = None
+    selected_material_id: Optional[int] = None
+    selected_material_title: Optional[str] = None
+    completion_quality: Optional[str] = None
+    completion_note: Optional[str] = None
     notes: Optional[str] = None
     user_id: Optional[str] = None
     created_at: Optional[str] = None
@@ -104,6 +136,65 @@ class Service_tasksBatchUpdateRequest(BaseModel):
 class Service_tasksBatchDeleteRequest(BaseModel):
     """Batch delete request"""
     ids: List[int]
+
+
+class ServiceTaskCompleteRequest(BaseModel):
+    """Complete a service task with lightweight operations supervision metadata."""
+    platform: Optional[str] = None
+    selected_copy_id: Optional[int] = None
+    selected_material_id: Optional[int] = None
+    completion_note: Optional[str] = None
+
+
+def _operator_name(current_user: UserResponse) -> str:
+    for field_name in ("name", "full_name", "email"):
+        value = getattr(current_user, field_name, None)
+        if value:
+            return str(value)
+    return "系统管理员"
+
+
+SERVICE_STAGE_PROGRESS = {
+    "deal_handover": 10,
+    "group_created": 15,
+    "collecting_materials": 20,
+    "account_setup": 40,
+    "content_prep": 60,
+    "normal_ops": 80,
+}
+
+SERVICE_STAGE_ORDER = {
+    stage: index for index, stage in enumerate(SERVICE_STAGE_PROGRESS.keys())
+}
+
+CONTENT_REFERENCE_REQUIRED_TYPES = {"publish_content", "reply_comments", "submit_report"}
+
+
+def _infer_stage_from_completed_task(task) -> Optional[str]:
+    task_type = (getattr(task, "task_type", "") or "").strip()
+    task_text = f"{getattr(task, 'task_name', '') or ''} {getattr(task, 'notes', '') or ''}".lower()
+
+    if task_type == "setup_group" or "服务群" in task_text or "拉群" in task_text or "建群" in task_text:
+        return "group_created"
+    if task_type in {"confirm_service", "collect_info", "collect_images", "collect_logo"} or "运营说明" in task_text or "素材清单" in task_text:
+        return "collecting_materials"
+    if task_type in {"bind_google", "open_facebook", "open_instagram"} or "权限" in task_text or "账号" in task_text:
+        return "account_setup"
+    if task_type in {"update_info", "collect_menu", "collect_price", "input_menu"} or "基础信息" in task_text or "资料完善" in task_text:
+        return "content_prep"
+    if task_type in {"publish_content", "go_live"} or "正式运营启动" in task_text:
+        return "normal_ops"
+    return None
+
+
+def _should_advance_stage(current_stage: Optional[str], next_stage: Optional[str]) -> bool:
+    if not next_stage:
+        return False
+    if not current_stage:
+        return True
+    current_order = SERVICE_STAGE_ORDER.get(current_stage, -1)
+    next_order = SERVICE_STAGE_ORDER.get(next_stage, -1)
+    return next_order > current_order
 
 
 # ---------- Routes ----------
@@ -281,6 +372,128 @@ async def update_service_taskss_batch(
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Batch update failed: {str(e)}")
+
+
+@router.post("/{id}/complete", response_model=Service_tasksResponse)
+async def complete_service_task(
+    id: int,
+    data: ServiceTaskCompleteRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Complete a task and record lightweight operations-quality metadata."""
+    service = Service_tasksService(db)
+    task = await service.get_by_id(id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Service_tasks not found")
+
+    copy_title = None
+    material_title = None
+    selected_copy = None
+    selected_material = None
+
+    if data.selected_copy_id:
+        selected_copy = await Customer_ai_copiesService(db).get_by_id(data.selected_copy_id)
+        if not selected_copy or selected_copy.customer_id != task.customer_id:
+            raise HTTPException(status_code=400, detail="选择的文案不属于当前客户")
+        copy_title = selected_copy.title or f"文案 #{selected_copy.id}"
+
+    if data.selected_material_id:
+        selected_material = await Customer_materialsService(db).get_by_id(data.selected_material_id)
+        if not selected_material or selected_material.customer_id != task.customer_id:
+            raise HTTPException(status_code=400, detail="选择的素材不属于当前客户")
+        material_title = selected_material.title or selected_material.file_name or f"素材 #{selected_material.id}"
+
+    now = datetime.utcnow()
+    now_iso = now.isoformat()
+    operator = _operator_name(current_user)
+    has_reference = bool(selected_copy or selected_material)
+    reference_required = (task.task_type or "") in CONTENT_REFERENCE_REQUIRED_TYPES
+    quality = "standard" if has_reference or not reference_required else "low_quality"
+    platform = (data.platform or "").strip() or getattr(selected_material, "platform", None) or getattr(selected_copy, "platform", None) or None
+
+    update_dict = {
+        "status": "completed",
+        "platform": platform,
+        "completed_date": now.date().isoformat(),
+        "completed_at": now_iso,
+        "completed_by": operator,
+        "selected_copy_id": data.selected_copy_id,
+        "selected_copy_title": copy_title,
+        "selected_material_id": data.selected_material_id,
+        "selected_material_title": material_title,
+        "completion_quality": quality,
+        "completion_note": (data.completion_note or "").strip() or None,
+    }
+
+    try:
+        result = await service.update(id, update_dict)
+    except Exception as e:
+        logger.error(f"Error completing service_tasks {id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+    # Best-effort side effects: mark the selected copy/material as used and write an audit log.
+    try:
+        if selected_copy:
+            await Customer_ai_copiesService(db).update(selected_copy.id, {"status": "used", "updated_at": now})
+        if selected_material:
+            await Customer_materialsService(db).update(
+                selected_material.id,
+                {"usage_status": "used", "used_at": now, "updated_at": now},
+            )
+        if task.service_progress_id:
+            progress_service = Service_progressesService(db)
+            progress = await progress_service.get_by_id(task.service_progress_id)
+            next_stage = _infer_stage_from_completed_task(task)
+            summary_parts = [f"完成任务：{task.task_name}"]
+            if platform:
+                summary_parts.append(f"平台：{platform}")
+            if copy_title:
+                summary_parts.append(f"使用文案：{copy_title}")
+            if material_title:
+                summary_parts.append(f"使用素材：{material_title}")
+            if quality == "low_quality":
+                summary_parts.append("未选择文案/素材，低质量完成")
+            progress_update = {
+                "last_update_time": now_iso,
+                "last_update_person": operator,
+                "last_work_summary": "；".join(summary_parts),
+            }
+            if progress and _should_advance_stage(getattr(progress, "service_stage", None), next_stage):
+                progress_update["service_stage"] = next_stage
+                progress_update["progress_percent"] = SERVICE_STAGE_PROGRESS.get(
+                    next_stage,
+                    getattr(progress, "progress_percent", None) or 10,
+                )
+            await progress_service.update(task.service_progress_id, progress_update)
+    except Exception:
+        logger.warning("Completed task %s but failed to sync related usage/progress metadata", id, exc_info=True)
+
+    try:
+        references = []
+        if platform:
+            references.append(f"平台: {platform}")
+        if copy_title:
+            references.append(f"文案: {copy_title}")
+        if material_title:
+            references.append(f"素材: {material_title}")
+        reference_text = "；".join(references) if references else "未选择文案或素材，系统标记为低质量完成"
+        await Operation_logsService(db).create(
+            {
+                "customer_id": task.customer_id,
+                "action_type": "complete_service_task",
+                "action_detail": f"完成服务任务「{task.task_name}」；{reference_text}",
+                "operator_name": operator,
+                "created_at": now,
+            },
+            user_id=str(current_user.id),
+        )
+    except Exception:
+        logger.warning("Completed task %s but failed to create operation log", id, exc_info=True)
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Service_tasks not found")
+    return result
 
 
 @router.put("/{id}", response_model=Service_tasksResponse)

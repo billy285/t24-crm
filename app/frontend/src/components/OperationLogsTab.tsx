@@ -5,7 +5,7 @@ import { actionTypeLabels } from '../lib/operation-log-helper';
 import { useRole } from '../lib/role-context';
 import { Badge } from '@/components/ui/badge';
 import {
-  UserPlus, Edit, Trash2, Eye, MessageSquare, Share2, Download, FileText, Receipt, Wallet
+  UserPlus, Edit, Trash2, Eye, MessageSquare, Share2, Download, FileText, Receipt, Wallet, FileImage, ClipboardCheck
 } from 'lucide-react';
 
 const actionIcons: Record<string, any> = {
@@ -19,6 +19,10 @@ const actionIcons: Record<string, any> = {
   create_media_account: Share2,
   edit_media_account: Edit,
   delete_media_account: Trash2,
+  create_material: FileImage,
+  edit_material: Edit,
+  delete_material: Trash2,
+  complete_service_task: ClipboardCheck,
   create_payment: Wallet,
   edit_payment: Edit,
   delete_payment: Trash2,
@@ -46,6 +50,10 @@ const actionColors: Record<string, string> = {
   create_media_account: 'bg-green-100 text-green-700',
   edit_media_account: 'bg-blue-100 text-blue-700',
   delete_media_account: 'bg-red-100 text-red-700',
+  create_material: 'bg-green-100 text-green-700',
+  edit_material: 'bg-blue-100 text-blue-700',
+  delete_material: 'bg-red-100 text-red-700',
+  complete_service_task: 'bg-emerald-100 text-emerald-700',
   create_payment: 'bg-green-100 text-green-700',
   edit_payment: 'bg-blue-100 text-blue-700',
   delete_payment: 'bg-red-100 text-red-700',

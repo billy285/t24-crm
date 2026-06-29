@@ -238,17 +238,39 @@ export function saveRolePermissions(config: Record<SystemRole, RolePermissionCon
 
 // Map old role names to new system roles
 function mapToSystemRole(role: string): SystemRole {
+  const normalizedRole = String(role || '').trim().toLowerCase();
   const mapping: Record<string, SystemRole> = {
     boss: 'super_admin',
+    owner: 'super_admin',
     super_admin: 'super_admin',
+    superadmin: 'super_admin',
+    '超级管理员': 'super_admin',
+    '老板': 'super_admin',
     admin: 'admin',
+    administrator: 'admin',
+    system_admin: 'admin',
+    systemadmin: 'admin',
+    '系统管理员': 'admin',
+    '管理员': 'admin',
     sales: 'sales',
+    sale: 'sales',
+    '销售': 'sales',
+    '销售人员': 'sales',
     ops: 'ops',
     operations: 'ops',
+    operation: 'ops',
+    '运营': 'ops',
+    '运营部': 'ops',
     design: 'design',
+    designer: 'design',
+    '设计': 'design',
+    '设计部': 'design',
     finance: 'finance',
+    financial: 'finance',
+    '财务': 'finance',
+    '财务部': 'finance',
   };
-  return mapping[role] || 'sales';
+  return mapping[normalizedRole] || 'sales';
 }
 
 export function getPermissions(role: string): RolePermissionConfig {

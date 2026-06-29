@@ -4,6 +4,7 @@ const DEFAULT_EXPIRY_WARNING_DAYS = 7;
 const LEGACY_EXPIRY_WARNING_DAYS = 30;
 const PACKAGE_NAME_SEPARATOR = /[、,，]/;
 const MANUAL_SUBSCRIPTION_STATUSES = new Set(['paused', 'lost', 'renewed']);
+const AUTO_RENEW_PENDING_STATUS = 'renewal_pending';
 
 type ReminderConfig = {
   expiryDaysBefore?: number;
@@ -15,6 +16,7 @@ type SubscriptionLike = {
   package_name?: string | null;
   product_name?: string | null;
   status?: string | null;
+  auto_renew?: boolean | null;
   end_date?: string | null;
   next_payment_date?: string | null;
   updated_at?: string | null;
@@ -68,10 +70,29 @@ export function getSubscriptionRemainingDays(subscription?: Pick<SubscriptionLik
   return Math.ceil((endDate.getTime() - today.getTime()) / 86400000);
 }
 
+function getDateRemainingDays(dateValue?: string | null) {
+  if (!dateValue) return null;
+  const dueDate = new Date(dateValue);
+  if (Number.isNaN(dueDate.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((dueDate.getTime() - today.getTime()) / 86400000);
+}
+
+export function isAutoRenewalDue(subscription?: SubscriptionLike | null) {
+  if (!subscription?.auto_renew) return false;
+  if (subscription.status === AUTO_RENEW_PENDING_STATUS) return true;
+  const nextPaymentDays = getDateRemainingDays(subscription.next_payment_date);
+  if (nextPaymentDays !== null) return nextPaymentDays <= 0;
+  const remainingDays = getSubscriptionRemainingDays(subscription);
+  return remainingDays !== null && remainingDays <= 0;
+}
+
 export function computeSubscriptionStatus(subscription?: SubscriptionLike | null, warningDays = getSubscriptionExpiryWarningDays()) {
   if (!subscription) return 'active';
   if (!subscription.end_date) return subscription.status || 'active';
   if (subscription.status && MANUAL_SUBSCRIPTION_STATUSES.has(subscription.status)) return subscription.status;
+  if (isAutoRenewalDue(subscription)) return AUTO_RENEW_PENDING_STATUS;
 
   const diffDays = getSubscriptionRemainingDays(subscription);
   if (diffDays == null) return subscription.status || 'active';

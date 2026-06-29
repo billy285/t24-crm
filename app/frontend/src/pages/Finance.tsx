@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { useRole } from '../lib/role-context';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +16,7 @@ import { toast } from 'sonner';
 import {
   Plus, DollarSign, AlertTriangle, Clock, TrendingUp, TrendingDown,
   Edit, Trash2, CalendarDays, Filter, Receipt, Building2, Users, PieChartIcon,
-  ArrowUpRight, ArrowDownRight, Wallet
+  ArrowUpRight, ArrowDownRight, Wallet, CheckCircle2
 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import {
@@ -81,10 +82,22 @@ const PAYMENT_MODE_COLORS: Record<string, string> = {
 };
 const subStatusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-700', expiring_soon: 'bg-amber-100 text-amber-700',
+  renewal_pending: 'bg-cyan-100 text-cyan-700',
   expired: 'bg-red-100 text-red-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700',
+  renewed: 'bg-emerald-100 text-emerald-700',
+};
+const subscriptionStatusFallbackLabels: Record<string, string> = {
+  active: '正常',
+  expiring_soon: '即将到期',
+  renewal_pending: '待扣款确认',
+  expired: '已到期',
+  renewed: '已续费',
+  paused: '暂停',
+  lost: '流失',
 };
 
 const PIE_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1'];
+const financeTabValues = new Set(['income', 'customer_expense', 'company_expense', 'subscriptions', 'charts', 'monthly_detail']);
 
 const pickColorByKey = (key: string, palette: string[], fixedColors?: Record<string, string>) => {
   if (fixedColors?.[key]) return fixedColors[key];
@@ -147,6 +160,14 @@ const calculateStripePlatformFee = (payment: any) => {
   const amount = Number(payment?.amount_paid || 0);
   if (amount <= 0 || !isStripeSubscriptionPayment(payment)) return 0;
   return roundMoney(amount * STRIPE_PLATFORM_FEE_RATE + STRIPE_PLATFORM_FEE_FIXED);
+};
+
+const inferSubscriptionIncomeType = (packageName?: string | null) => {
+  const normalized = String(packageName || '').toLowerCase();
+  if (normalized.includes('广告') || normalized.includes('ads')) return ADS_FEE_KEY;
+  if (normalized.includes('点餐') || normalized.includes('ordering')) return 'ordering_fee';
+  if (normalized.includes('网站') || normalized.includes('官网') || normalized.includes('website')) return 'website_fee';
+  return MANAGEMENT_FEE_KEY;
 };
 
 const buildMonthlyFinanceBuckets = (paymentsList: any[], customerExpenses: any[], companyExpenseList: any[] = []) => {
@@ -218,6 +239,35 @@ const toISODatetime = (dateStr: string | null | undefined): string | null => {
   }
 };
 
+const toDateOnly = (value?: string | null) => {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+};
+
+const addBillingCycle = (dateStr: string, cycle?: string | null) => {
+  const base = new Date(`${dateStr}T00:00:00.000Z`);
+  if (Number.isNaN(base.getTime())) return '';
+  const next = new Date(base);
+  switch (cycle) {
+    case 'annual':
+      next.setUTCFullYear(next.getUTCFullYear() + 1);
+      break;
+    case 'semi_annual':
+      next.setUTCMonth(next.getUTCMonth() + 6);
+      break;
+    case 'quarterly':
+      next.setUTCMonth(next.getUTCMonth() + 3);
+      break;
+    case 'monthly':
+    default:
+      next.setUTCMonth(next.getUTCMonth() + 1);
+      break;
+  }
+  return next.toISOString().slice(0, 10);
+};
+
 const parsePackageLabels = (value?: string | null) => (
   (value || '')
     .split(/[、,，]/)
@@ -244,6 +294,8 @@ const safeQuery = async (queryFn: () => Promise<any>): Promise<any[]> => {
 };
 
 export default function Finance() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin, hasPermission, employee } = useRole();
   const dictConfig = useDictConfig();
   const {
@@ -269,6 +321,8 @@ export default function Finance() {
     [companyExpenseTypeLabels],
   );
   const defaultCompanyExpenseType = companyExpenseTypeOptions[0]?.value || 'salary';
+  const normalizeFinanceTab = (tab?: string | null) => (tab && financeTabValues.has(tab) ? tab : 'income');
+  const [activeFinanceTab, setActiveFinanceTab] = useState(() => normalizeFinanceTab(searchParams.get('tab')));
   const [exporting, setExporting] = useState(false);
   const doExport = async (fmt: 'csv'|'xlsx') => {
     try {
@@ -379,6 +433,7 @@ export default function Finance() {
   // Delete targets
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'payment' | 'subscription'; item: any } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [confirmingRenewalId, setConfirmingRenewalId] = useState<number | null>(null);
   const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<any>(null);
   const [deletingExpense, setDeletingExpense] = useState(false);
   const [deleteCompanyExpenseTarget, setDeleteCompanyExpenseTarget] = useState<any>(null);
@@ -817,7 +872,8 @@ export default function Finance() {
   // USD profit includes USD customer costs and USD operating costs. CNY remains separate until FX conversion is added.
   const monthlyProfitUsd = currentMonthProfit.profit;
   const totalOutstanding = payments.reduce((s, p) => s + (p.outstanding_amount || 0), 0);
-  const expiringSubs = subscriptions.filter(s => s.status === 'expiring_soon' || s.status === 'expired');
+  const renewalPendingSubs = subscriptions.filter(s => s.status === 'renewal_pending').length;
+  const expiringSubs = subscriptions.filter(s => s.status === 'expiring_soon' || s.status === 'expired' || s.status === 'renewal_pending');
   const activeSubs = subscriptions.filter(s => s.status === 'active').length;
 
   // Expense summaries
@@ -1020,6 +1076,35 @@ export default function Finance() {
   // ─── Customer map for lookups ────────────────────────────────────
   const customerMap = useMemo(() => Object.fromEntries(customers.map(c => [c.id, c])), [customers]);
 
+  useEffect(() => {
+    setActiveFinanceTab(normalizeFinanceTab(searchParams.get('tab')));
+  }, [searchParams]);
+
+  const handleFinanceTabChange = (nextTab: string) => {
+    const safeTab = normalizeFinanceTab(nextTab);
+    setActiveFinanceTab(safeTab);
+    const nextParams = new URLSearchParams(searchParams);
+    if (safeTab === 'income') {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', safeTab);
+    }
+    setSearchParams(nextParams);
+  };
+
+  const openCustomerDetail = (customerId: string | number | null | undefined, tab = 'info', returnFinanceTab = activeFinanceTab) => {
+    const id = Number(customerId);
+    if (!id) {
+      toast.error('这条记录没有绑定客户，无法跳转');
+      return;
+    }
+    navigate(`/customers?detail=${id}&tab=${tab}&from=finance&financeTab=${returnFinanceTab}`);
+  };
+
+  const getSubscriptionStatusLabel = (status?: string | null) => (
+    subStatusLabels[status || ''] || subscriptionStatusFallbackLabels[status || ''] || status || '-'
+  );
+
   // ─── Payment CRUD ────────────────────────────────────────────────
   const openEditPayment = (p: any) => {
     const names = p.product_name ? p.product_name.split('、').map((s: string) => s.trim()).filter(Boolean) : [];
@@ -1100,6 +1185,7 @@ export default function Finance() {
             packageName: payForm.product_names,
           });
           const paymentDateISO = payload.payment_date || new Date().toISOString();
+          const isAutoSubscription = payForm.payment_mode === 'subscription_auto' || normalizedPaymentMethod === 'stripe';
           const subStartDate = coverageStartISO || matchingSub?.start_date || paymentDateISO;
           const subBaseData = {
             customer_id: Number(payForm.customer_id),
@@ -1109,10 +1195,11 @@ export default function Finance() {
             billing_cycle: payForm.billing_cycle,
             start_date: subStartDate,
             end_date: coverageEndISO,
-            auto_renew: false,
+            auto_renew: isAutoSubscription,
             renewal_person: cust?.sales_person || matchingSub?.renewal_person || '',
             last_payment_date: paymentDateISO,
             next_payment_date: coverageEndISO,
+            renewal_result: isAutoSubscription ? 'stripe_subscription_confirmed' : 'manual_payment_confirmed',
             updated_at: new Date().toISOString(),
           };
           const subData = {
@@ -1154,6 +1241,101 @@ export default function Finance() {
       toast.error(`保存失败: ${detail}`);
       console.error(err);
     } finally { setSaving(false); }
+  };
+
+  const handleConfirmSubscriptionRenewal = async (subscription: any) => {
+    if (!subscription?.id) return;
+    const amount = Number(subscription.package_price || 0);
+    if (amount <= 0) {
+      toast.error('该套餐缺少续费金额，无法自动生成收入');
+      return;
+    }
+    const todayDateOnly = new Date().toISOString().slice(0, 10);
+    const rawDueBaseDate =
+      toDateOnly(subscription.next_payment_date)
+      || toDateOnly(subscription.end_date)
+      || todayDateOnly;
+    const dueBaseDate = rawDueBaseDate < todayDateOnly ? todayDateOnly : rawDueBaseDate;
+    const nextPaymentDate = addBillingCycle(dueBaseDate, subscription.billing_cycle || 'monthly');
+    if (!nextPaymentDate) {
+      toast.error('无法识别计费周期，请先检查套餐续费信息');
+      return;
+    }
+
+    const existingEndDate = toDateOnly(subscription.end_date);
+    const nextServiceEndDate = existingEndDate && existingEndDate > nextPaymentDate ? existingEndDate : nextPaymentDate;
+    const paymentDateISO = new Date().toISOString();
+    const customerName = subscription.customer_name || customerMap[subscription.customer_id]?.business_name || '';
+    const packageName = subscription.package_name || '订阅套餐';
+
+    setConfirmingRenewalId(Number(subscription.id));
+    try {
+      await invokeWithAuth({
+        url: '/api/v1/entities/payments',
+        method: 'POST',
+        data: {
+          customer_id: Number(subscription.customer_id),
+          customer_name: customerName,
+          income_type: inferSubscriptionIncomeType(packageName),
+          product_name: packageName,
+          amount_due: amount,
+          amount_paid: amount,
+          currency: 'USD',
+          payment_date: paymentDateISO,
+          payment_mode: 'subscription_auto',
+          payment_method: 'stripe',
+          billing_cycle: subscription.billing_cycle || 'monthly',
+          coverage_start: toISODatetime(dueBaseDate),
+          coverage_end: toISODatetime(nextPaymentDate),
+          has_invoice: false,
+          outstanding_amount: 0,
+          expense_month: paymentDateISO.slice(0, 7),
+          recorded_by: operatorName,
+          notes: `Stripe订阅续费确认：${packageName}，覆盖 ${dueBaseDate} 至 ${nextPaymentDate}。手续费按 2.9% + $0.30 自动计入报表成本。`,
+          created_at: paymentDateISO,
+        },
+      });
+
+      const nextSubscriptionPayload = {
+        package_price: amount,
+        billing_cycle: subscription.billing_cycle || 'monthly',
+        auto_renew: true,
+        last_payment_date: paymentDateISO,
+        next_payment_date: toISODatetime(nextPaymentDate),
+        end_date: toISODatetime(nextServiceEndDate),
+        status: computeSubscriptionStatus({
+          ...subscription,
+          auto_renew: true,
+          next_payment_date: toISODatetime(nextPaymentDate),
+          end_date: toISODatetime(nextServiceEndDate),
+          status: 'active',
+        }),
+        renewal_result: 'stripe_subscription_confirmed',
+        updated_at: paymentDateISO,
+      };
+
+      await invokeWithAuth({
+        url: `/api/v1/entities/subscriptions/${subscription.id}`,
+        method: 'PUT',
+        data: nextSubscriptionPayload,
+      });
+
+      void logOperation({
+        customerId: Number(subscription.customer_id),
+        actionType: 'confirm_subscription_renewal',
+        actionDetail: `确认Stripe订阅续费：${customerName} ${packageName} ${fmt(amount)}，下次付款 ${nextPaymentDate}`,
+        operatorName,
+      });
+
+      toast.success(`已确认续费，下次付款时间：${nextPaymentDate}`);
+      await loadData();
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '确认续费失败';
+      toast.error(`确认续费失败: ${detail}`);
+      console.error('Confirm subscription renewal failed:', err);
+    } finally {
+      setConfirmingRenewalId(null);
+    }
   };
 
   // ─── Customer Expense CRUD ───────────────────────────────────────
@@ -1507,7 +1689,11 @@ export default function Finance() {
         <Card className="border-slate-200">
           <CardContent className="p-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center"><Clock className="w-4 h-4 text-amber-600" /></div>
-            <div><p className="text-[11px] text-slate-500">到期提醒</p><p className="text-base font-bold">{expiringSubs.length}</p></div>
+            <div>
+              <p className="text-[11px] text-slate-500">到期提醒</p>
+              <p className="text-base font-bold">{expiringSubs.length}</p>
+              {renewalPendingSubs > 0 && <p className="text-[11px] text-cyan-600">待扣款确认 {renewalPendingSubs}</p>}
+            </div>
           </CardContent>
         </Card>
         <Card className="border-slate-200">
@@ -1519,7 +1705,7 @@ export default function Finance() {
       </div>
 
       {/* Main Tabs */}
-      <Tabs defaultValue="income" className="w-full">
+      <Tabs value={activeFinanceTab} onValueChange={handleFinanceTabChange} className="w-full">
         <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
           <TabsTrigger value="income" className="text-xs sm:text-sm"><DollarSign className="w-3.5 h-3.5 mr-1 hidden sm:inline" />收入管理 ({filteredPayments.length})</TabsTrigger>
           <TabsTrigger value="customer_expense" className="text-xs sm:text-sm"><Users className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户支出 ({filteredExpenses.length})</TabsTrigger>
@@ -1559,7 +1745,16 @@ export default function Finance() {
                     <tbody>
                       {filteredPayments.map(p => (
                         <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50">
-                          <td className="px-3 py-2.5 font-medium">{p.customer_name || customerMap[p.customer_id]?.business_name || '-'}</td>
+                          <td className="px-3 py-2.5 font-medium">
+                            <Button
+                              type="button"
+                              variant="link"
+                              className="h-auto p-0 text-left font-medium text-blue-600 hover:text-blue-700"
+                              onClick={() => openCustomerDetail(p.customer_id, 'payments')}
+                            >
+                              {p.customer_name || customerMap[p.customer_id]?.business_name || '-'}
+                            </Button>
+                          </td>
                           <td className="px-3 py-2.5">
                             <Badge style={{ backgroundColor: `${INCOME_TYPE_COLORS[p.income_type] || '#94a3b8'}20`, color: INCOME_TYPE_COLORS[p.income_type] || '#94a3b8' }} className="text-xs">
                               {incomeTypeLabels[p.income_type] || p.income_type || '-'}
@@ -1659,7 +1854,16 @@ export default function Finance() {
                     <tbody>
                       {filteredExpenses.map(e => (
                         <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
-                          <td className="px-3 py-2.5 font-medium">{e.customer_name || customerMap[e.customer_id]?.business_name || '-'}</td>
+                          <td className="px-3 py-2.5 font-medium">
+                            <Button
+                              type="button"
+                              variant="link"
+                              className="h-auto p-0 text-left font-medium text-blue-600 hover:text-blue-700"
+                              onClick={() => openCustomerDetail(e.customer_id, 'payments')}
+                            >
+                              {e.customer_name || customerMap[e.customer_id]?.business_name || '-'}
+                            </Button>
+                          </td>
                           <td className="px-3 py-2.5">
                             <Badge style={{ backgroundColor: `${pickColorByKey(e.expense_type, PIE_COLORS, CUSTOMER_EXPENSE_COLORS)}20`, color: pickColorByKey(e.expense_type, PIE_COLORS, CUSTOMER_EXPENSE_COLORS) }} className="text-xs">
                               {customerExpenseTypeLabels[e.expense_type] || e.expense_type}
@@ -1809,10 +2013,11 @@ export default function Finance() {
                         <th className="px-3 py-2.5 font-medium">价格</th>
                         <th className="px-3 py-2.5 font-medium">周期</th>
                         <th className="px-3 py-2.5 font-medium hidden md:table-cell">到期日</th>
+                        <th className="px-3 py-2.5 font-medium hidden lg:table-cell">续费方式</th>
                         <th className="px-3 py-2.5 font-medium">剩余天数</th>
                         <th className="px-3 py-2.5 font-medium">状态</th>
                         <th className="px-3 py-2.5 font-medium hidden lg:table-cell">续费负责</th>
-                        <th className="px-3 py-2.5 font-medium w-16">操作</th>
+                        <th className="px-3 py-2.5 font-medium w-40">操作</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1820,11 +2025,28 @@ export default function Finance() {
                         const remainDays = getSubscriptionRemainingDays(s);
                         return (
                           <tr key={s.id} className={`border-b border-slate-100 hover:bg-slate-50 ${remainDays !== null && remainDays <= 0 ? 'bg-red-50/50' : remainDays !== null && remainDays <= 7 ? 'bg-amber-50/50' : ''}`}>
-                            <td className="px-3 py-2.5 font-medium">{s.customer_name}</td>
+                            <td className="px-3 py-2.5 font-medium">
+                              <Button
+                                type="button"
+                                variant="link"
+                                className="h-auto p-0 text-left font-medium text-blue-600 hover:text-blue-700"
+                                onClick={() => openCustomerDetail(s.customer_id, 'renewals')}
+                              >
+                                {s.customer_name || customerMap[s.customer_id]?.business_name || '-'}
+                              </Button>
+                            </td>
                             <td className="px-3 py-2.5">{s.package_name}</td>
                             <td className="px-3 py-2.5">{fmt(s.package_price)}</td>
                             <td className="px-3 py-2.5 text-slate-500">{cycleLabels[s.billing_cycle] || s.billing_cycle}</td>
                             <td className="px-3 py-2.5 text-slate-500 hidden md:table-cell">{s.end_date?.slice(0, 10)}</td>
+                            <td className="px-3 py-2.5 hidden lg:table-cell">
+                              {s.auto_renew ? (
+                                <Badge className="bg-cyan-100 text-cyan-700 text-xs">Stripe自动扣款</Badge>
+                              ) : (
+                                <Badge className="bg-slate-100 text-slate-600 text-xs">手动续费</Badge>
+                              )}
+                              {s.next_payment_date && <div className="text-xs text-slate-400 mt-1">下次付款: {s.next_payment_date.slice(0, 10)}</div>}
+                            </td>
                             <td className="px-3 py-2.5">
                               {remainDays !== null ? (
                                 remainDays <= 0 ? <span className="text-red-600 font-medium">已过期 {Math.abs(remainDays)} 天</span>
@@ -1832,10 +2054,23 @@ export default function Finance() {
                                 : <span className="text-slate-600">{remainDays} 天</span>
                               ) : '-'}
                             </td>
-                            <td className="px-3 py-2.5"><Badge className={`text-xs ${subStatusColors[s.status]}`}>{subStatusLabels[s.status] || s.status}</Badge></td>
+                            <td className="px-3 py-2.5"><Badge className={`text-xs ${subStatusColors[s.status] || subStatusColors.active}`}>{getSubscriptionStatusLabel(s.status)}</Badge></td>
                             <td className="px-3 py-2.5 text-slate-500 hidden lg:table-cell">{s.renewal_person || '-'}</td>
                             <td className="px-3 py-2.5">
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'subscription', item: s })}><Trash2 className="w-3.5 h-3.5" /></Button>
+                              <div className="flex items-center gap-1.5">
+                                {s.auto_renew && s.status === 'renewal_pending' && (
+                                  <Button
+                                    size="sm"
+                                    className="h-7 bg-cyan-600 px-2 text-xs hover:bg-cyan-700"
+                                    onClick={() => handleConfirmSubscriptionRenewal(s)}
+                                    disabled={confirmingRenewalId === Number(s.id)}
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                                    {confirmingRenewalId === Number(s.id) ? '确认中' : '确认续费'}
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'subscription', item: s })}><Trash2 className="w-3.5 h-3.5" /></Button>
+                              </div>
                             </td>
                           </tr>
                         );

@@ -15,6 +15,26 @@ export interface EnvVariableUpdate {
   value: string;
 }
 
+export interface AiSettings {
+  enabled: boolean;
+  provider: string;
+  base_url: string;
+  model: string;
+  api_key_set: boolean;
+  api_key_preview: string;
+  source: string;
+  updated_at?: string | null;
+}
+
+export interface AiSettingsUpdate {
+  enabled: boolean;
+  provider?: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+  base_url: string;
+  model: string;
+}
+
 export const settingsApi = {
   // Fetch all configurations
   async getConfig(): Promise<EnvConfig> {
@@ -91,6 +111,31 @@ export const settingsApi = {
     const response = await invokeWithAuth({
       url: `/api/v1/admin/settings/frontend/${key}`,
       method: 'DELETE',
+    });
+    return response.data;
+  },
+
+  async getAiSettings(): Promise<AiSettings> {
+    const response = await invokeWithAuth({
+      url: '/api/v1/admin/ai-settings',
+      method: 'GET',
+    });
+    return response.data;
+  },
+
+  async updateAiSettings(data: AiSettingsUpdate): Promise<AiSettings> {
+    const response = await invokeWithAuth({
+      url: '/api/v1/admin/ai-settings',
+      method: 'PUT',
+      data,
+    });
+    return response.data;
+  },
+
+  async testAiSettings(): Promise<{ ok: boolean; model: string; message: string }> {
+    const response = await invokeWithAuth({
+      url: '/api/v1/admin/ai-settings/test',
+      method: 'POST',
     });
     return response.data;
   },

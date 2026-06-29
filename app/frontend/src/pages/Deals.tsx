@@ -76,6 +76,255 @@ function parseDealPackageLabels(value?: string | null) {
   return (value || '').split(/[、,，]/).map(item => item.trim()).filter(Boolean);
 }
 
+const normalizeSearchText = (value?: string | null) => (value || '').toLowerCase().replace(/\s+/g, '');
+
+const platformLabels: Record<string, string> = {
+  google_business: 'Google商家',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  yelp: 'Yelp',
+  tiktok: 'TikTok',
+  xiaohongshu: '小红书',
+  x: 'X',
+};
+
+const packagePlatformRules: Array<{ platform: string; labels: string[] }> = [
+  { platform: 'google_business', labels: ['Google商家管理', 'Google Business', 'google_business_management'] },
+  { platform: 'facebook', labels: ['Facebook商家管理', 'facebook_business_management'] },
+  { platform: 'instagram', labels: ['Instagram商家管理', 'Instgram商家管理', 'instgram商家管理', 'instagram_business_management'] },
+  { platform: 'yelp', labels: ['Yelp商家管理', 'yelp_business_management'] },
+  { platform: 'tiktok', labels: ['Tiktok商家管理', 'TikTok商家管理', 'tiktok_business_management'] },
+  { platform: 'xiaohongshu', labels: ['小红书管理', 'xiaohongshu_management'] },
+  { platform: 'x', labels: ['X商家管理', 'Twitter商家管理', 'x_business_management'] },
+];
+
+type OnboardingStep = {
+  task_name: string;
+  task_type: string;
+  platform?: string | null;
+  dueOffsetDays: number;
+  priority?: 'high' | 'medium' | 'low';
+  notes: string;
+};
+
+const commonOnboardingSteps: OnboardingStep[] = [
+  {
+    task_name: '建立客户服务群',
+    task_type: 'setup_group',
+    platform: null,
+    dueOffsetDays: 0,
+    priority: 'high',
+    notes: '成交后前期交接：拉客户联系人、销售、运营负责人进入服务群。',
+  },
+  {
+    task_name: '发送运营说明与素材清单',
+    task_type: 'confirm_service',
+    platform: null,
+    dueOffsetDays: 1,
+    priority: 'high',
+    notes: '向客户说明服务范围、每周更新节奏、周总结规则，并一次性发送素材/权限清单。',
+  },
+];
+
+const platformOnboardingSteps: Record<string, Omit<OnboardingStep, 'platform'>[]> = {
+  google_business: [
+    {
+      task_name: 'Google商家 权限对接',
+      task_type: 'bind_google',
+      dueOffsetDays: 2,
+      priority: 'high',
+      notes: '确认 Google Business Profile 管理权限、账号归属、验证码或邀请流程。',
+    },
+    {
+      task_name: 'Google商家 基础信息完善',
+      task_type: 'update_info',
+      dueOffsetDays: 3,
+      priority: 'medium',
+      notes: '完善名称、地址、电话、营业时间、服务项目、菜单、图片等基础资料。',
+    },
+    {
+      task_name: 'Google商家 正式运营启动',
+      task_type: 'publish_content',
+      dueOffsetDays: 5,
+      priority: 'medium',
+      notes: '进入正式运营节奏：每周更新 3 次，并纳入每周总结汇报。',
+    },
+  ],
+  facebook: [
+    {
+      task_name: 'Facebook 权限对接',
+      task_type: 'open_facebook',
+      dueOffsetDays: 2,
+      priority: 'high',
+      notes: '确认 Facebook Page / Business Suite 权限、主页管理员和资产归属。',
+    },
+    {
+      task_name: 'Facebook 主页资料完善',
+      task_type: 'update_info',
+      dueOffsetDays: 3,
+      priority: 'medium',
+      notes: '完善主页简介、联系方式、营业时间、菜单/服务、头像封面和行动按钮。',
+    },
+    {
+      task_name: 'Facebook 正式运营启动',
+      task_type: 'publish_content',
+      dueOffsetDays: 5,
+      priority: 'medium',
+      notes: '进入正式运营节奏：每周更新 3 次，并纳入每周总结汇报。',
+    },
+  ],
+  instagram: [
+    {
+      task_name: 'Instagram 权限对接',
+      task_type: 'open_instagram',
+      dueOffsetDays: 2,
+      priority: 'high',
+      notes: '确认 Instagram 账号登录方式、授权方式，以及是否已与 Facebook 主页关联。',
+    },
+    {
+      task_name: 'Instagram 主页资料完善',
+      task_type: 'update_info',
+      dueOffsetDays: 3,
+      priority: 'medium',
+      notes: '完善头像、简介、联系方式、营业地址、链接和精选展示。',
+    },
+    {
+      task_name: 'Instagram 正式运营启动',
+      task_type: 'publish_content',
+      dueOffsetDays: 5,
+      priority: 'medium',
+      notes: '进入正式运营节奏：每周更新 3 次，并纳入每周总结汇报。',
+    },
+  ],
+  yelp: [
+    {
+      task_name: 'Yelp 权限对接',
+      task_type: 'other',
+      dueOffsetDays: 2,
+      priority: 'high',
+      notes: '确认 Yelp 商家页认领、管理员权限、登录方式和店铺归属。',
+    },
+    {
+      task_name: 'Yelp 基础信息完善',
+      task_type: 'update_info',
+      dueOffsetDays: 3,
+      priority: 'medium',
+      notes: '完善地址、电话、营业时间、分类、服务项目、菜单/图片等资料。',
+    },
+    {
+      task_name: 'Yelp 正式运营启动',
+      task_type: 'publish_content',
+      dueOffsetDays: 5,
+      priority: 'medium',
+      notes: '进入正式运营节奏：每周更新 3 次，并纳入每周总结汇报。',
+    },
+  ],
+  tiktok: [
+    {
+      task_name: 'TikTok 账号/权限对接',
+      task_type: 'other',
+      dueOffsetDays: 2,
+      priority: 'high',
+      notes: '确认 TikTok 账号登录方式、企业资料、管理员权限和素材授权。',
+    },
+    {
+      task_name: 'TikTok 主页资料完善',
+      task_type: 'update_info',
+      dueOffsetDays: 3,
+      priority: 'medium',
+      notes: '完善头像、简介、联系方式、链接、店铺定位和内容方向。',
+    },
+    {
+      task_name: 'TikTok 正式运营启动',
+      task_type: 'publish_content',
+      dueOffsetDays: 5,
+      priority: 'medium',
+      notes: '进入正式运营节奏：每周更新 3 次，并纳入每周总结汇报。',
+    },
+  ],
+  xiaohongshu: [
+    {
+      task_name: '小红书 账号/权限对接',
+      task_type: 'other',
+      dueOffsetDays: 2,
+      priority: 'high',
+      notes: '确认小红书账号登录方式、店铺/品牌信息、管理员权限和素材授权。',
+    },
+    {
+      task_name: '小红书 店铺资料完善',
+      task_type: 'update_info',
+      dueOffsetDays: 3,
+      priority: 'medium',
+      notes: '完善头像、简介、店铺定位、服务项目、联系方式和内容方向。',
+    },
+    {
+      task_name: '小红书 正式运营启动',
+      task_type: 'publish_content',
+      dueOffsetDays: 5,
+      priority: 'medium',
+      notes: '进入正式运营节奏：每周更新 3 次，并纳入每周总结汇报。',
+    },
+  ],
+  x: [
+    {
+      task_name: 'X 账号/权限对接',
+      task_type: 'other',
+      dueOffsetDays: 2,
+      priority: 'high',
+      notes: '确认 X 账号登录方式、管理员权限、品牌资料和素材授权。',
+    },
+    {
+      task_name: 'X 主页资料完善',
+      task_type: 'update_info',
+      dueOffsetDays: 3,
+      priority: 'medium',
+      notes: '完善头像、简介、联系方式、链接、品牌语气和内容方向。',
+    },
+    {
+      task_name: 'X 正式运营启动',
+      task_type: 'publish_content',
+      dueOffsetDays: 5,
+      priority: 'medium',
+      notes: '进入正式运营节奏：每周更新 3 次，并纳入每周总结汇报。',
+    },
+  ],
+};
+
+function inferPlatformsFromPackageName(packageName?: string | null) {
+  const normalizedPackage = normalizeSearchText(packageName);
+  if (!normalizedPackage) return [] as string[];
+  const platforms = packagePlatformRules
+    .filter(rule => rule.labels.some(label => normalizedPackage.includes(normalizeSearchText(label))))
+    .map(rule => rule.platform);
+  return Array.from(new Set(platforms));
+}
+
+function addDaysDateInput(offsetDays: number) {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function buildOnboardingSteps(platforms: string[]) {
+  const platformSteps = platforms.flatMap(platform =>
+    (platformOnboardingSteps[platform] || []).map(step => ({ ...step, platform }))
+  );
+  if (platformSteps.length === 0) return [];
+  return [
+    ...commonOnboardingSteps,
+    ...platformSteps,
+    {
+      task_name: '首周运营总结汇报',
+      task_type: 'submit_report',
+      platform: null,
+      dueOffsetDays: 7,
+      priority: 'medium' as const,
+      notes: '前期运营启动后，整理首周执行情况、素材使用情况、卡点和下周计划。',
+    },
+  ];
+}
+
 function getTodayDateInput() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -163,6 +412,117 @@ export default function Deals() {
   // Build a customer lookup map for quick access to phone, email, zip etc.
   const customerMap = new Map<number, any>();
   customers.forEach(c => customerMap.set(c.id, c));
+
+  const ensureOnboardingBoardForDeal = async (deal: any, cust: any, dealId?: number | null) => {
+    const platforms = inferPlatformsFromPackageName(deal.package_name);
+    const steps = buildOnboardingSteps(platforms);
+    if (!cust || steps.length === 0) {
+      return { platforms, createdCount: 0 };
+    }
+
+    const now = new Date().toISOString();
+    const actor = employee?.name || '系统自动';
+    const customerId = Number(cust.id || deal.customer_id);
+    const customerName = cust.business_name || deal.customer_name || '';
+    const packageName = deal.package_name || '';
+    const normalizedPackageName = normalizeSearchText(packageName);
+    const progressRes = await client.entities.service_progresses.queryAll({
+      query: { customer_id: customerId },
+      limit: 200,
+      sort: '-created_at',
+    });
+    const existingProgresses = progressRes?.data?.items || [];
+    let progress = existingProgresses.find((item: any) =>
+      item.service_stage !== 'ended' && normalizeSearchText(item.package_name) === normalizedPackageName
+    );
+
+    if (!progress) {
+      const progressPayload = {
+        customer_id: customerId,
+        customer_name: customerName,
+        service_type: 'social_media',
+        service_stage: 'deal_handover',
+        progress_percent: 10,
+        sales_person: cust.sales_person || deal.sales_name || '',
+        ops_person: cust.ops_person || '',
+        design_person: '',
+        package_name: packageName,
+        industry: cust.industry || '',
+        country: cust.country || '',
+        state: cust.state || '',
+        city: cust.city || '',
+        service_start_date: deal.service_start_date || deal.deal_date || null,
+        service_end_date: deal.service_end_date || null,
+        last_update_time: now,
+        last_update_person: actor,
+        last_work_summary: '成交后自动生成前期运营流程',
+        issue_status: 'none',
+        issue_description: '',
+        issue_found_date: null,
+        issue_owner: '',
+        issue_resolved: true,
+        issue_resolved_date: null,
+        notes: dealId ? `由成交记录 #${dealId} 自动生成前期工作看板。` : '由成交记录自动生成前期工作看板。',
+        created_at: now,
+      };
+      const createdProgressRes = await client.entities.service_progresses.create({ data: progressPayload });
+      progress = createdProgressRes?.data;
+    } else {
+      await client.entities.service_progresses.update({
+        id: String(progress.id),
+        data: {
+          package_name: packageName || progress.package_name,
+          service_start_date: deal.service_start_date || progress.service_start_date || deal.deal_date || null,
+          service_end_date: deal.service_end_date || progress.service_end_date || null,
+          last_update_time: now,
+          last_update_person: actor,
+          last_work_summary: '成交后同步检查前期运营流程',
+        },
+      });
+    }
+
+    if (!progress?.id) {
+      return { platforms, createdCount: 0 };
+    }
+
+    const existingTasksRes = await client.entities.service_tasks.queryAll({
+      query: { service_progress_id: progress.id },
+      limit: 500,
+      sort: 'created_at',
+    });
+    const existingTaskKeys = new Set(
+      (existingTasksRes?.data?.items || []).map((task: any) =>
+        `${normalizeSearchText(task.task_name)}|${task.platform || ''}`
+      )
+    );
+    let createdCount = 0;
+
+    for (const step of steps) {
+      const taskKey = `${normalizeSearchText(step.task_name)}|${step.platform || ''}`;
+      if (existingTaskKeys.has(taskKey)) continue;
+      await client.entities.service_tasks.create({
+        data: {
+          service_progress_id: progress.id,
+          customer_id: customerId,
+          customer_name: customerName,
+          task_name: step.task_name,
+          task_type: step.task_type,
+          platform: step.platform || null,
+          assignee_name: progress.ops_person || null,
+          priority: step.priority || 'medium',
+          status: 'pending',
+          due_date: addDaysDateInput(step.dueOffsetDays),
+          completed_date: null,
+          notes: `${step.notes} 合作平台：${platforms.map(platform => platformLabels[platform] || platform).join('、')}。`,
+          created_at: now,
+        },
+      });
+      existingTaskKeys.add(taskKey);
+      createdCount += 1;
+    }
+
+    return { platforms, createdCount };
+  };
 
   const filtered = deals.filter(d => {
     // Text search
@@ -433,7 +793,19 @@ export default function Deals() {
           await client.entities.customers.update({ id: String(cust.id), data: { status: 'closed', updated_at: now } });
           setCustomers(prev => prev.map(item => (item.id === cust.id ? { ...item, status: 'closed', updated_at: now } : item)));
         }
-        toast.success('成交记录已创建');
+        try {
+          const onboardingResult = await ensureOnboardingBoardForDeal({ ...payload, id: createdDeal?.id || null }, cust, createdDeal?.id || null);
+          if (onboardingResult.createdCount > 0) {
+            toast.success(`成交记录已创建，已生成 ${onboardingResult.createdCount} 个前期运营任务`);
+          } else if (onboardingResult.platforms.length > 0) {
+            toast.success('成交记录已创建，前期运营流程已存在');
+          } else {
+            toast.success('成交记录已创建');
+          }
+        } catch (onboardingErr) {
+          console.error('Create onboarding board error:', onboardingErr);
+          toast.warning('成交记录已创建，但前期运营看板生成失败，请到服务看板手动创建');
+        }
       }
       setPackageOverrideLabels({});
       setShowForm(false);

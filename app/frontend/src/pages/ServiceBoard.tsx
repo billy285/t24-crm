@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { client } from '../lib/api';
+import { invokeWithAuth } from '../lib/tokenStore';
 import { useRole } from '../lib/role-context';
 import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
 import { getCountryLabel, getStateLabel } from '../lib/country-state-data';
@@ -24,7 +24,7 @@ import { toast } from 'sonner';
 import {
   Search, Plus, Edit, Trash2, ArrowLeft, LayoutList, Kanban, Users,
   AlertTriangle, Clock, CheckCircle2, XCircle, BarChart3, Filter, RefreshCw, Info,
-  ChevronRight, Download, Copy, ArrowUpRight,
+  ChevronRight, Copy, FileImage, Sparkles, ShieldCheck, ClipboardCheck,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ExportButton from '@/components/ExportButton';
@@ -67,11 +67,20 @@ interface ServiceTask {
   customer_name: string;
   task_name: string;
   task_type: string;
+  platform?: string;
   assignee_name: string;
   priority: string;
   status: string;
   due_date: string;
   completed_date: string;
+  completed_at?: string;
+  completed_by?: string;
+  selected_copy_id?: number | null;
+  selected_copy_title?: string | null;
+  selected_material_id?: number | null;
+  selected_material_title?: string | null;
+  completion_quality?: string | null;
+  completion_note?: string | null;
   notes: string;
   created_at: string;
 }
@@ -111,6 +120,30 @@ interface SubscriptionRecord {
   [key: string]: unknown;
 }
 
+interface CustomerAiCopyRecord {
+  id: number;
+  title: string;
+  platform: string;
+  content_type: string;
+  content: string;
+  status: string;
+  updated_at?: string;
+  created_at?: string;
+}
+
+interface CustomerMaterialRecord {
+  id: number;
+  title: string;
+  material_type: string;
+  platform: string;
+  usage_status: string;
+  approval_status: string;
+  file_name?: string;
+  file_url?: string;
+  updated_at?: string;
+  created_at?: string;
+}
+
 // ==================== Helpers ====================
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const SERVICE_EXPIRY_WARNING_DAYS = 7;
@@ -143,8 +176,228 @@ const isLongNoUpdate = (sp: ServiceProgress) => {
   return (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24) > 14;
 };
 const hasIssue = (sp: ServiceProgress) => sp.issue_status !== 'none' && !sp.issue_resolved;
+const isWaitingForClientMaterial = (sp: ServiceProgress) => (
+  !sp.issue_resolved && ['waiting_client', 'waiting_material'].includes(sp.issue_status)
+);
 
 const displayCountry = (code: string) => countryDisplayLabels[code] || code;
+const normalizeText = (value?: string | null) => (value || '').toLowerCase().replace(/\s+/g, '');
+const getWeekStartStr = () => {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1);
+  return date.toISOString().slice(0, 10);
+};
+const getWeekEndStr = () => {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 7);
+  return date.toISOString().slice(0, 10);
+};
+const getTaskDoneDate = (task: Pick<ServiceTask, 'completed_at' | 'completed_date'>) => (
+  (task.completed_at || task.completed_date || '').slice(0, 10)
+);
+const isTaskCompletedThisWeek = (task: ServiceTask, weekStart = getWeekStartStr()) => (
+  task.status === 'completed' && Boolean(getTaskDoneDate(task)) && getTaskDoneDate(task) >= weekStart
+);
+const isWeeklyReportTask = (task: ServiceTask) => {
+  const text = normalizeText(`${task.task_type || ''}${task.task_name || ''}${task.notes || ''}${task.completion_note || ''}`);
+  return task.task_type === 'submit_report' || text.includes('周报') || text.includes('总结') || text.includes('汇报') || text.includes('report');
+};
+const isOpenTaskThisWeek = (task: ServiceTask, weekStart = getWeekStartStr(), weekEnd = getWeekEndStr()) => {
+  if (task.status === 'completed' || task.status === 'cancelled') return false;
+  const dueDate = (task.due_date || '').slice(0, 10);
+  return Boolean(dueDate) && dueDate >= weekStart && dueDate <= weekEnd;
+};
+const inferPlatformsFromPackageName = (packageName?: string | null) => {
+  const normalizedPackage = normalizeText(packageName);
+  if (!normalizedPackage) return [] as string[];
+  const platforms = packagePlatformRules
+    .filter(rule => rule.labels.some(label => normalizedPackage.includes(normalizeText(label))))
+    .map(rule => rule.platform);
+  return Array.from(new Set(platforms));
+};
+
+const getWeeklyTaskPlan = (sp: ServiceProgress, tasks: ServiceTask[]) => {
+  const platforms = inferPlatformsFromPackageName(sp.package_name);
+  const weekStart = getWeekStartStr();
+  const weekEnd = getWeekEndStr();
+  const completedThisWeek = tasks.filter(task => task.service_progress_id === sp.id && isTaskCompletedThisWeek(task, weekStart));
+  const openThisWeek = tasks.filter(task => task.service_progress_id === sp.id && isOpenTaskThisWeek(task, weekStart, weekEnd));
+  const platformPlans = platforms.map(platform => {
+    const completed = completedThisWeek.filter(task => task.platform === platform).length;
+    const scheduled = openThisWeek.filter(task => task.platform === platform && !isWeeklyReportTask(task)).length;
+    return {
+      platform,
+      completed,
+      scheduled,
+      target: WEEKLY_PLATFORM_UPDATE_TARGET,
+      remainingToDo: Math.max(0, WEEKLY_PLATFORM_UPDATE_TARGET - completed),
+      remainingToCreate: Math.max(0, WEEKLY_PLATFORM_UPDATE_TARGET - completed - scheduled),
+    };
+  });
+  const reportCompleted = completedThisWeek.some(isWeeklyReportTask);
+  const reportScheduled = openThisWeek.some(isWeeklyReportTask);
+  return {
+    platforms,
+    platformPlans,
+    reportCompleted,
+    reportScheduled,
+    reportRemainingToDo: reportCompleted ? 0 : 1,
+    reportRemainingToCreate: reportCompleted || reportScheduled ? 0 : 1,
+    totalRemainingToDo: platformPlans.reduce((sum, item) => sum + item.remainingToDo, 0) + (reportCompleted ? 0 : 1),
+    totalRemainingToCreate: platformPlans.reduce((sum, item) => sum + item.remainingToCreate, 0) + (reportCompleted || reportScheduled ? 0 : 1),
+  };
+};
+const getWeeklyPlatformProgress = (sp: ServiceProgress, tasks: ServiceTask[]) => {
+  const platforms = inferPlatformsFromPackageName(sp.package_name);
+  const weekStart = getWeekStartStr();
+  const relevantTasks = tasks.filter(task => task.service_progress_id === sp.id && isTaskCompletedThisWeek(task, weekStart));
+  const counts = platforms.reduce<Record<string, number>>((acc, platform) => {
+    acc[platform] = relevantTasks.filter(task => task.platform === platform).length;
+    return acc;
+  }, {});
+  const platformTarget = platforms.length * WEEKLY_PLATFORM_UPDATE_TARGET;
+  const platformDone = platforms.reduce((sum, platform) => sum + Math.min(counts[platform] || 0, WEEKLY_PLATFORM_UPDATE_TARGET), 0);
+  const missingPlatforms = platforms.filter(platform => (counts[platform] || 0) < WEEKLY_PLATFORM_UPDATE_TARGET);
+  const weeklyReportDone = relevantTasks.some(isWeeklyReportTask) ? 1 : 0;
+  return {
+    platforms,
+    counts,
+    platformTarget,
+    platformDone,
+    missingPlatforms,
+    weeklyReportDone,
+    weeklyReportTarget: platforms.length > 0 ? WEEKLY_REPORT_TARGET : 0,
+  };
+};
+
+const onboardingStepRules: Array<{
+  key: string;
+  label: string;
+  match: (task: ServiceTask) => boolean;
+}> = [
+  {
+    key: 'group',
+    label: '拉群建群',
+    match: task => task.task_type === 'setup_group' || /服务群|拉群|建群/.test(task.task_name || ''),
+  },
+  {
+    key: 'brief',
+    label: '运营说明',
+    match: task => task.task_type === 'confirm_service' || /运营说明|素材清单|服务内容/.test(task.task_name || ''),
+  },
+  {
+    key: 'permission',
+    label: '权限对接',
+    match: task => ['bind_google', 'open_facebook', 'open_instagram'].includes(task.task_type || '') || /权限|账号/.test(task.task_name || ''),
+  },
+  {
+    key: 'profile',
+    label: '资料完善',
+    match: task => task.task_type === 'update_info' || /基础信息|资料完善|主页资料|店铺资料/.test(task.task_name || ''),
+  },
+  {
+    key: 'launch',
+    label: '正式运营',
+    match: task => task.task_type === 'publish_content' && /正式运营启动|运营启动/.test(task.task_name || ''),
+  },
+  {
+    key: 'first_report',
+    label: '首周汇报',
+    match: task => task.task_type === 'submit_report' && /首周|总结|汇报/.test(task.task_name || ''),
+  },
+];
+
+const getOnboardingProgress = (sp: ServiceProgress, tasks: ServiceTask[]) => {
+  const progressTasks = tasks.filter(task => task.service_progress_id === sp.id);
+  const steps = onboardingStepRules.map(rule => {
+    const matchedTasks = progressTasks.filter(rule.match);
+    const completedTask = matchedTasks.find(task => task.status === 'completed');
+    const activeTask = matchedTasks.find(task => task.status !== 'completed' && task.status !== 'cancelled');
+    return {
+      key: rule.key,
+      label: rule.label,
+      task: completedTask || activeTask || null,
+      status: completedTask ? 'completed' : activeTask ? activeTask.status : 'missing',
+    };
+  });
+  const existingSteps = steps.filter(step => step.task);
+  const total = existingSteps.length;
+  const completed = existingSteps.filter(step => step.status === 'completed').length;
+  const nextStep = steps.find(step => step.status !== 'completed' && step.task) || null;
+  return { steps, total, completed, nextStep, isComplete: total > 0 && completed >= total };
+};
+const getErrorMessage = (err: unknown, fallback: string) => {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err !== null) {
+    const anyErr = err as any;
+    return anyErr?.data?.detail || anyErr?.response?.data?.detail || anyErr?.message || fallback;
+  }
+  return fallback;
+};
+
+type EntityQueryParams = {
+  query?: Record<string, unknown>;
+  sort?: string;
+  skip?: number;
+  limit?: number;
+  fields?: string;
+};
+
+const buildEntityQueryData = (params: EntityQueryParams = {}) => {
+  const data: Record<string, unknown> = {};
+  if (params.query) data.query = JSON.stringify(params.query);
+  if (params.sort) data.sort = params.sort;
+  if (typeof params.skip === 'number') data.skip = params.skip;
+  if (typeof params.limit === 'number') data.limit = params.limit;
+  if (params.fields) data.fields = params.fields;
+  return data;
+};
+
+const authedListEntity = async <T,>(entity: string, params: EntityQueryParams = {}): Promise<T[]> => {
+  const res = await invokeWithAuth({
+    url: `/api/v1/entities/${entity}/all`,
+    method: 'GET',
+    data: buildEntityQueryData(params),
+  });
+  return (res?.data?.items || []) as T[];
+};
+
+const authedGetEntity = async <T,>(entity: string, id: number | string): Promise<T | null> => {
+  const res = await invokeWithAuth({
+    url: `/api/v1/entities/${entity}/${id}`,
+    method: 'GET',
+  });
+  return (res?.data || null) as T | null;
+};
+
+const authedCreateEntity = async <T,>(entity: string, data: Record<string, unknown>): Promise<T | null> => {
+  const res = await invokeWithAuth({
+    url: `/api/v1/entities/${entity}`,
+    method: 'POST',
+    data,
+  });
+  return (res?.data || null) as T | null;
+};
+
+const authedUpdateEntity = async <T,>(entity: string, id: number | string, data: Record<string, unknown>): Promise<T | null> => {
+  const res = await invokeWithAuth({
+    url: `/api/v1/entities/${entity}/${id}`,
+    method: 'PUT',
+    data,
+  });
+  return (res?.data || null) as T | null;
+};
+
+const authedDeleteEntity = async (entity: string, id: number | string) => {
+  await invokeWithAuth({
+    url: `/api/v1/entities/${entity}/${id}`,
+    method: 'DELETE',
+  });
+};
 
 // Product type to service type mapping
 const productToServiceType: Record<string, string> = {
@@ -154,6 +407,64 @@ const productToServiceType: Record<string, string> = {
   ads: 'ads',
   combo: 'other',
 };
+
+const platformLabels: Record<string, string> = {
+  general: '通用',
+  google_business: 'Google商家',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  x: 'X',
+  yelp: 'Yelp',
+  xiaohongshu: '小红书',
+  tiktok: 'TikTok',
+  website: '网站',
+  other: '其他',
+};
+
+const materialTypeLabels: Record<string, string> = {
+  image: '图片',
+  video: '视频',
+  logo: 'Logo',
+  menu: '菜单',
+  screenshot: '截图',
+  document: '文档',
+  design: '设计稿',
+  post: '发布素材',
+  other: '其他',
+};
+
+const copyTypeLabels: Record<string, string> = {
+  business_intro: '商家介绍',
+  promotion: '活动推广',
+  holiday: '节日营销',
+  review_reply: '评论回复',
+  weekly_update: '每周更新',
+  package_promo: '套餐宣传',
+};
+
+const qualityLabels: Record<string, string> = {
+  standard: '标准完成',
+  low_quality: '低质量完成',
+};
+
+const qualityColors: Record<string, string> = {
+  standard: 'bg-green-100 text-green-700',
+  low_quality: 'bg-orange-100 text-orange-700',
+};
+
+const WEEKLY_PLATFORM_UPDATE_TARGET = 3;
+const WEEKLY_REPORT_TARGET = 1;
+const CONTENT_REFERENCE_REQUIRED_TASK_TYPES = new Set(['publish_content', 'reply_comments', 'submit_report']);
+
+const packagePlatformRules: Array<{ platform: string; labels: string[] }> = [
+  { platform: 'google_business', labels: ['Google商家管理', 'Google Business', 'google_business_management'] },
+  { platform: 'facebook', labels: ['Facebook商家管理', 'facebook_business_management'] },
+  { platform: 'instagram', labels: ['Instagram商家管理', 'Instgram商家管理', 'instgram商家管理', 'instagram_business_management'] },
+  { platform: 'yelp', labels: ['Yelp商家管理', 'yelp_business_management'] },
+  { platform: 'tiktok', labels: ['Tiktok商家管理', 'TikTok商家管理', 'tiktok_business_management'] },
+  { platform: 'xiaohongshu', labels: ['小红书管理', 'xiaohongshu_management'] },
+  { platform: 'x', labels: ['X商家管理', 'Twitter商家管理', 'x_business_management'] },
+];
 
 // Get next stage for a given service type and current stage
 function getNextStage(serviceType: string, currentStage: string): string | null {
@@ -166,9 +477,13 @@ function getNextStage(serviceType: string, currentStage: string): string | null 
   return null;
 }
 
+const requiresCompletionReference = (task?: Pick<ServiceTask, 'task_type'> | null) => (
+  CONTENT_REFERENCE_REQUIRED_TASK_TYPES.has(task?.task_type || '')
+);
+
 // ==================== Main Component ====================
 export default function ServiceBoard() {
-  const { role, employee, isAdmin, dataScope } = useRole();
+  const { role, employee, isAdmin, dataScope, hasPermission } = useRole();
 
   // Core data
   const [progresses, setProgresses] = useState<ServiceProgress[]>([]);
@@ -208,12 +523,22 @@ export default function ServiceBoard() {
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [taskForm, setTaskForm] = useState(emptyTaskForm());
   const [savingTask, setSavingTask] = useState(false);
+  const [generatingWeeklyTasks, setGeneratingWeeklyTasks] = useState(false);
 
   // Quick update work summary dialog
   const [showQuickUpdate, setShowQuickUpdate] = useState(false);
   const [quickUpdateSp, setQuickUpdateSp] = useState<ServiceProgress | null>(null);
   const [quickUpdateSummary, setQuickUpdateSummary] = useState('');
   const [savingQuickUpdate, setSavingQuickUpdate] = useState(false);
+
+  // Complete task dialog with lightweight operations supervision
+  const [completeTaskTarget, setCompleteTaskTarget] = useState<ServiceTask | null>(null);
+  const [completionCopies, setCompletionCopies] = useState<CustomerAiCopyRecord[]>([]);
+  const [completionMaterials, setCompletionMaterials] = useState<CustomerMaterialRecord[]>([]);
+  const [completionForm, setCompletionForm] = useState({ platform: '', selected_copy_id: '', selected_material_id: '', completion_note: '' });
+  const [loadingCompletionRefs, setLoadingCompletionRefs] = useState(false);
+  const [savingCompletion, setSavingCompletion] = useState(false);
+  const [savingTaskActionId, setSavingTaskActionId] = useState<number | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'progress' | 'task'; item: any } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -223,27 +548,27 @@ export default function ServiceBoard() {
 
   const loadData = async () => {
     try {
-      const [pRes, tRes, cRes, eRes, sRes] = await Promise.all([
-        client.entities.service_progresses.queryAll({ limit: 500, sort: '-last_update_time' }),
-        client.entities.service_tasks.queryAll({ limit: 1000, sort: '-created_at' }),
-        client.entities.customers.query({ limit: 500, sort: '-created_at' }),
-        client.entities.employees.queryAll({ limit: 200, sort: 'name' }),
-        client.entities.subscriptions.query({ limit: 500, sort: '-created_at' }),
+      const [progressItems, taskItems, customerItems, employeeItems, subscriptionItems] = await Promise.all([
+        authedListEntity<ServiceProgress>('service_progresses', { limit: 500, sort: '-last_update_time' }),
+        authedListEntity<ServiceTask>('service_tasks', { limit: 1000, sort: '-created_at' }),
+        authedListEntity<CustomerRecord>('customers', { limit: 500, sort: '-created_at' }),
+        authedListEntity<EmployeeRecord>('employees', { limit: 200, sort: 'name' }),
+        authedListEntity<SubscriptionRecord>('subscriptions', { limit: 500, sort: '-created_at' }),
       ]);
-      let items = pRes?.data?.items || [];
+      let items = progressItems;
       if (dataScope === 'self' && employee) {
         items = items.filter((p: ServiceProgress) =>
           p.ops_person === employee.name || p.sales_person === employee.name || p.design_person === employee.name
         );
       }
       setProgresses(items);
-      setAllTasks(tRes?.data?.items || []);
-      setAllCustomers(cRes?.data?.items || []);
-      setAllEmployees(eRes?.data?.items || []);
-      setAllSubscriptions(decorateEffectiveSubscriptions(sRes?.data?.items || []));
+      setAllTasks(taskItems);
+      setAllCustomers(customerItems);
+      setAllEmployees(employeeItems);
+      setAllSubscriptions(decorateEffectiveSubscriptions(subscriptionItems));
     } catch (err) {
       console.error(err);
-      toast.error('加载数据失败');
+      toast.error(getErrorMessage(err, '加载数据失败'));
     } finally {
       setLoading(false);
     }
@@ -356,24 +681,81 @@ export default function ServiceBoard() {
     const updatedWeek = progresses.filter(p => isUpdatedThisWeek(p)).length;
     const longNoUpd = progresses.filter(p => isLongNoUpdate(p)).length;
     const expiring = progresses.filter(p => isExpiringSoon(p)).length;
+    const visibleProgressIds = new Set(progresses.map(p => p.id));
+    const scopedTasks = allTasks.filter(t => !t.service_progress_id || visibleProgressIds.has(t.service_progress_id));
+    const weeklyPlatformRows = progresses.map(p => getWeeklyPlatformProgress(p, scopedTasks));
+    const weeklyPlatformTarget = weeklyPlatformRows.reduce((sum, item) => sum + item.platformTarget, 0);
+    const weeklyPlatformDone = weeklyPlatformRows.reduce((sum, item) => sum + item.platformDone, 0);
+    const weeklyMissingPlatforms = weeklyPlatformRows.reduce((sum, item) => sum + item.missingPlatforms.length, 0);
+    const weeklyReportTarget = weeklyPlatformRows.reduce((sum, item) => sum + item.weeklyReportTarget, 0);
+    const weeklyReportDone = weeklyPlatformRows.reduce((sum, item) => sum + item.weeklyReportDone, 0);
+    const weeklyMissingReports = Math.max(0, weeklyReportTarget - weeklyReportDone);
 
-    const opsMap: Record<string, { total: number; pending: number; issues: number }> = {};
+    const taskTotal = scopedTasks.filter(t => t.status !== 'cancelled').length;
+    const taskCompleted = scopedTasks.filter(t => t.status === 'completed').length;
+    const taskPending = scopedTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length;
+    const taskOverdue = scopedTasks.filter(t => t.due_date && t.due_date < todayStr() && t.status !== 'completed' && t.status !== 'cancelled').length;
+    const lowQualityCompleted = scopedTasks.filter(t => t.status === 'completed' && t.completion_quality === 'low_quality').length;
+    const completionRate = taskTotal > 0 ? Math.round((taskCompleted / taskTotal) * 100) : 100;
+    const healthScore = Math.max(0, Math.min(100, completionRate - lowQualityCompleted * 4 - taskOverdue * 5 - longNoUpd * 3 - withIssue * 4 - weeklyMissingPlatforms * 2 - weeklyMissingReports * 3));
+
+    const opsMap: Record<string, { total: number; pending: number; issues: number; completed: number; lowQuality: number }> = {};
     progresses.forEach(p => {
       if (p.ops_person) {
-        if (!opsMap[p.ops_person]) opsMap[p.ops_person] = { total: 0, pending: 0, issues: 0 };
+        if (!opsMap[p.ops_person]) opsMap[p.ops_person] = { total: 0, pending: 0, issues: 0, completed: 0, lowQuality: 0 };
         opsMap[p.ops_person].total++;
         if (hasIssue(p)) opsMap[p.ops_person].issues++;
       }
     });
-    allTasks.forEach(t => {
+    scopedTasks.forEach(t => {
+      if (t.assignee_name) {
+        if (!opsMap[t.assignee_name]) opsMap[t.assignee_name] = { total: 0, pending: 0, issues: 0, completed: 0, lowQuality: 0 };
+      }
       if (t.assignee_name && t.status !== 'completed' && t.status !== 'cancelled') {
-        if (!opsMap[t.assignee_name]) opsMap[t.assignee_name] = { total: 0, pending: 0, issues: 0 };
         opsMap[t.assignee_name].pending++;
+      }
+      if (t.assignee_name && t.status === 'completed') {
+        opsMap[t.assignee_name].completed++;
+        if (t.completion_quality === 'low_quality') opsMap[t.assignee_name].lowQuality++;
       }
     });
 
-    return { total, active, withIssue, overdueCount, updatedWeek, longNoUpd, expiring, opsMap };
+    return {
+      total, active, withIssue, overdueCount, updatedWeek, longNoUpd, expiring,
+      taskTotal, taskCompleted, taskPending, taskOverdue, lowQualityCompleted, completionRate, healthScore, opsMap,
+      weeklyPlatformTarget, weeklyPlatformDone, weeklyMissingPlatforms, weeklyReportTarget, weeklyReportDone, weeklyMissingReports,
+    };
   }, [progresses, allTasks]);
+
+  const weeklyActionItems = useMemo(() => (
+    progresses
+      .filter(sp => !['ended', 'paused'].includes(sp.service_stage))
+      .map(sp => ({ sp, plan: getWeeklyTaskPlan(sp, allTasks) }))
+      .filter(item => item.plan.platforms.length > 0 && item.plan.totalRemainingToDo > 0)
+      .sort((a, b) => b.plan.totalRemainingToDo - a.plan.totalRemainingToDo)
+  ), [progresses, allTasks]);
+
+  const filteredWeeklyActionItems = useMemo(() => {
+    const visibleIds = new Set(filtered.map(sp => sp.id));
+    return weeklyActionItems.filter(item => visibleIds.has(item.sp.id));
+  }, [weeklyActionItems, filtered]);
+
+  const selectedCompletionCopy = useMemo(
+    () => completionCopies.find(item => String(item.id) === completionForm.selected_copy_id) || null,
+    [completionCopies, completionForm.selected_copy_id],
+  );
+
+  const selectedCompletionMaterial = useMemo(
+    () => completionMaterials.find(item => String(item.id) === completionForm.selected_material_id) || null,
+    [completionMaterials, completionForm.selected_material_id],
+  );
+
+  const completionContractPlatforms = useMemo(() => {
+    const progress = completeTaskTarget
+      ? progresses.find(p => p.id === completeTaskTarget.service_progress_id) || selectedProgress
+      : selectedProgress;
+    return progress ? inferPlatformsFromPackageName(progress.package_name) : [];
+  }, [completeTaskTarget, progresses, selectedProgress]);
 
   // ==================== Task stats per progress ====================
   const getTaskStats = useCallback((progressId: number) => {
@@ -383,13 +765,24 @@ export default function ServiceBoard() {
     const pending = tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
     const overdue = tasks.filter(t => t.status === 'delayed' || (t.due_date && t.due_date < todayStr() && t.status !== 'completed' && t.status !== 'cancelled')).length;
     const waitingClient = tasks.filter(t => t.status === 'waiting_client').length;
-    return { total, completed, pending, overdue, waitingClient };
+    const lowQuality = tasks.filter(t => t.status === 'completed' && t.completion_quality === 'low_quality').length;
+    return { total, completed, pending, overdue, waitingClient, lowQuality };
   }, [allTasks]);
 
   // ==================== Permissions ====================
-  const canEdit = isAdmin || role === 'ops';
-  const canCreate = isAdmin || role === 'ops';
-  const canDelete = isAdmin;
+  const currentRoleText = `${role || ''} ${employee?.role || ''} ${employee?.name || ''}`.toLowerCase();
+  const isServiceAdmin = isAdmin || ['super_admin', 'admin', 'system_admin', 'administrator', '系统管理员', '超级管理员', '管理员'].some(label => currentRoleText.includes(label.toLowerCase()));
+  const canEdit = isServiceAdmin || role === 'ops' || hasPermission('task_edit');
+  const canCreate = isServiceAdmin || role === 'ops' || hasPermission('task_create');
+  const canDelete = isServiceAdmin || hasPermission('task_delete');
+  const canAddServiceTask = canCreate || canEdit;
+  const canOperateTask = (task: ServiceTask) => {
+    if (canEdit) return true;
+    const operatorName = employee?.name || '';
+    if (!operatorName) return false;
+    const relatedProgress = progresses.find(item => item.id === task.service_progress_id);
+    return task.assignee_name === operatorName || relatedProgress?.ops_person === operatorName;
+  };
 
   // ==================== Form Helpers ====================
   function emptyProgressForm() {
@@ -407,7 +800,7 @@ export default function ServiceBoard() {
   function emptyTaskForm() {
     return {
       service_progress_id: 0, customer_id: 0, customer_name: '',
-      task_name: '', task_type: 'other', assignee_name: '', priority: 'medium',
+      task_name: '', task_type: 'other', platform: '', assignee_name: '', priority: 'medium',
       status: 'pending', due_date: '', notes: '',
     };
   }
@@ -507,14 +900,14 @@ export default function ServiceBoard() {
       }
 
       if (editingProgressId) {
-        await client.entities.service_progresses.update({ id: String(editingProgressId), data });
+        await authedUpdateEntity<ServiceProgress>('service_progresses', editingProgressId, data);
         toast.success('服务进度已更新');
         try {
           logOperation({ customerId: progressForm.customer_id, actionType: 'edit_customer', actionDetail: `更新服务进度: 阶段=${allStageLabels[effectiveStage] || effectiveStage}, 进度=${progressForm.progress_percent}%, 摘要=${progressForm.last_work_summary || '无'}`, operatorName: op });
         } catch { /* ignore log errors */ }
       } else {
         data.created_at = now;
-        await client.entities.service_progresses.create({ data });
+        await authedCreateEntity<ServiceProgress>('service_progresses', data);
         toast.success('服务进度已创建');
         try {
           logOperation({ customerId: progressForm.customer_id, actionType: 'create_customer', actionDetail: `新增服务进度: ${progressForm.customer_name}, 类型=${serviceTypeLabels[progressForm.service_type]}, 阶段=${allStageLabels[effectiveStage]}`, operatorName: op });
@@ -524,7 +917,7 @@ export default function ServiceBoard() {
       await loadData();
       // Refresh detail view if we were editing the currently selected progress
       if (selectedProgress && editingProgressId === selectedProgress.id) {
-        const refreshed = (await client.entities.service_progresses.get({ id: String(editingProgressId) }))?.data;
+        const refreshed = await authedGetEntity<ServiceProgress>('service_progresses', editingProgressId);
         if (refreshed) setSelectedProgress(refreshed);
       }
     } catch (err: unknown) {
@@ -542,23 +935,67 @@ export default function ServiceBoard() {
     try {
       const now = new Date().toISOString();
       const op = employee?.name || '管理员';
-      await client.entities.service_progresses.update({
-        id: String(sp.id),
-        data: {
-          service_stage: nextStage,
-          progress_percent: defaultProg >= 0 ? defaultProg : sp.progress_percent,
-          last_update_time: now,
-          last_update_person: op,
-        },
+      await authedUpdateEntity<ServiceProgress>('service_progresses', sp.id, {
+        service_stage: nextStage,
+        progress_percent: defaultProg >= 0 ? defaultProg : sp.progress_percent,
+        last_update_time: now,
+        last_update_person: op,
       });
       toast.success(`已推进到: ${allStageLabels[nextStage] || nextStage}`);
       logOperation({ customerId: sp.customer_id, actionType: 'edit_customer', actionDetail: `推进服务阶段: ${sp.customer_name} ${allStageLabels[sp.service_stage]} → ${allStageLabels[nextStage]}`, operatorName: op });
       await loadData();
       if (selectedProgress?.id === sp.id) {
-        const refreshed = (await client.entities.service_progresses.get({ id: String(sp.id) }))?.data;
+        const refreshed = await authedGetEntity<ServiceProgress>('service_progresses', sp.id);
         if (refreshed) setSelectedProgress(refreshed);
       }
-    } catch { toast.error('推进失败'); }
+    } catch (err) {
+      console.error('Advance service stage error:', err);
+      toast.error(getErrorMessage(err, '推进失败'));
+    }
+  };
+
+  const handleClientMaterialReceived = async (sp: ServiceProgress) => {
+    try {
+      const now = new Date().toISOString();
+      const op = employee?.name || '管理员';
+      const nextStage = getNextStage(sp.service_type, sp.service_stage);
+      const defaultProg = nextStage ? getDefaultProgress(sp.service_type, nextStage) : -1;
+      const waitingTasks = allTasks.filter(task => task.service_progress_id === sp.id && task.status === 'waiting_client');
+
+      await Promise.all(waitingTasks.map(task => authedUpdateEntity<ServiceTask>('service_tasks', task.id, {
+        status: 'in_progress',
+        completed_date: '',
+      })));
+
+      const data: Record<string, unknown> = {
+        issue_status: 'none',
+        issue_resolved: true,
+        issue_description: '',
+        issue_resolved_date: todayStr(),
+        last_update_time: now,
+        last_update_person: op,
+        last_work_summary: waitingTasks.length > 0
+          ? `客户资料已收到，${waitingTasks.length} 个等待客户的任务已恢复进行中`
+          : '客户资料已收到，卡点已解除',
+      };
+
+      if (nextStage) {
+        data.service_stage = nextStage;
+        data.progress_percent = defaultProg >= 0 ? defaultProg : sp.progress_percent;
+      }
+
+      await authedUpdateEntity<ServiceProgress>('service_progresses', sp.id, data);
+      toast.success(nextStage ? `资料已收到，已推进到：${allStageLabels[nextStage] || nextStage}` : '资料已收到，卡点已解除');
+      await loadData();
+      if (selectedProgress?.id === sp.id) {
+        await refreshDetailTasks(sp.id);
+        const refreshed = await authedGetEntity<ServiceProgress>('service_progresses', sp.id);
+        if (refreshed) setSelectedProgress(refreshed);
+      }
+    } catch (err) {
+      console.error('Resolve waiting material error:', err);
+      toast.error(`推进失败: ${getErrorMessage(err, '未知错误')}`);
+    }
   };
 
   // Quick update work summary
@@ -574,53 +1011,176 @@ export default function ServiceBoard() {
     try {
       const now = new Date().toISOString();
       const op = employee?.name || '管理员';
-      await client.entities.service_progresses.update({
-        id: String(quickUpdateSp.id),
-        data: { last_work_summary: quickUpdateSummary, last_update_time: now, last_update_person: op },
+      await authedUpdateEntity<ServiceProgress>('service_progresses', quickUpdateSp.id, {
+        last_work_summary: quickUpdateSummary,
+        last_update_time: now,
+        last_update_person: op,
       });
       toast.success('工作摘要已更新');
       setShowQuickUpdate(false);
       await loadData();
       if (selectedProgress?.id === quickUpdateSp.id) {
-        const refreshed = (await client.entities.service_progresses.get({ id: String(quickUpdateSp.id) }))?.data;
+        const refreshed = await authedGetEntity<ServiceProgress>('service_progresses', quickUpdateSp.id);
         if (refreshed) setSelectedProgress(refreshed);
       }
     } catch { toast.error('更新失败'); }
     finally { setSavingQuickUpdate(false); }
   };
 
+  const refreshDetailTasks = async (progressId: number) => {
+    const items = await authedListEntity<ServiceTask>('service_tasks', { query: { service_progress_id: progressId }, sort: 'created_at', limit: 100 });
+    setDetailTasks(items);
+    return items;
+  };
+
+  const refreshProgressDetail = async (progressId: number) => {
+    const [progress] = await Promise.all([
+      authedGetEntity<ServiceProgress>('service_progresses', progressId),
+      refreshDetailTasks(progressId),
+    ]);
+    if (progress) setSelectedProgress(progress);
+  };
+
+  const openCompleteTask = async (task: ServiceTask) => {
+    const progress = progresses.find(p => p.id === task.service_progress_id) || selectedProgress;
+    const contractPlatforms = progress ? inferPlatformsFromPackageName(progress.package_name) : [];
+    setCompleteTaskTarget(task);
+    setCompletionForm({ platform: task.platform || contractPlatforms[0] || '', selected_copy_id: '', selected_material_id: '', completion_note: '' });
+    setCompletionCopies([]);
+    setCompletionMaterials([]);
+    setLoadingCompletionRefs(true);
+    try {
+      const [copyRes, materialRes] = await Promise.all([
+        invokeWithAuth({
+          url: '/api/v1/entities/customer_ai_copies',
+          method: 'GET',
+          data: { query: JSON.stringify({ customer_id: task.customer_id }), sort: '-updated_at', limit: 100 },
+        }),
+        invokeWithAuth({
+          url: '/api/v1/entities/customer_materials',
+          method: 'GET',
+          data: { query: JSON.stringify({ customer_id: task.customer_id }), sort: '-updated_at', limit: 100 },
+        }),
+      ]);
+      setCompletionCopies(copyRes?.data?.items || []);
+      setCompletionMaterials(materialRes?.data?.items || []);
+    } catch (err) {
+      console.error('Load completion references error:', err);
+      toast.error(getErrorMessage(err, '加载客户文案/素材失败'));
+    } finally {
+      setLoadingCompletionRefs(false);
+    }
+  };
+
+  const handleCompleteTask = async () => {
+    if (!completeTaskTarget) return;
+    setSavingCompletion(true);
+    try {
+      const selectedCopyId = completionForm.selected_copy_id ? Number(completionForm.selected_copy_id) : null;
+      const selectedMaterialId = completionForm.selected_material_id ? Number(completionForm.selected_material_id) : null;
+      const platform = completionForm.platform || selectedCompletionMaterial?.platform || selectedCompletionCopy?.platform || null;
+      const res = await invokeWithAuth({
+        url: `/api/v1/entities/service_tasks/${completeTaskTarget.id}/complete`,
+        method: 'POST',
+        data: {
+          platform,
+          selected_copy_id: selectedCopyId,
+          selected_material_id: selectedMaterialId,
+          completion_note: completionForm.completion_note,
+        },
+      });
+      const completedTask = res?.data as ServiceTask;
+      const isLowQuality = completedTask?.completion_quality === 'low_quality';
+      toast.success(isLowQuality ? '任务已完成，但系统标记为低质量完成' : '任务已完成，并已同步文案/素材使用记录');
+      setCompleteTaskTarget(null);
+      await loadData();
+      if (selectedProgress) {
+        await refreshProgressDetail(selectedProgress.id);
+      }
+    } catch (err) {
+      console.error('Complete task error:', err);
+      toast.error(getErrorMessage(err, '完成任务失败'));
+    } finally {
+      setSavingCompletion(false);
+    }
+  };
+
+  const completeTaskDirectly = async (task: ServiceTask) => {
+    setSavingTaskActionId(task.id);
+    try {
+      const res = await invokeWithAuth({
+        url: `/api/v1/entities/service_tasks/${task.id}/complete`,
+        method: 'POST',
+        data: {
+          platform: task.platform || null,
+          selected_copy_id: null,
+          selected_material_id: null,
+          completion_note: '流程任务直接确认完成',
+        },
+      });
+      const completedTask = res?.data as ServiceTask;
+      toast.success(completedTask?.completion_quality === 'low_quality' ? '任务已完成，但系统标记为低质量完成' : '任务已完成');
+      await loadData();
+      if (selectedProgress) {
+        await refreshProgressDetail(selectedProgress.id);
+      }
+    } catch (err) {
+      console.error('Direct complete task error:', err);
+      toast.error(getErrorMessage(err, '完成任务失败'));
+    } finally {
+      setSavingTaskActionId(null);
+    }
+  };
+
   // Quick toggle task status
   const handleQuickTaskStatus = async (task: ServiceTask, newStatus: string) => {
+    if (newStatus === 'completed') {
+      if (requiresCompletionReference(task)) {
+        await openCompleteTask(task);
+      } else {
+        await completeTaskDirectly(task);
+      }
+      return;
+    }
     try {
+      setSavingTaskActionId(task.id);
       const completedDate = newStatus === 'completed' ? todayStr() : null;
-      await client.entities.service_tasks.update({
-        id: String(task.id),
-        data: { status: newStatus, completed_date: completedDate },
+      await authedUpdateEntity<ServiceTask>('service_tasks', task.id, {
+        status: newStatus,
+        completed_date: completedDate || '',
       });
       toast.success(`任务状态已更新为: ${taskStatusLabels[newStatus]}`);
       await loadData();
       if (selectedProgress) {
-        const res = await client.entities.service_tasks.queryAll({ query: { service_progress_id: selectedProgress.id }, sort: 'created_at', limit: 100 });
-        setDetailTasks(res?.data?.items || []);
+        await refreshProgressDetail(selectedProgress.id);
       }
     } catch (err: unknown) {
       console.error('Quick task status error:', err);
-      const msg = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'data' in err ? JSON.stringify((err as Record<string, unknown>).data) : '未知错误');
-      toast.error(`更新失败: ${msg}`);
+      toast.error(`更新失败: ${getErrorMessage(err, '未知错误')}`);
+    } finally {
+      setSavingTaskActionId(null);
     }
   };
 
   const openCreateTask = (sp: ServiceProgress) => {
-    setTaskForm({ ...emptyTaskForm(), service_progress_id: sp.id, customer_id: sp.customer_id, customer_name: sp.customer_name });
+    const platforms = inferPlatformsFromPackageName(sp.package_name);
+    setTaskForm({ ...emptyTaskForm(), service_progress_id: sp.id, customer_id: sp.customer_id, customer_name: sp.customer_name, platform: platforms[0] || '' });
     setEditingTaskId(null);
     setShowTaskForm(true);
+  };
+
+  const openCreateTaskSafely = (sp: ServiceProgress, event?: { preventDefault: () => void; stopPropagation: () => void }) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setDetailTab('tasks');
+    openCreateTask(sp);
   };
 
   const openEditTask = (t: ServiceTask) => {
     setTaskForm({
       service_progress_id: t.service_progress_id, customer_id: t.customer_id, customer_name: t.customer_name,
       task_name: t.task_name, task_type: t.task_type || 'other', assignee_name: t.assignee_name || '',
-      priority: t.priority || 'medium', status: t.status, due_date: t.due_date?.slice(0, 10) || '', notes: t.notes || '',
+      platform: t.platform || '', priority: t.priority || 'medium', status: t.status, due_date: t.due_date?.slice(0, 10) || '', notes: t.notes || '',
     });
     setEditingTaskId(t.id);
     setShowTaskForm(true);
@@ -638,6 +1198,7 @@ export default function ServiceBoard() {
         customer_name: taskForm.customer_name || '',
         task_name: taskForm.task_name.trim(),
         task_type: taskForm.task_type || 'other',
+        platform: taskForm.platform || null,
         assignee_name: taskForm.assignee_name || null,
         priority: taskForm.priority || 'medium',
         status: taskForm.status || 'pending',
@@ -646,24 +1207,112 @@ export default function ServiceBoard() {
         completed_date: taskForm.status === 'completed' ? todayStr() : null,
       };
       if (editingTaskId) {
-        await client.entities.service_tasks.update({ id: String(editingTaskId), data });
+        await invokeWithAuth({
+          url: `/api/v1/entities/service_tasks/${editingTaskId}`,
+          method: 'PUT',
+          data,
+        });
         toast.success('任务已更新');
       } else {
         data.created_at = now;
-        await client.entities.service_tasks.create({ data });
+        await invokeWithAuth({
+          url: '/api/v1/entities/service_tasks',
+          method: 'POST',
+          data,
+        });
         toast.success('任务已创建');
       }
       setShowTaskForm(false);
       await loadData();
       if (selectedProgress) {
-        const res = await client.entities.service_tasks.queryAll({ query: { service_progress_id: selectedProgress.id }, sort: 'created_at', limit: 100 });
-        setDetailTasks(res?.data?.items || []);
+        await refreshProgressDetail(selectedProgress.id);
       }
     } catch (err: unknown) {
       console.error('Save task error:', err);
       const msg = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'data' in err ? JSON.stringify((err as Record<string, unknown>).data) : '未知错误');
       toast.error(`保存失败: ${msg}`);
     } finally { setSavingTask(false); }
+  };
+
+  const generateWeeklyTasksForProgresses = async (targets: ServiceProgress[]) => {
+    const weekEnd = getWeekEndStr();
+    const now = new Date().toISOString();
+    let createdCount = 0;
+
+    for (const sp of targets) {
+      const plan = getWeeklyTaskPlan(sp, allTasks);
+      if (plan.platforms.length === 0) continue;
+
+      for (const platformPlan of plan.platformPlans) {
+        for (let i = 0; i < platformPlan.remainingToCreate; i += 1) {
+          const sequence = platformPlan.completed + platformPlan.scheduled + i + 1;
+          await authedCreateEntity<ServiceTask>('service_tasks', {
+            service_progress_id: sp.id,
+            customer_id: sp.customer_id,
+            customer_name: sp.customer_name,
+            task_name: `${platformLabels[platformPlan.platform] || platformPlan.platform} 本周第 ${sequence} 次更新`,
+            task_type: 'publish_content',
+            platform: platformPlan.platform,
+            assignee_name: sp.ops_person || null,
+            priority: 'medium',
+            status: 'pending',
+            due_date: weekEnd,
+            notes: '系统按套餐平台自动生成：合作平台每周更新 3 次。',
+            created_at: now,
+          });
+          createdCount += 1;
+        }
+      }
+
+      if (plan.reportRemainingToCreate > 0) {
+        await authedCreateEntity<ServiceTask>('service_tasks', {
+          service_progress_id: sp.id,
+          customer_id: sp.customer_id,
+          customer_name: sp.customer_name,
+          task_name: '本周运营总结汇报',
+          task_type: 'submit_report',
+          platform: null,
+          assignee_name: sp.ops_person || null,
+          priority: 'medium',
+          status: 'pending',
+          due_date: weekEnd,
+          notes: '系统自动生成：每个合作客户每周总结汇报 1 次。',
+          created_at: now,
+        });
+        createdCount += 1;
+      }
+    }
+
+    return createdCount;
+  };
+
+  const handleGenerateWeeklyTasks = async (targets?: ServiceProgress[]) => {
+    const safeTargets = (targets || filteredWeeklyActionItems.map(item => item.sp))
+      .filter(sp => getWeeklyTaskPlan(sp, allTasks).totalRemainingToCreate > 0);
+
+    if (safeTargets.length === 0) {
+      toast.info('本周任务已经排好了，无需重复生成');
+      return;
+    }
+
+    setGeneratingWeeklyTasks(true);
+    try {
+      const createdCount = await generateWeeklyTasksForProgresses(safeTargets);
+      if (createdCount > 0) {
+        toast.success(`已生成 ${createdCount} 个本周运营任务`);
+      } else {
+        toast.info('没有需要新生成的任务');
+      }
+      await loadData();
+      if (selectedProgress) {
+        await refreshProgressDetail(selectedProgress.id);
+      }
+    } catch (err) {
+      console.error('Generate weekly tasks error:', err);
+      toast.error(getErrorMessage(err, '生成本周任务失败'));
+    } finally {
+      setGeneratingWeeklyTasks(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -674,20 +1323,19 @@ export default function ServiceBoard() {
         // Also delete associated tasks
         const relatedTasks = allTasks.filter(t => t.service_progress_id === deleteTarget.item.id);
         for (const t of relatedTasks) {
-          try { await client.entities.service_tasks.delete({ id: String(t.id) }); } catch { /* ignore */ }
+          try { await authedDeleteEntity('service_tasks', t.id); } catch { /* ignore */ }
         }
-        await client.entities.service_progresses.delete({ id: String(deleteTarget.item.id) });
+        await authedDeleteEntity('service_progresses', deleteTarget.item.id);
         toast.success('服务进度及关联任务已删除');
         if (selectedProgress?.id === deleteTarget.item.id) setSelectedProgress(null);
       } else {
-        await client.entities.service_tasks.delete({ id: String(deleteTarget.item.id) });
+        await authedDeleteEntity('service_tasks', deleteTarget.item.id);
         toast.success('任务已删除');
       }
       setDeleteTarget(null);
       await loadData();
       if (selectedProgress && deleteTarget.type === 'task') {
-        const res = await client.entities.service_tasks.queryAll({ query: { service_progress_id: selectedProgress.id }, sort: 'created_at', limit: 100 });
-        setDetailTasks(res?.data?.items || []);
+        await refreshProgressDetail(selectedProgress.id);
       }
     } catch (err: unknown) {
       console.error('Delete error:', err);
@@ -700,8 +1348,7 @@ export default function ServiceBoard() {
     setSelectedProgress(sp);
     setDetailTab('overview');
     try {
-      const res = await client.entities.service_tasks.queryAll({ query: { service_progress_id: sp.id }, sort: 'created_at', limit: 100 });
-      setDetailTasks(res?.data?.items || []);
+      await refreshDetailTasks(sp.id);
     } catch { setDetailTasks([]); }
   };
 
@@ -771,6 +1418,8 @@ export default function ServiceBoard() {
     const issue = hasIssue(sp);
     const nextStage = getNextStage(sp.service_type, sp.service_stage);
     const remainDays = getServiceRemainingDays(sp);
+    const weekly = getWeeklyPlatformProgress(sp, allTasks);
+    const onboarding = getOnboardingProgress(sp, allTasks);
 
     return (
       <div
@@ -821,9 +1470,46 @@ export default function ServiceBoard() {
           <span>销售: <span className="text-slate-700">{sp.sales_person || '-'}</span></span>
         </div>
 
+        {weekly.platforms.length > 0 && (
+          <div className="mb-2 rounded-md bg-slate-50 border border-slate-100 p-2">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-slate-500">本周平台更新</span>
+              <span className={weekly.platformDone >= weekly.platformTarget ? 'text-green-600 font-medium' : 'text-orange-600 font-medium'}>
+                {weekly.platformDone}/{weekly.platformTarget}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {weekly.platforms.map(platform => (
+                <Badge key={platform} className={`text-[10px] ${(weekly.counts[platform] || 0) >= WEEKLY_PLATFORM_UPDATE_TARGET ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                  {platformLabels[platform] || platform} {Math.min(weekly.counts[platform] || 0, WEEKLY_PLATFORM_UPDATE_TARGET)}/{WEEKLY_PLATFORM_UPDATE_TARGET}
+                </Badge>
+              ))}
+              <Badge className={`text-[10px] ${weekly.weeklyReportDone >= weekly.weeklyReportTarget ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>
+                周报 {weekly.weeklyReportDone}/{weekly.weeklyReportTarget}
+              </Badge>
+            </div>
+          </div>
+        )}
+
+        {onboarding.total > 0 && !onboarding.isComplete && (
+          <div className="mb-2 rounded-md bg-blue-50 border border-blue-100 p-2">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-blue-700 font-medium">前期流程</span>
+              <span className="text-blue-700">{onboarding.completed}/{onboarding.total}</span>
+            </div>
+            <div className="w-full bg-blue-100 rounded-full h-1.5 mt-1.5">
+              <div className="h-1.5 rounded-full bg-blue-500 transition-all" style={{ width: `${onboarding.total > 0 ? Math.round((onboarding.completed / onboarding.total) * 100) : 0}%` }} />
+            </div>
+            {onboarding.nextStep && (
+              <p className="text-[11px] text-blue-700 mt-1">下一步：{onboarding.nextStep.label}</p>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center gap-3 text-xs border-t border-slate-100 pt-2">
           <span className="flex items-center gap-1 text-slate-500"><CheckCircle2 className="w-3 h-3 text-green-500" />{ts.completed}/{ts.total}</span>
           {ts.overdue > 0 && <span className="flex items-center gap-1 text-red-600"><XCircle className="w-3 h-3" />{ts.overdue}逾期</span>}
+          {ts.lowQuality > 0 && <span className="flex items-center gap-1 text-orange-600"><AlertTriangle className="w-3 h-3" />{ts.lowQuality}低质</span>}
           {ts.waitingClient > 0 && <span className="flex items-center gap-1 text-amber-600"><Clock className="w-3 h-3" />{ts.waitingClient}待客户</span>}
           <span className="ml-auto text-slate-400">{sp.last_update_time?.slice(0, 10) || '-'}</span>
         </div>
@@ -853,17 +1539,237 @@ export default function ServiceBoard() {
         {issue && (
           <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
             <span className="font-medium">{issueStatusLabels[sp.issue_status]}</span>: {sp.issue_description || '无描述'}
+            {canEdit && isWaitingForClientMaterial(sp) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2 h-7 w-full border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                onClick={e => {
+                  e.stopPropagation();
+                  void handleClientMaterialReceived(sp);
+                }}
+              >
+                资料已收到并继续推进
+              </Button>
+            )}
           </div>
         )}
       </div>
     );
   };
 
+  const renderTaskActionDialogs = () => (
+    <>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={v => { if (!v) setDeleteTarget(null); }}
+        title={deleteTarget?.type === 'progress' ? '确认删除服务进度' : '确认删除任务'}
+        description={
+          deleteTarget?.type === 'progress'
+            ? `确定要删除「${deleteTarget?.item?.customer_name}」的服务进度记录吗？关联的所有任务也将被删除。此操作不可撤销。`
+            : `确定要删除任务「${deleteTarget?.item?.task_name}」吗？此操作不可撤销。`
+        }
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
+
+      <Dialog open={!!completeTaskTarget} onOpenChange={v => { if (!v) setCompleteTaskTarget(null); }}>
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>完成任务 - {completeTaskTarget?.task_name}</DialogTitle>
+          </DialogHeader>
+          {loadingCompletionRefs ? (
+            <div className="py-8 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
+              <p className="text-sm text-slate-500">正在加载该客户的文案和素材...</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800 flex gap-2">
+                <ClipboardCheck className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  {requiresCompletionReference(completeTaskTarget)
+                    ? '内容发布、评论回复、周报类任务建议选择实际使用的文案或素材；如果都不选也可以完成，但系统会标记为低质量完成。'
+                    : '流程类任务可以直接确认完成；如果有相关文案或素材，也可以顺手选择，方便后续追踪。'}
+                </span>
+              </div>
+
+              <div>
+                <Label>本次完成平台</Label>
+                <NativeSelect
+                  value={completionForm.platform}
+                  onChange={v => setCompletionForm({ ...completionForm, platform: v })}
+                  options={[
+                    { value: '', label: '不限定平台 / 周总结汇报' },
+                    ...Array.from(new Set([...completionContractPlatforms, ...Object.keys(platformLabels).filter(key => key !== 'general')])).map(platform => ({
+                      value: platform,
+                      label: completionContractPlatforms.includes(platform)
+                        ? `${platformLabels[platform] || platform}（套餐合作平台）`
+                        : platformLabels[platform] || platform,
+                    })),
+                  ]}
+                />
+                <p className="text-xs text-slate-400 mt-1">平台更新任务需要选择对应平台；周总结汇报可以选择“不限定平台”。</p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-blue-500" /> 使用文案</Label>
+                  <NativeSelect
+                    value={completionForm.selected_copy_id}
+                    onChange={v => {
+                      const nextCopy = completionCopies.find(item => String(item.id) === v);
+                      setCompletionForm({
+                        ...completionForm,
+                        selected_copy_id: v,
+                        platform: completionForm.platform || (nextCopy?.platform && nextCopy.platform !== 'general' ? nextCopy.platform : ''),
+                      });
+                    }}
+                    options={[
+                      { value: '', label: completionCopies.length ? '不选择文案' : '暂无可选文案' },
+                      ...completionCopies.map(item => ({
+                        value: String(item.id),
+                        label: `${item.title || `文案 #${item.id}`} · ${platformLabels[item.platform] || item.platform} · ${copyTypeLabels[item.content_type] || item.content_type}`,
+                      })),
+                    ]}
+                  />
+                  {selectedCompletionCopy && (
+                    <div className="mt-2 rounded-md bg-slate-50 border border-slate-100 p-2 text-xs text-slate-600 max-h-28 overflow-y-auto">
+                      <p className="font-medium text-slate-700 mb-1">{selectedCompletionCopy.title}</p>
+                      <p className="whitespace-pre-wrap line-clamp-4">{selectedCompletionCopy.content}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="flex items-center gap-1.5"><FileImage className="w-3.5 h-3.5 text-emerald-500" /> 使用素材</Label>
+                  <NativeSelect
+                    value={completionForm.selected_material_id}
+                    onChange={v => {
+                      const nextMaterial = completionMaterials.find(item => String(item.id) === v);
+                      setCompletionForm({
+                        ...completionForm,
+                        selected_material_id: v,
+                        platform: completionForm.platform || (nextMaterial?.platform && nextMaterial.platform !== 'general' ? nextMaterial.platform : ''),
+                      });
+                    }}
+                    options={[
+                      { value: '', label: completionMaterials.length ? '不选择素材' : '暂无可选素材' },
+                      ...completionMaterials.map(item => ({
+                        value: String(item.id),
+                        label: `${item.title || item.file_name || `素材 #${item.id}`} · ${platformLabels[item.platform] || item.platform || '通用'} · ${materialTypeLabels[item.material_type] || item.material_type}`,
+                      })),
+                    ]}
+                  />
+                  {selectedCompletionMaterial && (
+                    <div className="mt-2 rounded-md bg-slate-50 border border-slate-100 p-2 text-xs text-slate-600">
+                      <p className="font-medium text-slate-700 mb-1">{selectedCompletionMaterial.title}</p>
+                      <div className="flex flex-wrap gap-1">
+                        <Badge className="text-[10px] bg-emerald-100 text-emerald-700">{materialTypeLabels[selectedCompletionMaterial.material_type] || selectedCompletionMaterial.material_type}</Badge>
+                        <Badge className="text-[10px] bg-blue-100 text-blue-700">{platformLabels[selectedCompletionMaterial.platform] || selectedCompletionMaterial.platform || '通用'}</Badge>
+                        <Badge className="text-[10px] bg-slate-100 text-slate-700">{selectedCompletionMaterial.usage_status || '未使用'}</Badge>
+                      </div>
+                      {selectedCompletionMaterial.file_url && <p className="mt-1 truncate text-blue-600">{selectedCompletionMaterial.file_url}</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label>完成说明</Label>
+                <Textarea
+                  value={completionForm.completion_note}
+                  onChange={e => setCompletionForm({ ...completionForm, completion_note: e.target.value })}
+                  rows={3}
+                  placeholder="例如：已用菜单图生成本周 Google 商家更新文案，等待客户确认图片。"
+                />
+              </div>
+
+              {requiresCompletionReference(completeTaskTarget) && !completionForm.selected_copy_id && !completionForm.selected_material_id && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs text-orange-800 flex gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>当前没有选择文案或素材，保存后会计入“低质量完成”。如果客户确实没有素材，可以在完成说明里写清楚原因。</span>
+                </div>
+              )}
+
+              {completeTaskTarget?.task_type === 'publish_content' && !completionForm.platform && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-800 flex gap-2">
+                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>当前没有选择平台，这次完成不会计入平台每周 3 次更新；如果这是周总结汇报，可以保持不限定平台。</span>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setCompleteTaskTarget(null)}>取消</Button>
+            <Button onClick={handleCompleteTask} disabled={savingCompletion || loadingCompletionRefs} className="bg-green-600 hover:bg-green-700">
+              {savingCompletion ? '保存中...' : '确认完成'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showTaskForm} onOpenChange={setShowTaskForm}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editingTaskId ? '编辑任务' : '新增任务'} - {taskForm.customer_name}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div><Label>任务名称 *</Label><Input value={taskForm.task_name} onChange={e => setTaskForm({ ...taskForm, task_name: e.target.value })} placeholder="例如：收集菜单图片" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>任务类型</Label><NativeSelect value={taskForm.task_type} onChange={v => setTaskForm({ ...taskForm, task_type: v })} options={Object.entries(taskTypeLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+              <div>
+                <Label>平台</Label>
+                <NativeSelect
+                  value={taskForm.platform}
+                  onChange={v => setTaskForm({ ...taskForm, platform: v })}
+                  options={[
+                    { value: '', label: '不限定平台 / 周总结汇报' },
+                    ...Object.entries(platformLabels)
+                      .filter(([key]) => key !== 'general')
+                      .map(([value, label]) => ({ value, label })),
+                  ]}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>负责人</Label>
+                <NativeSelect
+                  value={taskForm.assignee_name}
+                  onChange={v => setTaskForm({ ...taskForm, assignee_name: v })}
+                  options={[
+                    { value: '', label: '请选择' },
+                    ...activeEmployees.map(e => ({ value: e.name, label: `${e.name} (${e.role})` })),
+                    ...(taskForm.assignee_name && !activeEmployees.find(e => e.name === taskForm.assignee_name) ? [{ value: taskForm.assignee_name, label: `${taskForm.assignee_name} (当前)` }] : []),
+                  ]}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>优先级</Label><NativeSelect value={taskForm.priority} onChange={v => setTaskForm({ ...taskForm, priority: v })} options={Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+              <div><Label>状态</Label><NativeSelect value={taskForm.status} onChange={v => setTaskForm({ ...taskForm, status: v })} options={Object.entries(taskStatusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            </div>
+            <div><Label>截止日期</Label><Input type="date" value={taskForm.due_date} onChange={e => setTaskForm({ ...taskForm, due_date: e.target.value })} /></div>
+            <div><Label>备注</Label><Textarea value={taskForm.notes} onChange={e => setTaskForm({ ...taskForm, notes: e.target.value })} rows={2} placeholder="补充说明..." /></div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowTaskForm(false)}>取消</Button>
+            <Button onClick={handleSaveTask} disabled={savingTask} className="bg-blue-600 hover:bg-blue-700">{savingTask ? '保存中...' : '保存'}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+
   // ==================== DETAIL VIEW ====================
   if (selectedProgress) {
     const sp = selectedProgress;
     const ts = getTaskStats(sp.id);
     const nextStage = getNextStage(sp.service_type, sp.service_stage);
+    const weekly = getWeeklyPlatformProgress(sp, allTasks);
+    const weeklyTaskPlan = getWeeklyTaskPlan(sp, allTasks);
+    const onboarding = getOnboardingProgress(sp, detailTasks);
+    const activeDetailTasks = detailTasks.filter(task => task.status !== 'completed');
+    const completedDetailTasks = detailTasks.filter(task => task.status === 'completed');
 
     // Build richer timeline
     const timelineItems = [
@@ -874,7 +1780,18 @@ export default function ServiceBoard() {
         label: `创建任务: ${t.task_name} (${taskTypeLabels[t.task_type] || t.task_type})`,
         type: 'task' as const,
       })),
-      ...detailTasks.filter(t => t.completed_date).map(t => ({ time: t.completed_date, label: `完成任务: ${t.task_name}`, type: 'done' as const })),
+      ...detailTasks.filter(t => t.completed_date || t.completed_at).map(t => {
+        const refs = [
+          t.selected_copy_title ? `文案「${t.selected_copy_title}」` : '',
+          t.selected_material_title ? `素材「${t.selected_material_title}」` : '',
+          t.completion_quality === 'low_quality' ? '低质量完成' : '',
+        ].filter(Boolean);
+        return {
+          time: t.completed_at || t.completed_date || '',
+          label: `完成任务: ${t.task_name}${refs.length ? `（${refs.join('，')}）` : ''}`,
+          type: t.completion_quality === 'low_quality' ? 'issue' as const : 'done' as const,
+        };
+      }),
       ...(sp.issue_found_date && sp.issue_status !== 'none' ? [{ time: sp.issue_found_date, label: `发现问题: ${issueStatusLabels[sp.issue_status]} - ${sp.issue_description || '无描述'}`, type: 'issue' as const }] : []),
       ...(sp.issue_resolved && sp.issue_resolved_date ? [{ time: sp.issue_resolved_date, label: '问题已解决', type: 'done' as const }] : []),
       ...(sp.last_update_time ? [{ time: sp.last_update_time, label: `最近更新: ${sp.last_work_summary || '无描述'} (${sp.last_update_person || '-'})`, type: 'update' as const }] : []),
@@ -902,7 +1819,19 @@ export default function ServiceBoard() {
                 <ChevronRight className="w-3.5 h-3.5 mr-1" /> 推进到: {allStageLabels[nextStage]}
               </Button>
             )}
-            <Button size="sm" onClick={() => { openCreateTask(sp); setDetailTab('tasks'); }} className="bg-blue-600 hover:bg-blue-700 text-white"><Plus className="w-3.5 h-3.5 mr-1" /> 新增任务</Button>
+            {isWaitingForClientMaterial(sp) && (
+              <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100" onClick={() => handleClientMaterialReceived(sp)}>
+                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> 资料已收到并继续
+              </Button>
+            )}
+            {weeklyTaskPlan.totalRemainingToCreate > 0 && (
+              <Button size="sm" variant="outline" className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" onClick={() => handleGenerateWeeklyTasks([sp])} disabled={generatingWeeklyTasks}>
+                <ClipboardCheck className="w-3.5 h-3.5 mr-1" /> 生成本周任务 ({weeklyTaskPlan.totalRemainingToCreate})
+              </Button>
+            )}
+            {canCreate && (
+              <Button size="sm" onClick={() => { openCreateTask(sp); setDetailTab('tasks'); }} className="bg-blue-600 hover:bg-blue-700 text-white"><Plus className="w-3.5 h-3.5 mr-1" /> 新增任务</Button>
+            )}
             {canDelete && (
               <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50 ml-auto" onClick={() => setDeleteTarget({ type: 'progress', item: sp })}>
                 <Trash2 className="w-3.5 h-3.5 mr-1" /> 删除
@@ -914,7 +1843,12 @@ export default function ServiceBoard() {
         <Tabs value={detailTab} onValueChange={setDetailTab} className="w-full">
           <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="overview" className="text-xs">服务概览</TabsTrigger>
-            <TabsTrigger value="tasks" className="text-xs">任务清单 ({detailTasks.length})</TabsTrigger>
+            <TabsTrigger value="tasks" className="text-xs gap-1.5">
+              <span>任务清单 ({activeDetailTasks.length})</span>
+              <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+                已完成 {completedDetailTasks.length}
+              </span>
+            </TabsTrigger>
             <TabsTrigger value="timeline" className="text-xs">时间线 ({timelineItems.length})</TabsTrigger>
           </TabsList>
 
@@ -957,6 +1891,67 @@ export default function ServiceBoard() {
                 </div>
               </CardContent></Card>
 
+              {weekly.platforms.length > 0 && (
+                <Card className="border-slate-200"><CardContent className="p-5">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-3">合作平台本周达标</h3>
+                  <div className="space-y-2">
+                    {weekly.platforms.map(platform => {
+                      const done = Math.min(weekly.counts[platform] || 0, WEEKLY_PLATFORM_UPDATE_TARGET);
+                      const ok = done >= WEEKLY_PLATFORM_UPDATE_TARGET;
+                      return (
+                        <div key={platform} className="flex items-center justify-between text-sm">
+                          <span className="text-slate-600">{platformLabels[platform] || platform}</span>
+                          <Badge className={ok ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}>
+                            {done}/{WEEKLY_PLATFORM_UPDATE_TARGET} 次
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                    <div className="flex items-center justify-between text-sm pt-2 border-t border-slate-100">
+                      <span className="text-slate-600">周总结汇报</span>
+                      <Badge className={weekly.weeklyReportDone >= weekly.weeklyReportTarget ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}>
+                        {weekly.weeklyReportDone}/{weekly.weeklyReportTarget} 次
+                      </Badge>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-3">规则：合作平台每个平台每周更新 3 次，客户每周总结汇报 1 次。</p>
+                </CardContent></Card>
+              )}
+
+              {onboarding.total > 0 && (
+                <Card className="border-blue-100 bg-blue-50/40"><CardContent className="p-5">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <h3 className="text-sm font-semibold text-blue-800">前期运营流程</h3>
+                    <Badge className={onboarding.isComplete ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>
+                      {onboarding.completed}/{onboarding.total} 完成
+                    </Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {onboarding.steps.filter(step => step.task).map(step => (
+                      <div key={step.key} className="flex items-start gap-2 text-sm">
+                        {step.status === 'completed' ? (
+                          <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                        ) : (
+                          <Clock className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-slate-700">{step.label}</span>
+                            <Badge className={step.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}>
+                              {taskStatusLabels[step.status] || '待处理'}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-slate-500 truncate">{step.task?.task_name}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {onboarding.nextStep && (
+                    <p className="text-xs text-blue-700 mt-3">建议下一步优先处理：{onboarding.nextStep.label}</p>
+                  )}
+                </CardContent></Card>
+              )}
+
               <Card className="border-slate-200"><CardContent className="p-5">
                 <h3 className="text-sm font-semibold text-slate-700 mb-3">负责人 & 最近更新</h3>
                 <div className="space-y-2 text-sm">
@@ -981,6 +1976,16 @@ export default function ServiceBoard() {
                     <div className="flex justify-between"><span className="text-slate-500">发现时间</span><span>{sp.issue_found_date || '-'}</span></div>
                     <div className="flex justify-between"><span className="text-slate-500">负责人</span><span>{sp.issue_owner || '-'}</span></div>
                     {sp.issue_description && <div className="p-2 bg-red-50 rounded text-xs text-red-700">{sp.issue_description}</div>}
+                    {canEdit && isWaitingForClientMaterial(sp) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                        onClick={() => handleClientMaterialReceived(sp)}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> 客户资料已收到，解除卡点并推进
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-green-600 flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> 当前无问题</p>
@@ -994,6 +1999,7 @@ export default function ServiceBoard() {
                   <div className="text-center p-2 bg-green-50 rounded"><div className="text-lg font-bold text-green-600">{ts.completed}</div><div className="text-xs text-slate-500">已完成</div></div>
                   <div className="text-center p-2 bg-red-50 rounded"><div className="text-lg font-bold text-red-600">{ts.overdue}</div><div className="text-xs text-slate-500">逾期</div></div>
                   <div className="text-center p-2 bg-amber-50 rounded"><div className="text-lg font-bold text-amber-600">{ts.waitingClient}</div><div className="text-xs text-slate-500">待客户</div></div>
+                  <div className="text-center p-2 bg-orange-50 rounded col-span-2"><div className="text-lg font-bold text-orange-600">{ts.lowQuality}</div><div className="text-xs text-slate-500">低质量完成</div></div>
                 </div>
                 {ts.total > 0 && (
                   <div className="mt-3">
@@ -1010,63 +2016,206 @@ export default function ServiceBoard() {
 
           <TabsContent value="tasks">
             <Card className="border-slate-200"><CardContent className="p-5">
-              <div className="flex items-center justify-between mb-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
                 <span className="text-sm font-medium text-slate-600">服务任务清单</span>
-                {canEdit && <Button size="sm" onClick={() => openCreateTask(sp)} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-3.5 h-3.5 mr-1" /> 新增任务</Button>}
+                {canAddServiceTask && (
+                  <button
+                    type="button"
+                    onPointerDown={e => openCreateTaskSafely(sp, e)}
+                    onClick={e => openCreateTaskSafely(sp, e)}
+                    className="relative z-20 inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 active:bg-blue-800"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> 新增任务
+                  </button>
+                )}
               </div>
-              {detailTasks.length === 0 ? (
+              {activeDetailTasks.length === 0 && completedDetailTasks.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-sm text-slate-400 mb-3">暂无任务</p>
-                  {canEdit && (
-                    <Button size="sm" variant="outline" onClick={() => openCreateTask(sp)}>
+                  {canAddServiceTask && (
+                    <button
+                      type="button"
+                      onPointerDown={e => openCreateTaskSafely(sp, e)}
+                      onClick={e => openCreateTaskSafely(sp, e)}
+                      className="relative z-20 inline-flex h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
                       <Plus className="w-3.5 h-3.5 mr-1" /> 创建第一个任务
-                    </Button>
+                    </button>
                   )}
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {detailTasks.map(t => {
+                  {activeDetailTasks.length > 0 && (
+                    <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                      <span className="font-medium text-slate-600">待处理任务</span>
+                      <Badge className="bg-blue-100 text-blue-700">{activeDetailTasks.length} 个</Badge>
+                    </div>
+                  )}
+                  {activeDetailTasks.length === 0 && completedDetailTasks.length > 0 && (
+                    <div className="rounded-lg border border-green-100 bg-green-50 px-3 py-3 text-sm text-green-700">
+                      当前没有待处理任务，已完成任务在下方查看。
+                    </div>
+                  )}
+                  {[
+                    ...activeDetailTasks.map(task => ({ task, showCompletedHeader: false })),
+                    ...completedDetailTasks.map((task, index) => ({ task, showCompletedHeader: index === 0 })),
+                  ].map(({ task: t, showCompletedHeader }) => {
                     const isTaskOverdue = t.due_date && t.due_date < todayStr() && t.status !== 'completed' && t.status !== 'cancelled';
+                    const canTaskOperate = canOperateTask(t);
+                    const isTaskActionSaving = savingTaskActionId === t.id;
                     return (
-                      <div key={t.id} className={`p-3 rounded-lg border ${t.status === 'delayed' || isTaskOverdue ? 'border-red-200 bg-red-50/50' : t.status === 'completed' ? 'border-green-200 bg-green-50/30' : t.status === 'waiting_client' ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200'} group`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 flex-wrap flex-1">
-                            <span className={`text-sm font-medium ${t.status === 'completed' ? 'line-through text-slate-400' : 'text-slate-700'}`}>{t.task_name}</span>
-                            <Badge className={`text-[10px] ${taskStatusColors[t.status]}`}>{taskStatusLabels[t.status]}</Badge>
-                            <Badge className={`text-[10px] ${priorityColors[t.priority]}`}>{priorityLabels[t.priority]}</Badge>
+                      <div key={`${showCompletedHeader ? 'completed' : 'active'}-${t.id}`} className="space-y-2">
+                        {showCompletedHeader && (
+                          <div className="mt-4 flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700">
+                            <span className="font-medium">已完成任务</span>
+                            <Badge className="bg-green-100 text-green-700">{completedDetailTasks.length} 个</Badge>
                           </div>
-                          <div className="flex gap-1 shrink-0">
-                            {/* Quick status buttons */}
-                            {canEdit && t.status !== 'completed' && (
-                              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-green-600 hover:text-green-700 hover:bg-green-50" title="标记完成" onClick={() => handleQuickTaskStatus(t, 'completed')}>
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                              </Button>
+                        )}
+                        <div className={`p-3 rounded-lg border ${t.status === 'delayed' || isTaskOverdue ? 'border-red-200 bg-red-50/50' : t.status === 'completed' ? 'border-green-200 bg-green-50/30' : t.status === 'waiting_client' ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200'} group`}>
+                          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+                          <div className="min-w-0">
+                            <div className="flex min-w-0 flex-1 items-center gap-2 flex-wrap">
+                              <span className={`text-sm font-medium ${t.status === 'completed' ? 'line-through text-slate-400' : 'text-slate-700'}`}>{t.task_name}</span>
+                              <Badge className={`text-[10px] ${taskStatusColors[t.status]}`}>{taskStatusLabels[t.status]}</Badge>
+                              {t.platform && <Badge className="text-[10px] bg-blue-100 text-blue-700">{platformLabels[t.platform] || t.platform}</Badge>}
+                              {t.status === 'completed' && t.completion_quality && (
+                                <Badge className={`text-[10px] ${qualityColors[t.completion_quality] || 'bg-slate-100 text-slate-600'}`}>
+                                  {qualityLabels[t.completion_quality] || t.completion_quality}
+                                </Badge>
+                              )}
+                              <Badge className={`text-[10px] ${priorityColors[t.priority]}`}>{priorityLabels[t.priority]}</Badge>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-slate-500">
+                              <span>类型: {taskTypeLabels[t.task_type] || t.task_type}</span>
+                              <span>负责: {t.assignee_name || '-'}</span>
+                              {t.due_date && <span className={isTaskOverdue ? 'text-red-600 font-medium' : ''}>截止: {t.due_date.slice(0, 10)}{isTaskOverdue ? ' ⚠️' : ''}</span>}
+                              {t.completed_date && <span className="text-green-600">完成: {t.completed_date.slice(0, 10)} · {t.completed_by || '-'}</span>}
+                            </div>
+                            {t.status === 'completed' && (t.selected_copy_title || t.selected_material_title || t.completion_note) && (
+                              <div className="mt-2 grid gap-1 text-xs text-slate-500">
+                                {t.selected_copy_title && <span className="flex items-center gap-1"><Sparkles className="w-3 h-3 text-blue-500" /> 文案: {t.selected_copy_title}</span>}
+                                {t.selected_material_title && <span className="flex items-center gap-1"><FileImage className="w-3 h-3 text-emerald-500" /> 素材: {t.selected_material_title}</span>}
+                                {t.completion_note && <span className="flex items-center gap-1"><ClipboardCheck className="w-3 h-3 text-slate-400" /> 说明: {t.completion_note}</span>}
+                              </div>
                             )}
-                            {canEdit && t.status === 'pending' && (
-                              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-[10px]" onClick={() => handleQuickTaskStatus(t, 'in_progress')}>
+                            {t.notes && <p className="text-xs text-slate-400 mt-1">{t.notes}</p>}
+                          </div>
+                          <div className="relative z-20 flex flex-wrap items-center justify-start gap-2 lg:w-[260px] lg:justify-end">
+                            {t.status === 'completed' && (
+                              <span className="inline-flex h-8 items-center justify-center rounded-md border border-green-200 bg-green-50 px-3 text-xs font-medium text-green-700">
+                                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> 已完成
+                              </span>
+                            )}
+                            {canTaskOperate && t.status !== 'completed' && t.status !== 'cancelled' && (
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-md border border-green-200 bg-green-50 px-3 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-50"
+                                title="标记完成"
+                                onPointerDown={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  void handleQuickTaskStatus(t, 'completed');
+                                }}
+                                onClick={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                disabled={isTaskActionSaving}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> {isTaskActionSaving ? '处理中' : '完成'}
+                              </button>
+                            )}
+                            {canTaskOperate && t.status === 'pending' && (
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                                onPointerDown={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  void handleQuickTaskStatus(t, 'in_progress');
+                                }}
+                                onClick={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                disabled={isTaskActionSaving}
+                              >
                                 开始
-                              </Button>
+                              </button>
                             )}
-                            {canEdit && t.status !== 'waiting_client' && t.status !== 'completed' && t.status !== 'cancelled' && (
-                              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50 text-[10px]" onClick={() => handleQuickTaskStatus(t, 'waiting_client')}>
+                            {canTaskOperate && t.status === 'waiting_client' && (
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                onPointerDown={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  void handleQuickTaskStatus(t, 'in_progress');
+                                }}
+                                onClick={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                disabled={isTaskActionSaving}
+                              >
+                                {isTaskActionSaving ? '处理中' : '资料已收到'}
+                              </button>
+                            )}
+                            {canTaskOperate && t.status !== 'waiting_client' && t.status !== 'completed' && t.status !== 'cancelled' && (
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                                onPointerDown={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  void handleQuickTaskStatus(t, 'waiting_client');
+                                }}
+                                onClick={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                disabled={isTaskActionSaving}
+                              >
                                 等客户
-                              </Button>
+                              </button>
                             )}
                             {canEdit && (
-                              <Button size="sm" variant="ghost" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => openEditTask(t)}><Edit className="w-3 h-3" /></Button>
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                onPointerDown={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  openEditTask(t);
+                                }}
+                                onClick={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                              >
+                                <Edit className="w-3.5 h-3.5 mr-1" /> 编辑
+                              </button>
                             )}
                             {canDelete && (
-                              <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => setDeleteTarget({ type: 'task', item: t })}><Trash2 className="w-3 h-3" /></Button>
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-md border border-red-200 bg-white px-3 text-xs font-medium text-red-600 hover:bg-red-50"
+                                onPointerDown={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setDeleteTarget({ type: 'task', item: t });
+                                }}
+                                onClick={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-1" /> 删除
+                              </button>
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
-                          <span>类型: {taskTypeLabels[t.task_type] || t.task_type}</span>
-                          <span>负责: {t.assignee_name || '-'}</span>
-                          {t.due_date && <span className={isTaskOverdue ? 'text-red-600 font-medium' : ''}>截止: {t.due_date.slice(0, 10)}{isTaskOverdue ? ' ⚠️' : ''}</span>}
-                          {t.completed_date && <span className="text-green-600">完成: {t.completed_date.slice(0, 10)}</span>}
-                        </div>
-                        {t.notes && <p className="text-xs text-slate-400 mt-1">{t.notes}</p>}
+                      </div>
                       </div>
                     );
                   })}
@@ -1105,6 +2254,7 @@ export default function ServiceBoard() {
             </CardContent></Card>
           </TabsContent>
         </Tabs>
+        {renderTaskActionDialogs()}
       </div>
     );
   }
@@ -1131,6 +2281,73 @@ export default function ServiceBoard() {
           {canCreate && <Button onClick={openCreateProgress} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 新增服务</Button>}
         </div>
       </div>
+
+      {showStats && (isAdmin || role === 'ops') && (
+        <Card className="border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50">
+          <CardContent className="p-4">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+              <div className="flex items-center gap-3 min-w-[210px]">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${stats.healthScore >= 85 ? 'bg-green-100 text-green-700' : stats.healthScore >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">运营健康分</p>
+                  <div className="flex items-end gap-1">
+                    <span className={`text-3xl font-bold ${stats.healthScore >= 85 ? 'text-green-700' : stats.healthScore >= 70 ? 'text-amber-700' : 'text-red-700'}`}>{stats.healthScore}</span>
+                    <span className="text-xs text-slate-400 mb-1">/100</span>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 flex-1">
+                <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
+                  <p className="text-xs text-slate-500">任务完成率</p>
+                  <p className="text-lg font-semibold text-slate-800">{stats.completionRate}%</p>
+                  <p className="text-[11px] text-slate-400">{stats.taskCompleted}/{stats.taskTotal} 已完成</p>
+                </div>
+                <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
+                  <p className="text-xs text-slate-500">本周平台更新</p>
+                  <p className="text-lg font-semibold text-emerald-700">{stats.weeklyPlatformDone}/{stats.weeklyPlatformTarget}</p>
+                  <p className="text-[11px] text-slate-400">每平台每周 3 次</p>
+                </div>
+                <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
+                  <p className="text-xs text-slate-500">周总结汇报</p>
+                  <p className="text-lg font-semibold text-indigo-700">{stats.weeklyReportDone}/{stats.weeklyReportTarget}</p>
+                  <p className="text-[11px] text-slate-400">每客户每周 1 次</p>
+                </div>
+                <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
+                  <p className="text-xs text-slate-500">当前待办</p>
+                  <p className="text-lg font-semibold text-blue-700">{stats.taskPending}</p>
+                  <p className="text-[11px] text-slate-400">需要继续处理</p>
+                </div>
+                <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
+                  <p className="text-xs text-slate-500">低质量完成</p>
+                  <p className="text-lg font-semibold text-orange-700">{stats.lowQualityCompleted}</p>
+                  <p className="text-[11px] text-slate-400">未选择文案/素材</p>
+                </div>
+                <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
+                  <p className="text-xs text-slate-500">逾期任务</p>
+                  <p className="text-lg font-semibold text-red-700">{stats.taskOverdue}</p>
+                  <p className="text-[11px] text-slate-400">需要优先处理</p>
+                </div>
+              </div>
+            </div>
+            {(stats.lowQualityCompleted > 0 || stats.taskOverdue > 0 || stats.longNoUpd > 0 || stats.weeklyMissingPlatforms > 0 || stats.weeklyMissingReports > 0) && (
+              <div className="mt-3 flex items-start gap-2 text-xs text-slate-600 bg-white/70 border border-amber-100 rounded-lg p-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  建议优先检查：
+                  {stats.taskOverdue > 0 ? ` ${stats.taskOverdue} 个逾期任务` : ''}
+                  {stats.lowQualityCompleted > 0 ? ` ${stats.lowQualityCompleted} 个低质量完成` : ''}
+                  {stats.weeklyMissingPlatforms > 0 ? ` ${stats.weeklyMissingPlatforms} 个平台本周更新未达标` : ''}
+                  {stats.weeklyMissingReports > 0 ? ` ${stats.weeklyMissingReports} 个客户本周总结未完成` : ''}
+                  {stats.longNoUpd > 0 ? ` ${stats.longNoUpd} 个长期未更新客户` : ''}
+                  。运营完成任务时选择对应文案或素材，系统会自动降低风险。
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Panel */}
       {showStats && (isAdmin || role === 'ops') && (
@@ -1161,12 +2378,92 @@ export default function ServiceBoard() {
               <div key={name} className="flex items-center gap-2 text-sm">
                 <span className="font-medium text-slate-700">{name}</span>
                 <Badge variant="secondary" className="text-xs">{data.total}客户</Badge>
+                {data.completed > 0 && <Badge className="text-xs bg-green-100 text-green-700">{data.completed}完成</Badge>}
                 {data.pending > 0 && <Badge className="text-xs bg-amber-100 text-amber-700">{data.pending}待办</Badge>}
+                {data.lowQuality > 0 && <Badge className="text-xs bg-orange-100 text-orange-700">{data.lowQuality}低质量</Badge>}
                 {data.issues > 0 && <Badge className="text-xs bg-red-100 text-red-700">{data.issues}卡点</Badge>}
               </div>
             ))}
           </div>
         </CardContent></Card>
+      )}
+
+      {showStats && (isAdmin || role === 'ops') && (
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700">本周待完成清单</h3>
+                <p className="text-xs text-slate-400 mt-0.5">按套餐自动计算：合作平台每周更新 3 次，客户每周总结汇报 1 次。</p>
+              </div>
+              {canCreate && (
+                <Button
+                  size="sm"
+                  onClick={() => handleGenerateWeeklyTasks()}
+                  disabled={generatingWeeklyTasks || filteredWeeklyActionItems.every(item => item.plan.totalRemainingToCreate === 0)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+                  {generatingWeeklyTasks ? '生成中...' : '一键生成本周任务'}
+                </Button>
+              )}
+            </div>
+
+            {filteredWeeklyActionItems.length === 0 ? (
+              <div className="rounded-lg bg-green-50 border border-green-100 p-3 text-sm text-green-700 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                当前筛选范围内，本周运营目标都已达标或没有平台套餐客户。
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredWeeklyActionItems.slice(0, 8).map(({ sp, plan }) => {
+                  const createCount = plan.totalRemainingToCreate;
+                  return (
+                    <div key={sp.id} className="rounded-lg border border-slate-100 bg-slate-50/70 p-3">
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button className="font-medium text-sm text-blue-700 hover:underline" onClick={() => openDetail(sp)}>
+                              {sp.customer_name}
+                            </button>
+                            <Badge variant="secondary" className="text-[10px]">{sp.ops_person || '未分配运营'}</Badge>
+                            <Badge className="text-[10px] bg-slate-100 text-slate-700">{sp.package_name || '未填写套餐'}</Badge>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {plan.platformPlans.filter(item => item.remainingToDo > 0).map(item => (
+                              <Badge key={item.platform} className={`text-[10px] ${item.remainingToCreate > 0 ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {platformLabels[item.platform] || item.platform} 还差 {item.remainingToDo} 次{item.scheduled > 0 ? `，已排 ${item.scheduled}` : ''}
+                              </Badge>
+                            ))}
+                            {plan.reportRemainingToDo > 0 && (
+                              <Badge className={`text-[10px] ${plan.reportRemainingToCreate > 0 ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                周总结未完成{plan.reportScheduled ? '，已排' : ''}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        {canCreate && (
+                          <Button
+                            size="sm"
+                            variant={createCount > 0 ? 'default' : 'outline'}
+                            disabled={generatingWeeklyTasks || createCount === 0}
+                            onClick={() => handleGenerateWeeklyTasks([sp])}
+                            className={createCount > 0 ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+                          >
+                            {createCount > 0 ? `生成 ${createCount} 个任务` : '已排任务'}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {filteredWeeklyActionItems.length > 8 && (
+                  <p className="text-xs text-slate-400 text-center pt-1">还有 {filteredWeeklyActionItems.length - 8} 个客户未展示，可通过筛选负责人或客户名称查看。</p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Quick Filters */}
@@ -1343,6 +2640,143 @@ export default function ServiceBoard() {
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setShowQuickUpdate(false)}>取消</Button>
             <Button onClick={handleQuickUpdateSave} disabled={savingQuickUpdate} className="bg-blue-600 hover:bg-blue-700">{savingQuickUpdate ? '保存中...' : '保存'}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete Task Dialog */}
+      <Dialog open={!!completeTaskTarget} onOpenChange={v => { if (!v) setCompleteTaskTarget(null); }}>
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>完成任务 - {completeTaskTarget?.task_name}</DialogTitle>
+          </DialogHeader>
+          {loadingCompletionRefs ? (
+            <div className="py-8 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
+              <p className="text-sm text-slate-500">正在加载该客户的文案和素材...</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800 flex gap-2">
+                <ClipboardCheck className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  {requiresCompletionReference(completeTaskTarget)
+                    ? '内容发布、评论回复、周报类任务建议选择实际使用的文案或素材；如果都不选也可以完成，但系统会标记为低质量完成。'
+                    : '流程类任务可以直接确认完成；如果有相关文案或素材，也可以顺手选择，方便后续追踪。'}
+                </span>
+              </div>
+
+              <div>
+                <Label>本次完成平台</Label>
+                <NativeSelect
+                  value={completionForm.platform}
+                  onChange={v => setCompletionForm({ ...completionForm, platform: v })}
+                  options={[
+                    { value: '', label: '不限定平台 / 周总结汇报' },
+                    ...Array.from(new Set([...completionContractPlatforms, ...Object.keys(platformLabels).filter(key => key !== 'general')])).map(platform => ({
+                      value: platform,
+                      label: completionContractPlatforms.includes(platform)
+                        ? `${platformLabels[platform] || platform}（套餐合作平台）`
+                        : platformLabels[platform] || platform,
+                    })),
+                  ]}
+                />
+                <p className="text-xs text-slate-400 mt-1">平台更新任务需要选择对应平台；周总结汇报可以选择“不限定平台”。</p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-blue-500" /> 使用文案</Label>
+                  <NativeSelect
+                    value={completionForm.selected_copy_id}
+                    onChange={v => {
+                      const nextCopy = completionCopies.find(item => String(item.id) === v);
+                      setCompletionForm({
+                        ...completionForm,
+                        selected_copy_id: v,
+                        platform: completionForm.platform || (nextCopy?.platform && nextCopy.platform !== 'general' ? nextCopy.platform : ''),
+                      });
+                    }}
+                    options={[
+                      { value: '', label: completionCopies.length ? '不选择文案' : '暂无可选文案' },
+                      ...completionCopies.map(item => ({
+                        value: String(item.id),
+                        label: `${item.title || `文案 #${item.id}`} · ${platformLabels[item.platform] || item.platform} · ${copyTypeLabels[item.content_type] || item.content_type}`,
+                      })),
+                    ]}
+                  />
+                  {selectedCompletionCopy && (
+                    <div className="mt-2 rounded-md bg-slate-50 border border-slate-100 p-2 text-xs text-slate-600 max-h-28 overflow-y-auto">
+                      <p className="font-medium text-slate-700 mb-1">{selectedCompletionCopy.title}</p>
+                      <p className="whitespace-pre-wrap line-clamp-4">{selectedCompletionCopy.content}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="flex items-center gap-1.5"><FileImage className="w-3.5 h-3.5 text-emerald-500" /> 使用素材</Label>
+                  <NativeSelect
+                    value={completionForm.selected_material_id}
+                    onChange={v => {
+                      const nextMaterial = completionMaterials.find(item => String(item.id) === v);
+                      setCompletionForm({
+                        ...completionForm,
+                        selected_material_id: v,
+                        platform: completionForm.platform || (nextMaterial?.platform && nextMaterial.platform !== 'general' ? nextMaterial.platform : ''),
+                      });
+                    }}
+                    options={[
+                      { value: '', label: completionMaterials.length ? '不选择素材' : '暂无可选素材' },
+                      ...completionMaterials.map(item => ({
+                        value: String(item.id),
+                        label: `${item.title || item.file_name || `素材 #${item.id}`} · ${platformLabels[item.platform] || item.platform || '通用'} · ${materialTypeLabels[item.material_type] || item.material_type}`,
+                      })),
+                    ]}
+                  />
+                  {selectedCompletionMaterial && (
+                    <div className="mt-2 rounded-md bg-slate-50 border border-slate-100 p-2 text-xs text-slate-600">
+                      <p className="font-medium text-slate-700 mb-1">{selectedCompletionMaterial.title}</p>
+                      <div className="flex flex-wrap gap-1">
+                        <Badge className="text-[10px] bg-emerald-100 text-emerald-700">{materialTypeLabels[selectedCompletionMaterial.material_type] || selectedCompletionMaterial.material_type}</Badge>
+                        <Badge className="text-[10px] bg-blue-100 text-blue-700">{platformLabels[selectedCompletionMaterial.platform] || selectedCompletionMaterial.platform || '通用'}</Badge>
+                        <Badge className="text-[10px] bg-slate-100 text-slate-700">{selectedCompletionMaterial.usage_status || '未使用'}</Badge>
+                      </div>
+                      {selectedCompletionMaterial.file_url && <p className="mt-1 truncate text-blue-600">{selectedCompletionMaterial.file_url}</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label>完成说明</Label>
+                <Textarea
+                  value={completionForm.completion_note}
+                  onChange={e => setCompletionForm({ ...completionForm, completion_note: e.target.value })}
+                  rows={3}
+                  placeholder="例如：已用菜单图生成本周 Google 商家更新文案，等待客户确认图片。"
+                />
+              </div>
+
+              {requiresCompletionReference(completeTaskTarget) && !completionForm.selected_copy_id && !completionForm.selected_material_id && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs text-orange-800 flex gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>当前没有选择文案或素材，保存后会计入“低质量完成”。如果客户确实没有素材，可以在完成说明里写清楚原因。</span>
+                </div>
+              )}
+
+              {completeTaskTarget?.task_type === 'publish_content' && !completionForm.platform && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-800 flex gap-2">
+                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>当前没有选择平台，这次完成不会计入平台每周 3 次更新；如果这是周总结汇报，可以保持不限定平台。</span>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setCompleteTaskTarget(null)}>取消</Button>
+            <Button onClick={handleCompleteTask} disabled={savingCompletion || loadingCompletionRefs} className="bg-green-600 hover:bg-green-700">
+              {savingCompletion ? '保存中...' : '确认完成'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1590,6 +3024,21 @@ export default function ServiceBoard() {
             <div><Label>任务名称 *</Label><Input value={taskForm.task_name} onChange={e => setTaskForm({ ...taskForm, task_name: e.target.value })} placeholder="例如：收集菜单图片" /></div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>任务类型</Label><NativeSelect value={taskForm.task_type} onChange={v => setTaskForm({ ...taskForm, task_type: v })} options={Object.entries(taskTypeLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+              <div>
+                <Label>平台</Label>
+                <NativeSelect
+                  value={taskForm.platform}
+                  onChange={v => setTaskForm({ ...taskForm, platform: v })}
+                  options={[
+                    { value: '', label: '不限定平台 / 周总结汇报' },
+                    ...Object.entries(platformLabels)
+                      .filter(([key]) => key !== 'general')
+                      .map(([value, label]) => ({ value, label })),
+                  ]}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>负责人</Label>
                 <NativeSelect
