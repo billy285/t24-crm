@@ -13,6 +13,7 @@ import { Plus, Search, CheckCircle2, Edit, Trash2 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusinessDicts } from '../lib/dict-config';
+import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 const priorityColors: Record<string, string> = {
   high: 'bg-red-100 text-red-700', medium: 'bg-amber-100 text-amber-700', low: 'bg-slate-100 text-slate-600',
@@ -207,6 +208,11 @@ export default function Tasks() {
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
+
+  useAutoRefresh(loadData, {
+    intervalMs: 30000,
+    enabled: !showForm && !completeTarget,
+  });
 
   const filtered = useMemo(() => tasks.filter(t => {
     const keyword = search.trim().toLowerCase();

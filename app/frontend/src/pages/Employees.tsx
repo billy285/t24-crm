@@ -17,6 +17,7 @@ import { Plus, Edit, Search, ArrowLeft, ShieldCheck, ShieldOff, UserX, ArrowRigh
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusinessDicts } from '../lib/dict-config';
+import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 const allRoleOptions = Object.entries(systemRoleLabels).map(([k, v]) => ({ value: k, label: v }));
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
@@ -87,6 +88,11 @@ export default function Employees() {
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
+
+  useAutoRefresh(loadEmployees, {
+    intervalMs: 30000,
+    enabled: !showForm && !showTransfer && !resetPwdTarget,
+  });
 
   const filtered = useMemo(() => {
     return employees.filter(e => {

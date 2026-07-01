@@ -17,6 +17,7 @@ import {
   decorateEffectiveSubscriptions,
   getSubscriptionRemainingDays,
 } from '../lib/subscription-utils';
+import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 const subStatusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
@@ -242,6 +243,8 @@ export default function Sales() {
       setLoading(false);
     }
   };
+
+  useAutoRefresh(loadData, { intervalMs: 30000 });
 
   const salesPersonOptions = Array.from(new Set(rows.map(row => row.sales_person).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b, 'zh-CN'))

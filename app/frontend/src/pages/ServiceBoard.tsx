@@ -29,6 +29,7 @@ import {
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ExportButton from '@/components/ExportButton';
 import { buildBusinessDicts, inferPackagePlatforms, platformLabels as configuredPlatformLabels } from '../lib/dict-config';
+import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 // ==================== Types ====================
 interface ServiceProgress {
@@ -581,6 +582,11 @@ export default function ServiceBoard() {
       setLoading(false);
     }
   };
+
+  useAutoRefresh(loadData, {
+    intervalMs: 30000,
+    enabled: !showProgressForm && !showTaskForm && !showQuickUpdate && !completeTaskTarget,
+  });
 
   // ==================== Derived employee lists ====================
   const activeEmployees = useMemo(() => allEmployees.filter(e => e.status === 'active' || e.status === 'probation'), [allEmployees]);

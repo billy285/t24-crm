@@ -19,6 +19,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ExportButton from '@/components/ExportButton';
 import { useBusinessDicts } from '../lib/dict-config';
+import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 const callbackStatusColors: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
@@ -157,6 +158,11 @@ export default function Callbacks() {
       setLoading(false);
     }
   };
+
+  useAutoRefresh(loadData, {
+    intervalMs: 30000,
+    enabled: !showForm,
+  });
 
   // Only show closed customers for callback
   const closedCustomers = useMemo(() =>

@@ -144,6 +144,29 @@ app.add_middleware(
 # MODULE_MIDDLEWARE_END
 
 
+NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+def _apply_no_cache_headers(response):
+    for key, value in NO_CACHE_HEADERS.items():
+        response.headers[key] = value
+    return response
+
+
+@app.middleware("http")
+async def prevent_stale_business_data_cache(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    content_type = response.headers.get("content-type", "")
+    if path.startswith("/api/") or path == "/health" or "text/html" in content_type:
+        _apply_no_cache_headers(response)
+    return response
+
+
 # Auto-discover and include all routers from the local `routers` package
 def include_routers_from_package(app: FastAPI, package_name: str = "routers") -> None:
     """Discover and include all APIRouter objects from a package.
@@ -234,7 +257,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 def _frontend_index_response():
     index_path = FRONTEND_DIST_DIR / "index.html"
     if index_path.exists():
-        return FileResponse(index_path)
+        return FileResponse(index_path, headers=NO_CACHE_HEADERS)
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={
@@ -253,11 +276,13 @@ def _frontend_file_response(requested_path: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     if candidate.is_file():
-        return FileResponse(candidate)
+        if candidate.suffix.lower() == ".html":
+            return FileResponse(candidate, headers=NO_CACHE_HEADERS)
+        return FileResponse(candidate, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
     index_candidate = candidate / "index.html"
     if candidate.is_dir() and index_candidate.exists():
-        return FileResponse(index_candidate)
+        return FileResponse(index_candidate, headers=NO_CACHE_HEADERS)
 
     return None
 
@@ -289,7 +314,7 @@ def runtime_config(request: Request):
         api_base_url = request_origin if request_origin.startswith(("http://", "https://")) else "http://127.0.0.1:8000"
 
     response = JSONResponse(content={"API_BASE_URL": api_base_url})
-    response.headers["Cache-Control"] = "public, max-age=300"
+    _apply_no_cache_headers(response)
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 

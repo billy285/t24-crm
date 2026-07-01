@@ -25,6 +25,7 @@ import {
   useBusinessDicts,
   useDictConfig,
 } from '../lib/dict-config';
+import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 function parseMultiValue(value?: string | null) {
   return (value || '').split(',').map(item => item.trim()).filter(Boolean);
@@ -414,6 +415,11 @@ export default function Deals() {
     setLoading(true);
     void loadData();
   }, [dataScope, employee?.id, employee?.name]);
+
+  useAutoRefresh(loadData, {
+    intervalMs: 30000,
+    enabled: !showForm && !showPackageManager,
+  });
 
   // Build a customer lookup map for quick access to phone, email, zip etc.
   const customerMap = new Map<number, any>();

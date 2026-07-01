@@ -42,6 +42,7 @@ import {
   decorateEffectiveSubscriptions,
   getSubscriptionRemainingDays,
 } from '../lib/subscription-utils';
+import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', following: 'bg-amber-100 text-amber-700', closed: 'bg-green-100 text-green-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
 const levelColors: Record<string, string> = { high: 'bg-orange-100 text-orange-700', normal: 'bg-slate-100 text-slate-600', low: 'bg-gray-100 text-gray-500', vip: 'bg-purple-100 text-purple-700' };
@@ -1104,6 +1105,17 @@ export default function Customers() {
     void loadCustomers();
     void loadEmployees();
   }, [dataScope, employee?.id, employee?.name]);
+
+  useAutoRefresh(async () => {
+    await loadCustomers();
+    await loadEmployees();
+    if (selectedCustomer?.id) {
+      await loadCustomerDetail(selectedCustomer.id, selectedCustomer);
+    }
+  }, {
+    intervalMs: 30000,
+    enabled: !showForm && !showFollowForm && !showContactForm,
+  });
 
   const checkDuplicate = (name: string, phone: string) => {
     if (!name && !phone) { setDuplicateWarning(null); return; }

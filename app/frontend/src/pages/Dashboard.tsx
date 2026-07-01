@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useBusinessDicts } from '../lib/dict-config';
 import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
+import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 interface Reminder {
   id: string;
@@ -182,6 +183,8 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
+
+  useAutoRefresh(loadDashboard, { intervalMs: 30000 });
 
   const buildReminders = (customers: any[], followUps: any[], subs: any[], payments: any[], tasks: any[], now: Date, sevenDaysAgo: Date, callbacksList?: any[]) => {
     const newReminders: Reminder[] = [];

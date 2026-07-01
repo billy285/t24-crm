@@ -43,6 +43,7 @@ import {
   findMatchingSubscription,
   getSubscriptionRemainingDays,
 } from '../lib/subscription-utils';
+import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 // ─── Constants ───────────────────────────────────────────────────────
 const defaultIncomeTypeLabels: Record<string, string> = {
@@ -688,6 +689,8 @@ export default function Finance() {
       setLoading(false);
     }
   };
+
+  useAutoRefresh(loadData, { intervalMs: 30000 });
 
   useEffect(() => {
     if (!editingPayId && !incomeTypeLabels[payForm.income_type] && payForm.income_type !== MANAGEMENT_FEE_KEY) {
