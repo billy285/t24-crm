@@ -47,6 +47,16 @@ class AIHubService:
             content = [item.model_dump() if hasattr(item, "model_dump") else item for item in content]
         return {"role": msg.role, "content": content}
 
+    @staticmethod
+    def _completion_token_limit(model: str, max_tokens: int | None) -> dict:
+        """Newer OpenAI reasoning/chat models require max_completion_tokens."""
+        if max_tokens is None:
+            return {}
+        model_name = (model or "").lower()
+        if model_name.startswith("gpt-5") or model_name.startswith(("o1", "o3", "o4")):
+            return {"max_completion_tokens": max_tokens}
+        return {"max_tokens": max_tokens}
+
     async def gentxt(self, request: GenTxtRequest) -> GenTxtResponse:
         """
         Generate Text API (non-streaming), supports text and image input.
@@ -64,7 +74,7 @@ class AIHubService:
                 model=request.model,
                 messages=messages,
                 temperature=request.temperature,
-                max_tokens=request.max_tokens,
+                **self._completion_token_limit(request.model, request.max_tokens),
                 stream=False,
             )
 
@@ -104,7 +114,7 @@ class AIHubService:
                 model=request.model,
                 messages=messages,
                 temperature=request.temperature,
-                max_tokens=request.max_tokens,
+                **self._completion_token_limit(request.model, request.max_tokens),
                 stream=True,
             )
 
