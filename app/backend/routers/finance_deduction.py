@@ -49,6 +49,20 @@ class MonthlyDeductionRateResponse(BaseModel):
 class DefaultDeductionResponse(BaseModel):
     rate: float
 
+class MonthlyDeductionEnsureRequest(BaseModel):
+    months: List[str] = Field(default_factory=list, description="YYYY-MM month keys to snapshot")
+
+    @validator("months")
+    def validate_months(cls, v: List[str]):
+        normalized: List[str] = []
+        for value in v:
+            try:
+                datetime.strptime(value + "-01", "%Y-%m-%d")
+            except Exception:
+                raise ValueError("months must be YYYY-MM")
+            normalized.append(value)
+        return normalized
+
 class ImportResult(BaseModel):
     total: int
     inserted: int
@@ -135,6 +149,56 @@ async def get_default_deduction(db: AsyncSession = Depends(get_db)):
     row = res.fetchone()
     rate = float(row[0]) if row else 0.15
     return DefaultDeductionResponse(rate=rate)
+
+
+@router.post("/ensure", response_model=List[MonthlyDeductionRateResponse])
+async def ensure_monthly_deductions(
+    payload: MonthlyDeductionEnsureRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    await ensure_tables(db)
+    months = sorted(set(payload.months))
+    if not months:
+        return []
+
+    default_res = await db.execute(text("SELECT rate FROM monthly_deduction_defaults ORDER BY id DESC LIMIT 1"))
+    default_row = default_res.fetchone()
+    default_rate = float(default_row[0]) if default_row else 0.15
+
+    try:
+        if is_sqlite(db):
+            insert_sql = text("INSERT OR IGNORE INTO monthly_deduction_rates (year_month, rate) VALUES (:ym, :rate)")
+        else:
+            insert_sql = text("INSERT INTO monthly_deduction_rates (year_month, rate) VALUES (:ym, :rate) ON CONFLICT (year_month) DO NOTHING")
+        for ym in months:
+            await db.execute(insert_sql, {"ym": ym_to_date(ym), "rate": default_rate})
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    params = {f"m{i}": ym_to_date(ym) for i, ym in enumerate(months)}
+    placeholders = ", ".join(f":m{i}" for i in range(len(months)))
+    res = await db.execute(
+        text(f"""
+            SELECT year_month, rate, created_at, updated_at
+            FROM monthly_deduction_rates
+            WHERE year_month IN ({placeholders})
+            ORDER BY year_month ASC
+        """),
+        params,
+    )
+    result: List[MonthlyDeductionRateResponse] = []
+    for r in res.mappings().all():
+        ym = r["year_month"]
+        ym_str = date_to_ym(ym) if isinstance(ym, date) else str(ym)[:7]
+        result.append(MonthlyDeductionRateResponse(
+            year_month=ym_str,
+            rate=float(r["rate"]),
+            created_at=r.get("created_at"),
+            updated_at=r.get("updated_at"),
+        ))
+    return result
 
 
 @router.put("/default", response_model=DefaultDeductionResponse)

@@ -27,6 +27,7 @@ class Customers(Base):
     has_ordering_system = Column(Boolean, nullable=True)
     current_platform = Column(String, nullable=True)
     interested_packages = Column(String, nullable=True)
+    interested_packages_snapshot = Column(String, nullable=True)
     monthly_orders = Column(Integer, nullable=True)
     source = Column(String, nullable=True)
     sales_person = Column(String, nullable=True)

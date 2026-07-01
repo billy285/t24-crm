@@ -27,7 +27,7 @@ import ExportButton from '@/components/ExportButton';
 import { exportProfitMonthlyCsv, exportProfitMonthlyXlsx } from '../lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { saveRemoteAppConfig } from '../lib/app-config';
-import { buildOptionKey, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
+import { buildOptionKey, sanitizeDictLabel, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
 import { logOperation } from '../lib/operation-log-helper';
 import {
   AUTO_PAYMENT_METHOD_KEYS,
@@ -45,12 +45,12 @@ import {
 } from '../lib/subscription-utils';
 
 // ─── Constants ───────────────────────────────────────────────────────
-const incomeTypeLabels: Record<string, string> = {
-  management_fee: '管理费', ads_fee: '投流费', website_fee: '网站费',
+const defaultIncomeTypeLabels: Record<string, string> = {
+  management_fee: '管理费', ads_fee: '投流费', management_ads_mixed: '管理费+投流费', website_fee: '网站费',
   ordering_fee: '点餐系统费', renewal_fee: '续费收入', other_income: '其他收入',
 };
 const INCOME_TYPE_COLORS: Record<string, string> = {
-  management_fee: '#3b82f6', ads_fee: '#f59e0b', website_fee: '#10b981',
+  management_fee: '#3b82f6', ads_fee: '#f59e0b', management_ads_mixed: '#0f766e', website_fee: '#10b981',
   ordering_fee: '#8b5cf6', renewal_fee: '#06b6d4', other_income: '#94a3b8',
 };
 
@@ -85,6 +85,8 @@ const subStatusColors: Record<string, string> = {
   renewal_pending: 'bg-cyan-100 text-cyan-700',
   expired: 'bg-red-100 text-red-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700',
   renewed: 'bg-emerald-100 text-emerald-700',
+  upgraded: 'bg-violet-100 text-violet-700',
+  stopped: 'bg-slate-100 text-slate-600',
 };
 const subscriptionStatusFallbackLabels: Record<string, string> = {
   active: '正常',
@@ -92,12 +94,116 @@ const subscriptionStatusFallbackLabels: Record<string, string> = {
   renewal_pending: '待扣款确认',
   expired: '已到期',
   renewed: '已续费',
+  upgraded: '已升级结束',
+  stopped: '停止续费',
   paused: '暂停',
   lost: '流失',
 };
 
 const PIE_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1'];
-const financeTabValues = new Set(['income', 'customer_expense', 'company_expense', 'subscriptions', 'charts', 'monthly_detail']);
+const financeTabValues = new Set(['overview', 'customer_profit', 'receivables', 'income', 'customer_expense', 'company_expense', 'subscriptions', 'charts', 'monthly_detail']);
+type DateFilterMode = 'all' | 'today' | 'this_month' | 'last_month' | 'custom';
+type FinancePageKey = 'customer_profit' | 'receivables' | 'income' | 'customer_expense' | 'company_expense' | 'subscriptions' | 'monthly_detail';
+type PaginationResult<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  start: number;
+  end: number;
+};
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
+const defaultFinancePages: Record<FinancePageKey, number> = {
+  customer_profit: 1,
+  receivables: 1,
+  income: 1,
+  customer_expense: 1,
+  company_expense: 1,
+  subscriptions: 1,
+  monthly_detail: 1,
+};
+
+const formatDateOnlyLocal = (date: Date) => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+);
+
+const getMonthRange = (baseDate: Date, offset = 0) => {
+  const start = new Date(baseDate.getFullYear(), baseDate.getMonth() + offset, 1);
+  const end = new Date(baseDate.getFullYear(), baseDate.getMonth() + offset + 1, 0);
+  return { start: formatDateOnlyLocal(start), end: formatDateOnlyLocal(end) };
+};
+
+const getDateFilterRange = (
+  mode: DateFilterMode,
+  customStart: string,
+  customEnd: string,
+  baseDate = new Date(),
+) => {
+  if (mode === 'today') {
+    const today = formatDateOnlyLocal(baseDate);
+    return { start: today, end: today };
+  }
+  if (mode === 'this_month') return getMonthRange(baseDate, 0);
+  if (mode === 'last_month') return getMonthRange(baseDate, -1);
+  if (mode === 'custom' && (customStart || customEnd)) {
+    return { start: customStart, end: customEnd };
+  }
+  return null;
+};
+
+const getMonthKeysInRange = (start: string, end: string) => {
+  if (!start && !end) return [];
+  const fallback = start || end;
+  const startDate = new Date(`${start || `${fallback.slice(0, 7)}-01`}T00:00:00`);
+  const endDate = new Date(`${end || start || fallback}T00:00:00`);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return [];
+  const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const last = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+  const months: string[] = [];
+  while (cursor <= last) {
+    months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months;
+};
+
+const isDateInRange = (value: string | null | undefined, range: { start: string; end: string } | null) => {
+  if (!range) return true;
+  const date = value?.slice(0, 10);
+  if (!date) return false;
+  if (range.start && date < range.start) return false;
+  if (range.end && date > range.end) return false;
+  return true;
+};
+
+const isMonthInRange = (value: string | null | undefined, range: { start: string; end: string } | null) => {
+  if (!range) return true;
+  const month = value?.slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(month || '')) return false;
+  const startMonth = range.start?.slice(0, 7);
+  const endMonth = range.end?.slice(0, 7);
+  if (startMonth && month! < startMonth) return false;
+  if (endMonth && month! > endMonth) return false;
+  return true;
+};
+
+const paginateList = <T,>(items: T[], page: number, pageSize: number): PaginationResult<T> => {
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(page || 1, 1), totalPages);
+  const offset = (safePage - 1) * pageSize;
+  const pageItems = items.slice(offset, offset + pageSize);
+  return {
+    items: pageItems,
+    page: safePage,
+    pageSize,
+    total,
+    totalPages,
+    start: total === 0 ? 0 : offset + 1,
+    end: Math.min(offset + pageSize, total),
+  };
+};
 
 const pickColorByKey = (key: string, palette: string[], fixedColors?: Record<string, string>) => {
   if (fixedColors?.[key]) return fixedColors[key];
@@ -117,15 +223,29 @@ const currencyLabels: Record<CurrencyCode, string> = { USD: '美元 USD', CNY: '
 const normalizeCurrency = (currency?: string | null, fallback: CurrencyCode = 'USD'): CurrencyCode => (
   currency === 'CNY' || currency === 'USD' ? currency : fallback
 );
+const getCustomerExpenseCurrency = (expense: any): CurrencyCode => normalizeCurrency(expense?.currency, 'USD');
 const getCompanyExpenseCurrency = (expense: any): CurrencyCode => normalizeCurrency(expense?.currency, 'CNY');
 const formatMoney = (amount: number, currency: CurrencyCode) => (currency === 'CNY' ? fmtRMB(amount) : fmt(amount));
 const roundMoney = (amount: number) => Math.round(Number(amount || 0) * 100) / 100;
 
 const MANAGEMENT_FEE_KEY = 'management_fee';
 const ADS_FEE_KEY = 'ads_fee';
+const MIXED_MANAGEMENT_ADS_KEY = 'management_ads_mixed';
+const PROTECTED_INCOME_TYPE_KEYS = new Set([MANAGEMENT_FEE_KEY, ADS_FEE_KEY, MIXED_MANAGEMENT_ADS_KEY]);
 const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
 const STRIPE_PLATFORM_FEE_RATE = 0.029;
 const STRIPE_PLATFORM_FEE_FIXED = 0.3;
+
+const toMoneyNumber = (value: any) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : 0;
+};
+
+const getStoredMoney = (value: any): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? roundMoney(amount) : null;
+};
 
 type MonthlyFinanceBucket = {
   revenue: number;
@@ -156,11 +276,45 @@ const isStripeSubscriptionPayment = (payment: any) => {
   return method === 'stripe' || (inferPaymentModeKey(payment || {}) === 'subscription_auto' && !payment?.payment_method);
 };
 
-const calculateStripePlatformFee = (payment: any) => {
-  const amount = Number(payment?.amount_paid || 0);
-  if (amount <= 0 || !isStripeSubscriptionPayment(payment)) return 0;
+const calculateStripePlatformFeeFromValues = (
+  amountPaid: number,
+  paymentMode?: string | null,
+  paymentMethod?: string | null,
+) => {
+  const amount = toMoneyNumber(amountPaid);
+  const method = normalizePaymentMethodKey(paymentMethod);
+  const isStripe = method === 'stripe' || (paymentMode === 'subscription_auto' && !paymentMethod);
+  if (amount <= 0 || !isStripe) return 0;
   return roundMoney(amount * STRIPE_PLATFORM_FEE_RATE + STRIPE_PLATFORM_FEE_FIXED);
 };
+
+const calculateStripePlatformFee = (payment: any) => {
+  const stored = getStoredMoney(payment?.stripe_fee_amount);
+  if (stored !== null) return stored;
+  const amount = toMoneyNumber(payment?.amount_paid);
+  if (amount <= 0 || !isStripeSubscriptionPayment(payment)) return 0;
+  return calculateStripePlatformFeeFromValues(amount, payment?.payment_mode, payment?.payment_method);
+};
+
+const getManagementRevenueAmount = (payment: any) => {
+  const stored = getStoredMoney(payment?.management_amount);
+  if (stored !== null) return stored;
+  return payment?.income_type === MANAGEMENT_FEE_KEY ? toMoneyNumber(payment?.amount_paid) : 0;
+};
+
+const getAdsRechargeAmount = (payment: any) => {
+  const stored = getStoredMoney(payment?.ads_recharge_amount);
+  if (stored !== null) return stored;
+  return payment?.income_type === ADS_FEE_KEY ? toMoneyNumber(payment?.amount_paid) : 0;
+};
+
+const isManagementAdsMixedPayment = (payment: any) => (
+  getManagementRevenueAmount(payment) > 0 && getAdsRechargeAmount(payment) > 0
+);
+
+const getPaymentDisplayIncomeType = (payment: any) => (
+  isManagementAdsMixedPayment(payment) ? MIXED_MANAGEMENT_ADS_KEY : (payment?.income_type || 'other_income')
+);
 
 const inferSubscriptionIncomeType = (packageName?: string | null) => {
   const normalized = String(packageName || '').toLowerCase();
@@ -177,24 +331,21 @@ const buildMonthlyFinanceBuckets = (paymentsList: any[], customerExpenses: any[]
     const ym = (payment.payment_date || '').slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(ym)) return;
     const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
-    const amount = Number(payment.amount_paid || 0);
+    const amount = toMoneyNumber(payment.amount_paid);
     const stripeFee = calculateStripePlatformFee(payment);
     bucket.revenue += amount;
     bucket.stripePlatformFee += stripeFee;
     bucket.cost += stripeFee;
-    if (payment.income_type === MANAGEMENT_FEE_KEY) {
-      bucket.managementRevenue += amount;
-    }
-    if (payment.income_type === ADS_FEE_KEY) {
-      bucket.adsRevenue += amount;
-    }
+    bucket.managementRevenue += getManagementRevenueAmount(payment);
+    bucket.adsRevenue += getAdsRechargeAmount(payment);
   });
 
   customerExpenses.forEach((expense) => {
     const ym = (expense.expense_month || '').slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(ym)) return;
+    if (normalizeCurrency(expense.currency, 'USD') !== 'USD') return;
     const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
-    const amount = Number(expense.amount || 0);
+    const amount = toMoneyNumber(expense.amount);
     bucket.customerCost += amount;
     bucket.cost += amount;
   });
@@ -268,6 +419,15 @@ const addBillingCycle = (dateStr: string, cycle?: string | null) => {
   return next.toISOString().slice(0, 10);
 };
 
+const getDaysBetweenToday = (dateStr?: string | null) => {
+  if (!dateStr) return null;
+  const date = new Date(`${dateStr.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+};
+
 const parsePackageLabels = (value?: string | null) => (
   (value || '')
     .split(/[、,，]/)
@@ -302,15 +462,30 @@ export default function Finance() {
     paymentModes: payModeLabels,
     paymentMethods: payMethodLabels,
     billingCycles: cycleLabels,
+    incomeTypes: configuredIncomeTypeLabels,
     customerExpenseTypes: customerExpenseTypeLabels,
     companyExpenseTypes: companyExpenseTypeLabels,
     subscriptionStatuses: subStatusLabels,
     customerPackages: customerPackageLabels,
   } = useBusinessDicts();
   const operatorName = employee?.name || '管理员';
+  const incomeTypeLabels = useMemo(() => {
+    const configured = Object.keys(configuredIncomeTypeLabels).length > 0 ? configuredIncomeTypeLabels : defaultIncomeTypeLabels;
+    return {
+      [MANAGEMENT_FEE_KEY]: defaultIncomeTypeLabels[MANAGEMENT_FEE_KEY],
+      [ADS_FEE_KEY]: defaultIncomeTypeLabels[ADS_FEE_KEY],
+      [MIXED_MANAGEMENT_ADS_KEY]: defaultIncomeTypeLabels[MIXED_MANAGEMENT_ADS_KEY],
+      ...configured,
+    };
+  }, [configuredIncomeTypeLabels]);
   const canManageCustomerExpenseTypes = isAdmin || hasPermission('settings_edit');
   const canManageCompanyExpenseTypes = isAdmin || hasPermission('settings_edit');
+  const canManageIncomeTypes = isAdmin || hasPermission('settings_edit');
   const canManageCustomerPackages = isAdmin || hasPermission('settings_edit');
+  const incomeTypeOptions = useMemo(
+    () => Object.entries(incomeTypeLabels).map(([value, label]) => ({ value, label })),
+    [incomeTypeLabels],
+  );
   const customerExpenseTypeOptions = useMemo(
     () => Object.entries(customerExpenseTypeLabels).map(([value, label]) => ({ value, label })),
     [customerExpenseTypeLabels],
@@ -321,23 +496,20 @@ export default function Finance() {
     [companyExpenseTypeLabels],
   );
   const defaultCompanyExpenseType = companyExpenseTypeOptions[0]?.value || 'salary';
-  const normalizeFinanceTab = (tab?: string | null) => (tab && financeTabValues.has(tab) ? tab : 'income');
+  const normalizeFinanceTab = (tab?: string | null) => (tab && financeTabValues.has(tab) ? tab : 'overview');
   const [activeFinanceTab, setActiveFinanceTab] = useState(() => normalizeFinanceTab(searchParams.get('tab')));
   const [exporting, setExporting] = useState(false);
   const doExport = async (fmt: 'csv'|'xlsx') => {
     try {
       setExporting(true);
       const today = new Date();
-      const todayStr = today.toISOString().slice(0, 10);
       let start = '';
       let end = '';
 
-      if (dateFilterMode === 'custom' && (filterStartDate || filterEndDate)) {
-        start = filterStartDate || '';
-        end = filterEndDate || '';
-      } else if (dateFilterMode === 'today') {
-        start = todayStr;
-        end = todayStr;
+      const selectedRange = getDateFilterRange(dateFilterMode, filterStartDate, filterEndDate, today);
+      if (selectedRange) {
+        start = selectedRange.start;
+        end = selectedRange.end;
       } else {
         const dates: string[] = [];
         payments.forEach((p: any) => { const d = p.payment_date?.slice(0, 10); if (d) dates.push(d); });
@@ -391,13 +563,25 @@ export default function Finance() {
   const emptyPayForm = {
     customer_id: '', product_names: [] as string[], income_type: 'management_fee',
     amount_due: '', amount_paid: '', payment_mode: 'manual_collection', payment_method: 'zelle', billing_cycle: 'monthly',
-    coverage_start: '', coverage_end: '', has_invoice: false, notes: '',
+    management_amount: '', ads_recharge_amount: '', transaction_reference: '',
+    coverage_start: '', coverage_end: '', has_invoice: false, sync_to_deal: false, notes: '',
   };
   const [payForm, setPayForm] = useState(emptyPayForm);
+  const paymentIncomeTypeOptions = useMemo(() => {
+    const options = [...incomeTypeOptions];
+    if (payForm.income_type && !incomeTypeLabels[payForm.income_type]) {
+      options.unshift({ value: payForm.income_type, label: `${payForm.income_type}（历史类型）` });
+    }
+    return options;
+  }, [incomeTypeOptions, incomeTypeLabels, payForm.income_type]);
   const [showPaymentPackageManager, setShowPaymentPackageManager] = useState(false);
   const [paymentPackageDrafts, setPaymentPackageDrafts] = useState<Array<{ key: string; label: string }>>([]);
   const [newPaymentPackageName, setNewPaymentPackageName] = useState('');
   const [savingPaymentPackages, setSavingPaymentPackages] = useState(false);
+  const [showIncomeTypeManager, setShowIncomeTypeManager] = useState(false);
+  const [incomeTypeDrafts, setIncomeTypeDrafts] = useState<Array<{ key: string; label: string }>>([]);
+  const [newIncomeTypeName, setNewIncomeTypeName] = useState('');
+  const [savingIncomeTypes, setSavingIncomeTypes] = useState(false);
 
   // Customer expense form
   const [showExpenseForm, setShowExpenseForm] = useState(false);
@@ -407,7 +591,7 @@ export default function Finance() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
-  const emptyExpenseForm = { customer_id: '', expense_type: defaultCustomerExpenseType, amount: '', expense_month: expenseMonth, notes: '' };
+  const emptyExpenseForm = { customer_id: '', expense_type: defaultCustomerExpenseType, currency: 'USD' as CurrencyCode, amount: '', expense_month: expenseMonth, notes: '' };
   const [expenseForm, setExpenseForm] = useState(emptyExpenseForm);
   const [showCustomerExpenseTypeManager, setShowCustomerExpenseTypeManager] = useState(false);
   const [newCustomerExpenseTypeName, setNewCustomerExpenseTypeName] = useState('');
@@ -434,16 +618,26 @@ export default function Finance() {
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'payment' | 'subscription'; item: any } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmingRenewalId, setConfirmingRenewalId] = useState<number | null>(null);
+  const [updatingSubscriptionId, setUpdatingSubscriptionId] = useState<number | null>(null);
   const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<any>(null);
   const [deletingExpense, setDeletingExpense] = useState(false);
   const [deleteCompanyExpenseTarget, setDeleteCompanyExpenseTarget] = useState<any>(null);
   const [deletingCompanyExpense, setDeletingCompanyExpense] = useState(false);
 
   // Date filter
-  type DateFilterMode = 'all' | 'today' | 'custom';
   const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('all');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
+  const [pageSize, setPageSize] = useState(20);
+  const [financePages, setFinancePages] = useState<Record<FinancePageKey, number>>({ ...defaultFinancePages });
+  const activeDateRange = useMemo(
+    () => getDateFilterRange(dateFilterMode, filterStartDate, filterEndDate),
+    [dateFilterMode, filterStartDate, filterEndDate],
+  );
+
+  useEffect(() => {
+    setFinancePages({ ...defaultFinancePages });
+  }, [dateFilterMode, filterStartDate, filterEndDate, expenseMonth, companyExpenseMonth, companyExpenseCurrencyFilter, pageSize]);
 
   // ─── Load Data (resilient - each query independent) ───────────────
 
@@ -453,12 +647,12 @@ export default function Finance() {
     try {
       // Load each data source independently so one failure doesn't block others
       const [pItems, sItems, cItems, dItems, eItems, ceItems] = await Promise.all([
-        safeQuery(() => client.entities.payments.queryAll({ limit: 500, sort: '-payment_date' })),
-        safeQuery(() => client.entities.subscriptions.query({ limit: 500, sort: '-end_date' })),
-        safeQuery(() => client.entities.customers.query({ limit: 500 })),
-        safeQuery(() => client.entities.deals.query({ limit: 500, sort: '-deal_date' })),
-        safeQuery(() => client.entities.expenses.queryAll({ limit: 500, sort: '-created_at' })),
-        safeQuery(() => client.entities.company_expenses.queryAll({ limit: 500, sort: '-created_at' })),
+        safeQuery(() => client.entities.payments.queryAll({ limit: 1000, sort: '-payment_date' })),
+        safeQuery(() => client.entities.subscriptions.query({ limit: 1000, sort: '-end_date' })),
+        safeQuery(() => client.entities.customers.query({ limit: 1000 })),
+        safeQuery(() => client.entities.deals.query({ limit: 1000, sort: '-deal_date' })),
+        safeQuery(() => client.entities.expenses.queryAll({ limit: 1000, sort: '-created_at' })),
+        safeQuery(() => client.entities.company_expenses.queryAll({ limit: 1000, sort: '-created_at' })),
       ]);
       setPayments(pItems);
       setSubscriptions(decorateEffectiveSubscriptions(sItems));
@@ -468,7 +662,7 @@ export default function Finance() {
       setCompanyExpenses(ceItems);
       try {
         const months = new Set<string>();
-        [...pItems, ...eItems].forEach((it: any) => {
+        [...pItems, ...eItems, ...ceItems].forEach((it: any) => {
           const ym = (it.payment_date || it.expense_month || it.created_at || '').slice(0,7);
           if (/^\d{4}-\d{2}$/.test(ym)) months.add(ym);
         });
@@ -476,7 +670,13 @@ export default function Finance() {
           const arr = Array.from(months).sort();
           const start = arr[0];
           const end = arr[arr.length - 1];
-          const res = await invokeWithAuth({ url: '/api/v1/deductions-monthly', method: 'GET', data: { start, end } });
+          let res;
+          try {
+            res = await invokeWithAuth({ url: '/api/v1/deductions-monthly/ensure', method: 'POST', data: { months: arr } });
+          } catch (ensureErr) {
+            console.warn('ensure rates failed, fallback to list', ensureErr);
+            res = await invokeWithAuth({ url: '/api/v1/deductions-monthly', method: 'GET', data: { start, end } });
+          }
           const map: Record<string, number> = {};
           (res.data || []).forEach((r: any) => { map[r.year_month] = r.rate; });
           setDeductionRates(map);
@@ -486,6 +686,103 @@ export default function Finance() {
       console.error('loadData error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!editingPayId && !incomeTypeLabels[payForm.income_type] && payForm.income_type !== MANAGEMENT_FEE_KEY) {
+      setPayForm(prev => ({ ...prev, income_type: MANAGEMENT_FEE_KEY, management_amount: '', ads_recharge_amount: '' }));
+    }
+  }, [editingPayId, payForm.income_type, incomeTypeLabels]);
+
+  useEffect(() => {
+    const managementAmount = toMoneyNumber(payForm.management_amount);
+    const adsRechargeAmount = toMoneyNumber(payForm.ads_recharge_amount);
+    if (managementAmount > 0 && adsRechargeAmount > 0 && payForm.income_type !== MIXED_MANAGEMENT_ADS_KEY) {
+      setPayForm(prev => ({ ...prev, income_type: MIXED_MANAGEMENT_ADS_KEY }));
+    }
+  }, [payForm.management_amount, payForm.ads_recharge_amount, payForm.income_type]);
+
+  const openIncomeTypeManager = () => {
+    setIncomeTypeDrafts(Object.entries(incomeTypeLabels).map(([key, label]) => ({ key, label })));
+    setNewIncomeTypeName('');
+    setShowIncomeTypeManager(true);
+  };
+
+  const handleAddIncomeTypeDraft = () => {
+    const label = sanitizeDictLabel(newIncomeTypeName).replace(/\s+/g, ' ').trim();
+    if (!label) {
+      toast.error('请输入收入类型名称');
+      return;
+    }
+    if (incomeTypeDrafts.some(item => item.label.trim() === label)) {
+      toast.error('该收入类型已存在');
+      return;
+    }
+    let key = buildOptionKey(label);
+    while (incomeTypeDrafts.some(item => item.key === key)) {
+      key = `${key}_${Date.now()}`;
+    }
+    setIncomeTypeDrafts(prev => [...prev, { key, label }]);
+    setNewIncomeTypeName('');
+  };
+
+  const handleRemoveIncomeTypeDraft = (key: string) => {
+    if (PROTECTED_INCOME_TYPE_KEYS.has(key)) {
+      toast.error('管理费、投流费、管理费+投流费关联财务扣点规则，不能删除');
+      return;
+    }
+    if (incomeTypeDrafts.length <= PROTECTED_INCOME_TYPE_KEYS.size) {
+      toast.error('至少保留管理费、投流费、管理费+投流费');
+      return;
+    }
+    const remaining = incomeTypeDrafts.filter(item => item.key !== key);
+    setIncomeTypeDrafts(remaining);
+    if (payForm.income_type === key) {
+      setPayForm(prev => ({ ...prev, income_type: MANAGEMENT_FEE_KEY, management_amount: '', ads_recharge_amount: '' }));
+    }
+  };
+
+  const handleSaveIncomeTypes = async () => {
+    const normalizedEntries = incomeTypeDrafts.reduce<Record<string, string>>((acc, item) => {
+      const label = sanitizeDictLabel(item.label).replace(/\s+/g, ' ').trim();
+      if (label) {
+        acc[item.key] = label;
+      }
+      return acc;
+    }, {});
+    if (!normalizedEntries[MANAGEMENT_FEE_KEY] || !normalizedEntries[ADS_FEE_KEY] || !normalizedEntries[MIXED_MANAGEMENT_ADS_KEY]) {
+      toast.error('必须保留管理费、投流费、管理费+投流费三个系统收入类型');
+      return;
+    }
+    const labels = Object.values(normalizedEntries);
+    if (labels.length === 0) {
+      toast.error('请至少保留一个收入类型');
+      return;
+    }
+    if (new Set(labels.map(label => label.toLowerCase())).size !== labels.length) {
+      toast.error('收入类型名称不能重复');
+      return;
+    }
+
+    setSavingIncomeTypes(true);
+    try {
+      const nextDictConfig = {
+        ...dictConfig,
+        incomeTypes: serializeDictEntries(normalizedEntries),
+      };
+      await saveRemoteAppConfig('dict_config', nextDictConfig);
+      if (!normalizedEntries[payForm.income_type]) {
+        setPayForm(prev => ({ ...prev, income_type: MANAGEMENT_FEE_KEY, management_amount: '', ads_recharge_amount: '' }));
+      }
+      setShowIncomeTypeManager(false);
+      setNewIncomeTypeName('');
+      toast.success('收入类型已更新');
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '保存收入类型失败';
+      toast.error(detail);
+    } finally {
+      setSavingIncomeTypes(false);
     }
   };
 
@@ -814,46 +1111,45 @@ export default function Finance() {
 
   // ─── Filtering ───────────────────────────────────────────────────
   const filterByDate = (items: any[], dateField: string) => {
-    if (dateFilterMode === 'all') return items;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (dateFilterMode === 'today') {
-      const todayStr = today.toISOString().slice(0, 10);
-      return items.filter(i => i[dateField]?.slice(0, 10) === todayStr);
-    }
-    return items.filter(i => {
-      const d = i[dateField]?.slice(0, 10);
-      if (!d) return false;
-      if (filterStartDate && d < filterStartDate) return false;
-      if (filterEndDate && d > filterEndDate) return false;
-      return true;
-    });
+    if (!activeDateRange) return items;
+    return items.filter(i => isDateInRange(i[dateField], activeDateRange));
   };
 
   const filteredPayments = filterByDate(payments, 'payment_date');
   const filteredSubscriptions = useMemo(() => {
-    if (dateFilterMode === 'all') return subscriptions;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (dateFilterMode === 'today') {
-      const todayStr = today.toISOString().slice(0, 10);
-      return subscriptions.filter(s => s.created_at?.slice(0, 10) === todayStr || s.start_date?.slice(0, 10) === todayStr);
-    }
-    return subscriptions.filter(s => {
-      const d = s.start_date?.slice(0, 10) || s.created_at?.slice(0, 10);
-      if (!d) return false;
-      if (filterStartDate && d < filterStartDate) return false;
-      if (filterEndDate && d > filterEndDate) return false;
-      return true;
-    });
-  }, [subscriptions, dateFilterMode, filterStartDate, filterEndDate]);
+    if (!activeDateRange) return subscriptions;
+    return subscriptions.filter(s => (
+      isDateInRange(s.start_date || s.created_at, activeDateRange)
+      || isDateInRange(s.next_payment_date || s.end_date, activeDateRange)
+    ));
+  }, [subscriptions, activeDateRange]);
 
-  const filteredExpenses = expenses.filter(e => !expenseMonth || e.expense_month === expenseMonth);
+  const filteredExpenses = expenses.filter(e => (
+    activeDateRange ? isMonthInRange(e.expense_month, activeDateRange) : (!expenseMonth || e.expense_month === expenseMonth)
+  ));
   const filteredCompanyExpenses = companyExpenses.filter(e => {
-    const matchesMonth = !companyExpenseMonth || e.expense_month === companyExpenseMonth;
+    const matchesMonth = activeDateRange
+      ? isMonthInRange(e.expense_month, activeDateRange)
+      : (!companyExpenseMonth || e.expense_month === companyExpenseMonth);
     const matchesCurrency = companyExpenseCurrencyFilter === 'all' || getCompanyExpenseCurrency(e) === companyExpenseCurrencyFilter;
     return matchesMonth && matchesCurrency;
   });
+  const paginatedPayments = useMemo(
+    () => paginateList(filteredPayments, financePages.income, pageSize),
+    [filteredPayments, financePages.income, pageSize],
+  );
+  const paginatedExpenses = useMemo(
+    () => paginateList(filteredExpenses, financePages.customer_expense, pageSize),
+    [filteredExpenses, financePages.customer_expense, pageSize],
+  );
+  const paginatedCompanyExpenses = useMemo(
+    () => paginateList(filteredCompanyExpenses, financePages.company_expense, pageSize),
+    [filteredCompanyExpenses, financePages.company_expense, pageSize],
+  );
+  const paginatedSubscriptions = useMemo(
+    () => paginateList(filteredSubscriptions, financePages.subscriptions, pageSize),
+    [filteredSubscriptions, financePages.subscriptions, pageSize],
+  );
   const monthlyFinanceBuckets = useMemo(() => buildMonthlyFinanceBuckets(payments, expenses, companyExpenses), [payments, expenses, companyExpenses]);
 
   // ─── Stats ───────────────────────────────────────────────────────
@@ -877,10 +1173,14 @@ export default function Finance() {
   const activeSubs = subscriptions.filter(s => s.status === 'active').length;
 
   // Expense summaries
-  const totalCustomerExpense = filteredExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const totalCustomerExpense = filteredExpenses
+    .filter(e => getCustomerExpenseCurrency(e) === 'USD')
+    .reduce((s, e) => s + (e.amount || 0), 0);
   const customerExpenseByType = useMemo(() => {
     const map: Record<string, number> = {};
-    filteredExpenses.forEach(e => { map[e.expense_type] = (map[e.expense_type] || 0) + (e.amount || 0); });
+    filteredExpenses
+      .filter(e => getCustomerExpenseCurrency(e) === 'USD')
+      .forEach(e => { map[e.expense_type] = (map[e.expense_type] || 0) + (e.amount || 0); });
     return Object.entries(map).map(([type, amount]) => ({
       type, name: customerExpenseTypeLabels[type] || type, amount: Math.round(amount * 100) / 100,
     })).sort((a, b) => b.amount - a.amount);
@@ -907,40 +1207,60 @@ export default function Finance() {
   }, [companyExpenseTypeLabels, filteredCompanyExpenses]);
 
   // ─── Chart Data ──────────────────────────────────────────────────
-  const monthlyTrendData = useMemo(() => {
-    const months: { key: string; label: string; income: number; customerExp: number; stripeFee: number; companyExpUsd: number; companyExpCny: number; profitUsd: number }[] = [];
+  const chartPayments = filteredPayments;
+  const chartExpenses = useMemo(
+    () => (activeDateRange ? expenses.filter(e => isMonthInRange(e.expense_month, activeDateRange)) : expenses),
+    [activeDateRange, expenses],
+  );
+  const chartCompanyExpenses = useMemo(
+    () => (activeDateRange ? companyExpenses.filter(e => isMonthInRange(e.expense_month, activeDateRange)) : companyExpenses),
+    [activeDateRange, companyExpenses],
+  );
+  const chartMonthlyFinanceBuckets = useMemo(
+    () => (activeDateRange
+      ? buildMonthlyFinanceBuckets(chartPayments, chartExpenses, chartCompanyExpenses)
+      : monthlyFinanceBuckets),
+    [activeDateRange, chartPayments, chartExpenses, chartCompanyExpenses, monthlyFinanceBuckets],
+  );
+  const chartMonthKeys = useMemo(() => {
+    if (activeDateRange) return getMonthKeysInRange(activeDateRange.start, activeDateRange.end);
+    const months: string[] = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = `${d.getMonth() + 1}月`;
-      const bucket = monthlyFinanceBuckets[key] || { revenue: 0, managementRevenue: 0, adsRevenue: 0, stripePlatformFee: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    return months;
+  }, [activeDateRange, now]);
+
+  const monthlyTrendData = useMemo(() => {
+    const months: { key: string; label: string; income: number; customerExp: number; stripeFee: number; companyExpUsd: number; companyExpCny: number; profitUsd: number }[] = [];
+    chartMonthKeys.forEach((key) => {
+      const monthNumber = Number(key.slice(5, 7));
+      const label = `${monthNumber}月`;
+      const bucket = chartMonthlyFinanceBuckets[key] || { revenue: 0, managementRevenue: 0, adsRevenue: 0, stripePlatformFee: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
       const income = bucket.revenue;
       const custExp = bucket.customerCost; // USD
       const stripeFee = bucket.stripePlatformFee;
       const compExpUsd = bucket.operatingCostUsd; // USD operating costs
-      const compExpCny = companyExpenses
+      const compExpCny = chartCompanyExpenses
         .filter(e => e.expense_month === key && getCompanyExpenseCurrency(e) === 'CNY')
         .reduce((s, e) => s + Number(e.amount || 0), 0); // CNY operating costs
       const rate = getDeductionRate(deductionRates, key);
       const { profit } = calculateMonthlyProfit(bucket, rate);
       months.push({ key, label, income, customerExp: custExp, stripeFee, companyExpUsd: compExpUsd, companyExpCny: compExpCny, profitUsd: roundMoney(profit) });
-    }
+    });
     return months;
-  }, [companyExpenses, deductionRates, monthlyFinanceBuckets, now]);
+  }, [chartCompanyExpenses, chartMonthKeys, chartMonthlyFinanceBuckets, deductionRates]);
 
   // ─── Monthly Detail (USD by default, no cross-currency mix) ───────────────────
   const monthlyDetail = useMemo(() => {
     const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
     let start = '';
     let end = '';
 
-    if (dateFilterMode === 'custom' && (filterStartDate || filterEndDate)) {
-      start = filterStartDate || '';
-      end = filterEndDate || '';
-    } else if (dateFilterMode === 'today') {
-      start = todayStr;
-      end = todayStr;
+    if (activeDateRange) {
+      start = activeDateRange.start;
+      end = activeDateRange.end;
     } else {
       const dates: string[] = [];
       payments.forEach((p: any) => { const d = p.payment_date?.slice(0, 10); if (d) dates.push(d); });
@@ -994,6 +1314,8 @@ export default function Finance() {
       return {
         month: ym,
         revenue_gross: Math.round(revenue * 100) / 100,
+        management_revenue: Math.round(bucket.managementRevenue * 100) / 100,
+        ads_recharge_revenue: Math.round(bucket.adsRevenue * 100) / 100,
         management_rate: bucket.managementRevenue > 0 ? rate : 0,
         ads_recharge_rate: bucket.adsRevenue > 0 ? ADS_RECHARGE_DEDUCTION_RATE : 0,
         management_deduction_amount: Math.round(managementDeduction * 100) / 100,
@@ -1009,23 +1331,43 @@ export default function Finance() {
     });
 
     return { rows, range: { start, end } };
-  }, [payments, expenses, companyExpenses, deductionRates, dateFilterMode, filterStartDate, filterEndDate]);
+  }, [payments, expenses, companyExpenses, deductionRates, activeDateRange]);
+
+  const paginatedMonthlyDetail = useMemo(
+    () => paginateList(monthlyDetail.rows, financePages.monthly_detail, pageSize),
+    [monthlyDetail.rows, financePages.monthly_detail, pageSize],
+  );
 
 
   const incomeByTypeData = useMemo(() => {
     const map: Record<string, number> = {};
-    payments.forEach(p => {
+    chartPayments.forEach(p => {
       const t = p.income_type || 'other_income';
-      map[t] = (map[t] || 0) + (p.amount_paid || 0);
+      const amountPaid = toMoneyNumber(p.amount_paid);
+      const managementAmount = getManagementRevenueAmount(p);
+      const adsRechargeAmount = getAdsRechargeAmount(p);
+      const splitAmount = managementAmount + adsRechargeAmount;
+      if (managementAmount > 0) {
+        map[MANAGEMENT_FEE_KEY] = (map[MANAGEMENT_FEE_KEY] || 0) + managementAmount;
+      }
+      if (adsRechargeAmount > 0) {
+        map[ADS_FEE_KEY] = (map[ADS_FEE_KEY] || 0) + adsRechargeAmount;
+      }
+      const remainder = roundMoney(amountPaid - splitAmount);
+      if (remainder > 0.01) {
+        map[t] = (map[t] || 0) + remainder;
+      } else if (splitAmount <= 0) {
+        map[t] = (map[t] || 0) + amountPaid;
+      }
     });
     return Object.entries(map).map(([type, value]) => ({
       name: incomeTypeLabels[type] || type, type, value: Math.round(value * 100) / 100,
     })).sort((a, b) => b.value - a.value);
-  }, [payments]);
+  }, [chartPayments, incomeTypeLabels]);
 
   const productRevenueData = useMemo(() => {
     const map: Record<string, number> = {};
-    payments.forEach(p => {
+    chartPayments.forEach(p => {
       if (!p.product_name) return;
       const names = p.product_name.split('、');
       const share = (p.amount_paid || 0) / (names.length || 1);
@@ -1035,18 +1377,18 @@ export default function Finance() {
       });
     });
     return Object.entries(map).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 })).sort((a, b) => b.value - a.value);
-  }, [payments]);
+  }, [chartPayments]);
 
   const customerRevenueData = useMemo(() => {
     const map: Record<string, number> = {};
-    payments.forEach(p => { const name = p.customer_name || '未知客户'; map[name] = (map[name] || 0) + (p.amount_paid || 0); });
+    chartPayments.forEach(p => { const name = p.customer_name || '未知客户'; map[name] = (map[name] || 0) + (p.amount_paid || 0); });
     return Object.entries(map).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 })).sort((a, b) => b.value - a.value).slice(0, 10);
-  }, [payments]);
+  }, [chartPayments]);
 
   const payMethodData = useMemo(() => {
     const countMap: Record<string, number> = {};
     const amountMap: Record<string, number> = {};
-    payments.forEach(p => {
+    chartPayments.forEach(p => {
       const method = normalizePaymentMethodKey(p.payment_method);
       countMap[method] = (countMap[method] || 0) + 1;
       amountMap[method] = (amountMap[method] || 0) + (p.amount_paid || 0);
@@ -1055,12 +1397,12 @@ export default function Finance() {
       name: payMethodLabels[method] || method, method, count,
       amount: Math.round((amountMap[method] || 0) * 100) / 100,
     })).sort((a, b) => b.amount - a.amount);
-  }, [payMethodLabels, payments]);
+  }, [payMethodLabels, chartPayments]);
 
   const payModeData = useMemo(() => {
     const countMap: Record<string, number> = {};
     const amountMap: Record<string, number> = {};
-    payments.forEach((payment) => {
+    chartPayments.forEach((payment) => {
       const mode = inferPaymentModeKey(payment);
       countMap[mode] = (countMap[mode] || 0) + 1;
       amountMap[mode] = (amountMap[mode] || 0) + (payment.amount_paid || 0);
@@ -1071,10 +1413,222 @@ export default function Finance() {
       amount: Math.round((amountMap[mode] || 0) * 100) / 100,
       name: payModeLabels[mode] || mode,
     })).sort((a, b) => b.amount - a.amount);
-  }, [payModeLabels, payments]);
+  }, [payModeLabels, chartPayments]);
 
   // ─── Customer map for lookups ────────────────────────────────────
   const customerMap = useMemo(() => Object.fromEntries(customers.map(c => [c.id, c])), [customers]);
+
+  const overviewPayments = filteredPayments;
+  const overviewCustomerExpenses = useMemo(
+    () => (activeDateRange ? expenses.filter(e => isMonthInRange(e.expense_month, activeDateRange)) : expenses),
+    [activeDateRange, expenses],
+  );
+  const overviewCompanyExpenses = useMemo(
+    () => (activeDateRange ? companyExpenses.filter(e => isMonthInRange(e.expense_month, activeDateRange)) : companyExpenses),
+    [activeDateRange, companyExpenses],
+  );
+
+  const customerProfitRows = useMemo(() => {
+    const rows: Record<string, {
+      customerId: number | null;
+      customerName: string;
+      revenue: number;
+      managementRevenue: number;
+      adsRevenue: number;
+      otherRevenue: number;
+      stripeFee: number;
+      managementDeduction: number;
+      adsDeduction: number;
+      customerCostUsd: number;
+      customerCostCny: number;
+      outstanding: number;
+      paymentCount: number;
+      latestPaymentDate: string;
+    }> = {};
+
+    const ensureRow = (customerId: any, customerName?: string | null) => {
+      const id = Number(customerId) || null;
+      const key = id ? String(id) : `name:${customerName || '未知客户'}`;
+      if (!rows[key]) {
+        rows[key] = {
+          customerId: id,
+          customerName: customerName || (id ? customerMap[id]?.business_name : '') || '未知客户',
+          revenue: 0,
+          managementRevenue: 0,
+          adsRevenue: 0,
+          otherRevenue: 0,
+          stripeFee: 0,
+          managementDeduction: 0,
+          adsDeduction: 0,
+          customerCostUsd: 0,
+          customerCostCny: 0,
+          outstanding: 0,
+          paymentCount: 0,
+          latestPaymentDate: '',
+        };
+      }
+      return rows[key];
+    };
+
+    overviewPayments.forEach((payment: any) => {
+      const row = ensureRow(payment.customer_id, payment.customer_name);
+      const amountPaid = toMoneyNumber(payment.amount_paid);
+      const managementAmount = getManagementRevenueAmount(payment);
+      const adsAmount = getAdsRechargeAmount(payment);
+      const otherAmount = Math.max(0, amountPaid - managementAmount - adsAmount);
+      const ym = (payment.payment_date || '').slice(0, 7);
+      const rate = getDeductionRate(deductionRates, ym);
+      const outstanding = getStoredMoney(payment.outstanding_amount) ?? Math.max(0, toMoneyNumber(payment.amount_due) - amountPaid);
+
+      row.revenue += amountPaid;
+      row.managementRevenue += managementAmount;
+      row.adsRevenue += adsAmount;
+      row.otherRevenue += otherAmount;
+      row.stripeFee += calculateStripePlatformFee(payment);
+      row.managementDeduction += managementAmount * rate;
+      row.adsDeduction += adsAmount * ADS_RECHARGE_DEDUCTION_RATE;
+      row.outstanding += outstanding;
+      row.paymentCount += 1;
+      const paymentDate = payment.payment_date?.slice(0, 10) || '';
+      if (paymentDate && paymentDate > row.latestPaymentDate) row.latestPaymentDate = paymentDate;
+    });
+
+    overviewCustomerExpenses.forEach((expense: any) => {
+      const row = ensureRow(expense.customer_id, expense.customer_name);
+      const amount = toMoneyNumber(expense.amount);
+      if (getCustomerExpenseCurrency(expense) === 'USD') {
+        row.customerCostUsd += amount;
+      } else {
+        row.customerCostCny += amount;
+      }
+    });
+
+    return Object.values(rows)
+      .map(row => {
+        const totalFee = row.stripeFee + row.managementDeduction + row.adsDeduction;
+        const profit = row.revenue - totalFee - row.customerCostUsd;
+        return {
+          ...row,
+          revenue: roundMoney(row.revenue),
+          managementRevenue: roundMoney(row.managementRevenue),
+          adsRevenue: roundMoney(row.adsRevenue),
+          otherRevenue: roundMoney(row.otherRevenue),
+          stripeFee: roundMoney(row.stripeFee),
+          managementDeduction: roundMoney(row.managementDeduction),
+          adsDeduction: roundMoney(row.adsDeduction),
+          customerCostUsd: roundMoney(row.customerCostUsd),
+          customerCostCny: roundMoney(row.customerCostCny),
+          outstanding: roundMoney(row.outstanding),
+          totalFee: roundMoney(totalFee),
+          profit: roundMoney(profit),
+          profitRate: row.revenue > 0 ? profit / row.revenue : 0,
+        };
+      })
+      .sort((a, b) => b.profit - a.profit);
+  }, [customerMap, deductionRates, overviewCustomerExpenses, overviewPayments]);
+
+  const receivableRows = useMemo(() => (
+    overviewPayments
+      .map((payment: any) => {
+        const amountDue = toMoneyNumber(payment.amount_due);
+        const amountPaid = toMoneyNumber(payment.amount_paid);
+        const outstanding = getStoredMoney(payment.outstanding_amount) ?? Math.max(0, amountDue - amountPaid);
+        const paymentDate = payment.payment_date?.slice(0, 10) || '';
+        return {
+          ...payment,
+          amountDue,
+          amountPaid,
+          outstanding: roundMoney(outstanding),
+          paymentDate,
+          overdueDays: Math.max(0, getDaysBetweenToday(paymentDate) || 0),
+          customerName: payment.customer_name || customerMap[payment.customer_id]?.business_name || '未知客户',
+          salesPerson: customerMap[payment.customer_id]?.sales_person || '-',
+        };
+      })
+      .filter(row => row.outstanding > 0)
+      .sort((a, b) => b.overdueDays - a.overdueDays || b.outstanding - a.outstanding)
+  ), [customerMap, overviewPayments]);
+
+  const ownerOverview = useMemo(() => {
+    const buckets = buildMonthlyFinanceBuckets(overviewPayments, overviewCustomerExpenses, overviewCompanyExpenses);
+    const totals = Object.entries(buckets).reduce((acc, [ym, bucket]) => {
+      const rate = getDeductionRate(deductionRates, ym);
+      const profit = calculateMonthlyProfit(bucket, rate);
+      acc.revenue += bucket.revenue;
+      acc.managementRevenue += bucket.managementRevenue;
+      acc.adsRevenue += bucket.adsRevenue;
+      acc.customerCostUsd += bucket.customerCost;
+      acc.companyCostUsd += bucket.operatingCostUsd;
+      acc.stripeFee += bucket.stripePlatformFee;
+      acc.deduction += profit.deductionAmount;
+      acc.profitUsd += profit.profit;
+      return acc;
+    }, {
+      revenue: 0,
+      managementRevenue: 0,
+      adsRevenue: 0,
+      customerCostUsd: 0,
+      companyCostUsd: 0,
+      stripeFee: 0,
+      deduction: 0,
+      profitUsd: 0,
+    });
+    const companyCostCny = overviewCompanyExpenses
+      .filter(expense => getCompanyExpenseCurrency(expense) === 'CNY')
+      .reduce((sum, expense) => sum + toMoneyNumber(expense.amount), 0);
+    const outstanding = receivableRows.reduce((sum, row) => sum + row.outstanding, 0);
+    const totalReceivableDue = receivableRows.reduce((sum, row) => sum + row.amountDue, 0);
+    return {
+      revenue: roundMoney(totals.revenue),
+      managementRevenue: roundMoney(totals.managementRevenue),
+      adsRevenue: roundMoney(totals.adsRevenue),
+      customerCostUsd: roundMoney(totals.customerCostUsd),
+      companyCostUsd: roundMoney(totals.companyCostUsd),
+      companyCostCny: roundMoney(companyCostCny),
+      stripeFee: roundMoney(totals.stripeFee),
+      deduction: roundMoney(totals.deduction),
+      profitUsd: roundMoney(totals.profitUsd),
+      outstanding: roundMoney(outstanding),
+      totalReceivableDue: roundMoney(totalReceivableDue),
+      receivableCount: receivableRows.length,
+      profitRate: totals.revenue > 0 ? totals.profitUsd / totals.revenue : 0,
+    };
+  }, [deductionRates, overviewCompanyExpenses, overviewCustomerExpenses, overviewPayments, receivableRows]);
+
+  const renewalForecast = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const withinDays = (days: number) => {
+      const end = new Date(today);
+      end.setDate(end.getDate() + days);
+      const rows = subscriptions.filter((subscription: any) => {
+        const status = computeSubscriptionStatus(subscription);
+        if (['stopped', 'lost', 'paused', 'upgraded'].includes(status)) return false;
+        const dateValue = (subscription.next_payment_date || subscription.end_date || '').slice(0, 10);
+        if (!dateValue) return false;
+        const date = new Date(`${dateValue}T00:00:00`);
+        return !Number.isNaN(date.getTime()) && date >= today && date <= end;
+      });
+      return {
+        count: rows.length,
+        amount: roundMoney(rows.reduce((sum, item) => sum + toMoneyNumber(item.package_price), 0)),
+      };
+    };
+    return {
+      d7: withinDays(7),
+      d30: withinDays(30),
+      d60: withinDays(60),
+    };
+  }, [subscriptions]);
+
+  const paginatedCustomerProfitRows = useMemo(
+    () => paginateList(customerProfitRows, financePages.customer_profit, pageSize),
+    [customerProfitRows, financePages.customer_profit, pageSize],
+  );
+  const paginatedReceivableRows = useMemo(
+    () => paginateList(receivableRows, financePages.receivables, pageSize),
+    [receivableRows, financePages.receivables, pageSize],
+  );
 
   useEffect(() => {
     setActiveFinanceTab(normalizeFinanceTab(searchParams.get('tab')));
@@ -1084,7 +1638,7 @@ export default function Finance() {
     const safeTab = normalizeFinanceTab(nextTab);
     setActiveFinanceTab(safeTab);
     const nextParams = new URLSearchParams(searchParams);
-    if (safeTab === 'income') {
+    if (safeTab === 'overview') {
       nextParams.delete('tab');
     } else {
       nextParams.set('tab', safeTab);
@@ -1101,6 +1655,54 @@ export default function Finance() {
     navigate(`/customers?detail=${id}&tab=${tab}&from=finance&financeTab=${returnFinanceTab}`);
   };
 
+  const derivePaymentIncomeSplit = (
+    incomeType: string,
+    amountPaid: number,
+    managementRaw: any,
+    adsRaw: any,
+  ) => {
+    const hasManualManagement = managementRaw !== '' && managementRaw !== null && managementRaw !== undefined;
+    const hasManualAds = adsRaw !== '' && adsRaw !== null && adsRaw !== undefined;
+    if (hasManualManagement || hasManualAds) {
+      return {
+        managementAmount: hasManualManagement ? roundMoney(toMoneyNumber(managementRaw)) : 0,
+        adsRechargeAmount: hasManualAds ? roundMoney(toMoneyNumber(adsRaw)) : 0,
+      };
+    }
+    if (incomeType === MANAGEMENT_FEE_KEY) {
+      return { managementAmount: roundMoney(amountPaid), adsRechargeAmount: 0 };
+    }
+    if (incomeType === ADS_FEE_KEY) {
+      return { managementAmount: 0, adsRechargeAmount: roundMoney(amountPaid) };
+    }
+    return { managementAmount: 0, adsRechargeAmount: 0 };
+  };
+
+  const buildPaymentFinancePayload = () => {
+    const amountPaid = roundMoney(toMoneyNumber(payForm.amount_paid));
+    const { managementAmount, adsRechargeAmount } = derivePaymentIncomeSplit(
+      payForm.income_type,
+      amountPaid,
+      payForm.management_amount,
+      payForm.ads_recharge_amount,
+    );
+    const stripeFeeAmount = calculateStripePlatformFeeFromValues(
+      amountPaid,
+      payForm.payment_mode,
+      normalizePaymentMethodKey(payForm.payment_method),
+    );
+    const resolvedIncomeType = managementAmount > 0 && adsRechargeAmount > 0
+      ? MIXED_MANAGEMENT_ADS_KEY
+      : payForm.income_type;
+    return {
+      income_type: resolvedIncomeType,
+      management_amount: managementAmount,
+      ads_recharge_amount: adsRechargeAmount,
+      stripe_fee_amount: stripeFeeAmount,
+      net_amount: roundMoney(Math.max(amountPaid - stripeFeeAmount, 0)),
+    };
+  };
+
   const getSubscriptionStatusLabel = (status?: string | null) => (
     subStatusLabels[status || ''] || subscriptionStatusFallbackLabels[status || ''] || status || '-'
   );
@@ -1108,15 +1710,19 @@ export default function Finance() {
   // ─── Payment CRUD ────────────────────────────────────────────────
   const openEditPayment = (p: any) => {
     const names = p.product_name ? p.product_name.split('、').map((s: string) => s.trim()).filter(Boolean) : [];
+    const displayIncomeType = getPaymentDisplayIncomeType(p);
     setPayForm({
       customer_id: String(p.customer_id || ''), product_names: names,
-      income_type: p.income_type || 'management_fee',
+      income_type: displayIncomeType || 'management_fee',
       amount_due: String(p.amount_due || ''), amount_paid: String(p.amount_paid || ''),
       payment_mode: inferPaymentModeKey(p),
       payment_method: normalizePaymentMethodKey(p.payment_method),
       billing_cycle: p.billing_cycle || 'monthly',
+      management_amount: p.management_amount ?? '',
+      ads_recharge_amount: p.ads_recharge_amount ?? '',
+      transaction_reference: p.transaction_reference || '',
       coverage_start: p.coverage_start?.slice(0, 10) || '', coverage_end: p.coverage_end?.slice(0, 10) || '',
-      has_invoice: p.has_invoice || false, notes: p.notes || '',
+      has_invoice: p.has_invoice || false, sync_to_deal: false, notes: p.notes || '',
     });
     setEditingPayId(p.id);
     setShowPaymentForm(true);
@@ -1130,20 +1736,40 @@ export default function Finance() {
       const cust = customers.find(c => c.id === Number(payForm.customer_id));
       const amountDue = Number(payForm.amount_due);
       const amountPaid = Number(payForm.amount_paid);
+      if (!Number.isFinite(amountDue) || !Number.isFinite(amountPaid) || amountDue < 0 || amountPaid < 0) {
+        toast.error('金额必须是大于等于 0 的数字');
+        return;
+      }
+      const financeAmounts = buildPaymentFinancePayload();
+      if (financeAmounts.management_amount < 0 || financeAmounts.ads_recharge_amount < 0) {
+        toast.error('管理费金额和投流金额不能为负数');
+        return;
+      }
+      if (financeAmounts.management_amount + financeAmounts.ads_recharge_amount > amountPaid + 0.01) {
+        toast.error('管理费金额 + 投流充值金额不能大于实收金额');
+        return;
+      }
+      if (payForm.income_type === MIXED_MANAGEMENT_ADS_KEY && (financeAmounts.management_amount <= 0 || financeAmounts.ads_recharge_amount <= 0)) {
+        toast.error('管理费+投流费需要同时填写管理费金额和投流充值金额');
+        return;
+      }
       const coverageStartISO = toISODatetime(payForm.coverage_start);
       const coverageEndISO = toISODatetime(payForm.coverage_end);
       const normalizedPaymentMethod = normalizePaymentMethodKey(payForm.payment_method);
       const payload: Record<string, any> = {
         customer_id: Number(payForm.customer_id),
         customer_name: cust?.business_name || '',
-        income_type: payForm.income_type,
         product_name: payForm.product_names.join('、'),
         amount_due: amountDue, amount_paid: amountPaid,
+        ...financeAmounts,
+        currency: 'USD',
         payment_mode: payForm.payment_mode,
         payment_method: normalizedPaymentMethod,
+        transaction_reference: payForm.transaction_reference || null,
         billing_cycle: payForm.billing_cycle,
         coverage_start: coverageStartISO, coverage_end: coverageEndISO,
         has_invoice: payForm.has_invoice,
+        sync_to_deal: payForm.sync_to_deal,
         outstanding_amount: Math.max(0, amountDue - amountPaid),
         expense_month: payForm.coverage_start ? payForm.coverage_start.slice(0, 7) : currentMonthKey,
         notes: payForm.notes || null,
@@ -1154,7 +1780,7 @@ export default function Finance() {
           method: 'PUT',
           data: payload,
         });
-        toast.success('收款记录已更新');
+        toast.success(payForm.sync_to_deal ? '收款记录已更新，并已同步成交' : '收款记录已更新');
         void logOperation({
           customerId: Number(payForm.customer_id),
           actionType: 'edit_payment',
@@ -1169,7 +1795,7 @@ export default function Finance() {
           method: 'POST',
           data: payload,
         });
-        toast.success('收款记录已添加');
+        toast.success(payForm.sync_to_deal ? '收款记录已添加，并已同步成交' : '收款记录已添加');
         void logOperation({
           customerId: Number(payForm.customer_id),
           actionType: 'create_payment',
@@ -1267,6 +1893,9 @@ export default function Finance() {
     const paymentDateISO = new Date().toISOString();
     const customerName = subscription.customer_name || customerMap[subscription.customer_id]?.business_name || '';
     const packageName = subscription.package_name || '订阅套餐';
+    const incomeType = inferSubscriptionIncomeType(packageName);
+    const { managementAmount, adsRechargeAmount } = derivePaymentIncomeSplit(incomeType, amount, '', '');
+    const stripeFeeAmount = calculateStripePlatformFeeFromValues(amount, 'subscription_auto', 'stripe');
 
     setConfirmingRenewalId(Number(subscription.id));
     try {
@@ -1276,10 +1905,14 @@ export default function Finance() {
         data: {
           customer_id: Number(subscription.customer_id),
           customer_name: customerName,
-          income_type: inferSubscriptionIncomeType(packageName),
+          income_type: incomeType,
           product_name: packageName,
           amount_due: amount,
           amount_paid: amount,
+          management_amount: managementAmount,
+          ads_recharge_amount: adsRechargeAmount,
+          stripe_fee_amount: stripeFeeAmount,
+          net_amount: roundMoney(Math.max(amount - stripeFeeAmount, 0)),
           currency: 'USD',
           payment_date: paymentDateISO,
           payment_mode: 'subscription_auto',
@@ -1338,10 +1971,68 @@ export default function Finance() {
     }
   };
 
+  const handleToggleSubscriptionAutoRenew = async (subscription: any, enabled: boolean) => {
+    if (!subscription?.id) return;
+
+    const now = new Date().toISOString();
+    const nextPaymentDate = enabled
+      ? toISODatetime(toDateOnly(subscription.next_payment_date) || toDateOnly(subscription.end_date))
+      : null;
+    const payload = enabled
+      ? {
+          auto_renew: true,
+          next_payment_date: nextPaymentDate,
+          status: computeSubscriptionStatus({
+            ...subscription,
+            auto_renew: true,
+            next_payment_date: nextPaymentDate,
+            status: 'active',
+          }),
+          renewal_result: 'auto_renew_enabled',
+          updated_at: now,
+        }
+      : {
+          auto_renew: false,
+          next_payment_date: null,
+          status: 'stopped',
+          renewal_result: 'auto_renew_disabled',
+          updated_at: now,
+        };
+
+    setUpdatingSubscriptionId(Number(subscription.id));
+    try {
+      await invokeWithAuth({
+        url: `/api/v1/entities/subscriptions/${subscription.id}`,
+        method: 'PUT',
+        data: payload,
+      });
+
+      void logOperation({
+        customerId: Number(subscription.customer_id),
+        actionType: enabled ? 'enable_subscription_auto_renew' : 'disable_subscription_auto_renew',
+        actionDetail: `${enabled ? '开启' : '关闭'}套餐续费开关：${subscription.customer_name || customerMap[subscription.customer_id]?.business_name || ''} ${subscription.package_name || ''}`,
+        operatorName,
+      });
+
+      setSubscriptions(prev => decorateEffectiveSubscriptions(prev.map(item => (
+        String(item.id) === String(subscription.id) ? { ...item, ...payload } : item
+      ))));
+      toast.success(enabled ? '已开启续费开关，到期后会进入待确认续费' : '已停止续费提醒，历史收款不受影响');
+      await loadData();
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '更新续费开关失败';
+      toast.error(`更新续费开关失败: ${detail}`);
+      console.error('Toggle subscription auto renew failed:', err);
+    } finally {
+      setUpdatingSubscriptionId(null);
+    }
+  };
+
   // ─── Customer Expense CRUD ───────────────────────────────────────
   const openEditExpense = (e: any) => {
     setExpenseForm({
       customer_id: String(e.customer_id || ''), expense_type: e.expense_type || 'management_fee',
+      currency: getCustomerExpenseCurrency(e),
       amount: String(e.amount || ''), expense_month: e.expense_month || expenseMonth, notes: e.notes || '',
     });
     setEditingExpenseId(e.id);
@@ -1356,6 +2047,7 @@ export default function Finance() {
       const payload: Record<string, any> = {
         customer_id: Number(expenseForm.customer_id), customer_name: cust?.business_name || '',
         expense_type: expenseForm.expense_type, expense_category: 'customer',
+        currency: expenseForm.currency,
         amount: Number(expenseForm.amount), expense_month: expenseForm.expense_month,
         notes: expenseForm.notes || null,
       };
@@ -1540,7 +2232,7 @@ export default function Finance() {
             <span className="font-medium">时间筛选：</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {(['all', 'today', 'custom'] as DateFilterMode[]).map(mode => (
+            {(['all', 'today', 'this_month', 'last_month', 'custom'] as DateFilterMode[]).map(mode => (
               <Button key={mode} size="sm"
                 variant={dateFilterMode === mode ? 'default' : 'outline'}
                 className={dateFilterMode === mode ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
@@ -1548,6 +2240,8 @@ export default function Finance() {
               >
                 {mode === 'all' && '全部'}
                 {mode === 'today' && <><CalendarDays className="w-3.5 h-3.5 mr-1" />今天</>}
+                {mode === 'this_month' && '本月'}
+                {mode === 'last_month' && '上月'}
                 {mode === 'custom' && '自定义时间段'}
               </Button>
             ))}
@@ -1566,6 +2260,44 @@ export default function Finance() {
       </CardContent>
     </Card>
   );
+
+  const PaginationFooter = ({ pageKey, data }: { pageKey: FinancePageKey; data: PaginationResult<any> }) => {
+    if (data.total === 0) return null;
+    const setPage = (page: number) => {
+      setFinancePages(prev => ({ ...prev, [pageKey]: page }));
+    };
+    return (
+      <div className="flex flex-col gap-3 border-t border-slate-100 px-3 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          显示 {data.start}-{data.end} 条 / 共 {data.total} 条
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-400">每页</span>
+          <NativeSelect
+            value={String(pageSize)}
+            onChange={value => setPageSize(Number(value))}
+            options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
+            className="h-8 w-24 text-xs"
+          />
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(1)} disabled={data.page <= 1}>
+            首页
+          </Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(data.page - 1)} disabled={data.page <= 1}>
+            上一页
+          </Button>
+          <span className="min-w-20 text-center text-xs text-slate-500">
+            {data.page} / {data.totalPages} 页
+          </span>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(data.page + 1)} disabled={data.page >= data.totalPages}>
+            下一页
+          </Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(data.totalPages)} disabled={data.page >= data.totalPages}>
+            末页
+          </Button>
+        </div>
+      </div>
+    );
+  };
 
   // ─── Customer select options ─────────────────────────────────────
   const customerOptions = useMemo(() => {
@@ -1707,6 +2439,9 @@ export default function Finance() {
       {/* Main Tabs */}
       <Tabs value={activeFinanceTab} onValueChange={handleFinanceTabChange} className="w-full">
         <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="overview" className="text-xs sm:text-sm"><Wallet className="w-3.5 h-3.5 mr-1 hidden sm:inline" />老板总览</TabsTrigger>
+          <TabsTrigger value="customer_profit" className="text-xs sm:text-sm"><TrendingUp className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户利润 ({customerProfitRows.length})</TabsTrigger>
+          <TabsTrigger value="receivables" className="text-xs sm:text-sm"><AlertTriangle className="w-3.5 h-3.5 mr-1 hidden sm:inline" />应收欠款 ({receivableRows.length})</TabsTrigger>
           <TabsTrigger value="income" className="text-xs sm:text-sm"><DollarSign className="w-3.5 h-3.5 mr-1 hidden sm:inline" />收入管理 ({filteredPayments.length})</TabsTrigger>
           <TabsTrigger value="customer_expense" className="text-xs sm:text-sm"><Users className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户支出 ({filteredExpenses.length})</TabsTrigger>
           <TabsTrigger value="company_expense" className="text-xs sm:text-sm"><Building2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />运营支出 ({filteredCompanyExpenses.length})</TabsTrigger>
@@ -1714,6 +2449,194 @@ export default function Finance() {
           <TabsTrigger value="charts" className="text-xs sm:text-sm"><PieChartIcon className="w-3.5 h-3.5 mr-1 hidden sm:inline" />数据分析</TabsTrigger>
           <TabsTrigger value="monthly_detail" className="text-xs sm:text-sm">按月明细</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+              <Card className="border-slate-200"><CardContent className="p-4">
+                <p className="text-xs text-slate-500">筛选范围实收</p>
+                <p className="mt-1 text-2xl font-bold text-green-600">{fmt(ownerOverview.revenue)}</p>
+                <p className="mt-1 text-xs text-slate-400">管理费 {fmt(ownerOverview.managementRevenue)} · 投流 {fmt(ownerOverview.adsRevenue)}</p>
+              </CardContent></Card>
+              <Card className="border-slate-200"><CardContent className="p-4">
+                <p className="text-xs text-slate-500">筛选范围利润 USD</p>
+                <p className={`mt-1 text-2xl font-bold ${ownerOverview.profitUsd >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(ownerOverview.profitUsd)}</p>
+                <p className="mt-1 text-xs text-slate-400">利润率 {(ownerOverview.profitRate * 100).toFixed(1)}%</p>
+              </CardContent></Card>
+              <Card className="border-slate-200"><CardContent className="p-4">
+                <p className="text-xs text-slate-500">扣点/手续费</p>
+                <p className="mt-1 text-2xl font-bold text-violet-600">{fmt(ownerOverview.deduction + ownerOverview.stripeFee)}</p>
+                <p className="mt-1 text-xs text-slate-400">扣点 {fmt(ownerOverview.deduction)} · Stripe {fmt(ownerOverview.stripeFee)}</p>
+              </CardContent></Card>
+              <Card className="border-slate-200"><CardContent className="p-4">
+                <p className="text-xs text-slate-500">应收未收</p>
+                <p className="mt-1 text-2xl font-bold text-red-600">{fmt(ownerOverview.outstanding)}</p>
+                <p className="mt-1 text-xs text-slate-400">{ownerOverview.receivableCount} 笔需要跟进</p>
+              </CardContent></Card>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <Card className="border-slate-200 xl:col-span-2">
+                <CardHeader className="pb-2"><CardTitle className="text-base">老板行动清单</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div className="rounded-lg bg-amber-50 p-3">
+                      <p className="text-xs text-amber-700">客户成本 USD</p>
+                      <p className="mt-1 text-lg font-bold text-amber-700">{fmt(ownerOverview.customerCostUsd)}</p>
+                      <p className="text-xs text-amber-600">直接影响单客利润</p>
+                    </div>
+                    <div className="rounded-lg bg-red-50 p-3">
+                      <p className="text-xs text-red-700">运营支出 USD</p>
+                      <p className="mt-1 text-lg font-bold text-red-700">{fmt(ownerOverview.companyCostUsd)}</p>
+                      <p className="text-xs text-red-600">{fmtRMB(ownerOverview.companyCostCny)} 单独统计</p>
+                    </div>
+                    <div className="rounded-lg bg-blue-50 p-3">
+                      <p className="text-xs text-blue-700">30天续费预测</p>
+                      <p className="mt-1 text-lg font-bold text-blue-700">{fmt(renewalForecast.d30.amount)}</p>
+                      <p className="text-xs text-blue-600">{renewalForecast.d30.count} 个套餐</p>
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-3 text-sm">
+                    <button type="button" onClick={() => handleFinanceTabChange('receivables')} className="rounded-lg border border-red-100 bg-white p-3 text-left hover:bg-red-50">
+                      <p className="font-medium text-red-700">先收款</p>
+                      <p className="mt-1 text-xs text-slate-500">处理 {ownerOverview.receivableCount} 笔欠款，金额 {fmt(ownerOverview.outstanding)}</p>
+                    </button>
+                    <button type="button" onClick={() => handleFinanceTabChange('customer_profit')} className="rounded-lg border border-emerald-100 bg-white p-3 text-left hover:bg-emerald-50">
+                      <p className="font-medium text-emerald-700">看利润</p>
+                      <p className="mt-1 text-xs text-slate-500">找出赚钱客户和亏损客户</p>
+                    </button>
+                    <button type="button" onClick={() => handleFinanceTabChange('subscriptions')} className="rounded-lg border border-blue-100 bg-white p-3 text-left hover:bg-blue-50">
+                      <p className="font-medium text-blue-700">盯续费</p>
+                      <p className="mt-1 text-xs text-slate-500">7天 {fmt(renewalForecast.d7.amount)} · 60天 {fmt(renewalForecast.d60.amount)}</p>
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200">
+                <CardHeader className="pb-2"><CardTitle className="text-base">客户利润 Top 5</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  {customerProfitRows.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-slate-400">暂无客户利润数据</p>
+                  ) : customerProfitRows.slice(0, 5).map((row, index) => (
+                    <button
+                      key={`${row.customerId || row.customerName}-${index}`}
+                      type="button"
+                      onClick={() => row.customerId && openCustomerDetail(row.customerId, 'payments')}
+                      className="flex w-full items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-left hover:bg-slate-100"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-700">{index + 1}. {row.customerName}</p>
+                        <p className="text-xs text-slate-400">收入 {fmt(row.revenue)} · 成本 {fmt(row.customerCostUsd + row.totalFee)}</p>
+                      </div>
+                      <p className={row.profit >= 0 ? 'text-sm font-bold text-emerald-600' : 'text-sm font-bold text-red-600'}>{fmt(row.profit)}</p>
+                    </button>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="customer_profit">
+          <Card className="border-slate-200">
+            <CardContent className="p-0">
+              {customerProfitRows.length === 0 ? (
+                <p className="text-center text-slate-400 py-12">暂无客户利润数据</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b bg-slate-50 text-left text-slate-500">
+                      <th className="px-3 py-2.5 font-medium">客户</th>
+                      <th className="px-3 py-2.5 font-medium">实收</th>
+                      <th className="px-3 py-2.5 font-medium hidden lg:table-cell">管理费</th>
+                      <th className="px-3 py-2.5 font-medium hidden lg:table-cell">投流</th>
+                      <th className="px-3 py-2.5 font-medium">扣点/手续费</th>
+                      <th className="px-3 py-2.5 font-medium">客户成本</th>
+                      <th className="px-3 py-2.5 font-medium">利润</th>
+                      <th className="px-3 py-2.5 font-medium hidden md:table-cell">利润率</th>
+                      <th className="px-3 py-2.5 font-medium hidden md:table-cell">欠款</th>
+                    </tr></thead>
+                    <tbody>
+                      {paginatedCustomerProfitRows.items.map(row => (
+                        <tr key={`${row.customerId || row.customerName}`} className="border-b border-slate-100 hover:bg-slate-50">
+                          <td className="px-3 py-2.5 font-medium">
+                            {row.customerId ? (
+                              <Button type="button" variant="link" className="h-auto p-0 text-left font-medium text-blue-600" onClick={() => openCustomerDetail(row.customerId, 'payments')}>
+                                {row.customerName}
+                              </Button>
+                            ) : row.customerName}
+                            <p className="text-xs text-slate-400">{row.paymentCount} 笔收款 · 最近 {row.latestPaymentDate || '-'}</p>
+                          </td>
+                          <td className="px-3 py-2.5 text-green-600 font-medium">{fmt(row.revenue)}</td>
+                          <td className="px-3 py-2.5 hidden lg:table-cell">{fmt(row.managementRevenue)}</td>
+                          <td className="px-3 py-2.5 hidden lg:table-cell">{fmt(row.adsRevenue)}</td>
+                          <td className="px-3 py-2.5 text-violet-600">{fmt(row.totalFee)}</td>
+                          <td className="px-3 py-2.5 text-amber-600">
+                            {fmt(row.customerCostUsd)}
+                            {row.customerCostCny > 0 && <p className="text-xs text-slate-400">{fmtRMB(row.customerCostCny)}</p>}
+                          </td>
+                          <td className={row.profit >= 0 ? 'px-3 py-2.5 font-bold text-emerald-600' : 'px-3 py-2.5 font-bold text-red-600'}>{fmt(row.profit)}</td>
+                          <td className="px-3 py-2.5 hidden md:table-cell">{(row.profitRate * 100).toFixed(1)}%</td>
+                          <td className="px-3 py-2.5 hidden md:table-cell">{row.outstanding > 0 ? <span className="text-red-600">{fmt(row.outstanding)}</span> : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {customerProfitRows.length > 0 && <PaginationFooter pageKey="customer_profit" data={paginatedCustomerProfitRows} />}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="receivables">
+          <Card className="border-slate-200">
+            <CardContent className="p-0">
+              {receivableRows.length === 0 ? (
+                <p className="text-center text-slate-400 py-12">暂无应收欠款</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b bg-slate-50 text-left text-slate-500">
+                      <th className="px-3 py-2.5 font-medium">客户</th>
+                      <th className="px-3 py-2.5 font-medium">产品</th>
+                      <th className="px-3 py-2.5 font-medium">应收</th>
+                      <th className="px-3 py-2.5 font-medium">实收</th>
+                      <th className="px-3 py-2.5 font-medium">欠款</th>
+                      <th className="px-3 py-2.5 font-medium">欠款天数</th>
+                      <th className="px-3 py-2.5 font-medium hidden md:table-cell">负责人</th>
+                      <th className="px-3 py-2.5 font-medium hidden md:table-cell">日期</th>
+                    </tr></thead>
+                    <tbody>
+                      {paginatedReceivableRows.items.map(row => (
+                        <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50">
+                          <td className="px-3 py-2.5 font-medium">
+                            <Button type="button" variant="link" className="h-auto p-0 text-left font-medium text-blue-600" onClick={() => openCustomerDetail(row.customer_id, 'payments')}>
+                              {row.customerName}
+                            </Button>
+                          </td>
+                          <td className="px-3 py-2.5 max-w-[180px] truncate">{row.product_name || '-'}</td>
+                          <td className="px-3 py-2.5">{fmt(row.amountDue)}</td>
+                          <td className="px-3 py-2.5 text-green-600">{fmt(row.amountPaid)}</td>
+                          <td className="px-3 py-2.5 font-bold text-red-600">{fmt(row.outstanding)}</td>
+                          <td className="px-3 py-2.5">
+                            <Badge className={row.overdueDays >= 30 ? 'bg-red-100 text-red-700' : row.overdueDays >= 7 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}>
+                              {row.overdueDays} 天
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2.5 hidden md:table-cell">{row.salesPerson}</td>
+                          <td className="px-3 py-2.5 hidden md:table-cell text-slate-500">{row.paymentDate || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {receivableRows.length > 0 && <PaginationFooter pageKey="receivables" data={paginatedReceivableRows} />}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* ── Income Tab ── */}
         <TabsContent value="income">
@@ -1733,7 +2656,10 @@ export default function Finance() {
                         <th className="px-3 py-2.5 font-medium">产品</th>
                         <th className="px-3 py-2.5 font-medium">应收</th>
                         <th className="px-3 py-2.5 font-medium">实收</th>
+                        <th className="px-3 py-2.5 font-medium hidden xl:table-cell">管理费</th>
+                        <th className="px-3 py-2.5 font-medium hidden xl:table-cell">投流充值</th>
                         <th className="px-3 py-2.5 font-medium hidden lg:table-cell">Stripe手续费</th>
+                        <th className="px-3 py-2.5 font-medium hidden xl:table-cell">净入账</th>
                         <th className="px-3 py-2.5 font-medium">欠款</th>
                         <th className="px-3 py-2.5 font-medium hidden md:table-cell">模式</th>
                         <th className="px-3 py-2.5 font-medium hidden lg:table-cell">方式</th>
@@ -1743,7 +2669,9 @@ export default function Finance() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredPayments.map(p => (
+                      {paginatedPayments.items.map(p => {
+                        const displayIncomeType = getPaymentDisplayIncomeType(p);
+                        return (
                         <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2.5 font-medium">
                             <Button
@@ -1756,16 +2684,19 @@ export default function Finance() {
                             </Button>
                           </td>
                           <td className="px-3 py-2.5">
-                            <Badge style={{ backgroundColor: `${INCOME_TYPE_COLORS[p.income_type] || '#94a3b8'}20`, color: INCOME_TYPE_COLORS[p.income_type] || '#94a3b8' }} className="text-xs">
-                              {incomeTypeLabels[p.income_type] || p.income_type || '-'}
+                            <Badge style={{ backgroundColor: `${INCOME_TYPE_COLORS[displayIncomeType] || '#94a3b8'}20`, color: INCOME_TYPE_COLORS[displayIncomeType] || '#94a3b8' }} className="text-xs">
+                              {incomeTypeLabels[displayIncomeType] || displayIncomeType || '-'}
                             </Badge>
                           </td>
                           <td className="px-3 py-2.5 max-w-[160px] truncate">{p.product_name}</td>
                           <td className="px-3 py-2.5">{fmt(p.amount_due)}</td>
                           <td className="px-3 py-2.5 text-green-600 font-medium">{fmt(p.amount_paid)}</td>
+                          <td className="px-3 py-2.5 hidden xl:table-cell">{getManagementRevenueAmount(p) > 0 ? fmt(getManagementRevenueAmount(p)) : '-'}</td>
+                          <td className="px-3 py-2.5 hidden xl:table-cell">{getAdsRechargeAmount(p) > 0 ? fmt(getAdsRechargeAmount(p)) : '-'}</td>
                           <td className="px-3 py-2.5 text-cyan-600 hidden lg:table-cell">
                             {calculateStripePlatformFee(p) > 0 ? fmt(calculateStripePlatformFee(p)) : '-'}
                           </td>
+                          <td className="px-3 py-2.5 hidden xl:table-cell">{fmt(getStoredMoney(p.net_amount) ?? Math.max(Number(p.amount_paid || 0) - calculateStripePlatformFee(p), 0))}</td>
                           <td className="px-3 py-2.5">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600 font-medium">{fmt(p.outstanding_amount)}</span> : '-'}</td>
                           <td className="px-3 py-2.5 hidden md:table-cell">
                             <Badge
@@ -1788,11 +2719,12 @@ export default function Finance() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      );})}
                     </tbody>
                   </table>
                 </div>
               )}
+              {filteredPayments.length > 0 && <PaginationFooter pageKey="income" data={paginatedPayments} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1825,7 +2757,7 @@ export default function Finance() {
               {/* Summary */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                 <div className="p-3 bg-slate-50 rounded-lg">
-                  <p className="text-xs text-slate-500">总费用</p>
+                  <p className="text-xs text-slate-500">总费用 USD</p>
                   <p className="text-lg font-bold text-slate-800">{fmt(totalCustomerExpense)}</p>
                 </div>
                 {customerExpenseByType.map(et => (
@@ -1846,13 +2778,14 @@ export default function Finance() {
                         <th className="px-3 py-2.5 font-medium">客户</th>
                         <th className="px-3 py-2.5 font-medium">费用类型</th>
                         <th className="px-3 py-2.5 font-medium">金额</th>
+                        <th className="px-3 py-2.5 font-medium">币种</th>
                         <th className="px-3 py-2.5 font-medium">月份</th>
                         <th className="px-3 py-2.5 font-medium hidden md:table-cell">备注</th>
                         <th className="px-3 py-2.5 font-medium w-20">操作</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredExpenses.map(e => (
+                      {paginatedExpenses.items.map(e => (
                         <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2.5 font-medium">
                             <Button
@@ -1869,7 +2802,8 @@ export default function Finance() {
                               {customerExpenseTypeLabels[e.expense_type] || e.expense_type}
                             </Badge>
                           </td>
-                          <td className="px-3 py-2.5 font-medium">{fmt(e.amount || 0)}</td>
+                          <td className="px-3 py-2.5 font-medium">{formatMoney(Number(e.amount || 0), getCustomerExpenseCurrency(e))}</td>
+                          <td className="px-3 py-2.5 text-slate-500">{getCustomerExpenseCurrency(e)}</td>
                           <td className="px-3 py-2.5 text-slate-500">{e.expense_month}</td>
                           <td className="px-3 py-2.5 text-slate-500 hidden md:table-cell max-w-[200px] truncate">{e.notes || '-'}</td>
                           <td className="px-3 py-2.5">
@@ -1884,6 +2818,7 @@ export default function Finance() {
                   </table>
                 </div>
               )}
+              {filteredExpenses.length > 0 && <PaginationFooter pageKey="customer_expense" data={paginatedExpenses} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1960,7 +2895,7 @@ export default function Finance() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredCompanyExpenses.map(e => {
+                      {paginatedCompanyExpenses.items.map(e => {
                         const currency = getCompanyExpenseCurrency(e);
                         return (
                         <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
@@ -1993,6 +2928,7 @@ export default function Finance() {
                   </table>
                 </div>
               )}
+              {filteredCompanyExpenses.length > 0 && <PaginationFooter pageKey="company_expense" data={paginatedCompanyExpenses} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -2013,7 +2949,7 @@ export default function Finance() {
                         <th className="px-3 py-2.5 font-medium">价格</th>
                         <th className="px-3 py-2.5 font-medium">周期</th>
                         <th className="px-3 py-2.5 font-medium hidden md:table-cell">到期日</th>
-                        <th className="px-3 py-2.5 font-medium hidden lg:table-cell">续费方式</th>
+                        <th className="px-3 py-2.5 font-medium">续费开关</th>
                         <th className="px-3 py-2.5 font-medium">剩余天数</th>
                         <th className="px-3 py-2.5 font-medium">状态</th>
                         <th className="px-3 py-2.5 font-medium hidden lg:table-cell">续费负责</th>
@@ -2021,7 +2957,7 @@ export default function Finance() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredSubscriptions.map(s => {
+                      {paginatedSubscriptions.items.map(s => {
                         const remainDays = getSubscriptionRemainingDays(s);
                         return (
                           <tr key={s.id} className={`border-b border-slate-100 hover:bg-slate-50 ${remainDays !== null && remainDays <= 0 ? 'bg-red-50/50' : remainDays !== null && remainDays <= 7 ? 'bg-amber-50/50' : ''}`}>
@@ -2039,13 +2975,25 @@ export default function Finance() {
                             <td className="px-3 py-2.5">{fmt(s.package_price)}</td>
                             <td className="px-3 py-2.5 text-slate-500">{cycleLabels[s.billing_cycle] || s.billing_cycle}</td>
                             <td className="px-3 py-2.5 text-slate-500 hidden md:table-cell">{s.end_date?.slice(0, 10)}</td>
-                            <td className="px-3 py-2.5 hidden lg:table-cell">
-                              {s.auto_renew ? (
-                                <Badge className="bg-cyan-100 text-cyan-700 text-xs">Stripe自动扣款</Badge>
-                              ) : (
-                                <Badge className="bg-slate-100 text-slate-600 text-xs">手动续费</Badge>
-                              )}
-                              {s.next_payment_date && <div className="text-xs text-slate-400 mt-1">下次付款: {s.next_payment_date.slice(0, 10)}</div>}
+                            <td className="px-3 py-2.5">
+                              <div className="flex min-w-32 flex-col gap-1.5">
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={Boolean(s.auto_renew)}
+                                    onCheckedChange={checked => handleToggleSubscriptionAutoRenew(s, checked)}
+                                    disabled={updatingSubscriptionId === Number(s.id)}
+                                  />
+                                  <span className="text-xs font-medium text-slate-700">
+                                    {s.auto_renew ? '订阅续费' : '停止续费'}
+                                  </span>
+                                </div>
+                                {s.auto_renew ? (
+                                  <Badge className="w-fit bg-cyan-100 text-cyan-700 text-xs">到期确认续费</Badge>
+                                ) : (
+                                  <span className="text-xs text-slate-400">不会自动进入续费确认</span>
+                                )}
+                                {s.next_payment_date && <div className="text-xs text-slate-400">下次付款: {s.next_payment_date.slice(0, 10)}</div>}
+                              </div>
                             </td>
                             <td className="px-3 py-2.5">
                               {remainDays !== null ? (
@@ -2079,6 +3027,7 @@ export default function Finance() {
                   </table>
                 </div>
               )}
+              {filteredSubscriptions.length > 0 && <PaginationFooter pageKey="subscriptions" data={paginatedSubscriptions} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -2371,6 +3320,8 @@ export default function Finance() {
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
                         <th className="px-3 py-2.5 font-medium">月份</th>
                         <th className="px-3 py-2.5 font-medium">收入 (revenue_gross)</th>
+                        <th className="px-3 py-2.5 font-medium">管理费收入</th>
+                        <th className="px-3 py-2.5 font-medium">投流充值收入</th>
                         <th className="px-3 py-2.5 font-medium">管理费扣点率</th>
                         <th className="px-3 py-2.5 font-medium">管理费扣点</th>
                         <th className="px-3 py-2.5 font-medium">投流充值 1%</th>
@@ -2383,10 +3334,12 @@ export default function Finance() {
                       </tr>
                     </thead>
                     <tbody>
-                      {monthlyDetail.rows.map((r: any) => (
+                      {paginatedMonthlyDetail.items.map((r: any) => (
                         <tr key={r.month} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2.5 font-medium">{r.month}</td>
                           <td className="px-3 py-2.5">{fmt(r.revenue_gross)}</td>
+                          <td className="px-3 py-2.5">{fmt(r.management_revenue || 0)}</td>
+                          <td className="px-3 py-2.5">{fmt(r.ads_recharge_revenue || 0)}</td>
                           <td className="px-3 py-2.5">{r.management_rate > 0 ? `${Math.round(r.management_rate * 100)}%` : '-'}</td>
                           <td className="px-3 py-2.5">{fmt(r.management_deduction_amount)}</td>
                           <td className="px-3 py-2.5">{fmt(r.ads_recharge_deduction_amount)}</td>
@@ -2404,6 +3357,7 @@ export default function Finance() {
                   </table>
                 </div>
               )}
+              {monthlyDetail.rows.length > 0 && <PaginationFooter pageKey="monthly_detail" data={paginatedMonthlyDetail} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -2437,9 +3391,19 @@ export default function Finance() {
               )}
             </div>
             <div>
-              <Label>收入类型 *</Label>
-              <NativeSelect value={payForm.income_type} onChange={v => setPayForm({ ...payForm, income_type: v })}
-                options={Object.entries(incomeTypeLabels).map(([k, v]) => ({ value: k, label: v }))} />
+              <div className="flex items-center justify-between gap-2">
+                <Label>收入类型 *</Label>
+                {canManageIncomeTypes && (
+                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0" onClick={openIncomeTypeManager}>
+                    管理类型
+                  </Button>
+                )}
+              </div>
+              <NativeSelect
+                value={payForm.income_type}
+                onChange={v => setPayForm({ ...payForm, income_type: v, management_amount: '', ads_recharge_amount: '' })}
+                options={paymentIncomeTypeOptions}
+              />
             </div>
             <div>
               <div className="flex items-center justify-between gap-2">
@@ -2473,12 +3437,76 @@ export default function Finance() {
               <div><Label>应收金额 *</Label><Input type="number" value={payForm.amount_due} onChange={e => setPayForm({ ...payForm, amount_due: e.target.value })} placeholder="0.00" /></div>
               <div><Label>实收金额 *</Label><Input type="number" value={payForm.amount_paid} onChange={e => setPayForm({ ...payForm, amount_paid: e.target.value })} placeholder="0.00" /></div>
             </div>
+            <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label className="text-sm font-medium text-blue-900">收入拆分</Label>
+                  <p className="mt-1 text-xs text-blue-700">
+                    客户一笔付款里同时包含管理费和投流费时，填写下面两项金额，系统会自动归类为「管理费+投流费」。
+                  </p>
+                </div>
+                <Badge className="bg-white text-blue-700">历史金额固定</Badge>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-slate-600">管理费收入金额</Label>
+                  <Input
+                    type="number"
+                    value={payForm.management_amount}
+                    onChange={e => setPayForm({ ...payForm, management_amount: e.target.value })}
+                    placeholder={payForm.income_type === MANAGEMENT_FEE_KEY ? payForm.amount_paid || '自动全部计入管理费' : '填写管理费部分'}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-slate-600">投流充值金额</Label>
+                  <Input
+                    type="number"
+                    value={payForm.ads_recharge_amount}
+                    onChange={e => setPayForm({ ...payForm, ads_recharge_amount: e.target.value })}
+                    placeholder={payForm.income_type === ADS_FEE_KEY ? payForm.amount_paid || '自动全部计入投流费' : '填写投流充值部分'}
+                  />
+                </div>
+              </div>
+              {(() => {
+                const preview = buildPaymentFinancePayload();
+                const unallocatedAmount = roundMoney(toMoneyNumber(payForm.amount_paid) - preview.management_amount - preview.ads_recharge_amount);
+                return (
+                  <p className="mt-2 text-xs text-blue-700">
+                    当前计算：管理费 {fmt(preview.management_amount)}，投流充值 {fmt(preview.ads_recharge_amount)}，
+                    未拆分 {unallocatedAmount > 0 ? fmt(unallocatedAmount) : '$0'}，
+                    Stripe手续费 {preview.stripe_fee_amount > 0 ? fmt(preview.stripe_fee_amount) : '$0'}。
+                  </p>
+                );
+              })()}
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>收款模式</Label>
+                <div className="mb-2 rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="text-sm font-medium text-cyan-900">这笔收款开启订阅续费</Label>
+                      <p className="mt-1 text-xs text-cyan-700">
+                        开启后默认按 Stripe 订阅处理，到期进入待确认续费；关闭后按手动收款，不产生 Stripe 手续费。
+                      </p>
+                    </div>
+                    <Switch
+                      checked={payForm.payment_mode === 'subscription_auto'}
+                      onCheckedChange={checked => setPayForm({
+                        ...payForm,
+                        payment_mode: checked ? 'subscription_auto' : 'manual_collection',
+                        payment_method: checked ? defaultSubscriptionPaymentMethod : defaultManualPaymentMethod,
+                      })}
+                    />
+                  </div>
+                </div>
                 <NativeSelect
                   value={payForm.payment_mode}
-                  onChange={v => setPayForm({ ...payForm, payment_mode: v })}
+                  onChange={v => setPayForm({
+                    ...payForm,
+                    payment_mode: v,
+                    payment_method: v === 'subscription_auto' ? defaultSubscriptionPaymentMethod : defaultManualPaymentMethod,
+                  })}
                   options={paymentModeOptions}
                 />
               </div>
@@ -2490,6 +3518,14 @@ export default function Finance() {
                   options={availablePaymentMethodOptions}
                 />
               </div>
+            </div>
+            <div>
+              <Label>流水 / 支票 / Stripe 编号</Label>
+              <Input
+                value={payForm.transaction_reference}
+                onChange={e => setPayForm({ ...payForm, transaction_reference: e.target.value })}
+                placeholder="可选，例如 Stripe invoice、支票号、转账备注"
+              />
             </div>
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
               {payForm.payment_mode === 'subscription_auto'
@@ -2504,6 +3540,20 @@ export default function Finance() {
               </div>
               <div className="flex items-center gap-2 pt-6"><Switch checked={payForm.has_invoice} onCheckedChange={v => setPayForm({ ...payForm, has_invoice: v })} /><Label>已开票</Label></div>
             </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label className="text-sm font-medium text-amber-900">同步为成交记录</Label>
+                  <p className="mt-1 text-xs leading-relaxed text-amber-700">
+                    默认关闭。补录历史流水、Stripe续费、支票或转账收入不会影响成交数据；只有确认为新成交或首款时再打开。
+                  </p>
+                </div>
+                <Switch
+                  checked={payForm.sync_to_deal}
+                  onCheckedChange={v => setPayForm({ ...payForm, sync_to_deal: v })}
+                />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>覆盖开始</Label><Input type="date" value={payForm.coverage_start} onChange={e => setPayForm({ ...payForm, coverage_start: e.target.value })} /></div>
               <div><Label>覆盖结束</Label><Input type="date" value={payForm.coverage_end} onChange={e => setPayForm({ ...payForm, coverage_end: e.target.value })} /></div>
@@ -2513,6 +3563,67 @@ export default function Finance() {
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setShowPaymentForm(false)}>取消</Button>
             <Button onClick={handleSavePayment} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showIncomeTypeManager} onOpenChange={(v) => { setShowIncomeTypeManager(v); if (!v) setNewIncomeTypeName(''); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>管理收入类型</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Input
+                value={newIncomeTypeName}
+                onChange={e => setNewIncomeTypeName(e.target.value)}
+                placeholder="新增类型，例如：设计费、拍摄费"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddIncomeTypeDraft();
+                  }
+                }}
+              />
+              <Button type="button" size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleAddIncomeTypeDraft}>
+                添加
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {incomeTypeDrafts.map(item => {
+                const protectedType = PROTECTED_INCOME_TYPE_KEYS.has(item.key);
+                return (
+                  <div key={item.key} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        value={item.label}
+                        onChange={e => setIncomeTypeDrafts(prev => prev.map(type => (type.key === item.key ? { ...type, label: e.target.value } : type)))}
+                        className="h-8 bg-white text-sm"
+                        disabled={protectedType}
+                      />
+                      <p className="mt-1 text-xs text-slate-400">
+                        {item.key}
+                        {protectedType ? ' · 系统扣点类型，不能删除或改名' : ''}
+                      </p>
+                    </div>
+                    {protectedType ? (
+                      <Badge className="bg-blue-100 text-blue-700 text-xs">系统</Badge>
+                    ) : (
+                      <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => handleRemoveIncomeTypeDraft(item.key)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-slate-500">
+              管理费会参与管理费扣点，投流费会参与投流 1% 扣点；「管理费+投流费」用于一笔收款同时包含两类金额，其他收入类型只作为普通收入分类统计。
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowIncomeTypeManager(false)}>取消</Button>
+            <Button onClick={handleSaveIncomeTypes} disabled={savingIncomeTypes} className="bg-blue-600 hover:bg-blue-700">
+              {savingIncomeTypes ? '保存中...' : '保存类型'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -2650,6 +3761,15 @@ export default function Finance() {
                 <Label>金额 *</Label>
                 <Input type="number" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="0.00" />
               </div>
+            </div>
+            <div>
+              <Label>币种</Label>
+              <NativeSelect
+                value={expenseForm.currency}
+                onChange={v => setExpenseForm({ ...expenseForm, currency: normalizeCurrency(v, 'USD') })}
+                options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))}
+              />
+              <p className="mt-1 text-xs text-slate-500">客户成本默认按 USD 进入利润；如选择 CNY，会保留记录但不混入 USD 利润。</p>
             </div>
             <div>
               <Label>费用月份</Label>

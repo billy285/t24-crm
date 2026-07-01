@@ -44,6 +44,22 @@ const callbackReminderMessages: Record<string, { title: string; description: str
     description: '页面已自动切到逾期待处理记录，方便你直接补回访。',
   },
 };
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
+
+const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(page || 1, 1), totalPages);
+  const offset = (safePage - 1) * pageSize;
+  return {
+    items: items.slice(offset, offset + pageSize),
+    page: safePage,
+    total,
+    totalPages,
+    start: total === 0 ? 0 : offset + 1,
+    end: Math.min(offset + pageSize, total),
+  };
+};
 
 export default function Callbacks() {
   const { role, employee, dataScope } = useRole();
@@ -63,6 +79,8 @@ export default function Callbacks() {
   const [filterType, setFilterType] = useState('all');
   const [filterCustomerId, setFilterCustomerId] = useState('all');
   const [filterSchedule, setFilterSchedule] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -116,9 +134,9 @@ export default function Callbacks() {
         client.apiCall.invoke({
           url: '/api/v1/entities/customer_callbacks',
           method: 'GET',
-          data: { limit: 500, sort: '-callback_date' },
+          data: { limit: 1000, sort: '-callback_date' },
         }),
-        client.entities.customers.query({ limit: 500 }),
+        client.entities.customers.query({ limit: 1000 }),
         client.entities.employees.queryAll({ limit: 200 }),
       ]);
       let cbs = cbRes?.data?.items || [];
@@ -171,6 +189,11 @@ export default function Callbacks() {
       return matchSearch && matchStatus && matchType && matchCustomer && matchSchedule;
     });
   }, [callbacks, customerMap, search, filterStatus, filterType, filterCustomerId, filterSchedule]);
+  const paginated = useMemo(() => paginateList(filtered, page, pageSize), [filtered, page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, filterStatus, filterType, filterCustomerId, filterSchedule, pageSize]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -329,6 +352,32 @@ export default function Callbacks() {
     { value: 'all', label: '全部客户' },
     ...closedCustomers.map(c => ({ value: String(c.id), label: c.business_name })),
   ], [closedCustomers]);
+
+  const PaginationFooter = () => {
+    if (paginated.total === 0) return null;
+    return (
+      <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          显示 {paginated.start}-{paginated.end} 条 / 共 {paginated.total} 条
+          {filtered.length !== callbacks.length ? `（筛选自 ${callbacks.length} 条）` : ''}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-400">每页</span>
+          <NativeSelect
+            value={String(pageSize)}
+            onChange={value => setPageSize(Number(value))}
+            options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
+            className="h-8 w-24 text-xs"
+          />
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
+          <span className="min-w-20 text-center text-xs text-slate-500">{paginated.page} / {paginated.totalPages} 页</span>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -514,7 +563,7 @@ export default function Callbacks() {
             <p className="text-center text-slate-400 py-12">暂无回访记录</p>
           ) : (
             <div className="divide-y divide-slate-100">
-              {filtered.map(cb => {
+              {paginated.items.map(cb => {
                 const cust = customerMap[cb.customer_id];
                 const isOverdue = cb.status === 'pending' && cb.callback_date &&
                   cb.callback_date.slice(0, 10) < new Date().toISOString().slice(0, 10);
@@ -625,6 +674,7 @@ export default function Callbacks() {
               })}
             </div>
           )}
+          {filtered.length > 0 && <PaginationFooter />}
         </CardContent>
       </Card>
 

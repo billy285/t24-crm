@@ -118,7 +118,7 @@ async def test_backfill_missing_payments_from_deals_creates_linked_income(db_ses
     assert payment.amount_due == 499.0
     assert payment.amount_paid == 499.0
     assert payment.outstanding_amount == 0.0
-    assert payment.payment_date == datetime(2026, 2, 15, 8, 0, 0)
+    assert payment.payment_date == datetime(2026, 2, 1, 12, 0, 0)
     assert payment.expense_month == "2026-02"
 
     synced_count_again = await backfill_missing_payments_from_deals(db_session)
@@ -178,6 +178,7 @@ async def test_sync_payment_from_deal_updates_existing_payment_without_duplicate
     assert synced_payment.amount_due == 450.0
     assert synced_payment.amount_paid == 450.0
     assert synced_payment.outstanding_amount == 0.0
+    assert synced_payment.payment_date == deal.deal_date
     assert synced_payment.notes == "updated note"
 
 
@@ -228,7 +229,7 @@ async def test_sync_payment_from_deal_uses_latest_matching_subscription_when_dup
     assert synced_payment.source_deal_id == deal.id
     assert synced_payment.amount_due == 2000.0
     assert synced_payment.amount_paid == 2000.0
-    assert synced_payment.payment_date == datetime(2026, 6, 20, 9, 0, 0)
+    assert synced_payment.payment_date == datetime(2026, 6, 24, 8, 0, 0)
 
 
 @pytest.mark.asyncio

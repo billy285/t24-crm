@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from dependencies.auth import get_current_user
 from services.deals import DealsService
-from services.deal_payment_sync import delete_synced_payment_for_deal, sync_payment_from_deal
+from services.deal_payment_sync import sync_payment_from_deal, unlink_synced_payment_for_deal
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ class DealsData(BaseModel):
     sales_name: Optional[str] = None
     product_type: str
     package_name: Optional[str] = None
+    package_platforms: Optional[str] = None
     billing_cycle: Optional[str] = None
     deal_amount: float
     is_paid: Optional[bool] = None
@@ -51,6 +52,7 @@ class DealsUpdateData(BaseModel):
     sales_name: Optional[str] = None
     product_type: Optional[str] = None
     package_name: Optional[str] = None
+    package_platforms: Optional[str] = None
     billing_cycle: Optional[str] = None
     deal_amount: Optional[float] = None
     is_paid: Optional[bool] = None
@@ -74,6 +76,7 @@ class DealsResponse(BaseModel):
     sales_name: Optional[str] = None
     product_type: str
     package_name: Optional[str] = None
+    package_platforms: Optional[str] = None
     billing_cycle: Optional[str] = None
     deal_amount: float
     is_paid: Optional[bool] = None
@@ -353,7 +356,7 @@ async def delete_dealss_batch(
         for item_id in request.ids:
             success = await service.delete(item_id)
             if success:
-                await delete_synced_payment_for_deal(db, item_id)
+                await unlink_synced_payment_for_deal(db, item_id)
                 deleted_count += 1
         
         logger.info(f"Batch deleted {deleted_count} dealss successfully")
@@ -379,7 +382,7 @@ async def delete_deals(
             logger.warning(f"Deals with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Deals not found")
 
-        await delete_synced_payment_for_deal(db, id)
+        await unlink_synced_payment_for_deal(db, id)
         
         logger.info(f"Deals {id} deleted successfully")
         return {"message": "Deals deleted successfully", "id": id}

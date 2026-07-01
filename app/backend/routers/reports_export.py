@@ -14,7 +14,7 @@ from sqlalchemy import text
 from core.database import get_db
 from dependencies.auth import get_finance_user
 from schemas.auth import UserResponse
-from utils.monthly_deduction_sql import create_default_sql, create_rates_sql
+from utils.monthly_deduction_sql import create_default_sql, create_rates_sql, is_sqlite
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -125,6 +125,52 @@ def _calculate_stripe_platform_fee(amount_paid: float, payment_method: Optional[
     return round(amount_paid * STRIPE_PLATFORM_FEE_RATE + STRIPE_PLATFORM_FEE_FIXED, 2)
 
 
+def _optional_float(value: object) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _derive_management_revenue(income_type: Optional[str], amount_paid: float, stored_amount: object) -> float:
+    stored = _optional_float(stored_amount)
+    if stored is not None:
+        return stored
+    return amount_paid if income_type == MANAGEMENT_FEE_KEY else 0.0
+
+
+def _derive_ads_recharge_revenue(income_type: Optional[str], amount_paid: float, stored_amount: object) -> float:
+    stored = _optional_float(stored_amount)
+    if stored is not None:
+        return stored
+    return amount_paid if income_type == ADS_FEE_KEY else 0.0
+
+
+async def _get_table_columns(db: AsyncSession, table_name: str) -> set[str]:
+    if is_sqlite(db):
+        res = await db.execute(text(f"PRAGMA table_info({table_name})"))
+        return {str(row[1]) for row in res.fetchall()}
+
+    res = await db.execute(
+        text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = :table_name
+              AND table_schema = current_schema()
+        """),
+        {"table_name": table_name},
+    )
+    return {str(row[0]) for row in res.fetchall()}
+
+
+def _select_existing_column(columns: set[str], column_name: str) -> str:
+    if column_name in columns:
+        return column_name
+    return f"NULL AS {column_name}"
+
+
 def _build_deduction_note(
     management_revenue: float,
     ads_recharge_revenue: float,
@@ -170,13 +216,25 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
     end_dt = datetime.strptime(end, "%Y-%m-%d").date() if end else None
 
     # Payments -> USD revenue by month
-    q = "SELECT customer_id, customer_name, income_type, amount_paid, payment_date, payment_method, payment_mode FROM payments"
+    payment_columns = await _get_table_columns(db, "payments")
+    payment_optional_columns = [
+        _select_existing_column(payment_columns, "payment_method"),
+        _select_existing_column(payment_columns, "payment_mode"),
+        _select_existing_column(payment_columns, "management_amount"),
+        _select_existing_column(payment_columns, "ads_recharge_amount"),
+        _select_existing_column(payment_columns, "stripe_fee_amount"),
+    ]
+    q = f"""
+        SELECT customer_id, customer_name, income_type, amount_paid, payment_date,
+               {", ".join(payment_optional_columns)}
+        FROM payments
+    """
     # naive filter on backend side after fetch to keep SQL simple/portable
     res = await db.execute(text(q))
-    for row in res.fetchall():
-        income_type = row[2] or None
-        amt = float(row[3] or 0)
-        d = _coerce_date(row[4] or None)
+    for row in res.mappings().all():
+        income_type = row.get("income_type") or None
+        amt = float(row.get("amount_paid") or 0)
+        d = _coerce_date(row.get("payment_date") or None)
         if not d:
             continue
         if start_dt and d < start_dt:
@@ -186,17 +244,22 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
         ym = ym_key(d)
         months_set.add(ym)
         revenue_map["USD"][ym] += amt
-        stripe_platform_fee = _calculate_stripe_platform_fee(amt, row[5] or None, row[6] or None)
+        stored_stripe_fee = _optional_float(row.get("stripe_fee_amount"))
+        stripe_platform_fee = stored_stripe_fee if stored_stripe_fee is not None else _calculate_stripe_platform_fee(
+            amt,
+            row.get("payment_method") or None,
+            row.get("payment_mode") or None,
+        )
         if stripe_platform_fee > 0:
             stripe_platform_fee_map["USD"][ym] += stripe_platform_fee
             cost_map["USD"][ym] += stripe_platform_fee
-        if income_type == MANAGEMENT_FEE_KEY:
-            management_revenue_map["USD"][ym] += amt
-        elif income_type == ADS_FEE_KEY:
-            ads_recharge_map["USD"][ym] += amt
+        management_revenue_map["USD"][ym] += _derive_management_revenue(income_type, amt, row.get("management_amount"))
+        ads_recharge_map["USD"][ym] += _derive_ads_recharge_revenue(income_type, amt, row.get("ads_recharge_amount"))
 
     # Customer expenses (USD)
-    res = await db.execute(text("SELECT customer_id, customer_name, expense_type, amount, expense_month, created_at FROM expenses"))
+    expense_columns = await _get_table_columns(db, "expenses")
+    expense_currency_column = _select_existing_column(expense_columns, "currency")
+    res = await db.execute(text(f"SELECT customer_id, customer_name, expense_type, amount, {expense_currency_column}, expense_month, created_at FROM expenses"))
     for row in res.mappings().all():
         amt = float(row["amount"] or 0)
         ym = None
@@ -217,7 +280,8 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
         if end_dt and d > date(end_dt.year, end_dt.month, 1):
             continue
         months_set.add(ym)
-        cost_map["USD"][ym] += amt
+        currency = row.get("currency") if row.get("currency") in ("USD", "CNY") else "USD"
+        cost_map[currency][ym] += amt
 
     # Company operating expenses. Legacy rows created before currency support are treated as CNY.
     res = await db.execute(text("SELECT amount, currency, expense_month, created_at FROM company_expenses"))

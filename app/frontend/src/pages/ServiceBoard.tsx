@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ExportButton from '@/components/ExportButton';
+import { buildBusinessDicts, inferPackagePlatforms, platformLabels as configuredPlatformLabels } from '../lib/dict-config';
 
 // ==================== Types ====================
 interface ServiceProgress {
@@ -41,6 +42,7 @@ interface ServiceProgress {
   ops_person: string;
   design_person: string;
   package_name: string;
+  package_platforms: string;
   industry: string;
   country: string;
   state: string;
@@ -182,6 +184,14 @@ const isWaitingForClientMaterial = (sp: ServiceProgress) => (
 
 const displayCountry = (code: string) => countryDisplayLabels[code] || code;
 const normalizeText = (value?: string | null) => (value || '').toLowerCase().replace(/\s+/g, '');
+const parseMultiValue = (value?: string | null) => (value || '').split(',').map(item => item.trim()).filter(Boolean);
+const getPackagePlatformContext = () => {
+  const dicts = buildBusinessDicts();
+  return {
+    labels: dicts.customerPackages,
+    platforms: dicts.customerPackagePlatforms,
+  };
+};
 const getWeekStartStr = () => {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -211,17 +221,15 @@ const isOpenTaskThisWeek = (task: ServiceTask, weekStart = getWeekStartStr(), we
   const dueDate = (task.due_date || '').slice(0, 10);
   return Boolean(dueDate) && dueDate >= weekStart && dueDate <= weekEnd;
 };
-const inferPlatformsFromPackageName = (packageName?: string | null) => {
-  const normalizedPackage = normalizeText(packageName);
-  if (!normalizedPackage) return [] as string[];
-  const platforms = packagePlatformRules
-    .filter(rule => rule.labels.some(label => normalizedPackage.includes(normalizeText(label))))
-    .map(rule => rule.platform);
-  return Array.from(new Set(platforms));
+const inferPlatformsFromProgress = (sp?: Pick<ServiceProgress, 'package_name' | 'package_platforms'> | null) => {
+  const savedPlatforms = parseMultiValue(sp?.package_platforms);
+  if (savedPlatforms.length > 0) return savedPlatforms;
+  const context = getPackagePlatformContext();
+  return inferPackagePlatforms(sp?.package_name, context.labels, context.platforms);
 };
 
 const getWeeklyTaskPlan = (sp: ServiceProgress, tasks: ServiceTask[]) => {
-  const platforms = inferPlatformsFromPackageName(sp.package_name);
+  const platforms = inferPlatformsFromProgress(sp);
   const weekStart = getWeekStartStr();
   const weekEnd = getWeekEndStr();
   const completedThisWeek = tasks.filter(task => task.service_progress_id === sp.id && isTaskCompletedThisWeek(task, weekStart));
@@ -252,7 +260,7 @@ const getWeeklyTaskPlan = (sp: ServiceProgress, tasks: ServiceTask[]) => {
   };
 };
 const getWeeklyPlatformProgress = (sp: ServiceProgress, tasks: ServiceTask[]) => {
-  const platforms = inferPlatformsFromPackageName(sp.package_name);
+  const platforms = inferPlatformsFromProgress(sp);
   const weekStart = getWeekStartStr();
   const relevantTasks = tasks.filter(task => task.service_progress_id === sp.id && isTaskCompletedThisWeek(task, weekStart));
   const counts = platforms.reduce<Record<string, number>>((acc, platform) => {
@@ -410,13 +418,7 @@ const productToServiceType: Record<string, string> = {
 
 const platformLabels: Record<string, string> = {
   general: '通用',
-  google_business: 'Google商家',
-  facebook: 'Facebook',
-  instagram: 'Instagram',
-  x: 'X',
-  yelp: 'Yelp',
-  xiaohongshu: '小红书',
-  tiktok: 'TikTok',
+  ...configuredPlatformLabels,
   website: '网站',
   other: '其他',
 };
@@ -455,16 +457,20 @@ const qualityColors: Record<string, string> = {
 const WEEKLY_PLATFORM_UPDATE_TARGET = 3;
 const WEEKLY_REPORT_TARGET = 1;
 const CONTENT_REFERENCE_REQUIRED_TASK_TYPES = new Set(['publish_content', 'reply_comments', 'submit_report']);
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
-const packagePlatformRules: Array<{ platform: string; labels: string[] }> = [
-  { platform: 'google_business', labels: ['Google商家管理', 'Google Business', 'google_business_management'] },
-  { platform: 'facebook', labels: ['Facebook商家管理', 'facebook_business_management'] },
-  { platform: 'instagram', labels: ['Instagram商家管理', 'Instgram商家管理', 'instgram商家管理', 'instagram_business_management'] },
-  { platform: 'yelp', labels: ['Yelp商家管理', 'yelp_business_management'] },
-  { platform: 'tiktok', labels: ['Tiktok商家管理', 'TikTok商家管理', 'tiktok_business_management'] },
-  { platform: 'xiaohongshu', labels: ['小红书管理', 'xiaohongshu_management'] },
-  { platform: 'x', labels: ['X商家管理', 'Twitter商家管理', 'x_business_management'] },
-];
+function paginateList<T>(items: T[], page: number, pageSize: number) {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const start = (safePage - 1) * pageSize;
+  return {
+    items: items.slice(start, start + pageSize),
+    page: safePage,
+    totalPages,
+    start: items.length === 0 ? 0 : start + 1,
+    end: Math.min(start + pageSize, items.length),
+  };
+}
 
 // Get next stage for a given service type and current stage
 function getNextStage(serviceType: string, currentStage: string): string | null {
@@ -501,6 +507,8 @@ export default function ServiceBoard() {
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({ industry: 'all', service_type: 'all', service_stage: 'all', ops_person: '', sales_person: '', issue_status: 'all' });
+  const [progressPage, setProgressPage] = useState(1);
+  const [progressPageSize, setProgressPageSize] = useState(20);
   const [showStats, setShowStats] = useState(true);
 
   // Detail
@@ -549,11 +557,11 @@ export default function ServiceBoard() {
   const loadData = async () => {
     try {
       const [progressItems, taskItems, customerItems, employeeItems, subscriptionItems] = await Promise.all([
-        authedListEntity<ServiceProgress>('service_progresses', { limit: 500, sort: '-last_update_time' }),
+        authedListEntity<ServiceProgress>('service_progresses', { limit: 1000, sort: '-last_update_time' }),
         authedListEntity<ServiceTask>('service_tasks', { limit: 1000, sort: '-created_at' }),
-        authedListEntity<CustomerRecord>('customers', { limit: 500, sort: '-created_at' }),
+        authedListEntity<CustomerRecord>('customers', { limit: 1000, sort: '-created_at' }),
         authedListEntity<EmployeeRecord>('employees', { limit: 200, sort: 'name' }),
-        authedListEntity<SubscriptionRecord>('subscriptions', { limit: 500, sort: '-created_at' }),
+        authedListEntity<SubscriptionRecord>('subscriptions', { limit: 1000, sort: '-created_at' }),
       ]);
       let items = progressItems;
       if (dataScope === 'self' && employee) {
@@ -632,6 +640,9 @@ export default function ServiceBoard() {
       ops_person: existingProgress?.ops_person || prev.ops_person,
       design_person: existingProgress?.design_person || prev.design_person,
       package_name: sub?.package_name || prev.package_name,
+      package_platforms: sub?.package_name
+        ? inferPackagePlatforms(sub.package_name, getPackagePlatformContext().labels, getPackagePlatformContext().platforms).join(',')
+        : prev.package_platforms,
       service_type: serviceType,
       service_stage: newStage,
       progress_percent: defaultProg >= 0 ? defaultProg : prev.progress_percent,
@@ -671,6 +682,15 @@ export default function ServiceBoard() {
       return true;
     });
   }, [progresses, allTasks, quickFilter, search, filters]);
+
+  const paginatedProgresses = useMemo(
+    () => paginateList(filtered, progressPage, progressPageSize),
+    [filtered, progressPage, progressPageSize],
+  );
+
+  useEffect(() => {
+    setProgressPage(1);
+  }, [search, quickFilter, filters, progressPageSize]);
 
   // ==================== Stats ====================
   const stats = useMemo(() => {
@@ -754,7 +774,7 @@ export default function ServiceBoard() {
     const progress = completeTaskTarget
       ? progresses.find(p => p.id === completeTaskTarget.service_progress_id) || selectedProgress
       : selectedProgress;
-    return progress ? inferPlatformsFromPackageName(progress.package_name) : [];
+    return progress ? inferPlatformsFromProgress(progress) : [];
   }, [completeTaskTarget, progresses, selectedProgress]);
 
   // ==================== Task stats per progress ====================
@@ -788,7 +808,7 @@ export default function ServiceBoard() {
   function emptyProgressForm() {
     return {
       customer_id: 0, customer_name: '', service_type: 'social_media', service_stage: 'deal_handover',
-      progress_percent: 10, sales_person: '', ops_person: '', design_person: '', package_name: '',
+      progress_percent: 10, sales_person: '', ops_person: '', design_person: '', package_name: '', package_platforms: '',
       industry: 'restaurant', country: 'US', state: 'CA', city: '',
       service_start_date: todayStr(), service_end_date: '', last_work_summary: '',
       issue_status: 'none', issue_description: '', issue_owner: '',
@@ -826,7 +846,7 @@ export default function ServiceBoard() {
       customer_id: sp.customer_id, customer_name: sp.customer_name, service_type: sp.service_type || 'social_media',
       service_stage: effectiveStage, progress_percent: sp.progress_percent,
       sales_person: sp.sales_person || '', ops_person: sp.ops_person || '', design_person: sp.design_person || '',
-      package_name: sp.package_name || '', industry: sp.industry || 'restaurant',
+      package_name: sp.package_name || '', package_platforms: sp.package_platforms || '', industry: sp.industry || 'restaurant',
       country: sp.country || 'US', state: sp.state || '', city: sp.city || '',
       service_start_date: sp.service_start_date?.slice(0, 10) || '', service_end_date: sp.service_end_date?.slice(0, 10) || '',
       last_work_summary: sp.last_work_summary || '', issue_status: sp.issue_status || 'none',
@@ -867,6 +887,11 @@ export default function ServiceBoard() {
         ops_person: progressForm.ops_person,
         design_person: progressForm.design_person,
         package_name: progressForm.package_name,
+        package_platforms: progressForm.package_platforms || inferPackagePlatforms(
+          progressForm.package_name,
+          getPackagePlatformContext().labels,
+          getPackagePlatformContext().platforms,
+        ).join(','),
         industry: progressForm.industry,
         country: progressForm.country,
         state: progressForm.state,
@@ -1043,7 +1068,7 @@ export default function ServiceBoard() {
 
   const openCompleteTask = async (task: ServiceTask) => {
     const progress = progresses.find(p => p.id === task.service_progress_id) || selectedProgress;
-    const contractPlatforms = progress ? inferPlatformsFromPackageName(progress.package_name) : [];
+    const contractPlatforms = progress ? inferPlatformsFromProgress(progress) : [];
     setCompleteTaskTarget(task);
     setCompletionForm({ platform: task.platform || contractPlatforms[0] || '', selected_copy_id: '', selected_material_id: '', completion_note: '' });
     setCompletionCopies([]);
@@ -1163,7 +1188,7 @@ export default function ServiceBoard() {
   };
 
   const openCreateTask = (sp: ServiceProgress) => {
-    const platforms = inferPlatformsFromPackageName(sp.package_name);
+    const platforms = inferPlatformsFromProgress(sp);
     setTaskForm({ ...emptyTaskForm(), service_progress_id: sp.id, customer_id: sp.customer_id, customer_name: sp.customer_name, platform: platforms[0] || '' });
     setEditingTaskId(null);
     setShowTaskForm(true);
@@ -1760,6 +1785,45 @@ export default function ServiceBoard() {
     </>
   );
 
+  const ProgressPaginationFooter = () => {
+    if (filtered.length === 0) return null;
+    return (
+      <div className="mt-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          显示第 {paginatedProgresses.start}-{paginatedProgresses.end} 条，共 {filtered.length} 条
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">每页</span>
+          <NativeSelect
+            value={String(progressPageSize)}
+            onChange={value => setProgressPageSize(Number(value))}
+            options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
+            className="h-9 w-24 text-sm"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={paginatedProgresses.page <= 1}
+            onClick={() => setProgressPage(page => Math.max(1, page - 1))}
+          >
+            上一页
+          </Button>
+          <span className="min-w-16 text-center text-xs text-slate-500">
+            {paginatedProgresses.page} / {paginatedProgresses.totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={paginatedProgresses.page >= paginatedProgresses.totalPages}
+            onClick={() => setProgressPage(page => Math.min(paginatedProgresses.totalPages, page + 1))}
+          >
+            下一页
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   // ==================== DETAIL VIEW ====================
   if (selectedProgress) {
     const sp = selectedProgress;
@@ -2278,9 +2342,27 @@ export default function ServiceBoard() {
           />
           <Button variant="outline" size="sm" onClick={() => setShowStats(!showStats)} className="gap-1.5"><BarChart3 className="w-4 h-4" /> {showStats ? '隐藏统计' : '显示统计'}</Button>
           <Button variant="outline" size="sm" onClick={loadData} className="gap-1.5"><RefreshCw className="w-4 h-4" /> 刷新</Button>
-          {canCreate && <Button onClick={openCreateProgress} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 新增服务</Button>}
+          {canCreate && <Button onClick={openCreateProgress} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 手动新增服务</Button>}
         </div>
       </div>
+
+      {canCreate && (
+        <Card className="border-emerald-100 bg-emerald-50/70">
+          <CardContent className="p-3">
+            <div className="flex flex-col gap-2 text-sm text-emerald-800 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-2">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>
+                  服务看板现在不会因为新增客户或补录历史成交自动生成。新客户需要交付时，请在成交管理打开“生成服务看板”开关，或在成交列表点击“看板”；旧客户补录可以保持关闭。
+                </p>
+              </div>
+              <Button size="sm" variant="outline" className="border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-100" onClick={() => { window.location.href = '/deals'; }}>
+                去成交管理生成
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {showStats && (isAdmin || role === 'ops') && (
         <Card className="border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50">
@@ -2521,18 +2603,21 @@ export default function ServiceBoard() {
 
       {/* LIST VIEW */}
       {viewMode === 'list' && (
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.length === 0 ? (
-            <div className="col-span-full text-center text-slate-400 py-12">
-              <p className="mb-3">暂无匹配的服务记录</p>
-              {canCreate && (
-                <Button variant="outline" onClick={openCreateProgress}>
-                  <Plus className="w-4 h-4 mr-1" /> 新增第一条服务记录
-                </Button>
-              )}
-            </div>
-          ) : filtered.map(sp => <ProgressCard key={sp.id} sp={sp} />)}
-        </div>
+        <>
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filtered.length === 0 ? (
+              <div className="col-span-full text-center text-slate-400 py-12">
+                <p className="mb-3">暂无匹配的服务记录</p>
+                {canCreate && (
+                  <Button variant="outline" onClick={openCreateProgress}>
+                    <Plus className="w-4 h-4 mr-1" /> 新增第一条服务记录
+                  </Button>
+                )}
+              </div>
+            ) : paginatedProgresses.items.map(sp => <ProgressCard key={sp.id} sp={sp} />)}
+          </div>
+          <ProgressPaginationFooter />
+        </>
       )}
 
       {/* KANBAN VIEW */}

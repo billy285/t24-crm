@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
+import { invokeWithAuth } from '@/lib/tokenStore';
 import { useRole } from '../lib/role-context';
 import { countries, getStatesForCountry, getCitiesForState, getCountryLabel, getStateLabel } from '../lib/country-state-data';
 import { logOperation } from '../lib/operation-log-helper';
@@ -25,8 +26,17 @@ import CustomerAiCopyTab from '@/components/CustomerAiCopyTab';
 import CustomerMaterialsTab from '@/components/CustomerMaterialsTab';
 import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../lib/customer-code-settings';
 import { saveRemoteAppConfig } from '../lib/app-config';
-import { buildOptionKey, sanitizeDictLabel, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
-import { getPaymentMethodLabel, getPaymentModeLabel } from '../lib/payment-utils';
+import {
+  buildOptionKey,
+  inferPackagePlatforms,
+  platformLabels,
+  sanitizeDictLabel,
+  serializeDictEntries,
+  serializePackagePlatformEntries,
+  useBusinessDicts,
+  useDictConfig,
+} from '../lib/dict-config';
+import { getPaymentMethodLabel, getPaymentModeLabel, inferPaymentModeKey, normalizePaymentMethodKey } from '../lib/payment-utils';
 import {
   computeSubscriptionStatus,
   decorateEffectiveSubscriptions,
@@ -38,12 +48,47 @@ const levelColors: Record<string, string> = { high: 'bg-orange-100 text-orange-7
 const subStatusColors: Record<string, string> = { active: 'bg-green-100 text-green-700', expiring_soon: 'bg-amber-100 text-amber-700', expired: 'bg-red-100 text-red-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
 const contactRoleLabels: Record<string, string> = { boss: '老板', manager: '经理', staff: '员工', other: '其他' };
 const defaultLevelColorClass = 'bg-slate-100 text-slate-700';
+const MANAGEMENT_FEE_KEY = 'management_fee';
+const ADS_FEE_KEY = 'ads_fee';
+const MIXED_MANAGEMENT_ADS_KEY = 'management_ads_mixed';
+const DEFAULT_MANAGEMENT_DEDUCTION_RATE = 0.15;
+const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
+const STRIPE_PLATFORM_FEE_RATE = 0.029;
+const STRIPE_PLATFORM_FEE_FIXED = 0.3;
+const CUSTOMER_PAGE_SIZE_OPTIONS = [20, 50, 100];
+
+type PaginationResult<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  start: number;
+  end: number;
+};
+
+const paginateList = <T,>(items: T[], page: number, pageSize: number): PaginationResult<T> => {
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(page || 1, 1), totalPages);
+  const offset = (safePage - 1) * pageSize;
+  return {
+    items: items.slice(offset, offset + pageSize),
+    page: safePage,
+    pageSize,
+    total,
+    totalPages,
+    start: total === 0 ? 0 : offset + 1,
+    end: Math.min(offset + pageSize, total),
+  };
+};
 
 const emptyForm = {
   customer_code: '', business_name: '', contact_name: '', phone: '', wechat: '', email: '',
   address: '', city: '', state: 'CA', country: 'US', industry: 'restaurant', website: '',
   google_business_link: '', facebook_link: '', instagram_link: '', yelp_link: '', tiktok_link: '',
   has_ordering_system: false, current_platform: '无', interested_packages: [] as string[], monthly_orders: 0,
+  interested_packages_snapshot: {} as Record<string, string>,
   source: 'phone', sales_person: '', sales_employee_id: '' as string | number, level: 'normal', status: 'new', notes: '',
 };
 
@@ -131,7 +176,37 @@ function parseMultiValue(value?: string | null) {
     .filter(Boolean);
 }
 
-type PackageDraft = { key: string; label: string };
+function parsePackageSnapshot(value?: string | null): Record<string, string> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.entries(parsed).reduce<Record<string, string>>((acc, [key, raw]) => {
+      if (!key) return acc;
+      if (typeof raw === 'string') {
+        acc[key] = raw;
+        return acc;
+      }
+      if (raw && typeof raw === 'object' && typeof (raw as any).label === 'string') {
+        acc[key] = (raw as any).label;
+      }
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+function serializePackageSnapshot(snapshot: Record<string, string>) {
+  const normalized = Object.entries(snapshot).reduce<Record<string, string>>((acc, [key, label]) => {
+    const safeLabel = normalizePackageLabel(label || key);
+    if (key && safeLabel) acc[key] = safeLabel;
+    return acc;
+  }, {});
+  return JSON.stringify(normalized);
+}
+
+type PackageDraft = { key: string; label: string; platforms: string[] };
 
 function normalizePackageLabel(label: string) {
   return sanitizeDictLabel(label).replace(/\s+/g, ' ').trim();
@@ -172,7 +247,7 @@ function appendPackageDrafts(baseDrafts: PackageDraft[], rawInput: string) {
       return;
     }
     seenLabels.add(normalizedKey);
-    nextDrafts.push({ key: buildUniquePackageKey(label, usedKeys), label });
+    nextDrafts.push({ key: buildUniquePackageKey(label, usedKeys), label, platforms: inferPackagePlatforms(label) });
   });
 
   return {
@@ -195,6 +270,199 @@ function formatCurrencyByCode(value: number, currency?: string | null) {
     return `¥${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
   }
   return formatCurrency(value);
+}
+
+function roundMoney(value: number) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function toMoneyNumber(value: any) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getStoredMoney(value: any) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? roundMoney(n) : null;
+}
+
+function normalizeCurrencyCode(currency?: string | null) {
+  return currency === 'CNY' ? 'CNY' : 'USD';
+}
+
+function getPaymentYearMonth(payment: any) {
+  const ym = (payment?.payment_date || payment?.created_at || '').slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(ym) ? ym : '';
+}
+
+function getDeductionRate(rates: Record<string, number>, ym: string) {
+  return typeof rates[ym] === 'number' ? rates[ym] : DEFAULT_MANAGEMENT_DEDUCTION_RATE;
+}
+
+function isStripeSubscriptionPayment(payment: any) {
+  const method = normalizePaymentMethodKey(payment?.payment_method);
+  return method === 'stripe' || (inferPaymentModeKey(payment || {}) === 'subscription_auto' && !payment?.payment_method);
+}
+
+function calculateStripePlatformFee(payment: any) {
+  const stored = getStoredMoney(payment?.stripe_fee_amount);
+  if (stored !== null) return stored;
+  const amount = toMoneyNumber(payment?.amount_paid);
+  if (amount <= 0 || !isStripeSubscriptionPayment(payment)) return 0;
+  return roundMoney(amount * STRIPE_PLATFORM_FEE_RATE + STRIPE_PLATFORM_FEE_FIXED);
+}
+
+function getManagementRevenueAmount(payment: any) {
+  const stored = getStoredMoney(payment?.management_amount);
+  if (stored !== null) return stored;
+  return payment?.income_type === MANAGEMENT_FEE_KEY ? roundMoney(toMoneyNumber(payment?.amount_paid)) : 0;
+}
+
+function getAdsRechargeAmount(payment: any) {
+  const stored = getStoredMoney(payment?.ads_recharge_amount);
+  if (stored !== null) return stored;
+  return payment?.income_type === ADS_FEE_KEY ? roundMoney(toMoneyNumber(payment?.amount_paid)) : 0;
+}
+
+function getPaymentDisplayIncomeType(payment: any) {
+  return getManagementRevenueAmount(payment) > 0 && getAdsRechargeAmount(payment) > 0
+    ? MIXED_MANAGEMENT_ADS_KEY
+    : (payment?.income_type || 'other_income');
+}
+
+function buildCustomerPaymentFinanceLine(payment: any, deductionRates: Record<string, number>) {
+  const amountPaid = roundMoney(toMoneyNumber(payment?.amount_paid));
+  const managementAmount = getManagementRevenueAmount(payment);
+  const adsRechargeAmount = getAdsRechargeAmount(payment);
+  const otherAmount = roundMoney(Math.max(amountPaid - managementAmount - adsRechargeAmount, 0));
+  const yearMonth = getPaymentYearMonth(payment);
+  const managementRate = getDeductionRate(deductionRates, yearMonth);
+  const managementDeduction = roundMoney(managementAmount * managementRate);
+  const adsDeduction = roundMoney(adsRechargeAmount * ADS_RECHARGE_DEDUCTION_RATE);
+  const stripeFee = calculateStripePlatformFee(payment);
+  const feeAndDeduction = roundMoney(managementDeduction + adsDeduction + stripeFee);
+  return {
+    payment,
+    yearMonth: yearMonth || '未归属月份',
+    amountPaid,
+    managementAmount,
+    adsRechargeAmount,
+    otherAmount,
+    managementRate,
+    managementDeduction,
+    adsDeduction,
+    stripeFee,
+    feeAndDeduction,
+    netBeforeCustomerCost: roundMoney(amountPaid - feeAndDeduction),
+  };
+}
+
+function buildCustomerFinanceSummary(
+  paymentItems: any[],
+  expenseItems: any[],
+  deductionRates: Record<string, number>,
+) {
+  const paymentLines = paymentItems.map(payment => buildCustomerPaymentFinanceLine(payment, deductionRates));
+  const totals = paymentLines.reduce((acc, line) => {
+    acc.revenue += line.amountPaid;
+    acc.managementRevenue += line.managementAmount;
+    acc.adsRevenue += line.adsRechargeAmount;
+    acc.otherRevenue += line.otherAmount;
+    acc.managementDeduction += line.managementDeduction;
+    acc.adsDeduction += line.adsDeduction;
+    acc.stripeFee += line.stripeFee;
+    acc.feeAndDeduction += line.feeAndDeduction;
+    acc.netBeforeCustomerCost += line.netBeforeCustomerCost;
+    return acc;
+  }, {
+    revenue: 0,
+    managementRevenue: 0,
+    adsRevenue: 0,
+    otherRevenue: 0,
+    managementDeduction: 0,
+    adsDeduction: 0,
+    stripeFee: 0,
+    feeAndDeduction: 0,
+    netBeforeCustomerCost: 0,
+  });
+
+  const customerCostUsd = expenseItems
+    .filter(item => normalizeCurrencyCode(item.currency) === 'USD')
+    .reduce((sum, item) => sum + toMoneyNumber(item.amount), 0);
+  const customerCostCny = expenseItems
+    .filter(item => normalizeCurrencyCode(item.currency) === 'CNY')
+    .reduce((sum, item) => sum + toMoneyNumber(item.amount), 0);
+
+  const monthlyMap = new Map<string, {
+    month: string;
+    revenue: number;
+    managementRevenue: number;
+    adsRevenue: number;
+    feeAndDeduction: number;
+    customerCostUsd: number;
+    profitUsd: number;
+  }>();
+  const getMonthBucket = (month: string) => {
+    if (!monthlyMap.has(month)) {
+      monthlyMap.set(month, {
+        month,
+        revenue: 0,
+        managementRevenue: 0,
+        adsRevenue: 0,
+        feeAndDeduction: 0,
+        customerCostUsd: 0,
+        profitUsd: 0,
+      });
+    }
+    return monthlyMap.get(month)!;
+  };
+
+  paymentLines.forEach(line => {
+    const bucket = getMonthBucket(line.yearMonth);
+    bucket.revenue += line.amountPaid;
+    bucket.managementRevenue += line.managementAmount;
+    bucket.adsRevenue += line.adsRechargeAmount;
+    bucket.feeAndDeduction += line.feeAndDeduction;
+  });
+
+  expenseItems.forEach(expense => {
+    if (normalizeCurrencyCode(expense.currency) !== 'USD') return;
+    const month = /^\d{4}-\d{2}$/.test(expense.expense_month || '')
+      ? expense.expense_month
+      : (expense.expense_date || expense.created_at || '').slice(0, 7);
+    const bucket = getMonthBucket(/^\d{4}-\d{2}$/.test(month) ? month : '未归属月份');
+    bucket.customerCostUsd += toMoneyNumber(expense.amount);
+  });
+
+  const monthlyRows = Array.from(monthlyMap.values())
+    .map(row => ({
+      ...row,
+      revenue: roundMoney(row.revenue),
+      managementRevenue: roundMoney(row.managementRevenue),
+      adsRevenue: roundMoney(row.adsRevenue),
+      feeAndDeduction: roundMoney(row.feeAndDeduction),
+      customerCostUsd: roundMoney(row.customerCostUsd),
+      profitUsd: roundMoney(row.revenue - row.feeAndDeduction - row.customerCostUsd),
+    }))
+    .sort((a, b) => b.month.localeCompare(a.month));
+
+  return {
+    paymentLines,
+    monthlyRows,
+    totalRevenue: roundMoney(totals.revenue),
+    managementRevenue: roundMoney(totals.managementRevenue),
+    adsRevenue: roundMoney(totals.adsRevenue),
+    otherRevenue: roundMoney(totals.otherRevenue),
+    managementDeduction: roundMoney(totals.managementDeduction),
+    adsDeduction: roundMoney(totals.adsDeduction),
+    stripeFee: roundMoney(totals.stripeFee),
+    feeAndDeduction: roundMoney(totals.feeAndDeduction),
+    netBeforeCustomerCost: roundMoney(totals.netBeforeCustomerCost),
+    customerCostUsd: roundMoney(customerCostUsd),
+    customerCostCny: roundMoney(customerCostCny),
+    profitUsd: roundMoney(totals.revenue - totals.feeAndDeduction - customerCostUsd),
+  };
 }
 
 function computeSubscriptionState(subscription: any) {
@@ -222,7 +490,9 @@ export default function Customers() {
   const sourceLabels = businessDicts.sources;
   const stageLabels = businessDicts.followUpStages;
   const productLabels = businessDicts.products;
+  const incomeTypeLabels = businessDicts.incomeTypes;
   const customerPackageLabels = businessDicts.customerPackages;
+  const customerPackagePlatforms = businessDicts.customerPackagePlatforms;
   const cycleLabels = businessDicts.billingCycles;
   const payModeLabels = businessDicts.paymentModes;
   const payMethodLabels = businessDicts.paymentMethods;
@@ -238,6 +508,8 @@ export default function Customers() {
   const [filterIndustry, setFilterIndustry] = useState('all');
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterSource, setFilterSource] = useState('all');
+  const [customerPage, setCustomerPage] = useState(1);
+  const [customerPageSize, setCustomerPageSize] = useState(20);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advFilters, setAdvFilters] = useState(emptyAdvancedFilters);
   const advFilterCount = Object.values(advFilters).filter(v => v.trim()).length;
@@ -251,9 +523,24 @@ export default function Customers() {
   const [deals, setDeals] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [customerExpenses, setCustomerExpenses] = useState<any[]>([]);
+  const [customerDeductionRates, setCustomerDeductionRates] = useState<Record<string, number>>({});
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [serviceProgresses, setServiceProgresses] = useState<any[]>([]);
   const [serviceTasks, setServiceTasks] = useState<any[]>([]);
+  const [followUpPage, setFollowUpPage] = useState(1);
+  const [followUpPageSize, setFollowUpPageSize] = useState(20);
+  const [dealPage, setDealPage] = useState(1);
+  const [dealPageSize, setDealPageSize] = useState(20);
+  const [serviceInfoPage, setServiceInfoPage] = useState(1);
+  const [serviceInfoPageSize, setServiceInfoPageSize] = useState(20);
+  const [financeMonthlyPage, setFinanceMonthlyPage] = useState(1);
+  const [financeMonthlyPageSize, setFinanceMonthlyPageSize] = useState(20);
+  const [financePaymentPage, setFinancePaymentPage] = useState(1);
+  const [financePaymentPageSize, setFinancePaymentPageSize] = useState(20);
+  const [financeExpensePage, setFinanceExpensePage] = useState(1);
+  const [financeExpensePageSize, setFinanceExpensePageSize] = useState(20);
+  const [renewalPage, setRenewalPage] = useState(1);
+  const [renewalPageSize, setRenewalPageSize] = useState(20);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
@@ -291,6 +578,33 @@ export default function Customers() {
   const [newPackageName, setNewPackageName] = useState('');
   const [packageDrafts, setPackageDrafts] = useState<PackageDraft[]>([]);
   const [savingPackages, setSavingPackages] = useState(false);
+
+  const getPackageLabelForSnapshot = (key: string, snapshot?: Record<string, string>) => (
+    snapshot?.[key] || customerPackageLabels[key] || key
+  );
+
+  const getCustomerPackageLabel = (customer: any, key: string) => (
+    getPackageLabelForSnapshot(key, parsePackageSnapshot(customer?.interested_packages_snapshot))
+  );
+
+  const packageOptionsForForm = useMemo(() => {
+    const activeEntries = Object.entries(customerPackageLabels).map(([key, label]) => ({
+      key,
+      label,
+      activeLabel: label,
+      historical: false,
+    }));
+    const activeKeys = new Set(activeEntries.map(item => item.key));
+    const historicalEntries = form.interested_packages
+      .filter(key => !activeKeys.has(key))
+      .map(key => ({
+        key,
+        label: form.interested_packages_snapshot[key] || key,
+        activeLabel: '',
+        historical: true,
+      }));
+    return [...activeEntries, ...historicalEntries];
+  }, [customerPackageLabels, form.interested_packages, form.interested_packages_snapshot]);
 
   const handleAddIndustry = async () => {
     const name = newIndustryName.trim();
@@ -399,7 +713,11 @@ export default function Customers() {
   };
 
   const openPackageManager = () => {
-    setPackageDrafts(Object.entries(customerPackageLabels).map(([key, label]) => ({ key, label })));
+    setPackageDrafts(Object.entries(customerPackageLabels).map(([key, label]) => ({
+      key,
+      label,
+      platforms: customerPackagePlatforms[key] || inferPackagePlatforms(label, customerPackageLabels, customerPackagePlatforms),
+    })));
     setNewPackageName('');
     setShowPackageManager(true);
   };
@@ -420,18 +738,23 @@ export default function Customers() {
     if (new Set(labels.map(label => label.toLowerCase())).size !== labels.length) {
       throw new Error('套餐名称不能重复');
     }
+    const platformEntries = draftsToSave.reduce<Record<string, string[]>>((acc, item) => {
+      if (!normalizedEntries[item.key]) return acc;
+      const selectedPlatforms = Array.from(new Set((item.platforms || []).filter(platform => Boolean(platformLabels[platform]))));
+      const fallbackPlatforms = inferPackagePlatforms(normalizedEntries[item.key], normalizedEntries, customerPackagePlatforms);
+      const platforms = selectedPlatforms.length > 0 ? selectedPlatforms : fallbackPlatforms;
+      if (platforms.length > 0) acc[item.key] = platforms;
+      return acc;
+    }, {});
 
     const nextDictConfig = {
       ...dictConfig,
       customerPackages: serializeDictEntries(normalizedEntries),
+      customerPackagePlatforms: serializePackagePlatformEntries(platformEntries),
     };
     await saveRemoteAppConfig('dict_config', nextDictConfig);
-    const savedDrafts = Object.entries(normalizedEntries).map(([key, label]) => ({ key, label }));
+    const savedDrafts = Object.entries(normalizedEntries).map(([key, label]) => ({ key, label, platforms: platformEntries[key] || [] }));
     setPackageDrafts(savedDrafts);
-    setForm(prev => ({
-      ...prev,
-      interested_packages: prev.interested_packages.filter(item => normalizedEntries[item]),
-    }));
     return savedDrafts;
   };
 
@@ -467,13 +790,21 @@ export default function Customers() {
       toast.error('至少保留一个客户意向套餐');
       return;
     }
-    if (customers.some(customer => parseMultiValue(customer.interested_packages).includes(key))) {
-      toast.error('该套餐已有客户在使用，请先调整客户资料后再删除');
-      return;
-    }
     const remaining = packageDrafts.filter(item => item.key !== key);
     setPackageDrafts(remaining);
-    setForm(prev => ({ ...prev, interested_packages: prev.interested_packages.filter(item => item !== key) }));
+    if (customers.some(customer => parseMultiValue(customer.interested_packages).includes(key)) || form.interested_packages.includes(key)) {
+      toast('该套餐会从新客户可选项中停用，已保存客户会继续按历史快照显示');
+    }
+  };
+
+  const togglePackageDraftPlatform = (packageKey: string, platform: string) => {
+    setPackageDrafts(prev => prev.map(item => {
+      if (item.key !== packageKey) return item;
+      const nextPlatforms = item.platforms.includes(platform)
+        ? item.platforms.filter(existing => existing !== platform)
+        : [...item.platforms, platform];
+      return { ...item, platforms: nextPlatforms };
+    }));
   };
 
   const handleSavePackages = async () => {
@@ -509,8 +840,14 @@ export default function Customers() {
     setForm(prev => ({
       ...prev,
       interested_packages: checked
-        ? [...prev.interested_packages, key]
+        ? Array.from(new Set([...prev.interested_packages, key]))
         : prev.interested_packages.filter(item => item !== key),
+      interested_packages_snapshot: checked
+        ? {
+            ...prev.interested_packages_snapshot,
+            [key]: prev.interested_packages_snapshot[key] || customerPackageLabels[key] || key,
+          }
+        : Object.fromEntries(Object.entries(prev.interested_packages_snapshot).filter(([itemKey]) => itemKey !== key)),
     }));
   };
 
@@ -571,7 +908,7 @@ export default function Customers() {
   };
 
   const reloadFollowUps = async (cid: number) => {
-    const r = await client.entities.follow_ups.query({ query: { customer_id: cid }, sort: '-created_at', limit: 50 });
+    const r = await client.entities.follow_ups.query({ query: { customer_id: cid }, sort: '-created_at', limit: 1000 });
     const items = r?.data?.items || [];
     setFollowUps(items);
     return items;
@@ -584,22 +921,53 @@ export default function Customers() {
     } catch (err) { console.error('Load contacts error:', err); setContacts([]); }
   };
 
+  const loadCustomerDeductionRates = async (paymentItems: any[]) => {
+    if (!canViewFinance) {
+      setCustomerDeductionRates({});
+      return;
+    }
+    const months = Array.from(new Set(
+      paymentItems
+        .map(item => getPaymentYearMonth(item))
+        .filter(Boolean)
+    ));
+    if (months.length === 0) {
+      setCustomerDeductionRates({});
+      return;
+    }
+    try {
+      const res = await invokeWithAuth({
+        url: '/api/v1/deductions-monthly/ensure',
+        method: 'POST',
+        data: { months },
+      });
+      const rates: Record<string, number> = {};
+      (res.data || []).forEach((row: any) => {
+        if (row?.year_month && typeof row.rate === 'number') rates[row.year_month] = row.rate;
+      });
+      setCustomerDeductionRates(rates);
+    } catch (err) {
+      console.warn('Load customer deduction rates failed:', err);
+      setCustomerDeductionRates({});
+    }
+  };
+
   const loadCustomerDetail = async (customerId: number, fallbackCustomer?: any) => {
     setDetailLoading(true);
     try {
       const [customerRes, fuRes, dRes, pRes, expenseRes, sRes, progressRes, taskRes] = await Promise.all([
         client.entities.customers.query({ query: { id: customerId }, limit: 1 }),
-        client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }),
-        client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 50 }),
+        client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
+        client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 1000 }),
         canViewFinance
-          ? client.entities.payments.queryAll({ query: { customer_id: customerId }, sort: '-payment_date', limit: 100 })
+          ? client.entities.payments.queryAll({ query: { customer_id: customerId }, sort: '-payment_date', limit: 1000 })
           : Promise.resolve({ data: { items: [] } }),
         canViewFinance
-          ? client.entities.expenses.queryAll({ query: { customer_id: customerId }, sort: '-expense_date', limit: 100 })
+          ? client.entities.expenses.queryAll({ query: { customer_id: customerId }, sort: '-expense_date', limit: 1000 })
           : Promise.resolve({ data: { items: [] } }),
-        client.entities.subscriptions.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }),
-        client.entities.service_progresses.queryAll({ query: { customer_id: customerId }, sort: '-last_update_time', limit: 50 }),
-        client.entities.service_tasks.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 200 }),
+        client.entities.subscriptions.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
+        client.entities.service_progresses.queryAll({ query: { customer_id: customerId }, sort: '-last_update_time', limit: 1000 }),
+        client.entities.service_tasks.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
       ]);
 
       const latestCustomer = customerRes?.data?.items?.[0] || fallbackCustomer || null;
@@ -609,8 +977,10 @@ export default function Customers() {
       }
       setFollowUps(fuRes?.data?.items || []);
       setDeals(dRes?.data?.items || []);
-      setPayments(pRes?.data?.items || []);
+      const paymentItems = pRes?.data?.items || [];
+      setPayments(paymentItems);
       setCustomerExpenses(expenseRes?.data?.items || []);
+      await loadCustomerDeductionRates(paymentItems);
       setSubscriptions(decorateEffectiveSubscriptions(sRes?.data?.items || []));
       setServiceProgresses(progressRes?.data?.items || []);
       setServiceTasks(taskRes?.data?.items || []);
@@ -722,7 +1092,7 @@ export default function Customers() {
 
   const loadCustomers = async () => {
     try {
-      const res = await client.entities.customers.query({ limit: 200, sort: '-created_at' });
+      const res = await client.entities.customers.query({ limit: 1000, sort: '-created_at' });
       let items = res?.data?.items || [];
       if (dataScope === 'self' && employee) items = items.filter((c: any) => c.sales_person === employee.name || c.sales_employee_id === employee.id);
       setCustomers(items);
@@ -773,10 +1143,51 @@ export default function Customers() {
       return ms && mst && mi && ml && mso && ma;
     });
   }, [customers, search, filterStatus, filterIndustry, filterLevel, filterSource, advFilters]);
+  const paginatedCustomers = useMemo(
+    () => paginateList(filtered, customerPage, customerPageSize),
+    [filtered, customerPage, customerPageSize],
+  );
 
-  const openCreate = () => { setForm({ ...emptyForm, interested_packages: [] }); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
+  useEffect(() => {
+    setCustomerPage(1);
+  }, [search, filterStatus, filterIndustry, filterLevel, filterSource, advFilters, customerPageSize]);
+
+  useEffect(() => {
+    setFollowUpPage(1);
+    setDealPage(1);
+    setServiceInfoPage(1);
+    setFinanceMonthlyPage(1);
+    setFinancePaymentPage(1);
+    setFinanceExpensePage(1);
+    setRenewalPage(1);
+  }, [selectedCustomer?.id]);
+
+  useEffect(() => {
+    setFollowUpPage(1);
+    setDealPage(1);
+    setServiceInfoPage(1);
+    setFinanceMonthlyPage(1);
+    setFinancePaymentPage(1);
+    setFinanceExpensePage(1);
+    setRenewalPage(1);
+  }, [
+    followUpPageSize,
+    dealPageSize,
+    serviceInfoPageSize,
+    financeMonthlyPageSize,
+    financePaymentPageSize,
+    financeExpensePageSize,
+    renewalPageSize,
+  ]);
+
+  const openCreate = () => { setForm({ ...emptyForm, interested_packages: [], interested_packages_snapshot: {} }); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
   const openEdit = (c: any) => {
-    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', interested_packages: parseMultiValue(c.interested_packages), monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
+    const interestedPackages = parseMultiValue(c.interested_packages);
+    const snapshot = parsePackageSnapshot(c.interested_packages_snapshot);
+    interestedPackages.forEach(key => {
+      if (!snapshot[key]) snapshot[key] = customerPackageLabels[key] || key;
+    });
+    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
     setManualCityInput(false);
     setEditingId(c.id); setDuplicateWarning(null); setShowForm(true);
   };
@@ -792,9 +1203,14 @@ export default function Customers() {
     try {
       const now = new Date().toISOString();
       const op = employee?.name || '管理员';
+      const selectedPackageSnapshot = form.interested_packages.reduce<Record<string, string>>((acc, key) => {
+        acc[key] = getPackageLabelForSnapshot(key, form.interested_packages_snapshot);
+        return acc;
+      }, {});
       const payload = {
         ...form,
         interested_packages: form.interested_packages.join(','),
+        interested_packages_snapshot: serializePackageSnapshot(selectedPackageSnapshot),
         sales_employee_id: form.sales_employee_id === '' ? null : Number(form.sales_employee_id),
         monthly_orders: String(form.monthly_orders ?? '').trim() === '' ? null : Number(form.monthly_orders || 0),
       };
@@ -1134,20 +1550,27 @@ export default function Customers() {
                 <div className="flex items-start gap-1.5">
                   <div className="flex-1 rounded-md border border-slate-200 bg-slate-50 p-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {Object.entries(customerPackageLabels).map(([key, label]) => (
+                      {packageOptionsForForm.map(({ key, label, activeLabel, historical }) => {
+                        const checked = form.interested_packages.includes(key);
+                        const displayLabel = checked ? getPackageLabelForSnapshot(key, form.interested_packages_snapshot) : label;
+                        const isRenamedSnapshot = checked && activeLabel && displayLabel !== activeLabel;
+                        return (
                         <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={form.interested_packages.includes(key)}
+                            checked={checked}
                             onChange={e => toggleInterestedPackage(key, e.target.checked)}
                             className="rounded"
                           />
-                          <span>{label}</span>
+                          <span>{displayLabel}</span>
+                          {historical && <Badge className="bg-slate-100 text-slate-600 text-[10px]">历史已选</Badge>}
+                          {isRenamedSnapshot && <Badge className="bg-amber-100 text-amber-700 text-[10px]">按保存时名称</Badge>}
                         </label>
-                      ))}
+                        );
+                      })}
                     </div>
                     <p className="text-xs text-slate-500 mt-3">
-                      已选: {form.interested_packages.length > 0 ? form.interested_packages.map(item => customerPackageLabels[item] || item).join('、') : '未选择'}
+                      已选: {form.interested_packages.length > 0 ? form.interested_packages.map(item => getPackageLabelForSnapshot(item, form.interested_packages_snapshot)).join('、') : '未选择'}
                     </p>
                   </div>
                   <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={openPackageManager}><Plus className="w-3.5 h-3.5" /></Button>
@@ -1162,22 +1585,37 @@ export default function Customers() {
                     </div>
                     <div className="space-y-2">
                       {packageDrafts.map((item) => (
-                        <div key={item.key} className="flex items-center gap-2">
-                          <Input
-                            value={item.label}
-                            onChange={e => setPackageDrafts(prev => prev.map(pkg => (pkg.key === item.key ? { ...pkg, label: e.target.value } : pkg)))}
-                            className="h-8 text-sm flex-1"
-                            placeholder="套餐名称"
-                          />
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
-                            onClick={() => handleRemovePackageDraft(item.key)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                        <div key={item.key} className="rounded-md border border-slate-200 bg-white p-2 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={item.label}
+                              onChange={e => setPackageDrafts(prev => prev.map(pkg => (pkg.key === item.key ? { ...pkg, label: e.target.value } : pkg)))}
+                              className="h-8 text-sm flex-1"
+                              placeholder="套餐名称，例如：A套餐"
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
+                              onClick={() => handleRemovePackageDraft(item.key)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(platformLabels).map(([platform, label]) => (
+                              <label key={platform} className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] text-slate-600">
+                                <input
+                                  type="checkbox"
+                                  checked={item.platforms.includes(platform)}
+                                  onChange={() => togglePackageDraftPlatform(item.key, platform)}
+                                  className="h-3 w-3 rounded"
+                                />
+                                <span>{label}</span>
+                              </label>
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1228,6 +1666,89 @@ export default function Customers() {
     </>
   );
 
+  const CustomerPaginationFooter = () => {
+    if (paginatedCustomers.total === 0) return null;
+    return (
+      <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          显示 {paginatedCustomers.start}-{paginatedCustomers.end} 条 / 共 {paginatedCustomers.total} 条
+          {filtered.length !== customers.length ? `（筛选自 ${customers.length} 条）` : ''}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-400">每页</span>
+          <NativeSelect
+            value={String(customerPageSize)}
+            onChange={value => setCustomerPageSize(Number(value))}
+            options={CUSTOMER_PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
+            className="h-8 w-24 text-xs"
+          />
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setCustomerPage(1)} disabled={paginatedCustomers.page <= 1}>
+            首页
+          </Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setCustomerPage(paginatedCustomers.page - 1)} disabled={paginatedCustomers.page <= 1}>
+            上一页
+          </Button>
+          <span className="min-w-20 text-center text-xs text-slate-500">
+            {paginatedCustomers.page} / {paginatedCustomers.totalPages} 页
+          </span>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setCustomerPage(paginatedCustomers.page + 1)} disabled={paginatedCustomers.page >= paginatedCustomers.totalPages}>
+            下一页
+          </Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setCustomerPage(paginatedCustomers.totalPages)} disabled={paginatedCustomers.page >= paginatedCustomers.totalPages}>
+            末页
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  const DetailPaginationFooter = ({
+    pagination,
+    pageSize,
+    onPageChange,
+    onPageSizeChange,
+    label = '记录',
+  }: {
+    pagination: PaginationResult<any>;
+    pageSize: number;
+    onPageChange: (page: number) => void;
+    onPageSizeChange: (pageSize: number) => void;
+    label?: string;
+  }) => {
+    if (pagination.total === 0) return null;
+    return (
+      <div className="mt-3 flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          显示 {pagination.start}-{pagination.end} 条 / 共 {pagination.total} 条{label}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-400">每页</span>
+          <NativeSelect
+            value={String(pageSize)}
+            onChange={value => onPageSizeChange(Number(value))}
+            options={CUSTOMER_PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
+            className="h-8 w-24 text-xs"
+          />
+          <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => onPageChange(1)} disabled={pagination.page <= 1}>
+            首页
+          </Button>
+          <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => onPageChange(pagination.page - 1)} disabled={pagination.page <= 1}>
+            上一页
+          </Button>
+          <span className="min-w-20 text-center text-xs text-slate-500">
+            {pagination.page} / {pagination.totalPages} 页
+          </span>
+          <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => onPageChange(pagination.page + 1)} disabled={pagination.page >= pagination.totalPages}>
+            下一页
+          </Button>
+          <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => onPageChange(pagination.totalPages)} disabled={pagination.page >= pagination.totalPages}>
+            末页
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   // ========== DETAIL VIEW ==========
   if (selectedCustomer) {
     const c = selectedCustomer;
@@ -1241,7 +1762,7 @@ export default function Customers() {
     const totalAmountDue = payments.reduce((sum, item) => sum + Number(item.amount_due || 0), 0);
     const totalAmountPaid = payments.reduce((sum, item) => sum + Number(item.amount_paid || 0), 0);
     const totalOutstanding = payments.reduce((sum, item) => sum + Number(item.outstanding_amount || 0), 0);
-    const totalCustomerExpenseAmount = customerExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const customerFinanceSummary = buildCustomerFinanceSummary(payments, customerExpenses, customerDeductionRates);
     const customerFinanceRecordCount = payments.length + customerExpenses.length;
     const latestPaymentDate = payments[0]?.payment_date?.slice(0, 10) || '-';
     const latestDealDate = deals[0]?.deal_date?.slice(0, 10) || '-';
@@ -1261,6 +1782,13 @@ export default function Customers() {
         const bTime = b.end_date ? new Date(b.end_date).getTime() : Number.MAX_SAFE_INTEGER;
         return aTime - bTime;
       });
+    const paginatedFollowUps = paginateList(followUps, followUpPage, followUpPageSize);
+    const paginatedDeals = paginateList(deals, dealPage, dealPageSize);
+    const paginatedServiceInfo = paginateList(subscriptions, serviceInfoPage, serviceInfoPageSize);
+    const paginatedFinanceMonthlyRows = paginateList(customerFinanceSummary.monthlyRows, financeMonthlyPage, financeMonthlyPageSize);
+    const paginatedFinancePaymentLines = paginateList(customerFinanceSummary.paymentLines, financePaymentPage, financePaymentPageSize);
+    const paginatedFinanceExpenses = paginateList(customerExpenses, financeExpensePage, financeExpensePageSize);
+    const paginatedRenewals = paginateList(renewalRows, renewalPage, renewalPageSize);
     const upcomingRenewalCount = renewalRows.filter(item => item.computed_status === 'expiring_soon').length;
     const autoRenewCount = renewalRows.filter(item => item.auto_renew).length;
 
@@ -1324,7 +1852,7 @@ export default function Customers() {
                 {c.website && <div className="flex gap-2 items-center col-span-2"><Globe className="w-3 h-3 text-slate-400" /><a href={c.website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{c.website}</a></div>}
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">负责销售:</span><span>{c.sales_person || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">当前平台:</span><span>{c.current_platform || '-'}</span></div>
-                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">意向套餐:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => customerPackageLabels[item] || item).join('、') : '-'}</span></div>
+                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">意向套餐:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => getCustomerPackageLabel(c, item)).join('、') : '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">月订单量:</span><span>{c.monthly_orders || 0}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">已有点餐:</span><span>{c.has_ordering_system ? '是' : '否'}</span></div>
               </div>
@@ -1426,25 +1954,28 @@ export default function Customers() {
                 </div>
               )}
               {followUps.length === 0 && !showFollowForm ? <p className="text-sm text-slate-400 text-center py-8">暂无跟进记录</p> : (
-                <div className="space-y-4">{followUps.map((f: any) => (
-                  <div key={f.id} className="border-l-2 border-blue-300 pl-4 py-2 group">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs text-slate-500">{f.created_at?.slice(0, 16)}</span>
-                      <Badge variant="secondary" className="text-xs">{stageLabels[f.stage] || f.stage}</Badge>
-                      <span className="text-xs text-slate-400">{f.employee_name} · {methodLabels[f.contact_method] || f.contact_method}</span>
-                      <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEditFollow(f)}><Edit className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteFollowTarget(f)}><Trash2 className="w-3 h-3" /></Button>
+                <>
+                  <div className="space-y-4">{paginatedFollowUps.items.map((f: any) => (
+                    <div key={f.id} className="border-l-2 border-blue-300 pl-4 py-2 group">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs text-slate-500">{f.created_at?.slice(0, 16)}</span>
+                        <Badge variant="secondary" className="text-xs">{stageLabels[f.stage] || f.stage}</Badge>
+                        <span className="text-xs text-slate-400">{f.employee_name} · {methodLabels[f.contact_method] || f.contact_method}</span>
+                        <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEditFollow(f)}><Edit className="w-3 h-3" /></Button>
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteFollowTarget(f)}><Trash2 className="w-3 h-3" /></Button>
+                        </div>
                       </div>
+                      <p className="text-sm text-slate-700">{f.content}</p>
+                      {f.customer_needs && <p className="text-xs text-slate-500 mt-1">需求: {f.customer_needs}</p>}
+                      {f.customer_pain_points && <p className="text-xs text-slate-500 mt-1">痛点: {f.customer_pain_points}</p>}
+                      {f.close_probability != null && <p className="text-xs text-slate-500 mt-1">概率: {f.close_probability}%</p>}
+                      {f.has_quoted && <p className="text-xs text-green-600 mt-1">已报价: {f.quote_plan}</p>}
+                      {f.next_follow_date && <p className="text-xs text-amber-600 mt-1">下次跟进: {f.next_follow_date.slice(0, 10)}</p>}
                     </div>
-                    <p className="text-sm text-slate-700">{f.content}</p>
-                    {f.customer_needs && <p className="text-xs text-slate-500 mt-1">需求: {f.customer_needs}</p>}
-                    {f.customer_pain_points && <p className="text-xs text-slate-500 mt-1">痛点: {f.customer_pain_points}</p>}
-                    {f.close_probability != null && <p className="text-xs text-slate-500 mt-1">概率: {f.close_probability}%</p>}
-                    {f.has_quoted && <p className="text-xs text-green-600 mt-1">已报价: {f.quote_plan}</p>}
-                    {f.next_follow_date && <p className="text-xs text-amber-600 mt-1">下次跟进: {f.next_follow_date.slice(0, 10)}</p>}
-                  </div>
-                ))}</div>
+                  ))}</div>
+                  <DetailPaginationFooter pagination={paginatedFollowUps} pageSize={followUpPageSize} onPageChange={setFollowUpPage} onPageSizeChange={setFollowUpPageSize} label="跟进记录" />
+                </>
               )}
             </CardContent></Card>
           </TabsContent>
@@ -1452,16 +1983,19 @@ export default function Customers() {
           <TabsContent value="deals">
             <Card className="border-slate-200"><CardContent className="p-5">
               {deals.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无成交记录</p> : (
-                <div className="space-y-3">{deals.map((d: any) => (
-                  <div key={d.id} className="p-3 bg-slate-50 rounded-lg">
-                    <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{d.package_name}</span><span className="text-green-600 font-bold">${d.deal_amount}</span></div>
-                    <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
-                      <span>产品: {productLabels[d.product_type] || d.product_type}</span><span>周期: {cycleLabels[d.billing_cycle] || d.billing_cycle}</span>
-                      <span>成交日: {d.deal_date?.slice(0, 10)}</span><span>销售: {d.sales_name}</span>
-                      <span>付款: {d.is_paid ? '✅ 已付' : '❌ 未付'}</span><span>交接: {d.is_handed_over ? '✅ 已交接' : '⏳ 待交接'}</span>
+                <>
+                  <div className="space-y-3">{paginatedDeals.items.map((d: any) => (
+                    <div key={d.id} className="p-3 bg-slate-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{d.package_name}</span><span className="text-green-600 font-bold">${d.deal_amount}</span></div>
+                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
+                        <span>产品: {productLabels[d.product_type] || d.product_type}</span><span>周期: {cycleLabels[d.billing_cycle] || d.billing_cycle}</span>
+                        <span>成交日: {d.deal_date?.slice(0, 10)}</span><span>销售: {d.sales_name}</span>
+                        <span>付款: {d.is_paid ? '✅ 已付' : '❌ 未付'}</span><span>交接: {d.is_handed_over ? '✅ 已交接' : '⏳ 待交接'}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}</div>
+                  ))}</div>
+                  <DetailPaginationFooter pagination={paginatedDeals} pageSize={dealPageSize} onPageChange={setDealPage} onPageSizeChange={setDealPageSize} label="成交记录" />
+                </>
               )}
             </CardContent></Card>
           </TabsContent>
@@ -1469,15 +2003,18 @@ export default function Customers() {
           <TabsContent value="subscriptions">
             <Card className="border-slate-200"><CardContent className="p-5">
               {subscriptions.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无套餐</p> : (
-                <div className="space-y-3">{subscriptions.map((s: any) => (
-                  <div key={s.id} className="p-3 bg-slate-50 rounded-lg">
-                    <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={subStatusColors[s.status]}>{subStatusLabels[s.status] || s.status}</Badge></div>
-                    <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
-                      <span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span>
-                      <span>开始: {s.start_date?.slice(0, 10)}</span><span>到期: {s.end_date?.slice(0, 10)}</span>
+                <>
+                  <div className="space-y-3">{paginatedServiceInfo.items.map((s: any) => (
+                    <div key={s.id} className="p-3 bg-slate-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={subStatusColors[s.status]}>{subStatusLabels[s.status] || s.status}</Badge></div>
+                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
+                        <span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span>
+                        <span>开始: {s.start_date?.slice(0, 10)}</span><span>到期: {s.end_date?.slice(0, 10)}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}</div>
+                  ))}</div>
+                  <DetailPaginationFooter pagination={paginatedServiceInfo} pageSize={serviceInfoPageSize} onPageChange={setServiceInfoPage} onPageSizeChange={setServiceInfoPageSize} label="服务记录" />
+                </>
               )}
             </CardContent></Card>
           </TabsContent>
@@ -1487,26 +2024,135 @@ export default function Customers() {
               <Card className="border-slate-200"><CardContent className="p-5">
                 {customerFinanceRecordCount === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无财务记录</p> : (
                   <div className="space-y-5">
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 xl:grid-cols-6 gap-3">
                       <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">累计应收</p><p className="text-lg font-semibold text-slate-800">{formatCurrency(totalAmountDue)}</p></div>
                       <div className="rounded-lg bg-green-50 p-3"><p className="text-xs text-green-700">累计实收</p><p className="text-lg font-semibold text-green-700">{formatCurrency(totalAmountPaid)}</p></div>
-                      <div className="rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-700">客户支出</p><p className="text-lg font-semibold text-amber-700">{formatCurrency(totalCustomerExpenseAmount)}</p></div>
-                      <div className="rounded-lg bg-red-50 p-3"><p className="text-xs text-red-700">当前尾款</p><p className="text-lg font-semibold text-red-700">{formatCurrency(totalOutstanding)}</p></div>
+                      <div className="rounded-lg bg-blue-50 p-3"><p className="text-xs text-blue-700">管理费收入</p><p className="text-lg font-semibold text-blue-700">{formatCurrency(customerFinanceSummary.managementRevenue)}</p></div>
+                      <div className="rounded-lg bg-orange-50 p-3"><p className="text-xs text-orange-700">投流收入</p><p className="text-lg font-semibold text-orange-700">{formatCurrency(customerFinanceSummary.adsRevenue)}</p></div>
+                      <div className="rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-700">USD客户成本</p><p className="text-lg font-semibold text-amber-700">{formatCurrency(customerFinanceSummary.customerCostUsd)}</p></div>
+                      <div className={customerFinanceSummary.profitUsd >= 0 ? 'rounded-lg bg-emerald-50 p-3' : 'rounded-lg bg-red-50 p-3'}>
+                        <p className={customerFinanceSummary.profitUsd >= 0 ? 'text-xs text-emerald-700' : 'text-xs text-red-700'}>累计利润 USD</p>
+                        <p className={customerFinanceSummary.profitUsd >= 0 ? 'text-lg font-semibold text-emerald-700' : 'text-lg font-semibold text-red-700'}>
+                          {formatCurrency(customerFinanceSummary.profitUsd)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3 text-xs leading-6 text-blue-800">
+                      利润口径：实收 {formatCurrency(customerFinanceSummary.totalRevenue)}
+                      {' - '}Stripe手续费 {formatCurrency(customerFinanceSummary.stripeFee)}
+                      {' - '}管理费扣点 {formatCurrency(customerFinanceSummary.managementDeduction)}
+                      {' - '}投流1%扣点 {formatCurrency(customerFinanceSummary.adsDeduction)}
+                      {' - '}USD客户成本 {formatCurrency(customerFinanceSummary.customerCostUsd)}
+                      {' = '}利润 {formatCurrency(customerFinanceSummary.profitUsd)}。
+                      {customerFinanceSummary.customerCostCny > 0 && (
+                        <span className="ml-1 text-amber-700">另有人民币成本 {formatCurrencyByCode(customerFinanceSummary.customerCostCny, 'CNY')}，暂不混入美元利润。</span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">其他收入</p><p className="text-base font-semibold text-slate-700">{formatCurrency(customerFinanceSummary.otherRevenue)}</p></div>
+                      <div className="rounded-lg bg-cyan-50 p-3"><p className="text-xs text-cyan-700">Stripe手续费</p><p className="text-base font-semibold text-cyan-700">{formatCurrency(customerFinanceSummary.stripeFee)}</p></div>
+                      <div className="rounded-lg bg-violet-50 p-3"><p className="text-xs text-violet-700">总扣点/手续费</p><p className="text-base font-semibold text-violet-700">{formatCurrency(customerFinanceSummary.feeAndDeduction)}</p></div>
+                      <div className="rounded-lg bg-red-50 p-3"><p className="text-xs text-red-700">当前尾款</p><p className="text-base font-semibold text-red-700">{formatCurrency(totalOutstanding)}</p></div>
                     </div>
 
                     <div>
-                      <h4 className="text-sm font-semibold text-slate-700 mb-2">收款记录</h4>
+                      <h4 className="text-sm font-semibold text-slate-700 mb-2">按月收入成本利润</h4>
+                      {customerFinanceSummary.monthlyRows.length === 0 ? <p className="text-sm text-slate-400 py-4">暂无按月汇总</p> : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b text-left text-slate-500">
+                                <th className="pb-2 font-medium">月份</th>
+                                <th className="pb-2 font-medium">收入</th>
+                                <th className="pb-2 font-medium">管理费</th>
+                                <th className="pb-2 font-medium">投流</th>
+                                <th className="pb-2 font-medium">扣点/手续费</th>
+                                <th className="pb-2 font-medium">USD成本</th>
+                                <th className="pb-2 font-medium">利润</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {paginatedFinanceMonthlyRows.items.map(row => (
+                                <tr key={row.month} className="border-b border-slate-100">
+                                  <td className="py-2 text-slate-600">{row.month}</td>
+                                  <td className="py-2 font-medium">{formatCurrency(row.revenue)}</td>
+                                  <td className="py-2 text-blue-600">{row.managementRevenue > 0 ? formatCurrency(row.managementRevenue) : '-'}</td>
+                                  <td className="py-2 text-orange-600">{row.adsRevenue > 0 ? formatCurrency(row.adsRevenue) : '-'}</td>
+                                  <td className="py-2 text-violet-600">{row.feeAndDeduction > 0 ? formatCurrency(row.feeAndDeduction) : '-'}</td>
+                                  <td className="py-2 text-amber-600">{row.customerCostUsd > 0 ? formatCurrency(row.customerCostUsd) : '-'}</td>
+                                  <td className={row.profitUsd >= 0 ? 'py-2 font-semibold text-emerald-600' : 'py-2 font-semibold text-red-600'}>{formatCurrency(row.profitUsd)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <DetailPaginationFooter pagination={paginatedFinanceMonthlyRows} pageSize={financeMonthlyPageSize} onPageChange={setFinanceMonthlyPage} onPageSizeChange={setFinanceMonthlyPageSize} label="月份" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-700 mb-2">收款记录拆分</h4>
                       {payments.length === 0 ? <p className="text-sm text-slate-400 py-4">暂无收款记录</p> : (
-                        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">产品</th><th className="pb-2 font-medium">应收</th><th className="pb-2 font-medium">实收</th><th className="pb-2 font-medium">欠款</th><th className="pb-2 font-medium">模式</th><th className="pb-2 font-medium">方式</th><th className="pb-2 font-medium">日期</th></tr></thead>
-                        <tbody>{payments.map((p: any) => (<tr key={p.id} className="border-b border-slate-100"><td className="py-2">{p.product_name}</td><td className="py-2">{formatCurrency(p.amount_due)}</td><td className="py-2 text-green-600">{formatCurrency(p.amount_paid)}</td><td className="py-2">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600">{formatCurrency(p.outstanding_amount)}</span> : '-'}</td><td className="py-2">{getPaymentModeLabel(p, payModeLabels)}</td><td className="py-2">{getPaymentMethodLabel(p, payMethodLabels)}</td><td className="py-2 text-slate-500">{p.payment_date?.slice(0, 10)}</td></tr>))}</tbody></table></div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b text-left text-slate-500">
+                                <th className="pb-2 font-medium">产品</th>
+                                <th className="pb-2 font-medium">收入类型</th>
+                                <th className="pb-2 font-medium">实收</th>
+                                <th className="pb-2 font-medium">拆分</th>
+                                <th className="pb-2 font-medium">扣点/手续费</th>
+                                <th className="pb-2 font-medium">净收入</th>
+                                <th className="pb-2 font-medium">欠款</th>
+                                <th className="pb-2 font-medium">方式</th>
+                                <th className="pb-2 font-medium">日期</th>
+                              </tr>
+                            </thead>
+                            <tbody>{paginatedFinancePaymentLines.items.map(line => {
+                              const p = line.payment;
+                              const displayIncomeType = getPaymentDisplayIncomeType(p);
+                              return (
+                                <tr key={p.id} className="border-b border-slate-100 align-top">
+                                  <td className="py-2 max-w-[170px] truncate">{p.product_name}</td>
+                                  <td className="py-2">{incomeTypeLabels[displayIncomeType] || displayIncomeType || '-'}</td>
+                                  <td className="py-2 text-green-600 font-medium">{formatCurrency(line.amountPaid)}</td>
+                                  <td className="py-2">
+                                    <div className="space-y-1 text-xs text-slate-600">
+                                      <div>管理费: <span className="font-medium text-blue-600">{line.managementAmount > 0 ? formatCurrency(line.managementAmount) : '-'}</span></div>
+                                      <div>投流费: <span className="font-medium text-orange-600">{line.adsRechargeAmount > 0 ? formatCurrency(line.adsRechargeAmount) : '-'}</span></div>
+                                      {line.otherAmount > 0 && <div>其他: <span className="font-medium">{formatCurrency(line.otherAmount)}</span></div>}
+                                    </div>
+                                  </td>
+                                  <td className="py-2">
+                                    <div className="space-y-1 text-xs text-slate-600">
+                                      <div>管理扣点: {line.managementDeduction > 0 ? `${formatCurrency(line.managementDeduction)} (${Math.round(line.managementRate * 100)}%)` : '-'}</div>
+                                      <div>投流扣点: {line.adsDeduction > 0 ? `${formatCurrency(line.adsDeduction)} (1%)` : '-'}</div>
+                                      <div>Stripe: {line.stripeFee > 0 ? formatCurrency(line.stripeFee) : '-'}</div>
+                                    </div>
+                                  </td>
+                                  <td className={line.netBeforeCustomerCost >= 0 ? 'py-2 font-semibold text-emerald-600' : 'py-2 font-semibold text-red-600'}>{formatCurrency(line.netBeforeCustomerCost)}</td>
+                                  <td className="py-2">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600">{formatCurrency(p.outstanding_amount)}</span> : '-'}</td>
+                                  <td className="py-2 text-slate-500">
+                                    <div>{getPaymentModeLabel(p, payModeLabels)}</div>
+                                    <div className="text-xs">{getPaymentMethodLabel(p, payMethodLabels)}</div>
+                                  </td>
+                                  <td className="py-2 text-slate-500">{p.payment_date?.slice(0, 10)}</td>
+                                </tr>
+                              );
+                            })}</tbody>
+                          </table>
+                          <DetailPaginationFooter pagination={paginatedFinancePaymentLines} pageSize={financePaymentPageSize} onPageChange={setFinancePaymentPage} onPageSizeChange={setFinancePaymentPageSize} label="收款记录" />
+                        </div>
                       )}
                     </div>
 
                     <div>
                       <h4 className="text-sm font-semibold text-slate-700 mb-2">客户支出记录</h4>
                       {customerExpenses.length === 0 ? <p className="text-sm text-slate-400 py-4">暂无客户支出记录</p> : (
-                        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">费用类型</th><th className="pb-2 font-medium">金额</th><th className="pb-2 font-medium">月份</th><th className="pb-2 font-medium">日期</th><th className="pb-2 font-medium">备注</th></tr></thead>
-                        <tbody>{customerExpenses.map((e: any) => (<tr key={e.id} className="border-b border-slate-100"><td className="py-2">{customerExpenseTypeLabels[e.expense_type] || e.expense_type || '-'}</td><td className="py-2 text-amber-600 font-medium">{formatCurrencyByCode(e.amount, e.currency)}</td><td className="py-2 text-slate-500">{e.expense_month || '-'}</td><td className="py-2 text-slate-500">{e.expense_date?.slice(0, 10) || '-'}</td><td className="py-2 text-slate-500 max-w-[240px] truncate">{e.notes || '-'}</td></tr>))}</tbody></table></div>
+                        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">费用类型</th><th className="pb-2 font-medium">金额</th><th className="pb-2 font-medium">利润口径</th><th className="pb-2 font-medium">月份</th><th className="pb-2 font-medium">日期</th><th className="pb-2 font-medium">备注</th></tr></thead>
+                        <tbody>{paginatedFinanceExpenses.items.map((e: any) => (<tr key={e.id} className="border-b border-slate-100"><td className="py-2">{customerExpenseTypeLabels[e.expense_type] || e.expense_type || '-'}</td><td className="py-2 text-amber-600 font-medium">{formatCurrencyByCode(e.amount, e.currency)}</td><td className="py-2 text-xs text-slate-500">{normalizeCurrencyCode(e.currency) === 'USD' ? '计入USD利润' : '单独记录'}</td><td className="py-2 text-slate-500">{e.expense_month || '-'}</td><td className="py-2 text-slate-500">{e.expense_date?.slice(0, 10) || '-'}</td><td className="py-2 text-slate-500 max-w-[240px] truncate">{e.notes || '-'}</td></tr>))}</tbody></table><DetailPaginationFooter pagination={paginatedFinanceExpenses} pageSize={financeExpensePageSize} onPageChange={setFinanceExpensePage} onPageSizeChange={setFinanceExpensePageSize} label="客户支出记录" /></div>
                       )}
                     </div>
                   </div>
@@ -1518,30 +2164,33 @@ export default function Customers() {
           <TabsContent value="renewals">
             <Card className="border-slate-200"><CardContent className="p-5">
               {subscriptions.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无续费信息</p> : (
-                <div className="space-y-3">{subscriptions.map((s: any) => {
-                  const computedStatus = computeSubscriptionState(s);
-                  const statusView = subscriptionStatusView[computedStatus] || subscriptionStatusView.active;
-                  const remainDays = getSubscriptionRemainingDays(s);
-                  return (<div key={s.id} className={`p-3 rounded-lg border ${statusView.cardClass}`}>
-                    <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={statusView.badgeClass}>{subStatusLabels[computedStatus] || statusView.label}</Badge></div>
-                    <div className="grid grid-cols-2 gap-1 text-xs text-slate-500"><span>到期: {s.end_date?.slice(0, 10) || '-'}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span><span>续费负责: {s.renewal_person || '-'}</span><span>下次付款: {s.next_payment_date?.slice(0, 10) || '-'}</span></div>
-                    <div className={`text-xs mt-2 ${
-                      remainDays == null
-                        ? 'text-slate-400'
-                        : remainDays <= 0
-                          ? 'text-red-600 font-medium'
-                          : remainDays <= 7
-                            ? 'text-amber-600 font-medium'
-                            : 'text-slate-500'
-                    }`}>
-                      {remainDays == null
-                        ? '剩余: -'
-                        : remainDays <= 0
-                          ? `已逾期 ${Math.abs(remainDays)} 天`
-                          : `剩余 ${remainDays} 天`}
-                    </div>
-                  </div>);
-                })}</div>
+                <>
+                  <div className="space-y-3">{paginatedRenewals.items.map((s: any) => {
+                    const computedStatus = s.computed_status || computeSubscriptionState(s);
+                    const statusView = subscriptionStatusView[computedStatus] || subscriptionStatusView.active;
+                    const remainDays = s.days_left ?? getSubscriptionRemainingDays(s);
+                    return (<div key={s.id} className={`p-3 rounded-lg border ${statusView.cardClass}`}>
+                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={statusView.badgeClass}>{subStatusLabels[computedStatus] || statusView.label}</Badge></div>
+                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-500"><span>到期: {s.end_date?.slice(0, 10) || '-'}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span><span>续费负责: {s.renewal_person || '-'}</span><span>下次付款: {s.next_payment_date?.slice(0, 10) || '-'}</span></div>
+                      <div className={`text-xs mt-2 ${
+                        remainDays == null
+                          ? 'text-slate-400'
+                          : remainDays <= 0
+                            ? 'text-red-600 font-medium'
+                            : remainDays <= 7
+                              ? 'text-amber-600 font-medium'
+                              : 'text-slate-500'
+                      }`}>
+                        {remainDays == null
+                          ? '剩余: -'
+                          : remainDays <= 0
+                            ? `已逾期 ${Math.abs(remainDays)} 天`
+                            : `剩余 ${remainDays} 天`}
+                      </div>
+                    </div>);
+                  })}</div>
+                  <DetailPaginationFooter pagination={paginatedRenewals} pageSize={renewalPageSize} onPageChange={setRenewalPage} onPageSizeChange={setRenewalPageSize} label="续费记录" />
+                </>
               )}
             </CardContent></Card>
           </TabsContent>
@@ -1678,7 +2327,7 @@ export default function Customers() {
             {visibleCols.includes('source') && <th className="px-4 py-3 font-medium hidden lg:table-cell">来源</th>}
             <th className="px-4 py-3 font-medium w-24">操作</th>
           </tr></thead>
-          <tbody>{filtered.map(c => (
+          <tbody>{paginatedCustomers.items.map(c => (
             <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
               {visibleCols.includes('customer_code') && <td className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
               {visibleCols.includes('business_name') && <td className="px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(c)}>{c.business_name}</td>}
@@ -1827,6 +2476,7 @@ export default function Customers() {
             </tr>
           ))}</tbody></table></div>
         )}
+        {filtered.length > 0 && <CustomerPaginationFooter />}
       </CardContent></Card>
 
       {sharedCustomerDialogs}

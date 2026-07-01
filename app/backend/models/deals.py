@@ -14,6 +14,7 @@ class Deals(Base):
     sales_name = Column(String, nullable=True)
     product_type = Column(String, nullable=False)
     package_name = Column(String, nullable=True)
+    package_platforms = Column(String, nullable=True)
     billing_cycle = Column(String, nullable=True)
     deal_amount = Column(Float, nullable=False)
     is_paid = Column(Boolean, nullable=True)

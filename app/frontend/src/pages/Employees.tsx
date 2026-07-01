@@ -19,6 +19,21 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusinessDicts } from '../lib/dict-config';
 
 const allRoleOptions = Object.entries(systemRoleLabels).map(([k, v]) => ({ value: k, label: v }));
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
+
+function paginateList<T>(items: T[], page: number, pageSize: number) {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const start = (safePage - 1) * pageSize;
+  return {
+    items: items.slice(start, start + pageSize),
+    page: safePage,
+    totalPages,
+    total: items.length,
+    start: items.length === 0 ? 0 : start + 1,
+    end: Math.min(start + pageSize, items.length),
+  };
+}
 
 const emptyForm = {
   name: '', role: 'sales', phone: '', email: '', status: 'active',
@@ -36,6 +51,8 @@ export default function Employees() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRole, setFilterRole] = useState('all');
   const [filterDept, setFilterDept] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -65,7 +82,7 @@ export default function Employees() {
 
   const loadEmployees = async () => {
     try {
-      const res = await client.entities.employees.queryAll({ limit: 200, sort: '-created_at' });
+      const res = await client.entities.employees.queryAll({ limit: 1000, sort: '-created_at' });
       setEmployees(res?.data?.items || []);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -80,6 +97,12 @@ export default function Employees() {
       return ms && mst && mr && md;
     });
   }, [employees, search, filterStatus, filterRole, filterDept]);
+
+  const paginated = useMemo(() => paginateList(filtered, page, pageSize), [filtered, page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, filterStatus, filterRole, filterDept, pageSize]);
 
   const activeEmployees = employees.filter(e => e.status === 'active' || e.status === 'probation');
 
@@ -299,6 +322,31 @@ export default function Employees() {
 
   const getRoleDisplay = (r: string) => systemRoleLabels[r as keyof typeof systemRoleLabels] || roleLabels[r] || r;
 
+  const PaginationFooter = () => {
+    if (paginated.total === 0) return null;
+    return (
+      <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          显示 {paginated.start}-{paginated.end} 条 / 共 {paginated.total} 条
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-500">每页</span>
+          <NativeSelect
+            value={String(pageSize)}
+            onChange={value => setPageSize(Number(value))}
+            className="w-24"
+            options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
+          />
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
+          <span className="min-w-20 text-center text-xs text-slate-500">{paginated.page} / {paginated.totalPages} 页</span>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
+        </div>
+      </div>
+    );
+  };
+
   // ========== DETAIL VIEW ==========
   if (selectedEmp) {
     const e = selectedEmp;
@@ -472,7 +520,7 @@ export default function Employees() {
             <th className="px-4 py-3 font-medium hidden md:table-cell">电话</th>
             <th className="px-4 py-3 font-medium">状态</th><th className="px-4 py-3 font-medium w-36">操作</th>
           </tr></thead>
-          <tbody>{filtered.map(e => (
+          <tbody>{paginated.items.map(e => (
             <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
               <td className="px-4 py-3 text-xs font-mono text-slate-500" onClick={() => openDetail(e)}>{e.employee_code || '-'}</td>
               <td className="px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(e)}>{e.name}</td>
@@ -494,6 +542,7 @@ export default function Employees() {
             </tr>
           ))}</tbody></table></div>
         )}
+        {!loading && filtered.length > 0 && <PaginationFooter />}
       </CardContent></Card>
 
       {/* Transfer Dialog */}

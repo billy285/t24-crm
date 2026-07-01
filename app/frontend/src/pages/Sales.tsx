@@ -47,6 +47,21 @@ const parseMultiValue = (value: any): string[] => {
   return String(value || '').split(',').map(item => item.trim()).filter(Boolean);
 };
 
+const parsePackageSnapshot = (value: any): Record<string, string> => {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(String(value));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.entries(parsed).reduce<Record<string, string>>((acc, [key, raw]) => {
+      if (typeof raw === 'string') acc[key] = raw;
+      else if (raw && typeof raw === 'object' && typeof (raw as any).label === 'string') acc[key] = (raw as any).label;
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+};
+
 const getLatestTime = (item: any, dateFields: string[]) => {
   if (!item) return 0;
   return dateFields.reduce((latest, field) => {
@@ -62,6 +77,22 @@ const packageSourceLabels: Record<string, string> = {
   payment: '来自收款记录',
   subscription: '来自续费记录',
   customer: '来自客户资料',
+};
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
+
+const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(page || 1, 1), totalPages);
+  const offset = (safePage - 1) * pageSize;
+  return {
+    items: items.slice(offset, offset + pageSize),
+    page: safePage,
+    total,
+    totalPages,
+    start: total === 0 ? 0 : offset + 1,
+    end: Math.min(offset + pageSize, total),
+  };
 };
 
 export default function Sales() {
@@ -79,17 +110,19 @@ export default function Sales() {
   const [filterServiceStatus, setFilterServiceStatus] = useState('all');
   const [filterSalesPerson, setFilterSalesPerson] = useState('all');
   const [filterCountry, setFilterCountry] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
       const [customerRes, dealRes, subRes, paymentRes] = await Promise.all([
-        client.entities.customers.query({ limit: 500, sort: '-updated_at' }),
-        client.entities.deals.query({ limit: 500, sort: '-deal_date' }),
-        client.entities.subscriptions.query({ limit: 500, sort: '-end_date' }),
+        client.entities.customers.query({ limit: 1000, sort: '-updated_at' }),
+        client.entities.deals.query({ limit: 1000, sort: '-deal_date' }),
+        client.entities.subscriptions.query({ limit: 1000, sort: '-end_date' }),
         canViewFinance
-          ? client.entities.payments.queryAll({ limit: 500, sort: '-payment_date' })
+          ? client.entities.payments.queryAll({ limit: 1000, sort: '-payment_date' })
           : Promise.resolve({ data: { items: [] } }),
       ]);
 
@@ -148,8 +181,9 @@ export default function Sales() {
           const latestSubscription = latestSubscriptionByCustomer[customer.id];
           const latestPayment = latestPaymentByCustomer[customer.id];
           const serviceStatus = latestSubscription ? computeSubscriptionStatus(latestSubscription) : 'none';
+          const packageSnapshot = parsePackageSnapshot(customer.interested_packages_snapshot);
           const customerPackageName = parseMultiValue(customer.interested_packages)
-            .map(key => customerPackageLabels[key] || key)
+            .map(key => packageSnapshot[key] || customerPackageLabels[key] || key)
             .filter(Boolean)
             .join('、');
           const selectedPackage =
@@ -251,6 +285,11 @@ export default function Sales() {
 
     return matchesCustomer && matchesSearch && matchesServiceStatus && matchesSalesPerson && matchesCountry;
   });
+  const paginated = paginateList(filtered, page, pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, filterCustomerId, filterServiceStatus, filterSalesPerson, filterCountry, pageSize]);
 
   const totalClosedCustomers = rows.length;
   const activeCustomers = rows.filter(row => row.service_status === 'active').length;
@@ -287,6 +326,32 @@ export default function Sales() {
 
   const openCustomerDetail = (customerId: number) => {
     navigate(`/customers?detail=${customerId}`);
+  };
+
+  const PaginationFooter = () => {
+    if (paginated.total === 0) return null;
+    return (
+      <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          显示 {paginated.start}-{paginated.end} 条 / 共 {paginated.total} 条
+          {filtered.length !== rows.length ? `（筛选自 ${rows.length} 条）` : ''}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-400">每页</span>
+          <NativeSelect
+            value={String(pageSize)}
+            onChange={value => setPageSize(Number(value))}
+            options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
+            className="h-8 w-24 text-xs"
+          />
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
+          <span className="min-w-20 text-center text-xs text-slate-500">{paginated.page} / {paginated.totalPages} 页</span>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -408,7 +473,7 @@ export default function Sales() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(row => (
+                  {paginated.items.map(row => (
                     <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50">
                       <td className="px-4 py-3">
                         <button
@@ -502,6 +567,7 @@ export default function Sales() {
               </table>
             </div>
           )}
+          {filtered.length > 0 && <PaginationFooter />}
         </CardContent>
       </Card>
     </div>

@@ -79,6 +79,7 @@ def test_apply_deductions_uses_management_rate_and_ads_recharge_rule():
         "revenue_gross": "3000.00",
         "deduction_rate": "0.0567",
         "deduction_amount": "170.00",
+        "stripe_platform_fee": "0.00",
         "cost": "2000.00",
         "profit": "830.00",
         "notes": "management_fee 15%; ads recharge 1%",
@@ -152,9 +153,11 @@ async def test_aggregate_monthly_separates_customer_costs_and_operating_currenci
         cny_row = next(row for row in rows if row["currency_or_base"] == "CNY")
 
         assert usd_row["cost"] == "350.00"
+        assert usd_row["stripe_platform_fee"] == "0.00"
         assert usd_row["profit"] == "2480.00"
         assert usd_row["notes"] == "management_fee 15%; ads recharge 1%"
         assert cny_row["cost"] == "800.00"
+        assert cny_row["stripe_platform_fee"] == "0.00"
         assert cny_row["profit"] == "-800.00"
     finally:
         await engine.dispose()

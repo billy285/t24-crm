@@ -122,6 +122,20 @@ async def delete_synced_deal_for_payment(db: AsyncSession, payment_id: int, comm
     return True
 
 
+async def unlink_synced_deal_for_payment(db: AsyncSession, payment_id: int, commit: bool = True) -> bool:
+    deal = await _load_synced_deal(db, payment_id)
+    if deal is None:
+        return False
+
+    deal.source_payment_id = None
+    if commit:
+        await db.commit()
+        await db.refresh(deal)
+    else:
+        await db.flush()
+    return True
+
+
 async def sync_all_deals_from_payments(db: AsyncSession) -> int:
     result = await db.execute(select(Payments).order_by(Payments.id.asc()))
     payments = result.scalars().all()

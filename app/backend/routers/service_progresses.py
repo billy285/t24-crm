@@ -34,6 +34,7 @@ class Service_progressesData(BaseModel):
     ops_person: Optional[str] = None
     design_person: Optional[str] = None
     package_name: Optional[str] = None
+    package_platforms: Optional[str] = None
     industry: Optional[str] = None
     country: Optional[str] = None
     state: Optional[str] = None
@@ -64,6 +65,7 @@ class Service_progressesUpdateData(BaseModel):
     ops_person: Optional[str] = None
     design_person: Optional[str] = None
     package_name: Optional[str] = None
+    package_platforms: Optional[str] = None
     industry: Optional[str] = None
     country: Optional[str] = None
     state: Optional[str] = None
@@ -96,6 +98,7 @@ class Service_progressesResponse(BaseModel):
     ops_person: Optional[str] = None
     design_person: Optional[str] = None
     package_name: Optional[str] = None
+    package_platforms: Optional[str] = None
     industry: Optional[str] = None
     country: Optional[str] = None
     state: Optional[str] = None

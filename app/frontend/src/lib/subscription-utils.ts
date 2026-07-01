@@ -3,7 +3,7 @@ import { readCachedAppConfig } from './app-config';
 const DEFAULT_EXPIRY_WARNING_DAYS = 7;
 const LEGACY_EXPIRY_WARNING_DAYS = 30;
 const PACKAGE_NAME_SEPARATOR = /[、,，]/;
-const MANUAL_SUBSCRIPTION_STATUSES = new Set(['paused', 'lost', 'renewed']);
+const MANUAL_SUBSCRIPTION_STATUSES = new Set(['paused', 'lost', 'renewed', 'upgraded', 'stopped']);
 const AUTO_RENEW_PENDING_STATUS = 'renewal_pending';
 
 type ReminderConfig = {

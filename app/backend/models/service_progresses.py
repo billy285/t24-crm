@@ -16,6 +16,7 @@ class Service_progresses(Base):
     ops_person = Column(String, nullable=True)
     design_person = Column(String, nullable=True)
     package_name = Column(String, nullable=True)
+    package_platforms = Column(String, nullable=True)
     industry = Column(String, nullable=True)
     country = Column(String, nullable=True)
     state = Column(String, nullable=True)

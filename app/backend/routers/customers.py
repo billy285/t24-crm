@@ -83,6 +83,7 @@ class CustomersData(CustomerPayloadMixin):
     has_ordering_system: Optional[bool] = None
     current_platform: Optional[str] = None
     interested_packages: Optional[str] = None
+    interested_packages_snapshot: Optional[str] = None
     monthly_orders: Optional[int] = None
     source: Optional[str] = None
     sales_person: Optional[str] = None
@@ -116,6 +117,7 @@ class CustomersUpdateData(CustomerPayloadMixin):
     has_ordering_system: Optional[bool] = None
     current_platform: Optional[str] = None
     interested_packages: Optional[str] = None
+    interested_packages_snapshot: Optional[str] = None
     monthly_orders: Optional[int] = None
     source: Optional[str] = None
     sales_person: Optional[str] = None
@@ -150,6 +152,7 @@ class CustomersResponse(BaseModel):
     has_ordering_system: Optional[bool] = None
     current_platform: Optional[str] = None
     interested_packages: Optional[str] = None
+    interested_packages_snapshot: Optional[str] = None
     monthly_orders: Optional[int] = None
     source: Optional[str] = None
     sales_person: Optional[str] = None

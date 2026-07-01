@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,10 @@ from models.payments import Payments
 from models.subscriptions import Subscriptions
 
 logger = logging.getLogger(__name__)
+MANAGEMENT_FEE_KEY = "management_fee"
+ADS_FEE_KEY = "ads_fee"
+STRIPE_PLATFORM_FEE_RATE = 0.029
+STRIPE_PLATFORM_FEE_FIXED = 0.3
 
 
 def normalize_payment_method(method: Optional[str]) -> Optional[str]:
@@ -34,6 +38,25 @@ def infer_payment_income_type(product_type: Optional[str], package_name: Optiona
     if product_type == "social_media":
         return "management_fee"
     return "other_income"
+
+
+def _is_stripe_subscription_payment(payment_method: Optional[str], payment_mode: Optional[str]) -> bool:
+    method = normalize_payment_method(payment_method)
+    return method == "stripe" or (payment_mode == "subscription_auto" and not payment_method)
+
+
+def _calculate_stripe_fee(amount_paid: float, payment_method: Optional[str], payment_mode: Optional[str]) -> float:
+    if amount_paid <= 0 or not _is_stripe_subscription_payment(payment_method, payment_mode):
+        return 0.0
+    return round(amount_paid * STRIPE_PLATFORM_FEE_RATE + STRIPE_PLATFORM_FEE_FIXED, 2)
+
+
+def _derive_income_split(income_type: Optional[str], amount_paid: float) -> Tuple[float, float]:
+    if income_type == MANAGEMENT_FEE_KEY:
+        return amount_paid, 0.0
+    if income_type == ADS_FEE_KEY:
+        return 0.0, amount_paid
+    return 0.0, 0.0
 
 
 async def _load_customer(db: AsyncSession, customer_id: Optional[int]) -> Optional[Customers]:
@@ -104,8 +127,8 @@ async def _load_matching_payment(db: AsyncSession, deal: Deals) -> Optional[Paym
 
 def _choose_payment_date(deal: Deals, subscription: Optional[Subscriptions]) -> datetime:
     return (
-        (subscription.last_payment_date if subscription else None)
-        or deal.deal_date
+        deal.deal_date
+        or (subscription.last_payment_date if subscription else None)
         or deal.created_at
         or datetime.utcnow()
     )
@@ -118,7 +141,9 @@ async def sync_payment_from_deal(db: AsyncSession, deal: Deals, commit: bool = T
     if payment is None:
         payment = await _load_matching_payment(db, deal)
 
-    payment_date = (payment.payment_date if payment else None) or _choose_payment_date(deal, subscription)
+    chosen_payment_date = _choose_payment_date(deal, subscription)
+    is_synced_payment = bool(payment and payment.source_deal_id == deal.id)
+    payment_date = chosen_payment_date if (payment is None or is_synced_payment) else (payment.payment_date or chosen_payment_date)
     created_at = (payment.created_at if payment else None) or deal.created_at or payment_date
     amount_due = float(deal.deal_amount or 0)
     amount_paid = amount_due if deal.is_paid else 0.0
@@ -133,6 +158,9 @@ async def sync_payment_from_deal(db: AsyncSession, deal: Deals, commit: bool = T
         payment_method = payment_method or "stripe"
     else:
         payment_method = payment_method or "other"
+    income_type = infer_payment_income_type(deal.product_type, deal.package_name)
+    management_amount, ads_recharge_amount = _derive_income_split(income_type, amount_paid)
+    stripe_fee_amount = _calculate_stripe_fee(amount_paid, payment_method, payment_mode)
     product_name = (
         deal.package_name
         or (customer.business_name if customer and customer.business_name else None)
@@ -150,14 +178,19 @@ async def sync_payment_from_deal(db: AsyncSession, deal: Deals, commit: bool = T
         "source_deal_id": deal.id,
         "customer_id": deal.customer_id,
         "customer_name": customer.business_name if customer and customer.business_name else (deal.customer_name or ""),
-        "income_type": infer_payment_income_type(deal.product_type, deal.package_name),
+        "income_type": income_type,
         "product_name": product_name,
         "amount_due": amount_due,
         "amount_paid": amount_paid,
+        "management_amount": management_amount,
+        "ads_recharge_amount": ads_recharge_amount,
+        "stripe_fee_amount": stripe_fee_amount,
+        "net_amount": max(amount_paid - stripe_fee_amount, 0.0),
         "currency": payment.currency if payment and payment.currency else "USD",
         "payment_date": payment_date,
         "payment_mode": payment_mode,
         "payment_method": payment_method,
+        "transaction_reference": payment.transaction_reference if payment else None,
         "billing_cycle": deal.billing_cycle,
         "coverage_start": deal.service_start_date,
         "coverage_end": deal.service_end_date,
@@ -194,6 +227,20 @@ async def delete_synced_payment_for_deal(db: AsyncSession, deal_id: int, commit:
     await db.delete(payment)
     if commit:
         await db.commit()
+    else:
+        await db.flush()
+    return True
+
+
+async def unlink_synced_payment_for_deal(db: AsyncSession, deal_id: int, commit: bool = True) -> bool:
+    payment = await _load_synced_payment(db, deal_id)
+    if payment is None:
+        return False
+
+    payment.source_deal_id = None
+    if commit:
+        await db.commit()
+        await db.refresh(payment)
     else:
         await db.flush()
     return True
