@@ -1,4 +1,4 @@
-import { invokeWithAuth } from '@/lib/tokenStore';
+import { getToken, refreshToken } from '@/lib/tokenStore';
 
 export type AppConfigKey =
   | 'role_permissions'
@@ -23,40 +23,52 @@ export interface AppConfigCollection {
 
 type AppConfigMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-function parseRequestBody(body: BodyInit | null | undefined) {
-  if (!body) return undefined;
-  if (typeof body !== 'string') return body;
-  try {
-    return JSON.parse(body);
-  } catch {
-    return body;
-  }
-}
-
 function isNetworkError(err: any) {
   const message = err?.message || err?.data?.message || err?.response?.data?.message || '';
   return /Network Error|Failed to fetch|timeout|ERR_NETWORK/i.test(message);
 }
 
+async function parseErrorDetail(response: Response, fallback: string) {
+  try {
+    const body = await response.json();
+    return body?.detail || body?.message || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 async function requestAppConfig<T>(
   path: string,
   init: RequestInit = {},
-  options: { retriedNetwork?: boolean } = {},
+  options: { retriedAuth?: boolean; retriedNetwork?: boolean } = {},
 ): Promise<T> {
   try {
-    const response = await invokeWithAuth({
-      url: path,
+    const token = getToken();
+    const response = await fetch(path, {
       method: (init.method || 'GET') as AppConfigMethod,
-      data: parseRequestBody(init.body),
-      options: {
-        withCredentials: true,
-        headers: {
-          ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-          ...(init.headers || {}),
-        },
+      body: init.body,
+      credentials: 'include',
+      cache: 'no-store',
+      headers: {
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init.headers || {}),
       },
     });
-    return response?.data as T;
+
+    if (response.status === 401 && !options.retriedAuth) {
+      const newToken = await refreshToken();
+      if (newToken) {
+        return requestAppConfig<T>(path, init, { ...options, retriedAuth: true });
+      }
+    }
+
+    if (!response.ok) {
+      const detail = await parseErrorDetail(response, `请求失败 (${response.status})`);
+      throw new Error(detail);
+    }
+
+    return response.json() as Promise<T>;
   } catch (err: any) {
     if (isNetworkError(err) && !options.retriedNetwork) {
       await new Promise(resolve => setTimeout(resolve, 600));
