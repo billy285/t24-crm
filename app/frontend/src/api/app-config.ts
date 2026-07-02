@@ -1,5 +1,4 @@
-import { getToken, refreshToken } from '@/lib/tokenStore';
-import { getAPIBaseURL } from '@/lib/config';
+import { invokeWithAuth } from '@/lib/tokenStore';
 
 export type AppConfigKey =
   | 'role_permissions'
@@ -22,71 +21,46 @@ export interface AppConfigCollection {
   items: Partial<Record<AppConfigKey, AppConfigValue>>;
 }
 
-async function parseErrorDetail(response: Response, fallback: string) {
+type AppConfigMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+function parseRequestBody(body: BodyInit | null | undefined) {
+  if (!body) return undefined;
+  if (typeof body !== 'string') return body;
   try {
-    const body = await response.json();
-    return body?.detail || body?.message || fallback;
+    return JSON.parse(body);
   } catch {
-    return fallback;
+    return body;
   }
 }
 
-function buildAbsoluteAppConfigUrl(path: string) {
-  const baseUrl = getAPIBaseURL().replace(/\/$/, '');
-  return `${baseUrl}${path}`;
-}
-
-function buildAppConfigUrl(path: string, absolute = false) {
-  if (!absolute && (
-    typeof window !== 'undefined' &&
-    window.location?.origin?.startsWith('http') &&
-    path.startsWith('/api/')
-  )) {
-    // Config writes are served by the same FastAPI app in production and via Vite proxy locally.
-    // Keeping them same-origin avoids browser CORS/mixed-origin "Failed to fetch" failures.
-    return path;
-  }
-  return buildAbsoluteAppConfigUrl(path);
+function isNetworkError(err: any) {
+  const message = err?.message || err?.data?.message || err?.response?.data?.message || '';
+  return /Network Error|Failed to fetch|timeout|ERR_NETWORK/i.test(message);
 }
 
 async function requestAppConfig<T>(
   path: string,
   init: RequestInit = {},
-  options: { retriedAuth?: boolean; retriedNetwork?: boolean; useAbsolute?: boolean } = {},
+  options: { retriedNetwork?: boolean } = {},
 ): Promise<T> {
-  const token = getToken();
   try {
-    const response = await fetch(buildAppConfigUrl(path, options.useAbsolute), {
-      ...init,
-      credentials: 'include',
-      headers: {
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init.headers || {}),
+    const response = await invokeWithAuth({
+      url: path,
+      method: (init.method || 'GET') as AppConfigMethod,
+      data: parseRequestBody(init.body),
+      options: {
+        withCredentials: true,
+        headers: {
+          ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(init.headers || {}),
+        },
       },
     });
-
-    if (response.status === 401 && !options.retriedAuth) {
-      const newToken = await refreshToken();
-      if (newToken) {
-        return requestAppConfig<T>(path, init, { ...options, retriedAuth: true });
-      }
-    }
-
-    if (!response.ok) {
-      const detail = await parseErrorDetail(response, `请求失败 (${response.status})`);
-      throw new Error(detail);
-    }
-
-    return response.json() as Promise<T>;
+    return response?.data as T;
   } catch (err: any) {
-    const isNetworkError = err?.name === 'TypeError' || /Network Error|Failed to fetch/i.test(err?.message || '');
-    if (isNetworkError && !options.retriedNetwork) {
+    if (isNetworkError(err) && !options.retriedNetwork) {
       await new Promise(resolve => setTimeout(resolve, 600));
       return requestAppConfig<T>(path, init, { ...options, retriedNetwork: true });
-    }
-    if (isNetworkError && !options.useAbsolute) {
-      return requestAppConfig<T>(path, init, { ...options, useAbsolute: true });
     }
     throw err;
   }

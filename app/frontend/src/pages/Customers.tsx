@@ -756,7 +756,7 @@ export default function Customers() {
     const nextDictConfig = {
       ...dictConfig,
       customerPackages: serializeDictEntries(normalizedEntries),
-      customerPackagePlatforms: '',
+      customerPackagePlatforms: dictConfig.customerPackagePlatforms,
     };
     await saveRemoteAppConfig('dict_config', nextDictConfig);
     const savedDrafts = Object.entries(normalizedEntries).map(([key, label]) => ({ key, label, platforms: [] }));
