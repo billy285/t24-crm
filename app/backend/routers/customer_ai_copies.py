@@ -33,7 +33,10 @@ PLATFORM_LABELS = {
     "instagram": "Instagram",
     "x": "X",
     "yelp": "Yelp",
+    "tiktok": "TikTok",
     "xiaohongshu": "小红书",
+    "brand_website": "品牌官网",
+    "ads_campaign": "广告投放",
 }
 
 CONTENT_TYPE_LABELS = {
@@ -287,6 +290,12 @@ def _build_prompt(customer: Any, request: CustomerAiGenerateRequest, operational
         if part
     )
 
+    selected_platforms = [
+        _label(PLATFORM_LABELS, item.strip())
+        for item in str(getattr(customer, "selected_platforms", "") or "").split(",")
+        if item.strip()
+    ]
+
     return f"""
 你是一个服务北美本地商家的代运营主管，既懂平台内容，也懂员工执行监管。请根据客户资料和系统上下文，为指定用途生成可直接编辑使用的草稿。
 
@@ -303,6 +312,7 @@ def _build_prompt(customer: Any, request: CustomerAiGenerateRequest, operational
 - 行业：{ctx.get("industry_label") or getattr(customer, "industry", "") or "-"}
 - 地区：{location or "-"}
 - 当前平台：{getattr(customer, "current_platform", "") or "-"}
+- 平台选择：{"、".join(selected_platforms) if selected_platforms else "-"}
 - 意向/服务套餐：{ctx.get("package_labels") or getattr(customer, "interested_packages", "") or "-"}
 - 官网：{getattr(customer, "website", "") or "-"}
 - 备注：{getattr(customer, "notes", "") or "-"}

@@ -28,11 +28,10 @@ import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../li
 import { saveRemoteAppConfig } from '../lib/app-config';
 import {
   buildOptionKey,
-  inferPackagePlatforms,
+  customerPlatformLabels,
   platformLabels,
   sanitizeDictLabel,
   serializeDictEntries,
-  serializePackagePlatformEntries,
   useBusinessDicts,
   useDictConfig,
 } from '../lib/dict-config';
@@ -88,7 +87,7 @@ const emptyForm = {
   customer_code: '', business_name: '', contact_name: '', phone: '', wechat: '', email: '',
   address: '', city: '', state: 'CA', country: 'US', industry: 'restaurant', website: '',
   google_business_link: '', facebook_link: '', instagram_link: '', yelp_link: '', tiktok_link: '',
-  has_ordering_system: false, current_platform: '无', interested_packages: [] as string[], monthly_orders: 0,
+  has_ordering_system: false, current_platform: '无', selected_platforms: [] as string[], interested_packages: [] as string[], monthly_orders: 0,
   interested_packages_snapshot: {} as Record<string, string>,
   source: 'phone', sales_person: '', sales_employee_id: '' as string | number, level: 'normal', status: 'new', notes: '',
 };
@@ -248,7 +247,7 @@ function appendPackageDrafts(baseDrafts: PackageDraft[], rawInput: string) {
       return;
     }
     seenLabels.add(normalizedKey);
-    nextDrafts.push({ key: buildUniquePackageKey(label, usedKeys), label, platforms: inferPackagePlatforms(label) });
+    nextDrafts.push({ key: buildUniquePackageKey(label, usedKeys), label, platforms: [] });
   });
 
   return {
@@ -493,7 +492,6 @@ export default function Customers() {
   const productLabels = businessDicts.products;
   const incomeTypeLabels = businessDicts.incomeTypes;
   const customerPackageLabels = businessDicts.customerPackages;
-  const customerPackagePlatforms = businessDicts.customerPackagePlatforms;
   const cycleLabels = businessDicts.billingCycles;
   const payModeLabels = businessDicts.paymentModes;
   const payMethodLabels = businessDicts.paymentMethods;
@@ -607,6 +605,18 @@ export default function Customers() {
     return [...activeEntries, ...historicalEntries];
   }, [customerPackageLabels, form.interested_packages, form.interested_packages_snapshot]);
 
+  const platformOptionsForForm = useMemo(
+    () => Object.entries(customerPlatformLabels).map(([key, label]) => ({ key, label })),
+    [],
+  );
+
+  const formatSelectedPlatforms = (value?: string | string[] | null) => {
+    const platforms = Array.isArray(value) ? value : parseMultiValue(value);
+    return platforms.length > 0
+      ? platforms.map(platform => customerPlatformLabels[platform] || platformLabels[platform] || platform).join('、')
+      : '-';
+  };
+
   const handleAddIndustry = async () => {
     const name = newIndustryName.trim();
     if (!name) { toast.error('请输入行业名称'); return; }
@@ -717,7 +727,7 @@ export default function Customers() {
     setPackageDrafts(Object.entries(customerPackageLabels).map(([key, label]) => ({
       key,
       label,
-      platforms: customerPackagePlatforms[key] || inferPackagePlatforms(label, customerPackageLabels, customerPackagePlatforms),
+      platforms: [],
     })));
     setNewPackageName('');
     setShowPackageManager(true);
@@ -739,22 +749,13 @@ export default function Customers() {
     if (new Set(labels.map(label => label.toLowerCase())).size !== labels.length) {
       throw new Error('套餐名称不能重复');
     }
-    const platformEntries = draftsToSave.reduce<Record<string, string[]>>((acc, item) => {
-      if (!normalizedEntries[item.key]) return acc;
-      const selectedPlatforms = Array.from(new Set((item.platforms || []).filter(platform => Boolean(platformLabels[platform]))));
-      const fallbackPlatforms = inferPackagePlatforms(normalizedEntries[item.key], normalizedEntries, customerPackagePlatforms);
-      const platforms = selectedPlatforms.length > 0 ? selectedPlatforms : fallbackPlatforms;
-      if (platforms.length > 0) acc[item.key] = platforms;
-      return acc;
-    }, {});
-
     const nextDictConfig = {
       ...dictConfig,
       customerPackages: serializeDictEntries(normalizedEntries),
-      customerPackagePlatforms: serializePackagePlatformEntries(platformEntries),
+      customerPackagePlatforms: '',
     };
     await saveRemoteAppConfig('dict_config', nextDictConfig);
-    const savedDrafts = Object.entries(normalizedEntries).map(([key, label]) => ({ key, label, platforms: platformEntries[key] || [] }));
+    const savedDrafts = Object.entries(normalizedEntries).map(([key, label]) => ({ key, label, platforms: [] }));
     setPackageDrafts(savedDrafts);
     return savedDrafts;
   };
@@ -798,16 +799,6 @@ export default function Customers() {
     }
   };
 
-  const togglePackageDraftPlatform = (packageKey: string, platform: string) => {
-    setPackageDrafts(prev => prev.map(item => {
-      if (item.key !== packageKey) return item;
-      const nextPlatforms = item.platforms.includes(platform)
-        ? item.platforms.filter(existing => existing !== platform)
-        : [...item.platforms, platform];
-      return { ...item, platforms: nextPlatforms };
-    }));
-  };
-
   const handleSavePackages = async () => {
     if (savingPackages) return;
     const pendingLabel = newPackageName.trim();
@@ -849,6 +840,15 @@ export default function Customers() {
             [key]: prev.interested_packages_snapshot[key] || customerPackageLabels[key] || key,
           }
         : Object.fromEntries(Object.entries(prev.interested_packages_snapshot).filter(([itemKey]) => itemKey !== key)),
+    }));
+  };
+
+  const toggleSelectedPlatform = (key: string, checked: boolean) => {
+    setForm(prev => ({
+      ...prev,
+      selected_platforms: checked
+        ? Array.from(new Set([...(prev.selected_platforms || []), key]))
+        : (prev.selected_platforms || []).filter(item => item !== key),
     }));
   };
 
@@ -1192,14 +1192,14 @@ export default function Customers() {
     renewalPageSize,
   ]);
 
-  const openCreate = () => { setForm({ ...emptyForm, interested_packages: [], interested_packages_snapshot: {} }); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
+  const openCreate = () => { setForm({ ...emptyForm, selected_platforms: [], interested_packages: [], interested_packages_snapshot: {} }); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
   const openEdit = (c: any) => {
     const interestedPackages = parseMultiValue(c.interested_packages);
     const snapshot = parsePackageSnapshot(c.interested_packages_snapshot);
     interestedPackages.forEach(key => {
       if (!snapshot[key]) snapshot[key] = customerPackageLabels[key] || key;
     });
-    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
+    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', selected_platforms: parseMultiValue(c.selected_platforms), interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
     setManualCityInput(false);
     setEditingId(c.id); setDuplicateWarning(null); setShowForm(true);
   };
@@ -1221,6 +1221,7 @@ export default function Customers() {
       }, {});
       const payload = {
         ...form,
+        selected_platforms: form.selected_platforms.join(','),
         interested_packages: form.interested_packages.join(','),
         interested_packages_snapshot: serializePackageSnapshot(selectedPackageSnapshot),
         sales_employee_id: form.sales_employee_id === '' ? null : Number(form.sales_employee_id),
@@ -1597,13 +1598,13 @@ export default function Customers() {
                     </div>
                     <div className="space-y-2">
                       {packageDrafts.map((item) => (
-                        <div key={item.key} className="rounded-md border border-slate-200 bg-white p-2 space-y-2">
+                        <div key={item.key} className="rounded-md border border-slate-200 bg-white p-2">
                           <div className="flex items-center gap-2">
                             <Input
                               value={item.label}
                               onChange={e => setPackageDrafts(prev => prev.map(pkg => (pkg.key === item.key ? { ...pkg, label: e.target.value } : pkg)))}
                               className="h-8 text-sm flex-1"
-                              placeholder="套餐名称，例如：A套餐"
+                              placeholder="套餐名称，例如：基础套餐"
                             />
                             <Button
                               type="button"
@@ -1615,19 +1616,6 @@ export default function Customers() {
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {Object.entries(platformLabels).map(([platform, label]) => (
-                              <label key={platform} className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] text-slate-600">
-                                <input
-                                  type="checkbox"
-                                  checked={item.platforms.includes(platform)}
-                                  onChange={() => togglePackageDraftPlatform(item.key, platform)}
-                                  className="h-3 w-3 rounded"
-                                />
-                                <span>{label}</span>
-                              </label>
-                            ))}
-                          </div>
                         </div>
                       ))}
                     </div>
@@ -1635,7 +1623,7 @@ export default function Customers() {
                       <Input
                         value={newPackageName}
                         onChange={e => setNewPackageName(e.target.value)}
-                        placeholder="新增套餐，例如：Google商家管理"
+                        placeholder="新增套餐，例如：增值套餐"
                         className="h-8 text-sm flex-1"
                         onKeyDown={e => {
                           if (e.key === 'Enter' && !savingPackages) {
@@ -1654,9 +1642,33 @@ export default function Customers() {
                 )}
               </div>
             </div>
+            <div className="col-span-2">
+              <Label>平台选择</Label>
+              <div className="mt-1 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {platformOptionsForForm.map(({ key, label }) => {
+                    const checked = form.selected_platforms.includes(key);
+                    return (
+                      <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={e => toggleSelectedPlatform(key, e.target.checked)}
+                          className="rounded"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-slate-500 mt-3">
+                  已选: {formatSelectedPlatforms(form.selected_platforms)}
+                </p>
+              </div>
+            </div>
             <div><Label>负责销售</Label><NativeSelect value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
             <div><Label>官网</Label><Input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
-            <div><Label>当前平台</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} /></div>
+            <div><Label>当前平台备注</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} placeholder="可填写当前已在运营的平台备注" /></div>
             <div className="col-span-2 border-t border-slate-200 pt-3 mt-1">
               <h4 className="text-sm font-medium text-slate-600 mb-3">社交媒体链接</h4>
               <div className="grid grid-cols-2 gap-3">
@@ -1864,6 +1876,7 @@ export default function Customers() {
                 {c.website && <div className="flex gap-2 items-center col-span-2"><Globe className="w-3 h-3 text-slate-400" /><a href={c.website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{c.website}</a></div>}
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">负责销售:</span><span>{c.sales_person || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">当前平台:</span><span>{c.current_platform || '-'}</span></div>
+                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">平台选择:</span><span>{formatSelectedPlatforms(c.selected_platforms)}</span></div>
                 <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">意向套餐:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => getCustomerPackageLabel(c, item)).join('、') : '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">月订单量:</span><span>{c.monthly_orders || 0}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">已有点餐:</span><span>{c.has_ordering_system ? '是' : '否'}</span></div>

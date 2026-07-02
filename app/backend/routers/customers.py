@@ -82,6 +82,7 @@ class CustomersData(CustomerPayloadMixin):
     tiktok_link: Optional[str] = None
     has_ordering_system: Optional[bool] = None
     current_platform: Optional[str] = None
+    selected_platforms: Optional[str] = None
     interested_packages: Optional[str] = None
     interested_packages_snapshot: Optional[str] = None
     monthly_orders: Optional[int] = None
@@ -116,6 +117,7 @@ class CustomersUpdateData(CustomerPayloadMixin):
     tiktok_link: Optional[str] = None
     has_ordering_system: Optional[bool] = None
     current_platform: Optional[str] = None
+    selected_platforms: Optional[str] = None
     interested_packages: Optional[str] = None
     interested_packages_snapshot: Optional[str] = None
     monthly_orders: Optional[int] = None
@@ -151,6 +153,7 @@ class CustomersResponse(BaseModel):
     tiktok_link: Optional[str] = None
     has_ordering_system: Optional[bool] = None
     current_platform: Optional[str] = None
+    selected_platforms: Optional[str] = None
     interested_packages: Optional[str] = None
     interested_packages_snapshot: Optional[str] = None
     monthly_orders: Optional[int] = None

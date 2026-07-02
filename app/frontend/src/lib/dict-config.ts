@@ -34,8 +34,8 @@ export const defaultBusinessDictConfig: BusinessDictConfig = {
   levels: 'high:高意向,normal:普通,low:低意向,vip:VIP',
   products: 'ordering_system:线上点餐系统,social_media:新媒体代运营,ads:广告投放,website:网站设计,combo:组合套餐',
   incomeTypes: 'management_fee:管理费,ads_fee:投流费,management_ads_mixed:管理费+投流费,website_fee:网站费,ordering_fee:点餐系统费,renewal_fee:续费收入,other_income:其他收入',
-  customerPackages: 'google_business_management:Google商家管理,facebook_business_management:Facebook商家管理,instagram_business_management:Instagram商家管理,yelp_business_management:Yelp商家管理,tiktok_business_management:Tiktok商家管理,xiaohongshu_management:小红书管理,x_business_management:X商家管理,ads_campaign_management:广告投放,brand_website:品牌官网',
-  customerPackagePlatforms: 'google_business_management:google_business,facebook_business_management:facebook,instagram_business_management:instagram,yelp_business_management:yelp,tiktok_business_management:tiktok,xiaohongshu_management:xiaohongshu,x_business_management:x,ads_campaign_management:ads_campaign,brand_website:brand_website',
+  customerPackages: 'basic_package:基础套餐,advanced_package:进阶套餐,professional_package:专业套餐,flagship_package:旗舰套餐,custom_package:定制套餐',
+  customerPackagePlatforms: '',
   countries: 'US:美国,CA:加拿大,GB:英国,AU:澳大利亚',
   billingCycles: 'monthly:月付,quarterly:季付,semi_annual:半年付,annual:年付',
   paymentModes: 'subscription_auto:自动订阅扣款,manual_collection:手动收款',
@@ -53,14 +53,15 @@ export const defaultBusinessDictConfig: BusinessDictConfig = {
   taskStatuses: 'pending:待处理,in_progress:进行中,completed:已完成,delayed:延期',
 };
 
-export const coreCustomerPackageLabels: Record<string, string> = {
-  google_business_management: 'Google商家管理',
-  facebook_business_management: 'Facebook商家管理',
-  instagram_business_management: 'Instagram商家管理',
-  yelp_business_management: 'Yelp商家管理',
-  tiktok_business_management: 'Tiktok商家管理',
-  xiaohongshu_management: '小红书管理',
+export const standardCustomerPackageLabels: Record<string, string> = {
+  basic_package: '基础套餐',
+  advanced_package: '进阶套餐',
+  professional_package: '专业套餐',
+  flagship_package: '旗舰套餐',
+  custom_package: '定制套餐',
 };
+
+export const coreCustomerPackageLabels = standardCustomerPackageLabels;
 
 export const platformLabels: Record<string, string> = {
   google_business: 'Google商家',
@@ -74,6 +75,17 @@ export const platformLabels: Record<string, string> = {
   brand_website: '品牌官网',
 };
 
+export const customerPlatformLabels: Record<string, string> = {
+  google_business: 'Google',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  yelp: 'Yelp',
+  tiktok: 'TikTok',
+  xiaohongshu: '小红书',
+  brand_website: '品牌官网',
+  ads_campaign: '广告投放',
+};
+
 const packagePlatformRules: Array<{ platform: string; labels: string[] }> = [
   { platform: 'google_business', labels: ['Google商家管理', 'Google Business', 'google_business_management'] },
   { platform: 'facebook', labels: ['Facebook商家管理', 'facebook_business_management'] },
@@ -85,6 +97,19 @@ const packagePlatformRules: Array<{ platform: string; labels: string[] }> = [
   { platform: 'ads_campaign', labels: ['广告投放', 'ads_campaign_management'] },
   { platform: 'brand_website', labels: ['品牌官网', '官网', '网站', 'brand_website'] },
 ];
+
+export function normalizeCustomerPackages(entries: Record<string, string>) {
+  const labels = Object.values(entries).map(label => label.trim()).filter(Boolean);
+  const hasStandardPackage = Object.values(standardCustomerPackageLabels).some(label => labels.includes(label));
+  const looksLikeLegacyLevelPackages = labels.length > 0 && labels.every(label => /^[A-Ea-e][类级]?套餐$/.test(label));
+  if (hasStandardPackage || looksLikeLegacyLevelPackages || labels.length === 0) {
+    return standardCustomerPackageLabels;
+  }
+  return {
+    ...standardCustomerPackageLabels,
+    ...entries,
+  };
+}
 
 export interface BusinessDictMaps {
   industries: Record<string, string>;
@@ -242,6 +267,7 @@ export function saveDictConfig(config: BusinessDictConfig) {
 
 export function buildBusinessDicts(config = loadDictConfig()): BusinessDictMaps {
   const normalized = normalizeDictConfig(config);
+  const customerPackages = normalizeCustomerPackages(parseDictEntries(normalized.customerPackages));
   return {
     industries: parseDictEntries(normalized.industries),
     statuses: parseDictEntries(normalized.statuses),
@@ -249,7 +275,7 @@ export function buildBusinessDicts(config = loadDictConfig()): BusinessDictMaps 
     levels: parseDictEntries(normalized.levels),
     products: parseDictEntries(normalized.products),
     incomeTypes: parseDictEntries(normalized.incomeTypes),
-    customerPackages: parseDictEntries(normalized.customerPackages),
+    customerPackages,
     customerPackagePlatforms: parsePackagePlatformEntries(normalized.customerPackagePlatforms),
     countries: parseDictEntries(normalized.countries),
     billingCycles: parseDictEntries(normalized.billingCycles),

@@ -57,11 +57,11 @@ PLATFORM_LABELS = {
     "google_business": "Google商家",
     "facebook": "Facebook",
     "instagram": "Instagram",
-    "x": "X",
     "yelp": "Yelp",
-    "xiaohongshu": "小红书",
     "tiktok": "TikTok",
-    "website": "网站",
+    "xiaohongshu": "小红书",
+    "brand_website": "品牌官网",
+    "ads_campaign": "广告投放",
     "other": "其他",
 }
 
@@ -325,14 +325,14 @@ def _item_dict(item: Any) -> Dict[str, Any]:
 def _recommended_platforms(material: Any, target_platforms: List[str]) -> List[str]:
     material_type = material.material_type or "other"
     preset = {
-        "menu": ["google_business", "yelp", "website", "facebook"],
+        "menu": ["google_business", "yelp", "brand_website", "facebook"],
         "image": ["google_business", "instagram", "facebook", "xiaohongshu"],
         "video": ["instagram", "tiktok", "facebook", "xiaohongshu"],
-        "logo": ["google_business", "website", "facebook"],
-        "screenshot": ["google_business", "website", "facebook"],
-        "document": ["website", "google_business"],
+        "logo": ["google_business", "brand_website", "facebook"],
+        "screenshot": ["google_business", "brand_website", "facebook"],
+        "document": ["brand_website", "google_business"],
         "design": ["instagram", "facebook", "xiaohongshu"],
-        "post": ["facebook", "instagram", "xiaohongshu", "x"],
+        "post": ["facebook", "instagram", "xiaohongshu", "tiktok"],
     }.get(material_type, ["google_business", "facebook", "instagram"])
     if material.platform and material.platform != "general":
         preset.insert(0, material.platform)
@@ -354,7 +354,7 @@ def _fallback_material_match(
     model: Optional[str] = None,
     menu_items: Optional[List[Any]] = None,
 ) -> CustomerMaterialAiMatchResponse:
-    target_platforms = request.target_platforms or ["google_business", "facebook", "instagram", "yelp", "xiaohongshu"]
+    target_platforms = request.target_platforms or ["google_business", "facebook", "instagram", "yelp", "tiktok", "xiaohongshu", "brand_website", "ads_campaign"]
     item_names = {item.id: item.name for item in (menu_items or [])}
     platform_scores: Dict[str, Dict[str, Any]] = {
         platform: {"platform": platform, "platform_label": _label(PLATFORM_LABELS, platform), "matched_material_ids": [], "reason": ""}
@@ -435,9 +435,14 @@ def _fallback_material_match(
 
 
 def _build_ai_match_prompt(customer: Any, materials: List[Any], request: CustomerMaterialAiMatchRequest, menu_items: List[Any]) -> str:
-    target_platforms = request.target_platforms or ["google_business", "facebook", "instagram", "yelp", "xiaohongshu"]
+    target_platforms = request.target_platforms or ["google_business", "facebook", "instagram", "yelp", "tiktok", "xiaohongshu", "brand_website", "ads_campaign"]
     material_rows = [_material_dict(item) for item in materials[:40]]
     item_rows = [_item_dict(item) for item in menu_items[:80]]
+    selected_platforms = [
+        _label(PLATFORM_LABELS, item.strip())
+        for item in str(getattr(customer, "selected_platforms", "") or "").split(",")
+        if item.strip()
+    ]
     return f"""
 你是一个本地商家运营主管，负责帮运营人员把客户素材和菜单/服务项目匹配到合适平台，避免素材不相关、重复使用太硬、未授权素材乱用。
 
@@ -469,6 +474,7 @@ def _build_ai_match_prompt(customer: Any, materials: List[Any], request: Custome
 - 地区：{_customer_location(customer) or "-"}
 - 合作/意向套餐：{getattr(customer, "interested_packages", "") or "-"}
 - 当前平台：{getattr(customer, "current_platform", "") or "-"}
+- 平台选择：{"、".join(selected_platforms) if selected_platforms else "-"}
 - 备注：{getattr(customer, "notes", "") or "-"}
 
 目标平台：{", ".join(_label(PLATFORM_LABELS, item) for item in target_platforms)}

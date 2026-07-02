@@ -26,6 +26,7 @@ class Customers(Base):
     tiktok_link = Column(String, nullable=True)
     has_ordering_system = Column(Boolean, nullable=True)
     current_platform = Column(String, nullable=True)
+    selected_platforms = Column(String, nullable=True)
     interested_packages = Column(String, nullable=True)
     interested_packages_snapshot = Column(String, nullable=True)
     monthly_orders = Column(Integer, nullable=True)

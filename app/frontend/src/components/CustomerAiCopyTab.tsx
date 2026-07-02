@@ -18,9 +18,11 @@ const platformOptions = [
   { value: 'google_business', label: 'Google商家' },
   { value: 'facebook', label: 'Facebook' },
   { value: 'instagram', label: 'Instagram' },
-  { value: 'x', label: 'X' },
   { value: 'yelp', label: 'Yelp' },
+  { value: 'tiktok', label: 'TikTok' },
   { value: 'xiaohongshu', label: '小红书' },
+  { value: 'brand_website', label: '品牌官网' },
+  { value: 'ads_campaign', label: '广告投放' },
 ];
 
 const contentTypeOptions = [
