@@ -258,7 +258,11 @@ function appendPackageDrafts(baseDrafts: PackageDraft[], rawInput: string) {
 }
 
 function getErrorDetail(err: any, fallback: string) {
-  return err?.data?.detail || err?.response?.data?.detail || err?.message || fallback;
+  const message = err?.data?.detail || err?.response?.data?.detail || err?.message || '';
+  if (/Network Error|Failed to fetch/i.test(message)) {
+    return '网络连接失败，系统已自动重试但仍未成功。请强制刷新页面或重新登录后再保存。';
+  }
+  return message || fallback;
 }
 
 function formatCurrency(value: number) {

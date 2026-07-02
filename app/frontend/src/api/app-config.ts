@@ -31,28 +31,32 @@ async function parseErrorDetail(response: Response, fallback: string) {
   }
 }
 
-function buildAppConfigUrl(path: string) {
-  if (
+function buildAbsoluteAppConfigUrl(path: string) {
+  const baseUrl = getAPIBaseURL().replace(/\/$/, '');
+  return `${baseUrl}${path}`;
+}
+
+function buildAppConfigUrl(path: string, absolute = false) {
+  if (!absolute && (
     typeof window !== 'undefined' &&
     window.location?.origin?.startsWith('http') &&
     path.startsWith('/api/')
-  ) {
+  )) {
     // Config writes are served by the same FastAPI app in production and via Vite proxy locally.
     // Keeping them same-origin avoids browser CORS/mixed-origin "Failed to fetch" failures.
     return path;
   }
-  const baseUrl = getAPIBaseURL().replace(/\/$/, '');
-  return `${baseUrl}${path}`;
+  return buildAbsoluteAppConfigUrl(path);
 }
 
 async function requestAppConfig<T>(
   path: string,
   init: RequestInit = {},
-  options: { retriedAuth?: boolean; retriedNetwork?: boolean } = {},
+  options: { retriedAuth?: boolean; retriedNetwork?: boolean; useAbsolute?: boolean } = {},
 ): Promise<T> {
   const token = getToken();
   try {
-    const response = await fetch(buildAppConfigUrl(path), {
+    const response = await fetch(buildAppConfigUrl(path, options.useAbsolute), {
       ...init,
       credentials: 'include',
       headers: {
@@ -76,9 +80,13 @@ async function requestAppConfig<T>(
 
     return response.json() as Promise<T>;
   } catch (err: any) {
-    if (!options.retriedNetwork && (err?.name === 'TypeError' || /Network Error|Failed to fetch/i.test(err?.message || ''))) {
+    const isNetworkError = err?.name === 'TypeError' || /Network Error|Failed to fetch/i.test(err?.message || '');
+    if (isNetworkError && !options.retriedNetwork) {
       await new Promise(resolve => setTimeout(resolve, 600));
       return requestAppConfig<T>(path, init, { ...options, retriedNetwork: true });
+    }
+    if (isNetworkError && !options.useAbsolute) {
+      return requestAppConfig<T>(path, init, { ...options, useAbsolute: true });
     }
     throw err;
   }
