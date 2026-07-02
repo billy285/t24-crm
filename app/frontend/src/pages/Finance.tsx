@@ -1137,6 +1137,14 @@ export default function Finance() {
     const matchesCurrency = companyExpenseCurrencyFilter === 'all' || getCompanyExpenseCurrency(e) === companyExpenseCurrencyFilter;
     return matchesMonth && matchesCurrency;
   });
+  const summaryCustomerExpenses = useMemo(
+    () => (activeDateRange ? expenses.filter(e => isMonthInRange(e.expense_month, activeDateRange)) : expenses),
+    [activeDateRange, expenses],
+  );
+  const summaryCompanyExpenses = useMemo(
+    () => (activeDateRange ? companyExpenses.filter(e => isMonthInRange(e.expense_month, activeDateRange)) : companyExpenses),
+    [activeDateRange, companyExpenses],
+  );
   const paginatedPayments = useMemo(
     () => paginateList(filteredPayments, financePages.income, pageSize),
     [filteredPayments, financePages.income, pageSize],
@@ -1158,18 +1166,40 @@ export default function Finance() {
   // ─── Stats ───────────────────────────────────────────────────────
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const currentMonthFinance = monthlyFinanceBuckets[currentMonthKey] || { revenue: 0, managementRevenue: 0, adsRevenue: 0, stripePlatformFee: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
-  const currentMonthDeductionRate = getDeductionRate(deductionRates, currentMonthKey);
-  const currentMonthProfit = calculateMonthlyProfit(currentMonthFinance, currentMonthDeductionRate);
-  const monthlyIncome = currentMonthFinance.revenue;
-  const monthlyStripePlatformFee = currentMonthFinance.stripePlatformFee;
-  const monthlyCustomerExpense = currentMonthFinance.customerCost; // USD direct customer costs
-  const monthlyCompanyExpenseUsd = currentMonthFinance.operatingCostUsd; // USD operating costs
-  const monthlyCompanyExpenseCny = companyExpenses
-    .filter(e => e.expense_month === currentMonthKey && getCompanyExpenseCurrency(e) === 'CNY')
-    .reduce((s, e) => s + Number(e.amount || 0), 0); // CNY operating costs, not mixed into USD profit
-  // USD profit includes USD customer costs and USD operating costs. CNY remains separate until FX conversion is added.
-  const monthlyProfitUsd = currentMonthProfit.profit;
+  const summaryFinanceBuckets = useMemo(
+    () => buildMonthlyFinanceBuckets(filteredPayments, summaryCustomerExpenses, summaryCompanyExpenses),
+    [filteredPayments, summaryCustomerExpenses, summaryCompanyExpenses],
+  );
+  const summaryFinance = useMemo(() => (
+    Object.values(summaryFinanceBuckets).reduce<MonthlyFinanceBucket>((acc, bucket) => ({
+      revenue: roundMoney(acc.revenue + bucket.revenue),
+      managementRevenue: roundMoney(acc.managementRevenue + bucket.managementRevenue),
+      adsRevenue: roundMoney(acc.adsRevenue + bucket.adsRevenue),
+      stripePlatformFee: roundMoney(acc.stripePlatformFee + bucket.stripePlatformFee),
+      customerCost: roundMoney(acc.customerCost + bucket.customerCost),
+      operatingCostUsd: roundMoney(acc.operatingCostUsd + bucket.operatingCostUsd),
+      cost: roundMoney(acc.cost + bucket.cost),
+    }), { revenue: 0, managementRevenue: 0, adsRevenue: 0, stripePlatformFee: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 })
+  ), [summaryFinanceBuckets]);
+  const summaryProfitUsd = useMemo(() => roundMoney(
+    Object.entries(summaryFinanceBuckets).reduce((sum, [monthKey, bucket]) => (
+      sum + calculateMonthlyProfit(bucket, getDeductionRate(deductionRates, monthKey)).profit
+    ), 0),
+  ), [deductionRates, summaryFinanceBuckets]);
+  const summaryCompanyExpenseCny = useMemo(() => roundMoney(
+    summaryCompanyExpenses
+      .filter(e => getCompanyExpenseCurrency(e) === 'CNY')
+      .reduce((s, e) => s + Number(e.amount || 0), 0),
+  ), [summaryCompanyExpenses]);
+  const summaryPeriodLabel = dateFilterMode === 'all'
+    ? '总'
+    : dateFilterMode === 'today'
+      ? '今日'
+      : dateFilterMode === 'last_month'
+        ? '上月'
+        : dateFilterMode === 'custom'
+          ? '筛选期'
+          : '本月';
   const totalOutstanding = payments.reduce((s, p) => s + (p.outstanding_amount || 0), 0);
   const renewalPendingSubs = subscriptions.filter(s => s.status === 'renewal_pending').length;
   const expiringSubs = subscriptions.filter(s => s.status === 'expiring_soon' || s.status === 'expired' || s.status === 'renewal_pending');
@@ -2376,25 +2406,25 @@ export default function Finance() {
         <Card className="border-slate-200">
           <CardContent className="p-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center"><ArrowUpRight className="w-4 h-4 text-green-600" /></div>
-            <div><p className="text-[11px] text-slate-500">本月收入</p><p className="text-base font-bold text-green-600">{fmt(monthlyIncome)}</p></div>
+            <div><p className="text-[11px] text-slate-500">{summaryPeriodLabel}收入</p><p className="text-base font-bold text-green-600">{fmt(summaryFinance.revenue)}</p></div>
           </CardContent>
         </Card>
-        {/* 本月运营支出 */}
+        {/* 运营支出 */}
         <Card className="border-slate-200">
           <CardContent className="p-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center"><ArrowDownRight className="w-4 h-4 text-red-600" /></div>
             <div>
-              <p className="text-[11px] text-slate-500">本月运营支出</p>
-              <p className="text-base font-bold text-red-600">{fmt(monthlyCompanyExpenseUsd)}</p>
-              <p className="text-[11px] text-slate-400">{fmtRMB(monthlyCompanyExpenseCny)} 单独统计</p>
+              <p className="text-[11px] text-slate-500">{summaryPeriodLabel}运营支出</p>
+              <p className="text-base font-bold text-red-600">{fmt(summaryFinance.operatingCostUsd)}</p>
+              <p className="text-[11px] text-slate-400">{fmtRMB(summaryCompanyExpenseCny)} 单独统计</p>
             </div>
           </CardContent>
         </Card>
-        {/* 本月客户成本(USD) */}
+        {/* 客户成本(USD) */}
         <Card className="border-slate-200">
           <CardContent className="p-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center"><ArrowDownRight className="w-4 h-4 text-amber-600" /></div>
-            <div><p className="text-[11px] text-slate-500">本月客户成本 (USD)</p><p className="text-base font-bold text-amber-600">{fmt(monthlyCustomerExpense)}</p></div>
+            <div><p className="text-[11px] text-slate-500">{summaryPeriodLabel}客户成本 (USD)</p><p className="text-base font-bold text-amber-600">{fmt(summaryFinance.customerCost)}</p></div>
           </CardContent>
         </Card>
         <Card className="border-slate-200">
@@ -2402,17 +2432,17 @@ export default function Finance() {
             <div className="w-9 h-9 rounded-lg bg-cyan-50 flex items-center justify-center"><Receipt className="w-4 h-4 text-cyan-600" /></div>
             <div>
               <p className="text-[11px] text-slate-500">Stripe手续费</p>
-              <p className="text-base font-bold text-cyan-600">{fmt(monthlyStripePlatformFee)}</p>
+              <p className="text-base font-bold text-cyan-600">{fmt(summaryFinance.stripePlatformFee)}</p>
               <p className="text-[11px] text-slate-400">2.9% + $0.30/笔</p>
             </div>
           </CardContent>
         </Card>
         <Card className="border-slate-200">
           <CardContent className="p-3 flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-lg ${monthlyProfitUsd >= 0 ? 'bg-emerald-50' : 'bg-red-50'} flex items-center justify-center`}>
-              <Wallet className={`w-4 h-4 ${monthlyProfitUsd >= 0 ? 'text-emerald-600' : 'text-red-600'}`} />
+            <div className={`w-9 h-9 rounded-lg ${summaryProfitUsd >= 0 ? 'bg-emerald-50' : 'bg-red-50'} flex items-center justify-center`}>
+              <Wallet className={`w-4 h-4 ${summaryProfitUsd >= 0 ? 'text-emerald-600' : 'text-red-600'}`} />
             </div>
-            <div><p className="text-[11px] text-slate-500">本月利润 (USD)</p><p className={`text-base font-bold ${monthlyProfitUsd >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(monthlyProfitUsd)}</p></div>
+            <div><p className="text-[11px] text-slate-500">{summaryPeriodLabel}利润 (USD)</p><p className={`text-base font-bold ${summaryProfitUsd >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(summaryProfitUsd)}</p></div>
           </CardContent>
         </Card>
         <Card className="border-slate-200">
