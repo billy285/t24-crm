@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Copy, Sparkles, Trash2 } from 'lucide-react';
+import { Copy, RefreshCw, RotateCcw, Search, Sparkles, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { getCountryLabel, getStateLabel } from '../lib/country-state-data';
 import { useBusinessDicts } from '../lib/dict-config';
 
 const platformOptions = [
+  { value: 'internal', label: '内部运营' },
   { value: 'google_business', label: 'Google商家' },
   { value: 'facebook', label: 'Facebook' },
   { value: 'instagram', label: 'Instagram' },
@@ -29,6 +30,78 @@ const contentTypeOptions = [
   { value: 'review_reply', label: '评论回复' },
   { value: 'weekly_update', label: '每周更新' },
   { value: 'package_promo', label: '套餐宣传' },
+  { value: 'operation_plan', label: '客户运营方案' },
+  { value: 'weekly_plan', label: '每周运营计划' },
+  { value: 'material_gap', label: '素材缺口提醒' },
+  { value: 'weekly_report', label: '客户周报' },
+  { value: 'copy_quality_check', label: '文案质量检查' },
+  { value: 'staff_review', label: '员工执行复盘' },
+];
+
+const operationPresets = [
+  {
+    label: '运营方案',
+    description: '给老板和运营看的客户整体打法',
+    platform: 'internal',
+    content_type: 'operation_plan',
+    tone: 'professional',
+    variants: '1',
+    extra_requirements: '请结合客户套餐、平台、素材和菜单/项目，生成可执行的客户运营方案。',
+  },
+  {
+    label: '每周计划',
+    description: '让员工照着执行的一周任务',
+    platform: 'internal',
+    content_type: 'weekly_plan',
+    tone: 'concise',
+    variants: '1',
+    extra_requirements: '请按平台输出本周更新节奏、主题、素材、负责人动作和验收标准。',
+  },
+  {
+    label: '素材缺口',
+    description: '判断还缺什么素材和资料',
+    platform: 'internal',
+    content_type: 'material_gap',
+    tone: 'professional',
+    variants: '1',
+    extra_requirements: '请根据素材库和菜单/服务项目，列出缺失素材、客户补资料清单和优先级。',
+  },
+  {
+    label: '客户周报',
+    description: '整理本周完成和下周计划',
+    platform: 'internal',
+    content_type: 'weekly_report',
+    tone: 'friendly',
+    variants: '1',
+    extra_requirements: '请生成适合发给客户的周报，包含本周完成、当前问题、下周计划、需要客户配合。',
+  },
+  {
+    label: '评论回复',
+    description: 'Google/Yelp/Facebook 回复草稿',
+    platform: 'google_business',
+    content_type: 'review_reply',
+    tone: 'friendly',
+    variants: '3',
+    extra_requirements: '请在这里粘贴客户评论内容；如果是差评，请礼貌稳妥，不要争辩。',
+  },
+  {
+    label: '文案质检',
+    description: '检查员工或 AI 文案是否合格',
+    platform: 'internal',
+    content_type: 'copy_quality_check',
+    tone: 'professional',
+    variants: '1',
+    extra_requirements: '请在这里粘贴要检查的文案，检查是否空泛、是否不相关、是否有虚假承诺，并给出修改版。',
+  },
+  {
+    label: '执行复盘',
+    description: '看员工任务执行风险',
+    platform: 'internal',
+    content_type: 'staff_review',
+    tone: 'professional',
+    variants: '1',
+    extra_requirements: '请根据服务任务和进度，指出执行风险、低质量完成、未推进事项和下周监管重点。',
+  },
 ];
 
 const languageOptions = [
@@ -78,6 +151,13 @@ export default function CustomerAiCopyTab({ customer }: Props) {
   const [savingId, setSavingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [drafts, setDrafts] = useState<Record<number, { title: string; content: string; status: string }>>({});
+  const [copyTotal, setCopyTotal] = useState(0);
+  const [copyPage, setCopyPage] = useState(1);
+  const [copyPageSize, setCopyPageSize] = useState('10');
+  const [copySearch, setCopySearch] = useState('');
+  const [copyFilterPlatform, setCopyFilterPlatform] = useState('all');
+  const [copyFilterType, setCopyFilterType] = useState('all');
+  const [copyFilterStatus, setCopyFilterStatus] = useState('all');
   const [form, setForm] = useState({
     platform: 'google_business',
     content_type: 'weekly_update',
@@ -96,18 +176,31 @@ export default function CustomerAiCopyTab({ customer }: Props) {
   useEffect(() => {
     loadCopies();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customer?.id]);
+  }, [customer?.id, copyPage, copyPageSize, copySearch, copyFilterPlatform, copyFilterType, copyFilterStatus]);
+
+  const totalPages = Math.max(1, Math.ceil(copyTotal / Number(copyPageSize || 10)));
 
   const loadCopies = async () => {
     if (!customer?.id) return;
     setLoading(true);
     try {
+      const query: Record<string, any> = { customer_id: customer.id };
+      if (copyFilterPlatform !== 'all') query.platform = copyFilterPlatform;
+      if (copyFilterType !== 'all') query.content_type = copyFilterType;
+      if (copyFilterStatus !== 'all') query.status = copyFilterStatus;
       const res = await invokeWithAuth({
         url: '/api/v1/entities/customer_ai_copies',
         method: 'GET',
-        data: { query: JSON.stringify({ customer_id: customer.id }), sort: '-created_at', limit: 100 },
+        data: {
+          query: JSON.stringify(query),
+          search: copySearch.trim() || undefined,
+          sort: '-created_at',
+          skip: (copyPage - 1) * Number(copyPageSize || 10),
+          limit: Number(copyPageSize || 10),
+        },
       });
       setCopies(res?.data?.items || []);
+      setCopyTotal(res?.data?.total || 0);
       setDrafts({});
     } catch (err: any) {
       console.error(err);
@@ -117,6 +210,19 @@ export default function CustomerAiCopyTab({ customer }: Props) {
     }
   };
 
+  const updateSearch = (value: string) => {
+    setCopySearch(value);
+    setCopyPage(1);
+  };
+
+  const updateCopyFilter = (field: 'platform' | 'type' | 'status' | 'pageSize', value: string) => {
+    if (field === 'platform') setCopyFilterPlatform(value);
+    if (field === 'type') setCopyFilterType(value);
+    if (field === 'status') setCopyFilterStatus(value);
+    if (field === 'pageSize') setCopyPageSize(value);
+    setCopyPage(1);
+  };
+
   const buildCustomerContext = () => ({
     industry_label: businessDicts.industries[customer?.industry] || customer?.industry || '',
     country_label: customer?.country ? getCountryLabel(customer.country) : '',
@@ -124,6 +230,29 @@ export default function CustomerAiCopyTab({ customer }: Props) {
     city: customer?.city || '',
     package_labels: packageLabels,
   });
+
+  const applyPreset = (preset: typeof operationPresets[number]) => {
+    setForm(prev => ({
+      ...prev,
+      platform: preset.platform,
+      content_type: preset.content_type,
+      tone: preset.tone,
+      variants: preset.variants,
+      extra_requirements: preset.extra_requirements,
+    }));
+    toast.success(`已选择「${preset.label}」，可直接生成或先补充要求`);
+  };
+
+  const requirementPlaceholder = useMemo(() => {
+    if (form.content_type === 'review_reply') return '请粘贴客户评论内容、星级、平台，例如：Google 2星评论：“等餐太久...”';
+    if (form.content_type === 'copy_quality_check') return '请粘贴需要检查的文案，AI会指出问题并给修改版。';
+    if (form.content_type === 'weekly_report') return '可补充本周重点、客户反馈、需要客户配合的事项。';
+    if (form.content_type === 'material_gap') return '可补充客户当前缺什么、哪些素材不能用、哪些项目是主推。';
+    if (form.content_type === 'staff_review') return '可补充你想重点检查的员工、客户或时间范围。';
+    if (form.content_type === 'weekly_plan') return '可补充本周重点平台、更新次数、主推活动或员工安排。';
+    if (form.content_type === 'operation_plan') return '可补充老板关注点，例如先做Google/Yelp，还是先补素材和基础信息。';
+    return '例如：突出周末优惠、适合餐厅午餐套餐、语气更本地化、不要太广告...';
+  }, [form.content_type]);
 
   const handleGenerate = async () => {
     if (!customer?.id) return;
@@ -144,7 +273,13 @@ export default function CustomerAiCopyTab({ customer }: Props) {
         },
       });
       const items = res?.data?.items || [];
-      setCopies(items.concat(copies));
+      setCopySearch('');
+      setCopyFilterPlatform('all');
+      setCopyFilterType('all');
+      setCopyFilterStatus('all');
+      setCopyPage(1);
+      setCopies(items.concat(copies).slice(0, Number(copyPageSize || 10)));
+      setCopyTotal(prev => prev + items.length);
       setDrafts({});
       if (res?.data?.warning) {
         toast(res.data.warning);
@@ -225,6 +360,19 @@ export default function CustomerAiCopyTab({ customer }: Props) {
     }
   };
 
+  const reuseCopySettings = (item: any) => {
+    setForm({
+      platform: item.platform || 'google_business',
+      content_type: item.content_type || 'weekly_update',
+      language: item.language || 'zh_en',
+      tone: item.tone || 'friendly',
+      variants: form.variants || '3',
+      extra_requirements: item.extra_requirements || '',
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast.success('已复用这条文案的生成条件，可直接再次生成');
+  };
+
   return (
     <div className="space-y-4">
       <Card className="border-blue-100 bg-blue-50/40">
@@ -234,6 +382,26 @@ export default function CustomerAiCopyTab({ customer }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="rounded-xl border border-blue-100 bg-white/80 p-3">
+            <div className="flex flex-col gap-1 mb-3">
+              <p className="text-sm font-medium text-slate-800">AI运营助手快捷工具</p>
+              <p className="text-xs text-slate-500">先选一个运营动作，系统会自动带入用途和要求，生成后统一保存到下面的文案库。</p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {operationPresets.map(preset => (
+                <Button
+                  key={preset.content_type}
+                  type="button"
+                  variant={form.content_type === preset.content_type ? 'default' : 'outline'}
+                  className={`h-auto flex-col items-start gap-1 px-3 py-2 text-left ${form.content_type === preset.content_type ? 'bg-blue-600 hover:bg-blue-700' : 'bg-white'}`}
+                  onClick={() => applyPreset(preset)}
+                >
+                  <span className="text-sm font-semibold">{preset.label}</span>
+                  <span className={`text-[11px] ${form.content_type === preset.content_type ? 'text-blue-50' : 'text-slate-500'}`}>{preset.description}</span>
+                </Button>
+              ))}
+            </div>
+          </div>
           <div className="grid md:grid-cols-3 gap-3">
             <div><Label>平台</Label><NativeSelect value={form.platform} onChange={v => setForm({ ...form, platform: v })} options={platformOptions} /></div>
             <div><Label>用途</Label><NativeSelect value={form.content_type} onChange={v => setForm({ ...form, content_type: v })} options={contentTypeOptions} /></div>
@@ -247,7 +415,7 @@ export default function CustomerAiCopyTab({ customer }: Props) {
             <Textarea
               value={form.extra_requirements}
               onChange={e => setForm({ ...form, extra_requirements: e.target.value })}
-              placeholder="例如：突出周末优惠、适合餐厅午餐套餐、语气更本地化、不要太广告..."
+              placeholder={requirementPlaceholder}
               rows={3}
             />
           </div>
@@ -262,13 +430,60 @@ export default function CustomerAiCopyTab({ customer }: Props) {
 
       <Card className="border-slate-200">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">历史文案 ({copies.length})</CardTitle>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle className="text-base">文案库 ({copyTotal})</CardTitle>
+              <p className="text-xs text-slate-500 mt-1">
+                生成后的草稿都会保存在这里，可搜索、翻页、复制，也可以复用生成条件再次生成。
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={loadCopies} disabled={loading}>
+              <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
+              刷新
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+            <div className="relative md:col-span-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                className="pl-9"
+                value={copySearch}
+                onChange={e => updateSearch(e.target.value)}
+                placeholder="搜索标题、内容、额外要求..."
+              />
+            </div>
+            <NativeSelect
+              value={copyFilterPlatform}
+              onChange={v => updateCopyFilter('platform', v)}
+              options={[{ value: 'all', label: '全部平台' }, ...platformOptions]}
+            />
+            <NativeSelect
+              value={copyFilterType}
+              onChange={v => updateCopyFilter('type', v)}
+              options={[{ value: 'all', label: '全部用途' }, ...contentTypeOptions]}
+            />
+            <NativeSelect
+              value={copyFilterStatus}
+              onChange={v => updateCopyFilter('status', v)}
+              options={[{ value: 'all', label: '全部状态' }, ...statusOptions]}
+            />
+            <NativeSelect
+              value={copyPageSize}
+              onChange={v => updateCopyFilter('pageSize', v)}
+              options={[
+                { value: '10', label: '每页 10 条' },
+                { value: '20', label: '每页 20 条' },
+                { value: '50', label: '每页 50 条' },
+              ]}
+            />
+          </div>
+
           {loading ? (
             <p className="text-sm text-slate-400 text-center py-8">加载中...</p>
-          ) : copies.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-8">暂无AI文案，先生成一组草稿吧</p>
+          ) : copyTotal === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">暂无匹配文案，可以先生成一组草稿</p>
           ) : (
             <div className="space-y-4">
               {copies.map(item => {
@@ -293,6 +508,7 @@ export default function CustomerAiCopyTab({ customer }: Props) {
                       <NativeSelect value={itemStatus} onChange={v => updateDraft(item, { status: v })} options={statusOptions} className="w-[130px]" />
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={() => copyText(content)}><Copy className="w-3.5 h-3.5 mr-1" />复制</Button>
+                        <Button variant="outline" size="sm" onClick={() => reuseCopySettings(item)}><RotateCcw className="w-3.5 h-3.5 mr-1" />复用要求</Button>
                         <Button variant="outline" size="sm" onClick={() => handleSave(item)} disabled={savingId === item.id}>{savingId === item.id ? '保存中...' : '保存'}</Button>
                         <Button variant="outline" size="sm" className="text-green-600 hover:text-green-700" onClick={() => handleSave(item, { status: 'used' })} disabled={savingId === item.id}>标记已使用</Button>
                         <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setDeleteTarget(item)}><Trash2 className="w-3.5 h-3.5" /></Button>
@@ -301,6 +517,17 @@ export default function CustomerAiCopyTab({ customer }: Props) {
                   </div>
                 );
               })}
+              <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 md:flex-row md:items-center md:justify-between">
+                <p className="text-xs text-slate-500">
+                  第 {copyPage} / {totalPages} 页，共 {copyTotal} 条
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setCopyPage(1)} disabled={copyPage <= 1}>首页</Button>
+                  <Button variant="outline" size="sm" onClick={() => setCopyPage(prev => Math.max(1, prev - 1))} disabled={copyPage <= 1}>上一页</Button>
+                  <Button variant="outline" size="sm" onClick={() => setCopyPage(prev => Math.min(totalPages, prev + 1))} disabled={copyPage >= totalPages}>下一页</Button>
+                  <Button variant="outline" size="sm" onClick={() => setCopyPage(totalPages)} disabled={copyPage >= totalPages}>末页</Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

@@ -19,6 +19,8 @@ class Customer_materials(Base):
     thumbnail_url = Column(Text, nullable=True)
     content_type = Column(String, nullable=True)
     file_size = Column(Integer, nullable=True)
+    linked_item_id = Column(Integer, nullable=True)
+    linked_item_snapshot = Column(String, nullable=True)
     usage_status = Column(String, nullable=True)
     approval_status = Column(String, nullable=True)
     copyright_status = Column(String, nullable=True)

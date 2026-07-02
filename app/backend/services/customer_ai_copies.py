@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customer_ai_copies import Customer_ai_copies
@@ -39,6 +39,7 @@ class Customer_ai_copiesService:
         limit: int = 50,
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        search: Optional[str] = None,
     ) -> Dict[str, Any]:
         query = select(Customer_ai_copies)
         count_query = select(func.count(Customer_ai_copies.id))
@@ -48,6 +49,17 @@ class Customer_ai_copiesService:
                 if hasattr(Customer_ai_copies, field):
                     query = query.where(getattr(Customer_ai_copies, field) == value)
                     count_query = count_query.where(getattr(Customer_ai_copies, field) == value)
+
+        keyword = (search or "").strip()
+        if keyword:
+            like_keyword = f"%{keyword}%"
+            search_filter = or_(
+                Customer_ai_copies.title.ilike(like_keyword),
+                Customer_ai_copies.content.ilike(like_keyword),
+                Customer_ai_copies.extra_requirements.ilike(like_keyword),
+            )
+            query = query.where(search_filter)
+            count_query = count_query.where(search_filter)
 
         count_result = await self.db.execute(count_query)
         total = count_result.scalar() or 0
