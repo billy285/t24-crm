@@ -145,7 +145,17 @@ export default function Layout({ children }: LayoutProps) {
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-800 text-white transform transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 flex flex-col`}>
         <div className="p-4 border-b border-slate-700">
           <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold">T24 CRM</h1>
+            <Link to="/" className="flex min-w-0 items-center gap-3" onClick={() => setSidebarOpen(false)}>
+              <img
+                src="/t2-marketing-logo.png?v=t2-20260709b"
+                alt="T2 Marketing"
+                className="h-10 w-10 flex-shrink-0 rounded-full bg-white object-cover shadow-sm"
+              />
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold leading-tight">T2 Marketing</h1>
+                <p className="truncate text-xs text-slate-400">客户管理系统</p>
+              </div>
+            </Link>
             <button className="lg:hidden text-slate-400 hover:text-white" onClick={() => setSidebarOpen(false)}>
               <X className="w-5 h-5" />
             </button>

@@ -26,7 +26,7 @@ import {
 import ExportButton from '@/components/ExportButton';
 import { exportProfitMonthlyCsv, exportProfitMonthlyXlsx } from '../lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
-import { saveRemoteAppConfig } from '../lib/app-config';
+import { loadRemoteAppConfig, saveRemoteAppConfig } from '../lib/app-config';
 import { buildOptionKey, sanitizeDictLabel, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
 import { logOperation } from '../lib/operation-log-helper';
 import {
@@ -123,6 +123,14 @@ const defaultFinancePages: Record<FinancePageKey, number> = {
   company_expense: 1,
   subscriptions: 1,
   monthly_detail: 1,
+};
+const financeIssueCopy: Record<string, { label: string; description: string }> = {
+  missingPaymentDate: { label: '收款缺日期', description: '这些收款没有收款日期，会影响收入归属月份。' },
+  splitMismatch: { label: '收入拆分异常', description: '这些收款的管理费/投流金额需要重新核对。' },
+  receivables: { label: '应收欠款', description: '这些记录应收大于实收，需要跟进回款。' },
+  missingExpenseMonth: { label: '支出缺月份', description: '这些支出没有正确月份，会影响月度利润。' },
+  missingCustomerLink: { label: '客户关联异常', description: '这些记录可能无法准确合并到客户利润。' },
+  autoRenewMissingNextDate: { label: '订阅缺下次付款', description: '这些订阅缺少下次付款时间，会影响续费提醒。' },
 };
 
 const formatDateOnlyLocal = (date: Date) => (
@@ -228,6 +236,11 @@ const getCustomerExpenseCurrency = (expense: any): CurrencyCode => normalizeCurr
 const getCompanyExpenseCurrency = (expense: any): CurrencyCode => normalizeCurrency(expense?.currency, 'CNY');
 const formatMoney = (amount: number, currency: CurrencyCode) => (currency === 'CNY' ? fmtRMB(amount) : fmt(amount));
 const roundMoney = (amount: number) => Math.round(Number(amount || 0) * 100) / 100;
+const getTodayDateInput = () => formatDateOnlyLocal(new Date());
+const normalizeMonthKey = (value?: string | null) => {
+  const month = String(value || '').slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(month) ? month : '';
+};
 
 const MANAGEMENT_FEE_KEY = 'management_fee';
 const ADS_FEE_KEY = 'ads_fee';
@@ -236,6 +249,7 @@ const PROTECTED_INCOME_TYPE_KEYS = new Set([MANAGEMENT_FEE_KEY, ADS_FEE_KEY, MIX
 const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
 const STRIPE_PLATFORM_FEE_RATE = 0.029;
 const STRIPE_PLATFORM_FEE_FIXED = 0.3;
+const CUSTOMER_PROFIT_WARNING_RATE = 0.3;
 
 const toMoneyNumber = (value: any) => {
   const amount = Number(value);
@@ -317,6 +331,14 @@ const getPaymentDisplayIncomeType = (payment: any) => (
   isManagementAdsMixedPayment(payment) ? MIXED_MANAGEMENT_ADS_KEY : (payment?.income_type || 'other_income')
 );
 
+const isSplitMismatchPayment = (payment: any) => {
+  const amountPaid = toMoneyNumber(payment.amount_paid);
+  const managementAmount = getManagementRevenueAmount(payment);
+  const adsAmount = getAdsRechargeAmount(payment);
+  if (managementAmount + adsAmount > amountPaid + 0.01) return true;
+  return payment.income_type === MIXED_MANAGEMENT_ADS_KEY && (managementAmount <= 0 || adsAmount <= 0);
+};
+
 const inferSubscriptionIncomeType = (packageName?: string | null) => {
   const normalized = String(packageName || '').toLowerCase();
   if (normalized.includes('广告') || normalized.includes('ads')) return ADS_FEE_KEY;
@@ -397,6 +419,12 @@ const toDateOnly = (value?: string | null) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
 };
+
+const getSubscriptionPlannedPaymentDate = (subscription: any) => (
+  toDateOnly(subscription?.next_payment_date)
+  || toDateOnly(subscription?.end_date)
+  || getTodayDateInput()
+);
 
 const addBillingCycle = (dateStr: string, cycle?: string | null) => {
   const base = new Date(`${dateStr}T00:00:00.000Z`);
@@ -555,6 +583,10 @@ export default function Finance() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [companyExpenses, setCompanyExpenses] = useState<any[]>([]);
   const [deductionRates, setDeductionRates] = useState<Record<string, number>>({});
+  const [exportConfig, setExportConfig] = useState<Record<string, any>>({});
+  const [closingMonth, setClosingMonth] = useState(() => getTodayDateInput().slice(0, 7));
+  const [savingMonthClose, setSavingMonthClose] = useState(false);
+  const [profitDetailTarget, setProfitDetailTarget] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Payment form
@@ -564,6 +596,7 @@ export default function Finance() {
   const emptyPayForm = {
     customer_id: '', product_names: [] as string[], income_type: 'management_fee',
     amount_due: '', amount_paid: '', payment_mode: 'manual_collection', payment_method: 'zelle', billing_cycle: 'monthly',
+    payment_date: getTodayDateInput(),
     management_amount: '', ads_recharge_amount: '', transaction_reference: '',
     coverage_start: '', coverage_end: '', has_invoice: false, sync_to_deal: false, notes: '',
   };
@@ -619,6 +652,8 @@ export default function Finance() {
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'payment' | 'subscription'; item: any } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmingRenewalId, setConfirmingRenewalId] = useState<number | null>(null);
+  const [subscriptionRenewalTarget, setSubscriptionRenewalTarget] = useState<any | null>(null);
+  const [renewalPaymentDate, setRenewalPaymentDate] = useState('');
   const [updatingSubscriptionId, setUpdatingSubscriptionId] = useState<number | null>(null);
   const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<any>(null);
   const [deletingExpense, setDeletingExpense] = useState(false);
@@ -629,20 +664,39 @@ export default function Finance() {
   const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('all');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
+  const [financeIssueFilter, setFinanceIssueFilter] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(20);
   const [financePages, setFinancePages] = useState<Record<FinancePageKey, number>>({ ...defaultFinancePages });
   const activeDateRange = useMemo(
     () => getDateFilterRange(dateFilterMode, filterStartDate, filterEndDate),
     [dateFilterMode, filterStartDate, filterEndDate],
   );
+  const closedFinanceMonths = useMemo(() => {
+    const rawMonths = Array.isArray(exportConfig.financeClosedMonths) ? exportConfig.financeClosedMonths : [];
+    return new Set(rawMonths.map(month => normalizeMonthKey(month)).filter(Boolean));
+  }, [exportConfig]);
+  const isFinanceMonthClosed = (monthValue?: string | null) => {
+    const month = normalizeMonthKey(monthValue);
+    return Boolean(month && closedFinanceMonths.has(month));
+  };
 
   useEffect(() => {
     setFinancePages({ ...defaultFinancePages });
-  }, [dateFilterMode, filterStartDate, filterEndDate, expenseMonth, companyExpenseMonth, companyExpenseCurrencyFilter, pageSize]);
+  }, [dateFilterMode, filterStartDate, filterEndDate, expenseMonth, companyExpenseMonth, companyExpenseCurrencyFilter, pageSize, financeIssueFilter]);
 
   // ─── Load Data (resilient - each query independent) ───────────────
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadRemoteAppConfig<Record<string, any>>('export_config', {})
+      .then(config => {
+        if (!cancelled) setExportConfig(config || {});
+      })
+      .catch(err => console.warn('load export config failed', err));
+    return () => { cancelled = true; };
+  }, []);
 
   const loadData = async () => {
     try {
@@ -1118,19 +1172,29 @@ export default function Finance() {
     return items.filter(i => isDateInRange(i[dateField], activeDateRange));
   };
 
-  const filteredPayments = filterByDate(payments, 'payment_date');
+  const baseFilteredPayments = filterByDate(payments, 'payment_date');
+  const filteredPayments = useMemo(() => {
+    if (financeIssueFilter === 'missingPaymentDate') return payments.filter((payment: any) => !payment.payment_date);
+    if (financeIssueFilter === 'splitMismatch') return payments.filter(isSplitMismatchPayment);
+    return baseFilteredPayments;
+  }, [baseFilteredPayments, financeIssueFilter, payments]);
   const filteredSubscriptions = useMemo(() => {
+    if (financeIssueFilter === 'autoRenewMissingNextDate') {
+      return subscriptions.filter(s => s.auto_renew && !s.next_payment_date);
+    }
     if (!activeDateRange) return subscriptions;
     return subscriptions.filter(s => (
       isDateInRange(s.start_date || s.created_at, activeDateRange)
       || isDateInRange(s.next_payment_date || s.end_date, activeDateRange)
     ));
-  }, [subscriptions, activeDateRange]);
+  }, [subscriptions, activeDateRange, financeIssueFilter]);
 
-  const filteredExpenses = expenses.filter(e => (
-    activeDateRange ? isMonthInRange(e.expense_month, activeDateRange) : (!expenseMonth || e.expense_month === expenseMonth)
-  ));
+  const filteredExpenses = expenses.filter(e => {
+    if (financeIssueFilter === 'missingExpenseMonth') return !/^\d{4}-\d{2}$/.test(e.expense_month || '');
+    return activeDateRange ? isMonthInRange(e.expense_month, activeDateRange) : (!expenseMonth || e.expense_month === expenseMonth);
+  });
   const filteredCompanyExpenses = companyExpenses.filter(e => {
+    if (financeIssueFilter === 'missingExpenseMonth') return !/^\d{4}-\d{2}$/.test(e.expense_month || '');
     const matchesMonth = activeDateRange
       ? isMonthInRange(e.expense_month, activeDateRange)
       : (!companyExpenseMonth || e.expense_month === companyExpenseMonth);
@@ -1346,6 +1410,7 @@ export default function Finance() {
       } = calculateMonthlyProfit(bucket, rate);
       return {
         month: ym,
+        is_closed: closedFinanceMonths.has(ym),
         revenue_gross: Math.round(revenue * 100) / 100,
         management_revenue: Math.round(bucket.managementRevenue * 100) / 100,
         ads_recharge_revenue: Math.round(bucket.adsRevenue * 100) / 100,
@@ -1364,12 +1429,38 @@ export default function Finance() {
     });
 
     return { rows, range: { start, end } };
-  }, [payments, expenses, companyExpenses, deductionRates, activeDateRange]);
+  }, [payments, expenses, companyExpenses, deductionRates, activeDateRange, closedFinanceMonths]);
 
   const paginatedMonthlyDetail = useMemo(
     () => paginateList(monthlyDetail.rows, financePages.monthly_detail, pageSize),
     [monthlyDetail.rows, financePages.monthly_detail, pageSize],
   );
+  const monthlyDetailTotals = useMemo(() => (
+    monthlyDetail.rows.reduce((acc, row: any) => ({
+      revenue: roundMoney(acc.revenue + Number(row.revenue_gross || 0)),
+      managementRevenue: roundMoney(acc.managementRevenue + Number(row.management_revenue || 0)),
+      adsRevenue: roundMoney(acc.adsRevenue + Number(row.ads_recharge_revenue || 0)),
+      deduction: roundMoney(acc.deduction + Number(row.deduction_amount || 0)),
+      stripeFee: roundMoney(acc.stripeFee + Number(row.stripe_platform_fee || 0)),
+      customerCost: roundMoney(acc.customerCost + Number(row.customer_cost || 0)),
+      operatingCostUsd: roundMoney(acc.operatingCostUsd + Number(row.operating_cost_usd || 0)),
+      cost: roundMoney(acc.cost + Number(row.cost || 0)),
+      profit: roundMoney(acc.profit + Number(row.profit || 0)),
+    }), {
+      revenue: 0,
+      managementRevenue: 0,
+      adsRevenue: 0,
+      deduction: 0,
+      stripeFee: 0,
+      customerCost: 0,
+      operatingCostUsd: 0,
+      cost: 0,
+      profit: 0,
+    })
+  ), [monthlyDetail.rows]);
+  const monthlyDetailProfitRate = monthlyDetailTotals.revenue > 0
+    ? monthlyDetailTotals.profit / monthlyDetailTotals.revenue
+    : 0;
 
 
   const incomeByTypeData = useMemo(() => {
@@ -1537,9 +1628,26 @@ export default function Finance() {
     });
 
     return Object.values(rows)
+      .filter(row => (
+        financeIssueFilter === 'missingCustomerLink'
+          ? (!row.customerId || !customerMap[row.customerId])
+          : true
+      ))
       .map(row => {
         const totalFee = row.stripeFee + row.managementDeduction + row.adsDeduction;
         const profit = row.revenue - totalFee - row.customerCostUsd;
+        const profitRate = row.revenue > 0 ? profit / row.revenue : 0;
+        const warningLevel = profit < 0 ? 'loss' : (row.revenue > 0 && profitRate < CUSTOMER_PROFIT_WARNING_RATE ? 'low_margin' : 'healthy');
+        const warningLabel = warningLevel === 'loss'
+          ? '亏损预警'
+          : warningLevel === 'low_margin'
+            ? '低利润'
+            : '健康';
+        const warningReason = warningLevel === 'loss'
+          ? '该客户当前范围内利润为负，需要核对成本或服务报价。'
+          : warningLevel === 'low_margin'
+            ? `利润率低于 ${(CUSTOMER_PROFIT_WARNING_RATE * 100).toFixed(0)}%，建议复盘服务成本。`
+            : '利润率处于安全区间。';
         return {
           ...row,
           revenue: roundMoney(row.revenue),
@@ -1554,11 +1662,82 @@ export default function Finance() {
           outstanding: roundMoney(row.outstanding),
           totalFee: roundMoney(totalFee),
           profit: roundMoney(profit),
-          profitRate: row.revenue > 0 ? profit / row.revenue : 0,
+          profitRate,
+          warningLevel,
+          warningLabel,
+          warningReason,
         };
       })
       .sort((a, b) => b.profit - a.profit);
-  }, [customerMap, deductionRates, overviewCustomerExpenses, overviewPayments]);
+  }, [customerMap, deductionRates, financeIssueFilter, overviewCustomerExpenses, overviewPayments]);
+
+  const profitWarningRows = useMemo(() => (
+    customerProfitRows
+      .filter((row: any) => row.warningLevel !== 'healthy')
+      .sort((a: any, b: any) => {
+        const priority: Record<string, number> = { loss: 0, low_margin: 1, healthy: 2 };
+        return (priority[a.warningLevel] ?? 9) - (priority[b.warningLevel] ?? 9) || a.profit - b.profit;
+      })
+  ), [customerProfitRows]);
+
+  const selectedProfitDetail = useMemo(() => {
+    if (!profitDetailTarget) return null;
+
+    const sameProfitRow = (row: any) => {
+      const rowId = Number(row.customerId) || null;
+      const targetId = Number(profitDetailTarget.customerId) || null;
+      if (rowId && targetId) return rowId === targetId;
+      return row.customerName === profitDetailTarget.customerName;
+    };
+    const row = customerProfitRows.find(sameProfitRow) || profitDetailTarget;
+    const targetId = Number(row.customerId) || null;
+    const targetName = row.customerName || '未知客户';
+    const matchesCustomer = (record: any) => {
+      const recordId = Number(record.customer_id) || null;
+      const recordName = record.customer_name || (recordId ? customerMap[recordId]?.business_name : '') || '';
+      if (targetId && recordId) return recordId === targetId;
+      return recordName === targetName;
+    };
+
+    const detailPayments = overviewPayments
+      .filter(matchesCustomer)
+      .sort((a: any, b: any) => String(b.payment_date || '').localeCompare(String(a.payment_date || '')));
+    const detailExpenses = overviewCustomerExpenses
+      .filter(matchesCustomer)
+      .sort((a: any, b: any) => String(b.expense_month || '').localeCompare(String(a.expense_month || '')));
+    const bucketMap = buildMonthlyFinanceBuckets(detailPayments, detailExpenses, []);
+    const monthlyRows = Object.keys(bucketMap)
+      .sort((a, b) => b.localeCompare(a))
+      .map(month => {
+        const bucket = bucketMap[month];
+        const rate = getDeductionRate(deductionRates, month);
+        const calc = calculateMonthlyProfit(bucket, rate);
+        const totalFee = calc.deductionAmount + bucket.stripePlatformFee;
+        return {
+          month,
+          revenue: roundMoney(bucket.revenue),
+          managementRevenue: roundMoney(bucket.managementRevenue),
+          adsRevenue: roundMoney(bucket.adsRevenue),
+          stripeFee: roundMoney(bucket.stripePlatformFee),
+          deduction: roundMoney(calc.deductionAmount),
+          totalFee: roundMoney(totalFee),
+          customerCost: roundMoney(bucket.customerCost),
+          profit: roundMoney(calc.profit),
+          profitRate: bucket.revenue > 0 ? calc.profit / bucket.revenue : 0,
+        };
+      });
+    const customerCostCny = roundMoney(detailExpenses
+      .filter((expense: any) => getCustomerExpenseCurrency(expense) === 'CNY')
+      .reduce((sum: number, expense: any) => sum + toMoneyNumber(expense.amount), 0));
+
+    return {
+      row,
+      payments: detailPayments,
+      expenses: detailExpenses,
+      monthlyRows,
+      customerCostCny,
+    };
+  }, [customerMap, customerProfitRows, deductionRates, overviewCustomerExpenses, overviewPayments, profitDetailTarget]);
 
   const receivableRows = useMemo(() => (
     overviewPayments
@@ -1628,6 +1807,165 @@ export default function Finance() {
     };
   }, [deductionRates, overviewCompanyExpenses, overviewCustomerExpenses, overviewPayments, receivableRows]);
 
+  const financeHealthItems = useMemo(() => {
+    const missingPaymentDate = payments.filter((payment: any) => !payment.payment_date).length;
+    const missingCustomerExpenseMonth = expenses.filter((expense: any) => !/^\d{4}-\d{2}$/.test(expense.expense_month || '')).length;
+    const missingCompanyExpenseMonth = companyExpenses.filter((expense: any) => !/^\d{4}-\d{2}$/.test(expense.expense_month || '')).length;
+    const missingExpenseMonth = missingCustomerExpenseMonth + missingCompanyExpenseMonth;
+    const missingCustomerLink = [
+      ...payments.filter((payment: any) => payment.customer_id && !customerMap[payment.customer_id]),
+      ...expenses.filter((expense: any) => expense.customer_id && !customerMap[expense.customer_id]),
+    ].length;
+    const splitMismatch = payments.filter(isSplitMismatchPayment).length;
+    const autoRenewMissingNextDate = subscriptions.filter((subscription: any) => (
+      subscription.auto_renew && !subscription.next_payment_date
+    )).length;
+
+    return [
+      {
+        key: 'missingPaymentDate',
+        label: '收款缺日期',
+        count: missingPaymentDate,
+        help: '会导致收入无法归属到正确月份。',
+        tab: 'income' as const,
+      },
+      {
+        key: 'splitMismatch',
+        label: '收入拆分异常',
+        count: splitMismatch,
+        help: '管理费/投流金额缺失或超过实收金额。',
+        tab: 'income' as const,
+      },
+      {
+        key: 'receivables',
+        label: '应收欠款',
+        count: receivableRows.length,
+        help: '应收大于实收，需要跟进。',
+        tab: 'receivables' as const,
+      },
+      {
+        key: 'missingExpenseMonth',
+        label: '支出缺月份',
+        count: missingExpenseMonth,
+        help: '会导致成本没有进入月度利润。',
+        tab: (missingCustomerExpenseMonth > 0 ? 'customer_expense' : 'company_expense') as const,
+      },
+      {
+        key: 'missingCustomerLink',
+        label: '客户关联异常',
+        count: missingCustomerLink,
+        help: '客户名称能看见，但利润无法准确合并。',
+        tab: 'customer_profit' as const,
+      },
+      {
+        key: 'autoRenewMissingNextDate',
+        label: '订阅缺下次付款',
+        count: autoRenewMissingNextDate,
+        help: '会影响到期提醒和自动续费确认。',
+        tab: 'subscriptions' as const,
+      },
+    ];
+  }, [companyExpenses, customerMap, expenses, payments, receivableRows.length, subscriptions]);
+
+  const financeHealthIssueCount = financeHealthItems.reduce((sum, item) => sum + item.count, 0);
+
+  const buildClosingChecklist = (monthValue: string) => {
+    const month = normalizeMonthKey(monthValue);
+    const paymentsInMonth = payments.filter((payment: any) => normalizeMonthKey(payment.payment_date) === month);
+    const expensesInMonth = expenses.filter((expense: any) => normalizeMonthKey(expense.expense_month) === month);
+    const subscriptionsInMonth = subscriptions.filter((subscription: any) => normalizeMonthKey(getSubscriptionPlannedPaymentDate(subscription)) === month);
+    const receivableInMonth = paymentsInMonth.filter((payment: any) => {
+      const amountDue = toMoneyNumber(payment.amount_due);
+      const amountPaid = toMoneyNumber(payment.amount_paid);
+      const outstanding = getStoredMoney(payment.outstanding_amount) ?? Math.max(0, amountDue - amountPaid);
+      return outstanding > 0;
+    });
+    const missingPaymentDate = payments.filter((payment: any) => !payment.payment_date);
+    const splitMismatch = paymentsInMonth.filter(isSplitMismatchPayment);
+    const missingCustomerExpenseMonth = expenses.filter((expense: any) => !normalizeMonthKey(expense.expense_month));
+    const missingCompanyExpenseMonth = companyExpenses.filter((expense: any) => !normalizeMonthKey(expense.expense_month));
+    const missingCustomerLink = [
+      ...paymentsInMonth.filter((payment: any) => payment.customer_id && !customerMap[payment.customer_id]),
+      ...expensesInMonth.filter((expense: any) => expense.customer_id && !customerMap[expense.customer_id]),
+    ];
+    const pendingRenewals = subscriptionsInMonth.filter((subscription: any) => (
+      subscription.auto_renew && (subscription.status || computeSubscriptionStatus(subscription)) === 'renewal_pending'
+    ));
+    const items = [
+      {
+        key: 'missingPaymentDate',
+        label: '收款缺日期',
+        count: missingPaymentDate.length,
+        level: 'blocker',
+        tab: 'income',
+        issueKey: 'missingPaymentDate',
+        help: '缺收款日期会导致收入无法归属月份，关账前必须修正。',
+      },
+      {
+        key: 'splitMismatch',
+        label: '收入拆分异常',
+        count: splitMismatch.length,
+        level: 'blocker',
+        tab: 'income',
+        issueKey: 'splitMismatch',
+        help: '管理费/投流金额缺失或超过实收，会直接影响扣点和利润。',
+      },
+      {
+        key: 'missingExpenseMonth',
+        label: '支出缺月份',
+        count: missingCustomerExpenseMonth.length + missingCompanyExpenseMonth.length,
+        level: 'blocker',
+        tab: missingCustomerExpenseMonth.length > 0 ? 'customer_expense' : 'company_expense',
+        issueKey: 'missingExpenseMonth',
+        help: '支出缺月份会漏进成本，关账前必须补齐。',
+      },
+      {
+        key: 'missingCustomerLink',
+        label: '客户关联异常',
+        count: missingCustomerLink.length,
+        level: 'blocker',
+        tab: 'customer_profit',
+        issueKey: 'missingCustomerLink',
+        help: '客户关联异常会导致单客利润无法准确合并。',
+      },
+      {
+        key: 'receivables',
+        label: '本月仍有欠款',
+        count: receivableInMonth.length,
+        level: 'warning',
+        tab: 'receivables',
+        issueKey: 'receivables',
+        help: '可以关账，但需要确认这些欠款是否继续挂应收。',
+      },
+      {
+        key: 'pendingRenewals',
+        label: '订阅扣款待确认',
+        count: pendingRenewals.length,
+        level: 'warning',
+        tab: 'subscriptions',
+        issueKey: '',
+        help: '计划扣款日在本月，但尚未确认实际收款日期。',
+      },
+    ];
+    const blockerCount = items.filter(item => item.level === 'blocker').reduce((sum, item) => sum + item.count, 0);
+    const warningCount = items.filter(item => item.level === 'warning').reduce((sum, item) => sum + item.count, 0);
+    return {
+      month,
+      items,
+      blockerCount,
+      warningCount,
+      totalIssueCount: blockerCount + warningCount,
+      paymentCount: paymentsInMonth.length,
+      customerExpenseCount: expensesInMonth.length,
+      subscriptionCount: subscriptionsInMonth.length,
+    };
+  };
+
+  const selectedClosingChecklist = useMemo(
+    () => buildClosingChecklist(closingMonth),
+    [closingMonth, payments, expenses, companyExpenses, subscriptions, customerMap],
+  );
+
   const renewalForecast = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1653,6 +1991,59 @@ export default function Finance() {
       d60: withinDays(60),
     };
   }, [subscriptions]);
+  const renewalPendingAmount = useMemo(() => (
+    subscriptions
+      .filter((subscription: any) => subscription.auto_renew && subscription.status === 'renewal_pending')
+      .reduce((sum: number, item: any) => sum + toMoneyNumber(item.package_price), 0)
+  ), [subscriptions]);
+  const subscriptionWorkbenchGroups = useMemo(() => {
+    const getStatus = (subscription: any) => subscription.status || computeSubscriptionStatus(subscription);
+    const rows = filteredSubscriptions;
+    const groups = [
+      {
+        key: 'pending',
+        title: '待确认扣款',
+        description: 'Stripe 已到计划扣款日，需要确认实际入账日期。',
+        tone: 'cyan',
+        rows: rows.filter((subscription: any) => subscription.auto_renew && getStatus(subscription) === 'renewal_pending'),
+      },
+      {
+        key: 'risk',
+        title: '即将到期 / 已到期',
+        description: '需要决定续费、停止合作或手动收款。',
+        tone: 'amber',
+        rows: rows.filter((subscription: any) => {
+          const status = getStatus(subscription);
+          return status === 'expiring_soon' || status === 'expired';
+        }),
+      },
+      {
+        key: 'active_auto',
+        title: '正常订阅',
+        description: 'Stripe 自动订阅客户，后续到期会进入待确认。',
+        tone: 'emerald',
+        rows: rows.filter((subscription: any) => subscription.auto_renew && getStatus(subscription) === 'active'),
+      },
+      {
+        key: 'manual',
+        title: '手动收款',
+        description: '支票、Zelle、转账等手动录入，不产生 Stripe 手续费。',
+        tone: 'slate',
+        rows: rows.filter((subscription: any) => !subscription.auto_renew && !['stopped', 'lost', 'upgraded'].includes(getStatus(subscription))),
+      },
+      {
+        key: 'stopped',
+        title: '已停止合作',
+        description: '只保留历史数据，不再进入续费提醒。',
+        tone: 'red',
+        rows: rows.filter((subscription: any) => ['stopped', 'lost'].includes(getStatus(subscription))),
+      },
+    ];
+    return groups.map(group => ({
+      ...group,
+      amount: roundMoney(group.rows.reduce((sum: number, item: any) => sum + toMoneyNumber(item.package_price), 0)),
+    }));
+  }, [filteredSubscriptions]);
 
   const paginatedCustomerProfitRows = useMemo(
     () => paginateList(customerProfitRows, financePages.customer_profit, pageSize),
@@ -1679,6 +2070,42 @@ export default function Finance() {
     setSearchParams(nextParams);
   };
 
+  const handleFinanceIssueClick = (issueKey: string, tab: string, count: number) => {
+    if (count <= 0) {
+      setFinanceIssueFilter(null);
+      handleFinanceTabChange('overview');
+      return;
+    }
+    setFinanceIssueFilter(issueKey);
+    handleFinanceTabChange(tab);
+  };
+
+  const getFallbackOtherIncomeType = () => (
+    incomeTypeOptions.find(option => !PROTECTED_INCOME_TYPE_KEYS.has(option.value))?.value || 'other_income'
+  );
+
+  const activeIncomeStructure = (() => {
+    if (payForm.income_type === MANAGEMENT_FEE_KEY) return 'management';
+    if (payForm.income_type === ADS_FEE_KEY) return 'ads';
+    if (payForm.income_type === MIXED_MANAGEMENT_ADS_KEY) return 'mixed';
+    return 'other';
+  })();
+
+  const applyIncomeStructure = (structure: 'management' | 'ads' | 'mixed' | 'other') => {
+    setPayForm(prev => {
+      if (structure === 'management') {
+        return { ...prev, income_type: MANAGEMENT_FEE_KEY, management_amount: '', ads_recharge_amount: '' };
+      }
+      if (structure === 'ads') {
+        return { ...prev, income_type: ADS_FEE_KEY, management_amount: '', ads_recharge_amount: '' };
+      }
+      if (structure === 'mixed') {
+        return { ...prev, income_type: MIXED_MANAGEMENT_ADS_KEY };
+      }
+      return { ...prev, income_type: getFallbackOtherIncomeType(), management_amount: '', ads_recharge_amount: '' };
+    });
+  };
+
   const openCustomerDetail = (customerId: string | number | null | undefined, tab = 'info', returnFinanceTab = activeFinanceTab) => {
     const id = Number(customerId);
     if (!id) {
@@ -1686,6 +2113,50 @@ export default function Finance() {
       return;
     }
     navigate(`/customers?detail=${id}&tab=${tab}&from=finance&financeTab=${returnFinanceTab}`);
+  };
+
+  const handleToggleMonthClose = async (monthValue = closingMonth, shouldClose?: boolean) => {
+    const month = normalizeMonthKey(monthValue);
+    if (!month) {
+      toast.error('请选择要关账的月份');
+      return;
+    }
+    const closing = typeof shouldClose === 'boolean' ? shouldClose : !closedFinanceMonths.has(month);
+    if (closing) {
+      const checklist = buildClosingChecklist(month);
+      if (checklist.blockerCount > 0) {
+        setClosingMonth(month);
+        handleFinanceTabChange('monthly_detail');
+        toast.error(`${month} 还有 ${checklist.blockerCount} 个关账前必处理项，请先完成检查`);
+        return;
+      }
+    }
+    setSavingMonthClose(true);
+    try {
+      const months = new Set(Array.from(closedFinanceMonths));
+      if (closing) {
+        months.add(month);
+      } else {
+        months.delete(month);
+      }
+      const nextConfig = {
+        ...exportConfig,
+        financeClosedMonths: Array.from(months).sort(),
+      };
+      const saved = await saveRemoteAppConfig('export_config', nextConfig);
+      setExportConfig(saved || nextConfig);
+      toast.success(closing ? `${month} 已关账，历史收支已锁定` : `${month} 已重新打开，可以继续修改`);
+      void logOperation({
+        actionType: closing ? 'close_finance_month' : 'reopen_finance_month',
+        actionDetail: closing ? `月度关账：${month}` : `重新打开月度账期：${month}`,
+        operatorName,
+      });
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.message || '保存关账状态失败';
+      toast.error(detail);
+    } finally {
+      setSavingMonthClose(false);
+    }
   };
 
   const derivePaymentIncomeSplit = (
@@ -1751,6 +2222,7 @@ export default function Finance() {
       payment_mode: inferPaymentModeKey(p),
       payment_method: normalizePaymentMethodKey(p.payment_method),
       billing_cycle: p.billing_cycle || 'monthly',
+      payment_date: p.payment_date?.slice(0, 10) || getTodayDateInput(),
       management_amount: p.management_amount ?? '',
       ads_recharge_amount: p.ads_recharge_amount ?? '',
       transaction_reference: p.transaction_reference || '',
@@ -1764,6 +2236,13 @@ export default function Finance() {
   const handleSavePayment = async () => {
     if (!payForm.customer_id || !payForm.amount_due || !payForm.amount_paid) { toast.error('请填写必填字段'); return; }
     if (payForm.product_names.length === 0) { toast.error('请至少选择一个产品'); return; }
+    const originalPayment = editingPayId ? payments.find((payment: any) => Number(payment.id) === Number(editingPayId)) : null;
+    const targetPaymentMonth = normalizeMonthKey(payForm.payment_date || payForm.coverage_start || currentMonthKey);
+    const originalPaymentMonth = normalizeMonthKey(originalPayment?.payment_date || originalPayment?.expense_month);
+    if (isFinanceMonthClosed(targetPaymentMonth) || isFinanceMonthClosed(originalPaymentMonth)) {
+      toast.error(`${isFinanceMonthClosed(originalPaymentMonth) ? originalPaymentMonth : targetPaymentMonth} 已关账，请先在按月明细里重新打开该月份`);
+      return;
+    }
     setSaving(true);
     try {
       const cust = customers.find(c => c.id === Number(payForm.customer_id));
@@ -1788,6 +2267,7 @@ export default function Finance() {
       }
       const coverageStartISO = toISODatetime(payForm.coverage_start);
       const coverageEndISO = toISODatetime(payForm.coverage_end);
+      const paymentDateISO = toISODatetime(payForm.payment_date) || new Date().toISOString();
       const normalizedPaymentMethod = normalizePaymentMethodKey(payForm.payment_method);
       const payload: Record<string, any> = {
         customer_id: Number(payForm.customer_id),
@@ -1800,11 +2280,12 @@ export default function Finance() {
         payment_method: normalizedPaymentMethod,
         transaction_reference: payForm.transaction_reference || null,
         billing_cycle: payForm.billing_cycle,
+        payment_date: paymentDateISO,
         coverage_start: coverageStartISO, coverage_end: coverageEndISO,
         has_invoice: payForm.has_invoice,
         sync_to_deal: payForm.sync_to_deal,
         outstanding_amount: Math.max(0, amountDue - amountPaid),
-        expense_month: payForm.coverage_start ? payForm.coverage_start.slice(0, 7) : currentMonthKey,
+        expense_month: (payForm.payment_date || payForm.coverage_start || currentMonthKey).slice(0, 7),
         notes: payForm.notes || null,
       };
       if (editingPayId) {
@@ -1821,7 +2302,6 @@ export default function Finance() {
           operatorName,
         });
       } else {
-        payload.payment_date = new Date().toISOString();
         payload.created_at = new Date().toISOString();
         await invokeWithAuth({
           url: '/api/v1/entities/payments',
@@ -1843,7 +2323,6 @@ export default function Finance() {
             customerId: Number(payForm.customer_id),
             packageName: payForm.product_names,
           });
-          const paymentDateISO = payload.payment_date || new Date().toISOString();
           const isAutoSubscription = payForm.payment_mode === 'subscription_auto' || normalizedPaymentMethod === 'stripe';
           const subStartDate = coverageStartISO || matchingSub?.start_date || paymentDateISO;
           const subBaseData = {
@@ -1902,20 +2381,31 @@ export default function Finance() {
     } finally { setSaving(false); }
   };
 
-  const handleConfirmSubscriptionRenewal = async (subscription: any) => {
+  const openConfirmSubscriptionRenewal = (subscription: any) => {
+    if (!subscription?.id) return;
+    const plannedPaymentDate = getSubscriptionPlannedPaymentDate(subscription);
+    setSubscriptionRenewalTarget(subscription);
+    setRenewalPaymentDate(plannedPaymentDate);
+  };
+
+  const handleConfirmSubscriptionRenewal = async (subscription: any, actualPaymentDate?: string) => {
     if (!subscription?.id) return;
     const amount = Number(subscription.package_price || 0);
     if (amount <= 0) {
       toast.error('该套餐缺少续费金额，无法自动生成收入');
       return;
     }
-    const todayDateOnly = new Date().toISOString().slice(0, 10);
-    const rawDueBaseDate =
-      toDateOnly(subscription.next_payment_date)
-      || toDateOnly(subscription.end_date)
-      || todayDateOnly;
-    const dueBaseDate = rawDueBaseDate < todayDateOnly ? todayDateOnly : rawDueBaseDate;
-    const nextPaymentDate = addBillingCycle(dueBaseDate, subscription.billing_cycle || 'monthly');
+    const plannedPaymentDate = getSubscriptionPlannedPaymentDate(subscription);
+    const paymentDateOnly = actualPaymentDate || plannedPaymentDate;
+    if (!paymentDateOnly) {
+      toast.error('缺少实际收款日期，无法确认续费');
+      return;
+    }
+    if (isFinanceMonthClosed(paymentDateOnly)) {
+      toast.error(`${paymentDateOnly.slice(0, 7)} 已关账，请先在按月明细里重新打开该月份`);
+      return;
+    }
+    const nextPaymentDate = addBillingCycle(plannedPaymentDate, subscription.billing_cycle || 'monthly');
     if (!nextPaymentDate) {
       toast.error('无法识别计费周期，请先检查套餐续费信息');
       return;
@@ -1923,7 +2413,8 @@ export default function Finance() {
 
     const existingEndDate = toDateOnly(subscription.end_date);
     const nextServiceEndDate = existingEndDate && existingEndDate > nextPaymentDate ? existingEndDate : nextPaymentDate;
-    const paymentDateISO = new Date().toISOString();
+    const paymentDateISO = toISODatetime(paymentDateOnly) || new Date().toISOString();
+    const operationTimeISO = new Date().toISOString();
     const customerName = subscription.customer_name || customerMap[subscription.customer_id]?.business_name || '';
     const packageName = subscription.package_name || '订阅套餐';
     const incomeType = inferSubscriptionIncomeType(packageName);
@@ -1951,14 +2442,14 @@ export default function Finance() {
           payment_mode: 'subscription_auto',
           payment_method: 'stripe',
           billing_cycle: subscription.billing_cycle || 'monthly',
-          coverage_start: toISODatetime(dueBaseDate),
+          coverage_start: toISODatetime(plannedPaymentDate),
           coverage_end: toISODatetime(nextPaymentDate),
           has_invoice: false,
           outstanding_amount: 0,
-          expense_month: paymentDateISO.slice(0, 7),
+          expense_month: paymentDateOnly.slice(0, 7),
           recorded_by: operatorName,
-          notes: `Stripe订阅续费确认：${packageName}，覆盖 ${dueBaseDate} 至 ${nextPaymentDate}。手续费按 2.9% + $0.30 自动计入报表成本。`,
-          created_at: paymentDateISO,
+          notes: `Stripe订阅续费确认：${packageName}，实际扣费日 ${paymentDateOnly}，确认时间 ${operationTimeISO.slice(0, 10)}，覆盖 ${plannedPaymentDate} 至 ${nextPaymentDate}。手续费按 2.9% + $0.30 自动计入报表成本。`,
+          created_at: operationTimeISO,
         },
       });
 
@@ -1977,7 +2468,7 @@ export default function Finance() {
           status: 'active',
         }),
         renewal_result: 'stripe_subscription_confirmed',
-        updated_at: paymentDateISO,
+        updated_at: operationTimeISO,
       };
 
       await invokeWithAuth({
@@ -1989,11 +2480,13 @@ export default function Finance() {
       void logOperation({
         customerId: Number(subscription.customer_id),
         actionType: 'confirm_subscription_renewal',
-        actionDetail: `确认Stripe订阅续费：${customerName} ${packageName} ${fmt(amount)}，下次付款 ${nextPaymentDate}`,
+        actionDetail: `确认Stripe订阅续费：${customerName} ${packageName} ${fmt(amount)}，实际扣费日 ${paymentDateOnly}，下次付款 ${nextPaymentDate}`,
         operatorName,
       });
 
-      toast.success(`已确认续费，下次付款时间：${nextPaymentDate}`);
+      setSubscriptionRenewalTarget(null);
+      setRenewalPaymentDate('');
+      toast.success(`已按 ${paymentDateOnly} 入账，下次付款时间：${nextPaymentDate}`);
       await loadData();
     } catch (err: any) {
       const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '确认续费失败';
@@ -2042,15 +2535,15 @@ export default function Finance() {
 
       void logOperation({
         customerId: Number(subscription.customer_id),
-        actionType: enabled ? 'enable_subscription_auto_renew' : 'disable_subscription_auto_renew',
-        actionDetail: `${enabled ? '开启' : '关闭'}套餐续费开关：${subscription.customer_name || customerMap[subscription.customer_id]?.business_name || ''} ${subscription.package_name || ''}`,
+        actionType: enabled ? 'enable_subscription_auto_renew' : 'stop_subscription_renewal',
+        actionDetail: `${enabled ? '开启订阅续费' : '停止合作/停止续费'}：${subscription.customer_name || customerMap[subscription.customer_id]?.business_name || ''} ${subscription.package_name || ''}`,
         operatorName,
       });
 
       setSubscriptions(prev => decorateEffectiveSubscriptions(prev.map(item => (
         String(item.id) === String(subscription.id) ? { ...item, ...payload } : item
       ))));
-      toast.success(enabled ? '已开启续费开关，到期后会进入待确认续费' : '已停止续费提醒，历史收款不受影响');
+      toast.success(enabled ? '已开启续费开关，到期后会进入待确认续费' : '已停止未来续费，历史收款和利润不受影响');
       await loadData();
     } catch (err: any) {
       const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '更新续费开关失败';
@@ -2074,6 +2567,13 @@ export default function Finance() {
 
   const handleSaveExpense = async () => {
     if (!expenseForm.customer_id || !expenseForm.amount) { toast.error('请填写必填字段'); return; }
+    const originalExpense = editingExpenseId ? expenses.find((expense: any) => Number(expense.id) === Number(editingExpenseId)) : null;
+    const targetExpenseMonth = normalizeMonthKey(expenseForm.expense_month);
+    const originalExpenseMonth = normalizeMonthKey(originalExpense?.expense_month);
+    if (isFinanceMonthClosed(targetExpenseMonth) || isFinanceMonthClosed(originalExpenseMonth)) {
+      toast.error(`${isFinanceMonthClosed(originalExpenseMonth) ? originalExpenseMonth : targetExpenseMonth} 已关账，请先在按月明细里重新打开该月份`);
+      return;
+    }
     setSavingExpense(true);
     try {
       const cust = customers.find(c => c.id === Number(expenseForm.customer_id));
@@ -2124,6 +2624,11 @@ export default function Finance() {
 
   const handleDeleteExpense = async () => {
     if (!deleteExpenseTarget) return;
+    const expenseClosedMonth = normalizeMonthKey(deleteExpenseTarget.expense_month);
+    if (isFinanceMonthClosed(expenseClosedMonth)) {
+      toast.error(`${expenseClosedMonth} 已关账，请先在按月明细里重新打开该月份`);
+      return;
+    }
     setDeletingExpense(true);
     try {
       await invokeWithAuth({
@@ -2155,6 +2660,13 @@ export default function Finance() {
 
   const handleSaveCompanyExpense = async () => {
     if (!companyExpenseForm.amount) { toast.error('请填写金额'); return; }
+    const originalCompanyExpense = editingCompanyExpenseId ? companyExpenses.find((expense: any) => Number(expense.id) === Number(editingCompanyExpenseId)) : null;
+    const targetCompanyExpenseMonth = normalizeMonthKey(companyExpenseForm.expense_month);
+    const originalCompanyExpenseMonth = normalizeMonthKey(originalCompanyExpense?.expense_month);
+    if (isFinanceMonthClosed(targetCompanyExpenseMonth) || isFinanceMonthClosed(originalCompanyExpenseMonth)) {
+      toast.error(`${isFinanceMonthClosed(originalCompanyExpenseMonth) ? originalCompanyExpenseMonth : targetCompanyExpenseMonth} 已关账，请先在按月明细里重新打开该月份`);
+      return;
+    }
     setSavingCompanyExpense(true);
     try {
       const payload: Record<string, any> = {
@@ -2204,6 +2716,11 @@ export default function Finance() {
 
   const handleDeleteCompanyExpense = async () => {
     if (!deleteCompanyExpenseTarget) return;
+    const companyExpenseClosedMonth = normalizeMonthKey(deleteCompanyExpenseTarget.expense_month);
+    if (isFinanceMonthClosed(companyExpenseClosedMonth)) {
+      toast.error(`${companyExpenseClosedMonth} 已关账，请先在按月明细里重新打开该月份`);
+      return;
+    }
     setDeletingCompanyExpense(true);
     try {
       await invokeWithAuth({
@@ -2224,6 +2741,13 @@ export default function Finance() {
   // ─── Delete payment/subscription ─────────────────────────────────
   const handleDeleteRecord = async () => {
     if (!deleteTarget) return;
+    if (deleteTarget.type === 'payment') {
+      const paymentClosedMonth = normalizeMonthKey(deleteTarget.item.payment_date || deleteTarget.item.expense_month);
+      if (isFinanceMonthClosed(paymentClosedMonth)) {
+        toast.error(`${paymentClosedMonth} 已关账，请先在按月明细里重新打开该月份`);
+        return;
+      }
+    }
     setDeleting(true);
     try {
       if (deleteTarget.type === 'payment') {
@@ -2401,6 +2925,65 @@ export default function Finance() {
 
       <DateFilterBar />
 
+      <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_1fr] gap-3">
+        <Card className="border-blue-100 bg-blue-50/60">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600">
+                <Wallet className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-blue-950">财务计算口径</p>
+                <div className="mt-2 grid gap-2 text-xs leading-relaxed text-blue-800 md:grid-cols-2">
+                  <p>收入按「收款日期」进入月份；服务覆盖期只影响续费和服务周期。</p>
+                  <p>管理费按当月扣点率计算，投流充值固定按 1% 扣点。</p>
+                  <p>Stripe 订阅按实收金额计算 2.9% + $0.30/笔；手动收款不算 Stripe 手续费。</p>
+                  <p>客户成本进入单客利润；运营支出进入老板总览利润，人民币支出单独统计不混算。</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className={financeHealthIssueCount > 0 ? 'border-amber-200 bg-amber-50/70' : 'border-emerald-100 bg-emerald-50/60'}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">数据体检</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {financeHealthIssueCount > 0 ? `发现 ${financeHealthIssueCount} 个需要核对的问题` : '关键财务数据口径正常'}
+                </p>
+              </div>
+              {financeHealthIssueCount > 0 ? (
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+              ) : (
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              )}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {financeHealthItems.map(item => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => handleFinanceIssueClick(item.key, item.tab, item.count)}
+                  className={`rounded-lg border px-3 py-2 text-left transition ${
+                    item.count > 0
+                      ? 'border-amber-200 bg-white hover:bg-amber-50'
+                      : 'border-slate-100 bg-white/70 text-slate-400'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium">{item.label}</span>
+                    <span className={item.count > 0 ? 'text-sm font-bold text-amber-700' : 'text-sm font-bold text-emerald-600'}>{item.count}</span>
+                  </div>
+                  {item.count > 0 && <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">{item.help}</p>}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Overview Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         <Card className="border-slate-200">
@@ -2483,66 +3066,177 @@ export default function Finance() {
           <TabsTrigger value="monthly_detail" className="text-xs sm:text-sm">按月明细</TabsTrigger>
         </TabsList>
 
+        {financeIssueFilter && (
+          <div className="mt-3 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <span className="font-semibold">正在查看：{financeIssueCopy[financeIssueFilter]?.label || '异常数据'}</span>
+              <span className="ml-2 text-xs text-amber-700">{financeIssueCopy[financeIssueFilter]?.description}</span>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 border-amber-200 bg-white text-amber-700 hover:bg-amber-100"
+              onClick={() => setFinanceIssueFilter(null)}
+            >
+              清除体检筛选
+            </Button>
+          </div>
+        )}
+
         <TabsContent value="overview">
           <div className="space-y-4">
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <Card className="overflow-hidden border-slate-900 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
+                <CardContent className="p-5">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-[0.2em] text-blue-200">老板驾驶舱</p>
+                      <h3 className="mt-2 text-2xl font-bold">{summaryPeriodLabel}经营结果</h3>
+                      <p className="mt-2 max-w-xl text-sm text-blue-100">
+                        先看利润和现金风险，再处理扣款、欠款、数据异常。所有数字按当前时间筛选口径计算。
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white/10 px-4 py-3 text-right backdrop-blur">
+                      <p className="text-xs text-blue-100">净利润 USD</p>
+                      <p className={`mt-1 text-3xl font-bold ${ownerOverview.profitUsd >= 0 ? 'text-emerald-200' : 'text-red-200'}`}>{fmt(ownerOverview.profitUsd)}</p>
+                      <p className="mt-1 text-xs text-blue-100">利润率 {(ownerOverview.profitRate * 100).toFixed(1)}%</p>
+                    </div>
+                  </div>
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-2xl bg-white/10 p-4">
+                      <p className="text-xs text-blue-100">实收收入</p>
+                      <p className="mt-2 text-2xl font-bold text-emerald-200">{fmt(ownerOverview.revenue)}</p>
+                      <p className="mt-1 text-xs text-blue-100">管理费 {fmt(ownerOverview.managementRevenue)} · 投流 {fmt(ownerOverview.adsRevenue)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/10 p-4">
+                      <p className="text-xs text-blue-100">应收未收</p>
+                      <p className="mt-2 text-2xl font-bold text-red-200">{fmt(ownerOverview.outstanding)}</p>
+                      <p className="mt-1 text-xs text-blue-100">{ownerOverview.receivableCount} 笔需要跟进</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/10 p-4">
+                      <p className="text-xs text-blue-100">扣点 / Stripe</p>
+                      <p className="mt-2 text-2xl font-bold text-violet-200">{fmt(ownerOverview.deduction + ownerOverview.stripeFee)}</p>
+                      <p className="mt-1 text-xs text-blue-100">扣点 {fmt(ownerOverview.deduction)} · Stripe {fmt(ownerOverview.stripeFee)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/10 p-4">
+                      <p className="text-xs text-blue-100">30天续费预测</p>
+                      <p className="mt-2 text-2xl font-bold text-cyan-200">{fmt(renewalForecast.d30.amount)}</p>
+                      <p className="mt-1 text-xs text-blue-100">{renewalForecast.d30.count} 个套餐</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">待处理事项</CardTitle>
+                  <p className="text-xs text-slate-500">按紧急程度处理，减少漏扣款、漏收款和错账。</p>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <button type="button" onClick={() => handleFinanceTabChange('subscriptions')} className="flex w-full items-center justify-between rounded-xl border border-cyan-100 bg-cyan-50 px-4 py-3 text-left hover:bg-cyan-100/70">
+                    <div>
+                      <p className="font-semibold text-cyan-800">确认订阅扣款</p>
+                      <p className="mt-1 text-xs text-cyan-700">到计划扣款日后确认实际入账日期</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-cyan-800">{renewalPendingSubs}</p>
+                      <p className="text-xs text-cyan-700">{fmt(renewalPendingAmount)}</p>
+                    </div>
+                  </button>
+                  <button type="button" onClick={() => handleFinanceTabChange('receivables')} className="flex w-full items-center justify-between rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-left hover:bg-red-100/70">
+                    <div>
+                      <p className="font-semibold text-red-800">跟进应收欠款</p>
+                      <p className="mt-1 text-xs text-red-700">应收大于实收，需要尽快处理</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-red-800">{ownerOverview.receivableCount}</p>
+                      <p className="text-xs text-red-700">{fmt(ownerOverview.outstanding)}</p>
+                    </div>
+                  </button>
+                  <button type="button" onClick={() => handleFinanceTabChange('subscriptions')} className="flex w-full items-center justify-between rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-left hover:bg-amber-100/70">
+                    <div>
+                      <p className="font-semibold text-amber-800">7天内续费风险</p>
+                      <p className="mt-1 text-xs text-amber-700">提前确认续费、停止合作或手动收款</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-amber-800">{renewalForecast.d7.count}</p>
+                      <p className="text-xs text-amber-700">{fmt(renewalForecast.d7.amount)}</p>
+                    </div>
+                  </button>
+                  <button type="button" onClick={() => financeHealthIssueCount > 0 && handleFinanceIssueClick(financeHealthItems.find(item => item.count > 0)?.key || 'splitMismatch', financeHealthItems.find(item => item.count > 0)?.tab || 'income', financeHealthIssueCount)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50">
+                    <div>
+                      <p className="font-semibold text-slate-800">数据体检异常</p>
+                      <p className="mt-1 text-xs text-slate-500">缺日期、拆分异常、客户关联异常会影响利润</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={financeHealthIssueCount > 0 ? 'text-lg font-bold text-amber-700' : 'text-lg font-bold text-emerald-700'}>{financeHealthIssueCount}</p>
+                      <p className="text-xs text-slate-400">{financeHealthIssueCount > 0 ? '点击核对' : '正常'}</p>
+                    </div>
+                  </button>
+                  <button type="button" onClick={() => handleFinanceTabChange('customer_profit')} className="flex w-full items-center justify-between rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 text-left hover:bg-orange-100/70">
+                    <div>
+                      <p className="font-semibold text-orange-800">客户利润预警</p>
+                      <p className="mt-1 text-xs text-orange-700">亏损或利润率低于 {(CUSTOMER_PROFIT_WARNING_RATE * 100).toFixed(0)}% 的客户</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={profitWarningRows.length > 0 ? 'text-lg font-bold text-orange-800' : 'text-lg font-bold text-emerald-700'}>{profitWarningRows.length}</p>
+                      <p className="text-xs text-orange-700">{profitWarningRows.length > 0 ? '点击复盘' : '正常'}</p>
+                    </div>
+                  </button>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <Card className="border-slate-200"><CardContent className="p-4">
-                <p className="text-xs text-slate-500">筛选范围实收</p>
-                <p className="mt-1 text-2xl font-bold text-green-600">{fmt(ownerOverview.revenue)}</p>
-                <p className="mt-1 text-xs text-slate-400">管理费 {fmt(ownerOverview.managementRevenue)} · 投流 {fmt(ownerOverview.adsRevenue)}</p>
+                <p className="text-xs text-slate-500">客户成本 USD</p>
+                <p className="mt-1 text-xl font-bold text-amber-600">{fmt(ownerOverview.customerCostUsd)}</p>
+                <p className="mt-1 text-xs text-slate-400">直接影响单客利润</p>
               </CardContent></Card>
               <Card className="border-slate-200"><CardContent className="p-4">
-                <p className="text-xs text-slate-500">筛选范围利润 USD</p>
-                <p className={`mt-1 text-2xl font-bold ${ownerOverview.profitUsd >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(ownerOverview.profitUsd)}</p>
-                <p className="mt-1 text-xs text-slate-400">利润率 {(ownerOverview.profitRate * 100).toFixed(1)}%</p>
+                <p className="text-xs text-slate-500">运营支出 USD</p>
+                <p className="mt-1 text-xl font-bold text-red-600">{fmt(ownerOverview.companyCostUsd)}</p>
+                <p className="mt-1 text-xs text-slate-400">{fmtRMB(ownerOverview.companyCostCny)} 单独统计</p>
               </CardContent></Card>
               <Card className="border-slate-200"><CardContent className="p-4">
-                <p className="text-xs text-slate-500">扣点/手续费</p>
-                <p className="mt-1 text-2xl font-bold text-violet-600">{fmt(ownerOverview.deduction + ownerOverview.stripeFee)}</p>
-                <p className="mt-1 text-xs text-slate-400">扣点 {fmt(ownerOverview.deduction)} · Stripe {fmt(ownerOverview.stripeFee)}</p>
+                <p className="text-xs text-slate-500">活跃订阅</p>
+                <p className="mt-1 text-xl font-bold text-blue-600">{activeSubs}</p>
+                <p className="mt-1 text-xs text-slate-400">待确认 {renewalPendingSubs} · 到期风险 {expiringSubs.length}</p>
               </CardContent></Card>
-              <Card className="border-slate-200"><CardContent className="p-4">
-                <p className="text-xs text-slate-500">应收未收</p>
-                <p className="mt-1 text-2xl font-bold text-red-600">{fmt(ownerOverview.outstanding)}</p>
-                <p className="mt-1 text-xs text-slate-400">{ownerOverview.receivableCount} 笔需要跟进</p>
-              </CardContent></Card>
+              <Card className={closedFinanceMonths.has(currentMonthKey) ? 'border-emerald-100 bg-emerald-50' : 'border-amber-100 bg-amber-50'}>
+                <CardContent className="p-4">
+                  <p className={closedFinanceMonths.has(currentMonthKey) ? 'text-xs text-emerald-700' : 'text-xs text-amber-700'}>{currentMonthKey} 关账状态</p>
+                  <p className={closedFinanceMonths.has(currentMonthKey) ? 'mt-1 text-xl font-bold text-emerald-700' : 'mt-1 text-xl font-bold text-amber-700'}>
+                    {closedFinanceMonths.has(currentMonthKey) ? '已关账' : '未关账'}
+                  </p>
+                  <button type="button" onClick={() => handleFinanceTabChange('monthly_detail')} className="mt-1 text-xs text-blue-600 hover:underline">去按月明细处理</button>
+                </CardContent>
+              </Card>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
               <Card className="border-slate-200 xl:col-span-2">
-                <CardHeader className="pb-2"><CardTitle className="text-base">老板行动清单</CardTitle></CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid md:grid-cols-3 gap-3">
-                    <div className="rounded-lg bg-amber-50 p-3">
-                      <p className="text-xs text-amber-700">客户成本 USD</p>
-                      <p className="mt-1 text-lg font-bold text-amber-700">{fmt(ownerOverview.customerCostUsd)}</p>
-                      <p className="text-xs text-amber-600">直接影响单客利润</p>
-                    </div>
-                    <div className="rounded-lg bg-red-50 p-3">
-                      <p className="text-xs text-red-700">运营支出 USD</p>
-                      <p className="mt-1 text-lg font-bold text-red-700">{fmt(ownerOverview.companyCostUsd)}</p>
-                      <p className="text-xs text-red-600">{fmtRMB(ownerOverview.companyCostCny)} 单独统计</p>
-                    </div>
-                    <div className="rounded-lg bg-blue-50 p-3">
-                      <p className="text-xs text-blue-700">30天续费预测</p>
-                      <p className="mt-1 text-lg font-bold text-blue-700">{fmt(renewalForecast.d30.amount)}</p>
-                      <p className="text-xs text-blue-600">{renewalForecast.d30.count} 个套餐</p>
-                    </div>
-                  </div>
-                  <div className="grid md:grid-cols-3 gap-3 text-sm">
-                    <button type="button" onClick={() => handleFinanceTabChange('receivables')} className="rounded-lg border border-red-100 bg-white p-3 text-left hover:bg-red-50">
-                      <p className="font-medium text-red-700">先收款</p>
-                      <p className="mt-1 text-xs text-slate-500">处理 {ownerOverview.receivableCount} 笔欠款，金额 {fmt(ownerOverview.outstanding)}</p>
-                    </button>
-                    <button type="button" onClick={() => handleFinanceTabChange('customer_profit')} className="rounded-lg border border-emerald-100 bg-white p-3 text-left hover:bg-emerald-50">
-                      <p className="font-medium text-emerald-700">看利润</p>
-                      <p className="mt-1 text-xs text-slate-500">找出赚钱客户和亏损客户</p>
-                    </button>
-                    <button type="button" onClick={() => handleFinanceTabChange('subscriptions')} className="rounded-lg border border-blue-100 bg-white p-3 text-left hover:bg-blue-50">
-                      <p className="font-medium text-blue-700">盯续费</p>
-                      <p className="mt-1 text-xs text-slate-500">7天 {fmt(renewalForecast.d7.amount)} · 60天 {fmt(renewalForecast.d60.amount)}</p>
-                    </button>
-                  </div>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">经营拆解</CardTitle>
+                  <p className="text-xs text-slate-500">快速判断收入质量、成本压力和现金风险。</p>
+                </CardHeader>
+                <CardContent className="grid gap-3 md:grid-cols-3">
+                  <button type="button" onClick={() => handleFinanceTabChange('income')} className="rounded-xl border border-green-100 bg-green-50 p-4 text-left hover:bg-green-100/70">
+                    <p className="text-sm font-semibold text-green-800">收入结构</p>
+                    <p className="mt-2 text-lg font-bold text-green-700">{fmt(ownerOverview.revenue)}</p>
+                    <p className="mt-1 text-xs text-green-700">管理费 {fmt(ownerOverview.managementRevenue)} · 投流 {fmt(ownerOverview.adsRevenue)}</p>
+                  </button>
+                  <button type="button" onClick={() => handleFinanceTabChange('customer_profit')} className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-left hover:bg-emerald-100/70">
+                    <p className="text-sm font-semibold text-emerald-800">客户利润</p>
+                    <p className="mt-2 text-lg font-bold text-emerald-700">{fmt(ownerOverview.profitUsd)}</p>
+                    <p className="mt-1 text-xs text-emerald-700">找出赚钱客户和亏损客户</p>
+                  </button>
+                  <button type="button" onClick={() => handleFinanceTabChange('company_expense')} className="rounded-xl border border-red-100 bg-red-50 p-4 text-left hover:bg-red-100/70">
+                    <p className="text-sm font-semibold text-red-800">运营支出</p>
+                    <p className="mt-2 text-lg font-bold text-red-700">{fmt(ownerOverview.companyCostUsd)}</p>
+                    <p className="mt-1 text-xs text-red-700">{fmtRMB(ownerOverview.companyCostCny)} 单独统计</p>
+                  </button>
                 </CardContent>
               </Card>
 
@@ -2555,12 +3249,17 @@ export default function Finance() {
                     <button
                       key={`${row.customerId || row.customerName}-${index}`}
                       type="button"
-                      onClick={() => row.customerId && openCustomerDetail(row.customerId, 'payments')}
+                      onClick={() => setProfitDetailTarget(row)}
                       className="flex w-full items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-left hover:bg-slate-100"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-700">{index + 1}. {row.customerName}</p>
                         <p className="text-xs text-slate-400">收入 {fmt(row.revenue)} · 成本 {fmt(row.customerCostUsd + row.totalFee)}</p>
+                        {row.warningLevel !== 'healthy' && (
+                          <Badge className={row.warningLevel === 'loss' ? 'mt-1 bg-red-100 text-red-700' : 'mt-1 bg-amber-100 text-amber-700'}>
+                            {row.warningLabel}
+                          </Badge>
+                        )}
                       </div>
                       <p className={row.profit >= 0 ? 'text-sm font-bold text-emerald-600' : 'text-sm font-bold text-red-600'}>{fmt(row.profit)}</p>
                     </button>
@@ -2572,6 +3271,31 @@ export default function Finance() {
         </TabsContent>
 
         <TabsContent value="customer_profit">
+          {profitWarningRows.length > 0 && (
+            <div className="mb-4 rounded-2xl border border-orange-100 bg-orange-50 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-orange-800">客户利润预警</p>
+                  <p className="mt-1 text-xs text-orange-700">
+                    当前筛选范围内有 {profitWarningRows.length} 个客户需要复盘，优先处理亏损和低利润客户。
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {profitWarningRows.slice(0, 3).map((row: any) => (
+                    <button
+                      key={`${row.customerId || row.customerName}-warning`}
+                      type="button"
+                      onClick={() => setProfitDetailTarget(row)}
+                      className="rounded-xl border border-orange-200 bg-white px-3 py-2 text-left text-xs text-orange-800 hover:bg-orange-100"
+                    >
+                      <span className="font-semibold">{row.customerName}</span>
+                      <span className="ml-2">{row.warningLabel} · {fmt(row.profit)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           <Card className="border-slate-200">
             <CardContent className="p-0">
               {customerProfitRows.length === 0 ? (
@@ -2585,20 +3309,20 @@ export default function Finance() {
                       <th className="px-3 py-2.5 font-medium hidden lg:table-cell">管理费</th>
                       <th className="px-3 py-2.5 font-medium hidden lg:table-cell">投流</th>
                       <th className="px-3 py-2.5 font-medium">扣点/手续费</th>
-                      <th className="px-3 py-2.5 font-medium">客户成本</th>
-                      <th className="px-3 py-2.5 font-medium">利润</th>
-                      <th className="px-3 py-2.5 font-medium hidden md:table-cell">利润率</th>
-                      <th className="px-3 py-2.5 font-medium hidden md:table-cell">欠款</th>
+	                      <th className="px-3 py-2.5 font-medium">客户成本</th>
+	                      <th className="px-3 py-2.5 font-medium">利润</th>
+	                      <th className="px-3 py-2.5 font-medium">预警</th>
+	                      <th className="px-3 py-2.5 font-medium hidden md:table-cell">利润率</th>
+	                      <th className="px-3 py-2.5 font-medium hidden md:table-cell">欠款</th>
+	                      <th className="px-3 py-2.5 font-medium">操作</th>
                     </tr></thead>
                     <tbody>
                       {paginatedCustomerProfitRows.items.map(row => (
                         <tr key={`${row.customerId || row.customerName}`} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2.5 font-medium">
-                            {row.customerId ? (
-                              <Button type="button" variant="link" className="h-auto p-0 text-left font-medium text-blue-600" onClick={() => openCustomerDetail(row.customerId, 'payments')}>
-                                {row.customerName}
-                              </Button>
-                            ) : row.customerName}
+	                            <Button type="button" variant="link" className="h-auto p-0 text-left font-medium text-blue-600" onClick={() => setProfitDetailTarget(row)}>
+	                              {row.customerName}
+	                            </Button>
                             <p className="text-xs text-slate-400">{row.paymentCount} 笔收款 · 最近 {row.latestPaymentDate || '-'}</p>
                           </td>
                           <td className="px-3 py-2.5 text-green-600 font-medium">{fmt(row.revenue)}</td>
@@ -2609,10 +3333,33 @@ export default function Finance() {
                             {fmt(row.customerCostUsd)}
                             {row.customerCostCny > 0 && <p className="text-xs text-slate-400">{fmtRMB(row.customerCostCny)}</p>}
                           </td>
-                          <td className={row.profit >= 0 ? 'px-3 py-2.5 font-bold text-emerald-600' : 'px-3 py-2.5 font-bold text-red-600'}>{fmt(row.profit)}</td>
-                          <td className="px-3 py-2.5 hidden md:table-cell">{(row.profitRate * 100).toFixed(1)}%</td>
-                          <td className="px-3 py-2.5 hidden md:table-cell">{row.outstanding > 0 ? <span className="text-red-600">{fmt(row.outstanding)}</span> : '-'}</td>
-                        </tr>
+	                          <td className={row.profit >= 0 ? 'px-3 py-2.5 font-bold text-emerald-600' : 'px-3 py-2.5 font-bold text-red-600'}>{fmt(row.profit)}</td>
+	                          <td className="px-3 py-2.5">
+	                            <Badge className={
+	                              row.warningLevel === 'loss'
+	                                ? 'bg-red-100 text-red-700'
+	                                : row.warningLevel === 'low_margin'
+	                                  ? 'bg-amber-100 text-amber-700'
+	                                  : 'bg-emerald-100 text-emerald-700'
+	                            }>
+	                              {row.warningLabel}
+	                            </Badge>
+	                          </td>
+	                          <td className="px-3 py-2.5 hidden md:table-cell">{(row.profitRate * 100).toFixed(1)}%</td>
+	                          <td className="px-3 py-2.5 hidden md:table-cell">{row.outstanding > 0 ? <span className="text-red-600">{fmt(row.outstanding)}</span> : '-'}</td>
+	                          <td className="px-3 py-2.5">
+	                            <div className="flex min-w-[128px] items-center gap-2">
+	                              <Button type="button" size="sm" variant="outline" onClick={() => setProfitDetailTarget(row)}>
+	                                详情
+	                              </Button>
+	                              {row.customerId && (
+	                                <Button type="button" size="sm" variant="ghost" className="text-blue-600" onClick={() => openCustomerDetail(row.customerId, 'payments')}>
+	                                  档案
+	                                </Button>
+	                              )}
+	                            </div>
+	                          </td>
+	                        </tr>
                       ))}
                     </tbody>
                   </table>
@@ -2968,101 +3715,174 @@ export default function Finance() {
 
         {/* ── Subscriptions Tab ── */}
         <TabsContent value="subscriptions">
-          <Card className="border-slate-200">
-            <CardContent className="p-0">
-              {filteredSubscriptions.length === 0 ? (
-                <p className="text-center text-slate-400 py-12">{dateFilterMode !== 'all' ? '该时间段内暂无套餐信息' : '暂无套餐信息'}</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-slate-50 text-left text-slate-500">
-                        <th className="px-3 py-2.5 font-medium">客户</th>
-                        <th className="px-3 py-2.5 font-medium">套餐</th>
-                        <th className="px-3 py-2.5 font-medium">价格</th>
-                        <th className="px-3 py-2.5 font-medium">周期</th>
-                        <th className="px-3 py-2.5 font-medium hidden md:table-cell">到期日</th>
-                        <th className="px-3 py-2.5 font-medium">续费开关</th>
-                        <th className="px-3 py-2.5 font-medium">剩余天数</th>
-                        <th className="px-3 py-2.5 font-medium">状态</th>
-                        <th className="px-3 py-2.5 font-medium hidden lg:table-cell">续费负责</th>
-                        <th className="px-3 py-2.5 font-medium w-40">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedSubscriptions.items.map(s => {
-                        const remainDays = getSubscriptionRemainingDays(s);
-                        return (
-                          <tr key={s.id} className={`border-b border-slate-100 hover:bg-slate-50 ${remainDays !== null && remainDays <= 0 ? 'bg-red-50/50' : remainDays !== null && remainDays <= 7 ? 'bg-amber-50/50' : ''}`}>
-                            <td className="px-3 py-2.5 font-medium">
-                              <Button
-                                type="button"
-                                variant="link"
-                                className="h-auto p-0 text-left font-medium text-blue-600 hover:text-blue-700"
-                                onClick={() => openCustomerDetail(s.customer_id, 'renewals')}
-                              >
-                                {s.customer_name || customerMap[s.customer_id]?.business_name || '-'}
-                              </Button>
-                            </td>
-                            <td className="px-3 py-2.5">{s.package_name}</td>
-                            <td className="px-3 py-2.5">{fmt(s.package_price)}</td>
-                            <td className="px-3 py-2.5 text-slate-500">{cycleLabels[s.billing_cycle] || s.billing_cycle}</td>
-                            <td className="px-3 py-2.5 text-slate-500 hidden md:table-cell">{s.end_date?.slice(0, 10)}</td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex min-w-32 flex-col gap-1.5">
-                                <div className="flex items-center gap-2">
-                                  <Switch
-                                    checked={Boolean(s.auto_renew)}
-                                    onCheckedChange={checked => handleToggleSubscriptionAutoRenew(s, checked)}
-                                    disabled={updatingSubscriptionId === Number(s.id)}
-                                  />
-                                  <span className="text-xs font-medium text-slate-700">
-                                    {s.auto_renew ? '订阅续费' : '停止续费'}
-                                  </span>
-                                </div>
-                                {s.auto_renew ? (
-                                  <Badge className="w-fit bg-cyan-100 text-cyan-700 text-xs">到期确认续费</Badge>
-                                ) : (
-                                  <span className="text-xs text-slate-400">不会自动进入续费确认</span>
-                                )}
-                                {s.next_payment_date && <div className="text-xs text-slate-400">下次付款: {s.next_payment_date.slice(0, 10)}</div>}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2.5">
-                              {remainDays !== null ? (
-                                remainDays <= 0 ? <span className="text-red-600 font-medium">已过期 {Math.abs(remainDays)} 天</span>
-                                : remainDays <= 7 ? <span className="text-amber-600 font-medium">⚠️ 剩余 {remainDays} 天</span>
-                                : <span className="text-slate-600">{remainDays} 天</span>
-                              ) : '-'}
-                            </td>
-                            <td className="px-3 py-2.5"><Badge className={`text-xs ${subStatusColors[s.status] || subStatusColors.active}`}>{getSubscriptionStatusLabel(s.status)}</Badge></td>
-                            <td className="px-3 py-2.5 text-slate-500 hidden lg:table-cell">{s.renewal_person || '-'}</td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex items-center gap-1.5">
-                                {s.auto_renew && s.status === 'renewal_pending' && (
-                                  <Button
-                                    size="sm"
-                                    className="h-7 bg-cyan-600 px-2 text-xs hover:bg-cyan-700"
-                                    onClick={() => handleConfirmSubscriptionRenewal(s)}
-                                    disabled={confirmingRenewalId === Number(s.id)}
-                                  >
-                                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                                    {confirmingRenewalId === Number(s.id) ? '确认中' : '确认续费'}
-                                  </Button>
-                                )}
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'subscription', item: s })}><Trash2 className="w-3.5 h-3.5" /></Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+          <div className="space-y-4">
+            <Card className="border-slate-200 bg-slate-50/70">
+              <CardContent className="p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-base font-semibold text-slate-800">续费工作台</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      先处理待确认扣款，再处理即将到期；停止合作只关闭未来续费，不影响历史财务。
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+                    <div className="rounded-xl bg-white px-4 py-2">
+                      <p className="text-xs text-slate-500">全部套餐</p>
+                      <p className="text-lg font-bold text-slate-800">{filteredSubscriptions.length}</p>
+                    </div>
+                    <div className="rounded-xl bg-cyan-50 px-4 py-2">
+                      <p className="text-xs text-cyan-700">待确认</p>
+                      <p className="text-lg font-bold text-cyan-700">{subscriptionWorkbenchGroups.find(group => group.key === 'pending')?.rows.length || 0}</p>
+                    </div>
+                    <div className="rounded-xl bg-amber-50 px-4 py-2">
+                      <p className="text-xs text-amber-700">到期风险</p>
+                      <p className="text-lg font-bold text-amber-700">{subscriptionWorkbenchGroups.find(group => group.key === 'risk')?.rows.length || 0}</p>
+                    </div>
+                    <div className="rounded-xl bg-emerald-50 px-4 py-2">
+                      <p className="text-xs text-emerald-700">正常订阅</p>
+                      <p className="text-lg font-bold text-emerald-700">{subscriptionWorkbenchGroups.find(group => group.key === 'active_auto')?.rows.length || 0}</p>
+                    </div>
+                  </div>
                 </div>
-              )}
-              {filteredSubscriptions.length > 0 && <PaginationFooter pageKey="subscriptions" data={paginatedSubscriptions} />}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {filteredSubscriptions.length === 0 ? (
+              <Card className="border-slate-200">
+                <CardContent className="py-12">
+                  <p className="text-center text-slate-400">{dateFilterMode !== 'all' ? '该时间段内暂无套餐信息' : '暂无套餐信息'}</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4 xl:grid-cols-2">
+                {subscriptionWorkbenchGroups.map(group => {
+                  const toneClass = group.tone === 'cyan'
+                    ? 'border-cyan-100 bg-cyan-50/60'
+                    : group.tone === 'amber'
+                      ? 'border-amber-100 bg-amber-50/60'
+                      : group.tone === 'emerald'
+                        ? 'border-emerald-100 bg-emerald-50/60'
+                        : group.tone === 'red'
+                          ? 'border-red-100 bg-red-50/50'
+                          : 'border-slate-200 bg-white';
+                  const badgeClass = group.tone === 'cyan'
+                    ? 'bg-cyan-100 text-cyan-700'
+                    : group.tone === 'amber'
+                      ? 'bg-amber-100 text-amber-700'
+                      : group.tone === 'emerald'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : group.tone === 'red'
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-slate-100 text-slate-600';
+                  return (
+                    <Card key={group.key} className={toneClass}>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <CardTitle className="text-base">{group.title}</CardTitle>
+                            <p className="mt-1 text-xs text-slate-500">{group.description}</p>
+                          </div>
+                          <div className="text-right">
+                            <Badge className={badgeClass}>{group.rows.length} 个</Badge>
+                            <p className="mt-1 text-xs text-slate-500">{fmt(group.amount)}</p>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {group.rows.length === 0 ? (
+                          <p className="rounded-xl bg-white/70 py-8 text-center text-sm text-slate-400">暂无需要处理的套餐</p>
+                        ) : (
+                          <div className="grid max-h-[560px] gap-3 overflow-auto pr-1">
+                            {group.rows.map((s: any) => {
+                              const remainDays = getSubscriptionRemainingDays(s);
+                              const plannedDate = getSubscriptionPlannedPaymentDate(s);
+                              const status = s.status || computeSubscriptionStatus(s);
+                              return (
+                                <div key={s.id} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0">
+                                      <Button
+                                        type="button"
+                                        variant="link"
+                                        className="h-auto max-w-full p-0 text-left text-base font-semibold text-blue-600 hover:text-blue-700"
+                                        onClick={() => openCustomerDetail(s.customer_id, 'renewals')}
+                                      >
+                                        <span className="truncate">{s.customer_name || customerMap[s.customer_id]?.business_name || '-'}</span>
+                                      </Button>
+                                      <p className="mt-1 text-sm font-medium text-slate-700">{s.package_name || '-'}</p>
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {fmt(toMoneyNumber(s.package_price))} · {cycleLabels[s.billing_cycle] || s.billing_cycle || '周期未设置'} · 负责人 {s.renewal_person || '-'}
+                                      </p>
+                                    </div>
+                                    <Badge className={`w-fit text-xs ${subStatusColors[status] || subStatusColors.active}`}>{getSubscriptionStatusLabel(status)}</Badge>
+                                  </div>
+
+                                  <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                                    <div className="rounded-lg bg-slate-50 p-2">
+                                      <p className="text-slate-400">计划扣款</p>
+                                      <p className="mt-1 font-semibold text-slate-700">{plannedDate || '-'}</p>
+                                    </div>
+                                    <div className="rounded-lg bg-slate-50 p-2">
+                                      <p className="text-slate-400">服务到期</p>
+                                      <p className="mt-1 font-semibold text-slate-700">{s.end_date?.slice(0, 10) || '-'}</p>
+                                    </div>
+                                    <div className="rounded-lg bg-slate-50 p-2">
+                                      <p className="text-slate-400">剩余时间</p>
+                                      <p className={`mt-1 font-semibold ${remainDays !== null && remainDays <= 0 ? 'text-red-600' : remainDays !== null && remainDays <= 7 ? 'text-amber-600' : 'text-slate-700'}`}>
+                                        {remainDays === null ? '-' : remainDays <= 0 ? `已过期 ${Math.abs(remainDays)} 天` : `${remainDays} 天`}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Switch
+                                        checked={Boolean(s.auto_renew)}
+                                        onCheckedChange={checked => handleToggleSubscriptionAutoRenew(s, checked)}
+                                        disabled={updatingSubscriptionId === Number(s.id)}
+                                      />
+                                      <span className="text-xs font-medium text-slate-600">{s.auto_renew ? 'Stripe订阅' : '手动收款/停止自动'}</span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      {s.auto_renew && status === 'renewal_pending' && (
+                                        <Button
+                                          size="sm"
+                                          className="h-8 bg-cyan-600 px-3 text-xs hover:bg-cyan-700"
+                                          onClick={() => openConfirmSubscriptionRenewal(s)}
+                                          disabled={confirmingRenewalId === Number(s.id)}
+                                        >
+                                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                                          {confirmingRenewalId === Number(s.id) ? '确认中' : '确认扣款'}
+                                        </Button>
+                                      )}
+                                      {status !== 'stopped' && status !== 'lost' && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-8 px-3 text-xs text-red-600 hover:text-red-700"
+                                          onClick={() => handleToggleSubscriptionAutoRenew(s, false)}
+                                          disabled={updatingSubscriptionId === Number(s.id)}
+                                        >
+                                          停止合作
+                                        </Button>
+                                      )}
+                                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'subscription', item: s })}>
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         {/* ── Charts Tab ── */}
@@ -3337,6 +4157,166 @@ export default function Finance() {
                 管理费按月度扣点比例计算；投流费按充值金额扣 1%。
               </p>
             </CardHeader>
+            <div className="mx-4 mb-4 rounded-xl border border-blue-100 bg-blue-50/70 p-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">月度关账</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    关账后，该月份的收款、客户成本和运营支出不能再修改或删除；需要调整时先重新打开。
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    type="month"
+                    value={closingMonth}
+                    onChange={e => setClosingMonth(e.target.value)}
+                    className="h-10 bg-white sm:w-40"
+                  />
+                  <Button
+                    type="button"
+                    variant={closedFinanceMonths.has(closingMonth) ? 'outline' : 'default'}
+                    disabled={savingMonthClose || !closingMonth}
+                    onClick={() => handleToggleMonthClose(closingMonth)}
+                    className={closedFinanceMonths.has(closingMonth) ? 'bg-white' : 'bg-blue-600 hover:bg-blue-700'}
+                  >
+                    {savingMonthClose ? '保存中...' : closedFinanceMonths.has(closingMonth) ? '重新打开' : '确认关账'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div className="mx-4 mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">关账前检查流程 · {selectedClosingChecklist.month || '-'}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    先把“必处理”清零，再确认关账；提醒项不会阻止关账，但建议老板确认。
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge className={selectedClosingChecklist.blockerCount > 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}>
+                    必处理 {selectedClosingChecklist.blockerCount}
+                  </Badge>
+                  <Badge className={selectedClosingChecklist.warningCount > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}>
+                    提醒 {selectedClosingChecklist.warningCount}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-slate-500">本月收款</p>
+                  <p className="mt-1 text-lg font-bold text-slate-800">{selectedClosingChecklist.paymentCount}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-slate-500">客户成本</p>
+                  <p className="mt-1 text-lg font-bold text-slate-800">{selectedClosingChecklist.customerExpenseCount}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-slate-500">计划扣款</p>
+                  <p className="mt-1 text-lg font-bold text-slate-800">{selectedClosingChecklist.subscriptionCount}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {selectedClosingChecklist.items.map((item: any) => {
+                  const hasIssue = item.count > 0;
+                  const blocker = item.level === 'blocker';
+                  return (
+                    <div
+                      key={item.key}
+                      className={`rounded-xl border p-3 ${
+                        hasIssue
+                          ? blocker
+                            ? 'border-red-100 bg-red-50'
+                            : 'border-amber-100 bg-amber-50'
+                          : 'border-emerald-100 bg-emerald-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className={`text-sm font-semibold ${hasIssue ? (blocker ? 'text-red-800' : 'text-amber-800') : 'text-emerald-800'}`}>
+                            {item.label}
+                          </p>
+                          <p className={`mt-1 text-xs ${hasIssue ? (blocker ? 'text-red-700' : 'text-amber-700') : 'text-emerald-700'}`}>
+                            {item.help}
+                          </p>
+                        </div>
+                        <Badge className={blocker ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}>
+                          {blocker ? '必处理' : '提醒'}
+                        </Badge>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between">
+                        <p className={`text-xl font-bold ${hasIssue ? (blocker ? 'text-red-700' : 'text-amber-700') : 'text-emerald-700'}`}>
+                          {item.count}
+                        </p>
+                        {hasIssue ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="bg-white"
+                            onClick={() => {
+                              if (item.issueKey) {
+                                handleFinanceIssueClick(item.issueKey, item.tab, item.count);
+                              } else {
+                                handleFinanceTabChange(item.tab);
+                              }
+                            }}
+                          >
+                            去处理
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-emerald-700">已通过</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
+                selectedClosingChecklist.blockerCount > 0
+                  ? 'border-red-100 bg-red-50 text-red-700'
+                  : selectedClosingChecklist.warningCount > 0
+                    ? 'border-amber-100 bg-amber-50 text-amber-700'
+                    : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+              }`}>
+                {selectedClosingChecklist.blockerCount > 0
+                  ? `还有 ${selectedClosingChecklist.blockerCount} 个必处理项，暂时不能关账。`
+                  : selectedClosingChecklist.warningCount > 0
+                    ? `必处理项已清零，还有 ${selectedClosingChecklist.warningCount} 个提醒项，可由老板确认后关账。`
+                    : '检查全部通过，可以放心关账。'}
+              </div>
+            </div>
+            {!loading && monthlyDetail.rows.length > 0 && (
+              <div className="grid grid-cols-2 gap-3 px-4 pb-4 lg:grid-cols-5">
+                <div className="rounded-xl border border-green-100 bg-green-50 p-3">
+                  <p className="text-xs text-green-700">区间总收入</p>
+                  <p className="mt-1 text-lg font-bold text-green-700">{fmt(monthlyDetailTotals.revenue)}</p>
+                  <p className="mt-1 text-[11px] text-green-600">管理费 {fmt(monthlyDetailTotals.managementRevenue)} · 投流 {fmt(monthlyDetailTotals.adsRevenue)}</p>
+                </div>
+                <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
+                  <p className="text-xs text-violet-700">扣点 + Stripe</p>
+                  <p className="mt-1 text-lg font-bold text-violet-700">{fmt(monthlyDetailTotals.deduction + monthlyDetailTotals.stripeFee)}</p>
+                  <p className="mt-1 text-[11px] text-violet-600">扣点 {fmt(monthlyDetailTotals.deduction)} · Stripe {fmt(monthlyDetailTotals.stripeFee)}</p>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                  <p className="text-xs text-amber-700">客户成本</p>
+                  <p className="mt-1 text-lg font-bold text-amber-700">{fmt(monthlyDetailTotals.customerCost)}</p>
+                  <p className="mt-1 text-[11px] text-amber-600">直接影响单客利润</p>
+                </div>
+                <div className="rounded-xl border border-red-100 bg-red-50 p-3">
+                  <p className="text-xs text-red-700">USD运营支出</p>
+                  <p className="mt-1 text-lg font-bold text-red-700">{fmt(monthlyDetailTotals.operatingCostUsd)}</p>
+                  <p className="mt-1 text-[11px] text-red-600">公司运营类成本</p>
+                </div>
+                <div className={`rounded-xl border p-3 ${monthlyDetailTotals.profit >= 0 ? 'border-emerald-100 bg-emerald-50' : 'border-red-100 bg-red-50'}`}>
+                  <p className={`text-xs ${monthlyDetailTotals.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>区间利润</p>
+                  <p className={`mt-1 text-lg font-bold ${monthlyDetailTotals.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(monthlyDetailTotals.profit)}</p>
+                  <p className={`mt-1 text-[11px] ${monthlyDetailTotals.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>利润率 {(monthlyDetailProfitRate * 100).toFixed(1)}%</p>
+                </div>
+              </div>
+            )}
             <CardContent className="p-0">
               {loading ? (
                 <div className="flex items-center justify-center py-12">
@@ -3352,6 +4332,7 @@ export default function Finance() {
                     <thead>
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
                         <th className="px-3 py-2.5 font-medium">月份</th>
+                        <th className="px-3 py-2.5 font-medium">关账</th>
                         <th className="px-3 py-2.5 font-medium">收入 (revenue_gross)</th>
                         <th className="px-3 py-2.5 font-medium">管理费收入</th>
                         <th className="px-3 py-2.5 font-medium">投流充值收入</th>
@@ -3370,6 +4351,22 @@ export default function Finance() {
                       {paginatedMonthlyDetail.items.map((r: any) => (
                         <tr key={r.month} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2.5 font-medium">{r.month}</td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex min-w-[128px] items-center gap-2">
+                              <Badge className={r.is_closed ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
+                                {r.is_closed ? '已关账' : '未关账'}
+                              </Badge>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={savingMonthClose}
+                                onClick={() => handleToggleMonthClose(r.month, !r.is_closed)}
+                              >
+                                {r.is_closed ? '打开' : '关账'}
+                              </Button>
+                            </div>
+                          </td>
                           <td className="px-3 py-2.5">{fmt(r.revenue_gross)}</td>
                           <td className="px-3 py-2.5">{fmt(r.management_revenue || 0)}</td>
                           <td className="px-3 py-2.5">{fmt(r.ads_recharge_revenue || 0)}</td>
@@ -3399,6 +4396,278 @@ export default function Finance() {
 
       {/* ── Dialogs ── */}
 
+      {/* Subscription Renewal Confirm */}
+      <Dialog
+        open={!!subscriptionRenewalTarget}
+        onOpenChange={(v) => {
+          if (!v) {
+            setSubscriptionRenewalTarget(null);
+            setRenewalPaymentDate('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>确认订阅扣款</DialogTitle>
+          </DialogHeader>
+          {subscriptionRenewalTarget && (() => {
+            const plannedDate = getSubscriptionPlannedPaymentDate(subscriptionRenewalTarget);
+            const actualDate = renewalPaymentDate || plannedDate;
+            const nextDate = addBillingCycle(plannedDate, subscriptionRenewalTarget.billing_cycle || 'monthly');
+            const amount = toMoneyNumber(subscriptionRenewalTarget.package_price);
+            const stripeFee = calculateStripePlatformFeeFromValues(amount, 'subscription_auto', 'stripe');
+            const monthClosed = isFinanceMonthClosed(actualDate);
+            return (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="font-semibold text-slate-800">{subscriptionRenewalTarget.customer_name || customerMap[subscriptionRenewalTarget.customer_id]?.business_name || '-'}</p>
+                  <p className="mt-1 text-sm text-slate-600">{subscriptionRenewalTarget.package_name || '订阅套餐'} · {fmt(amount)}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    计划扣款日：{plannedDate || '-'} · 下一次扣款：{nextDate || '-'}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>实际收款日期 / Stripe 扣款日</Label>
+                  <Input
+                    type="date"
+                    value={actualDate}
+                    onChange={e => setRenewalPaymentDate(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-500">
+                    财务收入会按这个日期归属月份。比如 1月1日扣费、1月5日确认，这里应保持 1月1日。
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-lg bg-cyan-50 p-3 text-cyan-700">
+                    <p className="text-xs">Stripe手续费</p>
+                    <p className="mt-1 font-bold">{fmt(stripeFee)}</p>
+                    <p className="text-[11px]">2.9% + $0.30/笔</p>
+                  </div>
+                  <div className="rounded-lg bg-emerald-50 p-3 text-emerald-700">
+                    <p className="text-xs">净入账参考</p>
+                    <p className="mt-1 font-bold">{fmt(Math.max(amount - stripeFee, 0))}</p>
+                    <p className="text-[11px]">收款减平台手续费</p>
+                  </div>
+                </div>
+                {monthClosed && (
+                  <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700">
+                    {actualDate.slice(0, 7)} 已关账，请先在“按月明细”重新打开该月份。
+                  </div>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSubscriptionRenewalTarget(null);
+                      setRenewalPaymentDate('');
+                    }}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    type="button"
+                    className="bg-cyan-600 hover:bg-cyan-700"
+                    disabled={monthClosed || confirmingRenewalId === Number(subscriptionRenewalTarget.id)}
+                    onClick={() => handleConfirmSubscriptionRenewal(subscriptionRenewalTarget, actualDate)}
+                  >
+                    {confirmingRenewalId === Number(subscriptionRenewalTarget.id) ? '确认中...' : '确认并入账'}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Customer Profit Detail */}
+      <Dialog open={!!profitDetailTarget} onOpenChange={(v) => { if (!v) setProfitDetailTarget(null); }}>
+        <DialogContent className="max-w-6xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>客户利润详情</DialogTitle>
+          </DialogHeader>
+          {selectedProfitDetail && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-lg font-bold text-slate-800">{selectedProfitDetail.row.customerName}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    当前范围：{dateFilterMode === 'all' ? '全部时间' : `${activeDateRange?.start || '-'} 至 ${activeDateRange?.end || '-'}`} ·
+                    收款 {selectedProfitDetail.payments.length} 笔 · 成本 {selectedProfitDetail.expenses.length} 笔
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Badge className={
+                      selectedProfitDetail.row.warningLevel === 'loss'
+                        ? 'bg-red-100 text-red-700'
+                        : selectedProfitDetail.row.warningLevel === 'low_margin'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-emerald-100 text-emerald-700'
+                    }>
+                      {selectedProfitDetail.row.warningLabel}
+                    </Badge>
+                    <span className="text-xs text-slate-500">{selectedProfitDetail.row.warningReason}</span>
+                  </div>
+                </div>
+                {selectedProfitDetail.row.customerId && (
+                  <Button type="button" variant="outline" onClick={() => openCustomerDetail(selectedProfitDetail.row.customerId, 'payments')}>
+                    进入客户档案
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div className="rounded-xl border border-green-100 bg-green-50 p-3">
+                  <p className="text-xs text-green-700">实收收入</p>
+                  <p className="mt-1 text-xl font-bold text-green-700">{fmt(selectedProfitDetail.row.revenue || 0)}</p>
+                  <p className="text-[11px] text-green-600">管理费 {fmt(selectedProfitDetail.row.managementRevenue || 0)} · 投流 {fmt(selectedProfitDetail.row.adsRevenue || 0)}</p>
+                </div>
+                <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
+                  <p className="text-xs text-violet-700">扣点 / Stripe</p>
+                  <p className="mt-1 text-xl font-bold text-violet-700">{fmt(selectedProfitDetail.row.totalFee || 0)}</p>
+                  <p className="text-[11px] text-violet-600">扣点 {fmt((selectedProfitDetail.row.managementDeduction || 0) + (selectedProfitDetail.row.adsDeduction || 0))} · Stripe {fmt(selectedProfitDetail.row.stripeFee || 0)}</p>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                  <p className="text-xs text-amber-700">客户成本</p>
+                  <p className="mt-1 text-xl font-bold text-amber-700">{fmt(selectedProfitDetail.row.customerCostUsd || 0)}</p>
+                  <p className="text-[11px] text-amber-600">{selectedProfitDetail.customerCostCny > 0 ? `${fmtRMB(selectedProfitDetail.customerCostCny)} 单独统计` : '只计入 USD 利润'}</p>
+                </div>
+                <div className={`rounded-xl border p-3 ${selectedProfitDetail.row.profit >= 0 ? 'border-emerald-100 bg-emerald-50' : 'border-red-100 bg-red-50'}`}>
+                  <p className={`text-xs ${selectedProfitDetail.row.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>净利润</p>
+                  <p className={`mt-1 text-xl font-bold ${selectedProfitDetail.row.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(selectedProfitDetail.row.profit || 0)}</p>
+                  <p className={`text-[11px] ${selectedProfitDetail.row.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>利润率 {((selectedProfitDetail.row.profitRate || 0) * 100).toFixed(1)}% · 欠款 {fmt(selectedProfitDetail.row.outstanding || 0)}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <Card className="border-slate-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">月度趋势</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {selectedProfitDetail.monthlyRows.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-slate-400">暂无月度利润数据</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-slate-50 text-left text-slate-500">
+                              <th className="px-3 py-2 font-medium">月份</th>
+                              <th className="px-3 py-2 font-medium">收入</th>
+                              <th className="px-3 py-2 font-medium">费用</th>
+                              <th className="px-3 py-2 font-medium">成本</th>
+                              <th className="px-3 py-2 font-medium">利润</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedProfitDetail.monthlyRows.map((row: any) => (
+                              <tr key={row.month} className="border-b border-slate-100">
+                                <td className="px-3 py-2 font-medium">{row.month}</td>
+                                <td className="px-3 py-2 text-green-600">{fmt(row.revenue)}</td>
+                                <td className="px-3 py-2 text-violet-600">{fmt(row.totalFee)}</td>
+                                <td className="px-3 py-2 text-amber-600">{fmt(row.customerCost)}</td>
+                                <td className={row.profit >= 0 ? 'px-3 py-2 font-semibold text-emerald-600' : 'px-3 py-2 font-semibold text-red-600'}>
+                                  {fmt(row.profit)}
+                                  <span className="ml-1 text-xs text-slate-400">({(row.profitRate * 100).toFixed(1)}%)</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-slate-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">收款明细</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {selectedProfitDetail.payments.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-slate-400">暂无收款记录</p>
+                    ) : (
+                      <div className="max-h-80 overflow-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-slate-50 text-left text-slate-500">
+                              <th className="px-3 py-2 font-medium">日期</th>
+                              <th className="px-3 py-2 font-medium">项目</th>
+                              <th className="px-3 py-2 font-medium">实收</th>
+                              <th className="px-3 py-2 font-medium">拆分</th>
+                              <th className="px-3 py-2 font-medium">欠款</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedProfitDetail.payments.map((payment: any) => {
+                              const management = getManagementRevenueAmount(payment);
+                              const ads = getAdsRechargeAmount(payment);
+                              const outstanding = getStoredMoney(payment.outstanding_amount) ?? Math.max(0, toMoneyNumber(payment.amount_due) - toMoneyNumber(payment.amount_paid));
+                              return (
+                                <tr key={payment.id || `${payment.payment_date}-${payment.product_name}`} className="border-b border-slate-100">
+                                  <td className="px-3 py-2">{payment.payment_date?.slice(0, 10) || '-'}</td>
+                                  <td className="px-3 py-2">
+                                    <p className="font-medium text-slate-700">{payment.product_name || '-'}</p>
+                                    <p className="text-xs text-slate-400">{getPaymentModeLabel(payment, payModeLabels)} · {getPaymentMethodLabel(payment, payMethodLabels)}</p>
+                                  </td>
+                                  <td className="px-3 py-2 text-green-600">{fmt(toMoneyNumber(payment.amount_paid))}</td>
+                                  <td className="px-3 py-2 text-xs text-slate-500">
+                                    管理 {management > 0 ? fmt(management) : '-'}<br />
+                                    投流 {ads > 0 ? fmt(ads) : '-'}<br />
+                                    Stripe {calculateStripePlatformFee(payment) > 0 ? fmt(calculateStripePlatformFee(payment)) : '-'}
+                                  </td>
+                                  <td className="px-3 py-2">{outstanding > 0 ? <span className="font-semibold text-red-600">{fmt(outstanding)}</span> : '-'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card className="border-slate-200">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">客户成本明细</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {selectedProfitDetail.expenses.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-slate-400">暂无客户成本</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-slate-50 text-left text-slate-500">
+                            <th className="px-3 py-2 font-medium">月份</th>
+                            <th className="px-3 py-2 font-medium">类型</th>
+                            <th className="px-3 py-2 font-medium">金额</th>
+                            <th className="px-3 py-2 font-medium">备注</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedProfitDetail.expenses.map((expense: any) => {
+                            const currency = getCustomerExpenseCurrency(expense);
+                            return (
+                              <tr key={expense.id || `${expense.expense_month}-${expense.expense_type}`} className="border-b border-slate-100">
+                                <td className="px-3 py-2">{expense.expense_month || '-'}</td>
+                                <td className="px-3 py-2">{customerExpenseTypeLabels[expense.expense_type] || expense.expense_type || '-'}</td>
+                                <td className="px-3 py-2 font-medium">{formatMoney(toMoneyNumber(expense.amount), currency)}</td>
+                                <td className="px-3 py-2 text-slate-500">{expense.notes || '-'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Payment Form */}
       <Dialog open={showPaymentForm} onOpenChange={(v) => { setShowPaymentForm(v); if (!v) { setEditingPayId(null); setPayForm(emptyPayForm); } }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
@@ -3424,8 +4693,33 @@ export default function Finance() {
               )}
             </div>
             <div>
+              <Label>收款结构 *</Label>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {[
+                  { key: 'management', title: '纯管理费', desc: '参与当月管理费扣点' },
+                  { key: 'ads', title: '纯投流充值', desc: '只按充值金额扣 1%' },
+                  { key: 'mixed', title: '管理费 + 投流', desc: '一笔钱拆成两部分' },
+                  { key: 'other', title: '其他收入', desc: '普通收入分类统计' },
+                ].map(option => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => applyIncomeStructure(option.key as 'management' | 'ads' | 'mixed' | 'other')}
+                    className={`rounded-xl border px-3 py-2 text-left transition ${
+                      activeIncomeStructure === option.key
+                        ? 'border-blue-300 bg-blue-50 text-blue-800 shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50/50'
+                    }`}
+                  >
+                    <div className="text-sm font-semibold">{option.title}</div>
+                    <div className="mt-1 text-[11px] leading-relaxed opacity-80">{option.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
               <div className="flex items-center justify-between gap-2">
-                <Label>收入类型 *</Label>
+                <Label>收入细分类型 *</Label>
                 {canManageIncomeTypes && (
                   <Button type="button" variant="outline" size="sm" className="h-8 shrink-0" onClick={openIncomeTypeManager}>
                     管理类型
@@ -3469,6 +4763,19 @@ export default function Finance() {
             <div className="grid grid-cols-2 gap-4">
               <div><Label>应收金额 *</Label><Input type="number" value={payForm.amount_due} onChange={e => setPayForm({ ...payForm, amount_due: e.target.value })} placeholder="0.00" /></div>
               <div><Label>实收金额 *</Label><Input type="number" value={payForm.amount_paid} onChange={e => setPayForm({ ...payForm, amount_paid: e.target.value })} placeholder="0.00" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>收款日期 *</Label>
+                <Input
+                  type="date"
+                  value={payForm.payment_date}
+                  onChange={e => setPayForm({ ...payForm, payment_date: e.target.value })}
+                />
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500">
+                财务收入按收款日期归属月份；服务覆盖期只用于续费和客户服务时间，不改变收入月份。
+              </div>
             </div>
             <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
               <div className="flex items-center justify-between gap-3">
