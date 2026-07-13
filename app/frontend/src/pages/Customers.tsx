@@ -1821,13 +1821,18 @@ export default function Customers() {
     const autoRenewCount = renewalRows.filter(item => item.auto_renew).length;
 
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="app-page space-y-5">
+        <div className="app-page-title items-center">
+          <div className="flex min-w-0 items-center gap-3 flex-wrap">
           <Button variant="ghost" size="sm" onClick={closeDetail}><ArrowLeft className="w-4 h-4 mr-1" /> {detailFromFinance ? '返回财务' : '返回列表'}</Button>
-          <h2 className="text-lg font-semibold">{c.business_name}</h2>
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-blue-600">客户详情</p>
+            <h2 className="truncate text-xl font-bold text-slate-900">{c.business_name}</h2>
+          </div>
           <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
           <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
-          <Button variant="outline" size="sm" className="ml-auto" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> 刷新数据
           </Button>
         </div>

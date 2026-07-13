@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
 import { pageLabels } from '../lib/permissions';
@@ -43,6 +43,18 @@ export default function Layout({ children }: LayoutProps) {
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: '', newPwd: '', confirm: '' });
   const [changingPwd, setChangingPwd] = useState(false);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -197,6 +209,12 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
+        {isOffline && (
+          <div className="sticky top-0 z-40 flex items-center justify-between gap-3 bg-amber-50 px-4 py-2 text-xs text-amber-800 shadow-sm">
+            <span>当前网络连接不稳定，暂时不要重复提交表单。</span>
+            <button type="button" className="font-semibold underline" onClick={() => window.location.reload()}>重新加载</button>
+          </div>
+        )}
         {/* Top bar */}
         <header className="bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-sm shadow-slate-200/40">
           <button className="lg:hidden text-slate-600 hover:text-slate-800" onClick={() => setSidebarOpen(true)}>
