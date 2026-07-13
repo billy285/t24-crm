@@ -83,11 +83,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-white p-1 shadow-xl shadow-blue-900/40 mb-4">
             <img
               src="/t2-marketing-logo.png?v=t2-20260709b"
-              alt="T2 Marketing"
+              alt="T24 Marketing"
               className="h-full w-full rounded-full object-cover"
             />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-1">T2 Marketing 客户管理系统</h1>
+          <h1 className="text-2xl font-bold text-white mb-1">T24 Marketing 客户管理系统</h1>
           <p className="text-slate-400 text-sm">适合美国华人餐厅/实体商家的一站式CRM</p>
         </div>
 
@@ -167,7 +167,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
         {/* Footer */}
         <p className="text-center text-xs text-slate-600 mt-6">
-          © 2024 T2 Marketing CRM · 员工专用系统
+          © 2024 T24 Marketing CRM · 员工专用系统
         </p>
       </div>
     </div>

@@ -2890,7 +2890,7 @@ export default function Finance() {
       {/* Header */}
       <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T2 Marketing · Finance</p>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Finance</p>
           <h2 className="mt-1 text-2xl font-bold text-slate-900">财务管理</h2>
           <p className="mt-1 text-sm text-slate-500">掌握收入、成本、利润和待处理事项</p>
         </div>

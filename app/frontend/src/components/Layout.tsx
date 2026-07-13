@@ -148,11 +148,11 @@ export default function Layout({ children }: LayoutProps) {
             <Link to="/" className="flex min-w-0 items-center gap-3" onClick={() => setSidebarOpen(false)}>
               <img
                 src="/t2-marketing-logo.png?v=t2-20260709b"
-                alt="T2 Marketing"
+                alt="T24 Marketing"
                 className="h-10 w-10 flex-shrink-0 rounded-full bg-white object-cover shadow-sm"
               />
               <div className="min-w-0">
-                <h1 className="truncate text-lg font-bold leading-tight">T2 Marketing</h1>
+                <h1 className="truncate text-lg font-bold leading-tight">T24 Marketing</h1>
                 <p className="truncate text-xs text-slate-400">客户管理系统</p>
               </div>
             </Link>
