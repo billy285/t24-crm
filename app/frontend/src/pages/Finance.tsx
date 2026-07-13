@@ -2929,6 +2929,19 @@ export default function Finance() {
 
       <DateFilterBar />
 
+      <div className="app-card px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs sm:gap-3">
+          <span className="font-semibold text-slate-700">建议工作顺序</span>
+          <span className="rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700">1. 核对收入</span>
+          <span className="text-slate-300">→</span>
+          <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">2. 核对成本</span>
+          <span className="text-slate-300">→</span>
+          <span className="rounded-full bg-cyan-50 px-3 py-1 font-medium text-cyan-700">3. 处理续费</span>
+          <span className="text-slate-300">→</span>
+          <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">4. 月度关账</span>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_1fr] gap-3">
         <Card className="border-blue-100 bg-blue-50/60">
           <CardContent className="p-4">

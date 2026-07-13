@@ -2248,8 +2248,12 @@ export default function Customers() {
   // ========== LIST VIEW ==========
   return (
     <div className="app-page space-y-5">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold text-slate-800">客户管理</h2>
+      <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · CRM</p>
+          <h2 className="mt-1 text-2xl font-bold text-slate-900">客户管理</h2>
+          <p className="mt-1 text-sm text-slate-500">从线索、成交到服务和续费，统一管理客户全生命周期</p>
+        </div>
         <div className="flex gap-2 flex-wrap">
           {hasPermission('customer_create') && <ImportCustomers existingCustomers={customers} onImportComplete={loadCustomers} />}
           {hasPermission('customer_export') && <ExportButton data={filtered.map(c => ({ ...c, industry_label: industryLabels[c.industry] || c.industry, status_label: statusLabels[c.status] || c.status, level_label: levelLabels[c.level] || c.level, source_label: sourceLabels[c.source] || c.source, country_label: c.country ? getCountryLabel(c.country) : '' }))}

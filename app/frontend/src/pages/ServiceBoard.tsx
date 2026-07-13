@@ -2337,8 +2337,12 @@ export default function ServiceBoard() {
   return (
     <div className="app-page space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold text-slate-800">客户服务进度看板</h2>
+      <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Delivery</p>
+          <h2 className="mt-1 text-2xl font-bold text-slate-900">客户服务进度看板</h2>
+          <p className="mt-1 text-sm text-slate-500">明确当前阶段、负责人和下一步动作，完成后自动归档查看</p>
+        </div>
         <div className="flex gap-2 flex-wrap">
           <ExportButton
             data={exportData}
