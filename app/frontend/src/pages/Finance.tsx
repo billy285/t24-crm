@@ -3545,7 +3545,7 @@ export default function Finance() {
                       管理类型
                     </Button>
                   )}
-                  <Button size="sm" onClick={() => { setExpenseForm({ ...emptyExpenseForm, expense_month: expenseMonth }); setEditingExpenseId(null); setShowExpenseForm(true); }} className="bg-blue-600 hover:bg-blue-700">
+                  <Button size="sm" disabled={Boolean(expenseMonth && isFinanceMonthClosed(expenseMonth))} title={expenseMonth && isFinanceMonthClosed(expenseMonth) ? '该月份已关账，请先重新打开' : undefined} onClick={() => { setExpenseForm({ ...emptyExpenseForm, expense_month: expenseMonth }); setEditingExpenseId(null); setShowExpenseForm(true); }} className="bg-blue-600 hover:bg-blue-700">
                     <Plus className="w-4 h-4 mr-1" /> 录入客户支出
                   </Button>
                 </div>
@@ -3649,7 +3649,7 @@ export default function Finance() {
                       管理类型
                     </Button>
                   )}
-                  <Button size="sm" onClick={() => { setCompanyExpenseForm({ ...emptyCompanyExpenseForm, category: defaultCompanyExpenseType, currency: companyExpenseCurrencyFilter === 'all' ? 'USD' : companyExpenseCurrencyFilter, expense_month: companyExpenseMonth }); setEditingCompanyExpenseId(null); setShowCompanyExpenseForm(true); }} className="bg-blue-600 hover:bg-blue-700">
+                  <Button size="sm" disabled={Boolean(companyExpenseMonth && isFinanceMonthClosed(companyExpenseMonth))} title={companyExpenseMonth && isFinanceMonthClosed(companyExpenseMonth) ? '该月份已关账，请先重新打开' : undefined} onClick={() => { setCompanyExpenseForm({ ...emptyCompanyExpenseForm, category: defaultCompanyExpenseType, currency: companyExpenseCurrencyFilter === 'all' ? 'USD' : companyExpenseCurrencyFilter, expense_month: companyExpenseMonth }); setEditingCompanyExpenseId(null); setShowCompanyExpenseForm(true); }} className="bg-blue-600 hover:bg-blue-700">
                     <Plus className="w-4 h-4 mr-1" /> 录入运营支出
                   </Button>
                 </div>
