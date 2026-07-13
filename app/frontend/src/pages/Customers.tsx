@@ -2247,7 +2247,7 @@ export default function Customers() {
 
   // ========== LIST VIEW ==========
   return (
-    <div className="space-y-4">
+    <div className="app-page space-y-5">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-slate-800">客户管理</h2>
         <div className="flex gap-2 flex-wrap">

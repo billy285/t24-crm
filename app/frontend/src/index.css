@@ -96,6 +96,57 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-feature-settings: "tnum";
+  }
+
+  button, a, input, select, textarea {
+    transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease,
+      box-shadow 160ms ease, opacity 160ms ease, transform 160ms ease;
+  }
+
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 3px solid hsl(214 95% 68% / 0.45);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: hsl(214 95% 68% / 0.25);
+  }
+}
+
+@layer components {
+  .app-page {
+    @apply mx-auto w-full max-w-[1680px];
+  }
+
+  .app-page-title {
+    @apply flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-4 mb-5;
+  }
+
+  .app-page-title h1,
+  .app-page-title h2 {
+    @apply tracking-tight;
+  }
+
+  .app-card {
+    @apply rounded-xl border border-slate-200/90 bg-white shadow-sm;
+  }
+
+  .app-card-hover {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md;
+  }
+
+  .app-empty {
+    @apply rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-6 py-12 text-center text-sm text-slate-500;
+  }
+
+  .app-table-wrap {
+    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white;
+  }
+
+  .app-table-wrap table {
+    @apply min-w-[760px];
   }
 }

@@ -2886,10 +2886,14 @@ export default function Finance() {
 
   // ─── Render ──────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
+    <div className="app-page space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold text-slate-800">财务管理</h2>
+      <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T2 Marketing · Finance</p>
+          <h2 className="mt-1 text-2xl font-bold text-slate-900">财务管理</h2>
+          <p className="mt-1 text-sm text-slate-500">掌握收入、成本、利润和待处理事项</p>
+        </div>
         <div className="flex gap-2 flex-wrap ml-auto">
           <Button size="sm" variant="outline" onClick={() => doExport('csv')} disabled={exporting}>导出 CSV</Button>
           <Button size="sm" onClick={() => doExport('xlsx')} disabled={exporting} className="bg-blue-600 hover:bg-blue-700">导出 Excel</Button>

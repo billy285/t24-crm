@@ -2335,7 +2335,7 @@ export default function ServiceBoard() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="app-page space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-slate-800">客户服务进度看板</h2>
