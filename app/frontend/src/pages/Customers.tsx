@@ -148,7 +148,7 @@ const emptyAdvancedFilters = {
 
 const inlineSelectClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
 const inlineInputClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
-const customerDetailTabValues = new Set(['info', 'contacts', 'followups', 'deals', 'subscriptions', 'payments', 'renewals', 'materials', 'ai_copy', 'media', 'logs']);
+const customerDetailTabValues = new Set(['info', 'timeline', 'contacts', 'followups', 'deals', 'subscriptions', 'payments', 'renewals', 'materials', 'ai_copy', 'media', 'logs']);
 const customerReminderMessages: Record<string, { title: string; description: string }> = {
   follow_up_today: { title: '今日跟进提醒', description: '这位客户今天需要继续跟进，已为你直接打开跟进记录。' },
   follow_up_overdue: { title: '逾期跟进提醒', description: '这位客户的计划跟进时间已过，建议尽快补跟进并更新下一次时间。' },
@@ -1819,6 +1819,12 @@ export default function Customers() {
     const paginatedRenewals = paginateList(renewalRows, renewalPage, renewalPageSize);
     const upcomingRenewalCount = renewalRows.filter(item => item.computed_status === 'expiring_soon').length;
     const autoRenewCount = renewalRows.filter(item => item.auto_renew).length;
+    const timelineEvents = [
+      ...followUps.map((item: any) => ({ type: '跟进', title: item.follow_up_type || item.content || '客户跟进', detail: item.content || item.notes || '', date: item.follow_up_date || item.created_at, tone: 'blue' })),
+      ...deals.map((item: any) => ({ type: '成交', title: item.package_name || item.deal_name || '成交记录', detail: item.amount ? `${item.amount} ${item.currency || 'USD'}` : '', date: item.deal_date || item.created_at, tone: 'emerald' })),
+      ...payments.map((item: any) => ({ type: '收款', title: item.payment_type || '收款记录', detail: item.amount ? `${item.amount} ${item.currency || 'USD'}` : '', date: item.payment_date || item.created_at, tone: 'cyan' })),
+      ...subscriptions.map((item: any) => ({ type: '服务/续费', title: item.package_name || '套餐服务', detail: `${item.start_date || '-'} 至 ${item.end_date || '-'}`, date: item.start_date || item.created_at, tone: 'amber' })),
+    ].filter(item => item.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
     return (
       <div className="app-page space-y-5">
@@ -1853,6 +1859,7 @@ export default function Customers() {
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
           <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="info" className="text-xs">基础信息</TabsTrigger>
+            <TabsTrigger value="timeline" className="text-xs">客户时间线 ({timelineEvents.length})</TabsTrigger>
             <TabsTrigger value="contacts" className="text-xs">联系人 ({contacts.length})</TabsTrigger>
             <TabsTrigger value="followups" className="text-xs">跟进记录 ({followUps.length})</TabsTrigger>
             <TabsTrigger value="deals" className="text-xs">成交记录 ({deals.length})</TabsTrigger>
@@ -1864,6 +1871,28 @@ export default function Customers() {
             <TabsTrigger value="media" className="text-xs">媒体账号</TabsTrigger>
             <TabsTrigger value="logs" className="text-xs">操作日志</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="timeline">
+            <Card className="border-slate-200"><CardContent className="p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div><h3 className="text-sm font-semibold text-slate-800">客户全生命周期</h3><p className="mt-1 text-xs text-slate-500">集中查看跟进、成交、收款、服务和续费记录</p></div>
+                <Badge className="bg-slate-100 text-slate-600">{timelineEvents.length} 条记录</Badge>
+              </div>
+              {timelineEvents.length === 0 ? <div className="app-empty">暂无历史事件</div> : (
+                <div className="relative space-y-3 before:absolute before:bottom-2 before:left-[11px] before:top-2 before:w-px before:bg-slate-200">
+                  {timelineEvents.map((event, index) => (
+                    <div key={`${event.type}-${event.date}-${index}`} className="relative flex gap-3">
+                      <span className={`z-10 mt-1 h-2.5 w-2.5 shrink-0 rounded-full ring-4 ring-white ${event.tone === 'emerald' ? 'bg-emerald-500' : event.tone === 'cyan' ? 'bg-cyan-500' : event.tone === 'amber' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                      <div className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><Badge className="bg-white text-slate-600">{event.type}</Badge><span className="text-sm font-medium text-slate-800">{event.title}</span></div><span className="text-xs text-slate-400">{String(event.date).slice(0, 16)}</span></div>
+                        {event.detail && <p className="mt-1 truncate text-xs text-slate-500">{event.detail}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent></Card>
+          </TabsContent>
 
           <TabsContent value="info">
             <Card className="border-slate-200"><CardContent className="p-5">
