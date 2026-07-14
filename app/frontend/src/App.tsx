@@ -20,6 +20,7 @@ import ServiceBoard from './pages/ServiceBoard';
 import Callbacks from './pages/Callbacks';
 import LoginPage from './pages/LoginPage';
 import NotFound from './pages/NotFound';
+import Payroll from './pages/Payroll';
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/sales" element={<Layout><Sales /></Layout>} />
             <Route path="/deals" element={<Layout><Deals /></Layout>} />
             <Route path="/finance" element={<Layout><Finance /></Layout>} />
+            <Route path="/payroll" element={<Layout><Payroll /></Layout>} />
             <Route path="/tasks" element={<Layout><Tasks /></Layout>} />
             <Route path="/employees" element={<Layout><Employees /></Layout>} />
             <Route path="/settings" element={<Layout><Settings /></Layout>} />

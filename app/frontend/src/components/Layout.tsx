@@ -27,6 +27,7 @@ const allNavItems = [
   { path: '/sales', label: '成交客户', icon: Handshake },
   { path: '/deals', label: '成交管理', icon: Handshake },
   { path: '/finance', label: '财务管理', icon: DollarSign },
+  { path: '/payroll', label: '工资表', icon: ClipboardList },
   { path: '/tasks', label: '任务协作', icon: ListTodo },
   { path: '/service-board', label: '服务进度看板', icon: ClipboardList },
   { path: '/callbacks', label: '电话回访', icon: PhoneCall },
