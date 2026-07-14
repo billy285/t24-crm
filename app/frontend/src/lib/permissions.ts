@@ -297,6 +297,7 @@ export function canAccessPage(role: string, path: string): boolean {
   // Payroll is an independent finance worksheet. Keep its access available for
   // finance administrators even when an older cached permission config exists.
   if (path === '/payroll' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
+  if (path === '/sales-management' && ['super_admin', 'admin', 'sales'].includes(mapToSystemRole(role))) return true;
   const perms = getPermissions(role);
   return perms.pages.includes(path);
 }
