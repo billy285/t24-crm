@@ -21,7 +21,6 @@ import Callbacks from './pages/Callbacks';
 import LoginPage from './pages/LoginPage';
 import NotFound from './pages/NotFound';
 import Payroll from './pages/Payroll';
-import SalesManagement from './pages/SalesManagement';
 
 const queryClient = new QueryClient();
 
@@ -38,7 +37,6 @@ const App = () => (
             <Route path="/" element={<Layout><Dashboard /></Layout>} />
             <Route path="/customers" element={<Layout><Customers /></Layout>} />
             <Route path="/sales" element={<Layout><Sales /></Layout>} />
-            <Route path="/sales-management" element={<Layout><SalesManagement /></Layout>} />
             <Route path="/deals" element={<Layout><Deals /></Layout>} />
             <Route path="/finance" element={<Layout><Finance /></Layout>} />
             <Route path="/payroll" element={<Layout><Payroll /></Layout>} />

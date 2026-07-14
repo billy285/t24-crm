@@ -23,7 +23,6 @@ interface LayoutProps {
 
 const allNavItems = [
   { path: '/', label: '仪表盘', icon: LayoutDashboard },
-  { path: '/sales-management', label: '销售管理', icon: PhoneCall },
   { path: '/customers', label: '客户管理', icon: Users },
   { path: '/sales', label: '成交客户', icon: Handshake },
   { path: '/deals', label: '成交管理', icon: Handshake },
