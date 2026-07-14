@@ -16,7 +16,11 @@ type PayrollRow = {
 type PayrollSheet = { month: string; status: PayrollStatus; rows: PayrollRow[]; updatedAt: string };
 
 const storageKey = 't24-payroll-sheets-v1';
-const blankRow = (): PayrollRow => ({ id: crypto.randomUUID(), name: '', alipay: '', entryDate: '', department: '', baseSalary: 0, fixedPerformance: 0, commission: 0, allowance: 0, attendance: 0, actualAttendance: 0, absenceDeduction: 0, fullAttendanceDeduction: 0, performanceDeduction: 0, otherDeduction: 0, notes: '' });
+const createRowId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `payroll_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+};
+const blankRow = (): PayrollRow => ({ id: createRowId(), name: '', alipay: '', entryDate: '', department: '', baseSalary: 0, fixedPerformance: 0, commission: 0, allowance: 0, attendance: 0, actualAttendance: 0, absenceDeduction: 0, fullAttendanceDeduction: 0, performanceDeduction: 0, otherDeduction: 0, notes: '' });
 const money = (value: number) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (value: string) => Math.max(0, Number(value) || 0);
 const statusLabels: Record<PayrollStatus, string> = { draft: '草稿', confirmed: '已确认', paid: '已发放' };
@@ -49,7 +53,7 @@ export default function Payroll() {
   const copyPrevious = () => {
     const previous = sheets.filter(item => item.month < month).sort((a, b) => b.month.localeCompare(a.month))[0];
     if (!previous) return toast.error('没有可复制的上月工资表');
-    saveSheet(previous.rows.map(row => ({ ...row, id: crypto.randomUUID(), commission: 0, allowance: 0, absenceDeduction: 0, fullAttendanceDeduction: 0, performanceDeduction: 0, otherDeduction: 0 })), 'draft');
+    saveSheet(previous.rows.map(row => ({ ...row, id: createRowId(), commission: 0, allowance: 0, absenceDeduction: 0, fullAttendanceDeduction: 0, performanceDeduction: 0, otherDeduction: 0 })), 'draft');
     toast.success('已复制上一期员工名单和基础工资');
   };
   const exportCsv = () => {
