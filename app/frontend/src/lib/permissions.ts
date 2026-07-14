@@ -19,6 +19,7 @@ export const PAGE_PATHS = {
   dashboard: '/',
   customers: '/customers',
   sales: '/sales',
+  sales_management: '/sales-management',
   deals: '/deals',
   finance: '/finance',
   payroll: '/payroll',
@@ -34,6 +35,7 @@ export const pageLabels: Record<string, string> = {
   '/': '仪表盘',
   '/customers': '客户管理',
   '/sales': '成交客户管理',
+  '/sales-management': '销售管理',
   '/deals': '成交管理',
   '/finance': '财务管理',
   '/payroll': '工资表',
@@ -112,7 +114,7 @@ export interface RolePermissionConfig {
 // 默认角色权限配置
 export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = {
   super_admin: {
-    pages: ['/', '/customers', '/sales', '/deals', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/customers', '/sales', '/sales-management', '/deals', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -129,7 +131,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: true, copyPassword: true, viewFinance: true },
   },
   admin: {
-    pages: ['/', '/customers', '/sales', '/deals', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/customers', '/sales', '/sales-management', '/deals', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -146,7 +148,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: true, copyPassword: true, viewFinance: true },
   },
   sales: {
-    pages: ['/', '/customers', '/sales', '/deals', '/tasks', '/service-board', '/callbacks'],
+    pages: ['/', '/customers', '/sales-management', '/sales', '/deals', '/tasks', '/service-board', '/callbacks'],
     buttons: [
       'customer_create', 'customer_edit',
       'follow_up_create', 'follow_up_edit',
