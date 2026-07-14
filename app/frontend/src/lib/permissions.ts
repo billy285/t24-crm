@@ -21,6 +21,7 @@ export const PAGE_PATHS = {
   sales: '/sales',
   deals: '/deals',
   finance: '/finance',
+  payroll: '/payroll',
   tasks: '/tasks',
   service_board: '/service-board',
   callbacks: '/callbacks',
@@ -35,6 +36,7 @@ export const pageLabels: Record<string, string> = {
   '/sales': '成交客户管理',
   '/deals': '成交管理',
   '/finance': '财务管理',
+  '/payroll': '工资表',
   '/tasks': '任务协作',
   '/service-board': '服务进度看板',
   '/callbacks': '电话回访',
@@ -110,7 +112,7 @@ export interface RolePermissionConfig {
 // 默认角色权限配置
 export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = {
   super_admin: {
-    pages: ['/', '/customers', '/sales', '/deals', '/finance', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/customers', '/sales', '/deals', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -127,7 +129,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: true, copyPassword: true, viewFinance: true },
   },
   admin: {
-    pages: ['/', '/customers', '/sales', '/deals', '/finance', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/customers', '/sales', '/deals', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -174,7 +176,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
   },
   finance: {
-    pages: ['/', '/finance', '/customers', '/service-board'],
+    pages: ['/', '/finance', '/payroll', '/customers', '/service-board'],
     buttons: [
       'payment_create', 'payment_edit',
       'customer_export',
@@ -189,7 +191,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
 const PERMISSIONS_STORAGE_KEY = 'crm_role_permissions';
 const PERMISSIONS_VERSION_KEY = 'crm_role_permissions_version';
 // Bump this version whenever default permissions change (e.g., new pages added)
-const CURRENT_PERMISSIONS_VERSION = 4;
+const CURRENT_PERMISSIONS_VERSION = 5;
 
 function uniq<T>(items: T[]): T[] {
   return Array.from(new Set(items));
@@ -226,7 +228,16 @@ export function loadRolePermissions(): Record<SystemRole, RolePermissionConfig> 
     'role_permissions',
     defaultRolePermissions
   );
-  return normalizeRolePermissions(parsed);
+  const normalized = normalizeRolePermissions(parsed);
+  // Preserve existing custom permissions while migrating newly added pages.
+  const savedVersion = Number(localStorage.getItem(PERMISSIONS_VERSION_KEY) || 0);
+  if (savedVersion < CURRENT_PERMISSIONS_VERSION) {
+    for (const role of ['super_admin', 'admin', 'finance'] as SystemRole[]) {
+      if (!normalized[role].pages.includes('/payroll')) normalized[role].pages.push('/payroll');
+    }
+    localStorage.setItem(PERMISSIONS_VERSION_KEY, String(CURRENT_PERMISSIONS_VERSION));
+  }
+  return normalized;
 }
 
 export function saveRolePermissions(config: Record<SystemRole, RolePermissionConfig>): void {
