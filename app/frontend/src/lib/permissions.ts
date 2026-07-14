@@ -292,6 +292,9 @@ export function getPermissions(role: string): RolePermissionConfig {
 
 export function canAccessPage(role: string, path: string): boolean {
   if (!role) return true; // No role = treat as super_admin
+  // Payroll is an independent finance worksheet. Keep its access available for
+  // finance administrators even when an older cached permission config exists.
+  if (path === '/payroll' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
   const perms = getPermissions(role);
   return perms.pages.includes(path);
 }
