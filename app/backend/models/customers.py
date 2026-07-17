@@ -8,6 +8,7 @@ class Customers(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
     customer_code = Column(String, nullable=True)
+    sales_lead_id = Column(Integer, nullable=True, index=True)
     business_name = Column(String, nullable=False)
     contact_name = Column(String, nullable=False)
     phone = Column(String, nullable=False)

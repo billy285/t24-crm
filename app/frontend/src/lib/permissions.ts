@@ -3,12 +3,13 @@ import { readCachedAppConfig, writeCachedAppConfig } from './app-config';
 // ==================== 权限系统核心配置 ====================
 
 // 系统角色类型
-export type SystemRole = 'super_admin' | 'admin' | 'sales' | 'ops' | 'design' | 'finance';
+export type SystemRole = 'super_admin' | 'admin' | 'sales' | 'sales_manager' | 'ops' | 'design' | 'finance';
 
 export const systemRoleLabels: Record<SystemRole, string> = {
   super_admin: '超级管理员',
   admin: '管理员',
   sales: '销售',
+  sales_manager: '销售主管',
   ops: '运营',
   design: '设计',
   finance: '财务',
@@ -17,6 +18,10 @@ export const systemRoleLabels: Record<SystemRole, string> = {
 // 页面路径定义
 export const PAGE_PATHS = {
   dashboard: '/',
+  merchant_pool: '/merchant-pool',
+  sales_leads: '/sales-leads',
+  sales_workbench: '/sales-workbench',
+  sales_knowledge: '/sales-knowledge',
   customers: '/customers',
   sales: '/sales',
   deals: '/deals',
@@ -32,6 +37,10 @@ export const PAGE_PATHS = {
 
 export const pageLabels: Record<string, string> = {
   '/': '仪表盘',
+  '/merchant-pool': '待清洗商家池',
+  '/sales-leads': '电话销售中心',
+  '/sales-workbench': '每日拨打工作台',
+  '/sales-knowledge': '销售知识库',
   '/customers': '客户管理',
   '/sales': '成交客户管理',
   '/deals': '成交管理',
@@ -112,7 +121,7 @@ export interface RolePermissionConfig {
 // 默认角色权限配置
 export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = {
   super_admin: {
-    pages: ['/', '/customers', '/sales', '/deals', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers', '/sales', '/deals', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -129,7 +138,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: true, copyPassword: true, viewFinance: true },
   },
   admin: {
-    pages: ['/', '/customers', '/sales', '/deals', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers', '/sales', '/deals', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -146,14 +155,15 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: true, copyPassword: true, viewFinance: true },
   },
   sales: {
-    pages: ['/', '/customers', '/sales', '/deals', '/tasks', '/service-board', '/callbacks'],
-    buttons: [
-      'customer_create', 'customer_edit',
-      'follow_up_create', 'follow_up_edit',
-      'deal_create',
-      'task_create', 'task_edit',
-    ],
+    pages: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge'],
+    buttons: [],
     dataScope: 'self',
+    sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
+  },
+  sales_manager: {
+    pages: ['/sales-leads', '/sales-workbench', '/sales-knowledge'],
+    buttons: [],
+    dataScope: 'department',
     sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
   },
   ops: {
@@ -191,7 +201,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
 const PERMISSIONS_STORAGE_KEY = 'crm_role_permissions';
 const PERMISSIONS_VERSION_KEY = 'crm_role_permissions_version';
 // Bump this version whenever default permissions change (e.g., new pages added)
-const CURRENT_PERMISSIONS_VERSION = 5;
+const CURRENT_PERMISSIONS_VERSION = 8;
 
 function uniq<T>(items: T[]): T[] {
   return Array.from(new Set(items));
@@ -212,8 +222,21 @@ export function normalizeRolePermissions(
       },
     };
 
+    const isPhoneSalesRole = role === 'sales';
+    const isPhoneSalesManager = role === 'sales_manager';
+    const pages = isPhoneSalesRole
+      ? ['/sales-leads', '/sales-workbench', '/sales-knowledge']
+      : isPhoneSalesManager
+        ? ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge']
+      : uniq(merged.pages || defaultRolePermissions[role].pages);
+    if (role === 'admin' || role === 'super_admin') {
+      if (!pages.includes('/merchant-pool')) pages.push('/merchant-pool');
+      if (!pages.includes('/sales-leads')) pages.push('/sales-leads');
+      if (!pages.includes('/sales-workbench')) pages.push('/sales-workbench');
+      if (!pages.includes('/sales-knowledge')) pages.push('/sales-knowledge');
+    }
     normalized[role] = {
-      pages: uniq(['/', ...(merged.pages || defaultRolePermissions[role].pages)]),
+      pages,
       buttons: uniq((merged.buttons || defaultRolePermissions[role].buttons) as ButtonPermission[]),
       dataScope: merged.dataScope || defaultRolePermissions[role].dataScope,
       sensitiveFields: merged.sensitiveFields,
@@ -234,6 +257,12 @@ export function loadRolePermissions(): Record<SystemRole, RolePermissionConfig> 
   if (savedVersion < CURRENT_PERMISSIONS_VERSION) {
     for (const role of ['super_admin', 'admin', 'finance'] as SystemRole[]) {
       if (!normalized[role].pages.includes('/payroll')) normalized[role].pages.push('/payroll');
+    }
+    for (const role of ['super_admin', 'admin'] as SystemRole[]) {
+      if (!normalized[role].pages.includes('/merchant-pool')) normalized[role].pages.push('/merchant-pool');
+      if (!normalized[role].pages.includes('/sales-leads')) normalized[role].pages.push('/sales-leads');
+      if (!normalized[role].pages.includes('/sales-workbench')) normalized[role].pages.push('/sales-workbench');
+      if (!normalized[role].pages.includes('/sales-knowledge')) normalized[role].pages.push('/sales-knowledge');
     }
     localStorage.setItem(PERMISSIONS_VERSION_KEY, String(CURRENT_PERMISSIONS_VERSION));
   }
@@ -267,6 +296,10 @@ function mapToSystemRole(role: string): SystemRole {
     sale: 'sales',
     '销售': 'sales',
     '销售人员': 'sales',
+    sales_manager: 'sales_manager',
+    salesmanager: 'sales_manager',
+    '销售主管': 'sales_manager',
+    '销售经理': 'sales_manager',
     ops: 'ops',
     operations: 'ops',
     operation: 'ops',

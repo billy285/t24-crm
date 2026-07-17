@@ -5,7 +5,7 @@ import { pageLabels } from '../lib/permissions';
 import {
   LayoutDashboard, Users, PhoneCall, Handshake, DollarSign,
   ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
-  ShieldCheck, Lock, KeyRound, ClipboardList
+  ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +23,10 @@ interface LayoutProps {
 
 const allNavItems = [
   { path: '/', label: '仪表盘', icon: LayoutDashboard },
+  { path: '/merchant-pool', label: '待清洗商家池', icon: Database },
+  { path: '/sales-leads', label: '电话销售中心', icon: Headphones },
+  { path: '/sales-workbench', label: '每日拨打工作台', icon: Headphones },
+  { path: '/sales-knowledge', label: '销售知识库', icon: BookOpen },
   { path: '/customers', label: '客户管理', icon: Users },
   { path: '/sales', label: '成交客户', icon: Handshake },
   { path: '/deals', label: '成交管理', icon: Handshake },
@@ -34,6 +38,18 @@ const allNavItems = [
   { path: '/employees', label: '员工管理', icon: UserCog },
   { path: '/settings', label: '系统设置', icon: Settings },
   { path: '/permissions', label: '权限设置', icon: ShieldCheck },
+];
+
+const navSections = [
+  { label: '总览', paths: ['/'] },
+  {
+    label: '销售管理',
+    paths: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge'],
+  },
+  { label: '客户与成交', paths: ['/customers', '/sales', '/deals'] },
+  { label: '交付协作', paths: ['/tasks', '/service-board', '/callbacks'] },
+  { label: '财务管理', paths: ['/finance', '/payroll'] },
+  { label: '系统管理', paths: ['/employees', '/settings', '/permissions'] },
 ];
 
 export default function Layout({ children }: LayoutProps) {
@@ -140,22 +156,29 @@ export default function Layout({ children }: LayoutProps) {
   const currentPath = location.pathname;
   const hasPageAccess = canAccess(currentPath);
 
-  // Filter nav items based on role permissions
-  const navItems = allNavItems.filter(item => canAccess(item.path));
+  // Keep the business grouping stable while hiding pages the current role cannot access.
+  const visibleNavSections = navSections
+    .map(section => ({
+      ...section,
+      items: section.paths
+        .map(path => allNavItems.find(item => item.path === path))
+        .filter((item): item is (typeof allNavItems)[number] => !!item && canAccess(item.path)),
+    }))
+    .filter(section => section.items.length > 0);
 
   const displayRole = employee
     ? (roleLabels[employee.role] || employee.role)
     : '管理员模式';
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white transform transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 flex flex-col`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white transform transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 flex flex-col`}>
         <div className="p-4 border-b border-slate-700">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex min-w-0 items-center gap-3" onClick={() => setSidebarOpen(false)}>
@@ -178,23 +201,37 @@ export default function Layout({ children }: LayoutProps) {
           )}
         </div>
 
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                    isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/20' : 'text-slate-300 hover:bg-slate-700/80 hover:text-white'
-                }`}
-              >
-                <item.icon className="w-4 h-4 flex-shrink-0" />
-                {item.label}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 overflow-y-auto px-3 py-2">
+          {visibleNavSections.map((section, sectionIndex) => (
+            <div
+              key={section.label}
+              className={sectionIndex === 0 ? 'pb-2' : 'border-t border-slate-700/70 py-2'}
+            >
+              <div className="px-3 pb-1.5 pt-1 text-[11px] font-semibold tracking-[0.12em] text-slate-500">
+                {section.label}
+              </div>
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                        isActive
+                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/20'
+                          : 'text-slate-300 hover:bg-slate-700/80 hover:text-white'
+                      }`}
+                    >
+                      <item.icon className="h-4 w-4 flex-shrink-0" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         <div className="p-3 border-t border-slate-700">
@@ -209,7 +246,7 @@ export default function Layout({ children }: LayoutProps) {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex min-h-0 flex-1 flex-col">
         {isOffline && (
           <div className="sticky top-0 z-40 flex items-center justify-between gap-3 bg-amber-50 px-4 py-2 text-xs text-amber-800 shadow-sm">
             <span>当前网络连接不稳定，暂时不要重复提交表单。</span>
@@ -254,7 +291,7 @@ export default function Layout({ children }: LayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-4 lg:p-6 overflow-auto bg-[radial-gradient(circle_at_top_right,_rgba(219,234,254,0.38),_transparent_32rem)]">
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6 bg-[radial-gradient(circle_at_top_right,_rgba(219,234,254,0.38),_transparent_32rem)]">
           {hasPageAccess ? children : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">

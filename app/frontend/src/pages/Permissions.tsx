@@ -90,8 +90,6 @@ export default function Permissions() {
     const pages = currentPerms.pages.includes(path)
       ? currentPerms.pages.filter(p => p !== path)
       : [...currentPerms.pages, path];
-    // Dashboard is always accessible
-    if (!pages.includes('/')) pages.unshift('/');
     setConfig({ ...config, [selectedRole]: { ...currentPerms, pages } });
     setChanged(true);
   };

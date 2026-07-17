@@ -1,0 +1,625 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowRightLeft, Ban, BarChart3, Building2, CheckCircle2, ClipboardCheck, Clock3, Edit3, FileText, Headphones, History, MessageSquarePlus, Phone, Plus, Search, ShieldAlert, UserCheck, Users,
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
+import { useRole } from '@/lib/role-context';
+import { invokeWithAuth } from '@/lib/tokenStore';
+import { useAutoRefresh } from '@/lib/use-auto-refresh';
+
+type SalesLead = {
+  id: number;
+  business_name: string;
+  contact_name?: string;
+  phone: string;
+  industry?: string;
+  country?: string;
+  state?: string;
+  city?: string;
+  address?: string;
+  website?: string;
+  source?: string;
+  status: string;
+  assigned_sales_id?: number;
+  assigned_sales_name?: string;
+  is_blacklisted: boolean;
+  do_not_contact: boolean;
+  do_not_contact_reason?: string;
+  converted_customer_id?: number;
+  notes?: string;
+  next_follow_up_at?: string;
+  last_contact_at?: string;
+  created_at: string;
+};
+
+type Assignee = { id: number; name: string; role: string; supervisor?: string };
+type ManagementDashboard = { metrics: { assigned: number; completed: number; completion_rate: number; calls: number; connected: number; connection_rate: number; interested: number; interest_rate: number; appointments: number; appointment_rate: number; converted: number; conversion_rate: number }; source_quality: { source: string; total: number; usable: number; quality_rate: number }[]; salespeople: { salesperson: string; calls: number; connected: number; interested: number; appointments: number }[] };
+type RecoveryItem = { lead_id: number; business_name: string; assigned_sales_name?: string; status: string; state: 'watch' | 'recoverable' | 'protected' | 'extended' | 'active'; message: string; deadline?: string; extension_request?: { reason?: string; requested_until?: string; requested_by?: string } | null };
+type RecoveryOverview = { items: RecoveryItem[]; summary: { recoverable: number; watch: number; protected: number; extended: number; extension_requests: number } };
+type PerformanceItem = { rank: number; sales_employee_id: number; salesperson: string; score: number; confidence: string; score_breakdown: { results: number; execution: number; discipline: number; documentation: number; compliance: number }; metrics: { assigned: number; completed: number; calls: number; connected: number; interested: number; appointments: number; conversions: number; completion_rate: number; connection_rate: number; interest_rate: number; note_quality_rate: number; overdue_followups: number }; suggestions: string[] };
+type PerformanceDashboard = { period: { days: number; start_date: string; end_date: string }; items: PerformanceItem[] };
+type CallHistoryItem = { id: number; outcome: string; outcome_label: string; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string };
+type Quote = { id: number; package_name: string; selected_platforms: string[]; billing_mode: string; payment_method: string; currency: string; list_amount: number; discount_amount: number; final_amount: number; service_start_date?: string; service_end_date?: string; special_terms?: string; status: 'submitted' | 'approved' | 'rejected' | 'superseded'; submitted_by_name?: string; reviewed_by_name?: string; review_notes?: string };
+type Handoff = { quote_id?: number; customer_goal?: string; key_contacts?: string; service_start_date?: string; service_end_date?: string; special_commitments?: string; operations_owner?: string; operations_group_created?: boolean; finance_payment_confirmed?: boolean; payment_status?: string; amount_received?: number; payment_date?: string; payment_reference?: string; payment_confirmed_by_name?: string; generated_deal_id?: number; generate_service_board?: boolean; handoff_notes?: string };
+type DealReadiness = { lead: { id: number; business_name: string; converted_customer_id?: number }; quotes: Quote[]; handoff: Handoff; blockers: string[] };
+
+const statusOptions = [
+  { value: 'new', label: '新线索' },
+  { value: 'contacted', label: '已联系' },
+  { value: 'follow_up', label: '待跟进' },
+  { value: 'interested', label: '有意向' },
+  { value: 'appointment', label: '已预约' },
+  { value: 'lost', label: '无意向' },
+  { value: 'blocked', label: '禁止联系' },
+];
+
+const statusLabels = Object.fromEntries(statusOptions.map(item => [item.value, item.label]));
+const statusColors: Record<string, string> = {
+  new: 'bg-slate-100 text-slate-700',
+  contacted: 'bg-blue-100 text-blue-700',
+  follow_up: 'bg-amber-100 text-amber-700',
+  interested: 'bg-emerald-100 text-emerald-700',
+  appointment: 'bg-cyan-100 text-cyan-700',
+  lost: 'bg-zinc-100 text-zinc-600',
+  blocked: 'bg-rose-100 text-rose-700',
+};
+
+const followUpOutcomeOptions = [
+  { value: 'no_answer', label: '未接通' },
+  { value: 'callback', label: '待回访' },
+  { value: 'interested', label: '有意向' },
+  { value: 'appointment', label: '已预约' },
+  { value: 'not_interested', label: '无意向' },
+  { value: 'do_not_contact', label: '禁止再联系' },
+];
+
+const emptyForm = {
+  business_name: '', contact_name: '', phone: '', industry: '', country: 'US', state: '', city: '',
+  address: '', website: '', source: 'manual', status: 'new', assigned_sales_id: '', notes: '',
+  is_blacklisted: false, do_not_contact: false, do_not_contact_reason: '', next_follow_up_at: '',
+};
+
+const emptyQuoteForm = { package_name: '', selected_platforms: '', billing_mode: 'manual', payment_method: 'stripe', currency: 'USD', list_amount: '', discount_amount: '0', service_start_date: '', service_end_date: '', special_terms: '' };
+const emptyHandoffForm = { quote_id: '', customer_goal: '', key_contacts: '', service_start_date: '', service_end_date: '', special_commitments: '', operations_owner: '', operations_group_created: false, generate_service_board: false, handoff_notes: '' };
+const emptyPaymentForm = { payment_status: 'pending', amount_received: '', payment_date: new Date().toISOString().slice(0, 10), payment_reference: '' };
+
+function formatDate(value?: string) {
+  if (!value) return '-';
+  return value.slice(0, 16).replace('T', ' ');
+}
+
+export default function SalesLeads() {
+  const { role, isAdmin, employee } = useRole();
+  const canManage = isAdmin || role === 'sales_manager';
+  const [items, setItems] = useState<SalesLead[]>([]);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
+  const [stats, setStats] = useState({ total: 0, assigned: 0, unassigned: 0, blacklisted: 0, do_not_contact: 0 });
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [contactFilter, setContactFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<SalesLead | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [dashboard, setDashboard] = useState<ManagementDashboard | null>(null);
+  const [convertingId, setConvertingId] = useState<number | null>(null);
+  const [dealLead, setDealLead] = useState<SalesLead | null>(null);
+  const [dealReadiness, setDealReadiness] = useState<DealReadiness | null>(null);
+  const [dealLoading, setDealLoading] = useState(false);
+  const [dealSaving, setDealSaving] = useState(false);
+  const [quoteForm, setQuoteForm] = useState(emptyQuoteForm);
+  const [handoffForm, setHandoffForm] = useState(emptyHandoffForm);
+  const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
+  const [recoveryOverview, setRecoveryOverview] = useState<RecoveryOverview | null>(null);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState<number | null>(null);
+  const [performanceDays, setPerformanceDays] = useState(30);
+  const [performanceDashboard, setPerformanceDashboard] = useState<PerformanceDashboard | null>(null);
+  const [callHistory, setCallHistory] = useState<CallHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [followUpSaving, setFollowUpSaving] = useState(false);
+  const [followUpForm, setFollowUpForm] = useState({ outcome: 'callback', notes: '', next_follow_up_at: '' });
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const loadData = async () => {
+    const params = new URLSearchParams({ skip: String((page - 1) * pageSize), limit: String(pageSize) });
+    if (search.trim()) params.set('search', search.trim());
+    if (statusFilter) params.set('status', statusFilter);
+    if (contactFilter) params.set('contact_rule', contactFilter);
+    try {
+      const requests = [
+        invokeWithAuth({ url: `/api/v1/sales-leads?${params.toString()}`, method: 'GET' }),
+        invokeWithAuth({ url: '/api/v1/sales-leads/stats', method: 'GET' }),
+      ];
+      if (canManage) requests.push(invokeWithAuth({ url: '/api/v1/sales-leads/assignees', method: 'GET' }));
+      if (canManage) requests.push(invokeWithAuth({ url: '/api/v1/sales-leads/dashboard/management', method: 'GET' }));
+      if (canManage) requests.push(invokeWithAuth({ url: `/api/v1/sales-leads/dashboard/performance?days=${performanceDays}`, method: 'GET' }));
+      const [listResponse, statsResponse, assigneeResponse, dashboardResponse, performanceResponse] = await Promise.all(requests);
+      setItems(listResponse.data?.items || []);
+      setTotal(listResponse.data?.total || 0);
+      setStats(statsResponse.data || stats);
+      if (assigneeResponse) setAssignees(assigneeResponse.data || []);
+      if (dashboardResponse) setDashboard(dashboardResponse.data || null);
+      if (performanceResponse) setPerformanceDashboard(performanceResponse.data || null);
+      if (canManage) {
+        const recoveryResponse = await invokeWithAuth({ url: '/api/v1/sales-leads/recovery/overview', method: 'GET' });
+        setRecoveryOverview(recoveryResponse.data || null);
+      }
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || '线索数据加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, statusFilter, contactFilter, performanceDays]);
+
+  useEffect(() => {
+    setPage(1);
+    const timer = window.setTimeout(() => void loadData(), 300);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  useAutoRefresh(loadData, { intervalMs: 30000, enabled: !showForm });
+
+  const scopeText = useMemo(() => {
+    if (isAdmin) return '全部线索';
+    if (role === 'sales_manager') return '直属团队线索';
+    return `${employee?.name || '当前销售'}的线索`;
+  }, [employee?.name, isAdmin, role]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    setShowForm(true);
+  };
+
+  const loadCallHistory = async (leadId: number) => {
+    setHistoryLoading(true);
+    try {
+      const response = await invokeWithAuth({ url: `/api/v1/sales-leads/${leadId}/call-history`, method: 'GET' });
+      setCallHistory(response.data || []);
+    } catch (error: any) {
+      setCallHistory([]);
+      toast.error(error?.data?.detail || error?.message || '跟进时间线加载失败');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const openEdit = (lead: SalesLead) => {
+    setEditing(lead);
+    setForm({
+      business_name: lead.business_name || '', contact_name: lead.contact_name || '', phone: lead.phone || '',
+      industry: lead.industry || '', country: lead.country || 'US', state: lead.state || '', city: lead.city || '',
+      address: lead.address || '', website: lead.website || '', source: lead.source || '', status: lead.status || 'new',
+      assigned_sales_id: lead.assigned_sales_id ? String(lead.assigned_sales_id) : '', notes: lead.notes || '',
+      is_blacklisted: !!lead.is_blacklisted, do_not_contact: !!lead.do_not_contact,
+      do_not_contact_reason: lead.do_not_contact_reason || '', next_follow_up_at: lead.next_follow_up_at?.slice(0, 16) || '',
+    });
+    setCallHistory([]);
+    setFollowUpForm({ outcome: lead.status === 'appointment' ? 'appointment' : lead.status === 'interested' ? 'interested' : 'callback', notes: '', next_follow_up_at: lead.next_follow_up_at?.slice(0, 16) || '' });
+    setShowForm(true);
+    void loadCallHistory(lead.id);
+  };
+
+  const recordFollowUp = async () => {
+    if (!editing) return;
+    if (!followUpForm.notes.trim()) {
+      toast.error('请填写本次沟通内容，避免产生空白跟进记录');
+      return;
+    }
+    if (followUpForm.outcome === 'callback' && !followUpForm.next_follow_up_at) {
+      toast.error('待回访请设置下次跟进时间');
+      return;
+    }
+    setFollowUpSaving(true);
+    try {
+      const response = await invokeWithAuth({
+        url: `/api/v1/sales-leads/${editing.id}/follow-up`,
+        method: 'POST',
+        data: {
+          outcome: followUpForm.outcome,
+          notes: followUpForm.notes.trim(),
+          next_follow_up_at: followUpForm.next_follow_up_at ? new Date(followUpForm.next_follow_up_at).toISOString() : null,
+        },
+      });
+      const nextValue = response.data?.next_follow_up_at?.slice(0, 16) || '';
+      setForm(current => ({ ...current, status: response.data?.status || current.status, notes: followUpForm.notes.trim(), next_follow_up_at: nextValue }));
+      setEditing(current => current ? ({ ...current, status: response.data?.status || current.status, notes: followUpForm.notes.trim(), next_follow_up_at: response.data?.next_follow_up_at || current.next_follow_up_at }) : current);
+      setFollowUpForm(current => ({ ...current, notes: '', next_follow_up_at: nextValue }));
+      await Promise.all([loadCallHistory(editing.id), loadData()]);
+      toast.success(response.data?.message || '跟进记录已加入时间线');
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.response?.data?.detail || error?.message || '跟进记录保存失败');
+    } finally {
+      setFollowUpSaving(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (canManage && (!form.business_name.trim() || !form.phone.trim())) {
+      toast.error('请填写商家名称和电话');
+      return;
+    }
+    if (form.do_not_contact && !form.do_not_contact_reason.trim()) {
+      toast.error('标记禁止再联系时，请填写原因');
+      return;
+    }
+    setSaving(true);
+    try {
+      const limitedPayload = {
+        status: form.status,
+        notes: form.notes || null,
+        do_not_contact: form.do_not_contact,
+        do_not_contact_reason: form.do_not_contact_reason || null,
+        next_follow_up_at: form.next_follow_up_at ? new Date(form.next_follow_up_at).toISOString() : null,
+      };
+      const managerPayload = {
+        ...limitedPayload,
+        business_name: form.business_name.trim(), contact_name: form.contact_name || null, phone: form.phone.trim(),
+        industry: form.industry || null, country: form.country || null, state: form.state || null, city: form.city || null,
+        address: form.address || null, website: form.website || null, source: form.source || null,
+        assigned_sales_id: form.assigned_sales_id ? Number(form.assigned_sales_id) : null,
+        is_blacklisted: form.is_blacklisted,
+      };
+      if (editing) {
+        await invokeWithAuth({
+          url: `/api/v1/sales-leads/${editing.id}`,
+          method: 'PUT',
+          data: canManage ? managerPayload : limitedPayload,
+        });
+        toast.success('线索已更新');
+      } else {
+        await invokeWithAuth({ url: '/api/v1/sales-leads', method: 'POST', data: managerPayload });
+        toast.success('线索已加入独立销售线索库');
+      }
+      setShowForm(false);
+      await loadData();
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.response?.data?.detail || error?.message || '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateProtection = async (lead: SalesLead, field: 'do_not_contact' | 'is_blacklisted', value: boolean) => {
+    const reason = field === 'do_not_contact' && value
+      ? window.prompt('请输入禁止再联系的原因，例如：商家明确拒绝')
+      : undefined;
+    if (field === 'do_not_contact' && value && !reason?.trim()) return;
+    try {
+      await invokeWithAuth({
+        url: `/api/v1/sales-leads/${lead.id}`,
+        method: 'PUT',
+        data: field === 'do_not_contact'
+          ? { do_not_contact: value, do_not_contact_reason: value ? reason : null }
+          : { is_blacklisted: value },
+      });
+      toast.success(value ? '已设置保护标记' : '已解除保护标记');
+      await loadData();
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || '操作失败');
+    }
+  };
+
+  const loadDealReadiness = async (lead: SalesLead) => {
+    setDealLoading(true);
+    try {
+      const response = await invokeWithAuth({ url: `/api/v1/sales-deal-controls/${lead.id}/readiness`, method: 'GET' });
+      const readiness = response.data as DealReadiness;
+      setDealReadiness(readiness);
+      const handoff = readiness.handoff || {};
+      const activeQuote = readiness.quotes.find(quote => quote.status === 'approved');
+      setHandoffForm({
+        quote_id: handoff.quote_id ? String(handoff.quote_id) : (activeQuote ? String(activeQuote.id) : ''), customer_goal: handoff.customer_goal || '', key_contacts: handoff.key_contacts || '',
+        service_start_date: handoff.service_start_date || activeQuote?.service_start_date || '', service_end_date: handoff.service_end_date || activeQuote?.service_end_date || '', special_commitments: handoff.special_commitments || '',
+        operations_owner: handoff.operations_owner || '', operations_group_created: !!handoff.operations_group_created,
+        generate_service_board: !!handoff.generate_service_board, handoff_notes: handoff.handoff_notes || '',
+      });
+      setPaymentForm({
+        payment_status: handoff.payment_status || (handoff.finance_payment_confirmed ? 'paid' : 'pending'),
+        amount_received: handoff.amount_received ? String(handoff.amount_received) : '',
+        payment_date: handoff.payment_date || new Date().toISOString().slice(0, 10), payment_reference: handoff.payment_reference || '',
+      });
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || '成交审核信息加载失败');
+    } finally { setDealLoading(false); }
+  };
+
+  const openDealControl = async (lead: SalesLead) => {
+    setDealLead(lead);
+    setDealReadiness(null);
+    setQuoteForm(emptyQuoteForm);
+    setHandoffForm(emptyHandoffForm);
+    setPaymentForm(emptyPaymentForm);
+    await loadDealReadiness(lead);
+  };
+
+  const submitQuote = async () => {
+    if (!dealLead || !quoteForm.package_name.trim() || !quoteForm.list_amount) {
+      toast.error('请填写套餐名称和报价金额');
+      return;
+    }
+    setDealSaving(true);
+    try {
+      await invokeWithAuth({
+        url: `/api/v1/sales-deal-controls/${dealLead.id}/quotes`, method: 'POST', data: {
+          package_name: quoteForm.package_name.trim(), selected_platforms: quoteForm.selected_platforms.split(/[，,\n]/).map(item => item.trim()).filter(Boolean),
+          billing_mode: quoteForm.billing_mode, payment_method: quoteForm.payment_method, currency: quoteForm.currency || 'USD',
+          list_amount: Number(quoteForm.list_amount), discount_amount: Number(quoteForm.discount_amount || 0),
+          service_start_date: quoteForm.service_start_date || null, service_end_date: quoteForm.service_end_date || null, special_terms: quoteForm.special_terms || null,
+        },
+      });
+      toast.success('报价已提交，等待主管审批');
+      setQuoteForm(emptyQuoteForm);
+      await loadDealReadiness(dealLead);
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || '报价提交失败');
+    } finally { setDealSaving(false); }
+  };
+
+  const reviewQuote = async (quote: Quote, decision: 'approved' | 'rejected') => {
+    const reviewNotes = window.prompt(decision === 'approved' ? '可填写审批备注（可留空）' : '请填写驳回原因') || '';
+    if (decision === 'rejected' && !reviewNotes.trim()) return;
+    setDealSaving(true);
+    try {
+      await invokeWithAuth({ url: `/api/v1/sales-deal-controls/quotes/${quote.id}/review`, method: 'POST', data: { decision, review_notes: reviewNotes || null } });
+      toast.success(decision === 'approved' ? '报价已批准' : '报价已驳回');
+      if (dealLead) await loadDealReadiness(dealLead);
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || '报价审批失败');
+    } finally { setDealSaving(false); }
+  };
+
+  const saveHandoff = async () => {
+    if (!dealLead) return;
+    setDealSaving(true);
+    try {
+      await invokeWithAuth({
+        url: `/api/v1/sales-deal-controls/${dealLead.id}/handoff`, method: 'PUT', data: {
+          quote_id: handoffForm.quote_id ? Number(handoffForm.quote_id) : null, customer_goal: handoffForm.customer_goal || null,
+          key_contacts: handoffForm.key_contacts || null, service_start_date: handoffForm.service_start_date || null, service_end_date: handoffForm.service_end_date || null,
+          special_commitments: handoffForm.special_commitments || null, operations_owner: handoffForm.operations_owner || null,
+          operations_group_created: handoffForm.operations_group_created, generate_service_board: handoffForm.generate_service_board, handoff_notes: handoffForm.handoff_notes || null,
+        },
+      });
+      toast.success('成交交接清单已保存');
+      await loadDealReadiness(dealLead);
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || '成交交接清单保存失败');
+    } finally { setDealSaving(false); }
+  };
+
+  const savePaymentStatus = async () => {
+    if (!dealLead) return;
+    setDealSaving(true);
+    try {
+      await invokeWithAuth({
+        url: `/api/v1/sales-deal-controls/${dealLead.id}/handoff/finance-confirmation`, method: 'POST', data: {
+          payment_status: paymentForm.payment_status, amount_received: Number(paymentForm.amount_received || 0),
+          payment_date: paymentForm.payment_date || null, payment_reference: paymentForm.payment_reference || null,
+        },
+      });
+      toast.success('收款状态已更新');
+      await loadDealReadiness(dealLead);
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || '收款确认失败');
+    } finally { setDealSaving(false); }
+  };
+
+  const convertToCustomer = async () => {
+    if (!dealLead) return;
+    if (!window.confirm(`确认 ${dealLead.business_name} 已正式合作，并转入客户管理吗？此操作会保留销售线索、报价和通话历史。`)) return;
+    const lead = dealLead;
+    setConvertingId(lead.id);
+    try {
+      const response = await invokeWithAuth({ url: `/api/v1/sales-leads/${lead.id}/convert-to-customer`, method: 'POST', data: { confirmation_notes: '报价已审批、成交交接清单已完成，主管确认合作。' } });
+      toast.success(`已转入正式客户：${response.data?.customer_code || ''}`);
+      setDealLead(null);
+      setDealReadiness(null);
+      await loadData();
+    } catch (error: any) {
+      const detail = error?.data?.detail || error?.response?.data?.detail;
+      toast.error(typeof detail === 'object' ? `${detail.message}${detail.blockers?.length ? `：${detail.blockers.join('、')}` : ''}` : (detail || error?.message || '转入失败'));
+      await loadDealReadiness(lead);
+    } finally { setConvertingId(null); }
+  };
+
+  const handleRecoveryAction = async (item: RecoveryItem, action: 'reclaim' | 'approve-extension') => {
+    const defaultReason = action === 'reclaim' ? '超过保护期未完成有效跟进，主管回收至待分配队列。' : '主管确认当前跟进计划，批准延长线索保护期。';
+    const reason = window.prompt('请填写操作原因（会永久保留在归属日志中）', defaultReason);
+    if (!reason?.trim()) return;
+    setRecoveryBusy(item.lead_id);
+    try {
+      const endpoint = action === 'reclaim' ? 'reclaim' : 'approve-extension';
+      const response = await invokeWithAuth({ url: `/api/v1/sales-leads/${item.lead_id}/recovery/${endpoint}`, method: 'POST', data: { reason: reason.trim() } });
+      toast.success(response.data?.message || '操作已完成');
+      await loadData();
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.response?.data?.detail || error?.message || '操作失败');
+    } finally { setRecoveryBusy(null); }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="mb-1 flex items-center gap-2 text-sm font-medium text-blue-600">
+            <Headphones className="h-4 w-4" /> 独立售前数据区
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900">电话销售中心</h2>
+          <p className="mt-1 text-sm text-slate-500">当前范围：{scopeText}。这里的陌生商家不会进入正式客户管理。</p>
+        </div>
+        {canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新增线索</Button>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {[
+          { label: '可见线索', value: stats.total, icon: Building2, color: 'text-blue-600 bg-blue-50' },
+          { label: '已分配', value: stats.assigned, icon: UserCheck, color: 'text-emerald-600 bg-emerald-50' },
+          { label: '待分配', value: stats.unassigned, icon: Users, color: 'text-amber-600 bg-amber-50' },
+          { label: '禁止再联系', value: stats.do_not_contact, icon: Ban, color: 'text-rose-600 bg-rose-50' },
+          { label: '黑名单', value: stats.blacklisted, icon: ShieldAlert, color: 'text-slate-700 bg-slate-100' },
+        ].map(stat => (
+          <Card key={stat.label} className="border-slate-200 shadow-sm">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className={`rounded-xl p-2.5 ${stat.color}`}><stat.icon className="h-5 w-5" /></div>
+              <div><p className="text-xs text-slate-500">{stat.label}</p><p className="text-2xl font-bold text-slate-900">{stat.value}</p></div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {canManage && dashboard && <Card className="border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-blue-50 shadow-sm"><CardContent className="p-5"><div className="mb-4 flex items-center gap-2"><BarChart3 className="h-5 w-5 text-indigo-600" /><div><p className="font-semibold text-slate-900">销售管理驾驶舱</p><p className="text-xs text-slate-500">仅统计电话销售线索，不混入正式客户与财务数据。</p></div></div><div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">{[
+        ['拨打完成', `${dashboard.metrics.completed}/${dashboard.metrics.assigned}`, `${dashboard.metrics.completion_rate}%`], ['接通率', `${dashboard.metrics.connected}/${dashboard.metrics.calls}`, `${dashboard.metrics.connection_rate}%`], ['意向率', String(dashboard.metrics.interested), `${dashboard.metrics.interest_rate}%`], ['预约率', String(dashboard.metrics.appointments), `${dashboard.metrics.appointment_rate}%`], ['成交率', String(dashboard.metrics.converted), `${dashboard.metrics.conversion_rate}%`], ['来源质量', String(dashboard.source_quality.reduce((sum, item) => sum + item.usable, 0)), `${dashboard.source_quality.reduce((sum, item) => sum + item.total, 0)} 条可追溯`], ['销售人数', String(dashboard.salespeople.length), '今日有拨打记录']
+      ].map(([label, value, sub]) => <div key={label} className="rounded-xl border border-white bg-white/80 p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-xl font-bold text-slate-900">{value}</p><p className="mt-1 text-xs text-indigo-600">{sub}</p></div>)}</div></CardContent></Card>}
+
+      {canManage && performanceDashboard && <Card className="border-violet-100 bg-gradient-to-r from-violet-50 via-white to-fuchsia-50 shadow-sm"><CardContent className="p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-violet-600" /><p className="font-semibold text-slate-900">销售绩效主动评分</p></div><p className="mt-1 text-xs text-slate-500">评分由真实任务、通话结果、回访纪律和备注质量构成；不读取正式客户或财务数据。数据量少于 10 通时只作参考。</p></div><div className="flex gap-2">{[7, 30].map(days => <Button key={days} size="sm" variant={performanceDays === days ? 'default' : 'outline'} onClick={() => setPerformanceDays(days)}>{days}天</Button>)}</div></div><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="border-b text-xs text-slate-500"><tr><th className="pb-2">排名 / 销售</th><th className="pb-2">总分</th><th className="pb-2">结果</th><th className="pb-2">执行</th><th className="pb-2">纪律</th><th className="pb-2">备注</th><th className="pb-2">关键数据</th><th className="pb-2">系统建议</th></tr></thead><tbody className="divide-y divide-violet-100">{performanceDashboard.items.map(item => <tr key={item.sales_employee_id}><td className="py-3"><p className="font-semibold text-slate-900">#{item.rank} {item.salesperson}</p><p className="text-xs text-slate-500">{item.confidence}</p></td><td className="py-3"><p className="text-2xl font-bold text-violet-700">{item.score}</p><p className="text-xs text-slate-500">/ 100</p></td><td className="py-3">{item.score_breakdown.results}/40</td><td className="py-3">{item.score_breakdown.execution}/25</td><td className="py-3">{item.score_breakdown.discipline}/20</td><td className="py-3">{item.score_breakdown.documentation}/10</td><td className="py-3 text-xs text-slate-600">完成 {item.metrics.completion_rate}% · 接通 {item.metrics.connection_rate}%<br />意向 {item.metrics.interest_rate}% · 逾期 {item.metrics.overdue_followups}</td><td className="max-w-xs py-3 text-xs text-slate-600">{item.suggestions[0]}</td></tr>)}{performanceDashboard.items.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-sm text-slate-500">暂无可评分销售数据</td></tr>}</tbody></table></div></CardContent></Card>}
+
+      {canManage && recoveryOverview && <Card className="border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center"><ShieldAlert className="h-8 w-8 text-amber-600" /><div className="flex-1"><p className="font-semibold text-slate-900">线索保护与回收</p><p className="mt-1 text-sm text-slate-600">系统只提示，主管确认后才会回收。已联系、有意向和已预约的线索不会被系统自动转走。</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge className="bg-rose-100 text-rose-700">可回收 {recoveryOverview.summary.recoverable}</Badge><Badge className="bg-amber-100 text-amber-800">提醒跟进 {recoveryOverview.summary.watch}</Badge><Badge className="bg-emerald-100 text-emerald-700">受保护 {recoveryOverview.summary.protected}</Badge><Badge className="bg-blue-100 text-blue-700">延期保护 {recoveryOverview.summary.extended}</Badge>{recoveryOverview.summary.extension_requests > 0 && <Badge className="bg-violet-100 text-violet-700">待审批延期 {recoveryOverview.summary.extension_requests}</Badge>}</div></div><Button variant="outline" onClick={() => setRecoveryOpen(true)}>查看并处理</Button></CardContent></Card>}
+
+      <Card className="border-slate-200 shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-3 lg:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input className="pl-9" value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索商家、联系人、电话或城市" />
+            </div>
+            <NativeSelect className="lg:w-40" value={statusFilter} onChange={setStatusFilter} options={[{ value: '', label: '全部状态' }, ...statusOptions]} />
+            <NativeSelect className="lg:w-44" value={contactFilter} onChange={setContactFilter} options={[
+              { value: '', label: '全部联系规则' }, { value: 'contactable', label: '允许联系' },
+              { value: 'do_not_contact', label: '禁止再联系' }, { value: 'blacklisted', label: '黑名单' },
+            ]} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden border-slate-200 shadow-sm">
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1080px] text-left text-sm">
+              <thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr><th className="px-4 py-3">商家</th><th className="px-4 py-3">电话</th><th className="px-4 py-3">地区/行业</th><th className="px-4 py-3">负责人</th><th className="px-4 py-3">状态</th><th className="px-4 py-3">下次跟进</th><th className="px-4 py-3 text-right">操作</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? <tr><td colSpan={7} className="py-12 text-center text-slate-400">正在加载线索...</td></tr>
+                : items.length === 0 ? <tr><td colSpan={7} className="py-12 text-center text-slate-400">当前范围暂无销售线索</td></tr>
+                : items.map(lead => {
+                  const protectedLead = lead.is_blacklisted || lead.do_not_contact;
+                  return (
+                    <tr key={lead.id} className={protectedLead ? 'bg-rose-50/40' : 'hover:bg-slate-50/70'}>
+                      <td className="px-4 py-3"><p className="font-semibold text-slate-900">{lead.business_name}</p><p className="text-xs text-slate-500">{lead.contact_name || '未填写联系人'} · #{lead.id}</p></td>
+                      <td className="px-4 py-3"><div className={`flex items-center gap-2 font-medium ${protectedLead ? 'text-slate-400 line-through' : 'text-blue-700'}`}><Phone className="h-3.5 w-3.5" />{lead.phone}</div>{protectedLead && <p className="mt-1 text-xs text-rose-600">禁止拨打</p>}</td>
+                      <td className="px-4 py-3 text-slate-600"><p>{[lead.city, lead.state, lead.country].filter(Boolean).join(', ') || '-'}</p><p className="text-xs text-slate-400">{lead.industry || '未分类'}</p></td>
+                      <td className="px-4 py-3">{lead.assigned_sales_name || <span className="text-amber-600">待分配</span>}</td>
+                      <td className="px-4 py-3"><div className="flex flex-wrap gap-1"><Badge className={statusColors[lead.status] || statusColors.new}>{statusLabels[lead.status] || lead.status}</Badge>{lead.do_not_contact && <Badge className="bg-rose-100 text-rose-700">禁止再联系</Badge>}{lead.is_blacklisted && <Badge className="bg-slate-800 text-white">黑名单</Badge>}</div></td>
+                      <td className="px-4 py-3 text-slate-600">{formatDate(lead.next_follow_up_at)}</td>
+                      <td className="px-4 py-3"><div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" onClick={() => openEdit(lead)}><Edit3 className="mr-1 h-3.5 w-3.5" />{canManage ? '编辑' : '跟进'}</Button>{!lead.converted_customer_id && !protectedLead && <Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700" onClick={() => void openDealControl(lead)}><ClipboardCheck className="mr-1 h-3.5 w-3.5" />成交审核</Button>}{lead.converted_customer_id && <Button size="sm" variant="outline" className="text-emerald-700" onClick={() => window.location.assign(`/customers?detail=${lead.converted_customer_id}&tab=info`)}>正式客户</Button>}<Button size="sm" variant="outline" className={lead.do_not_contact ? 'text-emerald-700' : 'text-rose-700'} onClick={() => updateProtection(lead, 'do_not_contact', !lead.do_not_contact)}>{lead.do_not_contact ? '解除禁联' : '禁止联系'}</Button>{canManage && <Button size="sm" variant="outline" onClick={() => updateProtection(lead, 'is_blacklisted', !lead.is_blacklisted)}>{lead.is_blacklisted ? '移出黑名单' : '黑名单'}</Button>}</div></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-col gap-3 border-t bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">共 {total} 条，第 {page}/{totalPages} 页</p>
+            <div className="flex items-center gap-2"><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>上一页</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>下一页</Button></div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader><DialogTitle>{editing ? (canManage ? '编辑销售线索' : '记录跟进结果') : '新增销售线索'}</DialogTitle></DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {canManage && <>
+              <div><Label>商家名称 *</Label><Input value={form.business_name} onChange={event => setForm({ ...form, business_name: event.target.value })} /></div>
+              <div><Label>电话 *</Label><Input value={form.phone} onChange={event => setForm({ ...form, phone: event.target.value })} /></div>
+              <div><Label>联系人</Label><Input value={form.contact_name} onChange={event => setForm({ ...form, contact_name: event.target.value })} /></div>
+              <div><Label>行业</Label><Input value={form.industry} onChange={event => setForm({ ...form, industry: event.target.value })} placeholder="如：餐厅、美业" /></div>
+              <div><Label>国家</Label><Input value={form.country} onChange={event => setForm({ ...form, country: event.target.value })} /></div>
+              <div><Label>州/省</Label><Input value={form.state} onChange={event => setForm({ ...form, state: event.target.value })} /></div>
+              <div><Label>城市</Label><Input value={form.city} onChange={event => setForm({ ...form, city: event.target.value })} /></div>
+              <div><Label>地址</Label><Input value={form.address} onChange={event => setForm({ ...form, address: event.target.value })} /></div>
+              <div><Label>网站</Label><Input value={form.website} onChange={event => setForm({ ...form, website: event.target.value })} /></div>
+              <div><Label>数据来源</Label><Input value={form.source} onChange={event => setForm({ ...form, source: event.target.value })} /></div>
+              <div><Label>分配销售</Label><NativeSelect value={form.assigned_sales_id} onChange={value => setForm({ ...form, assigned_sales_id: value })} options={[{ value: '', label: '暂不分配' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /></div>
+            </>}
+            <div><Label>跟进状态</Label><NativeSelect value={form.status} onChange={value => setForm({ ...form, status: value })} options={statusOptions} /></div>
+            <div><Label>下次跟进</Label><Input type="datetime-local" value={form.next_follow_up_at} onChange={event => setForm({ ...form, next_follow_up_at: event.target.value })} /></div>
+            <div className="sm:col-span-2"><Label>当前跟进摘要</Label><Textarea rows={3} value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })} placeholder="这里显示最近一次摘要；完整沟通过程请使用下方跟进时间线" /></div>
+            {editing && <div className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2"><History className="h-5 w-5 text-blue-600" /><div><p className="font-semibold text-slate-900">持续跟进时间线</p><p className="text-xs text-slate-500">每次保存都会新增一条记录，不会覆盖之前的沟通内容。</p></div></div><Badge className="w-fit bg-white text-blue-700">共 {callHistory.length} 条</Badge></div>
+              {!editing.is_blacklisted && !editing.do_not_contact && <div className="mt-4 grid gap-3 rounded-lg border border-blue-100 bg-white p-3 sm:grid-cols-2">
+                <div><Label>本次跟进结果</Label><NativeSelect value={followUpForm.outcome} onChange={value => setFollowUpForm(current => ({ ...current, outcome: value }))} options={followUpOutcomeOptions} /></div>
+                <div><Label>下次跟进时间</Label><Input type="datetime-local" value={followUpForm.next_follow_up_at} onChange={event => setFollowUpForm(current => ({ ...current, next_follow_up_at: event.target.value }))} disabled={['not_interested', 'do_not_contact'].includes(followUpForm.outcome)} /></div>
+                <div className="sm:col-span-2"><Label>本次沟通内容 *</Label><Textarea rows={3} value={followUpForm.notes} onChange={event => setFollowUpForm(current => ({ ...current, notes: event.target.value }))} placeholder="记录客户反馈、需求、异议、已发送资料和下一步安排" /></div>
+                <div className="sm:col-span-2 flex justify-end"><Button type="button" disabled={followUpSaving || editing.status === 'new'} onClick={() => void recordFollowUp()}><MessageSquarePlus className="mr-1.5 h-4 w-4" />{followUpSaving ? '记录中...' : '新增跟进记录'}</Button></div>
+                {editing.status === 'new' && <p className="sm:col-span-2 text-xs text-amber-700">首次拨打请先在“每日拨打工作台”完成，之后即可在这里持续追加跟进。</p>}
+              </div>}
+              <div className="relative mt-4 space-y-0 pl-5 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-blue-200">
+                {historyLoading ? <p className="py-5 text-sm text-slate-500">正在加载跟进记录...</p> : callHistory.length === 0 ? <p className="py-5 text-sm text-slate-500">暂无历史跟进。首次联系完成后，记录会按时间显示在这里。</p> : callHistory.map(item => <div key={item.id} className="relative pb-4"><span className="absolute -left-5 top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-blue-500 shadow" /><div className="rounded-lg border border-slate-200 bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><Badge className={item.outcome === 'interested' || item.outcome === 'appointment' ? 'bg-emerald-100 text-emerald-700' : item.outcome === 'callback' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}>{item.outcome_label}</Badge><span className="flex items-center gap-1 text-xs text-slate-500"><Clock3 className="h-3.5 w-3.5" />{formatDate(item.called_at)}</span></div><p className="mt-2 whitespace-pre-line text-sm text-slate-700">{item.notes || '未填写沟通内容'}</p><p className="mt-2 text-xs text-slate-500">记录人：{item.sales_employee_name || '-'} · 下次跟进：{formatDate(item.next_follow_up_at)}</p></div></div>)}
+              </div>
+            </div>}
+            <div className="sm:col-span-2 rounded-xl border border-rose-100 bg-rose-50/60 p-4">
+              <div className="flex flex-wrap gap-5">
+                <label className="flex items-center gap-2 text-sm font-medium text-rose-800"><input type="checkbox" checked={form.do_not_contact} onChange={event => setForm({ ...form, do_not_contact: event.target.checked })} />禁止再联系</label>
+                {canManage && <label className="flex items-center gap-2 text-sm font-medium text-slate-800"><input type="checkbox" checked={form.is_blacklisted} onChange={event => setForm({ ...form, is_blacklisted: event.target.checked })} />加入黑名单</label>}
+              </div>
+              {form.do_not_contact && <Input className="mt-3 bg-white" value={form.do_not_contact_reason} onChange={event => setForm({ ...form, do_not_contact_reason: event.target.value })} placeholder="必填：禁止再联系原因" />}
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setShowForm(false)}>取消</Button><Button disabled={saving} onClick={handleSave}>{saving ? '保存中...' : '保存'}</Button></div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
+        <DialogContent className="max-h-[82vh] max-w-3xl overflow-y-auto">
+          <DialogHeader><DialogTitle>线索保护与回收</DialogTitle></DialogHeader>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">未触达线索超过 48 小时，或下次跟进已逾期 3 天，会进入主管可回收名单。系统不会自动抢线索；有意向、已预约线索始终受保护。</div>
+          <div className="space-y-3">{(recoveryOverview?.items || []).filter(item => item.state !== 'active').map(item => <div key={item.lead_id} className="rounded-xl border border-slate-200 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-slate-900">{item.business_name}</p><Badge className={item.state === 'recoverable' ? 'bg-rose-100 text-rose-700' : item.state === 'protected' ? 'bg-emerald-100 text-emerald-700' : item.state === 'extended' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}>{item.state === 'recoverable' ? '可回收' : item.state === 'protected' ? '受保护' : item.state === 'extended' ? '已延期保护' : '提醒跟进'}</Badge></div><p className="mt-1 text-sm text-slate-600">当前负责人：{item.assigned_sales_name || '待分配'} · {item.message}</p>{item.deadline && <p className="mt-1 text-xs text-slate-500">保护/提醒截止：{formatDate(item.deadline)}</p>}{item.extension_request && <p className="mt-1 text-xs text-violet-700">延期申请：{item.extension_request.requested_by || item.assigned_sales_name || '销售'} - {item.extension_request.reason || '未说明原因'}</p>}</div><div className="flex shrink-0 flex-wrap gap-2">{item.extension_request && <Button size="sm" variant="outline" disabled={recoveryBusy === item.lead_id} onClick={() => void handleRecoveryAction(item, 'approve-extension')}>{recoveryBusy === item.lead_id ? '处理中...' : '批准延期'}</Button>}{item.state === 'recoverable' && <Button size="sm" variant="outline" className="border-rose-200 text-rose-700" disabled={recoveryBusy === item.lead_id} onClick={() => void handleRecoveryAction(item, 'reclaim')}>{recoveryBusy === item.lead_id ? '处理中...' : '回收至待分配'}</Button>}</div></div></div>)}{!(recoveryOverview?.items || []).some(item => item.state !== 'active') && <p className="py-10 text-center text-sm text-slate-500">目前没有需要处理的线索保护提醒。</p>}</div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!dealLead} onOpenChange={open => { if (!open) { setDealLead(null); setDealReadiness(null); } }}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader><DialogTitle>成交审核 · {dealLead?.business_name}</DialogTitle></DialogHeader>
+          <p className="-mt-2 text-sm text-slate-500">报价审批、运营交接和收款确认完成前，线索不会进入正式客户管理、成交或财务数据。</p>
+          {dealLoading ? <div className="py-16 text-center text-sm text-slate-500">正在加载成交审核资料...</div> : <div className="space-y-5">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><div className="flex items-start gap-2"><FileText className="mt-0.5 h-4 w-4 text-amber-700" /><div><p className="font-semibold text-amber-900">当前待完成项</p><div className="mt-2 flex flex-wrap gap-2">{(dealReadiness?.blockers || []).map(item => <Badge key={item} className="bg-white text-amber-800 ring-1 ring-amber-200">{item}</Badge>)}{dealReadiness && dealReadiness.blockers.length === 0 && <Badge className="bg-emerald-100 text-emerald-800">审核完成，可转入正式客户</Badge>}</div></div></div></div>
+
+            <section className="rounded-xl border border-slate-200 p-4"><div className="mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-blue-600" /><div><p className="font-semibold text-slate-900">1. 报价审批单</p><p className="text-xs text-slate-500">销售提交报价；销售主管或系统管理员审批。历史报价会保留，不会覆盖。</p></div></div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><div><Label>套餐名称 *</Label><Input value={quoteForm.package_name} onChange={event => setQuoteForm({ ...quoteForm, package_name: event.target.value })} placeholder="如：专业套餐" /></div><div><Label>合作平台</Label><Input value={quoteForm.selected_platforms} onChange={event => setQuoteForm({ ...quoteForm, selected_platforms: event.target.value })} placeholder="Google, Facebook" /></div><div><Label>收费模式</Label><NativeSelect value={quoteForm.billing_mode} onChange={value => setQuoteForm({ ...quoteForm, billing_mode: value })} options={[{ value: 'manual', label: '手动收款' }, { value: 'subscription', label: '订阅续费' }]} /></div><div><Label>收款方式</Label><NativeSelect value={quoteForm.payment_method} onChange={value => setQuoteForm({ ...quoteForm, payment_method: value })} options={[{ value: 'stripe', label: 'Stripe' }, { value: 'check', label: '支票' }, { value: 'zelle', label: 'Zelle' }, { value: 'bank_transfer', label: '银行转账' }, { value: 'other', label: '其他' }]} /></div><div><Label>原报价 *</Label><Input type="number" min="0" value={quoteForm.list_amount} onChange={event => setQuoteForm({ ...quoteForm, list_amount: event.target.value })} /></div><div><Label>优惠金额</Label><Input type="number" min="0" value={quoteForm.discount_amount} onChange={event => setQuoteForm({ ...quoteForm, discount_amount: event.target.value })} /></div><div><Label>服务开始</Label><Input type="date" value={quoteForm.service_start_date} onChange={event => setQuoteForm({ ...quoteForm, service_start_date: event.target.value })} /></div><div><Label>服务结束</Label><Input type="date" value={quoteForm.service_end_date} onChange={event => setQuoteForm({ ...quoteForm, service_end_date: event.target.value })} /></div><div className="flex items-end"><Button className="w-full" disabled={dealSaving} onClick={() => void submitQuote()}>提交报价审批</Button></div><div className="sm:col-span-2 lg:col-span-3"><Label>特殊条款 / 折扣原因</Label><Textarea rows={2} value={quoteForm.special_terms} onChange={event => setQuoteForm({ ...quoteForm, special_terms: event.target.value })} placeholder="例如：客户需求、折扣依据、交付范围" /></div></div>
+              <div className="mt-4 space-y-2">{(dealReadiness?.quotes || []).map(quote => <div key={quote.id} className={`flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${quote.status === 'superseded' ? 'bg-slate-100 opacity-70' : 'bg-slate-50'}`}><div><p className="font-medium text-slate-900">{quote.package_name} · {quote.currency} {quote.final_amount.toFixed(2)}</p><p className="text-xs text-slate-500">{quote.selected_platforms.join('、') || '未指定平台'} · {quote.billing_mode === 'subscription' ? '订阅续费' : '手动收款'} · {quote.payment_method}</p>{quote.review_notes && <p className="mt-1 text-xs text-slate-600">审批备注：{quote.review_notes}</p>}</div><div className="flex items-center gap-2"><Badge className={quote.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : quote.status === 'rejected' ? 'bg-rose-100 text-rose-700' : quote.status === 'superseded' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-800'}>{quote.status === 'approved' ? '当前生效' : quote.status === 'rejected' ? '已驳回' : quote.status === 'superseded' ? '历史失效' : '待审批'}</Badge>{canManage && quote.status === 'submitted' && <><Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700" disabled={dealSaving} onClick={() => void reviewQuote(quote, 'approved')}>批准</Button><Button size="sm" variant="outline" className="border-rose-200 text-rose-700" disabled={dealSaving} onClick={() => void reviewQuote(quote, 'rejected')}>驳回</Button></>}</div></div>)}{!(dealReadiness?.quotes || []).length && <p className="py-3 text-center text-sm text-slate-400">尚未提交报价</p>}</div>
+            </section>
+
+            <section className="rounded-xl border border-slate-200 p-4"><div className="mb-4 flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-violet-600" /><div><p className="font-semibold text-slate-900">2. 成交交接清单</p><p className="text-xs text-slate-500">成交前把客户目标、对接人和运营安排写清楚，避免销售与运营信息断层。</p></div></div><div className="grid gap-3 sm:grid-cols-2"><div><Label>关联当前生效报价</Label><NativeSelect value={handoffForm.quote_id} onChange={value => setHandoffForm({ ...handoffForm, quote_id: value })} options={[{ value: '', label: '请选择已批准报价' }, ...(dealReadiness?.quotes || []).filter(quote => quote.status === 'approved').map(quote => ({ value: String(quote.id), label: `${quote.package_name} · ${quote.currency} ${quote.final_amount}` }))]} /></div><div><Label>运营对接负责人 *</Label><Input value={handoffForm.operations_owner} onChange={event => setHandoffForm({ ...handoffForm, operations_owner: event.target.value })} placeholder="填写负责的运营人员" /></div><div className="sm:col-span-2"><Label>客户目标 *</Label><Textarea rows={2} value={handoffForm.customer_goal} onChange={event => setHandoffForm({ ...handoffForm, customer_goal: event.target.value })} placeholder="例如：提升本地搜索曝光、预约量或内容更新频率" /></div><div className="sm:col-span-2"><Label>关键联系人 / 对接方式 *</Label><Textarea rows={2} value={handoffForm.key_contacts} onChange={event => setHandoffForm({ ...handoffForm, key_contacts: event.target.value })} placeholder="联系人姓名、电话、邮箱、谁负责提供素材或权限" /></div><div><Label>服务开始</Label><Input type="date" value={handoffForm.service_start_date} onChange={event => setHandoffForm({ ...handoffForm, service_start_date: event.target.value })} /></div><div><Label>服务结束</Label><Input type="date" value={handoffForm.service_end_date} onChange={event => setHandoffForm({ ...handoffForm, service_end_date: event.target.value })} /></div><div className="sm:col-span-2"><Label>特殊承诺 / 注意事项</Label><Textarea rows={2} value={handoffForm.special_commitments} onChange={event => setHandoffForm({ ...handoffForm, special_commitments: event.target.value })} /></div><div className="sm:col-span-2"><Label>交接备注</Label><Textarea rows={2} value={handoffForm.handoff_notes} onChange={event => setHandoffForm({ ...handoffForm, handoff_notes: event.target.value })} /></div></div><div className="mt-4 flex flex-wrap gap-5 rounded-lg bg-slate-50 p-3"><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={handoffForm.operations_group_created} onChange={event => setHandoffForm({ ...handoffForm, operations_group_created: event.target.checked })} />已建立运营对接群 *</label><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={handoffForm.generate_service_board} onChange={event => setHandoffForm({ ...handoffForm, generate_service_board: event.target.checked })} />转入后生成服务看板</label></div><div className="mt-4"><Button disabled={dealSaving} onClick={() => void saveHandoff()}>保存成交交接清单</Button></div></section>
+
+            {canManage && <section className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-4"><div className="mb-4 flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-cyan-700" /><div><p className="font-semibold text-slate-900">3. 收款确认</p><p className="text-xs text-slate-500">订金不会被当成全额收入；只有“已全额支付”后才允许转入正式客户。</p></div></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div><Label>收款状态</Label><NativeSelect value={paymentForm.payment_status} onChange={value => setPaymentForm({ ...paymentForm, payment_status: value })} options={[{ value: 'pending', label: '待收款' }, { value: 'deposit_paid', label: '已收订金' }, { value: 'paid', label: '已全额支付' }, { value: 'failed', label: '支付失败' }, { value: 'refunded', label: '已退款' }]} /></div><div><Label>实收金额</Label><Input type="number" min="0" value={paymentForm.amount_received} onChange={event => setPaymentForm({ ...paymentForm, amount_received: event.target.value })} placeholder="全额支付可留空自动带入" /></div><div><Label>实际收款日期</Label><Input type="date" value={paymentForm.payment_date} onChange={event => setPaymentForm({ ...paymentForm, payment_date: event.target.value })} /></div><div><Label>交易号 / 支票号</Label><Input value={paymentForm.payment_reference} onChange={event => setPaymentForm({ ...paymentForm, payment_reference: event.target.value })} /></div></div><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">{dealReadiness?.handoff?.payment_confirmed_by_name ? `最近确认：${dealReadiness.handoff.payment_confirmed_by_name}` : '尚未由主管确认收款状态'}</div><Button disabled={dealSaving || !dealReadiness?.handoff} onClick={() => void savePaymentStatus()}>保存收款状态</Button></div></section>}
+
+            {canManage && <div className="flex justify-end border-t pt-4"><Button disabled={dealSaving || !!dealReadiness?.blockers?.length || convertingId === dealLead?.id} className="bg-emerald-600 hover:bg-emerald-700" onClick={() => void convertToCustomer()}><CheckCircle2 className="mr-2 h-4 w-4" />{convertingId === dealLead?.id ? '转入中...' : dealReadiness?.blockers?.length ? '请先完成审核项' : '确认合作并转入正式客户'}</Button></div>}
+          </div>}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

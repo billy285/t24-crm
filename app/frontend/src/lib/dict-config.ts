@@ -100,11 +100,13 @@ const packagePlatformRules: Array<{ platform: string; labels: string[] }> = [
 
 export function normalizeCustomerPackages(entries: Record<string, string>) {
   const labels = Object.values(entries).map(label => label.trim()).filter(Boolean);
-  const hasStandardPackage = Object.values(standardCustomerPackageLabels).some(label => labels.includes(label));
   const looksLikeLegacyLevelPackages = labels.length > 0 && labels.every(label => /^[A-Ea-e][类级]?套餐$/.test(label));
-  if (hasStandardPackage || looksLikeLegacyLevelPackages || labels.length === 0) {
+  if (looksLikeLegacyLevelPackages || labels.length === 0) {
     return standardCustomerPackageLabels;
   }
+
+  // Keep the standard packages while preserving every custom package saved by the team.
+  // The previous check discarded custom entries whenever a standard package existed.
   return {
     ...standardCustomerPackageLabels,
     ...entries,

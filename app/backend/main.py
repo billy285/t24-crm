@@ -18,8 +18,10 @@ from services.database import initialize_database, close_database
 from services.mock_data import initialize_mock_data
 from services.auth import initialize_admin_user
 from services.emp_auth import initialize_default_employee_admin
+from services.emp_auth import decode_access_token as decode_employee_access_token
 from services.deal_payment_sync import backfill_missing_payments_from_deals
 from core.database import db_manager
+from core.auth import decode_access_token as decode_platform_access_token
 # MODULE_IMPORTS_END
 
 
@@ -149,6 +151,46 @@ NO_CACHE_HEADERS = {
     "Pragma": "no-cache",
     "Expires": "0",
 }
+
+PHONE_SALES_ROLES = {"sales", "sales_manager"}
+PHONE_SALES_ALLOWED_API_PREFIXES = (
+    "/api/ringcentral",
+    "/api/v1/emp-auth",
+    "/api/v1/sales-leads",
+    "/api/v1/sales-deal-controls",
+    "/api/v1/merchant-pool",
+    "/api/v1/sales-knowledge",
+)
+
+
+def _request_role(request: Request) -> str:
+    authorization = request.headers.get("authorization", "")
+    if not authorization.lower().startswith("bearer "):
+        return ""
+    token = authorization.split(" ", 1)[1].strip()
+    payload = decode_employee_access_token(token)
+    if not payload:
+        try:
+            payload = decode_platform_access_token(token)
+        except Exception:
+            payload = None
+    return str((payload or {}).get("role") or "").strip().lower()
+
+
+@app.middleware("http")
+async def isolate_phone_sales_access(request: Request, call_next):
+    """Keep pre-sale users out of contracted-customer and finance APIs."""
+    path = request.url.path
+    role = _request_role(request)
+    if path.startswith("/api/") and role in PHONE_SALES_ROLES:
+        is_allowed = any(path.startswith(prefix) for prefix in PHONE_SALES_ALLOWED_API_PREFIXES)
+        is_readonly_app_config = request.method == "GET" and path.startswith("/api/v1/app-config")
+        if not is_allowed and not is_readonly_app_config:
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={"detail": "电话销售账号只能访问电话销售中心"},
+            )
+    return await call_next(request)
 
 
 def _apply_no_cache_headers(response):

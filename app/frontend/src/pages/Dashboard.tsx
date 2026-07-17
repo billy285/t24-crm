@@ -1,15 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
-import { isAdminRole } from '../lib/permissions';
+import { invokeWithAuth } from '../lib/tokenStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, UserPlus, Handshake, AlertTriangle, DollarSign,
   Clock, TrendingUp, ListTodo, Bell, CalendarClock, CreditCard, PackageCheck,
-  Palette, Truck, CheckCircle2, Timer, PhoneCall
+  Palette, CheckCircle2, Timer, PhoneCall, Target, PhoneForwarded,
+  CalendarCheck2, ShieldAlert, FileCheck2, Banknote, ArrowRight
 } from 'lucide-react';
 import { useBusinessDicts } from '../lib/dict-config';
 import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
@@ -24,6 +26,42 @@ interface Reminder {
   date?: string;
   link?: string;
 }
+
+type SalesManagementDashboard = {
+  target_date: string;
+  metrics: {
+    assigned: number; completed: number; completion_rate: number; calls: number;
+    connected: number; connection_rate: number; interested: number; interest_rate: number;
+    appointments: number; appointment_rate: number; converted: number; conversion_rate: number;
+  };
+  owner_attention?: {
+    high_intent_stale: number; due_followups: number; overdue_followups: number;
+    pending_quotes: number; unpaid_handoffs: number;
+  };
+  deal_pipeline?: {
+    pending_quotes: number; approved_quotes: number; approved_quote_amount: number;
+    confirmed_received_amount: number; unpaid_handoffs: number;
+  };
+};
+
+type SalesPerformanceItem = {
+  rank: number; sales_employee_id: number; salesperson: string; score: number; confidence: string;
+  metrics: {
+    assigned: number; completed: number; calls: number; connected: number; interested: number;
+    appointments: number; conversions: number; completion_rate: number; connection_rate: number;
+    interest_rate: number; note_quality_rate: number; overdue_followups: number;
+  };
+  suggestions: string[];
+};
+
+type SalesPerformanceDashboard = {
+  period: { days: number; start_date: string; end_date: string };
+  items: SalesPerformanceItem[];
+};
+
+type SalesRecoveryOverview = {
+  summary: { recoverable: number; watch: number; protected: number; extended: number; extension_requests: number };
+};
 
 const buildReminderLink = (path: string, params: Record<string, string | number | null | undefined>) => {
   const query = new URLSearchParams();
@@ -43,6 +81,11 @@ export default function Dashboard() {
   const [data, setData] = useState<any>({});
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [salesPeriod, setSalesPeriod] = useState<1 | 7 | 30>(7);
+  const [salesManagement, setSalesManagement] = useState<SalesManagementDashboard | null>(null);
+  const [salesPerformance, setSalesPerformance] = useState<SalesPerformanceDashboard | null>(null);
+  const [salesRecovery, setSalesRecovery] = useState<SalesRecoveryOverview | null>(null);
+  const [salesCockpitLoading, setSalesCockpitLoading] = useState(false);
   const now = new Date();
   const [lbYear, setLbYear] = useState<string>(String(now.getFullYear()));
   const [lbMonth, setLbMonth] = useState<string>(String(now.getMonth() + 1));
@@ -183,6 +226,29 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
+
+  const loadSalesCockpit = async (period: 1 | 7 | 30 = salesPeriod) => {
+    if (!isAdm) return;
+    setSalesCockpitLoading(true);
+    try {
+      const [managementRes, performanceRes, recoveryRes] = await Promise.all([
+        invokeWithAuth({ url: '/api/v1/sales-leads/dashboard/management', method: 'GET' }),
+        invokeWithAuth({ url: `/api/v1/sales-leads/dashboard/performance?days=${period}`, method: 'GET' }),
+        invokeWithAuth({ url: '/api/v1/sales-leads/recovery/overview', method: 'GET' }),
+      ]);
+      setSalesManagement(managementRes.data || null);
+      setSalesPerformance(performanceRes.data || null);
+      setSalesRecovery(recoveryRes.data || null);
+    } catch (error) {
+      console.error('Failed to load sales owner cockpit:', error);
+    } finally {
+      setSalesCockpitLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdm) void loadSalesCockpit(salesPeriod);
+  }, [isAdm, salesPeriod]);
 
   useAutoRefresh(loadDashboard, { intervalMs: 30000 });
 
@@ -483,6 +549,118 @@ export default function Dashboard() {
     );
   };
 
+  const renderSalesOwnerCockpit = () => {
+    if (!isAdm) return null;
+    if (!salesManagement && salesCockpitLoading) {
+      return <Card className="border-slate-200"><CardContent className="flex h-40 items-center justify-center text-sm text-slate-500">正在汇总电话销售经营数据...</CardContent></Card>;
+    }
+    if (!salesManagement) return null;
+
+    const people = salesPerformance?.items || [];
+    const periodTotals = people.reduce((totals, item) => ({
+      assigned: totals.assigned + item.metrics.assigned,
+      completed: totals.completed + item.metrics.completed,
+      calls: totals.calls + item.metrics.calls,
+      connected: totals.connected + item.metrics.connected,
+      interested: totals.interested + item.metrics.interested,
+      appointments: totals.appointments + item.metrics.appointments,
+      converted: totals.converted + item.metrics.conversions,
+    }), { assigned: 0, completed: 0, calls: 0, connected: 0, interested: 0, appointments: 0, converted: 0 });
+    const rawMetrics = periodTotals;
+    const metrics = {
+      ...rawMetrics,
+      completion_rate: Math.round(periodTotals.completed / Math.max(periodTotals.assigned, 1) * 1000) / 10,
+      connection_rate: Math.round(periodTotals.connected / Math.max(periodTotals.calls, 1) * 1000) / 10,
+      interest_rate: Math.round(periodTotals.interested / Math.max(periodTotals.connected, 1) * 1000) / 10,
+      appointment_rate: Math.round(periodTotals.appointments / Math.max(periodTotals.interested, 1) * 1000) / 10,
+    };
+    const attention = salesManagement.owner_attention || { high_intent_stale: 0, due_followups: 0, overdue_followups: 0, pending_quotes: 0, unpaid_handoffs: 0 };
+    const pipeline = salesManagement.deal_pipeline || { pending_quotes: 0, approved_quotes: 0, approved_quote_amount: 0, confirmed_received_amount: 0, unpaid_handoffs: 0 };
+    const lowExecution = people.filter(item => item.metrics.assigned > 0 && item.metrics.completion_rate < 80).length;
+    const weakNotes = people.filter(item => item.metrics.calls >= 5 && item.metrics.note_quality_rate < 70).length;
+    const funnel = [
+      { label: '已分配', value: metrics.assigned, color: 'bg-slate-700' },
+      { label: '已拨打', value: metrics.calls, color: 'bg-blue-600' },
+      { label: '已接通', value: metrics.connected, color: 'bg-cyan-500' },
+      { label: '有意向', value: metrics.interested, color: 'bg-amber-500' },
+      { label: '已预约', value: metrics.appointments, color: 'bg-violet-500' },
+      { label: '转正式客户', value: metrics.converted, color: 'bg-emerald-600' },
+    ];
+    const funnelBase = Math.max(...funnel.map(item => item.value), 1);
+    const salesMetricCards = [
+      { label: '已分配任务', value: metrics.assigned, helper: `${metrics.completed} 条已完成`, icon: Target, tone: 'text-slate-700 bg-slate-100', link: '/sales-workbench' },
+      { label: '拨打完成率', value: `${metrics.completion_rate}%`, helper: `${metrics.calls} 次拨打记录`, icon: PhoneCall, tone: 'text-blue-700 bg-blue-50', link: '/sales-workbench' },
+      { label: '接通率', value: `${metrics.connection_rate}%`, helper: `${metrics.connected} 次有效接通`, icon: PhoneForwarded, tone: 'text-cyan-700 bg-cyan-50', link: '/sales-leads' },
+      { label: '意向率', value: `${metrics.interest_rate}%`, helper: `${metrics.interested} 个有意向`, icon: TrendingUp, tone: 'text-amber-700 bg-amber-50', link: '/sales-leads' },
+      { label: '预约率', value: `${metrics.appointment_rate}%`, helper: `${metrics.appointments} 个已预约`, icon: CalendarCheck2, tone: 'text-violet-700 bg-violet-50', link: '/sales-leads' },
+      { label: '转正式客户', value: metrics.converted, helper: '仅统计确认转入', icon: Handshake, tone: 'text-emerald-700 bg-emerald-50', link: '/sales-leads' },
+      { label: '待审批报价', value: pipeline.pending_quotes, helper: `${pipeline.approved_quotes} 份已批准`, icon: FileCheck2, tone: 'text-orange-700 bg-orange-50', link: '/sales-leads' },
+      { label: '售前确认收款', value: `$${pipeline.confirmed_received_amount.toLocaleString()}`, helper: `已批报价 $${pipeline.approved_quote_amount.toLocaleString()}`, icon: Banknote, tone: 'text-emerald-700 bg-emerald-50', link: '/sales-leads' },
+    ];
+    const ownerTodos = [
+      { label: '高意向超过24小时未推进', count: attention.high_intent_stale, tone: 'text-rose-700 bg-rose-50 border-rose-100' },
+      { label: '已经逾期的回访', count: attention.overdue_followups, tone: 'text-rose-700 bg-rose-50 border-rose-100' },
+      { label: '今天必须完成的回访', count: attention.due_followups, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
+      { label: '成交交接仍未收全款', count: attention.unpaid_handoffs, tone: 'text-orange-700 bg-orange-50 border-orange-100' },
+      { label: '任务完成率低于80%的销售', count: lowExecution, tone: 'text-blue-700 bg-blue-50 border-blue-100' },
+      { label: '通话备注质量需要改善', count: weakNotes, tone: 'text-violet-700 bg-violet-50 border-violet-100' },
+      { label: '可回收或待跟进线索', count: (salesRecovery?.summary.recoverable || 0) + (salesRecovery?.summary.watch || 0), tone: 'text-slate-700 bg-slate-50 border-slate-200' },
+    ].filter(item => item.count > 0);
+
+    return (
+      <section className="space-y-4">
+        <Card className="overflow-hidden border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white shadow-lg">
+          <CardContent className="p-5 md:p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300"><TrendingUp className="h-4 w-4" />销售老板驾驶舱</div>
+                <h3 className="mt-2 text-xl font-semibold">从拨打执行到正式成交，一眼看清销售推进效率</h3>
+                <p className="mt-1 text-xs text-slate-300">销售预测与正式财务数据分开统计；售前收款仅显示销售交接中已确认的金额。</p>
+              </div>
+              <div className="flex rounded-lg bg-white/10 p-1">
+                {([{ value: 1, label: '今日' }, { value: 7, label: '近7天' }, { value: 30, label: '近30天' }] as const).map(option => (
+                  <button key={option.value} type="button" onClick={() => setSalesPeriod(option.value)} className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${salesPeriod === option.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-300 hover:text-white'}`}>{option.label}</button>
+                ))}
+              </div>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+              {salesMetricCards.map(item => {
+                const Icon = item.icon;
+                return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="rounded-xl border border-white/10 bg-white/[0.07] p-3 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.12]"><div className={`mb-3 flex h-8 w-8 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="text-xs text-slate-300">{item.label}</p><p className="mt-1 text-xl font-bold text-white">{item.value}</p><p className="mt-1 truncate text-[11px] text-slate-400">{item.helper}</p></button>;
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+          <Card className="border-slate-200">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center justify-between text-base"><span>销售转化漏斗</span><Button size="sm" variant="outline" onClick={() => navigate('/sales-leads')}>进入电话销售中心 <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {funnel.map((item, index) => <div key={item.label} className="grid grid-cols-[76px_1fr_44px] items-center gap-3"><span className="text-xs font-medium text-slate-600">{item.label}</span><div className="h-7 overflow-hidden rounded-md bg-slate-100"><div className={`flex h-full min-w-[8px] items-center rounded-md px-2 text-[10px] text-white transition-all ${item.color}`} style={{ width: `${Math.max(item.value / funnelBase * 100, item.value ? 8 : 0)}%` }}>{index > 0 && funnel[index - 1].value > 0 ? `${Math.round(item.value / funnel[index - 1].value * 100)}%` : ''}</div></div><span className="text-right text-sm font-bold text-slate-800">{item.value}</span></div>)}
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><ShieldAlert className="h-4 w-4 text-rose-500" />老板待处理事项</CardTitle></CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {ownerTodos.map(item => <button key={item.label} type="button" onClick={() => navigate('/sales-leads')} className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm transition hover:shadow-sm ${item.tone}`}><span>{item.label}</span><span className="rounded-full bg-white px-2 py-0.5 font-bold">{item.count}</span></button>)}
+                {ownerTodos.length === 0 && <div className="rounded-lg bg-emerald-50 p-5 text-center text-sm text-emerald-700"><CheckCircle2 className="mx-auto mb-2 h-6 w-6" />当前没有销售异常待办</div>}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="border-slate-200">
+          <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="text-base">团队表现与系统建议</CardTitle><p className="mt-1 text-xs text-slate-500">{salesPeriod === 1 ? '按今天真实拨打与跟进记录评分。' : `按最近${salesPeriod}天真实拨打与跟进记录评分。`}</p></div><Button size="sm" variant="outline" onClick={() => navigate('/sales-leads')}>查看完整评分</Button></div></CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full min-w-[860px] text-left text-sm"><thead className="border-b text-xs text-slate-500"><tr><th className="pb-2">排名 / 销售</th><th className="pb-2">综合分</th><th className="pb-2">任务完成</th><th className="pb-2">接通率</th><th className="pb-2">意向率</th><th className="pb-2">预约 / 转客户</th><th className="pb-2">逾期回访</th><th className="pb-2">下一步建议</th></tr></thead><tbody className="divide-y divide-slate-100">{people.slice(0, 8).map(item => <tr key={item.sales_employee_id}><td className="py-3 font-semibold text-slate-900">#{item.rank} {item.salesperson}<p className="text-[11px] font-normal text-slate-400">{item.confidence}</p></td><td className="py-3 text-lg font-bold text-blue-700">{item.score}</td><td className="py-3">{item.metrics.completion_rate}%</td><td className="py-3">{item.metrics.connection_rate}%</td><td className="py-3">{item.metrics.interest_rate}%</td><td className="py-3">{item.metrics.appointments} / {item.metrics.conversions}</td><td className={`py-3 font-semibold ${item.metrics.overdue_followups ? 'text-rose-600' : 'text-emerald-600'}`}>{item.metrics.overdue_followups}</td><td className="max-w-xs py-3 text-xs text-slate-600">{item.suggestions[0]}</td></tr>)}{people.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-slate-500">暂无足够的销售执行数据</td></tr>}</tbody></table>
+          </CardContent>
+        </Card>
+      </section>
+    );
+  };
+
   // ---------- Sales Dashboard ----------
   if (isSales) {
     const recentCustomers = (data.customers || []).slice(0, 5);
@@ -606,6 +784,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-slate-800">管理员工作台</h2>
+      {renderSalesOwnerCockpit()}
       {renderReminders()}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

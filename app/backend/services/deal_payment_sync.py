@@ -134,26 +134,40 @@ def _choose_payment_date(deal: Deals, subscription: Optional[Subscriptions]) -> 
     )
 
 
-async def sync_payment_from_deal(db: AsyncSession, deal: Deals, commit: bool = True) -> Payments:
+async def sync_payment_from_deal(
+    db: AsyncSession,
+    deal: Deals,
+    commit: bool = True,
+    *,
+    amount_paid_override: Optional[float] = None,
+    payment_method_override: Optional[str] = None,
+    payment_mode_override: Optional[str] = None,
+    currency_override: Optional[str] = None,
+    transaction_reference_override: Optional[str] = None,
+    payment_date_override: Optional[datetime] = None,
+) -> Payments:
     customer = await _load_customer(db, deal.customer_id)
     subscription = await _load_subscription_for_deal(db, deal)
     payment = await _load_synced_payment(db, deal.id)
     if payment is None:
         payment = await _load_matching_payment(db, deal)
 
-    chosen_payment_date = _choose_payment_date(deal, subscription)
+    chosen_payment_date = payment_date_override or _choose_payment_date(deal, subscription)
     is_synced_payment = bool(payment and payment.source_deal_id == deal.id)
     payment_date = chosen_payment_date if (payment is None or is_synced_payment) else (payment.payment_date or chosen_payment_date)
     created_at = (payment.created_at if payment else None) or deal.created_at or payment_date
     amount_due = float(deal.deal_amount or 0)
     amount_paid = amount_due if deal.is_paid else 0.0
+    if amount_paid_override is not None:
+        amount_paid = min(max(float(amount_paid_override), 0.0), amount_due)
     outstanding_amount = max(amount_due - amount_paid, 0.0)
     payment_mode = (
-        payment.payment_mode
+        payment_mode_override
+        or (payment.payment_mode
         if payment and getattr(payment, "payment_mode", None)
-        else infer_payment_mode(payment.payment_method if payment else None)
+        else infer_payment_mode(payment_method_override or (payment.payment_method if payment else None)))
     )
-    payment_method = normalize_payment_method(payment.payment_method if payment else None)
+    payment_method = normalize_payment_method(payment_method_override or (payment.payment_method if payment else None))
     if payment_mode == "subscription_auto":
         payment_method = payment_method or "stripe"
     else:
@@ -186,11 +200,11 @@ async def sync_payment_from_deal(db: AsyncSession, deal: Deals, commit: bool = T
         "ads_recharge_amount": ads_recharge_amount,
         "stripe_fee_amount": stripe_fee_amount,
         "net_amount": max(amount_paid - stripe_fee_amount, 0.0),
-        "currency": payment.currency if payment and payment.currency else "USD",
+        "currency": currency_override or (payment.currency if payment and payment.currency else "USD"),
         "payment_date": payment_date,
         "payment_mode": payment_mode,
         "payment_method": payment_method,
-        "transaction_reference": payment.transaction_reference if payment else None,
+        "transaction_reference": transaction_reference_override or (payment.transaction_reference if payment else None),
         "billing_cycle": deal.billing_cycle,
         "coverage_start": deal.service_start_date,
         "coverage_end": deal.service_end_date,

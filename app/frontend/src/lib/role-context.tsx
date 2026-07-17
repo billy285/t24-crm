@@ -9,7 +9,7 @@ import {
 import { APP_CONFIG_UPDATED_EVENT, readCachedAppConfig, syncAppConfigCache } from './app-config';
 import { getToken, setToken as setAccessToken, clearToken as clearTokenStore, refreshToken, invokeWithAuth } from './tokenStore';
 
-export type RoleType = 'super_admin' | 'admin' | 'sales' | 'ops' | 'design' | 'finance' | '';
+export type RoleType = 'super_admin' | 'admin' | 'sales' | 'sales_manager' | 'ops' | 'design' | 'finance' | '';
 
 interface RoleContextType {
   user: any;
@@ -49,7 +49,7 @@ export function useRole() {
 // Re-export labels for backward compatibility
 export const roleLabels: Record<string, string> = {
   super_admin: '超级管理员', admin: '管理员',
-  sales: '销售', ops: '运营', design: '设计', finance: '财务',
+  sales: '销售', sales_manager: '销售主管', ops: '运营', design: '设计', finance: '财务',
   boss: '老板', // Legacy
 };
 
@@ -77,7 +77,8 @@ export const roleNavAccess: Record<string, string[]> = {
   super_admin: ['/', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
   admin: ['/', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
   boss: ['/', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
-  sales: ['/', '/customers', '/sales', '/deals', '/tasks'],
+  sales: ['/sales-leads', '/sales-workbench', '/sales-knowledge'],
+  sales_manager: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge'],
   ops: ['/', '/customers', '/tasks'],
   design: ['/', '/tasks'],
   finance: ['/', '/finance', '/customers'],

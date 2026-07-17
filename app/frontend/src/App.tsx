@@ -21,6 +21,10 @@ import Callbacks from './pages/Callbacks';
 import LoginPage from './pages/LoginPage';
 import NotFound from './pages/NotFound';
 import Payroll from './pages/Payroll';
+import SalesLeads from './pages/SalesLeads';
+import MerchantPool from './pages/MerchantPool';
+import SalesWorkbench from './pages/SalesWorkbench';
+import SalesKnowledge from './pages/SalesKnowledge';
 
 const queryClient = new QueryClient();
 
@@ -35,6 +39,10 @@ const App = () => (
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/auth/error" element={<AuthError />} />
             <Route path="/" element={<Layout><Dashboard /></Layout>} />
+            <Route path="/merchant-pool" element={<Layout><MerchantPool /></Layout>} />
+            <Route path="/sales-leads" element={<Layout><SalesLeads /></Layout>} />
+            <Route path="/sales-workbench" element={<Layout><SalesWorkbench /></Layout>} />
+            <Route path="/sales-knowledge" element={<Layout><SalesKnowledge /></Layout>} />
             <Route path="/customers" element={<Layout><Customers /></Layout>} />
             <Route path="/sales" element={<Layout><Sales /></Layout>} />
             <Route path="/deals" element={<Layout><Deals /></Layout>} />

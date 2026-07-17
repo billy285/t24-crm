@@ -17,15 +17,13 @@ def _auth_headers(role: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_business_roles_can_update_dictionary_config_only():
+def test_phone_sales_cannot_update_application_config():
     sales_user = type("User", (), {"role": "sales"})()
 
-    ensure_can_update_config("dict_config", sales_user)
-
-    with pytest.raises(HTTPException) as exc_info:
-        ensure_can_update_config("security_config", sales_user)
-
-    assert exc_info.value.status_code == 403
+    for key in ("dict_config", "security_config"):
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_can_update_config(key, sales_user)
+        assert exc_info.value.status_code == 403
 
 
 @pytest.mark.asyncio

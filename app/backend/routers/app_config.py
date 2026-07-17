@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(prefix="/api/v1/app-config", tags=["app-config"])
 
 ADMIN_CONFIG_ROLES = {"admin", "super_admin"}
-BUSINESS_DICT_CONFIG_ROLES = {"admin", "super_admin", "sales", "ops", "operations", "finance"}
+BUSINESS_DICT_CONFIG_ROLES = {"admin", "super_admin", "ops", "operations", "finance"}
 
 
 DEFAULT_APP_CONFIGS: Dict[str, Any] = {
@@ -20,6 +20,8 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
         "super_admin": {
             "pages": [
                 "/",
+                "/merchant-pool",
+                "/sales-leads",
                 "/customers",
                 "/sales",
                 "/deals",
@@ -66,6 +68,8 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
         "admin": {
             "pages": [
                 "/",
+                "/merchant-pool",
+                "/sales-leads",
                 "/customers",
                 "/sales",
                 "/deals",
@@ -110,17 +114,15 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
             "sensitiveFields": {"viewPassword": True, "copyPassword": True, "viewFinance": True},
         },
         "sales": {
-            "pages": ["/", "/customers", "/sales", "/deals", "/tasks", "/service-board", "/callbacks"],
-            "buttons": [
-                "customer_create",
-                "customer_edit",
-                "follow_up_create",
-                "follow_up_edit",
-                "deal_create",
-                "task_create",
-                "task_edit",
-            ],
+            "pages": ["/sales-leads"],
+            "buttons": [],
             "dataScope": "self",
+            "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": False},
+        },
+        "sales_manager": {
+            "pages": ["/merchant-pool", "/sales-leads"],
+            "buttons": [],
+            "dataScope": "department",
             "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": False},
         },
         "ops": {

@@ -11,10 +11,11 @@ type LoginLocationState = {
 export default function LoginPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { loading, isLoggedIn, isDisabled, login } = useRole();
+  const { loading, isLoggedIn, isDisabled, login, role } = useRole();
 
   const state = location.state as LoginLocationState | null;
-  const redirectTo = state?.from?.pathname || '/';
+  const requestedRedirect = state?.from?.pathname || '/';
+  const redirectTo = role === 'sales' || role === 'sales_manager' ? '/sales-leads' : requestedRedirect;
 
   if (loading) {
     return (
@@ -36,7 +37,10 @@ export default function LoginPage() {
     <Login
       onLoginSuccess={async (token, employee) => {
         await login(token, employee);
-        navigate(redirectTo, { replace: true });
+        const nextPath = employee?.role === 'sales' || employee?.role === 'sales_manager'
+          ? '/sales-leads'
+          : requestedRedirect;
+        navigate(nextPath, { replace: true });
       }}
     />
   );
