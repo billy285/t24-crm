@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
 import time
@@ -18,6 +19,7 @@ from core.mask_crypto import decrypt_text, encrypt_text
 RINGCENTRAL_SERVER_URL = "https://platform.ringcentral.com"
 RINGCENTRAL_DEFAULT_REDIRECT_URI = "https://t24-crm.com/api/ringcentral/callback"
 STATE_TTL_SECONDS = 15 * 60
+logger = logging.getLogger(__name__)
 
 
 def _required_env(name: str) -> str:
@@ -97,7 +99,29 @@ async def exchange_authorization_code(code: str) -> Dict[str, Any]:
             headers={"Accept": "application/json"},
         )
     if response.is_error:
-        raise HTTPException(status_code=502, detail="RingCentral 授权交换失败，请确认应用密钥和回调地址配置。")
+        # RingCentral's OAuth response tells us whether the app credentials,
+        # callback URL, or one-time authorization code needs correction. Only
+        # surface the provider error fields, never request credentials.
+        provider_reason = ""
+        try:
+            payload = response.json()
+            provider_reason = str(
+                payload.get("error_description") or payload.get("error") or payload.get("message") or ""
+            ).strip()
+        except (ValueError, TypeError):
+            provider_reason = ""
+        if provider_reason:
+            provider_reason = provider_reason[:180]
+        else:
+            provider_reason = f"HTTP {response.status_code}"
+        logger.warning("RingCentral OAuth token exchange failed: status=%s reason=%s", response.status_code, provider_reason)
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"RingCentral 授权交换失败：{provider_reason}。"
+                "请确认 Client ID、Client Secret 与回调地址完全一致后，再从工作台重新连接。"
+            ),
+        )
     return response.json()
 
 
