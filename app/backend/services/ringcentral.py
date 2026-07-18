@@ -91,12 +91,12 @@ def authorization_url(employee_id: int) -> str:
 async def exchange_authorization_code(code: str) -> Dict[str, Any]:
     client_id = _required_env("RINGCENTRAL_CLIENT_ID")
     client_secret = _required_env("RINGCENTRAL_CLIENT_SECRET")
+    basic_credentials = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(
             f"{RINGCENTRAL_SERVER_URL}/restapi/oauth/token",
             data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri()},
-            auth=(client_id, client_secret),
-            headers={"Accept": "application/json"},
+            headers={"Accept": "application/json", "Authorization": f"Basic {basic_credentials}"},
         )
     if response.is_error:
         # RingCentral's OAuth response tells us whether the app credentials,
