@@ -22,18 +22,29 @@ STATE_TTL_SECONDS = 15 * 60
 logger = logging.getLogger(__name__)
 
 
-def _required_env(name: str) -> str:
-    value = (os.getenv(name) or "").strip()
-    if not value:
+def _credential_value(name: str) -> str:
+    raw_value = os.getenv(name) or ""
+    value = raw_value.strip()
+    invalid_placeholder = value.startswith(("你的 ", "your ", "YOUR "))
+    if not value or "\n" in raw_value or "\r" in raw_value or len(value) > 256 or invalid_placeholder:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="RingCentral 尚未完成服务器配置，请由系统管理员设置应用凭证后再连接。",
+            detail="RingCentral 应用凭证格式异常，请重新复制 Client ID 和 Client Secret 的单行值。",
         )
     return value
 
 
+def _required_env(name: str) -> str:
+    return _credential_value(name)
+
+
 def connection_configured() -> bool:
-    return bool((os.getenv("RINGCENTRAL_CLIENT_ID") or "").strip() and (os.getenv("RINGCENTRAL_CLIENT_SECRET") or "").strip())
+    try:
+        _credential_value("RINGCENTRAL_CLIENT_ID")
+        _credential_value("RINGCENTRAL_CLIENT_SECRET")
+    except HTTPException:
+        return False
+    return True
 
 
 def redirect_uri() -> str:
@@ -95,7 +106,12 @@ async def exchange_authorization_code(code: str) -> Dict[str, Any]:
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(
             f"{RINGCENTRAL_SERVER_URL}/restapi/oauth/token",
-            data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri()},
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": client_id,
+                "redirect_uri": redirect_uri(),
+            },
             headers={"Accept": "application/json", "Authorization": f"Basic {basic_credentials}"},
         )
     if response.is_error:
