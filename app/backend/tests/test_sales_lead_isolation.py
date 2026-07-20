@@ -369,6 +369,38 @@ async def test_merchant_pool_import_recognizes_common_csv_and_excel_headers(sale
 
 
 @pytest.mark.asyncio
+async def test_merchant_pool_import_accepts_the_sales_source_table_format(sales_app_client):
+    manager = _auth_headers("sales_manager", 10, "Manager A")
+    csv_content = (
+        "商家,电话 / 网站,地区 / 行业,州/省,城市,地址,Google评分\n"
+        "Restaurant Yuan 小花园,+1 201-908-3647,中餐厅 / Chinese Restaurant,NJ,Jersey City,"
+        "537 Washington Blvd Jersey City NJ 07310,★4.6\n"
+    )
+    response = await sales_app_client.post(
+        "/api/v1/merchant-pool/import-csv",
+        headers=manager,
+        files={"file": ("sales-source.csv", csv_content.encode(), "text/csv")},
+    )
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert {"business_name", "phone", "industry", "state", "city", "address", "google_rating"}.issubset(response.json()["recognized_fields"])
+
+    bulk_response = await sales_app_client.post(
+        "/api/v1/merchant-pool/import",
+        headers=manager,
+        json={
+            "data_source": "bulk",
+            "records": [
+                {"business_name": "Rating Symbol Cafe", "phone": "555-8000", "rating": "★4.6"},
+                {"business_name": "Unverified Rating Cafe", "phone": "555-8001", "rating": "待核验"},
+            ],
+        },
+    )
+    assert bulk_response.status_code == 200
+    assert bulk_response.json()["total"] == 2
+
+
+@pytest.mark.asyncio
 async def test_admin_can_archive_and_delete_useless_pool_records(sales_app_client):
     admin = _auth_headers("admin", 1, "Admin")
     manager = _auth_headers("sales_manager", 10, "Manager A")

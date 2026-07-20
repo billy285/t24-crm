@@ -1,6 +1,8 @@
 import asyncio
+import importlib
 import logging
 import os
+import pkgutil
 import re
 import time
 from pathlib import Path
@@ -174,6 +176,13 @@ class DatabaseManager:
             if not self.engine:
                 logger.error("Database engine not initialized")
                 raise RuntimeError("Database engine not initialized")
+
+            # Fresh databases must load every model before create_all. Router
+            # discovery usually imports most models, but relying on that order
+            # can leave a new local database with only a subset of tables.
+            models_package = importlib.import_module("models")
+            for module_info in pkgutil.iter_modules(models_package.__path__, models_package.__name__ + "."):
+                importlib.import_module(module_info.name)
 
             logger.info("🔧 Starting table structure repair...")
             await self.check_and_repair_existing_tables()

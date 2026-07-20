@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from openpyxl import load_workbook
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -204,18 +204,19 @@ class MerchantListResponse(BaseModel):
 
 
 CSV_HEADERS = {
-    "商家名称": "business_name", "商户名称": "business_name", "企业名称": "business_name", "店铺名称": "business_name", "名称": "business_name", "business_name": "business_name", "business name": "business_name", "name": "business_name", "title": "business_name",
+    "商家名称": "business_name", "商家": "business_name", "商户名称": "business_name", "企业名称": "business_name", "店铺名称": "business_name", "名称": "business_name", "business_name": "business_name", "business name": "business_name", "name": "business_name", "title": "business_name",
     "联系人": "contact_name", "联系人姓名": "contact_name", "负责人": "contact_name", "contact_name": "contact_name", "contact name": "contact_name", "contact": "contact_name",
-    "电话": "phone", "联系电话": "phone", "电话号码": "phone", "手机": "phone", "手机号": "phone", "phone": "phone", "phone_number": "phone", "phone number": "phone", "telephone": "phone", "tel": "phone",
-    "行业": "industry", "类别": "industry", "分类": "industry", "商家类别": "industry", "industry": "industry", "category": "industry", "primary category": "industry",
+    "电话": "phone", "电话/网站": "phone", "电话网站": "phone", "联系电话": "phone", "电话号码": "phone", "手机": "phone", "手机号": "phone", "phone": "phone", "phone_number": "phone", "phone number": "phone", "telephone": "phone", "tel": "phone",
+    "行业": "industry", "地区/行业": "industry", "地区行业": "industry", "类别": "industry", "分类": "industry", "商家类别": "industry", "industry": "industry", "category": "industry", "primary category": "industry",
+    "地区": "region", "location": "region", "region": "region",
     "国家": "country", "国家地区": "country", "country": "country", "州": "state", "省": "state", "州省": "state", "state": "state", "province": "state",
     "城市": "city", "city": "city", "地址": "address", "详细地址": "address", "营业地址": "address", "address": "address", "full address": "address",
     "网站": "website", "官网": "website", "官网链接": "website", "网站链接": "website", "website": "website", "url": "website", "web site": "website", "domain": "website",
-    "评分": "rating", "公开评分": "rating", "星级": "rating", "rating": "rating", "来源记录id": "source_record_id", "来源id": "source_record_id", "source_record_id": "source_record_id", "place id": "source_record_id",
+    "评分": "rating", "公开评分": "rating", "谷歌评分": "rating", "星级": "rating", "rating": "rating", "来源记录id": "source_record_id", "来源id": "source_record_id", "source_record_id": "source_record_id", "place id": "source_record_id",
     "营业状态": "business_status", "商家状态": "business_status", "状态": "business_status", "business_status": "business_status", "business status": "business_status", "status": "business_status",
     "采集时间": "collected_at", "抓取时间": "collected_at", "更新时间": "collected_at", "collected_at": "collected_at", "collected at": "collected_at",
     "google商家链接": "google_business_url", "google地图链接": "google_business_url", "google maps url": "google_business_url", "google_business_url": "google_business_url",
-    "google评分": "google_rating", "google rating": "google_rating", "google_rating": "google_rating", "google评论数": "google_review_count", "google评论数量": "google_review_count", "google review count": "google_review_count", "google_review_count": "google_review_count",
+    "google评分": "google_rating", "Google评分": "google_rating", "google rating": "google_rating", "google_rating": "google_rating", "google评论数": "google_review_count", "google评论数量": "google_review_count", "google review count": "google_review_count", "google_review_count": "google_review_count",
     "yelp链接": "yelp_url", "yelp url": "yelp_url", "yelp_url": "yelp_url", "yelp评分": "yelp_rating", "yelp rating": "yelp_rating", "yelp_rating": "yelp_rating",
     "yelp评论数": "yelp_review_count", "yelp评论数量": "yelp_review_count", "yelp review count": "yelp_review_count", "yelp_review_count": "yelp_review_count",
     "社交平台": "social_profiles", "社媒": "social_profiles", "social_profiles": "social_profiles", "social profiles": "social_profiles", "近期差评": "recent_negative_reviews", "差评摘要": "recent_negative_reviews", "recent_negative_reviews": "recent_negative_reviews",
@@ -225,7 +226,7 @@ CSV_HEADERS = {
 
 def _normalize_header(value: Any) -> str:
     """Make spreadsheet headers tolerant of spaces, punctuation, and casing."""
-    return re.sub(r"[\s_\-()（）:：]+", "", str(value or "").strip().casefold())
+    return re.sub(r"[\s_/\-()（）:：]+", "", str(value or "").strip().casefold())
 
 
 HEADER_LOOKUP = {_normalize_header(header): field for header, field in CSV_HEADERS.items()}
@@ -238,22 +239,62 @@ def _map_import_row(row: dict[Any, Any]) -> tuple[dict[str, Any], list[str]]:
         original_key = str(key or "").strip()
         if not original_key:
             continue
-        field = HEADER_LOOKUP.get(_normalize_header(original_key))
+        normalized_key = _normalize_header(original_key)
+        field = HEADER_LOOKUP.get(normalized_key)
         if not field:
             unknown_headers.append(original_key)
             continue
         if value is not None and str(value).strip() != "":
-            mapped[field] = str(value).strip() if not isinstance(value, datetime) else value
+            clean_value = str(value).strip() if not isinstance(value, datetime) else value
+            # Some source sheets combine two visible columns into one header.
+            # Route a URL to website and the other value to phone instead of
+            # shifting the rest of the row into the wrong fields.
+            if normalized_key in {"电话网站", "电话官网"}:
+                text = str(clean_value)
+                if re.search(r"(?:https?://|www\.|[\w.-]+\.(?:com|net|org|co|us)(?:/|$))", text, re.I):
+                    mapped["website"] = clean_value
+                else:
+                    mapped["phone"] = clean_value
+            elif normalized_key in {"googlerating", "google评分"}:
+                mapped["rating"] = clean_value
+                mapped["google_rating"] = clean_value
+            else:
+                mapped[field] = clean_value
     return mapped, unknown_headers
 
 
 def _parse_import_values(mapped: dict[str, Any]) -> dict[str, Any]:
+    if mapped.get("website"):
+        website_text = str(mapped["website"]).strip()
+        url_match = re.search(r"https?://[^\s\]\)]+", website_text, re.I)
+        if url_match:
+            mapped["website"] = url_match.group().rstrip(".,;:")
+
+    if mapped.get("region"):
+        parts = [part.strip() for part in str(mapped.pop("region")).split(",") if part.strip()]
+        if parts and re.fullmatch(r"(?:US|USA|United States|美国)", parts[-1], re.I):
+            mapped.setdefault("country", "US")
+            parts.pop()
+        if parts and re.fullmatch(r"[A-Z]{2}", parts[-1], re.I):
+            mapped.setdefault("state", parts.pop().upper())
+            mapped.setdefault("country", "US")
+        if parts:
+            mapped.setdefault("city", ", ".join(parts))
+
     for field in ("rating", "google_rating", "yelp_rating"):
         if mapped.get(field) not in (None, ""):
-            mapped[field] = float(str(mapped[field]).replace(",", ""))
+            # Source tables often use "★4.6" or "待核验". Keep the useful
+            # number and leave an unverified rating blank instead of rejecting
+            # the entire merchant row.
+            rating_text = str(mapped[field]).replace(",", "").strip()
+            match = re.search(r"[⭐★]\s*(\d+(?:\.\d+)?)", rating_text)
+            if not match:
+                match = re.match(r"\s*(\d+(?:\.\d+)?)", rating_text)
+            mapped[field] = float(match.group(1)) if match else None
     for field in ("google_review_count", "yelp_review_count"):
         if mapped.get(field) not in (None, ""):
-            mapped[field] = int(float(str(mapped[field]).replace(",", "")))
+            match = re.search(r"\d+(?:\.\d+)?", str(mapped[field]).replace(",", ""))
+            mapped[field] = int(float(match.group())) if match else None
     return mapped
 
 
@@ -460,8 +501,15 @@ async def list_merchant_pool(
     if pool_status:
         conditions.append(MerchantPool.pool_status == pool_status)
     if region:
-        term = f"%{region.strip()}%"
-        conditions.append(or_(MerchantPool.country.ilike(term), MerchantPool.state.ilike(term), MerchantPool.city.ilike(term)))
+        region_values = [value.strip() for value in region.split(",") if value.strip()]
+        if len(region_values) > 1:
+            conditions.append(or_(*(
+                func.upper(func.trim(MerchantPool.state)) == value.upper()
+                for value in region_values
+            )))
+        elif region_values:
+            term = f"%{region_values[0]}%"
+            conditions.append(or_(MerchantPool.country.ilike(term), MerchantPool.state.ilike(term), MerchantPool.city.ilike(term)))
     if industry:
         conditions.append(MerchantPool.industry.ilike(f"%{industry.strip()}%"))
     if source:
@@ -488,17 +536,31 @@ async def import_merchant_records(
 ):
     _ensure_pool_role(current_user)
     created = []
+    errors = []
     counts: dict[str, int] = {"pending": 0, "no_phone": 0, "duplicate": 0, "existing_customer": 0, "closed": 0}
-    for raw_record in payload.records:
+    for index, raw_record in enumerate(payload.records, start=1):
         try:
-            record = MerchantRecord.model_validate(raw_record)
-            merchant = await _store_record(db, record, payload.data_source, current_user, raw_record=raw_record)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"导入记录格式错误：{exc}") from exc
+            record = MerchantRecord.model_validate(_parse_import_values(dict(raw_record)))
+        except (ValidationError, TypeError, ValueError) as exc:
+            if isinstance(exc, ValidationError):
+                detail = exc.errors()[0]
+                field = ".".join(str(part) for part in detail.get("loc", ()))
+                reason = f"{field}：{detail.get('msg', '格式不正确')}"
+            else:
+                reason = str(exc)
+            errors.append({"row": index, "reason": reason})
+            continue
+        merchant = await _store_record(db, record, payload.data_source, current_user, raw_record=raw_record)
         created.append(merchant)
         counts[merchant.pool_status] = counts.get(merchant.pool_status, 0) + 1
+    if not created:
+        example = "；".join(f"第{item['row']}行 {item['reason']}" for item in errors[:3])
+        raise HTTPException(status_code=400, detail=f"没有可导入的数据。{example or '请检查商家名称和数据格式'}")
     await db.commit()
-    return {"total": len(created), "counts": counts, "items": [MerchantResponse.model_validate(item).model_dump() for item in created]}
+    return {
+        "total": len(created), "counts": counts, "errors": errors,
+        "items": [MerchantResponse.model_validate(item).model_dump() for item in created],
+    }
 
 
 @router.post("/import-csv")

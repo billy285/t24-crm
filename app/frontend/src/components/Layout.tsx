@@ -181,25 +181,25 @@ export default function Layout({ children }: LayoutProps) {
     : '管理员模式';
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="app-shell flex h-screen overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white transform transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 flex flex-col`}>
-        <div className="p-4 border-b border-slate-700">
+      <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col text-white transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0`}>
+        <div className="border-b border-white/10 px-4 py-5">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex min-w-0 items-center gap-3" onClick={() => setSidebarOpen(false)}>
               <img
                 src="/t2-marketing-logo.png?v=t2-20260709b"
                 alt="T24 Marketing"
-                className="h-10 w-10 flex-shrink-0 rounded-full bg-white object-cover shadow-sm"
+                className="h-11 w-11 flex-shrink-0 rounded-2xl border border-white/15 bg-white object-cover shadow-lg shadow-black/20"
               />
               <div className="min-w-0">
-                <h1 className="truncate text-lg font-bold leading-tight">T24 Marketing</h1>
-                <p className="truncate text-xs text-slate-400">客户管理系统</p>
+                <h1 className="truncate text-[17px] font-semibold leading-tight tracking-tight">T24 Marketing</h1>
+                <p className="mt-1 truncate text-[11px] tracking-[0.08em] text-slate-400">BUSINESS OPERATING SYSTEM</p>
               </div>
             </Link>
             <button className="lg:hidden text-slate-400 hover:text-white" onClick={() => setSidebarOpen(false)}>
@@ -207,17 +207,17 @@ export default function Layout({ children }: LayoutProps) {
             </button>
           </div>
           {employee && (
-            <p className="text-xs text-slate-400 mt-1">{employee.name} · {displayRole}</p>
+            <p className="mt-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300">{employee.name} · {displayRole}</p>
           )}
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-2">
+        <nav className="app-sidebar-nav flex-1 overflow-y-auto px-3 py-3">
           {visibleNavSections.map((section, sectionIndex) => (
             <div
               key={section.label}
-              className={sectionIndex === 0 ? 'pb-2' : 'border-t border-slate-700/70 py-2'}
+              className={sectionIndex === 0 ? 'pb-3' : 'border-t border-white/[0.07] py-3'}
             >
-              <div className="px-3 pb-1.5 pt-1 text-[11px] font-semibold tracking-[0.12em] text-slate-500">
+              <div className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                 {section.label}
               </div>
               <div className="space-y-1">
@@ -228,10 +228,10 @@ export default function Layout({ children }: LayoutProps) {
                       key={item.path}
                       to={item.path}
                       onClick={() => setSidebarOpen(false)}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                      className={`app-nav-item relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${
                         isActive
-                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/20'
-                          : 'text-slate-300 hover:bg-slate-700/80 hover:text-white'
+                          ? 'app-nav-item-active text-white'
+                          : 'text-slate-300 hover:bg-white/[0.07] hover:text-white'
                       }`}
                     >
                       <item.icon className="h-4 w-4 flex-shrink-0" />
@@ -244,10 +244,10 @@ export default function Layout({ children }: LayoutProps) {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-slate-700">
+        <div className="border-t border-white/10 p-3">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-slate-700 hover:text-white w-full transition-colors"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:bg-white/[0.07] hover:text-white"
           >
             <LogOut className="w-4 h-4" />
             退出登录
@@ -264,17 +264,21 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         )}
         {/* Top bar */}
-        <header className="bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-sm shadow-slate-200/40">
+        <header className="app-topbar sticky top-0 z-30 flex items-center justify-between px-4 py-3 lg:px-6">
           <button className="lg:hidden text-slate-600 hover:text-slate-800" onClick={() => setSidebarOpen(true)}>
             <Menu className="w-5 h-5" />
           </button>
-          <div className="text-sm text-slate-500 hidden lg:block">
-            {pageLabels[currentPath] || allNavItems.find(n => n.path === currentPath)?.label || ''}
+          <div className="hidden items-center gap-3 lg:flex">
+            <span className="h-6 w-1 rounded-full bg-blue-600" />
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">T24 Marketing</p>
+              <p className="text-sm font-semibold text-slate-800">{pageLabels[currentPath] || allNavItems.find(n => n.path === currentPath)?.label || ''}</p>
+            </div>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-2">
-                <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 ring-1 ring-blue-100">
                   <User className="w-4 h-4 text-blue-600" />
                 </div>
                 <ChevronDown className="w-3 h-3 text-slate-400" />
@@ -301,7 +305,7 @@ export default function Layout({ children }: LayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6 bg-[radial-gradient(circle_at_top_right,_rgba(219,234,254,0.38),_transparent_32rem)]">
+        <main className="app-main min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-7">
           {hasPageAccess ? children : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">

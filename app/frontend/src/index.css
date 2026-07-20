@@ -97,7 +97,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     font-feature-settings: "tnum";
   }
 
@@ -117,8 +117,62 @@
 }
 
 @layer components {
+  .app-shell {
+    background:
+      radial-gradient(circle at 82% -10%, rgb(219 234 254 / 0.72), transparent 33rem),
+      linear-gradient(135deg, #f8fafc 0%, #f4f7fb 58%, #eef4fb 100%);
+  }
+
+  .app-sidebar {
+    background:
+      radial-gradient(circle at 15% 5%, rgb(37 99 235 / 0.2), transparent 18rem),
+      linear-gradient(180deg, #0b162b 0%, #101d33 50%, #0a1426 100%);
+    box-shadow: 18px 0 45px -32px rgb(15 23 42 / 0.9);
+  }
+
+  .app-sidebar-nav {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(71 85 105 / 0.6) transparent;
+  }
+
+  .app-nav-item {
+    transition: color 160ms ease, background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  }
+
+  .app-nav-item:hover {
+    transform: translateX(2px);
+  }
+
+  .app-nav-item-active {
+    background: linear-gradient(110deg, #2563eb 0%, #0ea5e9 120%);
+    box-shadow: 0 12px 28px -16px rgb(37 99 235 / 0.9), inset 0 1px 0 rgb(255 255 255 / 0.18);
+  }
+
+  .app-nav-item-active::before {
+    content: "";
+    position: absolute;
+    left: -0.75rem;
+    width: 3px;
+    height: 1.45rem;
+    border-radius: 0 999px 999px 0;
+    background: #7dd3fc;
+  }
+
+  .app-topbar {
+    border-bottom: 1px solid rgb(226 232 240 / 0.82);
+    background: rgb(255 255 255 / 0.84);
+    box-shadow: 0 10px 30px -28px rgb(15 23 42 / 0.5);
+    backdrop-filter: blur(18px) saturate(150%);
+  }
+
+  .app-main {
+    background:
+      radial-gradient(circle at 92% 0%, rgb(191 219 254 / 0.3), transparent 30rem),
+      radial-gradient(circle at 5% 100%, rgb(224 242 254 / 0.3), transparent 28rem);
+  }
+
   .app-page {
-    @apply mx-auto w-full max-w-[1680px];
+    @apply mx-auto w-full max-w-[1720px];
   }
 
   .app-page-title {
@@ -131,7 +185,8 @@
   }
 
   .app-card {
-    @apply rounded-xl border border-slate-200/90 bg-white shadow-sm;
+    @apply rounded-2xl border border-slate-200/80 bg-white;
+    box-shadow: 0 18px 50px -42px rgb(15 23 42 / 0.45);
   }
 
   .app-card-hover {
@@ -143,7 +198,7 @@
   }
 
   .app-table-wrap {
-    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white;
+    @apply overflow-x-auto rounded-2xl border border-slate-200 bg-white;
   }
 
   .app-table-wrap table {
@@ -155,7 +210,60 @@
     scrollbar-color: rgb(148 163 184) transparent;
   }
 
+  .merchant-kpi-card,
+  .merchant-filter-card,
+  .merchant-results-card {
+    box-shadow: 0 18px 48px -40px rgb(15 23 42 / 0.55);
+  }
+
+  .merchant-kpi-card {
+    position: relative;
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .merchant-kpi-card::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgb(59 130 246 / 0.4), transparent);
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+
+  .merchant-kpi-card:hover {
+    transform: translateY(-2px);
+    border-color: rgb(191 219 254);
+    box-shadow: 0 22px 48px -34px rgb(37 99 235 / 0.28);
+  }
+
+  .merchant-kpi-card:hover::after {
+    opacity: 1;
+  }
+
+  .merchant-pool-table tbody tr {
+    transition: background-color 140ms ease, box-shadow 140ms ease;
+  }
+
+  .merchant-pool-table tbody tr:hover {
+    box-shadow: inset 3px 0 0 rgb(59 130 246 / 0.65);
+  }
+
+  .merchant-pool-page input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    accent-color: #2563eb;
+  }
+
   @media (max-width: 639px) {
+    .app-main {
+      padding: 0.875rem;
+    }
+
+    .merchant-hero {
+      border-radius: 1.125rem;
+    }
+
     .merchant-pool-page .merchant-pool-table {
       -webkit-overflow-scrolling: touch;
     }

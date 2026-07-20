@@ -1,11 +1,12 @@
 import { ChangeEvent, useEffect, useRef, useState } from 'react';
-import { Archive, CheckSquare, Database, FileUp, Filter, Link2, RefreshCw, Search, Send, ShieldCheck, Sparkles, Trash2, Upload } from 'lucide-react';
+import { Archive, CheckSquare, ChevronDown, Database, FileUp, Filter, Link2, RefreshCw, Search, Send, ShieldCheck, Sparkles, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -13,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { getToken, invokeWithAuth } from '@/lib/tokenStore';
 import { useAutoRefresh } from '@/lib/use-auto-refresh';
 import { useRole } from '@/lib/role-context';
+import { parseMerchantBulkRows } from '@/lib/merchant-import';
 
 type Merchant = {
   id: number;
@@ -60,6 +62,19 @@ const sourceOptions = [
   { value: 'bulk', label: '批量粘贴' }, { value: 'manual', label: '手动录入' },
 ];
 const industryOptions = ['餐厅', '美甲', '美容', '美业', '水疗', '按摩', '理发', '超市', '其他'];
+const usStateOptions = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA',
+  'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK',
+  'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC',
+];
+const usStateAbbreviations: Record<string, string> = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA',
+  hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA', kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD',
+  massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV',
+  'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH',
+  oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX',
+  utah: 'UT', vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY', 'district of columbia': 'DC',
+};
 type AnalysisSource = { id?: string; label: string; value?: string | number | null; updated_at?: string | null };
 type AnalysisCard = { title: string; kind: 'fact' | 'recommendation' | 'insufficient'; content: string; sources: AnalysisSource[] };
 type MerchantAnalysis = {
@@ -82,71 +97,27 @@ function formatDate(value?: string) {
   return value ? value.slice(0, 16).replace('T', ' ') : '-';
 }
 
-function parseBulkRows(text: string) {
-  const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
-  const emptyMarkers = new Set(['待核验', '暂未确认', '官网未明确显示', '未明确显示', '无', '-', 'n/a', 'na']);
-  const normalizeHeader = (value?: string) => (value || '').replace(/[\s_\-()（）:：/]+/g, '').toLowerCase();
-  const headerFields: Record<string, string> = {
-    商家名称: 'business_name', 商户名称: 'business_name', 企业名称: 'business_name', 店铺名称: 'business_name', 名称: 'business_name', businessname: 'business_name', name: 'business_name',
-    电话: 'phone', 联系电话: 'phone', 电话号码: 'phone', 手机: 'phone', phone: 'phone', phonenumber: 'phone', telephone: 'phone', tel: 'phone',
-    地址: 'address', 详细地址: 'address', 营业地址: 'address', address: 'address', fulladdress: 'address',
-    网站: 'website', 官网: 'website', 官网链接: 'website', 网站链接: 'website', website: 'website', url: 'website', domain: 'website',
-    行业: 'industry', 类别: 'industry', 分类: 'industry', 商家类别: 'industry', industry: 'industry', category: 'industry',
-    城市: 'city', city: 'city', 州: 'state', 省: 'state', 州省: 'state', state: 'state', province: 'state',
-    国家: 'country', country: 'country', 公开评分: 'rating', 评分: 'rating', 星级: 'rating', rating: 'rating',
-    营业状态: 'business_status', 商家状态: 'business_status', 状态: 'business_status', businessstatus: 'business_status', status: 'business_status',
-  };
-  const splitDelimitedRow = (line: string, delimiter: string) => {
-    if (delimiter === '|') {
-      return line.replace(/^\|/, '').replace(/\|$/, '').split('|').map(value => value.trim());
-    }
-    const values: string[] = [];
-    let value = '';
-    let quoted = false;
-    for (let index = 0; index < line.length; index += 1) {
-      const character = line[index];
-      if (character === '"') {
-        if (quoted && line[index + 1] === '"') { value += '"'; index += 1; }
-        else quoted = !quoted;
-      } else if (character === delimiter && !quoted) { values.push(value.trim()); value = ''; }
-      else value += character;
-    }
-    values.push(value.trim());
-    return values;
-  };
-  const splitRow = (line: string) => {
-    const pipeCount = (line.match(/\|/g) || []).length;
-    if (pipeCount >= 2) return splitDelimitedRow(line, '|');
-    if (line.includes('\t')) return splitDelimitedRow(line, '\t');
-    return splitDelimitedRow(line, ',');
-  };
-  const rows = lines.map(splitRow).filter(values => values.length && !values.every(value => /^:?-{3,}:?$/.test(value.replace(/\s/g, ''))));
-  const firstRow = rows[0] || [];
-  const mappedHeaders = firstRow.map(value => headerFields[normalizeHeader(value)] || '');
-  const hasHeader = mappedHeaders.includes('business_name');
-  const dataRows = hasHeader ? rows.slice(1) : rows;
-  return dataRows.map((values) => {
-    const getByHeader = (field: string) => {
-      const index = mappedHeaders.indexOf(field);
-      return index >= 0 ? values[index] : undefined;
-    };
-    const [business_name, phone, address, website, industry, city, state, country, rating, business_status] = values;
-    const normalizeOptional = (value?: string) => value && !emptyMarkers.has(value.trim().toLowerCase()) ? value : null;
-    const rowBusinessName = hasHeader ? getByHeader('business_name') : business_name;
-    const normalizedRating = normalizeOptional(hasHeader ? getByHeader('rating') : rating);
-    return {
-      business_name: rowBusinessName,
-      phone: normalizeOptional(hasHeader ? getByHeader('phone') : phone),
-      address: normalizeOptional(hasHeader ? getByHeader('address') : address),
-      website: normalizeOptional(hasHeader ? getByHeader('website') : website),
-      industry: normalizeOptional(hasHeader ? getByHeader('industry') : industry),
-      city: normalizeOptional(hasHeader ? getByHeader('city') : city),
-      state: normalizeOptional(hasHeader ? getByHeader('state') : state),
-      country: normalizeOptional(hasHeader ? getByHeader('country') : country),
-      rating: normalizedRating && !Number.isNaN(Number(normalizedRating)) ? Number(normalizedRating) : null,
-      business_status: normalizeOptional(hasHeader ? getByHeader('business_status') : business_status),
-    };
-  }).filter((record: any) => record.business_name);
+function formatPhone(value?: string) {
+  if (!value) return '';
+  const digits = value.replace(/\D/g, '');
+  const nationalNumber = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  if (nationalNumber.length !== 10) return value.trim();
+  return `+1 ${nationalNumber.slice(0, 3)}-${nationalNumber.slice(3, 6)}-${nationalNumber.slice(6)}`;
+}
+
+function normalizeState(value?: string) {
+  if (!value) return '';
+  const trimmed = value.trim();
+  const upper = trimmed.toUpperCase();
+  if (usStateOptions.includes(upper)) return upper;
+  return usStateAbbreviations[trimmed.toLowerCase()] || trimmed;
+}
+
+function formatRegion(merchant: Merchant) {
+  const state = normalizeState(merchant.state);
+  const country = merchant.country?.trim();
+  const isUnitedStates = !country || ['US', 'USA', 'UNITED STATES', '美国'].includes(country.toUpperCase());
+  return [merchant.city, state, isUnitedStates ? '' : country].filter(Boolean).join(', ') || '-';
 }
 
 export default function MerchantPool() {
@@ -163,7 +134,7 @@ export default function MerchantPool() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [poolStatus, setPoolStatus] = useState('');
-  const [region, setRegion] = useState('');
+  const [regions, setRegions] = useState<string[]>([]);
   const [industry, setIndustry] = useState('');
   const [source, setSource] = useState('');
   const [ratingMin, setRatingMin] = useState('');
@@ -193,7 +164,7 @@ export default function MerchantPool() {
     const params = new URLSearchParams({ skip: String((page - 1) * pageSize), limit: String(pageSize) });
     if (search.trim()) params.set('search', search.trim());
     if (poolStatus) params.set('pool_status', poolStatus);
-    if (region.trim()) params.set('region', region.trim());
+    if (regions.length) params.set('region', regions.join(','));
     if (industry.trim()) params.set('industry', industry.trim());
     if (source) params.set('source', source);
     if (ratingMin) params.set('rating_min', ratingMin);
@@ -215,7 +186,7 @@ export default function MerchantPool() {
   useEffect(() => {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, poolStatus, region, industry, source, ratingMin]);
+  }, [page, pageSize, poolStatus, regions, industry, source, ratingMin]);
 
   useEffect(() => {
     setPage(1);
@@ -263,7 +234,7 @@ export default function MerchantPool() {
   };
 
   const importBulk = async () => {
-    const records = parseBulkRows(bulkText);
+    const records = parseMerchantBulkRows(bulkText);
     if (!records.length || records.some((record: any) => !record.business_name)) {
       toast.error('请至少输入一行包含商家名称的数据');
       return;
@@ -272,11 +243,13 @@ export default function MerchantPool() {
     try {
       const result = await invokeWithAuth({ url: '/api/v1/merchant-pool/import', method: 'POST', data: { data_source: 'bulk', records } });
       toast.success(`已导入 ${result.data?.total || 0} 条商家记录，系统已自动完成清洗分流`);
+      if (result.data?.errors?.length) toast.warning(`${result.data.errors.length} 行格式有问题，已跳过；其余数据已导入`);
       setBulkText('');
       setImportOpen(false);
       await loadData();
     } catch (error: any) {
-      toast.error(error?.data?.detail || error?.message || '批量导入失败');
+      const detail = error?.response?.data?.detail ?? error?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : error?.message || '批量导入失败');
     } finally {
       setImporting(false);
     }
@@ -493,33 +466,46 @@ export default function MerchantPool() {
   };
 
   return (
-    <div className="merchant-pool-page space-y-4 sm:space-y-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-1 flex items-center gap-2 text-sm font-medium text-indigo-600"><Database className="h-4 w-4" /> 售前数据缓冲区</div>
-          <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">待清洗商家池</h2>
-          <p className="mt-1 max-w-3xl text-sm leading-5 text-slate-500">原始商家先在此去重、比对正式客户并隔离无效数据；只有人工确认后才能进入电话销售线索库。</p>
+    <div className="merchant-pool-page app-page space-y-5">
+      <section className="merchant-hero relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-white px-5 py-5 shadow-[0_20px_55px_-38px_rgba(15,23,42,0.45)] sm:px-7 sm:py-7">
+        <div className="pointer-events-none absolute -right-20 -top-28 h-64 w-64 rounded-full bg-blue-100/70 blur-3xl" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold tracking-wide text-blue-700"><Database className="h-3.5 w-3.5" /> 售前数据缓冲区</div>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-[32px]">待清洗商家池</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">先导入，再清洗，最后分配。原始商家会在这里完成去重、正式客户比对和无效数据隔离，不会污染正式客户库。</p>
+          </div>
+          <Button className="h-11 w-full rounded-xl bg-slate-950 px-5 shadow-lg shadow-slate-900/15 hover:bg-blue-700 sm:w-auto" onClick={() => setImportOpen(true)}><Upload className="mr-2 h-4 w-4" />导入商家数据</Button>
         </div>
-        <Button className="w-full sm:w-auto" onClick={() => setImportOpen(true)}><Upload className="mr-2 h-4 w-4" />导入商家数据</Button>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
+      <div className="merchant-kpi-grid grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {[
-          { label: '全部采集记录', value: stats.total, tone: 'bg-indigo-50 text-indigo-700' },
-          { label: '待清洗可用', value: stats.pending, tone: 'bg-blue-50 text-blue-700' },
-          { label: '自动隔离', value: stats.isolated, tone: 'bg-amber-50 text-amber-800' },
-          { label: '重复记录', value: stats.duplicates, tone: 'bg-orange-50 text-orange-800' },
-          { label: '已转电话线索', value: stats.converted, tone: 'bg-emerald-50 text-emerald-700' },
-          { label: '已归档', value: stats.archived, tone: 'bg-slate-50 text-slate-600' },
-        ].map(item => <Card key={item.label} className="border-slate-200 shadow-sm"><CardContent className="p-3 sm:p-4"><p className="text-xs leading-4 text-slate-500">{item.label}</p><p className={`mt-1 text-xl font-bold sm:text-2xl ${item.tone.split(' ')[1]}`}>{item.value}</p></CardContent></Card>)}
+          { label: '全部采集记录', value: stats.total, tone: 'text-slate-950', dot: 'bg-slate-900' },
+          { label: '待清洗可用', value: stats.pending, tone: 'text-blue-700', dot: 'bg-blue-500' },
+          { label: '自动隔离', value: stats.isolated, tone: 'text-amber-700', dot: 'bg-amber-500' },
+          { label: '重复记录', value: stats.duplicates, tone: 'text-orange-700', dot: 'bg-orange-500' },
+          { label: '已转电话线索', value: stats.converted, tone: 'text-emerald-700', dot: 'bg-emerald-500' },
+          { label: '已归档', value: stats.archived, tone: 'text-slate-500', dot: 'bg-slate-400' },
+        ].map(item => <Card key={item.label} className="merchant-kpi-card overflow-hidden border-slate-200/80 bg-white"><CardContent className="p-4"><div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${item.dot}`} /><p className="text-xs font-medium leading-4 text-slate-500">{item.label}</p></div><p className={`mt-3 text-2xl font-bold tracking-tight sm:text-3xl ${item.tone}`}>{item.value}</p></CardContent></Card>)}
       </div>
 
-      <Card className="border-slate-200 shadow-sm"><CardContent className="space-y-3 p-3 sm:p-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700"><Filter className="h-4 w-4" />精准筛选</div>
-        <div className="grid gap-3 lg:grid-cols-6">
+      <Card className="merchant-filter-card border-slate-200/80 bg-white"><CardContent className="space-y-4 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3"><div><div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100"><Filter className="h-4 w-4" /></span>精准筛选</div><p className="mt-1 pl-10 text-xs text-slate-500">快速定位可分配、待补充或异常商家</p></div>{(search || poolStatus || regions.length > 0 || industry || source || ratingMin) && <Button variant="ghost" size="sm" className="text-slate-500" onClick={() => { setSearch(''); setPoolStatus(''); setRegions([]); setIndustry(''); setSource(''); setRatingMin(''); setPage(1); }}>清空筛选</Button>}</div>
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
           <div className="relative lg:col-span-2"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input className="pl-9" value={search} onChange={event => setSearch(event.target.value)} placeholder="商家、电话或网站" /></div>
           <NativeSelect value={poolStatus} onChange={setPoolStatus} options={[{ value: '', label: '全部清洗状态' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} />
-          <Input value={region} onChange={event => { setRegion(event.target.value); setPage(1); }} placeholder="地区，如 CA / Los Angeles" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="h-10 w-full justify-between bg-white px-3 font-normal">
+                <span className="truncate">{regions.length ? regions.join(' / ') : '州/省（可多选）'}</span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-72 w-64 overflow-y-auto">
+              {usStateOptions.map(state => <DropdownMenuCheckboxItem key={state} checked={regions.includes(state)} onCheckedChange={checked => { setRegions(previous => checked ? (previous.includes(state) ? previous : [...previous, state]) : previous.filter(item => item !== state)); setPage(1); }} onSelect={event => event.preventDefault()}>{state}</DropdownMenuCheckboxItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Input value={industry} onChange={event => { setIndustry(event.target.value); setPage(1); }} placeholder="行业" />
           <NativeSelect value={source} onChange={value => { setSource(value); setPage(1); }} options={sourceOptions} />
           <NativeSelect value={ratingMin} onChange={value => { setRatingMin(value); setPage(1); }} options={[{ value: '', label: '全部评分' }, { value: '4', label: '4.0 分以上' }, { value: '4.5', label: '4.5 分以上' }]} />
@@ -528,10 +514,10 @@ export default function MerchantPool() {
 
       {canManagePool && selectedMerchantIds.length > 0 && <Card className="border-indigo-200 bg-indigo-50/60 shadow-sm"><CardContent className="flex flex-col gap-3 p-4"><div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-sm font-semibold text-indigo-950"><CheckSquare className="h-5 w-5 text-indigo-600" />已选 {selectedMerchantIds.length} 条商家</div><p className="text-xs text-indigo-700">已转线索或已归档记录不能批量修改；批量删除只对未转线索记录生效。</p></div><div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:justify-end"><NativeSelect className="sm:w-52" value={bulkIndustry} onChange={setBulkIndustry} options={[{ value: '', label: '选择统一行业' }, ...industryOptions.map(value => ({ value, label: value }))]} /><Input className="sm:w-52" value={bulkIndustry && !industryOptions.includes(bulkIndustry) ? bulkIndustry : ''} onChange={event => setBulkIndustry(event.target.value)} placeholder="或输入自定义行业" /><Button disabled={bulkUpdating || !bulkIndustry.trim()} onClick={() => void updateSelectedIndustry()}>{bulkUpdating ? '更新中...' : '批量设置行业'}</Button><Button variant="outline" disabled={bulkUpdating || bulkAssigning || enrichmentLoading || selectedMerchantIds.length > 20} onClick={() => void suggestEnrichment()}><Sparkles className="mr-2 h-4 w-4" />{enrichmentLoading ? '分析中...' : 'AI 补充空白资料'}</Button><NativeSelect className="sm:w-52" value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售人员' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button disabled={bulkAssigning || bulkUpdating || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-2 h-4 w-4" />{bulkAssigning ? '分配中...' : '批量转线索并分配'}</Button>{isAdmin && <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" disabled={bulkUpdating || bulkAssigning} onClick={() => void deleteSelectedMerchants()}><Trash2 className="mr-2 h-4 w-4" />批量删除</Button>}<Button variant="outline" disabled={bulkUpdating || bulkAssigning || enrichmentLoading} onClick={() => { setSelectedMerchantIds([]); setBulkIndustry(''); setSelectedSalesId(''); }}>取消选择</Button></div></CardContent></Card>}
 
-      <Card className="overflow-hidden border-slate-200 shadow-sm"><CardContent className="p-0"><div className="flex items-center justify-between border-b bg-slate-50 px-3 py-2 text-xs text-slate-500 sm:hidden"><span>商家列表</span><span>左右滑动查看全部</span></div><div className="merchant-pool-table overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-sm"><thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{canManagePool && <th className="w-12 px-4 py-3"><input aria-label="选择本页可操作商家" type="checkbox" checked={items.filter(item => !['converted', 'archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted', 'archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></th>}<th className="px-4 py-3">商家</th><th className="px-4 py-3">电话 / 网站</th><th className="px-4 py-3">地区 / 行业</th><th className="px-4 py-3">评分</th><th className="px-4 py-3">来源 / 采集时间</th><th className="px-4 py-3">清洗结果</th><th className="px-4 py-3 text-right">操作</th></tr></thead><tbody className="divide-y divide-slate-100">
-        {loading ? <tr><td colSpan={canManagePool ? 8 : 7} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr>
-          : items.length === 0 ? <tr><td colSpan={canManagePool ? 8 : 7} className="py-12 text-center text-slate-400">暂无商家记录</td></tr>
-          : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) ? 'bg-indigo-50/60' : 'hover:bg-slate-50/70'}>{canManagePool && <td className="px-4 py-3"><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={['converted', 'archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></td>}<td className="px-4 py-3"><p className="font-semibold text-slate-900">{merchant.business_name}</p><p className="text-xs text-slate-500">{merchant.contact_name || '未填写联系人'} · #{merchant.id}</p></td><td className="px-4 py-3"><p>{merchant.phone || <span className="text-rose-600">无电话</span>}</p><p className="max-w-44 truncate text-xs text-blue-600">{merchant.website || '-'}</p></td><td className="px-4 py-3 text-slate-600"><p>{[merchant.city, merchant.state, merchant.country].filter(Boolean).join(', ') || '-'}</p><p className="text-xs text-slate-400">{merchant.industry || '未分类'}</p></td><td className="px-4 py-3">{merchant.rating ? <span className="font-medium text-amber-600">{merchant.rating.toFixed(1)} ★</span> : '-'}</td><td className="px-4 py-3"><p className="font-medium text-slate-700">{merchant.data_source}</p><p className="text-xs text-slate-400">{formatDate(merchant.collected_at)}</p></td><td className="px-4 py-3"><Badge className={statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge><p className="mt-1 max-w-56 text-xs text-slate-500">{merchant.isolation_reason || '已通过基础检查，等待确认'}</p></td><td className="px-4 py-3"><div className="flex flex-wrap justify-end gap-1.5"><Button size="sm" variant="outline" onClick={() => openEdit(merchant)}>补充资料</Button>{['pending', 'converted'].includes(merchant.pool_status) && <Button size="sm" variant="outline" onClick={() => void openAnalysis(merchant)}><Sparkles className="mr-1 h-3.5 w-3.5" />AI 分析</Button>}{merchant.pool_status === 'pending' && <Button size="sm" onClick={() => toggleMerchantSelection(merchant.id, true)}><Send className="mr-1 h-3.5 w-3.5" />加入分配</Button>}{isAdmin && merchant.pool_status !== 'converted' && merchant.pool_status !== 'archived' && <Button size="sm" variant="outline" onClick={() => archiveMerchant(merchant)}><Archive className="mr-1 h-3.5 w-3.5" />归档</Button>}{isAdmin && merchant.pool_status !== 'converted' && <Button size="sm" variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => deleteMerchant(merchant)}><Trash2 className="mr-1 h-3.5 w-3.5" />删除</Button>}</div></td></tr>)}
+      <Card className="merchant-results-card overflow-hidden border-slate-200/80 bg-white"><CardContent className="p-0"><div className="flex items-center justify-between border-b border-slate-200/80 bg-white px-4 py-4"><div><p className="text-sm font-semibold text-slate-900">商家数据结果</p><p className="mt-0.5 text-xs text-slate-500">共 {total} 条记录，确认后再加入销售分配</p></div><Badge className="bg-slate-100 text-slate-600">第 {page}/{totalPages} 页</Badge></div><div className="flex items-center justify-between border-b bg-slate-50 px-3 py-2 text-xs text-slate-500 sm:hidden"><span>左右滑动查看完整字段</span><span>操作在最右侧</span></div><div className="merchant-pool-table overflow-x-auto"><table className="w-full min-w-[1250px] text-left text-sm"><thead className="sticky top-0 z-10 border-b bg-slate-50/95 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 backdrop-blur"><tr>{canManagePool && <th className="w-12 px-4 py-3"><input aria-label="选择本页可操作商家" type="checkbox" checked={items.filter(item => !['converted', 'archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted', 'archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></th>}<th className="px-4 py-3">商家</th><th className="px-4 py-3">电话</th><th className="px-4 py-3">官网</th><th className="px-4 py-3">地区</th><th className="px-4 py-3">行业</th><th className="px-4 py-3">Google评分</th><th className="px-4 py-3">来源 / 采集时间</th><th className="px-4 py-3">清洗结果</th><th className="px-4 py-3 text-right">操作</th></tr></thead><tbody className="divide-y divide-slate-100">
+        {loading ? <tr><td colSpan={canManagePool ? 10 : 9} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr>
+          : items.length === 0 ? <tr><td colSpan={canManagePool ? 10 : 9} className="py-12 text-center text-slate-400">暂无商家记录</td></tr>
+          : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) ? 'bg-indigo-50/60' : 'hover:bg-slate-50/70'}>{canManagePool && <td className="px-4 py-3"><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={['converted', 'archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></td>}<td className="px-4 py-3"><p className="font-semibold text-slate-900">{merchant.business_name}</p><p className="text-xs text-slate-500">{merchant.contact_name || '未填写联系人'} · #{merchant.id}</p></td><td className="whitespace-nowrap px-4 py-3 tabular-nums">{merchant.phone ? formatPhone(merchant.phone) : <span className="text-rose-600">无电话</span>}</td><td className="px-4 py-3"><p className="max-w-44 truncate text-blue-600">{merchant.website || '-'}</p></td><td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatRegion(merchant)}</td><td className="px-4 py-3 text-slate-600">{merchant.industry || '未分类'}</td><td className="px-4 py-3">{(merchant.google_rating ?? merchant.rating) ? <span className="font-medium text-amber-600">{(merchant.google_rating ?? merchant.rating)!.toFixed(1)} ★</span> : '-'}</td><td className="px-4 py-3"><p className="font-medium text-slate-700">{merchant.data_source}</p><p className="text-xs text-slate-400">{formatDate(merchant.collected_at)}</p></td><td className="px-4 py-3"><Badge className={statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge><p className="mt-1 max-w-56 text-xs text-slate-500">{merchant.isolation_reason || '已通过基础检查，等待确认'}</p></td><td className="px-4 py-3"><div className="flex flex-wrap justify-end gap-1.5"><Button size="sm" variant="outline" onClick={() => openEdit(merchant)}>补充资料</Button>{['pending', 'converted'].includes(merchant.pool_status) && <Button size="sm" variant="outline" onClick={() => void openAnalysis(merchant)}><Sparkles className="mr-1 h-3.5 w-3.5" />AI 分析</Button>}{merchant.pool_status === 'pending' && <Button size="sm" onClick={() => toggleMerchantSelection(merchant.id, true)}><Send className="mr-1 h-3.5 w-3.5" />加入分配</Button>}{isAdmin && merchant.pool_status !== 'converted' && merchant.pool_status !== 'archived' && <Button size="sm" variant="outline" onClick={() => archiveMerchant(merchant)}><Archive className="mr-1 h-3.5 w-3.5" />归档</Button>}{isAdmin && merchant.pool_status !== 'converted' && <Button size="sm" variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => deleteMerchant(merchant)}><Trash2 className="mr-1 h-3.5 w-3.5" />删除</Button>}</div></td></tr>)}
       </tbody></table></div><div className="flex flex-col gap-3 border-t bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-slate-500">共 {total} 条，第 {page}/{totalPages} 页</p><div className="flex items-center gap-2"><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>下一页</Button></div></div></CardContent></Card>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>导入待清洗商家数据</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-900"><p className="font-medium">自动清洗规则</p><p className="mt-1 text-indigo-700">无电话、已关闭、与正式客户重复、或与商家池重复的数据会被自动隔离，不会进入电话销售线索库。</p></div><div className="flex gap-2"><Button size="sm" variant={importMode === 'csv' ? 'default' : 'outline'} onClick={() => setImportMode('csv')}>Excel / CSV 文件</Button><Button size="sm" variant={importMode === 'bulk' ? 'default' : 'outline'} onClick={() => setImportMode('bulk')}>批量粘贴</Button></div>{importMode === 'csv' ? <div className="space-y-3"><p className="text-sm text-slate-600">支持 Excel（.xlsx）及 CSV（UTF-8、Excel 常见编码）。会自动识别中文/英文表头，例如：商家名称、Business Name、电话/Phone、地址/Address、官网/Website、类别/Category、评分/Rating。</p><p className="text-xs text-slate-500">导入后会提示未识别列；地址中有逗号时，请使用 Excel 文件或用双引号包住该地址。</p><input ref={fileRef} className="hidden" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={importCsv} /><Button disabled={importing} onClick={() => fileRef.current?.click()}><FileUp className="mr-2 h-4 w-4" />{importing ? '导入中...' : '选择 Excel 或 CSV'}</Button></div> : <div className="space-y-2"><Label>每行一条：商家名称, 电话, 地址, 网站, 行业, 城市, 州/省, 国家, 评分, 营业状态</Label><Textarea rows={9} value={bulkText} onChange={event => setBulkText(event.target.value)} placeholder={'支持直接从 Excel 粘贴（制表符）或粘贴 Markdown 表格\n示例餐厅, 626-123-4567, "123 Main St, Suite 1", example.com, 餐厅, Los Angeles, CA, US, 4.5, open'} /><p className="text-xs text-slate-500">支持你刚才发来的 Markdown 表格；“待核验、暂未确认、官网未明确显示”会按空资料处理，不会造成导入失败。</p><Button disabled={importing} onClick={importBulk}><Sparkles className="mr-2 h-4 w-4" />{importing ? '清洗中...' : '导入并自动清洗'}</Button></div>}<div className="border-t pt-3 text-xs text-slate-500"><Link2 className="mr-1 inline h-3.5 w-3.5" />接口导入：主管或管理员可向 <code>/api/v1/merchant-pool/import</code> 提交 JSON 批次，来源填写 <code>api</code>。</div></div></DialogContent></Dialog>
