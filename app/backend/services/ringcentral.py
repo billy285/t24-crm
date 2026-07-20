@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import hashlib
 import hmac
 import json
@@ -20,6 +21,22 @@ RINGCENTRAL_SERVER_URL = "https://platform.ringcentral.com"
 RINGCENTRAL_DEFAULT_REDIRECT_URI = "https://t24-crm.com/api/ringcentral/callback"
 STATE_TTL_SECONDS = 15 * 60
 logger = logging.getLogger(__name__)
+
+
+def _provider_reason(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+        reason = str(
+            payload.get("error_description") or payload.get("error") or payload.get("message") or ""
+        ).strip()
+    except (ValueError, TypeError):
+        reason = ""
+    return reason[:180] if reason else f"HTTP {response.status_code}"
+
+
+def _basic_authorization(client_id: str, client_secret: str) -> str:
+    encoded = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
+    return f"Basic {encoded}"
 
 
 def _credential_value(name: str) -> str:
@@ -102,7 +119,6 @@ def authorization_url(employee_id: int) -> str:
 async def exchange_authorization_code(code: str) -> Dict[str, Any]:
     client_id = _required_env("RINGCENTRAL_CLIENT_ID")
     client_secret = _required_env("RINGCENTRAL_CLIENT_SECRET")
-    basic_credentials = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(
             f"{RINGCENTRAL_SERVER_URL}/restapi/oauth/token",
@@ -112,24 +128,13 @@ async def exchange_authorization_code(code: str) -> Dict[str, Any]:
                 "client_id": client_id,
                 "redirect_uri": redirect_uri(),
             },
-            headers={"Accept": "application/json", "Authorization": f"Basic {basic_credentials}"},
+            headers={"Accept": "application/json", "Authorization": _basic_authorization(client_id, client_secret)},
         )
     if response.is_error:
         # RingCentral's OAuth response tells us whether the app credentials,
         # callback URL, or one-time authorization code needs correction. Only
         # surface the provider error fields, never request credentials.
-        provider_reason = ""
-        try:
-            payload = response.json()
-            provider_reason = str(
-                payload.get("error_description") or payload.get("error") or payload.get("message") or ""
-            ).strip()
-        except (ValueError, TypeError):
-            provider_reason = ""
-        if provider_reason:
-            provider_reason = provider_reason[:180]
-        else:
-            provider_reason = f"HTTP {response.status_code}"
+        provider_reason = _provider_reason(response)
         logger.warning("RingCentral OAuth token exchange failed: status=%s reason=%s", response.status_code, provider_reason)
         raise HTTPException(
             status_code=502,
@@ -141,12 +146,68 @@ async def exchange_authorization_code(code: str) -> Dict[str, Any]:
     return response.json()
 
 
-async def get_extension_profile(access_token: str) -> Dict[str, Any]:
+async def refresh_access_token(refresh_token: str) -> Dict[str, Any]:
+    client_id = _required_env("RINGCENTRAL_CLIENT_ID")
+    client_secret = _required_env("RINGCENTRAL_CLIENT_SECRET")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="RingCentral 缺少刷新令牌，请重新连接账号。")
+
+    response: httpx.Response | None = None
     async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.get(
-            f"{RINGCENTRAL_SERVER_URL}/restapi/v1.0/account/~/extension/~",
-            headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
-        )
+        for attempt in range(2):
+            try:
+                response = await client.post(
+                    f"{RINGCENTRAL_SERVER_URL}/restapi/oauth/token",
+                    data={"grant_type": "refresh_token", "refresh_token": refresh_token},
+                    headers={
+                        "Accept": "application/json",
+                        "Authorization": _basic_authorization(client_id, client_secret),
+                    },
+                )
+            except httpx.TransportError as exc:
+                if attempt == 0:
+                    await asyncio.sleep(0.25)
+                    continue
+                logger.warning("RingCentral token refresh transport error: %s", type(exc).__name__)
+                raise HTTPException(status_code=502, detail="RingCentral 网络暂时不可用，系统稍后会自动重试。") from exc
+
+            if response.status_code == 429 or response.status_code >= 500:
+                if attempt == 0:
+                    await asyncio.sleep(0.25)
+                    continue
+            break
+
+    if response is None:
+        raise HTTPException(status_code=502, detail="RingCentral 刷新令牌时没有收到响应。")
+    if response.is_error:
+        reason = _provider_reason(response)
+        logger.warning("RingCentral token refresh failed: status=%s reason=%s", response.status_code, reason)
+        if response.status_code in {400, 401, 403}:
+            raise HTTPException(status_code=401, detail=f"RingCentral 授权已失效：{reason}，请重新连接账号。")
+        raise HTTPException(status_code=502, detail=f"RingCentral 暂时无法刷新授权：{reason}。")
+    return response.json()
+
+
+async def get_extension_profile(access_token: str) -> Dict[str, Any]:
+    response: httpx.Response | None = None
+    async with httpx.AsyncClient(timeout=20) as client:
+        for attempt in range(2):
+            try:
+                response = await client.get(
+                    f"{RINGCENTRAL_SERVER_URL}/restapi/v1.0/account/~/extension/~",
+                    headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+                )
+            except httpx.TransportError as exc:
+                if attempt == 0:
+                    await asyncio.sleep(0.25)
+                    continue
+                raise HTTPException(status_code=502, detail="读取 RingCentral 分机时网络暂时不可用。") from exc
+            if (response.status_code == 429 or response.status_code >= 500) and attempt == 0:
+                await asyncio.sleep(0.25)
+                continue
+            break
+    if response is None:
+        raise HTTPException(status_code=502, detail="读取 RingCentral 分机时没有收到响应。")
     if response.is_error:
         raise HTTPException(status_code=502, detail="无法读取 RingCentral 分机信息，请重新连接账号。")
     return response.json()
@@ -155,6 +216,14 @@ async def get_extension_profile(access_token: str) -> Dict[str, Any]:
 def token_expiry(token_payload: Dict[str, Any]) -> datetime:
     seconds = max(int(token_payload.get("expires_in") or 0) - 60, 0)
     return datetime.now(timezone.utc) + timedelta(seconds=seconds)
+
+
+def token_needs_refresh(expires_at: datetime | None, leeway_seconds: int = 5 * 60) -> bool:
+    if expires_at is None:
+        return True
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at <= datetime.now(timezone.utc) + timedelta(seconds=leeway_seconds)
 
 
 def encrypt_token(value: str | None) -> str | None:

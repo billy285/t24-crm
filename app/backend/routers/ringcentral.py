@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -13,16 +14,20 @@ from schemas.auth import UserResponse
 from services.ringcentral import (
     authorization_url,
     connection_configured,
+    decrypt_token,
     encrypt_token,
     exchange_authorization_code,
     get_extension_profile,
+    refresh_access_token,
     token_expiry,
+    token_needs_refresh,
     verify_oauth_state,
 )
 
 
 router = APIRouter(prefix="/api/ringcentral", tags=["ringcentral"])
 SALES_ROLES = {"admin", "super_admin", "sales_manager", "sales"}
+_refresh_locks: dict[int, asyncio.Lock] = {}
 
 
 def _employee_id(user: UserResponse) -> int:
@@ -43,17 +48,83 @@ def _status_payload(connection: Optional[RingCentralConnections]) -> dict:
         return {
             "configured": configured,
             "connected": False,
+            "degraded": False,
+            "needs_reconnect": False,
             "message": "可连接 RingCentral" if configured else "等待系统管理员完成服务器凭证配置",
         }
+    degraded = bool(connection.is_active and connection.last_error)
     return {
         "configured": configured,
         "connected": bool(connection.is_active),
+        "degraded": degraded,
+        "needs_reconnect": not bool(connection.is_active),
         "extension_number": connection.extension_number,
         "connected_at": connection.created_at,
         "last_synced_at": connection.last_synced_at,
         "last_error": connection.last_error,
-        "message": "RingCentral 已连接" if connection.is_active else "RingCentral 连接已停用",
+        "message": (
+            "RingCentral 已连接，网络恢复后将自动重试"
+            if degraded
+            else "RingCentral 已连接"
+            if connection.is_active
+            else "RingCentral 授权已失效，请重新连接"
+        ),
     }
+
+
+async def _refresh_connection_if_needed(
+    employee_id: int,
+    connection: Optional[RingCentralConnections],
+    db: AsyncSession,
+) -> Optional[RingCentralConnections]:
+    if not connection or not connection.is_active or not token_needs_refresh(connection.token_expires_at):
+        return connection
+
+    lock = _refresh_locks.setdefault(employee_id, asyncio.Lock())
+    async with lock:
+        # A concurrent status request may already have refreshed the token while
+        # this request was waiting for the employee-specific lock.
+        connection = (
+            await db.execute(
+                select(RingCentralConnections).where(RingCentralConnections.employee_id == employee_id)
+            )
+        ).scalar_one_or_none()
+        if not connection or not connection.is_active or not token_needs_refresh(connection.token_expires_at):
+            return connection
+
+        refresh_token = decrypt_token(connection.refresh_token_encrypted)
+        if not refresh_token:
+            connection.is_active = False
+            connection.last_error = "授权缺少刷新令牌，请重新连接"
+            await db.commit()
+            return connection
+
+        try:
+            payload = await refresh_access_token(refresh_token)
+        except HTTPException as exc:
+            connection.last_error = str(exc.detail)
+            if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+                connection.is_active = False
+            await db.commit()
+            return connection
+
+        new_access_token = str(payload.get("access_token") or "")
+        if not new_access_token:
+            connection.last_error = "RingCentral 刷新响应缺少访问令牌，系统稍后重试"
+            await db.commit()
+            return connection
+
+        connection.access_token_encrypted = encrypt_token(new_access_token) or ""
+        rotated_refresh_token = str(payload.get("refresh_token") or "").strip()
+        if rotated_refresh_token:
+            connection.refresh_token_encrypted = encrypt_token(rotated_refresh_token)
+        connection.token_expires_at = token_expiry(payload)
+        connection.scopes = str(payload.get("scope") or connection.scopes or "")
+        connection.is_active = True
+        connection.last_error = None
+        connection.last_synced_at = datetime.now(timezone.utc)
+        await db.commit()
+        return connection
 
 
 @router.get("/status")
@@ -62,11 +133,13 @@ async def ringcentral_status(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_sales_access(current_user)
+    employee_id = _employee_id(current_user)
     connection = (
         await db.execute(
-            select(RingCentralConnections).where(RingCentralConnections.employee_id == _employee_id(current_user))
+            select(RingCentralConnections).where(RingCentralConnections.employee_id == employee_id)
         )
     ).scalar_one_or_none()
+    connection = await _refresh_connection_if_needed(employee_id, connection, db)
     return _status_payload(connection)
 
 

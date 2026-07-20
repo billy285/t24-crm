@@ -4,6 +4,7 @@ import json
 import re
 from datetime import datetime, timezone
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from openpyxl import load_workbook
@@ -52,7 +53,12 @@ def _ensure_admin_role(user: UserResponse) -> None:
 
 
 def _normalize_phone(value: Optional[str]) -> str:
-    return re.sub(r"[^0-9]", "", value or "")
+    raw = re.sub(r"(?:ext\.?|extension|x|分机)\s*\d+\s*$", "", value or "", flags=re.I)
+    digits = re.sub(r"[^0-9]", "", raw)
+    # North American numbers are commonly imported both with and without +1.
+    if len(digits) == 11 and digits.startswith("1"):
+        return digits[1:]
+    return digits
 
 
 def _normalize_text(value: Optional[str]) -> str:
@@ -61,9 +67,15 @@ def _normalize_text(value: Optional[str]) -> str:
 
 def _normalize_website(value: Optional[str]) -> str:
     website = (value or "").strip().casefold()
-    website = re.sub(r"^https?://", "", website)
-    website = re.sub(r"^www\.", "", website)
-    return website.rstrip("/")
+    url_match = re.search(r"https?://[^\s\]\)]+", website, re.I)
+    if url_match:
+        website = url_match.group().rstrip(".,;:")
+    if not website:
+        return ""
+    parsed = urlsplit(website if "://" in website else f"https://{website}")
+    host = (parsed.hostname or "").removeprefix("www.")
+    path = re.sub(r"/+", "/", parsed.path or "").rstrip("/")
+    return f"{host}{path}" if host else ""
 
 
 def _is_closed(value: Optional[str]) -> bool:
@@ -396,7 +408,9 @@ async def _match_customer(db: AsyncSession, record: MerchantRecord) -> tuple[Opt
 async def _match_pool_duplicate(
     db: AsyncSession, record: MerchantRecord, exclude_id: Optional[int] = None
 ) -> tuple[Optional[int], Optional[str]]:
-    query = select(MerchantPool).where(MerchantPool.pool_status.notin_(["converted", ARCHIVED_STATUS]))
+    # Historical rows still reserve the merchant identity. Otherwise an archived
+    # or converted prospect can be imported again and pollute the sales pool.
+    query = select(MerchantPool)
     if exclude_id is not None:
         query = query.where(MerchantPool.id != exclude_id)
     rows = (await db.execute(query)).scalars().all()
@@ -405,28 +419,33 @@ async def _match_pool_duplicate(
     address = _normalize_text(record.address)
     website = _normalize_website(record.website)
     for row in rows:
+        duplicate_id = row.duplicate_of_id or row.id
+        status_hint = {
+            "converted": "（该商家已转入电话销售线索）",
+            ARCHIVED_STATUS: "（该商家已有归档记录）",
+        }.get(row.pool_status, "")
         if phone and phone == _normalize_phone(row.phone):
-            return row.id, "电话与商家池记录重复"
+            return duplicate_id, f"电话与商家池历史记录重复{status_hint}"
         if website and website == _normalize_website(row.website):
-            return row.id, "网站与商家池记录重复"
+            return duplicate_id, f"网站与商家池历史记录重复{status_hint}"
         if name and address and name == _normalize_text(row.business_name) and address == _normalize_text(row.address):
-            return row.id, "商家名称和地址与商家池记录重复"
+            return duplicate_id, f"商家名称和地址与商家池历史记录重复{status_hint}"
     return None, None
 
 
 async def _classify_record(
     db: AsyncSession, record: MerchantRecord, exclude_id: Optional[int] = None
 ) -> tuple[str, Optional[str], Optional[int], Optional[int]]:
-    if not _normalize_phone(record.phone):
-        return "no_phone", "未提供可用电话，暂不进入线索库", None, None
-    if _is_closed(record.business_status):
-        return "closed", "商家状态为已关闭或停业", None, None
     customer_id, customer_reason = await _match_customer(db, record)
     if customer_id:
         return "existing_customer", customer_reason, None, customer_id
     duplicate_id, duplicate_reason = await _match_pool_duplicate(db, record, exclude_id)
     if duplicate_id:
         return "duplicate", duplicate_reason, duplicate_id, None
+    if not _normalize_phone(record.phone):
+        return "no_phone", "未提供可用电话，暂不进入线索库", None, None
+    if _is_closed(record.business_status):
+        return "closed", "商家状态为已关闭或停业", None, None
     return "pending", None, None, None
 
 

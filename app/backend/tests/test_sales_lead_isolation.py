@@ -299,6 +299,77 @@ async def test_merchant_pool_isolates_bad_records_before_sales_leads(sales_app_c
 
 
 @pytest.mark.asyncio
+async def test_reimport_detects_duplicates_across_formats_and_historical_statuses(sales_app_client):
+    admin = _auth_headers("admin", 1, "Admin")
+    manager = _auth_headers("sales_manager", 10, "Manager A")
+
+    first = await sales_app_client.post(
+        "/api/v1/merchant-pool/import",
+        headers=manager,
+        json={
+            "data_source": "markdown_import",
+            "records": [
+                {
+                    "business_name": "Format Nails",
+                    "phone": "(212) 555-0123 ext. 9",
+                    "website": "https://www.formatnails.com/?utm_source=chatgpt.com",
+                    "city": "New York",
+                    "state": "NY",
+                },
+                {
+                    "business_name": "No Phone Beauty",
+                    "website": "https://www.nophonebeauty.com/",
+                    "city": "New York",
+                    "state": "NY",
+                },
+                {"business_name": "Archived Spa", "phone": "646-555-0199"},
+            ],
+        },
+    )
+    assert first.status_code == 200
+    initial_rows = {item["business_name"]: item for item in first.json()["items"]}
+
+    converted = await sales_app_client.post(
+        f"/api/v1/merchant-pool/{initial_rows['Format Nails']['id']}/convert-to-lead",
+        headers=manager,
+        json={"assigned_sales_id": 11},
+    )
+    assert converted.status_code == 200
+    archived = await sales_app_client.post(
+        f"/api/v1/merchant-pool/{initial_rows['Archived Spa']['id']}/archive",
+        headers=admin,
+    )
+    assert archived.status_code == 200
+
+    repeated = await sales_app_client.post(
+        "/api/v1/merchant-pool/import",
+        headers=manager,
+        json={
+            "data_source": "markdown_import",
+            "records": [
+                {
+                    "business_name": "Format Nails",
+                    "phone": "+1 212-555-0123",
+                    "website": "formatnails.com",
+                    "city": "New York",
+                    "state": "NY",
+                },
+                {
+                    "business_name": "No Phone Beauty",
+                    "website": "nophonebeauty.com?utm_campaign=repeat",
+                    "city": "New York",
+                    "state": "NY",
+                },
+                {"business_name": "Archived Spa", "phone": "+1 (646) 555-0199"},
+            ],
+        },
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["counts"]["duplicate"] == 3
+    assert {item["pool_status"] for item in repeated.json()["items"]} == {"duplicate"}
+
+
+@pytest.mark.asyncio
 async def test_manager_can_bulk_assign_clean_merchants_to_one_salesperson(sales_app_client):
     manager = _auth_headers("sales_manager", 10, "Manager A")
     sales_a = _auth_headers("sales", 11, "Sales A")

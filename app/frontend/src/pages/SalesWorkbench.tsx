@@ -22,7 +22,7 @@ type HistoryItem = { id: number; outcome: string; outcome_label: string; notes?:
 type Analysis = { available: boolean; message?: string; analysis?: { warning?: string; cards: { title: string; content: string; kind: string; sources: { label: string; value?: string | number; updated_at?: string }[] }[] } };
 type RecoveryAlert = { lead_id: number; business_name: string; state: 'watch' | 'recoverable'; message: string; deadline?: string; extension_request?: { reason?: string } | null };
 type PersonalPerformance = { rank: number; score: number; confidence: string; score_breakdown: { results: number; execution: number; discipline: number; documentation: number; compliance: number }; metrics: { completion_rate: number; connection_rate: number; interest_rate: number; note_quality_rate: number; overdue_followups: number }; suggestions: string[] };
-type RingCentralStatus = { configured: boolean; connected: boolean; extension_number?: string; last_synced_at?: string; last_error?: string; message?: string };
+type RingCentralStatus = { configured: boolean; connected: boolean; degraded?: boolean; needs_reconnect?: boolean; extension_number?: string; last_synced_at?: string; last_error?: string; message?: string };
 
 const outcomeOptions = [
   { value: 'no_answer', label: '未接通' }, { value: 'callback', label: '待回访' },
@@ -33,7 +33,7 @@ const statusLabels: Record<string, string> = { new: '新线索', contacted: '已
 const statusColor: Record<string, string> = { new: 'bg-slate-100 text-slate-700', contacted: 'bg-blue-100 text-blue-700', follow_up: 'bg-amber-100 text-amber-800', interested: 'bg-emerald-100 text-emerald-700', appointment: 'bg-cyan-100 text-cyan-700', lost: 'bg-slate-100 text-slate-600', blocked: 'bg-rose-100 text-rose-700' };
 const today = () => new Date().toISOString().slice(0, 10);
 const formatDate = (value?: string) => value ? value.slice(0, 16).replace('T', ' ') : '-';
-const ringCentralNumber = (phone: string) => phone.replace(/[^0-9+]/g, '').replace(/^\+/, '');
+const ringCentralNumber = (phone: string) => phone.replace(/[^0-9+]/g, '').replace(/(?!^)\+/g, '');
 const priorityStyle: Record<string, string> = { urgent: 'bg-rose-100 text-rose-700', high: 'bg-amber-100 text-amber-800', normal: 'bg-slate-100 text-slate-700' };
 const priorityLabel: Record<string, string> = { urgent: '优先处理', high: '今日重点', normal: '正常任务' };
 
@@ -122,7 +122,7 @@ export default function SalesWorkbench() {
   useEffect(() => { void loadAssignees(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [canManage]);
   useEffect(() => { void loadWorkbench(); void loadRecoveryAlerts(); void loadPersonalPerformance(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [selectedSalesId, date, canManage, role]);
   useEffect(() => { void loadRingCentral(); const result = new URLSearchParams(window.location.search).get('ringcentral'); if (result === 'connected') toast.success('RingCentral 已连接，可以继续使用桌面应用拨打。'); if (result === 'failed') toast.error('RingCentral 连接失败，请重新连接。'); if (result === 'cancelled') toast.message('已取消 RingCentral 授权。'); }, []);
-  useAutoRefresh(async () => { await loadWorkbench(); await loadRecoveryAlerts(); await loadPersonalPerformance(); }, { intervalMs: 30000, enabled: !activeTask && !historyTask && !analysisTask && (!canManage || !!selectedSalesId) });
+  useAutoRefresh(async () => { await loadWorkbench(); await loadRecoveryAlerts(); await loadPersonalPerformance(); await loadRingCentral(); }, { intervalMs: 30000, enabled: !activeTask && !historyTask && !analysisTask && (!canManage || !!selectedSalesId) });
 
   const visibleTasks = useMemo(() => (workbench?.items || []).filter(task => {
     if (filter === 'unfinished') return task.task_status !== 'completed';
@@ -135,22 +135,36 @@ export default function SalesWorkbench() {
   const openCall = (task: Task) => {
     if (task.task_status === 'completed') { toast.message('该任务今日已完成，可查看历史联系记录'); return; }
     setSupplementalFollowUp(false); setActiveTask(task); setOutcome('no_answer'); setNotes(''); setNextFollowUpAt(suggestedFollowUpValue('no_answer'));
-    void startRingCentralDial(task);
+    startRingCentralDial(task, true);
   };
   const openSupplementalFollowUp = (task: Task) => {
     setSupplementalFollowUp(true); setActiveTask(task); setOutcome(task.lead.status === 'appointment' ? 'appointment' : task.lead.status === 'interested' ? 'interested' : 'callback'); setNotes(''); setNextFollowUpAt(suggestedFollowUpValue(task.lead.status === 'appointment' ? 'appointment' : task.lead.status === 'interested' ? 'interested' : 'callback'));
   };
-  const startRingCentralDial = async (task = activeTask) => {
+  const recordDialStarted = async (task: Task) => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await invokeWithAuth({ url: `/api/v1/sales-leads/workbench/tasks/${task.task_id}/dial-started`, method: 'POST', data: {} });
+        return;
+      } catch {
+        if (attempt === 0) {
+          await new Promise(resolve => window.setTimeout(resolve, 400));
+          continue;
+        }
+        toast.error('电话已调起，但拨号时间暂未同步；请在通话后正常保存结果。');
+      }
+    }
+  };
+  const startRingCentralDial = (task = activeTask, shouldRecord = !supplementalFollowUp) => {
     if (!task) return;
-    try {
-      const phone = task.lead.phone || '';
-      if (!phone.trim().startsWith('+')) toast.warning('建议将号码保存为 E.164 国际格式，例如 +16265550100。');
-      const response = supplementalFollowUp ? null : await invokeWithAuth({ url: `/api/v1/sales-leads/workbench/tasks/${task.task_id}/dial-started`, method: 'POST', data: {} });
-      const number = ringCentralNumber(response?.data?.phone || phone);
-      if (!number) { toast.error('该线索没有可用电话号码'); return; }
-      window.location.assign(`rcmobile://call?number=${encodeURIComponent(number)}`);
-      toast.message(supplementalFollowUp ? '已调起 RingCentral，请在通话后记录本次追加跟进。' : '已请求调起 RingCentral 桌面应用，请在应用中完成通话。');
-    } catch (error: any) { toast.error(error?.data?.detail || error?.message || '无法发起 RingCentral 拨打'); }
+    const phone = task.lead.phone || '';
+    const number = ringCentralNumber(phone);
+    if (!number) { toast.error('该线索没有可用电话号码'); return; }
+    if (!phone.trim().startsWith('+')) toast.warning('建议将号码保存为 E.164 国际格式，例如 +16265550100。');
+
+    // Keep the native app launch inside the click event so browsers do not block it.
+    window.location.assign(`rcmobile://call?number=${encodeURIComponent(number)}`);
+    toast.message(shouldRecord ? '已调起 RingCentral；拨号记录正在后台同步。' : '已调起 RingCentral，请在通话后记录本次追加跟进。');
+    if (shouldRecord) void recordDialStarted(task);
   };
   const submitResult = async () => {
     if (!activeTask) return;
@@ -197,7 +211,7 @@ export default function SalesWorkbench() {
   return <div className="space-y-5">
     <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><div className="mb-1 flex items-center gap-2 text-sm font-medium text-blue-600"><Headphones className="h-4 w-4" /> 独立售前执行区</div><h2 className="text-2xl font-bold text-slate-900">每日100条拨打工作台</h2><p className="mt-1 text-sm text-slate-500">固定每日任务批次，完成后不会自动补充新线索，避免无效刷量。</p></div><div className="flex flex-wrap gap-2"><Input className="w-40" type="date" value={date} onChange={event => setDate(event.target.value)} />{canManage && <NativeSelect className="w-40" value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} />}</div></div>
     <Card className="border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 shadow-sm"><CardContent className="grid gap-4 p-5 lg:grid-cols-[1.3fr_repeat(4,1fr)]"><div><p className="text-sm font-medium text-blue-700">今日任务</p><p className="mt-1 text-4xl font-bold text-slate-900">{progress}</p><p className="mt-1 text-xs text-slate-500">{workbench?.salesperson.name || employee?.name || '当前销售'} · 已固定 {workbench?.assigned_count || 0} 条任务</p></div>{[{ label: '未完成', value: workbench?.categories.unfinished || 0, icon: ClipboardList }, { label: '待回访', value: workbench?.performance.callbacks_due || 0, icon: CalendarClock }, { label: '有意向', value: workbench?.performance.interested || 0, icon: Target }, { label: '已预约', value: workbench?.performance.appointments || 0, icon: CheckCircle2 }].map(stat => <div key={stat.label} className="rounded-xl bg-white/80 p-3"><stat.icon className="h-4 w-4 text-blue-600" /><p className="mt-2 text-xl font-bold text-slate-900">{stat.value}</p><p className="text-xs text-slate-500">{stat.label}</p></div>)}</CardContent></Card>
-    <Card className="border-sky-100 shadow-sm"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><div className={`flex h-9 w-9 items-center justify-center rounded-full ${ringCentral?.connected ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}><Link2 className="h-4 w-4" /></div><div className="flex-1"><p className="text-sm font-semibold text-slate-800">RingCentral 拨号连接</p><p className="mt-0.5 text-xs text-slate-500">{ringCentral?.connected ? `已连接${ringCentral.extension_number ? ` · 分机 ${ringCentral.extension_number}` : ''}。点击拨号会调起您已登录的 RingCentral 桌面应用。` : (ringCentral?.message || '正在检查 RingCentral 配置...')}</p></div>{ringCentral?.connected ? <Badge className="w-fit bg-emerald-100 text-emerald-700">已连接</Badge> : <Button size="sm" disabled={!ringCentral?.configured} onClick={() => void connectRingCentral()}>{ringCentral?.configured ? '连接我的 RingCentral' : '等待服务器配置'}</Button>}</CardContent></Card>
+    <Card className="border-sky-100 shadow-sm"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><div className={`flex h-9 w-9 items-center justify-center rounded-full ${ringCentral?.degraded ? 'bg-amber-100 text-amber-700' : ringCentral?.connected ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}><Link2 className="h-4 w-4" /></div><div className="flex-1"><p className="text-sm font-semibold text-slate-800">RingCentral 拨号连接</p><p className={`mt-0.5 text-xs ${ringCentral?.degraded ? 'text-amber-700' : 'text-slate-500'}`}>{ringCentral?.message || (ringCentral?.connected ? `已连接${ringCentral.extension_number ? ` · 分机 ${ringCentral.extension_number}` : ''}。点击拨号会调起您已登录的 RingCentral 桌面应用。` : '正在检查 RingCentral 配置...')}</p></div>{ringCentral?.connected && !ringCentral.needs_reconnect ? <Badge className={`w-fit ${ringCentral.degraded ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{ringCentral.degraded ? '连接波动' : '已连接'}</Badge> : <Button size="sm" disabled={!ringCentral?.configured} onClick={() => void connectRingCentral()}>{ringCentral?.configured ? '重新连接 RingCentral' : '等待服务器配置'}</Button>}</CardContent></Card>
     {role === 'sales' && personalPerformance && <Card className="border-violet-100 bg-violet-50/50 shadow-sm"><CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center"><BarChart3 className="h-7 w-7 text-violet-600" /><div className="flex-1"><p className="font-semibold text-slate-900">个人成长评分</p><p className="mt-1 text-xs text-slate-600">近 30 天 #{personalPerformance.rank} · {personalPerformance.confidence}。分数用于帮助改进，不会自动影响薪资或线索归属。</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge className="bg-violet-100 text-violet-700">总分 {personalPerformance.score}/100</Badge><Badge className="bg-white text-slate-700">结果 {personalPerformance.score_breakdown.results}/40</Badge><Badge className="bg-white text-slate-700">执行 {personalPerformance.score_breakdown.execution}/25</Badge><Badge className="bg-white text-slate-700">纪律 {personalPerformance.score_breakdown.discipline}/20</Badge><Badge className="bg-white text-slate-700">备注 {personalPerformance.score_breakdown.documentation}/10</Badge></div></div><div className="max-w-md rounded-lg bg-white/80 p-3 text-sm text-slate-700"><p className="font-medium text-violet-800">本周建议</p><p className="mt-1">{personalPerformance.suggestions[0]}</p></div></CardContent></Card>}
     {role === 'sales' && recoveryAlerts.length > 0 && <Card className="border-amber-200 bg-amber-50/70 shadow-sm"><CardContent className="p-4"><div className="flex items-start gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 text-amber-700" /><div className="min-w-0 flex-1"><p className="font-semibold text-amber-950">线索保护提醒</p><p className="mt-1 text-sm text-amber-900">以下线索尚未完成有效跟进。系统不会自动转给其他销售，但主管可能在查看后回收；如已和商家约好时间，可申请延期保护。</p><div className="mt-3 space-y-2">{recoveryAlerts.slice(0, 5).map(alert => <div key={alert.lead_id} className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-white/80 p-3 sm:flex-row sm:items-center"><div className="flex-1"><p className="text-sm font-medium text-slate-900">{alert.business_name}</p><p className="text-xs text-slate-600">{alert.message}{alert.deadline ? ` · 截止：${formatDate(alert.deadline)}` : ''}</p></div><Button size="sm" variant="outline" disabled={!!alert.extension_request || extensionBusy === alert.lead_id} onClick={() => void requestExtension(alert)}>{alert.extension_request ? '已申请延期' : extensionBusy === alert.lead_id ? '提交中...' : '申请延期'}</Button></div>)}</div></div></div></CardContent></Card>}
     <Card className="border-slate-200 shadow-sm"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><div className="flex-1"><p className="text-sm font-semibold text-slate-800">今日执行表现</p><p className="text-xs text-slate-500">只统计今天已保存的通话结果，用于帮助销售调整节奏，不与正式客户成交数据混合。</p></div><div className="grid grid-cols-3 gap-4 text-center sm:flex sm:gap-6"><div><p className="text-lg font-bold text-slate-900">{workbench?.performance.attempted || 0}</p><p className="text-xs text-slate-500">已拨打</p></div><div><p className="text-lg font-bold text-slate-900">{workbench?.performance.connection_rate || 0}%</p><p className="text-xs text-slate-500">接通率</p></div><div><p className="text-lg font-bold text-slate-900">{workbench?.performance.connected || 0}</p><p className="text-xs text-slate-500">有效接通</p></div></div></CardContent></Card>
