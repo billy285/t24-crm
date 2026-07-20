@@ -26,7 +26,17 @@ import MerchantPool from './pages/MerchantPool';
 import SalesWorkbench from './pages/SalesWorkbench';
 import SalesKnowledge from './pages/SalesKnowledge';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 0,
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      retry: 2,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

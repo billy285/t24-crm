@@ -1,6 +1,7 @@
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Login from './Login';
 import { useRole } from '@/lib/role-context';
+import { requestBusinessDataRefresh } from '@/lib/data-refresh';
 
 type LoginLocationState = {
   from?: {
@@ -41,6 +42,7 @@ export default function LoginPage() {
           ? '/sales-leads'
           : requestedRedirect;
         navigate(nextPath, { replace: true });
+        window.setTimeout(() => requestBusinessDataRefresh('login'), 300);
       }}
     />
   );

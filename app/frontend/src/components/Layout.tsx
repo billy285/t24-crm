@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { client } from '@/lib/api';
+import { requestBusinessDataRefresh } from '@/lib/data-refresh';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -72,6 +73,15 @@ export default function Layout({ children }: LayoutProps) {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn || !role) return undefined;
+    const refreshId = window.setTimeout(
+      () => requestBusinessDataRefresh('route-change'),
+      300,
+    );
+    return () => window.clearTimeout(refreshId);
+  }, [isLoggedIn, role, location.pathname]);
 
   const handleLogout = () => {
     logout();
