@@ -4123,40 +4123,84 @@ export default function Finance() {
                 {companyExpenseByType.length === 0 ? (
                   <p className="text-center text-slate-400 py-12">暂无运营支出数据</p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <ResponsiveContainer width="100%" height={260}>
-                      <PieChart>
-                        <Pie data={companyExpenseByType.map(d => ({ name: `${d.name} (${d.currency})`, value: d.amount, type: d.type, currency: d.currency }))} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2} dataKey="value"
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}>
-                          {companyExpenseByType.map((d) => (
-                            <Cell key={`${d.currency}:${d.type}`} fill={pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS)} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }}
-                          formatter={(value: number, _name: string, props: any) => [formatMoney(value, props.payload.currency), '支出']}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="space-y-2">
-                      {companyExpenseByType.map(d => {
-                        const currencyTotal = totalCompanyExpenseByCurrency[d.currency] || 0;
-                        const pct = currencyTotal > 0 ? ((d.amount / currencyTotal) * 100).toFixed(1) : '0';
-                        return (
-                          <div key={`${d.currency}:${d.type}`} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
-                            <div className="flex items-center gap-2">
-                              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS) }} />
-                              <span className="text-sm text-slate-700">{d.name} · {d.currency}</span>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    {(['USD', 'CNY'] as CurrencyCode[]).map(currency => {
+                      const currencyItems = companyExpenseByType.filter(item => item.currency === currency);
+                      const currencyTotal = totalCompanyExpenseByCurrency[currency] || 0;
+                      const isUsd = currency === 'USD';
+                      return (
+                        <div
+                          key={currency}
+                          className={`rounded-xl border p-4 ${isUsd ? 'border-blue-200 bg-blue-50/40' : 'border-amber-200 bg-amber-50/40'}`}
+                        >
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div>
+                              <p className={`text-sm font-semibold ${isUsd ? 'text-blue-800' : 'text-amber-800'}`}>
+                                {isUsd ? '美元运营支出' : '人民币运营支出'}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {isUsd ? '计入美元经营利润' : '独立统计，不与美元混算'}
+                              </p>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-sm font-medium text-slate-800">{formatMoney(d.amount, d.currency)}</span>
-                              <span className="text-xs text-slate-500 w-12 text-right">{pct}%</span>
+                            <div className="text-right">
+                              <p className="text-xs text-slate-500">合计</p>
+                              <p className={`text-xl font-bold ${isUsd ? 'text-blue-700' : 'text-amber-700'}`}>
+                                {formatMoney(currencyTotal, currency)}
+                              </p>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+
+                          {currencyItems.length === 0 ? (
+                            <div className="flex h-[250px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white/70 text-sm text-slate-400">
+                              暂无{isUsd ? '美元' : '人民币'}运营支出
+                            </div>
+                          ) : (
+                            <>
+                              <ResponsiveContainer width="100%" height={220}>
+                                <PieChart>
+                                  <Pie
+                                    data={currencyItems.map(d => ({ name: d.name, value: d.amount, type: d.type, currency: d.currency }))}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={48}
+                                    outerRadius={76}
+                                    paddingAngle={2}
+                                    dataKey="value"
+                                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                    labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
+                                  >
+                                    {currencyItems.map(d => (
+                                      <Cell key={`${currency}:${d.type}`} fill={pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS)} />
+                                    ))}
+                                  </Pie>
+                                  <Tooltip
+                                    contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }}
+                                    formatter={(value: number) => [formatMoney(value, currency), '支出']}
+                                  />
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="space-y-2">
+                                {currencyItems.map(d => {
+                                  const pct = currencyTotal > 0 ? ((d.amount / currencyTotal) * 100).toFixed(1) : '0';
+                                  return (
+                                    <div key={`${currency}:${d.type}`} className="flex items-center justify-between gap-3 rounded-lg bg-white/80 p-2">
+                                      <div className="flex min-w-0 items-center gap-2">
+                                        <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS) }} />
+                                        <span className="truncate text-sm text-slate-700">{d.name}</span>
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-3">
+                                        <span className="text-sm font-medium text-slate-800">{formatMoney(d.amount, currency)}</span>
+                                        <span className="w-12 text-right text-xs text-slate-500">{pct}%</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
