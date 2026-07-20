@@ -1,8 +1,24 @@
 import { createClient } from '@metagptx/web-sdk';
 import { getAPIBaseURL } from './config';
 
-// Create client instance
-export const client = createClient({ baseURL: getAPIBaseURL() } as any);
+type SdkClient = ReturnType<typeof createClient>;
+
+const createSdkClient = (): SdkClient => createClient({ baseURL: getAPIBaseURL() } as any);
+
+// The SDK reads localStorage.token only when createClient() runs. Keep a stable
+// exported proxy while allowing authentication changes to replace its backing client.
+let activeClient = createSdkClient();
+
+export const client = new Proxy({} as SdkClient, {
+  get(_target, property) {
+    const value = Reflect.get(activeClient, property);
+    return typeof value === 'function' ? value.bind(activeClient) : value;
+  },
+});
+
+export function refreshClientAuth(): void {
+  activeClient = createSdkClient();
+}
 
 function getStoredAuthHeaders() {
   if (typeof window === 'undefined') return {};

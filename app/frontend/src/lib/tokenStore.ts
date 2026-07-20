@@ -1,4 +1,4 @@
-import { client } from './api';
+import { client, refreshClientAuth } from './api';
 
 const EMP_TOKEN_KEY = 'emp_auth_token';
 const SDK_TOKEN_KEY = 'token';
@@ -9,6 +9,7 @@ export const setToken = (t: string): void => {
     localStorage.setItem(EMP_TOKEN_KEY, t);
     // Keep the SDK-default token key in sync so client.entities.* calls also carry auth.
     localStorage.setItem(SDK_TOKEN_KEY, t);
+    refreshClientAuth();
   } catch (e) {
     // Fallback: ignore storage quota errors
     // eslint-disable-next-line no-console
@@ -19,6 +20,7 @@ export const clearToken = (): void => {
   try {
     localStorage.removeItem(EMP_TOKEN_KEY);
     localStorage.removeItem(SDK_TOKEN_KEY);
+    refreshClientAuth();
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('Failed to remove token from localStorage:', e);
