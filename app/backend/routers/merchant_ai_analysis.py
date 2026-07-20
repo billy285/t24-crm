@@ -26,6 +26,48 @@ ADMIN_ROLES = {"admin", "super_admin"}
 POOL_ROLES = ADMIN_ROLES | {"sales_manager"}
 ELIGIBLE_STATUSES = {"pending", "converted"}
 
+ENRICHMENT_FIELDS = {
+    "contact_name": "联系人",
+    "industry": "行业",
+    "country": "国家",
+    "state": "州/省",
+    "city": "城市",
+    "address": "地址",
+    "website": "官网",
+    "rating": "综合评分",
+    "business_status": "营业状态",
+    "google_business_url": "Google 商家链接",
+    "google_rating": "Google 评分",
+    "google_review_count": "Google 评论数",
+    "yelp_url": "Yelp 链接",
+    "yelp_rating": "Yelp 评分",
+    "yelp_review_count": "Yelp 评论数",
+    "social_profiles": "社交平台资料",
+    "recent_negative_reviews": "近期差评重点",
+    "content_update_summary": "素材及内容更新情况",
+}
+
+
+class EnrichmentSuggestRequest(BaseModel):
+    merchant_ids: list[int]
+
+
+class EnrichmentSuggestion(BaseModel):
+    field: str
+    value: Any
+    source_label: str
+    source_updated_at: Optional[str] = None
+    confidence: float = 0.0
+
+
+class EnrichmentApplyItem(BaseModel):
+    merchant_id: int
+    suggestions: list[EnrichmentSuggestion]
+
+
+class EnrichmentApplyRequest(BaseModel):
+    items: list[EnrichmentApplyItem]
+
 
 def _role(user: UserResponse) -> str:
     return str(user.role or "").strip().lower()
@@ -304,6 +346,166 @@ def _response(item: MerchantAiAnalyses) -> dict[str, Any]:
         "generated_at": item.generated_at,
         "updated_at": item.updated_at,
     }
+
+
+def _is_blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _raw_payload(merchant: MerchantPool) -> dict[str, Any]:
+    try:
+        value = json.loads(merchant.raw_payload or "{}")
+        return value if isinstance(value, dict) else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _raw_enrichment_candidates(merchant: MerchantPool) -> list[dict[str, Any]]:
+    """Extract only unmapped values from the original import payload.
+
+    This deliberately does not infer facts from a name or call an arbitrary URL.
+    External Google/Yelp lookup can be added later without changing this review flow.
+    """
+    raw = _raw_payload(merchant)
+    aliases = {
+        "contact_name": {"contact", "contactname", "联系人"},
+        "industry": {"category", "industry", "行业", "类别"},
+        "country": {"country", "国家"},
+        "state": {"state", "province", "州", "省", "州省"},
+        "city": {"city", "城市"},
+        "address": {"address", "地址"},
+        "website": {"website", "web", "url", "官网"},
+        "rating": {"rating", "score", "评分", "公开评分"},
+        "business_status": {"businessstatus", "营业状态", "status"},
+        "google_business_url": {"googlebusinessurl", "googlemapsurl", "google商家链接", "google地图链接"},
+        "google_rating": {"googlerating", "google评分"},
+        "google_review_count": {"googlereviewcount", "google评论数", "google评论数量"},
+        "yelp_url": {"yelpurl", "yelp链接"},
+        "yelp_rating": {"yelprating", "yelp评分"},
+        "yelp_review_count": {"yelpreviewcount", "yelp评论数", "yelp评论数量"},
+        "social_profiles": {"socialprofiles", "社交平台", "社媒"},
+        "recent_negative_reviews": {"recentnegativereviews", "近期差评", "差评摘要"},
+        "content_update_summary": {"contentupdatesummary", "内容更新情况", "内容更新"},
+    }
+    normalized = {re.sub(r"[\s_\-()（）:：/]+", "", str(key)).lower(): value for key, value in raw.items()}
+    result = []
+    collected_at = merchant.collected_at or merchant.updated_at or merchant.created_at
+    for field, field_aliases in aliases.items():
+        if not _is_blank(getattr(merchant, field, None)):
+            continue
+        for key, value in normalized.items():
+            if key in field_aliases and not _is_blank(value):
+                result.append({
+                    "field": field,
+                    "value": value,
+                    "source_label": "原始导入资料",
+                    "source_updated_at": _format_time(collected_at),
+                    "confidence": 0.95,
+                })
+                break
+    return result
+
+
+def _coerce_enrichment_value(field: str, value: Any) -> Any:
+    if field in {"rating", "google_rating", "yelp_rating"}:
+        try:
+            return float(str(value).replace(",", "").strip())
+        except (TypeError, ValueError):
+            return None
+    if field in {"google_review_count", "yelp_review_count"}:
+        try:
+            return int(float(str(value).replace(",", "").strip()))
+        except (TypeError, ValueError):
+            return None
+    return str(value).strip() if isinstance(value, str) else value
+
+
+def _enrichment_result(merchant: MerchantPool, suggestions: list[dict[str, Any]], warning: Optional[str] = None) -> dict[str, Any]:
+    missing = [label for field, label in ENRICHMENT_FIELDS.items() if _is_blank(getattr(merchant, field, None)) and not any(item["field"] == field for item in suggestions)]
+    return {
+        "merchant_id": merchant.id,
+        "business_name": merchant.business_name,
+        "status": "needs_review" if suggestions else "information_insufficient",
+        "suggestions": suggestions,
+        "missing_fields": missing,
+        "warning": warning,
+        "source_updated_at": _format_time(merchant.collected_at or merchant.updated_at or merchant.created_at),
+    }
+
+
+@router.post("/enrichment/suggest")
+async def suggest_merchant_enrichment(
+    payload: EnrichmentSuggestRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_pool_role(current_user)
+    if not payload.merchant_ids or len(payload.merchant_ids) > 20:
+        raise HTTPException(status_code=400, detail="一次最多选择 20 条商家进行 AI 补充")
+    query = select(MerchantPool).where(MerchantPool.id.in_(payload.merchant_ids), MerchantPool.pool_status.in_(ELIGIBLE_STATUSES))
+    if _role(current_user) not in ADMIN_ROLES:
+        query = query.where(MerchantPool.created_by_id == _employee_id(current_user))
+    merchants = list((await db.execute(query)).scalars().all())
+    if len(merchants) != len(set(payload.merchant_ids)):
+        raise HTTPException(status_code=404, detail="部分商家不存在、未通过清洗或不在权限范围内")
+
+    results = []
+    for merchant in merchants:
+        candidates = _raw_enrichment_candidates(merchant)
+        results.append(_enrichment_result(
+            merchant,
+            candidates,
+            "当前只使用导入资料中的可追溯字段，尚未接入 Google/Yelp 外部检索；未找到来源的字段不会由 AI 猜测。",
+        ))
+    return {"items": results, "message": "建议已生成，尚未写入商家资料；请人工勾选确认。"}
+
+
+@router.post("/enrichment/apply")
+async def apply_merchant_enrichment(
+    payload: EnrichmentApplyRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_pool_role(current_user)
+    if not payload.items or len(payload.items) > 20:
+        raise HTTPException(status_code=400, detail="一次最多确认 20 条商家资料")
+    applied = 0
+    skipped = 0
+    applied_fields: list[dict[str, Any]] = []
+    for item in payload.items:
+        merchant = await _get_scoped_merchant(db, item.merchant_id, current_user)
+        raw = _raw_payload(merchant)
+        metadata = raw.get("_ai_enrichment") if isinstance(raw.get("_ai_enrichment"), dict) else {}
+        field_metadata = metadata.get("fields") if isinstance(metadata.get("fields"), dict) else {}
+        for suggestion in item.suggestions:
+            if suggestion.field not in ENRICHMENT_FIELDS or _is_blank(suggestion.value):
+                skipped += 1
+                continue
+            if not _is_blank(getattr(merchant, suggestion.field, None)):
+                skipped += 1
+                continue
+            value = _coerce_enrichment_value(suggestion.field, suggestion.value)
+            if value is None or _is_blank(value):
+                skipped += 1
+                continue
+            setattr(merchant, suggestion.field, value)
+            field_metadata[suggestion.field] = {
+                "source": suggestion.source_label,
+                "source_updated_at": suggestion.source_updated_at,
+                "confidence": suggestion.confidence,
+                "applied_at": datetime.now(timezone.utc).isoformat(),
+                "applied_by_id": _employee_id(current_user),
+                "applied_by_name": current_user.name,
+            }
+            applied += 1
+            applied_fields.append({"merchant_id": merchant.id, "field": suggestion.field})
+        metadata["fields"] = field_metadata
+        metadata["last_applied_at"] = datetime.now(timezone.utc).isoformat()
+        raw["_ai_enrichment"] = metadata
+        merchant.raw_payload = json.dumps(raw, ensure_ascii=False)
+        merchant.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"message": "已确认写入空白资料", "applied_count": applied, "skipped_count": skipped, "fields": applied_fields}
 
 
 @router.get("/{merchant_id}/analysis", response_model=Optional[MerchantAnalysisResponse])

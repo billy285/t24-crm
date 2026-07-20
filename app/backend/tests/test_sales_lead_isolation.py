@@ -423,3 +423,44 @@ async def test_admin_can_archive_and_delete_useless_pool_records(sales_app_clien
         headers=admin,
     )
     assert delete_converted.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_pool_supports_bulk_industry_update_and_delete(sales_app_client):
+    admin = _auth_headers("admin", 1, "Admin")
+    manager = _auth_headers("sales_manager", 10, "Manager A")
+
+    imported = await sales_app_client.post(
+        "/api/v1/merchant-pool/import",
+        headers=manager,
+        json={
+            "data_source": "bulk",
+            "records": [
+                {"business_name": "Batch Industry One", "phone": "555-9101"},
+                {"business_name": "Batch Industry Two", "phone": "555-9102"},
+                {"business_name": "Batch Industry Three", "phone": "555-9103"},
+            ],
+        },
+    )
+    assert imported.status_code == 200
+    merchant_ids = [item["id"] for item in imported.json()["items"]]
+
+    updated = await sales_app_client.post(
+        "/api/v1/merchant-pool/bulk-update-industry",
+        headers=manager,
+        json={"merchant_ids": merchant_ids, "industry": "美容院"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["updated_count"] == 3
+
+    listed = await sales_app_client.get("/api/v1/merchant-pool", headers=admin)
+    matching = [item for item in listed.json()["items"] if item["id"] in merchant_ids]
+    assert {item["industry"] for item in matching} == {"美容院"}
+
+    deleted = await sales_app_client.post(
+        "/api/v1/merchant-pool/bulk-delete",
+        headers=admin,
+        json={"merchant_ids": merchant_ids},
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted_count"] == 3

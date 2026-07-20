@@ -63,3 +63,65 @@ async def test_merchant_analysis_is_source_bound_and_sales_is_blocked(sales_app_
     assert latest.status_code == 200
     assert latest.json()["id"] == payload["id"]
     assert blocked.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_merchant_enrichment_keeps_raw_import_evidence_and_never_overwrites(sales_app_client):
+    manager = _auth_headers("sales_manager", 10, "Manager A")
+    imported = await sales_app_client.post(
+        "/api/v1/merchant-pool/import",
+        headers=manager,
+        json={
+            "data_source": "bulk",
+            "records": [{
+                "business_name": "Raw Evidence Spa",
+                "phone": "555-1122",
+                "industry": "美业",
+                "Google Rating": 4.7,
+                "Yelp URL": "https://yelp.example/raw-evidence",
+            }],
+        },
+    )
+    assert imported.status_code == 200
+    merchant_id = imported.json()["items"][0]["id"]
+
+    suggested = await sales_app_client.post(
+        "/api/v1/merchant-pool/enrichment/suggest",
+        headers=manager,
+        json={"merchant_ids": [merchant_id]},
+    )
+    assert suggested.status_code == 200
+    suggestions = suggested.json()["items"][0]["suggestions"]
+    assert {item["field"] for item in suggestions} == {"google_rating", "yelp_url"}
+    assert all(item["source_label"] == "原始导入资料" for item in suggestions)
+
+    applied = await sales_app_client.post(
+        "/api/v1/merchant-pool/enrichment/apply",
+        headers=manager,
+        json={"items": [{"merchant_id": merchant_id, "suggestions": suggestions}]},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["applied_count"] == 2
+
+    merchants = await sales_app_client.get(
+        "/api/v1/merchant-pool",
+        headers=manager,
+        params={"search": "Raw Evidence Spa"},
+    )
+    assert merchants.status_code == 200
+    merchant = merchants.json()["items"][0]
+    assert merchant["google_rating"] == 4.7
+    assert merchant["yelp_url"] == "https://yelp.example/raw-evidence"
+
+    overwrite = await sales_app_client.post(
+        "/api/v1/merchant-pool/enrichment/apply",
+        headers=manager,
+        json={"items": [{"merchant_id": merchant_id, "suggestions": [{
+            "field": "google_rating",
+            "value": 1.0,
+            "source_label": "伪造来源",
+            "confidence": 1.0,
+        }]}]},
+    )
+    assert overwrite.status_code == 200
+    assert overwrite.json()["skipped_count"] == 1

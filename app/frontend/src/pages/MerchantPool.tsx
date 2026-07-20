@@ -59,6 +59,7 @@ const sourceOptions = [
   { value: '', label: '全部来源' }, { value: 'api', label: 'API' }, { value: 'csv', label: 'CSV' },
   { value: 'bulk', label: '批量粘贴' }, { value: 'manual', label: '手动录入' },
 ];
+const industryOptions = ['餐厅', '美甲', '美容', '美业', '水疗', '按摩', '理发', '超市', '其他'];
 type AnalysisSource = { id?: string; label: string; value?: string | number | null; updated_at?: string | null };
 type AnalysisCard = { title: string; kind: 'fact' | 'recommendation' | 'insufficient'; content: string; sources: AnalysisSource[] };
 type MerchantAnalysis = {
@@ -68,6 +69,8 @@ type MerchantAnalysis = {
   ai_model?: string | null;
   generated_at: string;
 };
+type EnrichmentSuggestion = { field: string; value: string | number; source_label: string; source_updated_at?: string | null; confidence: number };
+type EnrichmentResult = { merchant_id: number; business_name: string; status: string; suggestions: EnrichmentSuggestion[]; missing_fields: string[]; warning?: string | null; source_updated_at?: string | null };
 
 const emptyEdit = {
   business_name: '', contact_name: '', phone: '', industry: '', country: 'US', state: '', city: '', address: '', website: '', rating: '', business_status: '',
@@ -153,7 +156,9 @@ export default function MerchantPool() {
   const [assignees, setAssignees] = useState<{ id: number; name: string }[]>([]);
   const [selectedMerchantIds, setSelectedMerchantIds] = useState<number[]>([]);
   const [selectedSalesId, setSelectedSalesId] = useState('');
+  const [bulkIndustry, setBulkIndustry] = useState('');
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [stats, setStats] = useState({ total: 0, pending: 0, isolated: 0, converted: 0, duplicates: 0, archived: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -175,6 +180,11 @@ export default function MerchantPool() {
   const [analysis, setAnalysis] = useState<MerchantAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [generatingAnalysis, setGeneratingAnalysis] = useState(false);
+  const [enrichmentOpen, setEnrichmentOpen] = useState(false);
+  const [enrichmentLoading, setEnrichmentLoading] = useState(false);
+  const [enrichmentResults, setEnrichmentResults] = useState<EnrichmentResult[]>([]);
+  const [enrichmentSelected, setEnrichmentSelected] = useState<Record<number, Record<string, boolean>>>({});
+  const [applyingEnrichment, setApplyingEnrichment] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -337,6 +347,49 @@ export default function MerchantPool() {
     }
   };
 
+  const suggestEnrichment = async () => {
+    if (!selectedMerchantIds.length) return;
+    if (selectedMerchantIds.length > 20) {
+      toast.error('AI 补充一次最多选择 20 条商家');
+      return;
+    }
+    setEnrichmentLoading(true);
+    try {
+      const response = await invokeWithAuth({ url: '/api/v1/merchant-pool/enrichment/suggest', method: 'POST', data: { merchant_ids: selectedMerchantIds } });
+      const results: EnrichmentResult[] = response.data?.items || [];
+      setEnrichmentResults(results);
+      setEnrichmentSelected(Object.fromEntries(results.map(item => [item.merchant_id, Object.fromEntries(item.suggestions.map(suggestion => [suggestion.field, true]))])));
+      setEnrichmentOpen(true);
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || 'AI 补充建议生成失败');
+    } finally {
+      setEnrichmentLoading(false);
+    }
+  };
+
+  const applyEnrichment = async () => {
+    const items = enrichmentResults.map(result => ({
+      merchant_id: result.merchant_id,
+      suggestions: result.suggestions.filter(suggestion => enrichmentSelected[result.merchant_id]?.[suggestion.field]),
+    })).filter(item => item.suggestions.length);
+    if (!items.length) {
+      toast.error('请至少勾选一项有来源的补充资料');
+      return;
+    }
+    setApplyingEnrichment(true);
+    try {
+      const response = await invokeWithAuth({ url: '/api/v1/merchant-pool/enrichment/apply', method: 'POST', data: { items } });
+      toast.success(`已写入 ${response.data?.applied_count || 0} 项空白资料，跳过 ${response.data?.skipped_count || 0} 项`);
+      setEnrichmentOpen(false);
+      setSelectedMerchantIds([]);
+      await loadData();
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || '补充资料确认失败');
+    } finally {
+      setApplyingEnrichment(false);
+    }
+  };
+
   const analysisKindLabel: Record<AnalysisCard['kind'], string> = { fact: '已采集事实', recommendation: '销售建议', insufficient: '信息不足' };
   const analysisKindClass: Record<AnalysisCard['kind'], string> = { fact: 'bg-blue-100 text-blue-700', recommendation: 'bg-violet-100 text-violet-700', insufficient: 'bg-amber-100 text-amber-800' };
 
@@ -349,10 +402,10 @@ export default function MerchantPool() {
   };
 
   const toggleCurrentPageSelection = (checked: boolean) => {
-    const pendingIds = items.filter(item => item.pool_status === 'pending').map(item => item.id);
+    const selectableIds = items.filter(item => !['converted', 'archived'].includes(item.pool_status)).map(item => item.id);
     setSelectedMerchantIds(current => checked
-      ? Array.from(new Set([...current, ...pendingIds]))
-      : current.filter(id => !pendingIds.includes(id)));
+      ? Array.from(new Set([...current, ...selectableIds]))
+      : current.filter(id => !selectableIds.includes(id)));
   };
 
   const assignSelectedMerchants = async () => {
@@ -374,6 +427,46 @@ export default function MerchantPool() {
       toast.error(error?.data?.detail || error?.message || '批量分配失败');
     } finally {
       setBulkAssigning(false);
+    }
+  };
+
+  const updateSelectedIndustry = async () => {
+    if (!selectedMerchantIds.length) return;
+    if (!bulkIndustry.trim()) { toast.error('请先选择或填写行业'); return; }
+    if (!window.confirm(`确认将选中的 ${selectedMerchantIds.length} 条商家行业统一设置为“${bulkIndustry.trim()}”？`)) return;
+    setBulkUpdating(true);
+    try {
+      const result = await invokeWithAuth({
+        url: '/api/v1/merchant-pool/bulk-update-industry', method: 'POST',
+        data: { merchant_ids: selectedMerchantIds, industry: bulkIndustry.trim() },
+      });
+      toast.success(`已更新 ${result.data?.updated_count || selectedMerchantIds.length} 条商家的行业`);
+      setSelectedMerchantIds([]);
+      setBulkIndustry('');
+      await loadData();
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || '批量设置行业失败');
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  const deleteSelectedMerchants = async () => {
+    if (!isAdmin || !selectedMerchantIds.length) return;
+    if (!window.confirm(`确认永久删除选中的 ${selectedMerchantIds.length} 条商家池记录？已转入电话销售线索的记录不会被删除。`)) return;
+    setBulkUpdating(true);
+    try {
+      const result = await invokeWithAuth({
+        url: '/api/v1/merchant-pool/bulk-delete', method: 'POST',
+        data: { merchant_ids: selectedMerchantIds },
+      });
+      toast.success(`已删除 ${result.data?.deleted_count || selectedMerchantIds.length} 条商家记录`);
+      setSelectedMerchantIds([]);
+      await loadData();
+    } catch (error: any) {
+      toast.error(error?.data?.detail || error?.message || '批量删除失败');
+    } finally {
+      setBulkUpdating(false);
     }
   };
 
@@ -400,17 +493,17 @@ export default function MerchantPool() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="merchant-pool-page space-y-4 sm:space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2 text-sm font-medium text-indigo-600"><Database className="h-4 w-4" /> 售前数据缓冲区</div>
-          <h2 className="text-2xl font-bold text-slate-900">待清洗商家池</h2>
-          <p className="mt-1 text-sm text-slate-500">原始商家先在此去重、比对正式客户并隔离无效数据；只有人工确认后才能进入电话销售线索库。</p>
+          <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">待清洗商家池</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-5 text-slate-500">原始商家先在此去重、比对正式客户并隔离无效数据；只有人工确认后才能进入电话销售线索库。</p>
         </div>
-        <Button onClick={() => setImportOpen(true)}><Upload className="mr-2 h-4 w-4" />导入商家数据</Button>
+        <Button className="w-full sm:w-auto" onClick={() => setImportOpen(true)}><Upload className="mr-2 h-4 w-4" />导入商家数据</Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
         {[
           { label: '全部采集记录', value: stats.total, tone: 'bg-indigo-50 text-indigo-700' },
           { label: '待清洗可用', value: stats.pending, tone: 'bg-blue-50 text-blue-700' },
@@ -418,10 +511,10 @@ export default function MerchantPool() {
           { label: '重复记录', value: stats.duplicates, tone: 'bg-orange-50 text-orange-800' },
           { label: '已转电话线索', value: stats.converted, tone: 'bg-emerald-50 text-emerald-700' },
           { label: '已归档', value: stats.archived, tone: 'bg-slate-50 text-slate-600' },
-        ].map(item => <Card key={item.label} className="border-slate-200 shadow-sm"><CardContent className="p-4"><p className="text-xs text-slate-500">{item.label}</p><p className={`mt-1 text-2xl font-bold ${item.tone.split(' ')[1]}`}>{item.value}</p></CardContent></Card>)}
+        ].map(item => <Card key={item.label} className="border-slate-200 shadow-sm"><CardContent className="p-3 sm:p-4"><p className="text-xs leading-4 text-slate-500">{item.label}</p><p className={`mt-1 text-xl font-bold sm:text-2xl ${item.tone.split(' ')[1]}`}>{item.value}</p></CardContent></Card>)}
       </div>
 
-      <Card className="border-slate-200 shadow-sm"><CardContent className="space-y-3 p-4">
+      <Card className="border-slate-200 shadow-sm"><CardContent className="space-y-3 p-3 sm:p-4">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700"><Filter className="h-4 w-4" />精准筛选</div>
         <div className="grid gap-3 lg:grid-cols-6">
           <div className="relative lg:col-span-2"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input className="pl-9" value={search} onChange={event => setSearch(event.target.value)} placeholder="商家、电话或网站" /></div>
@@ -433,15 +526,17 @@ export default function MerchantPool() {
         </div>
       </CardContent></Card>
 
-      {canManagePool && selectedMerchantIds.length > 0 && <Card className="border-indigo-200 bg-indigo-50/60 shadow-sm"><CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center"><div className="flex items-center gap-2 text-sm font-semibold text-indigo-950"><CheckSquare className="h-5 w-5 text-indigo-600" />已选 {selectedMerchantIds.length} 条待清洗可用商家</div><p className="text-xs text-indigo-700">转线索后将锁定为“已转电话线索”，不会再次被分配。</p><div className="flex flex-1 flex-col gap-2 sm:flex-row lg:justify-end"><NativeSelect className="sm:w-52" value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售人员' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button disabled={bulkAssigning || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-2 h-4 w-4" />{bulkAssigning ? '分配中...' : '批量转线索并分配'}</Button><Button variant="outline" disabled={bulkAssigning} onClick={() => setSelectedMerchantIds([])}>取消选择</Button></div></CardContent></Card>}
+      {canManagePool && selectedMerchantIds.length > 0 && <Card className="border-indigo-200 bg-indigo-50/60 shadow-sm"><CardContent className="flex flex-col gap-3 p-4"><div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-sm font-semibold text-indigo-950"><CheckSquare className="h-5 w-5 text-indigo-600" />已选 {selectedMerchantIds.length} 条商家</div><p className="text-xs text-indigo-700">已转线索或已归档记录不能批量修改；批量删除只对未转线索记录生效。</p></div><div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:justify-end"><NativeSelect className="sm:w-52" value={bulkIndustry} onChange={setBulkIndustry} options={[{ value: '', label: '选择统一行业' }, ...industryOptions.map(value => ({ value, label: value }))]} /><Input className="sm:w-52" value={bulkIndustry && !industryOptions.includes(bulkIndustry) ? bulkIndustry : ''} onChange={event => setBulkIndustry(event.target.value)} placeholder="或输入自定义行业" /><Button disabled={bulkUpdating || !bulkIndustry.trim()} onClick={() => void updateSelectedIndustry()}>{bulkUpdating ? '更新中...' : '批量设置行业'}</Button><Button variant="outline" disabled={bulkUpdating || bulkAssigning || enrichmentLoading || selectedMerchantIds.length > 20} onClick={() => void suggestEnrichment()}><Sparkles className="mr-2 h-4 w-4" />{enrichmentLoading ? '分析中...' : 'AI 补充空白资料'}</Button><NativeSelect className="sm:w-52" value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售人员' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button disabled={bulkAssigning || bulkUpdating || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-2 h-4 w-4" />{bulkAssigning ? '分配中...' : '批量转线索并分配'}</Button>{isAdmin && <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" disabled={bulkUpdating || bulkAssigning} onClick={() => void deleteSelectedMerchants()}><Trash2 className="mr-2 h-4 w-4" />批量删除</Button>}<Button variant="outline" disabled={bulkUpdating || bulkAssigning || enrichmentLoading} onClick={() => { setSelectedMerchantIds([]); setBulkIndustry(''); setSelectedSalesId(''); }}>取消选择</Button></div></CardContent></Card>}
 
-      <Card className="overflow-hidden border-slate-200 shadow-sm"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[1280px] text-left text-sm"><thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{canManagePool && <th className="w-12 px-4 py-3"><input aria-label="选择本页可用商家" type="checkbox" checked={items.filter(item => item.pool_status === 'pending').length > 0 && items.filter(item => item.pool_status === 'pending').every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></th>}<th className="px-4 py-3">商家</th><th className="px-4 py-3">电话 / 网站</th><th className="px-4 py-3">地区 / 行业</th><th className="px-4 py-3">评分</th><th className="px-4 py-3">来源 / 采集时间</th><th className="px-4 py-3">清洗结果</th><th className="px-4 py-3 text-right">操作</th></tr></thead><tbody className="divide-y divide-slate-100">
+      <Card className="overflow-hidden border-slate-200 shadow-sm"><CardContent className="p-0"><div className="flex items-center justify-between border-b bg-slate-50 px-3 py-2 text-xs text-slate-500 sm:hidden"><span>商家列表</span><span>左右滑动查看全部</span></div><div className="merchant-pool-table overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-sm"><thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{canManagePool && <th className="w-12 px-4 py-3"><input aria-label="选择本页可操作商家" type="checkbox" checked={items.filter(item => !['converted', 'archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted', 'archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></th>}<th className="px-4 py-3">商家</th><th className="px-4 py-3">电话 / 网站</th><th className="px-4 py-3">地区 / 行业</th><th className="px-4 py-3">评分</th><th className="px-4 py-3">来源 / 采集时间</th><th className="px-4 py-3">清洗结果</th><th className="px-4 py-3 text-right">操作</th></tr></thead><tbody className="divide-y divide-slate-100">
         {loading ? <tr><td colSpan={canManagePool ? 8 : 7} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr>
           : items.length === 0 ? <tr><td colSpan={canManagePool ? 8 : 7} className="py-12 text-center text-slate-400">暂无商家记录</td></tr>
-          : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) ? 'bg-indigo-50/60' : 'hover:bg-slate-50/70'}>{canManagePool && <td className="px-4 py-3"><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={merchant.pool_status !== 'pending'} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></td>}<td className="px-4 py-3"><p className="font-semibold text-slate-900">{merchant.business_name}</p><p className="text-xs text-slate-500">{merchant.contact_name || '未填写联系人'} · #{merchant.id}</p></td><td className="px-4 py-3"><p>{merchant.phone || <span className="text-rose-600">无电话</span>}</p><p className="max-w-44 truncate text-xs text-blue-600">{merchant.website || '-'}</p></td><td className="px-4 py-3 text-slate-600"><p>{[merchant.city, merchant.state, merchant.country].filter(Boolean).join(', ') || '-'}</p><p className="text-xs text-slate-400">{merchant.industry || '未分类'}</p></td><td className="px-4 py-3">{merchant.rating ? <span className="font-medium text-amber-600">{merchant.rating.toFixed(1)} ★</span> : '-'}</td><td className="px-4 py-3"><p className="font-medium text-slate-700">{merchant.data_source}</p><p className="text-xs text-slate-400">{formatDate(merchant.collected_at)}</p></td><td className="px-4 py-3"><Badge className={statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge><p className="mt-1 max-w-56 text-xs text-slate-500">{merchant.isolation_reason || '已通过基础检查，等待确认'}</p></td><td className="px-4 py-3"><div className="flex flex-wrap justify-end gap-1.5"><Button size="sm" variant="outline" onClick={() => openEdit(merchant)}>补充资料</Button>{['pending', 'converted'].includes(merchant.pool_status) && <Button size="sm" variant="outline" onClick={() => void openAnalysis(merchant)}><Sparkles className="mr-1 h-3.5 w-3.5" />AI 分析</Button>}{merchant.pool_status === 'pending' && <Button size="sm" onClick={() => toggleMerchantSelection(merchant.id, true)}><Send className="mr-1 h-3.5 w-3.5" />加入分配</Button>}{isAdmin && merchant.pool_status !== 'converted' && merchant.pool_status !== 'archived' && <Button size="sm" variant="outline" onClick={() => archiveMerchant(merchant)}><Archive className="mr-1 h-3.5 w-3.5" />归档</Button>}{isAdmin && merchant.pool_status !== 'converted' && <Button size="sm" variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => deleteMerchant(merchant)}><Trash2 className="mr-1 h-3.5 w-3.5" />删除</Button>}</div></td></tr>)}
+          : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) ? 'bg-indigo-50/60' : 'hover:bg-slate-50/70'}>{canManagePool && <td className="px-4 py-3"><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={['converted', 'archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></td>}<td className="px-4 py-3"><p className="font-semibold text-slate-900">{merchant.business_name}</p><p className="text-xs text-slate-500">{merchant.contact_name || '未填写联系人'} · #{merchant.id}</p></td><td className="px-4 py-3"><p>{merchant.phone || <span className="text-rose-600">无电话</span>}</p><p className="max-w-44 truncate text-xs text-blue-600">{merchant.website || '-'}</p></td><td className="px-4 py-3 text-slate-600"><p>{[merchant.city, merchant.state, merchant.country].filter(Boolean).join(', ') || '-'}</p><p className="text-xs text-slate-400">{merchant.industry || '未分类'}</p></td><td className="px-4 py-3">{merchant.rating ? <span className="font-medium text-amber-600">{merchant.rating.toFixed(1)} ★</span> : '-'}</td><td className="px-4 py-3"><p className="font-medium text-slate-700">{merchant.data_source}</p><p className="text-xs text-slate-400">{formatDate(merchant.collected_at)}</p></td><td className="px-4 py-3"><Badge className={statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge><p className="mt-1 max-w-56 text-xs text-slate-500">{merchant.isolation_reason || '已通过基础检查，等待确认'}</p></td><td className="px-4 py-3"><div className="flex flex-wrap justify-end gap-1.5"><Button size="sm" variant="outline" onClick={() => openEdit(merchant)}>补充资料</Button>{['pending', 'converted'].includes(merchant.pool_status) && <Button size="sm" variant="outline" onClick={() => void openAnalysis(merchant)}><Sparkles className="mr-1 h-3.5 w-3.5" />AI 分析</Button>}{merchant.pool_status === 'pending' && <Button size="sm" onClick={() => toggleMerchantSelection(merchant.id, true)}><Send className="mr-1 h-3.5 w-3.5" />加入分配</Button>}{isAdmin && merchant.pool_status !== 'converted' && merchant.pool_status !== 'archived' && <Button size="sm" variant="outline" onClick={() => archiveMerchant(merchant)}><Archive className="mr-1 h-3.5 w-3.5" />归档</Button>}{isAdmin && merchant.pool_status !== 'converted' && <Button size="sm" variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => deleteMerchant(merchant)}><Trash2 className="mr-1 h-3.5 w-3.5" />删除</Button>}</div></td></tr>)}
       </tbody></table></div><div className="flex flex-col gap-3 border-t bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-slate-500">共 {total} 条，第 {page}/{totalPages} 页</p><div className="flex items-center gap-2"><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>下一页</Button></div></div></CardContent></Card>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>导入待清洗商家数据</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-900"><p className="font-medium">自动清洗规则</p><p className="mt-1 text-indigo-700">无电话、已关闭、与正式客户重复、或与商家池重复的数据会被自动隔离，不会进入电话销售线索库。</p></div><div className="flex gap-2"><Button size="sm" variant={importMode === 'csv' ? 'default' : 'outline'} onClick={() => setImportMode('csv')}>Excel / CSV 文件</Button><Button size="sm" variant={importMode === 'bulk' ? 'default' : 'outline'} onClick={() => setImportMode('bulk')}>批量粘贴</Button></div>{importMode === 'csv' ? <div className="space-y-3"><p className="text-sm text-slate-600">支持 Excel（.xlsx）及 CSV（UTF-8、Excel 常见编码）。会自动识别中文/英文表头，例如：商家名称、Business Name、电话/Phone、地址/Address、官网/Website、类别/Category、评分/Rating。</p><p className="text-xs text-slate-500">导入后会提示未识别列；地址中有逗号时，请使用 Excel 文件或用双引号包住该地址。</p><input ref={fileRef} className="hidden" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={importCsv} /><Button disabled={importing} onClick={() => fileRef.current?.click()}><FileUp className="mr-2 h-4 w-4" />{importing ? '导入中...' : '选择 Excel 或 CSV'}</Button></div> : <div className="space-y-2"><Label>每行一条：商家名称, 电话, 地址, 网站, 行业, 城市, 州/省, 国家, 评分, 营业状态</Label><Textarea rows={9} value={bulkText} onChange={event => setBulkText(event.target.value)} placeholder={'支持直接从 Excel 粘贴（制表符）或粘贴 Markdown 表格\n示例餐厅, 626-123-4567, "123 Main St, Suite 1", example.com, 餐厅, Los Angeles, CA, US, 4.5, open'} /><p className="text-xs text-slate-500">支持你刚才发来的 Markdown 表格；“待核验、暂未确认、官网未明确显示”会按空资料处理，不会造成导入失败。</p><Button disabled={importing} onClick={importBulk}><Sparkles className="mr-2 h-4 w-4" />{importing ? '清洗中...' : '导入并自动清洗'}</Button></div>}<div className="border-t pt-3 text-xs text-slate-500"><Link2 className="mr-1 inline h-3.5 w-3.5" />接口导入：主管或管理员可向 <code>/api/v1/merchant-pool/import</code> 提交 JSON 批次，来源填写 <code>api</code>。</div></div></DialogContent></Dialog>
+
+      <Dialog open={enrichmentOpen} onOpenChange={setEnrichmentOpen}><DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto"><DialogHeader><DialogTitle>AI 补充空白资料 · 人工确认</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-900"><p className="font-medium">安全补充规则</p><p className="mt-1 text-indigo-800">只使用原始导入资料中已有、但尚未写入标准字段的内容；不会覆盖已填写资料，也不会根据商家名称猜测。Google/Yelp 外部检索尚未接入，找不到来源的字段显示为“信息不足”。</p></div>{enrichmentResults.map(result => <Card key={result.merchant_id} className="border-slate-200"><CardContent className="space-y-3 p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-slate-900">{result.business_name}</p><Badge className={result.status === 'needs_review' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}>{result.status === 'needs_review' ? '有待确认建议' : '信息不足'}</Badge></div><p className="text-xs text-slate-500">原始资料时间：{formatDate(result.source_updated_at || undefined)}</p></div>{result.warning && <p className="rounded-lg bg-amber-50 p-2 text-xs leading-5 text-amber-900">{result.warning}</p>}{result.suggestions.length ? <div className="grid gap-2 md:grid-cols-2">{result.suggestions.map(suggestion => <label key={`${result.merchant_id}-${suggestion.field}`} className="flex cursor-pointer items-start gap-2 rounded-lg border bg-white p-3"><input type="checkbox" checked={Boolean(enrichmentSelected[result.merchant_id]?.[suggestion.field])} onChange={event => setEnrichmentSelected(previous => ({ ...previous, [result.merchant_id]: { ...previous[result.merchant_id], [suggestion.field]: event.target.checked } }))} /><span className="min-w-0 text-sm"><span className="font-medium text-slate-800">{suggestion.field}</span><span className="block break-words text-slate-700">{String(suggestion.value)}</span><span className="block text-xs text-slate-500">来源：{suggestion.source_label} · 可信度：{Math.round(suggestion.confidence * 100)}%</span></span></label>)}</div> : <div className="rounded-lg border border-dashed p-3 text-sm text-slate-500">信息不足：原始导入资料中没有可追溯的空白字段补充内容。</div>}{result.missing_fields.length > 0 && <p className="text-xs text-slate-500">仍缺少：{result.missing_fields.join('、')}</p>}</CardContent></Card>)}<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEnrichmentOpen(false)}>取消</Button><Button disabled={applyingEnrichment} onClick={() => void applyEnrichment()}>{applyingEnrichment ? '写入中...' : '确认写入已勾选资料'}</Button></div></div></DialogContent></Dialog>
 
       <Dialog open={!!editing} onOpenChange={open => !open && setEditing(null)}><DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>补充商家资料并重新清洗</DialogTitle></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><div><Label>商家名称 *</Label><Input value={editForm.business_name} onChange={event => setEditForm({ ...editForm, business_name: event.target.value })} /></div><div><Label>电话</Label><Input value={editForm.phone} onChange={event => setEditForm({ ...editForm, phone: event.target.value })} /></div><div><Label>联系人</Label><Input value={editForm.contact_name} onChange={event => setEditForm({ ...editForm, contact_name: event.target.value })} /></div><div><Label>行业</Label><Input value={editForm.industry} onChange={event => setEditForm({ ...editForm, industry: event.target.value })} /></div><div><Label>国家</Label><Input value={editForm.country} onChange={event => setEditForm({ ...editForm, country: event.target.value })} /></div><div><Label>州/省</Label><Input value={editForm.state} onChange={event => setEditForm({ ...editForm, state: event.target.value })} /></div><div><Label>城市</Label><Input value={editForm.city} onChange={event => setEditForm({ ...editForm, city: event.target.value })} /></div><div><Label>综合评分</Label><Input type="number" min="0" max="5" step="0.1" value={editForm.rating} onChange={event => setEditForm({ ...editForm, rating: event.target.value })} /></div><div className="sm:col-span-2"><Label>地址</Label><Input value={editForm.address} onChange={event => setEditForm({ ...editForm, address: event.target.value })} /></div><div className="sm:col-span-2"><Label>官网</Label><Input value={editForm.website} onChange={event => setEditForm({ ...editForm, website: event.target.value })} /></div><div className="sm:col-span-2"><Label>营业状态</Label><Input value={editForm.business_status} onChange={event => setEditForm({ ...editForm, business_status: event.target.value })} placeholder="open / closed / 已关闭" /></div></div><div className="my-5 border-t pt-4"><p className="mb-3 text-sm font-semibold text-slate-800">销售分析资料</p><p className="mb-4 text-xs text-slate-500">只填写已实际采集到的资料；未填写的项目会在 AI 分析卡中明确显示“信息不足”。</p><div className="grid gap-4 sm:grid-cols-2"><div><Label>Google 商家链接</Label><Input value={editForm.google_business_url} onChange={event => setEditForm({ ...editForm, google_business_url: event.target.value })} /></div><div><Label>Google 评分</Label><Input type="number" min="0" max="5" step="0.1" value={editForm.google_rating} onChange={event => setEditForm({ ...editForm, google_rating: event.target.value })} /></div><div><Label>Google 评论数</Label><Input type="number" min="0" step="1" value={editForm.google_review_count} onChange={event => setEditForm({ ...editForm, google_review_count: event.target.value })} /></div><div><Label>Yelp 链接</Label><Input value={editForm.yelp_url} onChange={event => setEditForm({ ...editForm, yelp_url: event.target.value })} /></div><div><Label>Yelp 评分</Label><Input type="number" min="0" max="5" step="0.1" value={editForm.yelp_rating} onChange={event => setEditForm({ ...editForm, yelp_rating: event.target.value })} /></div><div><Label>Yelp 评论数</Label><Input type="number" min="0" step="1" value={editForm.yelp_review_count} onChange={event => setEditForm({ ...editForm, yelp_review_count: event.target.value })} /></div><div className="sm:col-span-2"><Label>社交平台情况</Label><Textarea rows={2} value={editForm.social_profiles} onChange={event => setEditForm({ ...editForm, social_profiles: event.target.value })} placeholder="例如：Instagram 已采集链接，最近更新于 7 月 1 日" /></div><div className="sm:col-span-2"><Label>近期差评重点</Label><Textarea rows={2} value={editForm.recent_negative_reviews} onChange={event => setEditForm({ ...editForm, recent_negative_reviews: event.target.value })} placeholder="只填写已采集的评论摘要，不确定请留空" /></div><div className="sm:col-span-2"><Label>素材及内容更新情况</Label><Textarea rows={2} value={editForm.content_update_summary} onChange={event => setEditForm({ ...editForm, content_update_summary: event.target.value })} placeholder="例如：菜单图片最后更新于 2026-06，近期无活动帖" /></div><div><Label>内容资料更新时间</Label><Input type="datetime-local" value={editForm.content_last_updated_at} onChange={event => setEditForm({ ...editForm, content_last_updated_at: event.target.value })} /></div></div></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(null)}>取消</Button><Button onClick={saveEdit}><RefreshCw className="mr-2 h-4 w-4" />保存并重新清洗</Button></div></DialogContent></Dialog>
 

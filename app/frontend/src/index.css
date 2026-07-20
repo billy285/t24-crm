@@ -149,4 +149,20 @@
   .app-table-wrap table {
     @apply min-w-[760px];
   }
+
+  .merchant-pool-table {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184) transparent;
+  }
+
+  @media (max-width: 639px) {
+    .merchant-pool-page .merchant-pool-table {
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .merchant-pool-page .merchant-pool-table td,
+    .merchant-pool-page .merchant-pool-table th {
+      white-space: nowrap;
+    }
+  }
 }

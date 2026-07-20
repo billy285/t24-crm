@@ -104,7 +104,8 @@ class MerchantRecord(BaseModel):
 
 class MerchantImportRequest(BaseModel):
     data_source: str = Field(default="api", min_length=1, max_length=50)
-    records: list[MerchantRecord] = Field(min_length=1, max_length=2000)
+    # Keep the original keys so later enrichment can inspect imported evidence.
+    records: list[dict[str, Any]] = Field(min_length=1, max_length=2000)
 
 
 class MerchantUpdate(BaseModel):
@@ -139,6 +140,22 @@ class ConvertToLeadRequest(BaseModel):
 class BulkConvertToLeadRequest(BaseModel):
     merchant_ids: list[int] = Field(min_length=1, max_length=200)
     assigned_sales_id: int
+
+
+class BulkMerchantIdsRequest(BaseModel):
+    merchant_ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class BulkIndustryUpdateRequest(BulkMerchantIdsRequest):
+    industry: str = Field(min_length=1, max_length=100)
+
+    @field_validator("industry")
+    @classmethod
+    def strip_industry(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("行业不能为空")
+        return value
 
 
 class MerchantResponse(BaseModel):
@@ -372,7 +389,13 @@ async def _classify_record(
     return "pending", None, None, None
 
 
-async def _store_record(db: AsyncSession, record: MerchantRecord, data_source: str, user: UserResponse) -> MerchantPool:
+async def _store_record(
+    db: AsyncSession,
+    record: MerchantRecord,
+    data_source: str,
+    user: UserResponse,
+    raw_record: Optional[dict[str, Any]] = None,
+) -> MerchantPool:
     pool_status, reason, duplicate_id, customer_id = await _classify_record(db, record)
     collected_at = record.collected_at or datetime.now(timezone.utc)
     merchant = MerchantPool(
@@ -383,7 +406,7 @@ async def _store_record(db: AsyncSession, record: MerchantRecord, data_source: s
         isolation_reason=reason,
         duplicate_of_id=duplicate_id,
         existing_customer_id=customer_id,
-        raw_payload=json.dumps(record.model_dump(mode="json"), ensure_ascii=False),
+        raw_payload=json.dumps(raw_record or record.model_dump(mode="json"), ensure_ascii=False, default=str),
         created_by_id=_employee_id(user),
         created_by_name=user.name,
     )
@@ -466,8 +489,12 @@ async def import_merchant_records(
     _ensure_pool_role(current_user)
     created = []
     counts: dict[str, int] = {"pending": 0, "no_phone": 0, "duplicate": 0, "existing_customer": 0, "closed": 0}
-    for record in payload.records:
-        merchant = await _store_record(db, record, payload.data_source, current_user)
+    for raw_record in payload.records:
+        try:
+            record = MerchantRecord.model_validate(raw_record)
+            merchant = await _store_record(db, record, payload.data_source, current_user, raw_record=raw_record)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"导入记录格式错误：{exc}") from exc
         created.append(merchant)
         counts[merchant.pool_status] = counts.get(merchant.pool_status, 0) + 1
     await db.commit()
@@ -517,7 +544,7 @@ async def import_merchant_csv(
         recognized_fields.update(mapped.keys())
         try:
             record = MerchantRecord.model_validate(_parse_import_values(mapped))
-            merchant = await _store_record(db, record, data_source, current_user)
+            merchant = await _store_record(db, record, data_source, current_user, raw_record=dict(row))
             created.append(merchant)
             counts[merchant.pool_status] = counts.get(merchant.pool_status, 0) + 1
         except Exception as exc:
@@ -683,3 +710,61 @@ async def bulk_convert_to_sales_leads(
         "converted_count": len(leads),
         "lead_ids": [lead.id for lead in leads],
     }
+
+
+@router.post("/bulk-update-industry")
+async def bulk_update_merchant_industry(
+    payload: BulkIndustryUpdateRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Apply one reviewed industry label to selected non-final pool records."""
+    _ensure_pool_role(current_user)
+    merchant_ids = list(dict.fromkeys(payload.merchant_ids))
+    query = select(MerchantPool).where(MerchantPool.id.in_(merchant_ids))
+    scope = await _manager_scope(db, current_user)
+    if scope is not None:
+        query = query.where(scope)
+    merchants = (await db.execute(query)).scalars().all()
+    merchant_by_id = {merchant.id: merchant for merchant in merchants}
+    missing_ids = [merchant_id for merchant_id in merchant_ids if merchant_id not in merchant_by_id]
+    if missing_ids:
+        raise HTTPException(status_code=404, detail=f"有 {len(missing_ids)} 条记录不存在或不在您的权限范围内")
+
+    locked = [merchant for merchant in merchants if merchant.pool_status in {"converted", ARCHIVED_STATUS}]
+    if locked:
+        raise HTTPException(status_code=409, detail="已转线索或已归档的记录不能批量修改行业")
+
+    updated_at = datetime.now(timezone.utc)
+    for merchant in merchants:
+        merchant.industry = payload.industry
+        merchant.updated_at = updated_at
+    await db.commit()
+    return {"message": f"已更新 {len(merchants)} 条商家的行业", "updated_count": len(merchants), "industry": payload.industry}
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_merchant_pool_records(
+    payload: BulkMerchantIdsRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Permanently remove selected pool records without touching leads or customers."""
+    _ensure_admin_role(current_user)
+    merchant_ids = list(dict.fromkeys(payload.merchant_ids))
+    merchants = (await db.execute(
+        select(MerchantPool).where(MerchantPool.id.in_(merchant_ids))
+    )).scalars().all()
+    merchant_by_id = {merchant.id: merchant for merchant in merchants}
+    missing_ids = [merchant_id for merchant_id in merchant_ids if merchant_id not in merchant_by_id]
+    if missing_ids:
+        raise HTTPException(status_code=404, detail=f"有 {len(missing_ids)} 条商家记录不存在")
+
+    locked = [merchant for merchant in merchants if merchant.pool_status == "converted" or merchant.converted_lead_id]
+    if locked:
+        raise HTTPException(status_code=409, detail="已转入电话销售线索的记录不能批量永久删除")
+
+    for merchant in merchants:
+        await db.delete(merchant)
+    await db.commit()
+    return {"message": f"已删除 {len(merchants)} 条商家池记录", "deleted_count": len(merchants)}
