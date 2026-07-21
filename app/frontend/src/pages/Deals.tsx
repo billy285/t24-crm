@@ -365,6 +365,7 @@ export default function Deals() {
   const [filterCycle, setFilterCycle] = useState('all');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterDatePreset, setFilterDatePreset] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [showForm, setShowForm] = useState(false);
@@ -599,9 +600,38 @@ export default function Deals() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, filterProduct, filterPaid, filterCycle, filterDateFrom, filterDateTo, pageSize]);
+  }, [search, filterProduct, filterPaid, filterCycle, filterDateFrom, filterDateTo, filterDatePreset, pageSize]);
 
   const hasActiveFilters = filterProduct !== 'all' || filterPaid !== 'all' || filterCycle !== 'all' || filterDateFrom || filterDateTo;
+
+  const formatDateInput = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const applyDatePreset = (preset: 'all' | 'month' | 'quarter' | 'year') => {
+    const now = new Date();
+    let from = '';
+    let to = '';
+
+    if (preset === 'month') {
+      from = formatDateInput(new Date(now.getFullYear(), now.getMonth(), 1));
+      to = formatDateInput(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    } else if (preset === 'quarter') {
+      const startMonth = Math.floor(now.getMonth() / 3) * 3;
+      from = formatDateInput(new Date(now.getFullYear(), startMonth, 1));
+      to = formatDateInput(new Date(now.getFullYear(), startMonth + 3, 0));
+    } else if (preset === 'year') {
+      from = formatDateInput(new Date(now.getFullYear(), 0, 1));
+      to = formatDateInput(new Date(now.getFullYear(), 11, 31));
+    }
+
+    setFilterDatePreset(preset);
+    setFilterDateFrom(from);
+    setFilterDateTo(to);
+  };
 
   const clearFilters = () => {
     setFilterProduct('all');
@@ -609,6 +639,7 @@ export default function Deals() {
     setFilterCycle('all');
     setFilterDateFrom('');
     setFilterDateTo('');
+    setFilterDatePreset('all');
     setSearch('');
   };
 
@@ -1020,10 +1051,49 @@ export default function Deals() {
               className="w-[130px]"
               options={[{ value: 'all', label: '全部周期' }, ...Object.entries(cycleLabels).map(([k, v]) => ({ value: k, label: v }))]}
             />
+            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+              {([
+                { value: 'all', label: '全部' },
+                { value: 'month', label: '本月' },
+                { value: 'quarter', label: '本季度' },
+                { value: 'year', label: '本年' },
+              ] as const).map((preset) => (
+                <button
+                  type="button"
+                  key={preset.value}
+                  onClick={() => applyDatePreset(preset.value)}
+                  className={`whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition ${
+                    filterDatePreset === preset.value
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-white hover:text-blue-700'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
             <div className="flex items-center gap-2">
-              <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-[145px] text-sm" placeholder="开始日期" />
+              <Input
+                type="date"
+                value={filterDateFrom}
+                onChange={e => {
+                  setFilterDatePreset('custom');
+                  setFilterDateFrom(e.target.value);
+                }}
+                className="w-[145px] text-sm"
+                placeholder="开始日期"
+              />
               <span className="text-slate-400 text-sm">至</span>
-              <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-[145px] text-sm" placeholder="结束日期" />
+              <Input
+                type="date"
+                value={filterDateTo}
+                onChange={e => {
+                  setFilterDatePreset('custom');
+                  setFilterDateTo(e.target.value);
+                }}
+                className="w-[145px] text-sm"
+                placeholder="结束日期"
+              />
             </div>
             {hasActiveFilters && (
               <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-500 hover:text-slate-700 shrink-0">
