@@ -661,7 +661,7 @@ export default function Finance() {
   const [deletingCompanyExpense, setDeletingCompanyExpense] = useState(false);
 
   // Date filter
-  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('all');
+  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('this_month');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [financeIssueFilter, setFinanceIssueFilter] = useState<string | null>(null);

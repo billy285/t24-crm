@@ -5,7 +5,8 @@ import { pageLabels } from '../lib/permissions';
 import {
   LayoutDashboard, Users, PhoneCall, Handshake, DollarSign,
   ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
-  ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen
+  ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen,
+  PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -57,7 +58,14 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
+  );
   const { employee, role, loading, isLoggedIn, isDisabled, logout, canAccess } = useRole();
+
+  useEffect(() => {
+    window.localStorage.setItem('t24_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
+  }, [sidebarCollapsed]);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: '', newPwd: '', confirm: '' });
   const [changingPwd, setChangingPwd] = useState(false);
@@ -188,16 +196,16 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
       {/* Sidebar */}
-      <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col text-white transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0`}>
-        <div className="border-b border-white/10 px-4 py-5">
+      <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col text-white transition-[width,transform] duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}`}>
+        <div className={`border-b border-white/10 px-4 py-5 ${sidebarCollapsed ? 'lg:px-3' : ''}`}>
           <div className="flex items-center justify-between">
-            <Link to="/" className="flex min-w-0 items-center gap-3" onClick={() => setSidebarOpen(false)}>
+            <Link to="/" className={`flex min-w-0 items-center gap-3 ${sidebarCollapsed ? 'lg:w-full lg:justify-center' : ''}`} onClick={() => setSidebarOpen(false)}>
               <img
                 src="/t2-marketing-logo.png?v=t2-20260709b"
                 alt="T24 Marketing"
                 className="h-11 w-11 flex-shrink-0 rounded-2xl border border-white/15 bg-white object-cover shadow-lg shadow-black/20"
               />
-              <div className="min-w-0">
+              <div className={`min-w-0 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
                 <h1 className="truncate text-[17px] font-semibold leading-tight tracking-tight">T24 Marketing</h1>
                 <p className="mt-1 truncate text-[11px] tracking-[0.08em] text-slate-400">BUSINESS OPERATING SYSTEM</p>
               </div>
@@ -207,7 +215,7 @@ export default function Layout({ children }: LayoutProps) {
             </button>
           </div>
           {employee && (
-            <p className="mt-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300">{employee.name} · {displayRole}</p>
+            <p className={`mt-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>{employee.name} · {displayRole}</p>
           )}
         </div>
 
@@ -217,7 +225,7 @@ export default function Layout({ children }: LayoutProps) {
               key={section.label}
               className={sectionIndex === 0 ? 'pb-3' : 'border-t border-white/[0.07] py-3'}
             >
-              <div className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <div className={`px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>
                 {section.label}
               </div>
               <div className="space-y-1">
@@ -228,14 +236,15 @@ export default function Layout({ children }: LayoutProps) {
                       key={item.path}
                       to={item.path}
                       onClick={() => setSidebarOpen(false)}
+                      title={sidebarCollapsed ? item.label : undefined}
                       className={`app-nav-item relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${
                         isActive
                           ? 'app-nav-item-active text-white'
                           : 'text-slate-300 hover:bg-white/[0.07] hover:text-white'
-                      }`}
+                      } ${sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:px-2' : ''}`}
                     >
                       <item.icon className="h-4 w-4 flex-shrink-0" />
-                      {item.label}
+                      <span className={sidebarCollapsed ? 'lg:hidden' : ''}>{item.label}</span>
                     </Link>
                   );
                 })}
@@ -246,11 +255,22 @@ export default function Layout({ children }: LayoutProps) {
 
         <div className="border-t border-white/10 p-3">
           <button
+            type="button"
+            onClick={() => setSidebarCollapsed((value) => !value)}
+            className={`mb-1 hidden w-full items-center rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:bg-white/[0.07] hover:text-white lg:flex ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}
+            aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+            title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            <span className={sidebarCollapsed ? 'lg:hidden' : ''}>收起侧边栏</span>
+          </button>
+          <button
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:bg-white/[0.07] hover:text-white"
+            className={`flex w-full items-center rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:bg-white/[0.07] hover:text-white ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}
+            title={sidebarCollapsed ? '退出登录' : undefined}
           >
             <LogOut className="w-4 h-4" />
-            退出登录
+            <span className={sidebarCollapsed ? 'lg:hidden' : ''}>退出登录</span>
           </button>
         </div>
       </aside>
