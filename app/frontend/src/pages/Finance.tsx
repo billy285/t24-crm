@@ -2888,15 +2888,22 @@ export default function Finance() {
   return (
     <div className="app-page space-y-5">
       {/* Header */}
-      <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Finance</p>
-          <h2 className="mt-1 text-2xl font-bold text-slate-900">财务管理</h2>
-          <p className="mt-1 text-sm text-slate-500">掌握收入、成本、利润和待处理事项</p>
+      <div className="app-page-title flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="mt-1 hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-600 to-cyan-400 sm:block" />
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Finance</p>
+            <h2 className="mt-1 text-2xl font-bold text-slate-900">财务管理</h2>
+            <p className="mt-1 text-sm text-slate-500">掌握收入、成本、利润和待处理事项</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">老板视角</span>
+              <span>收入按收款日期归属月份</span>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-2 flex-wrap ml-auto">
-          <Button size="sm" variant="outline" onClick={() => doExport('csv')} disabled={exporting}>导出 CSV</Button>
-          <Button size="sm" onClick={() => doExport('xlsx')} disabled={exporting} className="bg-blue-600 hover:bg-blue-700">导出 Excel</Button>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" className="whitespace-nowrap shadow-sm" onClick={() => doExport('csv')} disabled={exporting}>导出 CSV</Button>
+          <Button size="sm" onClick={() => doExport('xlsx')} disabled={exporting} className="whitespace-nowrap bg-blue-600 shadow-sm hover:bg-blue-700">导出 Excel</Button>
         </div>
 
 
@@ -2929,7 +2936,7 @@ export default function Finance() {
 
       <DateFilterBar />
 
-      <div className="app-card px-4 py-3">
+      <div className="app-card border-slate-200 bg-white/90 px-4 py-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-2 text-xs sm:gap-3">
           <span className="font-semibold text-slate-700">建议工作顺序</span>
           <span className="rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700">1. 核对收入</span>
@@ -2942,8 +2949,8 @@ export default function Finance() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_1fr] gap-3">
-        <Card className="border-blue-100 bg-blue-50/60">
+      <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[1.35fr_1fr]">
+        <Card className="border-blue-100 bg-gradient-to-br from-blue-50/80 to-white shadow-sm">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600">
@@ -2962,7 +2969,7 @@ export default function Finance() {
           </CardContent>
         </Card>
 
-        <Card className={financeHealthIssueCount > 0 ? 'border-amber-200 bg-amber-50/70' : 'border-emerald-100 bg-emerald-50/60'}>
+        <Card className={`${financeHealthIssueCount > 0 ? 'border-amber-200 bg-amber-50/70' : 'border-emerald-100 bg-emerald-50/60'} shadow-sm`}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -3733,29 +3740,33 @@ export default function Finance() {
         {/* ── Subscriptions Tab ── */}
         <TabsContent value="subscriptions">
           <div className="space-y-4">
-            <Card className="border-slate-200 bg-slate-50/70">
+            <Card className="overflow-hidden border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-sm">
               <CardContent className="p-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <p className="text-base font-semibold text-slate-800">续费工作台</p>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-base font-semibold text-slate-900">续费工作台</p>
+                      <Badge className="bg-blue-100 text-blue-700">按优先级处理</Badge>
+                    </div>
                     <p className="mt-1 text-xs text-slate-500">
                       先处理待确认扣款，再处理即将到期；停止合作只关闭未来续费，不影响历史财务。
                     </p>
+                    <p className="mt-2 text-[11px] text-slate-400">每张卡片只展示当前续费所需信息，历史收款记录保持不变。</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
-                    <div className="rounded-xl bg-white px-4 py-2">
+                  <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4 lg:min-w-[440px]">
+                    <div className="rounded-xl border border-slate-100 bg-white px-4 py-2 shadow-sm">
                       <p className="text-xs text-slate-500">全部套餐</p>
                       <p className="text-lg font-bold text-slate-800">{filteredSubscriptions.length}</p>
                     </div>
-                    <div className="rounded-xl bg-cyan-50 px-4 py-2">
+                    <div className="rounded-xl border border-cyan-100 bg-cyan-50 px-4 py-2 shadow-sm">
                       <p className="text-xs text-cyan-700">待确认</p>
                       <p className="text-lg font-bold text-cyan-700">{subscriptionWorkbenchGroups.find(group => group.key === 'pending')?.rows.length || 0}</p>
                     </div>
-                    <div className="rounded-xl bg-amber-50 px-4 py-2">
+                    <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 shadow-sm">
                       <p className="text-xs text-amber-700">到期风险</p>
                       <p className="text-lg font-bold text-amber-700">{subscriptionWorkbenchGroups.find(group => group.key === 'risk')?.rows.length || 0}</p>
                     </div>
-                    <div className="rounded-xl bg-emerald-50 px-4 py-2">
+                    <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 shadow-sm">
                       <p className="text-xs text-emerald-700">正常订阅</p>
                       <p className="text-lg font-bold text-emerald-700">{subscriptionWorkbenchGroups.find(group => group.key === 'active_auto')?.rows.length || 0}</p>
                     </div>
@@ -3771,7 +3782,7 @@ export default function Finance() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid items-start gap-4 xl:grid-cols-2">
                 {subscriptionWorkbenchGroups.map(group => {
                   const toneClass = group.tone === 'cyan'
                     ? 'border-cyan-100 bg-cyan-50/60'
@@ -3792,7 +3803,7 @@ export default function Finance() {
                           ? 'bg-red-100 text-red-700'
                           : 'bg-slate-100 text-slate-600';
                   return (
-                    <Card key={group.key} className={toneClass}>
+                    <Card key={group.key} className={`${toneClass} shadow-sm`}>
                       <CardHeader className="pb-2">
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -3807,15 +3818,15 @@ export default function Finance() {
                       </CardHeader>
                       <CardContent>
                         {group.rows.length === 0 ? (
-                          <p className="rounded-xl bg-white/70 py-8 text-center text-sm text-slate-400">暂无需要处理的套餐</p>
+                          <p className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-5 text-center text-sm text-slate-400">暂无需要处理的套餐</p>
                         ) : (
-                          <div className="grid max-h-[560px] gap-3 overflow-auto pr-1">
+                          <div className="grid max-h-none gap-3 overflow-visible pr-0 xl:max-h-[560px] xl:overflow-auto xl:pr-1">
                             {group.rows.map((s: any) => {
                               const remainDays = getSubscriptionRemainingDays(s);
                               const plannedDate = getSubscriptionPlannedPaymentDate(s);
                               const status = s.status || computeSubscriptionStatus(s);
                               return (
-                                <div key={s.id} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
+                                <div key={s.id} className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-4">
                                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                     <div className="min-w-0">
                                       <Button
@@ -3858,7 +3869,7 @@ export default function Finance() {
                                         onCheckedChange={checked => handleToggleSubscriptionAutoRenew(s, checked)}
                                         disabled={updatingSubscriptionId === Number(s.id)}
                                       />
-                                      <span className="text-xs font-medium text-slate-600">{s.auto_renew ? 'Stripe订阅' : '手动收款/停止自动'}</span>
+                                      <span className="text-xs font-medium text-slate-600">{s.auto_renew ? 'Stripe 订阅' : '手动收款 / 停止自动'}</span>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
                                       {s.auto_renew && status === 'renewal_pending' && (
