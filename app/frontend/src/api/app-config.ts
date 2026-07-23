@@ -9,7 +9,8 @@ export type AppConfigKey =
   | 'reminder_config'
   | 'security_config'
   | 'notification_config'
-  | 'export_config';
+  | 'export_config'
+  | 'payroll_sheets_v1';
 
 export interface AppConfigValue<T = any> {
   key: AppConfigKey;

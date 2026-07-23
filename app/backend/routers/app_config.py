@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/v1/app-config", tags=["app-config"])
 
 ADMIN_CONFIG_ROLES = {"admin", "super_admin"}
 BUSINESS_DICT_CONFIG_ROLES = {"admin", "super_admin", "ops", "operations", "finance"}
+SENSITIVE_CONFIG_KEYS = {"payroll_sheets_v1"}
 
 
 DEFAULT_APP_CONFIGS: Dict[str, Any] = {
@@ -229,6 +230,7 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
         "includeNotes": True,
         "includeSocialLinks": True,
     },
+    "payroll_sheets_v1": {"version": 1, "updated_at": None, "sheets": []},
 }
 
 
@@ -275,6 +277,11 @@ def ensure_can_update_config(key: str, user: UserResponse) -> None:
     raise HTTPException(status_code=403, detail=detail)
 
 
+def ensure_can_read_config(key: str, user: UserResponse) -> None:
+    if key in SENSITIVE_CONFIG_KEYS and user.role not in ADMIN_CONFIG_ROLES:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+
 async def read_config_value(db: AsyncSession, key: str) -> AppConfigValue:
     default_value = get_default_config(key)
     result = await db.execute(
@@ -301,6 +308,8 @@ async def get_all_app_configs(
     await ensure_app_config_table(db)
     items = {}
     for key in DEFAULT_APP_CONFIGS:
+        if key in SENSITIVE_CONFIG_KEYS and current_user.role not in ADMIN_CONFIG_ROLES:
+            continue
         items[key] = (await read_config_value(db, key)).model_dump()
     return {"items": items}
 
@@ -311,6 +320,8 @@ async def get_app_config(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    get_default_config(key)
+    ensure_can_read_config(key, current_user)
     await ensure_app_config_table(db)
     return await read_config_value(db, key)
 
