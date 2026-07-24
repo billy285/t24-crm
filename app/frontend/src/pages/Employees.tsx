@@ -537,12 +537,12 @@ export default function Employees() {
               <td className="px-4 py-3" onClick={() => openDetail(e)}><Badge className={`text-xs ${empStatusColors[e.status]}`}>{empStatusLabels[e.status] || e.status}</Badge></td>
               <td className="px-4 py-3">
                 <div className="flex gap-1">
-                  {canEdit && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={ev => { ev.stopPropagation(); openEdit(e); }}><Edit className="w-3.5 h-3.5" /></Button>}
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={ev => { ev.stopPropagation(); setTransferFrom(e); setShowTransfer(true); }} title="客户交接"><ArrowRightLeft className="w-3.5 h-3.5" /></Button>
-                  {canResetPwd && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-amber-600" onClick={ev => { ev.stopPropagation(); setResetPwdTarget(e); }} title="重置密码"><KeyRound className="w-3.5 h-3.5" /></Button>}
-                  {e.status === 'active' && canDisable && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={ev => { ev.stopPropagation(); toggleStatus(e, 'disabled'); }} title="停用"><ShieldOff className="w-3.5 h-3.5" /></Button>}
-                  {e.status === 'disabled' && canDisable && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-green-600" onClick={ev => { ev.stopPropagation(); toggleStatus(e, 'active'); }} title="启用"><ShieldCheck className="w-3.5 h-3.5" /></Button>}
-                  {canDisable && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={ev => { ev.stopPropagation(); setDeleteTarget(e); }} title="删除"><Trash2 className="w-3.5 h-3.5" /></Button>}
+                  {canEdit && <Button aria-label={`编辑员工 ${e.name}`} title="编辑员工" size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={ev => { ev.stopPropagation(); openEdit(e); }}><Edit className="w-3.5 h-3.5" /></Button>}
+                  <Button aria-label={`交接 ${e.name} 的客户`} size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={ev => { ev.stopPropagation(); setTransferFrom(e); setShowTransfer(true); }} title="客户交接"><ArrowRightLeft className="w-3.5 h-3.5" /></Button>
+                  {canResetPwd && <Button aria-label={`重置 ${e.name} 的密码`} size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-amber-600" onClick={ev => { ev.stopPropagation(); setResetPwdTarget(e); }} title="重置密码"><KeyRound className="w-3.5 h-3.5" /></Button>}
+                  {e.status === 'active' && canDisable && <Button aria-label={`停用员工 ${e.name}`} size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:bg-red-50 hover:text-red-600" onClick={ev => { ev.stopPropagation(); toggleStatus(e, 'disabled'); }} title="停用"><ShieldOff className="w-3.5 h-3.5" /></Button>}
+                  {e.status === 'disabled' && canDisable && <Button aria-label={`启用员工 ${e.name}`} size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-green-600" onClick={ev => { ev.stopPropagation(); toggleStatus(e, 'active'); }} title="启用"><ShieldCheck className="w-3.5 h-3.5" /></Button>}
+                  {canDisable && <Button aria-label={`删除员工 ${e.name}`} size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={ev => { ev.stopPropagation(); setDeleteTarget(e); }} title="删除"><Trash2 className="w-3.5 h-3.5" /></Button>}
                 </div>
               </td>
             </tr>

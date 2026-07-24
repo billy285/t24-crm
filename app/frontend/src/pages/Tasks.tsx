@@ -414,11 +414,18 @@ export default function Tasks() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <div className="app-page space-y-5">
+      <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
         <div>
-          <h2 className="text-xl font-semibold text-slate-800">任务协作</h2>
-          <p className="text-sm text-slate-500">未完成 {openCount} · 待处理 {pendingCount} · 进行中 {inProgressCount} · 已完成 {completedCount}</p>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Teamwork</p>
+          <h2 className="mt-1 text-2xl font-bold text-slate-900">任务协作</h2>
+          <p className="mt-1 text-sm text-slate-500">先处理逾期和今日到期，再推进等待客户与内部协作事项</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1">未完成 {openCount}</span>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">待处理 {pendingCount}</span>
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">进行中 {inProgressCount}</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">已完成 {completedCount}</span>
+          </div>
         </div>
         <Button onClick={() => { setForm(emptyTaskForm); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
           <Plus className="w-4 h-4 mr-1" /> 新建任务
@@ -479,27 +486,27 @@ export default function Tasks() {
       {/* Filters */}
       <Card className="border-slate-200">
         <CardContent className="p-3">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(280px,1fr)_repeat(3,160px)]">
+            <div className="relative md:col-span-2 xl:col-span-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input placeholder="搜索任务名称、客户、负责人..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+              <Input aria-label="搜索任务" placeholder="搜索任务名称、客户、负责人..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
             </div>
             <NativeSelect
               value={filterStatus}
               onChange={setFilterStatus}
-              className="w-[140px]"
+              className="w-full"
               options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]}
             />
             <NativeSelect
               value={filterPriority}
               onChange={setFilterPriority}
-              className="w-[140px]"
+              className="w-full"
               options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]}
             />
             <NativeSelect
               value={filterSource}
               onChange={setFilterSource}
-              className="w-[140px]"
+              className="w-full"
               options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]}
             />
           </div>
@@ -512,7 +519,14 @@ export default function Tasks() {
           {loading ? (
             <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
           ) : filtered.length === 0 ? (
-            <p className="text-center text-slate-400 py-12">暂无任务</p>
+            <div className="py-12 text-center">
+              <CheckCircle2 className="mx-auto h-9 w-9 text-emerald-300" />
+              <p className="mt-3 text-sm font-medium text-slate-700">{quickFilter === 'all' && !search ? '当前没有任务' : '没有符合当前条件的任务'}</p>
+              <p className="mt-1 text-xs text-slate-500">{quickFilter === 'all' && !search ? '可以新建任务，或等待系统从成交和服务流程自动生成。' : '清除筛选后查看全部任务。'}</p>
+              {(quickFilter !== 'all' || search || filterStatus !== 'all' || filterPriority !== 'all' || filterSource !== 'all') && (
+                <Button className="mt-4" size="sm" variant="outline" onClick={() => { setQuickFilter('all'); setSearch(''); setFilterStatus('all'); setFilterPriority('all'); setFilterSource('all'); }}>清除全部筛选</Button>
+              )}
+            </div>
           ) : (
             <div className="divide-y divide-slate-100">
               {paginated.items.map(t => {
@@ -577,8 +591,8 @@ export default function Tasks() {
                             继续
                           </Button>
                         )}
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /></Button>
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        <Button aria-label={`编辑任务 ${t.title}`} title="编辑任务" size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /></Button>
+                        <Button aria-label={`删除任务 ${t.title}`} title="删除任务" size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /></Button>
                       </div>
                     </div>
                   </div>

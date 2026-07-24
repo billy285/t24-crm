@@ -1158,8 +1158,8 @@ export default function Deals() {
                             <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
                             {generatingBoardId === d.id ? '生成中' : '看板'}
                           </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => openEditDeal(d)}><Edit className="w-3.5 h-3.5" /></Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteTarget(d)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                          <Button aria-label={`编辑成交记录 ${d.customer_name || ''}`} title="编辑成交记录" size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => openEditDeal(d)}><Edit className="w-3.5 h-3.5" /></Button>
+                          <Button aria-label={`删除成交记录 ${d.customer_name || ''}`} title="删除成交记录" size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => setDeleteTarget(d)}><Trash2 className="w-3.5 h-3.5" /></Button>
                         </div>
                       </td>
                     </tr>
@@ -1206,6 +1206,8 @@ export default function Deals() {
                       <p className="mt-1 truncate text-xs text-slate-400">{item.key}</p>
                     </div>
                     <Button
+                      aria-label={`删除套餐 ${item.label}`}
+                      title="删除套餐"
                       type="button"
                       variant="ghost"
                       size="sm"

@@ -641,6 +641,8 @@ export default function Callbacks() {
                           </>
                         )}
                         <Button
+                          aria-label={`编辑回访 ${cb.customer_name || ''}`}
+                          title="编辑回访"
                           size="sm"
                           variant="ghost"
                           className="h-6 w-6 p-0 text-slate-400 hover:text-blue-600"
@@ -649,6 +651,8 @@ export default function Callbacks() {
                           <Edit className="w-3 h-3" />
                         </Button>
                         <Button
+                          aria-label={`删除回访 ${cb.customer_name || ''}`}
+                          title="删除回访"
                           size="sm"
                           variant="ghost"
                           className="h-6 w-6 p-0 text-slate-400 hover:text-red-600"

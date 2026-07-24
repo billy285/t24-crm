@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, PhoneCall, Handshake, DollarSign,
   ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
   ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, BriefcaseBusiness
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -296,6 +296,21 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="hidden gap-2 md:inline-flex">
+                  <BriefcaseBusiness className="h-4 w-4" />
+                  快捷工作
+                  <ChevronDown className="h-3 w-3 text-slate-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                {canAccess('/tasks') && <DropdownMenuItem onClick={() => navigate('/tasks')}><ListTodo className="mr-2 h-4 w-4" />处理协作任务</DropdownMenuItem>}
+                {canAccess('/service-board') && <DropdownMenuItem onClick={() => navigate('/service-board')}><ClipboardList className="mr-2 h-4 w-4" />查看服务进度</DropdownMenuItem>}
+                {canAccess('/customers') && <DropdownMenuItem onClick={() => navigate('/customers')}><Users className="mr-2 h-4 w-4" />查找客户</DropdownMenuItem>}
+                {canAccess('/finance') && <DropdownMenuItem onClick={() => navigate('/finance')}><DollarSign className="mr-2 h-4 w-4" />处理财务事项</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
             {canAccess('/sales-workbench') && location.pathname !== '/sales-workbench' && (
               <Link
                 to="/sales-workbench"

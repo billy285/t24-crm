@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import {
   Plus, DollarSign, AlertTriangle, Clock, TrendingUp, TrendingDown,
   Edit, Trash2, CalendarDays, Filter, Receipt, Building2, Users, PieChartIcon,
-  ArrowUpRight, ArrowDownRight, Wallet, CheckCircle2
+  ArrowUpRight, ArrowDownRight, Wallet, CheckCircle2, ChevronDown
 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import {
@@ -528,6 +528,7 @@ export default function Finance() {
   const normalizeFinanceTab = (tab?: string | null) => (tab && financeTabValues.has(tab) ? tab : 'overview');
   const [activeFinanceTab, setActiveFinanceTab] = useState(() => normalizeFinanceTab(searchParams.get('tab')));
   const [exporting, setExporting] = useState(false);
+  const [showCalculationRules, setShowCalculationRules] = useState(false);
   const doExport = async (fmt: 'csv'|'xlsx') => {
     try {
       setExporting(true);
@@ -2952,20 +2953,26 @@ export default function Finance() {
       <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[1.35fr_1fr]">
         <Card className="border-blue-100 bg-gradient-to-br from-blue-50/80 to-white shadow-sm">
           <CardContent className="p-4">
-            <div className="flex items-start gap-3">
+            <button type="button" className="flex w-full items-center gap-3 text-left" onClick={() => setShowCalculationRules(value => !value)} aria-expanded={showCalculationRules}>
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600">
                 <Wallet className="h-4 w-4" />
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-blue-950">财务计算口径</p>
-                <div className="mt-2 grid gap-2 text-xs leading-relaxed text-blue-800 md:grid-cols-2">
+                <p className="mt-1 text-xs text-blue-700">{showCalculationRules ? '收起计算说明' : '需要时展开查看收入、扣点和利润的计算规则'}</p>
+              </div>
+              <ChevronDown className={`h-4 w-4 text-blue-500 transition-transform ${showCalculationRules ? 'rotate-180' : ''}`} />
+            </button>
+            {showCalculationRules && (
+              <div className="mt-3 border-t border-blue-100 pt-3">
+                <div className="grid gap-2 text-xs leading-relaxed text-blue-800 md:grid-cols-2">
                   <p>收入按「收款日期」进入月份；服务覆盖期只影响续费和服务周期。</p>
                   <p>管理费按当月扣点率计算，投流充值固定按 1% 扣点。</p>
                   <p>Stripe 订阅按实收金额计算 2.9% + $0.30/笔；手动收款不算 Stripe 手续费。</p>
                   <p>客户成本进入单客利润；运营支出进入老板总览利润，人民币支出单独统计不混算。</p>
                 </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 

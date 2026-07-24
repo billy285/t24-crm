@@ -510,7 +510,15 @@ export default function ServiceBoard() {
   const [filters, setFilters] = useState({ industry: 'all', service_type: 'all', service_stage: 'all', ops_person: '', sales_person: '', issue_status: 'all' });
   const [progressPage, setProgressPage] = useState(1);
   const [progressPageSize, setProgressPageSize] = useState(20);
-  const [showStats, setShowStats] = useState(true);
+  const [showStats, setShowStats] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const saved = window.localStorage.getItem('t24_service_show_stats');
+    if (saved !== null) return saved === '1';
+    return window.innerWidth >= 1280;
+  });
+  useEffect(() => {
+    window.localStorage.setItem('t24_service_show_stats', showStats ? '1' : '0');
+  }, [showStats]);
 
   // Detail
   const [selectedProgress, setSelectedProgress] = useState<ServiceProgress | null>(null);
