@@ -295,33 +295,45 @@ export default function Layout({ children }: LayoutProps) {
               <p className="text-sm font-semibold text-slate-800">{pageLabels[currentPath] || allNavItems.find(n => n.path === currentPath)?.label || ''}</p>
             </div>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 ring-1 ring-blue-100">
-                  <User className="w-4 h-4 text-blue-600" />
-                </div>
-                <ChevronDown className="w-3 h-3 text-slate-400" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {employee && (
-                <div className="px-2 py-1.5 text-xs text-slate-500">
-                  {employee.name} · {displayRole}
-                </div>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setShowChangePwd(true)}>
-                <KeyRound className="w-4 h-4 mr-2" />
-                修改密码
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout}>
-                <LogOut className="w-4 h-4 mr-2" />
-                退出登录
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            {canAccess('/sales-workbench') && location.pathname !== '/sales-workbench' && (
+              <Link
+                to="/sales-workbench"
+                className="inline-flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-semibold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700"
+              >
+                <Headphones className="h-4 w-4" />
+                <span className="hidden sm:inline">开始今日拨打</span>
+                <span className="sm:hidden">拨打</span>
+              </Link>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-2" aria-label="打开账号菜单">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 ring-1 ring-blue-100">
+                    <User className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {employee && (
+                  <div className="px-2 py-1.5 text-xs text-slate-500">
+                    {employee.name} · {displayRole}
+                  </div>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowChangePwd(true)}>
+                  <KeyRound className="w-4 h-4 mr-2" />
+                  修改密码
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  退出登录
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </header>
 
         {/* Page content */}

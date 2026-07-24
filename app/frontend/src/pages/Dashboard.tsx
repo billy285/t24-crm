@@ -780,10 +780,76 @@ export default function Dashboard() {
   // ---------- Admin / Super Admin Dashboard ----------
   const recentCustomers = (data.customers || []).slice(0, 5);
   const upcomingTasks = (data.tasks || []).filter((t: any) => t.status !== 'completed').slice(0, 5);
+  const adminAttention = salesManagement?.owner_attention;
+  const adminTodayActions = [
+    {
+      step: '01',
+      eyebrow: '先处理异常',
+      title: '跟进高意向与逾期回访',
+      description: '优先处理最可能影响成交的销售异常。',
+      count: (adminAttention?.high_intent_stale || 0) + (adminAttention?.overdue_followups || 0),
+      unit: '项待处理',
+      link: '/sales-leads',
+      tone: 'border-rose-200 bg-rose-50/70 text-rose-700',
+    },
+    {
+      step: '02',
+      eyebrow: '再看执行',
+      title: '检查今天的拨打进度',
+      description: '确认每位销售已经领取任务并持续完成记录。',
+      count: salesManagement?.metrics?.completed || 0,
+      unit: `/${salesManagement?.metrics?.assigned || 0} 已完成`,
+      link: '/sales-workbench',
+      tone: 'border-blue-200 bg-blue-50/70 text-blue-700',
+    },
+    {
+      step: '03',
+      eyebrow: '最后闭环',
+      title: '确认交付、收款与续费',
+      description: '把成交后的任务和财务异常在当天闭环。',
+      count: (data.pendingTasks || 0) + (data.overduePayments || 0) + (data.expiringSoon || 0),
+      unit: '项需关注',
+      link: '/tasks',
+      tone: 'border-amber-200 bg-amber-50/70 text-amber-700',
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-slate-800">管理员工作台</h2>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">今日经营节奏</p>
+        <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">管理员工作台</h2>
+        <p className="mt-1 text-sm text-slate-500">先处理异常，再检查执行，最后确认成交后的交付闭环。</p>
+      </div>
+
+      <section aria-labelledby="admin-today-actions">
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <h3 id="admin-today-actions" className="text-base font-semibold text-slate-900">今天先做这三件事</h3>
+            <p className="mt-1 text-xs text-slate-500">按照优先级完成，避免只看数据却不知道下一步。</p>
+          </div>
+          <span className="hidden text-xs text-slate-400 sm:block">点击卡片直接进入处理页面</span>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          {adminTodayActions.map(action => (
+            <button
+              key={action.step}
+              type="button"
+              onClick={() => navigate(action.link)}
+              className={`group flex min-h-36 flex-col rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${action.tone}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-bold tracking-[0.16em]">{action.step} · {action.eyebrow}</span>
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </div>
+              <p className="mt-3 font-semibold text-slate-900">{action.title}</p>
+              <p className="mt-1 flex-1 text-xs leading-5 text-slate-600">{action.description}</p>
+              <p className="mt-3 text-2xl font-bold">{action.count}<span className="ml-1 text-xs font-medium">{action.unit}</span></p>
+            </button>
+          ))}
+        </div>
+      </section>
+
       {renderSalesOwnerCockpit()}
       {renderReminders()}
 

@@ -2310,12 +2310,12 @@ export default function Customers() {
       ))}</div>
 
       <Card className="border-slate-200"><CardContent className="p-3 space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索编号、名称、联系人、电话..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
-          <NativeSelect value={filterStatus} onChange={setFilterStatus} className="w-[120px]" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-          <NativeSelect value={filterIndustry} onChange={setFilterIndustry} className="w-[120px]" options={[{ value: 'all', label: '全部行业' }, ...Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-          <NativeSelect value={filterLevel} onChange={setFilterLevel} className="w-[120px]" options={[{ value: 'all', label: '全部等级' }, ...Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-          <NativeSelect value={filterSource} onChange={setFilterSource} className="w-[120px]" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_repeat(4,120px)_auto]">
+          <div className="relative md:col-span-2 xl:col-span-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input aria-label="搜索客户" placeholder="搜索编号、名称、联系人、电话..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
+          <NativeSelect value={filterStatus} onChange={setFilterStatus} className="w-full" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+          <NativeSelect value={filterIndustry} onChange={setFilterIndustry} className="w-full" options={[{ value: 'all', label: '全部行业' }, ...Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+          <NativeSelect value={filterLevel} onChange={setFilterLevel} className="w-full" options={[{ value: 'all', label: '全部等级' }, ...Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+          <NativeSelect value={filterSource} onChange={setFilterSource} className="w-full" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
           <Button variant={showAdvanced ? 'default' : 'outline'} size="sm" className={`h-10 shrink-0 gap-1.5 ${showAdvanced ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setShowAdvanced(!showAdvanced)}>
             <SlidersHorizontal className="w-4 h-4" /> 高级{advFilterCount > 0 && <Badge className="ml-1 bg-white text-blue-600 hover:bg-white h-5 min-w-[20px] px-1.5 text-xs">{advFilterCount}</Badge>}
           </Button>
@@ -2377,7 +2377,7 @@ export default function Customers() {
         {loading ? <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无匹配的客户</p>
         : (
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b bg-slate-50 text-left text-slate-500">
+          <div className="overflow-x-auto"><table className="w-full min-w-[920px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-slate-500">
             {visibleCols.includes('customer_code') && <th className="px-4 py-3 font-medium">编号</th>}
             {visibleCols.includes('business_name') && <th className="px-4 py-3 font-medium">商家名称</th>}
             {visibleCols.includes('contact_name') && <th className="px-4 py-3 font-medium">联系人</th>}
@@ -2397,9 +2397,9 @@ export default function Customers() {
           <tbody>{paginatedCustomers.items.map(c => (
             <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
               {visibleCols.includes('customer_code') && <td className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
-              {visibleCols.includes('business_name') && <td className="px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(c)}>{c.business_name}</td>}
+              {visibleCols.includes('business_name') && <td className="min-w-[190px] px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(c)}>{c.business_name}</td>}
               {visibleCols.includes('contact_name') && <td className="px-4 py-3" onClick={() => openDetail(c)}>{c.contact_name}</td>}
-              {visibleCols.includes('phone') && <td className="px-4 py-3 text-slate-500" onClick={() => openDetail(c)}>{c.phone}</td>}
+              {visibleCols.includes('phone') && <td className="whitespace-nowrap px-4 py-3 text-slate-500" onClick={() => openDetail(c)}>{c.phone}</td>}
               {visibleCols.includes('state') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.state || '-'}</td>}
               {visibleCols.includes('country') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.country || '-'}</td>}
               {visibleCols.includes('industry') && (
@@ -2537,8 +2537,8 @@ export default function Customers() {
               {visibleCols.includes('source') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{sourceLabels[c.source] || c.source}</td>}
               <td className="px-4 py-3"><div className="flex gap-1">
                 {hasPermission('customer_assign') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-indigo-600" title="分配负责人" onClick={e => { e.stopPropagation(); openAssign(c); }}><ArrowRightLeft className="w-3.5 h-3.5" /></Button>}
-                {hasPermission('customer_edit') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={e => { e.stopPropagation(); openEdit(c); }}><Edit className="w-3.5 h-3.5" /></Button>}
-                {hasPermission('customer_delete') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={e => { e.stopPropagation(); setDeleteTarget(c); }}><Trash2 className="w-3.5 h-3.5" /></Button>}
+                {hasPermission('customer_edit') && <Button aria-label={`编辑 ${c.business_name}`} title="编辑客户" size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={e => { e.stopPropagation(); openEdit(c); }}><Edit className="w-3.5 h-3.5" /></Button>}
+                {hasPermission('customer_delete') && <Button aria-label={`删除 ${c.business_name}`} title="删除客户" size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={e => { e.stopPropagation(); setDeleteTarget(c); }}><Trash2 className="w-3.5 h-3.5" /></Button>}
               </div></td>
             </tr>
           ))}</tbody></table></div>
