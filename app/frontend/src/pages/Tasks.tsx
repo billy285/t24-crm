@@ -12,7 +12,9 @@ import { toast } from 'sonner';
 import { Plus, Search, CheckCircle2, Edit, Trash2 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import PageLoadState from '@/components/PageLoadState';
 import { useBusinessDicts } from '../lib/dict-config';
+import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 const priorityColors: Record<string, string> = {
@@ -150,6 +152,7 @@ export default function Tasks() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
@@ -197,15 +200,19 @@ export default function Tasks() {
 
   const loadData = async () => {
     try {
-      const [tRes, cRes, eRes] = await Promise.all([
+      const [tRes, cRes, eRes] = await loadWithRetry(() => Promise.all([
         client.entities.tasks.query({ limit: 1000, sort: '-created_at' }),
         client.entities.customers.query({ limit: 1000 }),
         client.entities.employees.query({ limit: 50 }),
-      ]);
+      ]));
       setTasks(tRes?.data?.items || []);
       setCustomers(cRes?.data?.items || []);
       setEmployees(eRes?.data?.items || []);
-    } catch (err) { console.error(err); }
+      setLoadError(null);
+    } catch (err) {
+      console.error(err);
+      setLoadError(getLoadErrorMessage(err));
+    }
     finally { setLoading(false); }
   };
 
@@ -412,6 +419,13 @@ export default function Tasks() {
       setCompleting(false);
     }
   };
+
+  if (loading && tasks.length === 0) {
+    return <PageLoadState loading message="正在加载任务与协作信息…" />;
+  }
+  if (loadError && tasks.length === 0) {
+    return <PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadData(); }} />;
+  }
 
   return (
     <div className="space-y-4">

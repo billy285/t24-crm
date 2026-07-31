@@ -1,8 +1,11 @@
+import asyncio
 import importlib
 import logging
 import os
 import pkgutil
+import time
 import traceback
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -10,11 +13,12 @@ from pathlib import Path
 from core.config import settings
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.routing import APIRouter
 
 # MODULE_IMPORTS_START
-from services.database import initialize_database, close_database
+from services.database import check_database_health, initialize_database, close_database
 from services.mock_data import initialize_mock_data
 from services.auth import initialize_admin_user
 from services.emp_auth import initialize_default_employee_admin
@@ -140,6 +144,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=6)
 
 
 # MODULE_MIDDLEWARE_START
@@ -151,6 +156,7 @@ NO_CACHE_HEADERS = {
     "Pragma": "no-cache",
     "Expires": "0",
 }
+SLOW_REQUEST_SECONDS = float(os.environ.get("SLOW_REQUEST_SECONDS", "1.0"))
 
 PHONE_SALES_ROLES = {"sales", "sales_manager"}
 PHONE_SALES_ALLOWED_API_PREFIXES = (
@@ -191,6 +197,34 @@ async def isolate_phone_sales_access(request: Request, call_next):
                 content={"detail": "电话销售账号只能访问电话销售中心"},
             )
     return await call_next(request)
+
+
+@app.middleware("http")
+async def add_security_and_observability_headers(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    started_at = time.perf_counter()
+    response = await call_next(request)
+    elapsed = time.perf_counter() - started_at
+
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=(self)"
+    response.headers["Server-Timing"] = f"app;dur={elapsed * 1000:.1f}"
+    if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    if elapsed >= SLOW_REQUEST_SECONDS:
+        logging.getLogger("performance").warning(
+            "Slow request method=%s path=%s status=%s duration=%.3fs request_id=%s",
+            request.method,
+            request.url.path,
+            response.status_code,
+            elapsed,
+            request_id,
+        )
+    return response
 
 
 def _apply_no_cache_headers(response):
@@ -336,7 +370,21 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "service": "t24-crm"}
+
+
+@app.get("/ready")
+async def readiness_check():
+    try:
+        is_healthy = await asyncio.wait_for(check_database_health(), timeout=2.0)
+    except (TimeoutError, asyncio.TimeoutError):
+        is_healthy = False
+    if not is_healthy:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "unhealthy", "service": "database"},
+        )
+    return {"status": "ready", "service": "t24-crm"}
 
 
 @app.get("/api/config")

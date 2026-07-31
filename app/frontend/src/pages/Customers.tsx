@@ -42,6 +42,8 @@ import {
   getSubscriptionRemainingDays,
 } from '../lib/subscription-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
+import PageLoadState from '@/components/PageLoadState';
+import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 
 const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', following: 'bg-amber-100 text-amber-700', closed: 'bg-green-100 text-green-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
 const levelColors: Record<string, string> = { high: 'bg-orange-100 text-orange-700', normal: 'bg-slate-100 text-slate-600', low: 'bg-gray-100 text-gray-500', vip: 'bg-purple-100 text-purple-700' };
@@ -506,6 +508,7 @@ export default function Customers() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterIndustry, setFilterIndustry] = useState('all');
@@ -1097,11 +1100,19 @@ export default function Customers() {
 
   const loadCustomers = async () => {
     try {
-      const res = await client.entities.customers.query({ limit: 1000, sort: '-created_at' });
+      const res = await loadWithRetry(
+        () => client.entities.customers.query({ limit: 1000, sort: '-created_at' }),
+      );
       let items = res?.data?.items || [];
       if (dataScope === 'self' && employee) items = items.filter((c: any) => c.sales_person === employee.name || c.sales_employee_id === employee.id);
       setCustomers(items);
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+      setLoadError(null);
+    } catch (err) {
+      console.error(err);
+      setLoadError(getLoadErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -1778,6 +1789,21 @@ export default function Customers() {
   };
 
   // ========== DETAIL VIEW ==========
+  if (loading && customers.length === 0) {
+    return <PageLoadState loading message="正在读取客户资料…" />;
+  }
+  if (loadError && customers.length === 0) {
+    return (
+      <PageLoadState
+        error={loadError}
+        onRetry={() => {
+          setLoading(true);
+          void loadCustomers();
+        }}
+      />
+    );
+  }
+
   if (selectedCustomer) {
     const c = selectedCustomer;
     const detailAddress = [

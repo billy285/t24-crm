@@ -3,7 +3,10 @@ import { getAPIBaseURL } from './config';
 
 type SdkClient = ReturnType<typeof createClient>;
 
-const createSdkClient = (): SdkClient => createClient({ baseURL: getAPIBaseURL() } as any);
+const createSdkClient = (): SdkClient => createClient({
+  baseURL: getAPIBaseURL(),
+  timeout: 15000,
+} as any);
 
 // The SDK reads localStorage.token only when createClient() runs. Keep a stable
 // exported proxy while allowing authentication changes to replace its backing client.

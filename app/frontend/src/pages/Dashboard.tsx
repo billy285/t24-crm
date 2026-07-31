@@ -16,6 +16,8 @@ import {
 import { useBusinessDicts } from '../lib/dict-config';
 import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
+import PageLoadState from '@/components/PageLoadState';
+import { getLoadErrorMessage } from '../lib/load-utils';
 
 interface Reminder {
   id: string;
@@ -81,6 +83,8 @@ export default function Dashboard() {
   const [data, setData] = useState<any>({});
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [salesPeriod, setSalesPeriod] = useState<1 | 7 | 30>(7);
   const [salesManagement, setSalesManagement] = useState<SalesManagementDashboard | null>(null);
   const [salesPerformance, setSalesPerformance] = useState<SalesPerformanceDashboard | null>(null);
@@ -217,11 +221,14 @@ export default function Dashboard() {
         monthlyCustomerExpenseUSD,
         monthlyCompanyExpenseCNY,
       });
+      setLoadError(null);
+      setHasLoaded(true);
 
       // Build reminders
       buildReminders(customers, followUps, subs, payments, tasks, now, sevenDaysAgo, callbacksList);
     } catch (err) {
       console.error('Failed to load dashboard:', err);
+      setLoadError(getLoadErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -489,11 +496,10 @@ export default function Dashboard() {
   }, [data.deals, lbYear, lbMonth]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
-    );
+    return <PageLoadState loading message="正在汇总客户、任务与财务数据…" />;
+  }
+  if (loadError && !hasLoaded) {
+    return <PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadDashboard(); }} />;
   }
 
   // ==================== ROLE-SPECIFIC DASHBOARDS ====================

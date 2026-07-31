@@ -26,6 +26,8 @@ import {
 import ExportButton from '@/components/ExportButton';
 import { exportProfitMonthlyCsv, exportProfitMonthlyXlsx } from '../lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import PageLoadState from '@/components/PageLoadState';
+import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { loadRemoteAppConfig, saveRemoteAppConfig } from '../lib/app-config';
 import { buildOptionKey, sanitizeDictLabel, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
 import { logOperation } from '../lib/operation-log-helper';
@@ -471,15 +473,10 @@ const parseMultiValue = (value?: string | null) => (
     .filter(Boolean)
 );
 
-// ─── Helper: safe query ─────────────────────────────────────────────
+// ─── Helper: retry transient failures and fail closed ──────────────
 const safeQuery = async (queryFn: () => Promise<any>): Promise<any[]> => {
-  try {
-    const res = await queryFn();
-    return res?.data?.items || [];
-  } catch (err) {
-    console.error('Query failed:', err);
-    return [];
-  }
+  const res = await loadWithRetry(queryFn);
+  return res?.data?.items || [];
 };
 
 export default function Finance() {
@@ -588,6 +585,7 @@ export default function Finance() {
   const [savingMonthClose, setSavingMonthClose] = useState(false);
   const [profitDetailTarget, setProfitDetailTarget] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Payment form
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -684,7 +682,7 @@ export default function Finance() {
     setFinancePages({ ...defaultFinancePages });
   }, [dateFilterMode, filterStartDate, filterEndDate, expenseMonth, companyExpenseMonth, companyExpenseCurrencyFilter, pageSize, financeIssueFilter]);
 
-  // ─── Load Data (resilient - each query independent) ───────────────
+  // ─── Load Data (all finance sources must agree before display) ─────
 
   useEffect(() => { loadData(); }, []);
 
@@ -700,7 +698,7 @@ export default function Finance() {
 
   const loadData = async () => {
     try {
-      // Load each data source independently so one failure doesn't block others
+      // Keep the previous snapshot unless every required finance source succeeds.
       const [pItems, sItems, cItems, dItems, eItems, ceItems] = await Promise.all([
         safeQuery(() => client.entities.payments.queryAll({ limit: 1000, sort: '-payment_date' })),
         safeQuery(() => client.entities.subscriptions.query({ limit: 1000, sort: '-end_date' })),
@@ -715,6 +713,7 @@ export default function Finance() {
       setDeals(dItems);
       setExpenses(eItems);
       setCompanyExpenses(ceItems);
+      setLoadError(null);
       try {
         const months = new Set<string>();
         [...pItems, ...eItems, ...ceItems].forEach((it: any) => {
@@ -739,6 +738,7 @@ export default function Finance() {
       } catch (e) { console.warn('load rates failed', e); }
     } catch (err) {
       console.error('loadData error:', err);
+      setLoadError(getLoadErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -2885,6 +2885,19 @@ export default function Finance() {
   };
 
   // ─── Render ──────────────────────────────────────────────────────
+  const hasFinanceData = payments.length > 0
+    || subscriptions.length > 0
+    || customers.length > 0
+    || deals.length > 0
+    || expenses.length > 0
+    || companyExpenses.length > 0;
+  if (loading && !hasFinanceData) {
+    return <PageLoadState loading message="正在核对收入、成本与续费数据…" />;
+  }
+  if (loadError && !hasFinanceData) {
+    return <PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadData(); }} />;
+  }
+
   return (
     <div className="app-page space-y-5">
       {/* Header */}

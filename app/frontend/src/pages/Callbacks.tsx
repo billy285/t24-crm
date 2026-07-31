@@ -18,7 +18,9 @@ import {
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ExportButton from '@/components/ExportButton';
+import PageLoadState from '@/components/PageLoadState';
 import { useBusinessDicts } from '../lib/dict-config';
+import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 
 const callbackStatusColors: Record<string, string> = {
@@ -75,6 +77,7 @@ export default function Callbacks() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
@@ -131,7 +134,7 @@ export default function Callbacks() {
 
   const loadData = async () => {
     try {
-      const [cbRes, cRes, eRes] = await Promise.all([
+      const [cbRes, cRes, eRes] = await loadWithRetry(() => Promise.all([
         client.apiCall.invoke({
           url: '/api/v1/entities/customer_callbacks',
           method: 'GET',
@@ -139,7 +142,7 @@ export default function Callbacks() {
         }),
         client.entities.customers.query({ limit: 1000 }),
         client.entities.employees.queryAll({ limit: 200 }),
-      ]);
+      ]));
       let cbs = cbRes?.data?.items || [];
       const custs = cRes?.data?.items || [];
       const emps = eRes?.data?.items || [];
@@ -152,8 +155,10 @@ export default function Callbacks() {
       setCallbacks(cbs);
       setCustomers(custs);
       setEmployees(emps);
+      setLoadError(null);
     } catch (err) {
       console.error('Failed to load callbacks:', err);
+      setLoadError(getLoadErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -384,6 +389,13 @@ export default function Callbacks() {
       </div>
     );
   };
+
+  if (loading && callbacks.length === 0) {
+    return <PageLoadState loading message="正在加载电话回访记录…" />;
+  }
+  if (loadError && callbacks.length === 0) {
+    return <PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadData(); }} />;
+  }
 
   return (
     <div className="space-y-4">

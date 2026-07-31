@@ -13,6 +13,7 @@ from asyncpg.exceptions import (
 )
 from core.config import settings
 from sqlalchemy import DDL, text
+from sqlalchemy import event
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -132,6 +133,17 @@ class DatabaseManager:
                 logger.info("Using QueuePool with connection pooling for non-Lambda environment")
 
             self.engine = create_async_engine(database_url, **engine_kwargs)
+            if self.engine.dialect.name == "sqlite":
+                @event.listens_for(self.engine.sync_engine, "connect")
+                def _configure_sqlite_connection(dbapi_connection, _connection_record):
+                    cursor = dbapi_connection.cursor()
+                    try:
+                        cursor.execute("PRAGMA foreign_keys=ON")
+                        cursor.execute("PRAGMA journal_mode=WAL")
+                        cursor.execute("PRAGMA synchronous=NORMAL")
+                        cursor.execute("PRAGMA busy_timeout=5000")
+                    finally:
+                        cursor.close()
             logger.info("Database engine created successfully")
 
             logger.info("Creating async session maker...")

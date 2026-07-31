@@ -11,7 +11,9 @@ import { Search, ExternalLink } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Combobox } from '@/components/ui/combobox';
 import ExportButton from '@/components/ExportButton';
+import PageLoadState from '@/components/PageLoadState';
 import { useBusinessDicts } from '../lib/dict-config';
+import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import {
   computeSubscriptionStatus,
   decorateEffectiveSubscriptions,
@@ -106,6 +108,7 @@ export default function Sales() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterCustomerId, setFilterCustomerId] = useState('all');
   const [filterServiceStatus, setFilterServiceStatus] = useState('all');
@@ -118,14 +121,14 @@ export default function Sales() {
 
   const loadData = async () => {
     try {
-      const [customerRes, dealRes, subRes, paymentRes] = await Promise.all([
+      const [customerRes, dealRes, subRes, paymentRes] = await loadWithRetry(() => Promise.all([
         client.entities.customers.query({ limit: 1000, sort: '-updated_at' }),
         client.entities.deals.query({ limit: 1000, sort: '-deal_date' }),
         client.entities.subscriptions.query({ limit: 1000, sort: '-end_date' }),
         canViewFinance
           ? client.entities.payments.queryAll({ limit: 1000, sort: '-payment_date' })
           : Promise.resolve({ data: { items: [] } }),
-      ]);
+      ]));
 
       let customerItems = customerRes?.data?.items || [];
       const dealItems = dealRes?.data?.items || [];
@@ -237,8 +240,10 @@ export default function Sales() {
         });
 
       setRows(closedRows);
+      setLoadError(null);
     } catch (err) {
       console.error(err);
+      setLoadError(getLoadErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -356,6 +361,13 @@ export default function Sales() {
       </div>
     );
   };
+
+  if (loading && rows.length === 0) {
+    return <PageLoadState loading message="正在核对成交客户与服务状态…" />;
+  }
+  if (loadError && rows.length === 0) {
+    return <PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadData(); }} />;
+  }
 
   return (
     <div className="space-y-4">
