@@ -1,4 +1,6 @@
+import json
 import logging
+from datetime import date, datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from sqlalchemy import select, func
@@ -103,6 +105,70 @@ class SubscriptionsService:
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Error updating subscriptions {obj_id}: {str(e)}")
+            raise
+
+    async def mark_package_changed(
+        self,
+        obj_id: int,
+        replacement_ids: List[int],
+        effective_date: date,
+        reason: Optional[str] = None,
+    ) -> tuple[Subscriptions, List[Subscriptions]]:
+        """Archive an old package and link it to existing replacement packages atomically."""
+        try:
+            old_result = await self.db.execute(
+                select(Subscriptions).where(Subscriptions.id == obj_id).with_for_update()
+            )
+            old_subscription = old_result.scalar_one_or_none()
+            if not old_subscription:
+                raise ValueError("原套餐不存在")
+            if old_subscription.status in {"stopped", "lost", "paused", "upgraded"}:
+                raise ValueError("原套餐已经归档，不能重复执行套餐变更")
+
+            unique_replacement_ids = sorted({int(item_id) for item_id in replacement_ids if int(item_id) != obj_id})
+            if not unique_replacement_ids:
+                raise ValueError("请至少选择一个替代套餐")
+
+            replacement_result = await self.db.execute(
+                select(Subscriptions)
+                .where(Subscriptions.id.in_(unique_replacement_ids))
+                .with_for_update()
+            )
+            replacements = list(replacement_result.scalars().all())
+            if len(replacements) != len(unique_replacement_ids):
+                raise ValueError("部分替代套餐不存在，请刷新后重试")
+            if any(item.customer_id != old_subscription.customer_id for item in replacements):
+                raise ValueError("替代套餐必须属于同一客户")
+            if any(item.status in {"stopped", "lost", "paused", "upgraded"} for item in replacements):
+                raise ValueError("已归档套餐不能作为新的替代套餐")
+
+            now = datetime.now(timezone.utc)
+            change_payload = {
+                "type": "package_changed",
+                "effective_date": effective_date.isoformat(),
+                "replacement_ids": unique_replacement_ids,
+                "replacement_names": [item.package_name for item in replacements],
+                "reason": (reason or "").strip() or None,
+            }
+            old_subscription.auto_renew = False
+            old_subscription.next_payment_date = None
+            old_subscription.status = "upgraded"
+            old_subscription.renewal_result = json.dumps(change_payload, ensure_ascii=False, separators=(",", ":"))
+            old_subscription.updated_at = now
+
+            await self.db.commit()
+            await self.db.refresh(old_subscription)
+            for replacement in replacements:
+                await self.db.refresh(replacement)
+            logger.info(
+                "Archived subscription %s as package-changed; replacements=%s",
+                obj_id,
+                unique_replacement_ids,
+            )
+            return old_subscription, replacements
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Error changing package for subscription %s: %s", obj_id, str(e))
             raise
 
     async def delete(self, obj_id: int) -> bool:

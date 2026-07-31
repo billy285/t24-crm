@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import {
   Plus, DollarSign, AlertTriangle, Clock, TrendingUp, TrendingDown,
   Edit, Trash2, CalendarDays, Filter, Receipt, Building2, Users, PieChartIcon,
-  ArrowUpRight, ArrowDownRight, Wallet, CheckCircle2
+  ArrowUpRight, ArrowDownRight, ArrowRightLeft, Wallet, CheckCircle2
 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import {
@@ -424,6 +424,21 @@ const toDateOnly = (value?: string | null) => {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
 };
 
+const parsePackageChangeResult = (value?: string | null) => {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed?.type !== 'package_changed' || !Array.isArray(parsed.replacement_names)) return null;
+    return parsed as {
+      effective_date?: string;
+      replacement_names: string[];
+      reason?: string | null;
+    };
+  } catch {
+    return null;
+  }
+};
+
 const getSubscriptionPlannedPaymentDate = (subscription: any) => (
   toDateOnly(subscription?.next_payment_date)
   || toDateOnly(subscription?.end_date)
@@ -655,6 +670,11 @@ export default function Finance() {
   const [subscriptionRenewalTarget, setSubscriptionRenewalTarget] = useState<any | null>(null);
   const [renewalPaymentDate, setRenewalPaymentDate] = useState('');
   const [updatingSubscriptionId, setUpdatingSubscriptionId] = useState<number | null>(null);
+  const [subscriptionChangeTarget, setSubscriptionChangeTarget] = useState<any | null>(null);
+  const [subscriptionChangeReplacementIds, setSubscriptionChangeReplacementIds] = useState<number[]>([]);
+  const [subscriptionChangeEffectiveDate, setSubscriptionChangeEffectiveDate] = useState(getTodayDateInput());
+  const [subscriptionChangeReason, setSubscriptionChangeReason] = useState('');
+  const [changingSubscriptionPackage, setChangingSubscriptionPackage] = useState(false);
   const [subscriptionGroupKey, setSubscriptionGroupKey] = useState<SubscriptionGroupKey>('pending');
   const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<any>(null);
   const [deletingExpense, setDeletingExpense] = useState(false);
@@ -2052,8 +2072,8 @@ export default function Finance() {
       },
       {
         key: 'stopped',
-        title: '已停止合作',
-        description: '只保留历史数据，不再进入续费提醒。',
+        title: '历史归档',
+        description: '已停止合作、已更换套餐或已暂停的历史记录，不再进入续费提醒。',
         tone: 'slate',
         priorityLabel: '历史归档',
         rows: rows.filter((subscription: any) => archivedStatuses.has(getStatus(subscription))),
@@ -2072,6 +2092,17 @@ export default function Finance() {
     () => paginateList(activeSubscriptionWorkbenchGroup?.rows || [], financePages.subscriptions, pageSize),
     [activeSubscriptionWorkbenchGroup, financePages.subscriptions, pageSize],
   );
+  const subscriptionChangeReplacementOptions = useMemo(() => {
+    if (!subscriptionChangeTarget) return [];
+    const archivedStatuses = new Set(['stopped', 'lost', 'upgraded', 'paused']);
+    return subscriptions
+      .filter(subscription => (
+        Number(subscription.id) !== Number(subscriptionChangeTarget.id)
+        && Number(subscription.customer_id) === Number(subscriptionChangeTarget.customer_id)
+        && !archivedStatuses.has(subscription.status || computeSubscriptionStatus(subscription))
+      ))
+      .sort((a, b) => String(b.end_date || '').localeCompare(String(a.end_date || '')));
+  }, [subscriptionChangeTarget, subscriptions]);
 
   useEffect(() => {
     setFinancePages(prev => ({ ...prev, subscriptions: 1 }));
@@ -2602,6 +2633,61 @@ export default function Finance() {
       console.error('Toggle subscription auto renew failed:', err);
     } finally {
       setUpdatingSubscriptionId(null);
+    }
+  };
+
+  const openSubscriptionPackageChange = (subscription: any) => {
+    setSubscriptionChangeTarget(subscription);
+    setSubscriptionChangeReplacementIds([]);
+    setSubscriptionChangeEffectiveDate(getTodayDateInput());
+    setSubscriptionChangeReason('');
+  };
+
+  const handleSubscriptionPackageChange = async () => {
+    if (!subscriptionChangeTarget?.id) return;
+    if (subscriptionChangeReplacementIds.length === 0) {
+      toast.error('请至少选择一个替代套餐');
+      return;
+    }
+    if (!subscriptionChangeEffectiveDate) {
+      toast.error('请选择套餐变更生效日期');
+      return;
+    }
+
+    const replacementNames = subscriptionChangeReplacementOptions
+      .filter(subscription => subscriptionChangeReplacementIds.includes(Number(subscription.id)))
+      .map(subscription => subscription.package_name || '未命名套餐');
+
+    setChangingSubscriptionPackage(true);
+    try {
+      await invokeWithAuth({
+        url: `/api/v1/entities/subscriptions/${subscriptionChangeTarget.id}/package-change`,
+        method: 'POST',
+        data: {
+          replacement_subscription_ids: subscriptionChangeReplacementIds,
+          effective_date: subscriptionChangeEffectiveDate,
+          reason: subscriptionChangeReason.trim() || null,
+        },
+      });
+
+      void logOperation({
+        customerId: Number(subscriptionChangeTarget.customer_id),
+        actionType: 'change_subscription_package',
+        actionDetail: `套餐变更：${subscriptionChangeTarget.customer_name || customerMap[subscriptionChangeTarget.customer_id]?.business_name || ''} ${subscriptionChangeTarget.package_name || ''} → ${replacementNames.join('、')}，生效日 ${subscriptionChangeEffectiveDate}${subscriptionChangeReason.trim() ? `，原因：${subscriptionChangeReason.trim()}` : ''}`,
+        operatorName,
+      });
+
+      toast.success(`旧套餐已归档为“已升级结束”，替代套餐：${replacementNames.join('、')}`);
+      setSubscriptionChangeTarget(null);
+      setSubscriptionChangeReplacementIds([]);
+      setSubscriptionChangeReason('');
+      await loadData();
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '套餐变更失败';
+      toast.error(`套餐变更失败: ${detail}`);
+      console.error('Change subscription package failed:', err);
+    } finally {
+      setChangingSubscriptionPackage(false);
     }
   };
 
@@ -3866,7 +3952,7 @@ export default function Finance() {
                       <Badge variant="outline" className="border-slate-200 bg-white text-slate-600">共 {filteredSubscriptions.length} 个套餐</Badge>
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
-                      先处理待确认扣款，再处理即将到期；停止合作只关闭未来续费，不影响历史财务。
+                      先处理待确认扣款，再处理即将到期；停止合作或套餐变更只关闭旧套餐的未来续费，不影响历史财务。
                     </p>
                     <p className="mt-2 text-[11px] text-slate-400">每张卡片只展示当前续费所需信息，历史收款记录保持不变。</p>
                   </div>
@@ -3966,6 +4052,7 @@ export default function Finance() {
                               const remainDays = getSubscriptionRemainingDays(s);
                               const plannedDate = getSubscriptionPlannedPaymentDate(s);
                               const status = s.status || computeSubscriptionStatus(s);
+                              const packageChangeResult = parsePackageChangeResult(s.renewal_result);
                               return (
                                 <div key={s.id} className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-4">
                                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -4003,12 +4090,22 @@ export default function Finance() {
                                     </div>
                                   </div>
 
+                                  {status === 'upgraded' && packageChangeResult && (
+                                    <div className="mt-3 rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-xs text-violet-700">
+                                      <p className="font-semibold">
+                                        {packageChangeResult.effective_date ? `${packageChangeResult.effective_date} ` : ''}
+                                        已变更为 {packageChangeResult.replacement_names.join('、')}
+                                      </p>
+                                      {packageChangeResult.reason && <p className="mt-1 text-violet-600">原因：{packageChangeResult.reason}</p>}
+                                    </div>
+                                  )}
+
                                   <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="flex items-center gap-2">
                                       <Switch
                                         checked={Boolean(s.auto_renew)}
                                         onCheckedChange={checked => handleToggleSubscriptionAutoRenew(s, checked)}
-                                        disabled={updatingSubscriptionId === Number(s.id)}
+                                        disabled={updatingSubscriptionId === Number(s.id) || ['stopped', 'lost', 'upgraded', 'paused'].includes(status)}
                                       />
                                       <span className="text-xs font-medium text-slate-600">{s.auto_renew ? 'Stripe 订阅' : '手动收款 / 停止自动'}</span>
                                     </div>
@@ -4024,7 +4121,18 @@ export default function Finance() {
                                           {confirmingRenewalId === Number(s.id) ? '确认中' : '确认扣款'}
                                         </Button>
                                       )}
-                                      {status !== 'stopped' && status !== 'lost' && (
+                                      {!['stopped', 'lost', 'upgraded', 'paused'].includes(status) && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-8 px-3 text-xs text-violet-600 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                                          onClick={() => openSubscriptionPackageChange(s)}
+                                        >
+                                          <ArrowRightLeft className="mr-1 h-3.5 w-3.5" />
+                                          套餐变更
+                                        </Button>
+                                      )}
+                                      {!['stopped', 'lost', 'upgraded', 'paused'].includes(status) && (
                                         <Button
                                           size="sm"
                                           variant="outline"
@@ -4691,6 +4799,119 @@ export default function Finance() {
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Subscription Package Change */}
+      <Dialog
+        open={!!subscriptionChangeTarget}
+        onOpenChange={(v) => {
+          if (!v && !changingSubscriptionPackage) {
+            setSubscriptionChangeTarget(null);
+            setSubscriptionChangeReplacementIds([]);
+            setSubscriptionChangeReason('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>套餐变更</DialogTitle>
+          </DialogHeader>
+          {subscriptionChangeTarget && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-violet-100 bg-violet-50/70 p-4">
+                <p className="text-xs font-medium text-violet-600">即将归档的旧套餐</p>
+                <p className="mt-1 font-semibold text-slate-800">
+                  {subscriptionChangeTarget.customer_name || customerMap[subscriptionChangeTarget.customer_id]?.business_name || '-'} · {subscriptionChangeTarget.package_name || '-'}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  原服务期至 {toDateOnly(subscriptionChangeTarget.end_date) || '-'}，历史收款和利润记录会完整保留。
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>选择替代套餐 *</Label>
+                {subscriptionChangeReplacementOptions.length === 0 ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                    当前客户还没有可关联的新套餐。请先在“收入管理”录入新套餐收款及服务周期，再回来执行套餐变更。
+                  </div>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {subscriptionChangeReplacementOptions.map(subscription => {
+                      const id = Number(subscription.id);
+                      const checked = subscriptionChangeReplacementIds.includes(id);
+                      return (
+                        <label
+                          key={subscription.id}
+                          className={`cursor-pointer rounded-lg border p-3 transition ${checked ? 'border-violet-300 bg-violet-50 ring-1 ring-violet-200' : 'border-slate-200 bg-white hover:border-violet-200'}`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 rounded border-slate-300"
+                              checked={checked}
+                              onChange={e => setSubscriptionChangeReplacementIds(prev => (
+                                e.target.checked ? [...prev, id] : prev.filter(itemId => itemId !== id)
+                              ))}
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-800">{subscription.package_name || '-'}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {fmt(toMoneyNumber(subscription.package_price))} · 到期 {toDateOnly(subscription.end_date) || '-'}
+                              </p>
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>变更生效日期 *</Label>
+                  <Input
+                    type="date"
+                    value={subscriptionChangeEffectiveDate}
+                    onChange={e => setSubscriptionChangeEffectiveDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>变更原因</Label>
+                  <Input
+                    value={subscriptionChangeReason}
+                    onChange={e => setSubscriptionChangeReason(e.target.value.slice(0, 200))}
+                    placeholder="例如：客户升级服务方案"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
+                确认后，旧套餐会标记为“已升级结束”并停止未来续费；所选新套餐保持现有金额、周期和到期日，不会重复生成收款。
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={changingSubscriptionPackage}
+                  onClick={() => setSubscriptionChangeTarget(null)}
+                >
+                  取消
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-violet-600 hover:bg-violet-700"
+                  disabled={changingSubscriptionPackage || subscriptionChangeReplacementIds.length === 0}
+                  onClick={handleSubscriptionPackageChange}
+                >
+                  <ArrowRightLeft className="mr-1.5 h-4 w-4" />
+                  {changingSubscriptionPackage ? '处理中...' : '确认套餐变更'}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

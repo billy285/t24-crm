@@ -112,6 +112,18 @@ class SubscriptionsBatchDeleteRequest(BaseModel):
     ids: List[int]
 
 
+class SubscriptionPackageChangeRequest(BaseModel):
+    """Archive an old package and link it to existing replacement packages."""
+    replacement_subscription_ids: List[int]
+    effective_date: date
+    reason: Optional[str] = None
+
+
+class SubscriptionPackageChangeResponse(BaseModel):
+    old_subscription: SubscriptionsResponse
+    replacement_subscriptions: List[SubscriptionsResponse]
+
+
 # ---------- Routes ----------
 @router.get("", response_model=SubscriptionsListResponse)
 async def query_subscriptionss(
@@ -285,6 +297,39 @@ async def update_subscriptionss_batch(
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Batch update failed: {str(e)}")
+
+
+@router.post("/{id}/package-change", response_model=SubscriptionPackageChangeResponse)
+async def change_subscription_package(
+    id: int,
+    request: SubscriptionPackageChangeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Archive an old package while preserving history and linking replacement packages."""
+    if not request.replacement_subscription_ids:
+        raise HTTPException(status_code=400, detail="请至少选择一个替代套餐")
+    if len(request.replacement_subscription_ids) > 10:
+        raise HTTPException(status_code=400, detail="一次最多关联 10 个替代套餐")
+    if request.reason and len(request.reason.strip()) > 200:
+        raise HTTPException(status_code=400, detail="变更原因最多 200 个字符")
+
+    service = SubscriptionsService(db)
+    try:
+        old_subscription, replacements = await service.mark_package_changed(
+            id,
+            request.replacement_subscription_ids,
+            request.effective_date,
+            request.reason,
+        )
+        return {
+            "old_subscription": old_subscription,
+            "replacement_subscriptions": replacements,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Error changing package for subscription %s: %s", id, str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"套餐变更失败: {str(e)}")
 
 
 @router.put("/{id}", response_model=SubscriptionsResponse)
