@@ -41,6 +41,7 @@ import {
 } from '../lib/payment-utils';
 import {
   computeSubscriptionStatus,
+  buildSubscriptionPackageKey,
   decorateEffectiveSubscriptions,
   findMatchingSubscription,
   getSubscriptionRemainingDays,
@@ -2300,6 +2301,24 @@ export default function Finance() {
       const coverageEndISO = toISODatetime(payForm.coverage_end);
       const paymentDateISO = toISODatetime(payForm.payment_date) || new Date().toISOString();
       const normalizedPaymentMethod = normalizePaymentMethodKey(payForm.payment_method);
+      const originalPackageKey = originalPayment
+        ? buildSubscriptionPackageKey(originalPayment.customer_id, originalPayment.product_name)
+        : '';
+      const nextPackageKey = buildSubscriptionPackageKey(payForm.customer_id, payForm.product_names);
+      const paymentPackageChanged = Boolean(originalPayment && originalPackageKey !== nextPackageKey);
+      const originalSubscriptionForEdit = paymentPackageChanged
+        ? subscriptions.find(subscription => (
+            buildSubscriptionPackageKey(
+              subscription.customer_id,
+              subscription.package_name || subscription.product_name || '',
+            ) === originalPackageKey
+          )) || null
+        : null;
+
+      if (paymentPackageChanged && originalPayment?.coverage_end && !originalSubscriptionForEdit) {
+        toast.error('未找到这笔收款原来关联的续费记录，已停止保存，避免生成重复套餐；请先刷新数据后重试');
+        return;
+      }
       const payload: Record<string, any> = {
         customer_id: Number(payForm.customer_id),
         customer_name: cust?.business_name || '',
@@ -2354,8 +2373,9 @@ export default function Finance() {
             customerId: Number(payForm.customer_id),
             packageName: payForm.product_names,
           });
+          const subscriptionToUpdate = originalSubscriptionForEdit || matchingSub;
           const isAutoSubscription = payForm.payment_mode === 'subscription_auto' || normalizedPaymentMethod === 'stripe';
-          const subStartDate = coverageStartISO || matchingSub?.start_date || paymentDateISO;
+          const subStartDate = coverageStartISO || subscriptionToUpdate?.start_date || paymentDateISO;
           const subBaseData = {
             customer_id: Number(payForm.customer_id),
             customer_name: cust?.business_name || '',
@@ -2365,7 +2385,7 @@ export default function Finance() {
             start_date: subStartDate,
             end_date: coverageEndISO,
             auto_renew: isAutoSubscription,
-            renewal_person: cust?.sales_person || matchingSub?.renewal_person || '',
+            renewal_person: cust?.sales_person || subscriptionToUpdate?.renewal_person || '',
             last_payment_date: paymentDateISO,
             next_payment_date: coverageEndISO,
             renewal_result: isAutoSubscription ? 'stripe_subscription_confirmed' : 'manual_payment_confirmed',
@@ -2376,15 +2396,15 @@ export default function Finance() {
             status: computeSubscriptionStatus(subBaseData),
           };
 
-          if (matchingSub) {
+          if (subscriptionToUpdate) {
             await client.entities.subscriptions.update({
-              id: String(matchingSub.id),
+              id: String(subscriptionToUpdate.id),
               data: subData,
             });
             void logOperation({
               customerId: Number(payForm.customer_id),
               actionType: 'edit_subscription',
-              actionDetail: `同步套餐续费：${cust?.business_name || ''} ${payForm.product_names.join('、')} 截止 ${payForm.coverage_end || ''}`,
+              actionDetail: `${paymentPackageChanged ? '更正' : '同步'}套餐续费：${cust?.business_name || ''} ${payForm.product_names.join('、')} 截止 ${payForm.coverage_end || ''}`,
               operatorName,
             });
           } else {
@@ -4953,6 +4973,11 @@ export default function Finance() {
                 </div>
               )}
               {payForm.product_names.length > 0 && <p className="text-xs text-slate-500 mt-1">已选: {payForm.product_names.join('、')}</p>}
+              {payForm.product_names.length > 1 && (
+                <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-700">
+                  多个套餐会作为一条组合续费记录处理。若各套餐金额、周期或到期日不同，请拆分为多笔收款，避免续费提醒混在一起。
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>应收金额 *</Label><Input type="number" value={payForm.amount_due} onChange={e => setPayForm({ ...payForm, amount_due: e.target.value })} placeholder="0.00" /></div>
