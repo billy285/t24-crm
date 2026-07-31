@@ -1999,12 +1999,14 @@ export default function Finance() {
   const subscriptionWorkbenchGroups = useMemo(() => {
     const getStatus = (subscription: any) => subscription.status || computeSubscriptionStatus(subscription);
     const rows = filteredSubscriptions;
+    const archivedStatuses = new Set(['stopped', 'lost', 'upgraded', 'paused']);
     const groups = [
       {
         key: 'pending',
         title: '待确认扣款',
         description: 'Stripe 已到计划扣款日，需要确认实际入账日期。',
         tone: 'cyan',
+        priorityLabel: '优先 1',
         rows: rows.filter((subscription: any) => subscription.auto_renew && getStatus(subscription) === 'renewal_pending'),
       },
       {
@@ -2012,9 +2014,10 @@ export default function Finance() {
         title: '即将到期 / 已到期',
         description: '需要决定续费、停止合作或手动收款。',
         tone: 'amber',
+        priorityLabel: '优先 2',
         rows: rows.filter((subscription: any) => {
           const status = getStatus(subscription);
-          return status === 'expiring_soon' || status === 'expired';
+          return subscription.auto_renew && (status === 'expiring_soon' || status === 'expired');
         }),
       },
       {
@@ -2022,21 +2025,31 @@ export default function Finance() {
         title: '正常订阅',
         description: 'Stripe 自动订阅客户，后续到期会进入待确认。',
         tone: 'emerald',
-        rows: rows.filter((subscription: any) => subscription.auto_renew && getStatus(subscription) === 'active'),
+        priorityLabel: '稳定',
+        rows: rows.filter((subscription: any) => {
+          const status = getStatus(subscription);
+          return subscription.auto_renew
+            && !archivedStatuses.has(status)
+            && status !== 'renewal_pending'
+            && status !== 'expiring_soon'
+            && status !== 'expired';
+        }),
       },
       {
         key: 'manual',
         title: '手动收款',
         description: '支票、Zelle、转账等手动录入，不产生 Stripe 手续费。',
         tone: 'slate',
-        rows: rows.filter((subscription: any) => !subscription.auto_renew && !['stopped', 'lost', 'upgraded'].includes(getStatus(subscription))),
+        priorityLabel: '线下收款',
+        rows: rows.filter((subscription: any) => !subscription.auto_renew && !archivedStatuses.has(getStatus(subscription))),
       },
       {
         key: 'stopped',
         title: '已停止合作',
         description: '只保留历史数据，不再进入续费提醒。',
-        tone: 'red',
-        rows: rows.filter((subscription: any) => ['stopped', 'lost'].includes(getStatus(subscription))),
+        tone: 'slate',
+        priorityLabel: '历史归档',
+        rows: rows.filter((subscription: any) => archivedStatuses.has(getStatus(subscription))),
       },
     ];
     return groups.map(group => ({
@@ -2949,158 +2962,104 @@ export default function Finance() {
 
       <DateFilterBar />
 
-      <div className="app-card border-slate-200 bg-white/90 px-4 py-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 text-xs sm:gap-3">
-          <span className="font-semibold text-slate-700">建议工作顺序</span>
-          <span className="rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700">1. 核对收入</span>
-          <span className="text-slate-300">→</span>
-          <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">2. 核对成本</span>
-          <span className="text-slate-300">→</span>
-          <span className="rounded-full bg-cyan-50 px-3 py-1 font-medium text-cyan-700">3. 处理续费</span>
-          <span className="text-slate-300">→</span>
-          <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">4. 月度关账</span>
+      {/* First-screen business snapshot */}
+      <section aria-labelledby="finance-snapshot-title" className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h3 id="finance-snapshot-title" className="text-sm font-semibold text-slate-900">经营快照</h3>
+            <p className="mt-0.5 text-xs text-slate-500">先判断利润与现金风险，再进入明细处理。</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className={closedFinanceMonths.has(currentMonthKey) ? 'rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700' : 'rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'}>
+              {currentMonthKey} · {closedFinanceMonths.has(currentMonthKey) ? '已关账' : '未关账'}
+            </span>
+            <button type="button" onClick={() => handleFinanceTabChange('monthly_detail')} className="font-medium text-blue-600 hover:underline">
+              查看月度明细
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[1.35fr_1fr]">
-        <Card className="border-blue-100 bg-gradient-to-br from-blue-50/80 to-white shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600">
-                <Wallet className="h-4 w-4" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <Card className="border-emerald-100 bg-gradient-to-br from-emerald-50/90 to-white shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-medium text-slate-500">{summaryPeriodLabel}收入</p>
+                <ArrowUpRight className="h-4 w-4 text-emerald-600" />
               </div>
-              <div>
-                <p className="text-sm font-semibold text-blue-950">财务计算口径</p>
-                <div className="mt-2 grid gap-2 text-xs leading-relaxed text-blue-800 md:grid-cols-2">
-                  <p>收入按「收款日期」进入月份；服务覆盖期只影响续费和服务周期。</p>
-                  <p>管理费按当月扣点率计算，投流充值固定按 1% 扣点。</p>
-                  <p>Stripe 订阅按实收金额计算 2.9% + $0.30/笔；手动收款不算 Stripe 手续费。</p>
-                  <p>客户成本进入单客利润；运营支出进入老板总览利润，人民币支出单独统计不混算。</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              <p className="mt-2 text-xl font-bold text-emerald-700">{fmt(summaryFinance.revenue)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">按实际收款日期统计</p>
+            </CardContent>
+          </Card>
 
-        <Card className={`${financeHealthIssueCount > 0 ? 'border-amber-200 bg-amber-50/70' : 'border-emerald-100 bg-emerald-50/60'} shadow-sm`}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">数据体检</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {financeHealthIssueCount > 0 ? `发现 ${financeHealthIssueCount} 个需要核对的问题` : '关键财务数据口径正常'}
-                </p>
+          <Card className={summaryProfitUsd >= 0 ? 'border-blue-100 bg-gradient-to-br from-blue-50/90 to-white shadow-sm' : 'border-red-100 bg-gradient-to-br from-red-50/90 to-white shadow-sm'}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-medium text-slate-500">{summaryPeriodLabel}净利润</p>
+                <Wallet className={summaryProfitUsd >= 0 ? 'h-4 w-4 text-blue-600' : 'h-4 w-4 text-red-600'} />
               </div>
-              {financeHealthIssueCount > 0 ? (
-                <AlertTriangle className="h-5 w-5 text-amber-600" />
-              ) : (
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-              )}
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {financeHealthItems.map(item => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => handleFinanceIssueClick(item.key, item.tab, item.count)}
-                  className={`rounded-lg border px-3 py-2 text-left transition ${
-                    item.count > 0
-                      ? 'border-amber-200 bg-white hover:bg-amber-50'
-                      : 'border-slate-100 bg-white/70 text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium">{item.label}</span>
-                    <span className={item.count > 0 ? 'text-sm font-bold text-amber-700' : 'text-sm font-bold text-emerald-600'}>{item.count}</span>
-                  </div>
-                  {item.count > 0 && <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">{item.help}</p>}
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              <p className={summaryProfitUsd >= 0 ? 'mt-2 text-xl font-bold text-blue-700' : 'mt-2 text-xl font-bold text-red-700'}>{fmt(summaryProfitUsd)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">利润率 {(ownerOverview.profitRate * 100).toFixed(1)}%</p>
+            </CardContent>
+          </Card>
 
-      {/* Overview Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-        <Card className="border-slate-200">
-          <CardContent className="p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center"><ArrowUpRight className="w-4 h-4 text-green-600" /></div>
-            <div><p className="text-[11px] text-slate-500">{summaryPeriodLabel}收入</p><p className="text-base font-bold text-green-600">{fmt(summaryFinance.revenue)}</p></div>
-          </CardContent>
-        </Card>
-        {/* 运营支出 */}
-        <Card className="border-slate-200">
-          <CardContent className="p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center"><ArrowDownRight className="w-4 h-4 text-red-600" /></div>
-            <div>
-              <p className="text-[11px] text-slate-500">{summaryPeriodLabel}运营支出</p>
-              <p className="text-base font-bold text-red-600">{fmt(summaryFinance.operatingCostUsd)}</p>
-              <p className="text-[11px] text-slate-400">{fmtRMB(summaryCompanyExpenseCny)} 单独统计</p>
-            </div>
-          </CardContent>
-        </Card>
-        {/* 客户成本(USD) */}
-        <Card className="border-slate-200">
-          <CardContent className="p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center"><ArrowDownRight className="w-4 h-4 text-amber-600" /></div>
-            <div><p className="text-[11px] text-slate-500">{summaryPeriodLabel}客户成本 (USD)</p><p className="text-base font-bold text-amber-600">{fmt(summaryFinance.customerCost)}</p></div>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-cyan-50 flex items-center justify-center"><Receipt className="w-4 h-4 text-cyan-600" /></div>
-            <div>
-              <p className="text-[11px] text-slate-500">Stripe手续费</p>
-              <p className="text-base font-bold text-cyan-600">{fmt(summaryFinance.stripePlatformFee)}</p>
-              <p className="text-[11px] text-slate-400">2.9% + $0.30/笔</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-3 flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-lg ${summaryProfitUsd >= 0 ? 'bg-emerald-50' : 'bg-red-50'} flex items-center justify-center`}>
-              <Wallet className={`w-4 h-4 ${summaryProfitUsd >= 0 ? 'text-emerald-600' : 'text-red-600'}`} />
-            </div>
-            <div><p className="text-[11px] text-slate-500">{summaryPeriodLabel}利润 (USD)</p><p className={`text-base font-bold ${summaryProfitUsd >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(summaryProfitUsd)}</p></div>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center"><AlertTriangle className="w-4 h-4 text-red-600" /></div>
-            <div><p className="text-[11px] text-slate-500">总欠款</p><p className="text-base font-bold text-red-600">{fmt(totalOutstanding)}</p></div>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center"><Clock className="w-4 h-4 text-amber-600" /></div>
-            <div>
-              <p className="text-[11px] text-slate-500">到期提醒</p>
-              <p className="text-base font-bold">{expiringSubs.length}</p>
-              {renewalPendingSubs > 0 && <p className="text-[11px] text-cyan-600">待扣款确认 {renewalPendingSubs}</p>}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center"><TrendingUp className="w-4 h-4 text-blue-600" /></div>
-            <div><p className="text-[11px] text-slate-500">活跃订阅</p><p className="text-base font-bold">{activeSubs}</p></div>
-          </CardContent>
-        </Card>
-      </div>
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-medium text-slate-500">运营支出</p>
+                <ArrowDownRight className="h-4 w-4 text-red-500" />
+              </div>
+              <p className="mt-2 text-xl font-bold text-red-600">{fmt(summaryFinance.operatingCostUsd)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">{fmtRMB(summaryCompanyExpenseCny)} 单独统计</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-medium text-slate-500">客户成本</p>
+                <ArrowDownRight className="h-4 w-4 text-amber-500" />
+              </div>
+              <p className="mt-2 text-xl font-bold text-amber-600">{fmt(summaryFinance.customerCost)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">Stripe {fmt(summaryFinance.stripePlatformFee)}</p>
+            </CardContent>
+          </Card>
+
+          <Card className={totalOutstanding > 0 ? 'border-red-100 bg-red-50/50 shadow-sm' : 'border-slate-200 shadow-sm'}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-medium text-slate-500">应收未收</p>
+                <AlertTriangle className={totalOutstanding > 0 ? 'h-4 w-4 text-red-600' : 'h-4 w-4 text-slate-400'} />
+              </div>
+              <p className={totalOutstanding > 0 ? 'mt-2 text-xl font-bold text-red-600' : 'mt-2 text-xl font-bold text-slate-700'}>{fmt(totalOutstanding)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">{ownerOverview.receivableCount} 笔需要跟进</p>
+            </CardContent>
+          </Card>
+
+          <Card className={renewalPendingSubs + expiringSubs.length > 0 ? 'border-cyan-100 bg-cyan-50/50 shadow-sm' : 'border-slate-200 shadow-sm'}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-medium text-slate-500">续费提醒</p>
+                <Clock className="h-4 w-4 text-cyan-600" />
+              </div>
+              <p className="mt-2 text-xl font-bold text-cyan-700">{renewalPendingSubs + expiringSubs.length}</p>
+              <p className="mt-1 text-[11px] text-slate-400">待确认 {renewalPendingSubs} · 到期 {expiringSubs.length} · 活跃 {activeSubs}</p>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
 
       {/* Main Tabs */}
       <Tabs value={activeFinanceTab} onValueChange={handleFinanceTabChange} className="w-full">
-        <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
-          <TabsTrigger value="overview" className="text-xs sm:text-sm"><Wallet className="w-3.5 h-3.5 mr-1 hidden sm:inline" />老板总览</TabsTrigger>
-          <TabsTrigger value="customer_profit" className="text-xs sm:text-sm"><TrendingUp className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户利润 ({customerProfitRows.length})</TabsTrigger>
-          <TabsTrigger value="receivables" className="text-xs sm:text-sm"><AlertTriangle className="w-3.5 h-3.5 mr-1 hidden sm:inline" />应收欠款 ({receivableRows.length})</TabsTrigger>
-          <TabsTrigger value="income" className="text-xs sm:text-sm"><DollarSign className="w-3.5 h-3.5 mr-1 hidden sm:inline" />收入管理 ({filteredPayments.length})</TabsTrigger>
-          <TabsTrigger value="customer_expense" className="text-xs sm:text-sm"><Users className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户支出 ({filteredExpenses.length})</TabsTrigger>
-          <TabsTrigger value="company_expense" className="text-xs sm:text-sm"><Building2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />运营支出 ({filteredCompanyExpenses.length})</TabsTrigger>
-          <TabsTrigger value="subscriptions" className="text-xs sm:text-sm"><Receipt className="w-3.5 h-3.5 mr-1 hidden sm:inline" />套餐续费 ({filteredSubscriptions.length})</TabsTrigger>
-          <TabsTrigger value="charts" className="text-xs sm:text-sm"><PieChartIcon className="w-3.5 h-3.5 mr-1 hidden sm:inline" />数据分析</TabsTrigger>
-          <TabsTrigger value="monthly_detail" className="text-xs sm:text-sm">按月明细</TabsTrigger>
+        <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto bg-slate-100 p-1">
+          <TabsTrigger value="overview" className="shrink-0 text-xs sm:text-sm"><Wallet className="w-3.5 h-3.5 mr-1 hidden sm:inline" />老板总览</TabsTrigger>
+          <TabsTrigger value="customer_profit" className="shrink-0 text-xs sm:text-sm"><TrendingUp className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户利润 ({customerProfitRows.length})</TabsTrigger>
+          <TabsTrigger value="receivables" className="shrink-0 text-xs sm:text-sm"><AlertTriangle className="w-3.5 h-3.5 mr-1 hidden sm:inline" />应收欠款 ({receivableRows.length})</TabsTrigger>
+          <TabsTrigger value="income" className="shrink-0 text-xs sm:text-sm"><DollarSign className="w-3.5 h-3.5 mr-1 hidden sm:inline" />收入管理 ({filteredPayments.length})</TabsTrigger>
+          <TabsTrigger value="customer_expense" className="shrink-0 text-xs sm:text-sm"><Users className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户支出 ({filteredExpenses.length})</TabsTrigger>
+          <TabsTrigger value="company_expense" className="shrink-0 text-xs sm:text-sm"><Building2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />运营支出 ({filteredCompanyExpenses.length})</TabsTrigger>
+          <TabsTrigger value="subscriptions" className="shrink-0 text-xs sm:text-sm"><Receipt className="w-3.5 h-3.5 mr-1 hidden sm:inline" />套餐续费 ({filteredSubscriptions.length})</TabsTrigger>
+          <TabsTrigger value="charts" className="shrink-0 text-xs sm:text-sm"><PieChartIcon className="w-3.5 h-3.5 mr-1 hidden sm:inline" />数据分析</TabsTrigger>
+          <TabsTrigger value="monthly_detail" className="shrink-0 text-xs sm:text-sm">按月明细</TabsTrigger>
         </TabsList>
 
         {financeIssueFilter && (
@@ -3225,6 +3184,40 @@ export default function Finance() {
               </Card>
             </div>
 
+            {financeHealthIssueCount > 0 && (
+              <Card className="border-amber-200 bg-amber-50/70 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-amber-600">
+                        <AlertTriangle className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-amber-950">数据体检发现 {financeHealthIssueCount} 个问题</p>
+                        <p className="mt-1 text-xs text-amber-800">这些问题可能影响收入归属、客户利润或续费提醒，请优先核对。</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {financeHealthItems.filter(item => item.count > 0).map(item => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => handleFinanceIssueClick(item.key, item.tab, item.count)}
+                        className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-left transition hover:bg-amber-50"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-semibold text-slate-800">{item.label}</span>
+                          <span className="text-lg font-bold text-amber-700">{item.count}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">{item.help}</p>
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <Card className="border-slate-200"><CardContent className="p-4">
                 <p className="text-xs text-slate-500">客户成本 USD</p>
@@ -3304,6 +3297,54 @@ export default function Finance() {
                 </CardContent>
               </Card>
             </div>
+
+            <Card className="border-slate-200 bg-slate-50/60 shadow-none">
+              <CardContent className="p-4">
+                <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs sm:gap-3">
+                      <span className="font-semibold text-slate-700">建议工作顺序</span>
+                      <span className="rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700">1. 核对收入</span>
+                      <span className="hidden text-slate-300 sm:inline">→</span>
+                      <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">2. 核对成本</span>
+                      <span className="hidden text-slate-300 sm:inline">→</span>
+                      <span className="rounded-full bg-cyan-50 px-3 py-1 font-medium text-cyan-700">3. 处理续费</span>
+                      <span className="hidden text-slate-300 sm:inline">→</span>
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">4. 月度关账</span>
+                    </div>
+                    <details className="group mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                      <summary className="cursor-pointer list-none text-sm font-semibold text-slate-700">
+                        <span className="flex items-center justify-between gap-3">
+                          财务计算口径
+                          <span className="text-xs font-normal text-blue-600 group-open:hidden">展开查看</span>
+                          <span className="hidden text-xs font-normal text-slate-400 group-open:inline">收起</span>
+                        </span>
+                      </summary>
+                      <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-600 md:grid-cols-2">
+                        <p>收入按「收款日期」进入月份；服务覆盖期只影响续费和服务周期。</p>
+                        <p>管理费按当月扣点率计算，投流充值固定按 1% 扣点。</p>
+                        <p>Stripe 订阅按实收金额计算 2.9% + $0.30/笔；手动收款不算 Stripe 手续费。</p>
+                        <p>客户成本进入单客利润；运营支出进入老板总览利润，人民币支出单独统计不混算。</p>
+                      </div>
+                    </details>
+                  </div>
+
+                  <div className={financeHealthIssueCount > 0 ? 'rounded-xl border border-amber-200 bg-amber-50 p-4' : 'rounded-xl border border-emerald-100 bg-emerald-50 p-4'}>
+                    <div className="flex items-center gap-3">
+                      <div className={financeHealthIssueCount > 0 ? 'flex h-9 w-9 items-center justify-center rounded-xl bg-white text-amber-600' : 'flex h-9 w-9 items-center justify-center rounded-xl bg-white text-emerald-600'}>
+                        {financeHealthIssueCount > 0 ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">数据体检</p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {financeHealthIssueCount > 0 ? `仍有 ${financeHealthIssueCount} 个问题需要核对` : '关键财务数据口径正常，无需额外处理'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -3760,28 +3801,33 @@ export default function Finance() {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-base font-semibold text-slate-900">续费工作台</p>
                       <Badge className="bg-blue-100 text-blue-700">按优先级处理</Badge>
+                      <Badge variant="outline" className="border-slate-200 bg-white text-slate-600">共 {filteredSubscriptions.length} 个套餐</Badge>
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
                       先处理待确认扣款，再处理即将到期；停止合作只关闭未来续费，不影响历史财务。
                     </p>
                     <p className="mt-2 text-[11px] text-slate-400">每张卡片只展示当前续费所需信息，历史收款记录保持不变。</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4 lg:min-w-[440px]">
-                    <div className="rounded-xl border border-slate-100 bg-white px-4 py-2 shadow-sm">
-                      <p className="text-xs text-slate-500">全部套餐</p>
-                      <p className="text-lg font-bold text-slate-800">{filteredSubscriptions.length}</p>
-                    </div>
+                  <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-3 xl:min-w-[610px] xl:grid-cols-5">
                     <div className="rounded-xl border border-cyan-100 bg-cyan-50 px-4 py-2 shadow-sm">
-                      <p className="text-xs text-cyan-700">待确认</p>
+                      <p className="text-xs font-medium text-cyan-700">1 · 待确认</p>
                       <p className="text-lg font-bold text-cyan-700">{subscriptionWorkbenchGroups.find(group => group.key === 'pending')?.rows.length || 0}</p>
                     </div>
                     <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 shadow-sm">
-                      <p className="text-xs text-amber-700">到期风险</p>
+                      <p className="text-xs font-medium text-amber-700">2 · 到期风险</p>
                       <p className="text-lg font-bold text-amber-700">{subscriptionWorkbenchGroups.find(group => group.key === 'risk')?.rows.length || 0}</p>
                     </div>
                     <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 shadow-sm">
-                      <p className="text-xs text-emerald-700">正常订阅</p>
+                      <p className="text-xs font-medium text-emerald-700">正常订阅</p>
                       <p className="text-lg font-bold text-emerald-700">{subscriptionWorkbenchGroups.find(group => group.key === 'active_auto')?.rows.length || 0}</p>
+                    </div>
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-2 shadow-sm">
+                      <p className="text-xs font-medium text-blue-700">手动收款</p>
+                      <p className="text-lg font-bold text-blue-700">{subscriptionWorkbenchGroups.find(group => group.key === 'manual')?.rows.length || 0}</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-2">
+                      <p className="text-xs font-medium text-slate-500">停止合作</p>
+                      <p className="text-lg font-bold text-slate-600">{subscriptionWorkbenchGroups.find(group => group.key === 'stopped')?.rows.length || 0}</p>
                     </div>
                   </div>
                 </div>
@@ -3815,12 +3861,24 @@ export default function Finance() {
                         : group.tone === 'red'
                           ? 'bg-red-100 text-red-700'
                           : 'bg-slate-100 text-slate-600';
+                  const hierarchyClass = group.key === 'pending'
+                    ? 'ring-1 ring-cyan-200'
+                    : group.key === 'risk'
+                      ? 'ring-1 ring-amber-200'
+                      : group.key === 'stopped'
+                        ? 'xl:col-span-2 shadow-none'
+                        : 'shadow-sm';
                   return (
-                    <Card key={group.key} className={`${toneClass} shadow-sm`}>
+                    <Card key={group.key} className={`${toneClass} ${hierarchyClass}`}>
                       <CardHeader className="pb-2">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <CardTitle className="text-base">{group.title}</CardTitle>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <CardTitle className="text-base">{group.title}</CardTitle>
+                              <Badge variant="outline" className={group.key === 'pending' || group.key === 'risk' ? badgeClass : 'border-slate-200 bg-white/80 text-slate-500'}>
+                                {group.priorityLabel}
+                              </Badge>
+                            </div>
                             <p className="mt-1 text-xs text-slate-500">{group.description}</p>
                           </div>
                           <div className="text-right">
@@ -3833,7 +3891,7 @@ export default function Finance() {
                         {group.rows.length === 0 ? (
                           <p className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-5 text-center text-sm text-slate-400">暂无需要处理的套餐</p>
                         ) : (
-                          <div className="grid max-h-none gap-3 overflow-visible pr-0 xl:max-h-[560px] xl:overflow-auto xl:pr-1">
+                          <div className={`grid max-h-none gap-3 overflow-visible pr-0 xl:overflow-auto xl:pr-1 ${group.key === 'stopped' ? 'xl:max-h-[360px] xl:grid-cols-2' : 'xl:max-h-[560px]'}`}>
                             {group.rows.map((s: any) => {
                               const remainDays = getSubscriptionRemainingDays(s);
                               const plannedDate = getSubscriptionPlannedPaymentDate(s);

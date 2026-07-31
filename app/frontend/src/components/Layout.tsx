@@ -276,7 +276,7 @@ export default function Layout({ children }: LayoutProps) {
       </aside>
 
       {/* Main content */}
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {isOffline && (
           <div className="sticky top-0 z-40 flex items-center justify-between gap-3 bg-amber-50 px-4 py-2 text-xs text-amber-800 shadow-sm">
             <span>当前网络连接不稳定，暂时不要重复提交表单。</span>
@@ -325,7 +325,7 @@ export default function Layout({ children }: LayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="app-main min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-7">
+        <main className="app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-7">
           {hasPageAccess ? children : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
