@@ -548,6 +548,7 @@ export default function Customers() {
   const [renewalPage, setRenewalPage] = useState(1);
   const [renewalPageSize, setRenewalPageSize] = useState(20);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailLoadError, setDetailLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
@@ -555,6 +556,7 @@ export default function Customers() {
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [visibleCols, setVisibleCols] = useState<string[]>(loadCols());
   const [showColPicker, setShowColPicker] = useState(false);
+  const [inlineEditMode, setInlineEditMode] = useState(false);
   const [showFollowForm, setShowFollowForm] = useState(false);
   const [savingFollow, setSavingFollow] = useState(false);
   const [editingFollowId, setEditingFollowId] = useState<number | null>(null);
@@ -962,6 +964,7 @@ export default function Customers() {
 
   const loadCustomerDetail = async (customerId: number, fallbackCustomer?: any) => {
     setDetailLoading(true);
+    setDetailLoadError(null);
     try {
       const [customerRes, fuRes, dRes, pRes, expenseRes, sRes, progressRes, taskRes] = await Promise.all([
         client.entities.customers.query({ query: { id: customerId }, limit: 1 }),
@@ -995,6 +998,7 @@ export default function Customers() {
       await reloadContacts(customerId);
     } catch (err) {
       console.error(err);
+      setDetailLoadError(getLoadErrorMessage(err));
     } finally {
       setDetailLoading(false);
     }
@@ -1377,6 +1381,15 @@ export default function Customers() {
 
   const openDetail = async (c: any, nextTab = 'info') => {
     setSelectedCustomerTab(normalizeCustomerDetailTab(nextTab));
+    setFollowUps([]);
+    setDeals([]);
+    setPayments([]);
+    setCustomerExpenses([]);
+    setCustomerDeductionRates({});
+    setSubscriptions([]);
+    setServiceProgresses([]);
+    setServiceTasks([]);
+    setContacts([]);
     setSelectedCustomer(c);
     await loadCustomerDetail(c.id, c);
   };
@@ -1876,26 +1889,32 @@ export default function Customers() {
             </CardContent>
           </Card>
         )}
+        {detailLoadError && (
+          <div className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
+            <span>客户关联数据加载失败：{detailLoadError}</span>
+            <Button size="sm" variant="outline" className="border-red-200 bg-white text-red-700 hover:bg-red-100" onClick={() => loadCustomerDetail(c.id, c)}>重新加载</Button>
+          </div>
+        )}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计成交</p><p className="text-2xl font-semibold text-slate-800 mt-1">{formatCurrency(totalDealAmount)}</p><p className="text-xs text-slate-400 mt-1">最近成交: {latestDealDate}</p></CardContent></Card>
-          {canViewFinance && <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计实收</p><p className="text-2xl font-semibold text-green-600 mt-1">{formatCurrency(totalAmountPaid)}</p><p className="text-xs text-slate-400 mt-1">最近收款: {latestPaymentDate}</p></CardContent></Card>}
-          {canViewFinance && <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">当前尾款</p><p className="text-2xl font-semibold text-red-600 mt-1">{formatCurrency(totalOutstanding)}</p><p className="text-xs text-slate-400 mt-1">累计应收: {formatCurrency(totalAmountDue)}</p></CardContent></Card>}
-          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">服务概况</p><p className="text-2xl font-semibold text-blue-600 mt-1">{serviceRecordCount}</p><p className="text-xs text-slate-400 mt-1">在服 {activeSubscriptionCount} · 待处理任务 {pendingServiceTasks}</p></CardContent></Card>
+          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计成交</p>{detailLoading ? <div className="mt-2 h-9 w-28 animate-pulse rounded bg-slate-100" /> : <><p className="text-2xl font-semibold text-slate-800 mt-1">{formatCurrency(totalDealAmount)}</p><p className="text-xs text-slate-400 mt-1">最近成交: {latestDealDate}</p></>}</CardContent></Card>
+          {canViewFinance && <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计实收</p>{detailLoading ? <div className="mt-2 h-9 w-28 animate-pulse rounded bg-slate-100" /> : <><p className="text-2xl font-semibold text-green-600 mt-1">{formatCurrency(totalAmountPaid)}</p><p className="text-xs text-slate-400 mt-1">最近收款: {latestPaymentDate}</p></>}</CardContent></Card>}
+          {canViewFinance && <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">当前尾款</p>{detailLoading ? <div className="mt-2 h-9 w-28 animate-pulse rounded bg-slate-100" /> : <><p className="text-2xl font-semibold text-red-600 mt-1">{formatCurrency(totalOutstanding)}</p><p className="text-xs text-slate-400 mt-1">累计应收: {formatCurrency(totalAmountDue)}</p></>}</CardContent></Card>}
+          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">服务概况</p>{detailLoading ? <div className="mt-2 h-9 w-28 animate-pulse rounded bg-slate-100" /> : <><p className="text-2xl font-semibold text-blue-600 mt-1">{serviceRecordCount}</p><p className="text-xs text-slate-400 mt-1">在服 {activeSubscriptionCount} · 待处理任务 {pendingServiceTasks}</p></>}</CardContent></Card>
         </div>
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
-          <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
-            <TabsTrigger value="info" className="text-xs">基础信息</TabsTrigger>
-            <TabsTrigger value="timeline" className="text-xs">客户时间线 ({timelineEvents.length})</TabsTrigger>
-            <TabsTrigger value="contacts" className="text-xs">联系人 ({contacts.length})</TabsTrigger>
-            <TabsTrigger value="followups" className="text-xs">跟进记录 ({followUps.length})</TabsTrigger>
-            <TabsTrigger value="deals" className="text-xs">成交记录 ({deals.length})</TabsTrigger>
-            <TabsTrigger value="subscriptions" className="text-xs">服务信息 ({serviceRecordCount})</TabsTrigger>
-            {canViewFinance && <TabsTrigger value="payments" className="text-xs">财务信息 ({customerFinanceRecordCount})</TabsTrigger>}
-            <TabsTrigger value="renewals" className="text-xs">续费信息 ({renewalRows.length})</TabsTrigger>
-            <TabsTrigger value="materials" className="text-xs">素材管理</TabsTrigger>
-            <TabsTrigger value="ai_copy" className="text-xs">AI文案</TabsTrigger>
-            <TabsTrigger value="media" className="text-xs">媒体账号</TabsTrigger>
-            <TabsTrigger value="logs" className="text-xs">操作日志</TabsTrigger>
+          <TabsList className="h-auto max-w-full flex-nowrap justify-start gap-1 overflow-x-auto bg-slate-100 p-1 sm:flex-wrap sm:overflow-visible">
+            <TabsTrigger value="info" className="shrink-0 text-xs">基础信息</TabsTrigger>
+            <TabsTrigger value="timeline" className="shrink-0 text-xs">客户时间线 ({detailLoading ? '…' : timelineEvents.length})</TabsTrigger>
+            <TabsTrigger value="contacts" className="shrink-0 text-xs">联系人 ({detailLoading ? '…' : contacts.length})</TabsTrigger>
+            <TabsTrigger value="followups" className="shrink-0 text-xs">跟进记录 ({detailLoading ? '…' : followUps.length})</TabsTrigger>
+            <TabsTrigger value="deals" className="shrink-0 text-xs">成交记录 ({detailLoading ? '…' : deals.length})</TabsTrigger>
+            <TabsTrigger value="subscriptions" className="shrink-0 text-xs">服务信息 ({detailLoading ? '…' : serviceRecordCount})</TabsTrigger>
+            {canViewFinance && <TabsTrigger value="payments" className="shrink-0 text-xs">财务信息 ({detailLoading ? '…' : customerFinanceRecordCount})</TabsTrigger>}
+            <TabsTrigger value="renewals" className="shrink-0 text-xs">续费信息 ({detailLoading ? '…' : renewalRows.length})</TabsTrigger>
+            <TabsTrigger value="materials" className="shrink-0 text-xs">素材管理</TabsTrigger>
+            <TabsTrigger value="ai_copy" className="shrink-0 text-xs">AI文案</TabsTrigger>
+            <TabsTrigger value="media" className="shrink-0 text-xs">媒体账号</TabsTrigger>
+            <TabsTrigger value="logs" className="shrink-0 text-xs">操作日志</TabsTrigger>
           </TabsList>
 
           <TabsContent value="timeline">
@@ -2320,6 +2339,16 @@ export default function Customers() {
             columns={[{ key: 'customer_code', label: '编号' }, { key: 'business_name', label: '商家名称' }, { key: 'contact_name', label: '联系人' }, { key: 'phone', label: '电话' }, { key: 'email', label: '邮箱' }, { key: 'industry_label', label: '行业' }, { key: 'city', label: '城市' }, { key: 'state', label: '州' }, { key: 'country_label', label: '国家' }, { key: 'status_label', label: '状态' }, { key: 'level_label', label: '等级' }, { key: 'source_label', label: '来源' }, { key: 'sales_person', label: '负责销售' }, { key: 'facebook_link', label: 'Facebook' }, { key: 'instagram_link', label: 'Instagram' }, { key: 'google_business_link', label: 'Google Business' }, { key: 'yelp_link', label: 'Yelp' }, { key: 'tiktok_link', label: 'TikTok' }, { key: 'notes', label: '备注' }]}
             filename={`客户列表_${new Date().toISOString().slice(0, 10)}`} sheetName="客户列表" />}
           <Button variant="outline" size="sm" className="h-10 gap-1.5" onClick={() => setShowColPicker(!showColPicker)}><Columns3 className="w-4 h-4" /> 列设置</Button>
+          {hasPermission('customer_edit') && (
+            <Button
+              variant={inlineEditMode ? 'default' : 'outline'}
+              size="sm"
+              className={`h-10 gap-1.5 ${inlineEditMode ? 'bg-violet-600 text-white hover:bg-violet-700' : ''}`}
+              onClick={() => setInlineEditMode(value => !value)}
+            >
+              <Edit className="w-4 h-4" /> {inlineEditMode ? '退出快捷编辑' : '快捷编辑'}
+            </Button>
+          )}
           {hasPermission('customer_create') && <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 新增客户</Button>}
         </div>
       </div>
@@ -2331,9 +2360,18 @@ export default function Customers() {
         </CardContent></Card>
       )}
 
-      <div className="flex gap-2 flex-wrap">{Object.entries(statusLabels).map(([k, v]) => (
-        <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`h-7 text-xs ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(filterStatus === k ? 'all' : k)}>{v}</Button>
-      ))}</div>
+      <div className="flex gap-2 flex-wrap">
+        <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`h-8 text-xs ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
+        {Object.entries(statusLabels).map(([k, v]) => (
+          <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`h-8 text-xs ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
+        ))}
+      </div>
+
+      {inlineEditMode && (
+        <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-700">
+          快捷编辑已开启：行业、状态和等级修改后会立即保存。完成后请退出快捷编辑，避免误操作。
+        </div>
+      )}
 
       <Card className="border-slate-200"><CardContent className="p-3 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
@@ -2403,7 +2441,35 @@ export default function Customers() {
         {loading ? <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无匹配的客户</p>
         : (
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b bg-slate-50 text-left text-slate-500">
+          <>
+          <div className="grid gap-3 p-3 md:hidden">
+            {paginatedCustomers.items.map(c => (
+              <div key={c.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <button type="button" className="min-w-0 text-left" onClick={() => openDetail(c)}>
+                    <p className="truncate font-semibold text-blue-700">{c.business_name || '-'}</p>
+                    <p className="mt-1 text-xs text-slate-400">{c.customer_code || `客户#${c.id}`}</p>
+                  </button>
+                  <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                    <Badge className={`text-xs ${statusColors[c.status] || ''}`}>{statusLabels[c.status] || c.status || '-'}</Badge>
+                    <Badge className={`text-xs ${getLevelColorClass(c.level)}`}>{levelLabels[c.level] || c.level || '-'}</Badge>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <div><p className="text-xs text-slate-400">联系人</p><p className="mt-1 text-slate-700">{c.contact_name || '-'}</p></div>
+                  <div><p className="text-xs text-slate-400">负责人</p><p className="mt-1 text-slate-700">{c.sales_person || '-'}</p></div>
+                  <div><p className="text-xs text-slate-400">行业 / 地区</p><p className="mt-1 text-slate-700">{industryLabels[c.industry] || c.industry || '-'} · {c.state || '-'}</p></div>
+                  <div><p className="text-xs text-slate-400">电话</p>{c.phone ? <a className="mt-1 block text-blue-600" href={`tel:${c.phone}`}>{c.phone}</a> : <p className="mt-1 text-slate-400">-</p>}</div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                  <Button size="sm" className="h-8 flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => openDetail(c)}>查看客户</Button>
+                  {hasPermission('customer_assign') && <Button size="sm" variant="outline" className="h-8" onClick={() => openAssign(c)}>分配</Button>}
+                  {hasPermission('customer_edit') && <Button size="sm" variant="outline" className="h-8" onClick={() => openEdit(c)}>编辑</Button>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block"><table className="w-full text-sm"><thead><tr className="border-b bg-slate-50 text-left text-slate-500">
             {visibleCols.includes('customer_code') && <th className="px-4 py-3 font-medium">编号</th>}
             {visibleCols.includes('business_name') && <th className="px-4 py-3 font-medium">商家名称</th>}
             {visibleCols.includes('contact_name') && <th className="px-4 py-3 font-medium">联系人</th>}
@@ -2429,8 +2495,8 @@ export default function Customers() {
               {visibleCols.includes('state') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.state || '-'}</td>}
               {visibleCols.includes('country') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.country || '-'}</td>}
               {visibleCols.includes('industry') && (
-                <td className="px-4 py-3 hidden md:table-cell" onClick={() => !hasPermission('customer_edit') && openDetail(c)}>
-                  {hasPermission('customer_edit') ? (
+                <td className="px-4 py-3 hidden md:table-cell" onClick={() => !(hasPermission('customer_edit') && inlineEditMode) && openDetail(c)}>
+                  {hasPermission('customer_edit') && inlineEditMode ? (
                     <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
                       <select
                         value={c.industry || ''}
@@ -2457,8 +2523,8 @@ export default function Customers() {
                 </td>
               )}
               {visibleCols.includes('city') && (
-                <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => !hasPermission('customer_edit') && openDetail(c)}>
-                  {hasPermission('customer_edit') ? (
+                <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => !(hasPermission('customer_edit') && inlineEditMode) && openDetail(c)}>
+                  {hasPermission('customer_edit') && inlineEditMode ? (
                     <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
                       {getCitiesForState(c.country || 'US', c.state || '').length > 0 ? (
                         <select
@@ -2502,8 +2568,8 @@ export default function Customers() {
                 </td>
               )}
               {visibleCols.includes('status') && (
-                <td className="px-4 py-3" onClick={() => !hasPermission('customer_edit') && openDetail(c)}>
-                  {hasPermission('customer_edit') ? (
+                <td className="px-4 py-3" onClick={() => !(hasPermission('customer_edit') && inlineEditMode) && openDetail(c)}>
+                  {hasPermission('customer_edit') && inlineEditMode ? (
                     <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
                       <select
                         value={c.status || ''}
@@ -2530,8 +2596,8 @@ export default function Customers() {
                 </td>
               )}
               {visibleCols.includes('level') && (
-                <td className="px-4 py-3 hidden lg:table-cell" onClick={() => !hasPermission('customer_edit') && openDetail(c)}>
-                  {hasPermission('customer_edit') ? (
+                <td className="px-4 py-3 hidden lg:table-cell" onClick={() => !(hasPermission('customer_edit') && inlineEditMode) && openDetail(c)}>
+                  {hasPermission('customer_edit') && inlineEditMode ? (
                     <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
                       <select
                         value={c.level || ''}
@@ -2562,12 +2628,13 @@ export default function Customers() {
               {visibleCols.includes('wechat') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.wechat || '-'}</td>}
               {visibleCols.includes('source') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{sourceLabels[c.source] || c.source}</td>}
               <td className="px-4 py-3"><div className="flex gap-1">
-                {hasPermission('customer_assign') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-indigo-600" title="分配负责人" onClick={e => { e.stopPropagation(); openAssign(c); }}><ArrowRightLeft className="w-3.5 h-3.5" /></Button>}
-                {hasPermission('customer_edit') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={e => { e.stopPropagation(); openEdit(c); }}><Edit className="w-3.5 h-3.5" /></Button>}
-                {hasPermission('customer_delete') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={e => { e.stopPropagation(); setDeleteTarget(c); }}><Trash2 className="w-3.5 h-3.5" /></Button>}
+                {hasPermission('customer_assign') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-indigo-600" title="分配负责人" aria-label={`分配 ${c.business_name} 的负责人`} onClick={e => { e.stopPropagation(); openAssign(c); }}><ArrowRightLeft className="w-3.5 h-3.5" /></Button>}
+                {hasPermission('customer_edit') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" title="编辑客户" aria-label={`编辑 ${c.business_name}`} onClick={e => { e.stopPropagation(); openEdit(c); }}><Edit className="w-3.5 h-3.5" /></Button>}
+                {hasPermission('customer_delete') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" title="删除客户" aria-label={`删除 ${c.business_name}`} onClick={e => { e.stopPropagation(); setDeleteTarget(c); }}><Trash2 className="w-3.5 h-3.5" /></Button>}
               </div></td>
             </tr>
           ))}</tbody></table></div>
+          </>
         )}
         {filtered.length > 0 && <CustomerPaginationFooter />}
       </CardContent></Card>

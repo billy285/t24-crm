@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Search, Edit, Trash2, ClipboardCheck } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, ClipboardCheck, AlertTriangle, ExternalLink } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -26,6 +27,8 @@ import {
   useDictConfig,
 } from '../lib/dict-config';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
+import PageLoadState from '@/components/PageLoadState';
+import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 
 function parseMultiValue(value?: string | null) {
   return (value || '').split(',').map(item => item.trim()).filter(Boolean);
@@ -87,6 +90,14 @@ function parseDealPackageLabels(value?: string | null) {
 }
 
 const normalizeSearchText = (value?: string | null) => (value || '').toLowerCase().replace(/\s+/g, '');
+const getDealDuplicateKey = (deal: any) => [
+  Number(deal.customer_id || 0),
+  normalizeSearchText(deal.package_name),
+  deal.product_type || '',
+  Number(deal.deal_amount || 0).toFixed(2),
+  deal.billing_cycle || '',
+  deal.deal_date?.slice(0, 10) || '',
+].join('|');
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
@@ -356,9 +367,11 @@ export default function Deals() {
     customerPackages: customerPackageLabels,
     customerPackagePlatforms,
   } = useBusinessDicts();
+  const navigate = useNavigate();
   const [deals, setDeals] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterProduct, setFilterProduct] = useState('all');
   const [filterPaid, setFilterPaid] = useState('all');
@@ -366,6 +379,7 @@ export default function Deals() {
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterDatePreset, setFilterDatePreset] = useState('all');
+  const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [showForm, setShowForm] = useState(false);
@@ -386,10 +400,10 @@ export default function Deals() {
 
   const loadData = async () => {
     try {
-      const [dRes, cRes] = await Promise.all([
+      const [dRes, cRes] = await loadWithRetry(() => Promise.all([
         client.entities.deals.query({ limit: 1000, sort: '-deal_date' }),
         client.entities.customers.query({ limit: 1000 }),
-      ]);
+      ]));
       let dealItems = dRes?.data?.items || [];
       const custItems = cRes?.data?.items || [];
 
@@ -408,7 +422,8 @@ export default function Deals() {
 
       setDeals(dealItems);
       setCustomers(custItems);
-    } catch (err) { console.error(err); }
+      setLoadError(null);
+    } catch (err) { console.error(err); setLoadError(getLoadErrorMessage(err)); }
     finally { setLoading(false); }
   };
 
@@ -425,6 +440,16 @@ export default function Deals() {
   // Build a customer lookup map for quick access to phone, email, zip etc.
   const customerMap = new Map<number, any>();
   customers.forEach(c => customerMap.set(c.id, c));
+
+  const duplicateKeyCounts = deals.reduce<Record<string, number>>((acc, deal) => {
+    const key = getDealDuplicateKey(deal);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const duplicateDealIds = new Set(
+    deals.filter(deal => duplicateKeyCounts[getDealDuplicateKey(deal)] > 1).map(deal => deal.id)
+  );
+  const duplicateGroupCount = Object.values(duplicateKeyCounts).filter(count => count > 1).length;
 
   const ensureOnboardingBoardForDeal = async (deal: any, cust: any, dealId?: number | null) => {
     const platforms = parseMultiValue(deal.package_platforms).length > 0
@@ -566,6 +591,7 @@ export default function Deals() {
   };
 
   const filtered = deals.filter(d => {
+    if (showDuplicatesOnly && !duplicateDealIds.has(d.id)) return false;
     // Text search
     if (search) {
       const q = search.toLowerCase();
@@ -600,9 +626,9 @@ export default function Deals() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, filterProduct, filterPaid, filterCycle, filterDateFrom, filterDateTo, filterDatePreset, pageSize]);
+  }, [search, filterProduct, filterPaid, filterCycle, filterDateFrom, filterDateTo, filterDatePreset, showDuplicatesOnly, pageSize]);
 
-  const hasActiveFilters = filterProduct !== 'all' || filterPaid !== 'all' || filterCycle !== 'all' || filterDateFrom || filterDateTo;
+  const hasActiveFilters = filterProduct !== 'all' || filterPaid !== 'all' || filterCycle !== 'all' || filterDateFrom || filterDateTo || showDuplicatesOnly;
 
   const formatDateInput = (value: Date) => {
     const year = value.getFullYear();
@@ -640,10 +666,14 @@ export default function Deals() {
     setFilterDateFrom('');
     setFilterDateTo('');
     setFilterDatePreset('all');
+    setShowDuplicatesOnly(false);
     setSearch('');
   };
 
   const totalAmount = deals.reduce((s, d) => s + (d.deal_amount || 0), 0);
+  const paidDealCount = deals.filter(deal => deal.is_paid).length;
+  const unpaidDealCount = deals.length - paidDealCount;
+  const pendingHandoffCount = deals.filter(deal => !deal.is_handed_over || !deal.is_transferred_ops).length;
 
   const PaginationFooter = () => {
     if (paginated.total === 0) return null;
@@ -896,6 +926,17 @@ export default function Deals() {
 
       delete (payload as any).package_keys;
 
+      const currentDeal = editingId ? deals.find(deal => Number(deal.id) === Number(editingId)) : null;
+      const duplicateSignatureChanged = !currentDeal || getDealDuplicateKey(currentDeal) !== getDealDuplicateKey(payload);
+      const duplicateDeal = duplicateSignatureChanged ? deals.find(deal => (
+        Number(deal.id) !== Number(editingId || 0)
+        && getDealDuplicateKey(deal) === getDealDuplicateKey(payload)
+      )) : null;
+      if (duplicateDeal) {
+        toast.error(`检测到相同成交记录（#${duplicateDeal.id}），请编辑已有记录，避免重复统计金额`);
+        return;
+      }
+
       if (editingId) {
         const updatedDealRes = await client.entities.deals.update({ id: String(editingId), data: payload });
         const updatedDeal = updatedDealRes?.data || { ...payload, id: editingId, updated_at: now };
@@ -981,6 +1022,13 @@ export default function Deals() {
     finally { setDeleting(false); }
   };
 
+  if (loading && deals.length === 0) {
+    return <PageLoadState loading message="正在核对成交记录与交付状态…" />;
+  }
+  if (loadError && deals.length === 0) {
+    return <PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadData(); }} />;
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -1024,6 +1072,29 @@ export default function Deals() {
           </Button>
         </div>
       </div>
+
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+        <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">成交记录</p><p className="mt-1 text-2xl font-semibold text-slate-900">{deals.length}</p><p className="mt-1 text-xs text-slate-400">总额 ${totalAmount.toLocaleString()}</p></CardContent></Card>
+        <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">已付款</p><p className="mt-1 text-2xl font-semibold text-emerald-600">{paidDealCount}</p><p className="mt-1 text-xs text-slate-400">已确认收款</p></CardContent></Card>
+        <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">未付款</p><p className="mt-1 text-2xl font-semibold text-red-600">{unpaidDealCount}</p><p className="mt-1 text-xs text-slate-400">需要跟进</p></CardContent></Card>
+        <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">待完成交接</p><p className="mt-1 text-2xl font-semibold text-amber-600">{pendingHandoffCount}</p><p className="mt-1 text-xs text-slate-400">交接或转运营未完成</p></CardContent></Card>
+        <Card className={duplicateGroupCount > 0 ? 'border-orange-200 bg-orange-50/60' : 'border-slate-200'}>
+          <CardContent className="p-0">
+            <button type="button" className="w-full p-4 text-left" onClick={() => setShowDuplicatesOnly(value => !value)} aria-pressed={showDuplicatesOnly}>
+              <p className="text-xs text-slate-500">疑似重复组</p>
+              <p className={`mt-1 text-2xl font-semibold ${duplicateGroupCount > 0 ? 'text-orange-600' : 'text-slate-500'}`}>{duplicateGroupCount}</p>
+              <p className="mt-1 text-xs text-slate-400">{showDuplicatesOnly ? '正在仅看重复记录' : '点击筛选核对'}</p>
+            </button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {duplicateGroupCount > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-700">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>发现 {duplicateGroupCount} 组客户、套餐、金额、周期和成交日期完全相同的记录。系统已阻止继续录入相同成交；请筛选后逐条确认，不会自动删除历史数据。</span>
+        </div>
+      )}
 
       {/* Search & Filters */}
       <Card className="border-slate-200">
@@ -1119,7 +1190,40 @@ export default function Deals() {
           ) : filtered.length === 0 ? (
             <p className="text-center text-slate-400 py-12">暂无成交记录</p>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="grid gap-3 p-3 md:hidden">
+              {paginated.items.map(d => {
+                const isDuplicate = duplicateDealIds.has(d.id);
+                return (
+                <div key={d.id} className={`rounded-xl border bg-white p-4 shadow-sm ${isDuplicate ? 'border-orange-200 ring-1 ring-orange-100' : 'border-slate-200'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <button type="button" className="min-w-0 text-left" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals`)}>
+                      <p className="truncate font-semibold text-blue-700">{d.customer_name}</p>
+                      <p className="mt-1 text-xs text-slate-400">{d.deal_date?.slice(0, 10) || '-'} · {d.sales_name || '未分配销售'}</p>
+                    </button>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Badge className={d.is_paid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>{d.is_paid ? '已付' : '未付'}</Badge>
+                      {isDuplicate && <Badge className="bg-orange-100 text-orange-700">疑似重复</Badge>}
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-lg bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-3"><p className="font-medium text-slate-800">{d.package_name || '-'}</p><p className="font-semibold text-emerald-600">${Number(d.deal_amount || 0).toLocaleString()}</p></div>
+                    <p className="mt-1 text-xs text-slate-500">{productLabels[d.product_type] || d.product_type || '-'} · {cycleLabels[d.billing_cycle] || d.billing_cycle || '-'}</p>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                    <div><p className="text-xs text-slate-400">交接</p><p className="mt-1 text-slate-700">{d.is_handed_over ? '已交接' : '待交接'}</p></div>
+                    <div><p className="text-xs text-slate-400">运营</p><p className="mt-1 text-slate-700">{d.is_transferred_ops ? '已转运营' : '待转运营'}</p></div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                    <Button size="sm" variant="outline" className="h-8 flex-1" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals`)}><ExternalLink className="mr-1 h-3.5 w-3.5" />客户详情</Button>
+                    <Button size="sm" variant="outline" className="h-8" disabled={generatingBoardId === d.id} onClick={() => void handleGenerateServiceBoardForDeal(d)}>{generatingBoardId === d.id ? '生成中' : '服务看板'}</Button>
+                    <Button size="sm" variant="outline" className="h-8" onClick={() => openEditDeal(d)}>编辑</Button>
+                  </div>
+                </div>
+                );
+              })}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-slate-50 text-left text-slate-500">
@@ -1136,8 +1240,11 @@ export default function Deals() {
                 </thead>
                 <tbody>
                   {paginated.items.map(d => (
-                    <tr key={d.id} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="px-4 py-3 font-medium">{d.customer_name}</td>
+                    <tr key={d.id} className={`border-b hover:bg-slate-50 ${duplicateDealIds.has(d.id) ? 'border-orange-100 bg-orange-50/50' : 'border-slate-100'}`}>
+                      <td className="px-4 py-3 font-medium">
+                        <button type="button" className="text-left text-blue-700 hover:underline" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals`)}>{d.customer_name}</button>
+                        {duplicateDealIds.has(d.id) && <div className="mt-1 text-xs font-medium text-orange-600">疑似重复记录</div>}
+                      </td>
                       <td className="px-4 py-3">{d.package_name}</td>
                       <td className="px-4 py-3"><Badge variant="secondary" className="text-xs">{productLabels[d.product_type] || d.product_type}</Badge></td>
                       <td className="px-4 py-3 font-bold text-green-600">${d.deal_amount}</td>
@@ -1158,8 +1265,8 @@ export default function Deals() {
                             <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
                             {generatingBoardId === d.id ? '生成中' : '看板'}
                           </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => openEditDeal(d)}><Edit className="w-3.5 h-3.5" /></Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteTarget(d)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" title="编辑成交" aria-label={`编辑 ${d.customer_name} 的成交记录`} onClick={() => openEditDeal(d)}><Edit className="w-3.5 h-3.5" /></Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" title="删除成交" aria-label={`删除 ${d.customer_name} 的成交记录`} onClick={() => setDeleteTarget(d)}><Trash2 className="w-3.5 h-3.5" /></Button>
                         </div>
                       </td>
                     </tr>
@@ -1167,6 +1274,7 @@ export default function Deals() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
           {filtered.length > 0 && <PaginationFooter />}
         </CardContent>

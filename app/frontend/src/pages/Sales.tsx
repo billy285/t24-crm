@@ -29,6 +29,8 @@ const subStatusColors: Record<string, string> = {
   paused: 'bg-slate-100 text-slate-600',
   lost: 'bg-red-100 text-red-700',
   renewed: 'bg-emerald-100 text-emerald-700',
+  upgraded: 'bg-violet-100 text-violet-700',
+  stopped: 'bg-slate-100 text-slate-600',
   none: 'bg-slate-100 text-slate-500',
 };
 
@@ -39,6 +41,8 @@ const serviceStatusLabels: Record<string, string> = {
   renewal_pending: '待扣款确认',
   expired: '已到期',
   renewed: '已续费',
+  upgraded: '已升级结束',
+  stopped: '停止续费',
   paused: '暂停',
   lost: '流失',
 };
@@ -82,6 +86,18 @@ const packageSourceLabels: Record<string, string> = {
   customer: '来自客户资料',
 };
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
+const archivedServiceStatuses = new Set(['stopped', 'lost', 'paused', 'upgraded']);
+const serviceStatusPriority: Record<string, number> = {
+  renewal_pending: 0,
+  expiring_soon: 1,
+  active: 2,
+  renewed: 3,
+  expired: 4,
+  paused: 5,
+  upgraded: 6,
+  stopped: 7,
+  lost: 8,
+};
 
 const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
   const total = items.length;
@@ -150,13 +166,12 @@ export default function Sales() {
         }
       });
 
-      const latestSubscriptionByCustomer: Record<number, any> = {};
+      const subscriptionsByCustomer: Record<number, any[]> = {};
       subscriptionItems.forEach((subscription: any) => {
         const customerId = Number(subscription.customer_id || 0);
         if (!customerId) return;
-        if (!latestSubscriptionByCustomer[customerId] || getLatestTime(subscription, ['end_date', 'updated_at', 'created_at']) > getLatestTime(latestSubscriptionByCustomer[customerId], ['end_date', 'updated_at', 'created_at'])) {
-          latestSubscriptionByCustomer[subscription.customer_id] = subscription;
-        }
+        if (!subscriptionsByCustomer[customerId]) subscriptionsByCustomer[customerId] = [];
+        subscriptionsByCustomer[customerId].push(subscription);
       });
 
       const latestPaymentByCustomer: Record<number, any> = {};
@@ -182,9 +197,33 @@ export default function Sales() {
         .filter((customer: any) => closedCustomerIds.has(customer.id))
         .map((customer: any) => {
           const latestDeal = latestDealByCustomer[customer.id];
-          const latestSubscription = latestSubscriptionByCustomer[customer.id];
+          const customerSubscriptions = subscriptionsByCustomer[customer.id] || [];
+          const nonArchivedSubscriptions = customerSubscriptions.filter(subscription => (
+            !archivedServiceStatuses.has(subscription.status || computeSubscriptionStatus(subscription))
+          ));
+          const currentSubscriptions = nonArchivedSubscriptions.filter(subscription => (
+            (subscription.status || computeSubscriptionStatus(subscription)) !== 'expired'
+          ));
+          const serviceSubscriptions = currentSubscriptions.length > 0
+            ? currentSubscriptions
+            : nonArchivedSubscriptions.length > 0
+              ? nonArchivedSubscriptions
+              : customerSubscriptions;
+          const rankedSubscriptions = [...serviceSubscriptions].sort((a, b) => {
+            const aStatus = a.status || computeSubscriptionStatus(a);
+            const bStatus = b.status || computeSubscriptionStatus(b);
+            const priorityDiff = (serviceStatusPriority[aStatus] ?? 99) - (serviceStatusPriority[bStatus] ?? 99);
+            if (priorityDiff !== 0) return priorityDiff;
+            return getLatestTime(b, ['end_date', 'updated_at', 'created_at']) - getLatestTime(a, ['end_date', 'updated_at', 'created_at']);
+          });
+          const latestSubscription = rankedSubscriptions[0];
           const latestPayment = latestPaymentByCustomer[customer.id];
-          const serviceStatus = latestSubscription ? computeSubscriptionStatus(latestSubscription) : 'none';
+          const serviceStatus = latestSubscription
+            ? (latestSubscription.status || computeSubscriptionStatus(latestSubscription))
+            : 'none';
+          const currentServiceNames = Array.from(new Set(
+            serviceSubscriptions.map(subscription => subscription.package_name).filter(Boolean)
+          ));
           const packageSnapshot = parsePackageSnapshot(customer.interested_packages_snapshot);
           const customerPackageName = parseMultiValue(customer.interested_packages)
             .map(key => packageSnapshot[key] || customerPackageLabels[key] || key)
@@ -201,8 +240,8 @@ export default function Sales() {
                     ? { name: customerPackageName, source: 'customer' }
                     : { name: '-', source: '' };
           const currentPackage =
-            latestSubscription?.package_name
-              ? { name: latestSubscription.package_name, source: 'subscription' }
+            currentServiceNames.length > 0
+              ? { name: currentServiceNames.join('、'), source: 'subscription' }
               : selectedPackage;
 
           return {
@@ -220,6 +259,7 @@ export default function Sales() {
             selected_package_source: selectedPackage.source ? packageSourceLabels[selectedPackage.source] : '',
             latest_package_name: currentPackage.name,
             latest_package_source: currentPackage.source ? packageSourceLabels[currentPackage.source] : '',
+            active_service_count: serviceSubscriptions.length,
             latest_deal_amount: Number(latestDeal?.deal_amount || latestPayment?.amount_due || 0),
             latest_deal_date: latestDeal?.deal_date || latestPayment?.payment_date || customer.updated_at || customer.created_at,
             latest_payment_date: latestPayment?.payment_date || '',
@@ -443,6 +483,8 @@ export default function Sales() {
                 { value: 'renewal_pending', label: subStatusLabels.renewal_pending || serviceStatusLabels.renewal_pending },
                 { value: 'expired', label: subStatusLabels.expired || '已到期' },
                 { value: 'paused', label: subStatusLabels.paused || '暂停' },
+                { value: 'upgraded', label: subStatusLabels.upgraded || serviceStatusLabels.upgraded },
+                { value: 'stopped', label: subStatusLabels.stopped || serviceStatusLabels.stopped },
                 { value: 'lost', label: subStatusLabels.lost || '流失' },
                 { value: 'none', label: '未建服务' },
               ]}
@@ -470,7 +512,37 @@ export default function Sales() {
           ) : filtered.length === 0 ? (
             <p className="text-center text-slate-400 py-12">暂无符合条件的成交客户</p>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="grid gap-3 p-3 md:hidden">
+              {paginated.items.map(row => (
+                <div key={row.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <button type="button" className="min-w-0 text-left" onClick={() => openCustomerDetail(row.id)}>
+                      <p className="truncate font-semibold text-blue-700">{row.business_name}</p>
+                      <p className="mt-1 text-xs text-slate-400">{row.customer_code || `客户#${row.id}`} · {row.sales_person || '未分配'}</p>
+                    </button>
+                    <Badge className={subStatusColors[row.service_status] || subStatusColors.none}>
+                      {subStatusLabels[row.service_status] || serviceStatusLabels[row.service_status] || row.service_status}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 rounded-lg bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">当前服务{row.active_service_count > 1 ? ` · ${row.active_service_count} 个套餐` : ''}</p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">{row.latest_package_name || '-'}</p>
+                    <p className="mt-1 text-xs text-slate-500">到期 {row.service_end_date?.slice(0, 10) || '-'} · {row.service_remaining_days == null ? '剩余 -' : row.service_remaining_days <= 0 ? `已超期 ${Math.abs(row.service_remaining_days)} 天` : `剩余 ${row.service_remaining_days} 天`}</p>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                    <div><p className="text-xs text-slate-400">联系人</p><p className="mt-1 text-slate-700">{row.contact_name || '-'} · {row.phone || '-'}</p></div>
+                    <div><p className="text-xs text-slate-400">最近成交</p><p className="mt-1 text-slate-700">{row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-'} · {row.latest_deal_date?.slice(0, 10) || '-'}</p></div>
+                    {canViewFinance && <div><p className="text-xs text-slate-400">最近收款</p><p className="mt-1 text-slate-700">{row.latest_payment_amount ? fmt(row.latest_payment_amount) : '-'}</p></div>}
+                    {canViewFinance && <div><p className="text-xs text-slate-400">尾款</p><p className={`mt-1 ${row.outstanding_amount > 0 ? 'font-medium text-red-600' : 'text-slate-400'}`}>{row.outstanding_amount > 0 ? fmt(row.outstanding_amount) : '-'}</p></div>}
+                  </div>
+                  <Button className="mt-4 w-full bg-blue-600 hover:bg-blue-700" size="sm" onClick={() => openCustomerDetail(row.id)}>
+                    查看客户详情
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-slate-50 text-left text-slate-500">
@@ -517,6 +589,7 @@ export default function Sales() {
                           {cycleLabels[row.billing_cycle] || row.billing_cycle || '-'}
                           {row.latest_package_source ? ` · ${row.latest_package_source}` : ''}
                         </div>
+                        {row.active_service_count > 1 && <div className="mt-1 text-xs font-medium text-violet-600">共 {row.active_service_count} 个当前套餐</div>}
                       </td>
                       <td className="px-4 py-3 text-slate-600">
                         <div className="font-medium text-slate-700">{row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-'}</div>
@@ -581,6 +654,7 @@ export default function Sales() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
           {filtered.length > 0 && <PaginationFooter />}
         </CardContent>
