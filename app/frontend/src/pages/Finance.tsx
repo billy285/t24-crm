@@ -107,6 +107,7 @@ const PIE_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4
 const financeTabValues = new Set(['overview', 'customer_profit', 'receivables', 'income', 'customer_expense', 'company_expense', 'subscriptions', 'charts', 'monthly_detail']);
 type DateFilterMode = 'all' | 'today' | 'this_month' | 'last_month' | 'custom';
 type FinancePageKey = 'customer_profit' | 'receivables' | 'income' | 'customer_expense' | 'company_expense' | 'subscriptions' | 'monthly_detail';
+type SubscriptionGroupKey = 'pending' | 'risk' | 'active_auto' | 'manual' | 'stopped';
 type PaginationResult<T> = {
   items: T[];
   page: number;
@@ -653,6 +654,7 @@ export default function Finance() {
   const [subscriptionRenewalTarget, setSubscriptionRenewalTarget] = useState<any | null>(null);
   const [renewalPaymentDate, setRenewalPaymentDate] = useState('');
   const [updatingSubscriptionId, setUpdatingSubscriptionId] = useState<number | null>(null);
+  const [subscriptionGroupKey, setSubscriptionGroupKey] = useState<SubscriptionGroupKey>('pending');
   const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<any>(null);
   const [deletingExpense, setDeletingExpense] = useState(false);
   const [deleteCompanyExpenseTarget, setDeleteCompanyExpenseTarget] = useState<any>(null);
@@ -1191,13 +1193,14 @@ export default function Finance() {
 
   const filteredExpenses = expenses.filter(e => {
     if (financeIssueFilter === 'missingExpenseMonth') return !/^\d{4}-\d{2}$/.test(e.expense_month || '');
-    return activeDateRange ? isMonthInRange(e.expense_month, activeDateRange) : (!expenseMonth || e.expense_month === expenseMonth);
+    if (expenseMonth) return e.expense_month === expenseMonth;
+    return activeDateRange ? isMonthInRange(e.expense_month, activeDateRange) : true;
   });
   const filteredCompanyExpenses = companyExpenses.filter(e => {
     if (financeIssueFilter === 'missingExpenseMonth') return !/^\d{4}-\d{2}$/.test(e.expense_month || '');
-    const matchesMonth = activeDateRange
-      ? isMonthInRange(e.expense_month, activeDateRange)
-      : (!companyExpenseMonth || e.expense_month === companyExpenseMonth);
+    const matchesMonth = companyExpenseMonth
+      ? e.expense_month === companyExpenseMonth
+      : (activeDateRange ? isMonthInRange(e.expense_month, activeDateRange) : true);
     const matchesCurrency = companyExpenseCurrencyFilter === 'all' || getCompanyExpenseCurrency(e) === companyExpenseCurrencyFilter;
     return matchesMonth && matchesCurrency;
   });
@@ -1220,10 +1223,6 @@ export default function Finance() {
   const paginatedCompanyExpenses = useMemo(
     () => paginateList(filteredCompanyExpenses, financePages.company_expense, pageSize),
     [filteredCompanyExpenses, financePages.company_expense, pageSize],
-  );
-  const paginatedSubscriptions = useMemo(
-    () => paginateList(filteredSubscriptions, financePages.subscriptions, pageSize),
-    [filteredSubscriptions, financePages.subscriptions, pageSize],
   );
   const monthlyFinanceBuckets = useMemo(() => buildMonthlyFinanceBuckets(payments, expenses, companyExpenses), [payments, expenses, companyExpenses]);
 
@@ -2000,7 +1999,14 @@ export default function Finance() {
     const getStatus = (subscription: any) => subscription.status || computeSubscriptionStatus(subscription);
     const rows = filteredSubscriptions;
     const archivedStatuses = new Set(['stopped', 'lost', 'upgraded', 'paused']);
-    const groups = [
+    const groups: Array<{
+      key: SubscriptionGroupKey;
+      title: string;
+      description: string;
+      tone: string;
+      priorityLabel: string;
+      rows: any[];
+    }> = [
       {
         key: 'pending',
         title: '待确认扣款',
@@ -2057,6 +2063,18 @@ export default function Finance() {
       amount: roundMoney(group.rows.reduce((sum: number, item: any) => sum + toMoneyNumber(item.package_price), 0)),
     }));
   }, [filteredSubscriptions]);
+  const activeSubscriptionWorkbenchGroup = useMemo(
+    () => subscriptionWorkbenchGroups.find(group => group.key === subscriptionGroupKey) || subscriptionWorkbenchGroups[0],
+    [subscriptionGroupKey, subscriptionWorkbenchGroups],
+  );
+  const paginatedActiveSubscriptions = useMemo(
+    () => paginateList(activeSubscriptionWorkbenchGroup?.rows || [], financePages.subscriptions, pageSize),
+    [activeSubscriptionWorkbenchGroup, financePages.subscriptions, pageSize],
+  );
+
+  useEffect(() => {
+    setFinancePages(prev => ({ ...prev, subscriptions: 1 }));
+  }, [subscriptionGroupKey]);
 
   const paginatedCustomerProfitRows = useMemo(
     () => paginateList(customerProfitRows, financePages.customer_profit, pageSize),
@@ -3596,7 +3614,19 @@ export default function Finance() {
                   <div className="flex items-center gap-2">
                     <Users className="w-4 h-4 text-slate-500" />
                     <span className="text-sm font-medium text-slate-600">费用月份:</span>
-                    <Input type="month" value={expenseMonth} onChange={e => setExpenseMonth(e.target.value)} className="w-[180px] h-9" />
+                    <Input
+                      type="month"
+                      value={expenseMonth}
+                      onChange={e => {
+                        setExpenseMonth(e.target.value);
+                        if (e.target.value) {
+                          setDateFilterMode('all');
+                          setFilterStartDate('');
+                          setFilterEndDate('');
+                        }
+                      }}
+                      className="w-[180px] h-9"
+                    />
                   </div>
                   {expenseMonth && <Button variant="ghost" size="sm" className="h-8 text-xs text-slate-500" onClick={() => setExpenseMonth('')}>查看全部</Button>}
                 </div>
@@ -3690,7 +3720,19 @@ export default function Finance() {
                   <div className="flex items-center gap-2">
                     <Building2 className="w-4 h-4 text-slate-500" />
                     <span className="text-sm font-medium text-slate-600">支出月份:</span>
-                    <Input type="month" value={companyExpenseMonth} onChange={e => setCompanyExpenseMonth(e.target.value)} className="w-[180px] h-9" />
+                    <Input
+                      type="month"
+                      value={companyExpenseMonth}
+                      onChange={e => {
+                        setCompanyExpenseMonth(e.target.value);
+                        if (e.target.value) {
+                          setDateFilterMode('all');
+                          setFilterStartDate('');
+                          setFilterEndDate('');
+                        }
+                      }}
+                      className="w-[180px] h-9"
+                    />
                   </div>
                   <NativeSelect
                     value={companyExpenseCurrencyFilter}
@@ -3809,26 +3851,35 @@ export default function Finance() {
                     <p className="mt-2 text-[11px] text-slate-400">每张卡片只展示当前续费所需信息，历史收款记录保持不变。</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-3 xl:min-w-[610px] xl:grid-cols-5">
-                    <div className="rounded-xl border border-cyan-100 bg-cyan-50 px-4 py-2 shadow-sm">
-                      <p className="text-xs font-medium text-cyan-700">1 · 待确认</p>
-                      <p className="text-lg font-bold text-cyan-700">{subscriptionWorkbenchGroups.find(group => group.key === 'pending')?.rows.length || 0}</p>
-                    </div>
-                    <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 shadow-sm">
-                      <p className="text-xs font-medium text-amber-700">2 · 到期风险</p>
-                      <p className="text-lg font-bold text-amber-700">{subscriptionWorkbenchGroups.find(group => group.key === 'risk')?.rows.length || 0}</p>
-                    </div>
-                    <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 shadow-sm">
-                      <p className="text-xs font-medium text-emerald-700">正常订阅</p>
-                      <p className="text-lg font-bold text-emerald-700">{subscriptionWorkbenchGroups.find(group => group.key === 'active_auto')?.rows.length || 0}</p>
-                    </div>
-                    <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-2 shadow-sm">
-                      <p className="text-xs font-medium text-blue-700">手动收款</p>
-                      <p className="text-lg font-bold text-blue-700">{subscriptionWorkbenchGroups.find(group => group.key === 'manual')?.rows.length || 0}</p>
-                    </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-2">
-                      <p className="text-xs font-medium text-slate-500">停止合作</p>
-                      <p className="text-lg font-bold text-slate-600">{subscriptionWorkbenchGroups.find(group => group.key === 'stopped')?.rows.length || 0}</p>
-                    </div>
+                    {subscriptionWorkbenchGroups.map(group => {
+                      const isSelected = subscriptionGroupKey === group.key;
+                      const label = group.key === 'pending'
+                        ? '1 · 待确认'
+                        : group.key === 'risk'
+                          ? '2 · 到期风险'
+                          : group.title.replace('已', '');
+                      const toneClass = group.tone === 'cyan'
+                        ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
+                        : group.tone === 'amber'
+                          ? 'border-amber-200 bg-amber-50 text-amber-700'
+                          : group.tone === 'emerald'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : group.key === 'manual'
+                              ? 'border-blue-200 bg-blue-50/70 text-blue-700'
+                              : 'border-slate-200 bg-slate-100/80 text-slate-600';
+                      return (
+                        <button
+                          key={group.key}
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => setSubscriptionGroupKey(group.key)}
+                          className={`rounded-xl border px-4 py-2 text-center transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${toneClass} ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2 shadow-md' : 'shadow-sm'}`}
+                        >
+                          <p className="text-xs font-medium">{label}</p>
+                          <p className="text-lg font-bold">{group.rows.length}</p>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </CardContent>
@@ -3841,8 +3892,9 @@ export default function Finance() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid items-start gap-4 xl:grid-cols-2">
-                {subscriptionWorkbenchGroups.map(group => {
+              <div>
+                {activeSubscriptionWorkbenchGroup && (() => {
+                  const group = activeSubscriptionWorkbenchGroup;
                   const toneClass = group.tone === 'cyan'
                     ? 'border-cyan-100 bg-cyan-50/60'
                     : group.tone === 'amber'
@@ -3865,9 +3917,7 @@ export default function Finance() {
                     ? 'ring-1 ring-cyan-200'
                     : group.key === 'risk'
                       ? 'ring-1 ring-amber-200'
-                      : group.key === 'stopped'
-                        ? 'xl:col-span-2 shadow-none'
-                        : 'shadow-sm';
+                      : group.key === 'stopped' ? 'shadow-none' : 'shadow-sm';
                   return (
                     <Card key={group.key} className={`${toneClass} ${hierarchyClass}`}>
                       <CardHeader className="pb-2">
@@ -3891,8 +3941,8 @@ export default function Finance() {
                         {group.rows.length === 0 ? (
                           <p className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-5 text-center text-sm text-slate-400">暂无需要处理的套餐</p>
                         ) : (
-                          <div className={`grid max-h-none gap-3 overflow-visible pr-0 xl:overflow-auto xl:pr-1 ${group.key === 'stopped' ? 'xl:max-h-[360px] xl:grid-cols-2' : 'xl:max-h-[560px]'}`}>
-                            {group.rows.map((s: any) => {
+                          <div className="grid gap-3 lg:grid-cols-2">
+                            {paginatedActiveSubscriptions.items.map((s: any) => {
                               const remainDays = getSubscriptionRemainingDays(s);
                               const plannedDate = getSubscriptionPlannedPaymentDate(s);
                               const status = s.status || computeSubscriptionStatus(s);
@@ -3976,9 +4026,10 @@ export default function Finance() {
                           </div>
                         )}
                       </CardContent>
+                      {group.rows.length > 0 && <PaginationFooter pageKey="subscriptions" data={paginatedActiveSubscriptions} />}
                     </Card>
                   );
-                })}
+                })()}
               </div>
             )}
           </div>
