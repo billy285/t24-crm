@@ -55,7 +55,7 @@ async def test_profit_reports_require_finance_report_access():
         assert unauthorized.status_code == 403
 
 
-def test_apply_deductions_uses_management_rate_and_ads_recharge_rule():
+def test_apply_deductions_treats_ad_recharge_as_client_funds():
     rows = _apply_deductions(
         {
             "USD": {
@@ -76,13 +76,18 @@ def test_apply_deductions_uses_management_rate_and_ads_recharge_rule():
     assert rows == [{
         "month": "2026-06",
         "currency_or_base": "USD",
-        "revenue_gross": "3000.00",
-        "deduction_rate": "0.0567",
-        "deduction_amount": "170.00",
+        "gross_receipts": "3000.00",
+        "refund_amount": "0.00",
+        "net_receipts": "3000.00",
+        "service_revenue": "3000.00",
+        "ads_client_funds": "2000.00",
+        "recognized_ad_spread": "0.00",
+        "deduction_rate": "0.0500",
+        "deduction_amount": "150.00",
         "stripe_platform_fee": "0.00",
         "cost": "2000.00",
-        "profit": "830.00",
-        "notes": "management_fee 15%; ads recharge 1%",
+        "profit": "850.00",
+        "notes": "management_fee 15%; ads recharge held as client funds",
     }]
 
 
@@ -93,6 +98,7 @@ async def test_aggregate_monthly_separates_customer_costs_and_operating_currenci
         async with engine.begin() as conn:
             await conn.execute(text("""
                 CREATE TABLE payments (
+                    id INTEGER PRIMARY KEY,
                     customer_id INTEGER,
                     customer_name TEXT,
                     income_type TEXT,
@@ -119,10 +125,10 @@ async def test_aggregate_monthly_separates_customer_costs_and_operating_currenci
                 )
             """))
             await conn.execute(text("""
-                INSERT INTO payments (customer_id, customer_name, income_type, amount_paid, payment_date)
+                INSERT INTO payments (id, customer_id, customer_name, income_type, amount_paid, payment_date)
                 VALUES
-                  (1, 'A Cafe', 'management_fee', 1000, '2026-06-10'),
-                  (1, 'A Cafe', 'ads_fee', 2000, '2026-06-10')
+                  (1, 1, 'A Cafe', 'management_fee', 1000, '2026-06-10'),
+                  (2, 1, 'A Cafe', 'ads_fee', 2000, '2026-06-10')
             """))
             await conn.execute(text("""
                 INSERT INTO expenses (customer_id, customer_name, expense_type, amount, expense_month, created_at)
@@ -141,7 +147,7 @@ async def test_aggregate_monthly_separates_customer_costs_and_operating_currenci
             data, months = await _aggregate_monthly(db, "2026-06-01", "2026-06-30")
 
         assert months == ["2026-06"]
-        assert data["USD"]["2026-06"]["revenue_gross"] == 3000.0
+        assert data["USD"]["2026-06"]["revenue_gross"] == 1000.0
         assert data["USD"]["2026-06"]["management_revenue"] == 1000.0
         assert data["USD"]["2026-06"]["ads_recharge_revenue"] == 2000.0
         assert data["USD"]["2026-06"]["cost"] == 350.0
@@ -154,8 +160,8 @@ async def test_aggregate_monthly_separates_customer_costs_and_operating_currenci
 
         assert usd_row["cost"] == "350.00"
         assert usd_row["stripe_platform_fee"] == "0.00"
-        assert usd_row["profit"] == "2480.00"
-        assert usd_row["notes"] == "management_fee 15%; ads recharge 1%"
+        assert usd_row["profit"] == "500.00"
+        assert usd_row["notes"] == "management_fee 15%; ads recharge held as client funds"
         assert cny_row["cost"] == "800.00"
         assert cny_row["stripe_platform_fee"] == "0.00"
         assert cny_row["profit"] == "-800.00"

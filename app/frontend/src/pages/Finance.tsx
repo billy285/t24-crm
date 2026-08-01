@@ -105,7 +105,7 @@ const subscriptionStatusFallbackLabels: Record<string, string> = {
 };
 
 const PIE_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1'];
-const financeTabValues = new Set(['overview', 'customer_profit', 'receivables', 'income', 'customer_expense', 'company_expense', 'subscriptions', 'charts', 'monthly_detail']);
+const financeTabValues = new Set(['overview', 'customer_profit', 'receivables', 'income', 'refunds', 'ad_funds', 'customer_expense', 'company_expense', 'subscriptions', 'charts', 'monthly_detail']);
 type DateFilterMode = 'all' | 'today' | 'this_month' | 'last_month' | 'custom';
 type FinancePageKey = 'customer_profit' | 'receivables' | 'income' | 'customer_expense' | 'company_expense' | 'subscriptions' | 'monthly_detail';
 type SubscriptionGroupKey = 'pending' | 'risk' | 'active_auto' | 'manual' | 'stopped';
@@ -135,6 +135,8 @@ const financeIssueCopy: Record<string, { label: string; description: string }> =
   missingExpenseMonth: { label: '支出缺月份', description: '这些支出没有正确月份，会影响月度利润。' },
   missingCustomerLink: { label: '客户关联异常', description: '这些记录可能无法准确合并到客户利润。' },
   autoRenewMissingNextDate: { label: '订阅缺下次付款', description: '这些订阅缺少下次付款时间，会影响续费提醒。' },
+  missingRefundReference: { label: '退款缺凭证', description: '退款已入账，但尚未填写 Stripe 或人工退款凭证编号。' },
+  missingAdSettlement: { label: '投流尚未月结', description: '这些客户月份已有投流充值，但尚未录入实际支出和结余。' },
 };
 
 const formatDateOnlyLocal = (date: Date) => (
@@ -250,7 +252,6 @@ const MANAGEMENT_FEE_KEY = 'management_fee';
 const ADS_FEE_KEY = 'ads_fee';
 const MIXED_MANAGEMENT_ADS_KEY = 'management_ads_mixed';
 const PROTECTED_INCOME_TYPE_KEYS = new Set([MANAGEMENT_FEE_KEY, ADS_FEE_KEY, MIXED_MANAGEMENT_ADS_KEY]);
-const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
 const STRIPE_PLATFORM_FEE_RATE = 0.029;
 const STRIPE_PLATFORM_FEE_FIXED = 0.3;
 const CUSTOMER_PROFIT_WARNING_RATE = 0.3;
@@ -267,9 +268,15 @@ const getStoredMoney = (value: any): number | null => {
 };
 
 type MonthlyFinanceBucket = {
+  grossReceipts: number;
+  refunds: number;
+  netReceipts: number;
   revenue: number;
   managementRevenue: number;
   adsRevenue: number;
+  recognizedAdSpread: number;
+  actualAdSpend: number;
+  adClosingBalance: number;
   stripePlatformFee: number;
   customerCost: number;
   operatingCostUsd: number;
@@ -280,12 +287,19 @@ const getDeductionRate = (rates: Record<string, number>, ym: string) => (
   typeof rates[ym] === 'number' ? rates[ym] : 0.15
 );
 
+const createEmptyMonthlyFinanceBucket = (): MonthlyFinanceBucket => ({
+  grossReceipts: 0, refunds: 0, netReceipts: 0, revenue: 0,
+  managementRevenue: 0, adsRevenue: 0, recognizedAdSpread: 0,
+  actualAdSpend: 0, adClosingBalance: 0, stripePlatformFee: 0,
+  customerCost: 0, operatingCostUsd: 0, cost: 0,
+});
+
 const getOrCreateMonthlyFinanceBucket = (
   map: Record<string, MonthlyFinanceBucket>,
   ym: string,
 ): MonthlyFinanceBucket => {
   if (!map[ym]) {
-    map[ym] = { revenue: 0, managementRevenue: 0, adsRevenue: 0, stripePlatformFee: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
+    map[ym] = createEmptyMonthlyFinanceBucket();
   }
   return map[ym];
 };
@@ -351,26 +365,70 @@ const inferSubscriptionIncomeType = (packageName?: string | null) => {
   return MANAGEMENT_FEE_KEY;
 };
 
-const buildMonthlyFinanceBuckets = (paymentsList: any[], customerExpenses: any[], companyExpenseList: any[] = []) => {
+const buildMonthlyFinanceBuckets = (
+  paymentsList: any[],
+  customerExpenses: any[],
+  companyExpenseList: any[] = [],
+  refundsList: any[] = [],
+  adSettlements: any[] = [],
+) => {
   const map: Record<string, MonthlyFinanceBucket> = {};
+  const paymentMap = new Map<number, any>();
 
   paymentsList.forEach((payment) => {
     const ym = (payment.payment_date || '').slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(ym)) return;
     const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
     const amount = toMoneyNumber(payment.amount_paid);
+    const adsAmount = getAdsRechargeAmount(payment);
     const stripeFee = calculateStripePlatformFee(payment);
-    bucket.revenue += amount;
+    paymentMap.set(Number(payment.id), payment);
+    bucket.grossReceipts += amount;
+    bucket.netReceipts += amount;
+    // Client advertising top-ups are liabilities, not operating revenue.
+    bucket.revenue += Math.max(amount - adsAmount, 0);
     bucket.stripePlatformFee += stripeFee;
     bucket.cost += stripeFee;
     bucket.managementRevenue += getManagementRevenueAmount(payment);
-    bucket.adsRevenue += getAdsRechargeAmount(payment);
+    bucket.adsRevenue += adsAmount;
+  });
+
+  refundsList.filter(refund => refund.status === 'completed').forEach((refund) => {
+    const ym = (refund.refund_date || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return;
+    const payment = paymentMap.get(Number(refund.payment_id));
+    const refundAmount = toMoneyNumber(refund.refund_amount);
+    const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
+    const originalAmount = Math.max(toMoneyNumber(payment?.amount_paid), 0);
+    const ratio = originalAmount > 0 ? Math.min(refundAmount / originalAmount, 1) : 0;
+    const adsRefund = roundMoney(getAdsRechargeAmount(payment) * ratio);
+    const managementRefund = roundMoney(getManagementRevenueAmount(payment) * ratio);
+    const serviceRefund = roundMoney(Math.max(refundAmount - adsRefund, 0));
+    const feeRefunded = toMoneyNumber(refund.stripe_fee_refunded_amount);
+    bucket.refunds += refundAmount;
+    bucket.netReceipts -= refundAmount;
+    bucket.revenue -= serviceRefund;
+    bucket.managementRevenue -= managementRefund;
+    bucket.adsRevenue -= adsRefund;
+    bucket.stripePlatformFee -= feeRefunded;
+    bucket.cost -= feeRefunded;
+  });
+
+  adSettlements.filter(settlement => settlement.status === 'closed').forEach((settlement) => {
+    const ym = String(settlement.year_month || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym) || normalizeCurrency(settlement.currency, 'USD') !== 'USD') return;
+    const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
+    const spread = toMoneyNumber(settlement.recognized_spread_amount);
+    bucket.recognizedAdSpread += spread;
+    bucket.revenue += spread;
+    bucket.actualAdSpend += toMoneyNumber(settlement.actual_ad_spend);
+    bucket.adClosingBalance += toMoneyNumber(settlement.closing_balance);
   });
 
   customerExpenses.forEach((expense) => {
     const ym = (expense.expense_month || '').slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(ym)) return;
-    if (normalizeCurrency(expense.currency, 'USD') !== 'USD') return;
+    if (normalizeCurrency(expense.currency, 'USD') !== 'USD' || expense.expense_type === ADS_FEE_KEY) return;
     const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
     const amount = toMoneyNumber(expense.amount);
     bucket.customerCost += amount;
@@ -392,8 +450,8 @@ const buildMonthlyFinanceBuckets = (paymentsList: any[], customerExpenses: any[]
 
 const calculateMonthlyProfit = (bucket: MonthlyFinanceBucket, rate: number) => {
   const managementDeduction = bucket.managementRevenue * rate;
-  const adsDeduction = bucket.adsRevenue * ADS_RECHARGE_DEDUCTION_RATE;
-  const deductionAmount = managementDeduction + adsDeduction;
+  const adsDeduction = 0;
+  const deductionAmount = managementDeduction;
   return {
     managementDeduction,
     adsDeduction,
@@ -596,6 +654,8 @@ export default function Finance() {
   const [deals, setDeals] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [companyExpenses, setCompanyExpenses] = useState<any[]>([]);
+  const [refunds, setRefunds] = useState<any[]>([]);
+  const [adFundSettlements, setAdFundSettlements] = useState<any[]>([]);
   const [deductionRates, setDeductionRates] = useState<Record<string, number>>({});
   const [exportConfig, setExportConfig] = useState<Record<string, any>>({});
   const [closingMonth, setClosingMonth] = useState(() => getTodayDateInput().slice(0, 7));
@@ -632,15 +692,28 @@ export default function Finance() {
   const [newIncomeTypeName, setNewIncomeTypeName] = useState('');
   const [savingIncomeTypes, setSavingIncomeTypes] = useState(false);
 
+  // Refund and advertising-fund reconciliation forms
+  const [refundTarget, setRefundTarget] = useState<any | null>(null);
+  const [savingRefund, setSavingRefund] = useState(false);
+  const [refundForm, setRefundForm] = useState({
+    refund_amount: '', refund_date: getTodayDateInput(), provider_refund_id: '',
+    stripe_fee_refunded_amount: '0', reason: '重复扣款', notes: '',
+  });
+  const [showAdSettlementForm, setShowAdSettlementForm] = useState(false);
+  const [editingAdSettlementId, setEditingAdSettlementId] = useState<number | null>(null);
+  const [savingAdSettlement, setSavingAdSettlement] = useState(false);
+  const [adSettlementForm, setAdSettlementForm] = useState({
+    customer_id: '', year_month: getTodayDateInput().slice(0, 7), currency: 'USD' as CurrencyCode,
+    opening_balance: '0', actual_ad_spend: '', customer_refund_amount: '0',
+    recognized_spread_amount: '0', adjustment_amount: '0', status: 'draft', notes: '',
+  });
+
   // Customer expense form
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
   const [savingExpense, setSavingExpense] = useState(false);
-  const [expenseMonth, setExpenseMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const emptyExpenseForm = { customer_id: '', expense_type: defaultCustomerExpenseType, currency: 'USD' as CurrencyCode, amount: '', expense_month: expenseMonth, notes: '' };
+  const [expenseMonth, setExpenseMonth] = useState('');
+  const emptyExpenseForm = { customer_id: '', expense_type: defaultCustomerExpenseType, currency: 'USD' as CurrencyCode, amount: '', expense_month: getTodayDateInput().slice(0, 7), notes: '' };
   const [expenseForm, setExpenseForm] = useState(emptyExpenseForm);
   const [showCustomerExpenseTypeManager, setShowCustomerExpenseTypeManager] = useState(false);
   const [newCustomerExpenseTypeName, setNewCustomerExpenseTypeName] = useState('');
@@ -651,11 +724,8 @@ export default function Finance() {
   const [showCompanyExpenseForm, setShowCompanyExpenseForm] = useState(false);
   const [editingCompanyExpenseId, setEditingCompanyExpenseId] = useState<number | null>(null);
   const [savingCompanyExpense, setSavingCompanyExpense] = useState(false);
-  const [companyExpenseMonth, setCompanyExpenseMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const emptyCompanyExpenseForm = { category: defaultCompanyExpenseType, currency: 'USD' as CurrencyCode, amount: '', expense_month: companyExpenseMonth, expense_date: '', notes: '' };
+  const [companyExpenseMonth, setCompanyExpenseMonth] = useState('');
+  const emptyCompanyExpenseForm = { category: defaultCompanyExpenseType, currency: 'USD' as CurrencyCode, amount: '', expense_month: getTodayDateInput().slice(0, 7), expense_date: '', notes: '' };
   const [companyExpenseForm, setCompanyExpenseForm] = useState(emptyCompanyExpenseForm);
   const [companyExpenseCurrencyFilter, setCompanyExpenseCurrencyFilter] = useState<'all' | CurrencyCode>('all');
   const [showCompanyExpenseTypeManager, setShowCompanyExpenseTypeManager] = useState(false);
@@ -688,10 +758,16 @@ export default function Finance() {
   const [financeIssueFilter, setFinanceIssueFilter] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(20);
   const [financePages, setFinancePages] = useState<Record<FinancePageKey, number>>({ ...defaultFinancePages });
+  const [dateAnchor, setDateAnchor] = useState(() => new Date());
   const activeDateRange = useMemo(
-    () => getDateFilterRange(dateFilterMode, filterStartDate, filterEndDate),
-    [dateFilterMode, filterStartDate, filterEndDate],
+    () => getDateFilterRange(dateFilterMode, filterStartDate, filterEndDate, dateAnchor),
+    [dateFilterMode, filterStartDate, filterEndDate, dateAnchor],
   );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setDateAnchor(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const closedFinanceMonths = useMemo(() => {
     const rawMonths = Array.isArray(exportConfig.financeClosedMonths) ? exportConfig.financeClosedMonths : [];
     return new Set(rawMonths.map(month => normalizeMonthKey(month)).filter(Boolean));
@@ -722,13 +798,17 @@ export default function Finance() {
   const loadData = async () => {
     try {
       // Keep the previous snapshot unless every required finance source succeeds.
-      const [pItems, sItems, cItems, dItems, eItems, ceItems] = await Promise.all([
+      const [pItems, sItems, cItems, dItems, eItems, ceItems, refundItems, settlementItems] = await Promise.all([
         safeQuery(() => client.entities.payments.queryAll({ limit: 1000, sort: '-payment_date' })),
         safeQuery(() => client.entities.subscriptions.query({ limit: 1000, sort: '-end_date' })),
         safeQuery(() => client.entities.customers.query({ limit: 1000 })),
         safeQuery(() => client.entities.deals.query({ limit: 1000, sort: '-deal_date' })),
         safeQuery(() => client.entities.expenses.queryAll({ limit: 1000, sort: '-created_at' })),
         safeQuery(() => client.entities.company_expenses.queryAll({ limit: 1000, sort: '-created_at' })),
+        loadWithRetry(() => invokeWithAuth({ url: '/api/v1/finance/refunds', method: 'GET', data: { limit: 1000 } }))
+          .then(res => res?.data?.items || []),
+        loadWithRetry(() => invokeWithAuth({ url: '/api/v1/finance/ad-fund-settlements', method: 'GET', data: { limit: 1000 } }))
+          .then(res => res?.data?.items || []),
       ]);
       setPayments(pItems);
       setSubscriptions(decorateEffectiveSubscriptions(sItems));
@@ -736,11 +816,13 @@ export default function Finance() {
       setDeals(dItems);
       setExpenses(eItems);
       setCompanyExpenses(ceItems);
+      setRefunds(refundItems);
+      setAdFundSettlements(settlementItems);
       setLoadError(null);
       try {
         const months = new Set<string>();
-        [...pItems, ...eItems, ...ceItems].forEach((it: any) => {
-          const ym = (it.payment_date || it.expense_month || it.created_at || '').slice(0,7);
+        [...pItems, ...eItems, ...ceItems, ...refundItems, ...settlementItems].forEach((it: any) => {
+          const ym = (it.payment_date || it.refund_date || it.year_month || it.expense_month || it.created_at || '').slice(0,7);
           if (/^\d{4}-\d{2}$/.test(ym)) months.add(ym);
         });
         if (months.size > 0) {
@@ -1201,6 +1283,44 @@ export default function Finance() {
     if (financeIssueFilter === 'splitMismatch') return payments.filter(isSplitMismatchPayment);
     return baseFilteredPayments;
   }, [baseFilteredPayments, financeIssueFilter, payments]);
+  const filteredRefunds = useMemo(
+    () => (activeDateRange ? refunds.filter(refund => isDateInRange(refund.refund_date, activeDateRange)) : refunds),
+    [activeDateRange, refunds],
+  );
+  const filteredAdFundSettlements = useMemo(
+    () => (activeDateRange ? adFundSettlements.filter(item => isMonthInRange(item.year_month, activeDateRange)) : adFundSettlements),
+    [activeDateRange, adFundSettlements],
+  );
+  const unsettledAdFundRows = useMemo(() => {
+    const map: Record<string, { customer_id: number; customer_name: string; year_month: string; currency: CurrencyCode; funds_received: number }> = {};
+    const paymentById = new Map<number, any>();
+    filteredPayments.forEach((payment: any) => {
+      paymentById.set(Number(payment.id), payment);
+      const adsAmount = getAdsRechargeAmount(payment);
+      const yearMonth = normalizeMonthKey(payment.payment_date);
+      if (adsAmount <= 0 || !yearMonth) return;
+      const currency = normalizeCurrency(payment.currency, 'USD');
+      const key = `${payment.customer_id}:${yearMonth}:${currency}`;
+      map[key] = map[key] || { customer_id: Number(payment.customer_id), customer_name: payment.customer_name || '', year_month: yearMonth, currency, funds_received: 0 };
+      map[key].funds_received += adsAmount;
+    });
+    filteredRefunds.filter((refund: any) => refund.status === 'completed').forEach((refund: any) => {
+      const payment = paymentById.get(Number(refund.payment_id)) || payments.find((item: any) => Number(item.id) === Number(refund.payment_id));
+      const yearMonth = normalizeMonthKey(refund.refund_date);
+      const paid = Math.max(toMoneyNumber(payment?.amount_paid), 0);
+      const adsAmount = getAdsRechargeAmount(payment);
+      if (!payment || !yearMonth || paid <= 0 || adsAmount <= 0) return;
+      const currency = normalizeCurrency(refund.currency, 'USD');
+      const key = `${payment.customer_id}:${yearMonth}:${currency}`;
+      map[key] = map[key] || { customer_id: Number(payment.customer_id), customer_name: payment.customer_name || '', year_month: yearMonth, currency, funds_received: 0 };
+      map[key].funds_received -= toMoneyNumber(refund.refund_amount) * Math.min(adsAmount / paid, 1);
+    });
+    const settledKeys = new Set(adFundSettlements.map((item: any) => `${item.customer_id}:${item.year_month}:${normalizeCurrency(item.currency, 'USD')}`));
+    return Object.entries(map)
+      .filter(([key]) => !settledKeys.has(key))
+      .map(([, row]) => ({ ...row, funds_received: roundMoney(row.funds_received) }))
+      .sort((a, b) => b.year_month.localeCompare(a.year_month) || a.customer_name.localeCompare(b.customer_name));
+  }, [adFundSettlements, filteredPayments, filteredRefunds, payments]);
   const filteredSubscriptions = useMemo(() => {
     if (financeIssueFilter === 'autoRenewMissingNextDate') {
       return subscriptions.filter(s => s.auto_renew && !s.next_payment_date);
@@ -1245,25 +1365,34 @@ export default function Finance() {
     () => paginateList(filteredCompanyExpenses, financePages.company_expense, pageSize),
     [filteredCompanyExpenses, financePages.company_expense, pageSize],
   );
-  const monthlyFinanceBuckets = useMemo(() => buildMonthlyFinanceBuckets(payments, expenses, companyExpenses), [payments, expenses, companyExpenses]);
+  const monthlyFinanceBuckets = useMemo(
+    () => buildMonthlyFinanceBuckets(payments, expenses, companyExpenses, refunds, adFundSettlements),
+    [payments, expenses, companyExpenses, refunds, adFundSettlements],
+  );
 
   // ─── Stats ───────────────────────────────────────────────────────
-  const now = new Date();
+  const now = dateAnchor;
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const summaryFinanceBuckets = useMemo(
-    () => buildMonthlyFinanceBuckets(filteredPayments, summaryCustomerExpenses, summaryCompanyExpenses),
-    [filteredPayments, summaryCustomerExpenses, summaryCompanyExpenses],
+    () => buildMonthlyFinanceBuckets(filteredPayments, summaryCustomerExpenses, summaryCompanyExpenses, filteredRefunds, filteredAdFundSettlements),
+    [filteredPayments, summaryCustomerExpenses, summaryCompanyExpenses, filteredRefunds, filteredAdFundSettlements],
   );
   const summaryFinance = useMemo(() => (
     Object.values(summaryFinanceBuckets).reduce<MonthlyFinanceBucket>((acc, bucket) => ({
+      grossReceipts: roundMoney(acc.grossReceipts + bucket.grossReceipts),
+      refunds: roundMoney(acc.refunds + bucket.refunds),
+      netReceipts: roundMoney(acc.netReceipts + bucket.netReceipts),
       revenue: roundMoney(acc.revenue + bucket.revenue),
       managementRevenue: roundMoney(acc.managementRevenue + bucket.managementRevenue),
       adsRevenue: roundMoney(acc.adsRevenue + bucket.adsRevenue),
+      recognizedAdSpread: roundMoney(acc.recognizedAdSpread + bucket.recognizedAdSpread),
+      actualAdSpend: roundMoney(acc.actualAdSpend + bucket.actualAdSpend),
+      adClosingBalance: roundMoney(acc.adClosingBalance + bucket.adClosingBalance),
       stripePlatformFee: roundMoney(acc.stripePlatformFee + bucket.stripePlatformFee),
       customerCost: roundMoney(acc.customerCost + bucket.customerCost),
       operatingCostUsd: roundMoney(acc.operatingCostUsd + bucket.operatingCostUsd),
       cost: roundMoney(acc.cost + bucket.cost),
-    }), { revenue: 0, managementRevenue: 0, adsRevenue: 0, stripePlatformFee: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 })
+    }), createEmptyMonthlyFinanceBucket())
   ), [summaryFinanceBuckets]);
   const summaryProfitUsd = useMemo(() => roundMoney(
     Object.entries(summaryFinanceBuckets).reduce((sum, [monthKey, bucket]) => (
@@ -1333,11 +1462,32 @@ export default function Finance() {
     () => (activeDateRange ? companyExpenses.filter(e => isMonthInRange(e.expense_month, activeDateRange)) : companyExpenses),
     [activeDateRange, companyExpenses],
   );
+  const chartCompanyExpenseByType = useMemo(() => {
+    const map: Record<string, { type: string; currency: CurrencyCode; amount: number }> = {};
+    chartCompanyExpenses.forEach(expense => {
+      const currency = getCompanyExpenseCurrency(expense);
+      const type = expense.category || 'other_company';
+      const key = `${currency}:${type}`;
+      map[key] = map[key] || { type, currency, amount: 0 };
+      map[key].amount += toMoneyNumber(expense.amount);
+    });
+    return Object.values(map).map(item => ({
+      ...item,
+      name: companyExpenseTypeLabels[item.type] || item.type,
+      amount: roundMoney(item.amount),
+    })).sort((a, b) => a.currency.localeCompare(b.currency) || b.amount - a.amount);
+  }, [chartCompanyExpenses, companyExpenseTypeLabels]);
+  const chartCompanyExpenseTotals = useMemo(() => ({
+    USD: roundMoney(chartCompanyExpenses.filter(item => getCompanyExpenseCurrency(item) === 'USD').reduce((sum, item) => sum + toMoneyNumber(item.amount), 0)),
+    CNY: roundMoney(chartCompanyExpenses.filter(item => getCompanyExpenseCurrency(item) === 'CNY').reduce((sum, item) => sum + toMoneyNumber(item.amount), 0)),
+  }), [chartCompanyExpenses]);
+  const chartRefunds = filteredRefunds;
+  const chartAdFundSettlements = filteredAdFundSettlements;
   const chartMonthlyFinanceBuckets = useMemo(
     () => (activeDateRange
-      ? buildMonthlyFinanceBuckets(chartPayments, chartExpenses, chartCompanyExpenses)
+      ? buildMonthlyFinanceBuckets(chartPayments, chartExpenses, chartCompanyExpenses, chartRefunds, chartAdFundSettlements)
       : monthlyFinanceBuckets),
-    [activeDateRange, chartPayments, chartExpenses, chartCompanyExpenses, monthlyFinanceBuckets],
+    [activeDateRange, chartPayments, chartExpenses, chartCompanyExpenses, chartRefunds, chartAdFundSettlements, monthlyFinanceBuckets],
   );
   const chartMonthKeys = useMemo(() => {
     if (activeDateRange) return getMonthKeysInRange(activeDateRange.start, activeDateRange.end);
@@ -1348,26 +1498,32 @@ export default function Finance() {
     }
     return months;
   }, [activeDateRange, now]);
+  const chartPeriodLabel = dateFilterMode === 'all'
+    ? '近12个月'
+    : dateFilterMode === 'today'
+      ? '今日所在月'
+      : dateFilterMode === 'this_month'
+        ? '本月'
+        : dateFilterMode === 'last_month'
+          ? '上月'
+          : `${filterStartDate || '最早'} 至 ${filterEndDate || '最新'}`;
 
   const monthlyTrendData = useMemo(() => {
-    const months: { key: string; label: string; income: number; customerExp: number; stripeFee: number; companyExpUsd: number; companyExpCny: number; profitUsd: number }[] = [];
+    const months: { key: string; label: string; income: number; customerExp: number; stripeFee: number; companyExpUsd: number; profitUsd: number }[] = [];
     chartMonthKeys.forEach((key) => {
       const monthNumber = Number(key.slice(5, 7));
       const label = `${monthNumber}月`;
-      const bucket = chartMonthlyFinanceBuckets[key] || { revenue: 0, managementRevenue: 0, adsRevenue: 0, stripePlatformFee: 0, customerCost: 0, operatingCostUsd: 0, cost: 0 };
+      const bucket = chartMonthlyFinanceBuckets[key] || createEmptyMonthlyFinanceBucket();
       const income = bucket.revenue;
       const custExp = bucket.customerCost; // USD
       const stripeFee = bucket.stripePlatformFee;
       const compExpUsd = bucket.operatingCostUsd; // USD operating costs
-      const compExpCny = chartCompanyExpenses
-        .filter(e => e.expense_month === key && getCompanyExpenseCurrency(e) === 'CNY')
-        .reduce((s, e) => s + Number(e.amount || 0), 0); // CNY operating costs
       const rate = getDeductionRate(deductionRates, key);
       const { profit } = calculateMonthlyProfit(bucket, rate);
-      months.push({ key, label, income, customerExp: custExp, stripeFee, companyExpUsd: compExpUsd, companyExpCny: compExpCny, profitUsd: roundMoney(profit) });
+      months.push({ key, label, income, customerExp: custExp, stripeFee, companyExpUsd: compExpUsd, profitUsd: roundMoney(profit) });
     });
     return months;
-  }, [chartCompanyExpenses, chartMonthKeys, chartMonthlyFinanceBuckets, deductionRates]);
+  }, [chartMonthKeys, chartMonthlyFinanceBuckets, deductionRates]);
 
   // ─── Monthly Detail (USD by default, no cross-currency mix) ───────────────────
   const monthlyDetail = useMemo(() => {
@@ -1414,7 +1570,12 @@ export default function Finance() {
       const ym = expense.expense_month;
       return /^\d{4}-\d{2}$/.test(ym || '') && inRange(ym!);
     });
-    const map = buildMonthlyFinanceBuckets(scopedPayments, scopedExpenses, scopedCompanyExpenses);
+    const scopedRefunds = refunds.filter((refund: any) => {
+      const ym = refund.refund_date?.slice(0, 7);
+      return /^\d{4}-\d{2}$/.test(ym || '') && inRange(ym!);
+    });
+    const scopedAdSettlements = adFundSettlements.filter((item: any) => inRange(item.year_month));
+    const map = buildMonthlyFinanceBuckets(scopedPayments, scopedExpenses, scopedCompanyExpenses, scopedRefunds, scopedAdSettlements);
 
     const rows = Object.keys(map).sort().map(ym => {
       const bucket = map[ym];
@@ -1432,10 +1593,16 @@ export default function Finance() {
         month: ym,
         is_closed: closedFinanceMonths.has(ym),
         revenue_gross: Math.round(revenue * 100) / 100,
+        gross_receipts: roundMoney(bucket.grossReceipts),
+        refund_amount: roundMoney(bucket.refunds),
+        net_receipts: roundMoney(bucket.netReceipts),
         management_revenue: Math.round(bucket.managementRevenue * 100) / 100,
         ads_recharge_revenue: Math.round(bucket.adsRevenue * 100) / 100,
+        recognized_ad_spread: roundMoney(bucket.recognizedAdSpread),
+        actual_ad_spend: roundMoney(bucket.actualAdSpend),
+        ad_closing_balance: roundMoney(bucket.adClosingBalance),
         management_rate: bucket.managementRevenue > 0 ? rate : 0,
-        ads_recharge_rate: bucket.adsRevenue > 0 ? ADS_RECHARGE_DEDUCTION_RATE : 0,
+        ads_recharge_rate: 0,
         management_deduction_amount: Math.round(managementDeduction * 100) / 100,
         ads_recharge_deduction_amount: Math.round(adsDeduction * 100) / 100,
         deduction_rate: Math.round(effectiveRate * 10000) / 10000,
@@ -1449,7 +1616,7 @@ export default function Finance() {
     });
 
     return { rows, range: { start, end } };
-  }, [payments, expenses, companyExpenses, deductionRates, activeDateRange, closedFinanceMonths]);
+  }, [payments, expenses, companyExpenses, refunds, adFundSettlements, deductionRates, activeDateRange, closedFinanceMonths]);
 
   const paginatedMonthlyDetail = useMemo(
     () => paginateList(monthlyDetail.rows, financePages.monthly_detail, pageSize),
@@ -1457,6 +1624,9 @@ export default function Finance() {
   );
   const monthlyDetailTotals = useMemo(() => (
     monthlyDetail.rows.reduce((acc, row: any) => ({
+      grossReceipts: roundMoney(acc.grossReceipts + Number(row.gross_receipts || 0)),
+      refunds: roundMoney(acc.refunds + Number(row.refund_amount || 0)),
+      netReceipts: roundMoney(acc.netReceipts + Number(row.net_receipts || 0)),
       revenue: roundMoney(acc.revenue + Number(row.revenue_gross || 0)),
       managementRevenue: roundMoney(acc.managementRevenue + Number(row.management_revenue || 0)),
       adsRevenue: roundMoney(acc.adsRevenue + Number(row.ads_recharge_revenue || 0)),
@@ -1467,6 +1637,9 @@ export default function Finance() {
       cost: roundMoney(acc.cost + Number(row.cost || 0)),
       profit: roundMoney(acc.profit + Number(row.profit || 0)),
     }), {
+      grossReceipts: 0,
+      refunds: 0,
+      netReceipts: 0,
       revenue: 0,
       managementRevenue: 0,
       adsRevenue: 0,
@@ -1482,14 +1655,28 @@ export default function Finance() {
     ? monthlyDetailTotals.profit / monthlyDetailTotals.revenue
     : 0;
 
+  const chartRefundedByPayment = useMemo(() => {
+    const map: Record<number, number> = {};
+    filteredRefunds.filter((refund: any) => refund.status === 'completed').forEach((refund: any) => {
+      const paymentId = Number(refund.payment_id);
+      map[paymentId] = (map[paymentId] || 0) + toMoneyNumber(refund.refund_amount);
+    });
+    return map;
+  }, [filteredRefunds]);
+  const getChartNetFactor = (payment: any) => {
+    const amount = Math.max(toMoneyNumber(payment.amount_paid), 0);
+    if (amount <= 0) return 0;
+    return Math.max(0, 1 - Math.min((chartRefundedByPayment[Number(payment.id)] || 0) / amount, 1));
+  };
 
   const incomeByTypeData = useMemo(() => {
     const map: Record<string, number> = {};
     chartPayments.forEach(p => {
       const t = p.income_type || 'other_income';
-      const amountPaid = toMoneyNumber(p.amount_paid);
-      const managementAmount = getManagementRevenueAmount(p);
-      const adsRechargeAmount = getAdsRechargeAmount(p);
+      const factor = getChartNetFactor(p);
+      const amountPaid = toMoneyNumber(p.amount_paid) * factor;
+      const managementAmount = getManagementRevenueAmount(p) * factor;
+      const adsRechargeAmount = getAdsRechargeAmount(p) * factor;
       const splitAmount = managementAmount + adsRechargeAmount;
       if (managementAmount > 0) {
         map[MANAGEMENT_FEE_KEY] = (map[MANAGEMENT_FEE_KEY] || 0) + managementAmount;
@@ -1507,27 +1694,25 @@ export default function Finance() {
     return Object.entries(map).map(([type, value]) => ({
       name: incomeTypeLabels[type] || type, type, value: Math.round(value * 100) / 100,
     })).sort((a, b) => b.value - a.value);
-  }, [chartPayments, incomeTypeLabels]);
+  }, [chartPayments, chartRefundedByPayment, incomeTypeLabels]);
 
   const productRevenueData = useMemo(() => {
     const map: Record<string, number> = {};
     chartPayments.forEach(p => {
       if (!p.product_name) return;
       const names = p.product_name.split('、');
-      const share = (p.amount_paid || 0) / (names.length || 1);
-      names.forEach((name: string) => {
-        const trimmed = name.trim();
-        if (trimmed) map[trimmed] = (map[trimmed] || 0) + share;
-      });
+      if (names.length !== 1) return;
+      const trimmed = names[0].trim();
+      if (trimmed) map[trimmed] = (map[trimmed] || 0) + toMoneyNumber(p.amount_paid) * getChartNetFactor(p);
     });
     return Object.entries(map).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 })).sort((a, b) => b.value - a.value);
-  }, [chartPayments]);
+  }, [chartPayments, chartRefundedByPayment]);
 
   const customerRevenueData = useMemo(() => {
     const map: Record<string, number> = {};
-    chartPayments.forEach(p => { const name = p.customer_name || '未知客户'; map[name] = (map[name] || 0) + (p.amount_paid || 0); });
+    chartPayments.forEach(p => { const name = p.customer_name || '未知客户'; map[name] = (map[name] || 0) + toMoneyNumber(p.amount_paid) * getChartNetFactor(p); });
     return Object.entries(map).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 })).sort((a, b) => b.value - a.value).slice(0, 10);
-  }, [chartPayments]);
+  }, [chartPayments, chartRefundedByPayment]);
 
   const payMethodData = useMemo(() => {
     const countMap: Record<string, number> = {};
@@ -1535,13 +1720,13 @@ export default function Finance() {
     chartPayments.forEach(p => {
       const method = normalizePaymentMethodKey(p.payment_method);
       countMap[method] = (countMap[method] || 0) + 1;
-      amountMap[method] = (amountMap[method] || 0) + (p.amount_paid || 0);
+      amountMap[method] = (amountMap[method] || 0) + toMoneyNumber(p.amount_paid) * getChartNetFactor(p);
     });
     return Object.entries(countMap).map(([method, count]) => ({
       name: payMethodLabels[method] || method, method, count,
       amount: Math.round((amountMap[method] || 0) * 100) / 100,
     })).sort((a, b) => b.amount - a.amount);
-  }, [payMethodLabels, chartPayments]);
+  }, [payMethodLabels, chartPayments, chartRefundedByPayment]);
 
   const payModeData = useMemo(() => {
     const countMap: Record<string, number> = {};
@@ -1549,7 +1734,7 @@ export default function Finance() {
     chartPayments.forEach((payment) => {
       const mode = inferPaymentModeKey(payment);
       countMap[mode] = (countMap[mode] || 0) + 1;
-      amountMap[mode] = (amountMap[mode] || 0) + (payment.amount_paid || 0);
+      amountMap[mode] = (amountMap[mode] || 0) + toMoneyNumber(payment.amount_paid) * getChartNetFactor(payment);
     });
     return Object.entries(countMap).map(([mode, count]) => ({
       mode,
@@ -1557,7 +1742,7 @@ export default function Finance() {
       amount: Math.round((amountMap[mode] || 0) * 100) / 100,
       name: payModeLabels[mode] || mode,
     })).sort((a, b) => b.amount - a.amount);
-  }, [payModeLabels, chartPayments]);
+  }, [payModeLabels, chartPayments, chartRefundedByPayment]);
 
   // ─── Customer map for lookups ────────────────────────────────────
   const customerMap = useMemo(() => Object.fromEntries(customers.map(c => [c.id, c])), [customers]);
@@ -1571,6 +1756,8 @@ export default function Finance() {
     () => (activeDateRange ? companyExpenses.filter(e => isMonthInRange(e.expense_month, activeDateRange)) : companyExpenses),
     [activeDateRange, companyExpenses],
   );
+  const overviewRefunds = filteredRefunds;
+  const overviewAdFundSettlements = filteredAdFundSettlements;
 
   const customerProfitRows = useMemo(() => {
     const rows: Record<string, {
@@ -1624,23 +1811,46 @@ export default function Finance() {
       const rate = getDeductionRate(deductionRates, ym);
       const outstanding = getStoredMoney(payment.outstanding_amount) ?? Math.max(0, toMoneyNumber(payment.amount_due) - amountPaid);
 
-      row.revenue += amountPaid;
+      row.revenue += Math.max(amountPaid - adsAmount, 0);
       row.managementRevenue += managementAmount;
       row.adsRevenue += adsAmount;
       row.otherRevenue += otherAmount;
       row.stripeFee += calculateStripePlatformFee(payment);
       row.managementDeduction += managementAmount * rate;
-      row.adsDeduction += adsAmount * ADS_RECHARGE_DEDUCTION_RATE;
+      row.adsDeduction += 0;
       row.outstanding += outstanding;
       row.paymentCount += 1;
       const paymentDate = payment.payment_date?.slice(0, 10) || '';
       if (paymentDate && paymentDate > row.latestPaymentDate) row.latestPaymentDate = paymentDate;
     });
 
+    const paymentById = new Map(overviewPayments.map((payment: any) => [Number(payment.id), payment]));
+    overviewRefunds.filter((refund: any) => refund.status === 'completed').forEach((refund: any) => {
+      const payment = paymentById.get(Number(refund.payment_id));
+      if (!payment) return;
+      const row = ensureRow(payment.customer_id, payment.customer_name);
+      const originalAmount = Math.max(toMoneyNumber(payment.amount_paid), 0);
+      const ratio = originalAmount > 0 ? Math.min(toMoneyNumber(refund.refund_amount) / originalAmount, 1) : 0;
+      const adsRefund = roundMoney(getAdsRechargeAmount(payment) * ratio);
+      const managementRefund = roundMoney(getManagementRevenueAmount(payment) * ratio);
+      row.revenue -= Math.max(toMoneyNumber(refund.refund_amount) - adsRefund, 0);
+      row.managementRevenue -= managementRefund;
+      row.adsRevenue -= adsRefund;
+      row.stripeFee -= toMoneyNumber(refund.stripe_fee_refunded_amount);
+      row.managementDeduction -= managementRefund * getDeductionRate(deductionRates, String(refund.refund_date || '').slice(0, 7));
+    });
+
+    overviewAdFundSettlements.filter((item: any) => item.status === 'closed' && normalizeCurrency(item.currency, 'USD') === 'USD').forEach((item: any) => {
+      const row = ensureRow(item.customer_id, item.customer_name);
+      const spread = toMoneyNumber(item.recognized_spread_amount);
+      row.revenue += spread;
+      row.otherRevenue += spread;
+    });
+
     overviewCustomerExpenses.forEach((expense: any) => {
       const row = ensureRow(expense.customer_id, expense.customer_name);
       const amount = toMoneyNumber(expense.amount);
-      if (getCustomerExpenseCurrency(expense) === 'USD') {
+      if (getCustomerExpenseCurrency(expense) === 'USD' && expense.expense_type !== ADS_FEE_KEY) {
         row.customerCostUsd += amount;
       } else {
         row.customerCostCny += amount;
@@ -1689,7 +1899,7 @@ export default function Finance() {
         };
       })
       .sort((a, b) => b.profit - a.profit);
-  }, [customerMap, deductionRates, financeIssueFilter, overviewCustomerExpenses, overviewPayments]);
+  }, [customerMap, deductionRates, financeIssueFilter, overviewAdFundSettlements, overviewCustomerExpenses, overviewPayments, overviewRefunds]);
 
   const profitWarningRows = useMemo(() => (
     customerProfitRows
@@ -1725,7 +1935,9 @@ export default function Finance() {
     const detailExpenses = overviewCustomerExpenses
       .filter(matchesCustomer)
       .sort((a: any, b: any) => String(b.expense_month || '').localeCompare(String(a.expense_month || '')));
-    const bucketMap = buildMonthlyFinanceBuckets(detailPayments, detailExpenses, []);
+    const detailRefunds = overviewRefunds.filter(matchesCustomer);
+    const detailSettlements = overviewAdFundSettlements.filter(matchesCustomer);
+    const bucketMap = buildMonthlyFinanceBuckets(detailPayments, detailExpenses, [], detailRefunds, detailSettlements);
     const monthlyRows = Object.keys(bucketMap)
       .sort((a, b) => b.localeCompare(a))
       .map(month => {
@@ -1757,7 +1969,7 @@ export default function Finance() {
       monthlyRows,
       customerCostCny,
     };
-  }, [customerMap, customerProfitRows, deductionRates, overviewCustomerExpenses, overviewPayments, profitDetailTarget]);
+  }, [customerMap, customerProfitRows, deductionRates, overviewAdFundSettlements, overviewCustomerExpenses, overviewPayments, overviewRefunds, profitDetailTarget]);
 
   const receivableRows = useMemo(() => (
     overviewPayments
@@ -1782,7 +1994,7 @@ export default function Finance() {
   ), [customerMap, overviewPayments]);
 
   const ownerOverview = useMemo(() => {
-    const buckets = buildMonthlyFinanceBuckets(overviewPayments, overviewCustomerExpenses, overviewCompanyExpenses);
+    const buckets = buildMonthlyFinanceBuckets(overviewPayments, overviewCustomerExpenses, overviewCompanyExpenses, overviewRefunds, overviewAdFundSettlements);
     const totals = Object.entries(buckets).reduce((acc, [ym, bucket]) => {
       const rate = getDeductionRate(deductionRates, ym);
       const profit = calculateMonthlyProfit(bucket, rate);
@@ -1825,7 +2037,7 @@ export default function Finance() {
       receivableCount: receivableRows.length,
       profitRate: totals.revenue > 0 ? totals.profitUsd / totals.revenue : 0,
     };
-  }, [deductionRates, overviewCompanyExpenses, overviewCustomerExpenses, overviewPayments, receivableRows]);
+  }, [deductionRates, overviewAdFundSettlements, overviewCompanyExpenses, overviewCustomerExpenses, overviewPayments, overviewRefunds, receivableRows]);
 
   const financeHealthItems = useMemo(() => {
     const missingPaymentDate = payments.filter((payment: any) => !payment.payment_date).length;
@@ -1840,6 +2052,12 @@ export default function Finance() {
     const autoRenewMissingNextDate = subscriptions.filter((subscription: any) => (
       subscription.auto_renew && !subscription.next_payment_date
     )).length;
+    const missingRefundReference = refunds.filter((refund: any) => refund.status === 'completed' && !refund.provider_refund_id).length;
+    const settledAdKeys = new Set(adFundSettlements.map((item: any) => `${item.customer_id}:${item.year_month}:${normalizeCurrency(item.currency, 'USD')}`));
+    const missingAdSettlement = new Set(payments
+      .filter((payment: any) => getAdsRechargeAmount(payment) > 0 && normalizeMonthKey(payment.payment_date))
+      .map((payment: any) => `${payment.customer_id}:${normalizeMonthKey(payment.payment_date)}:${normalizeCurrency(payment.currency, 'USD')}`)
+      .filter((key: string) => !settledAdKeys.has(key))).size;
 
     return [
       {
@@ -1884,8 +2102,22 @@ export default function Finance() {
         help: '会影响到期提醒和自动续费确认。',
         tab: 'subscriptions' as const,
       },
+      {
+        key: 'missingRefundReference',
+        label: '退款缺凭证',
+        count: missingRefundReference,
+        help: '退款金额已进入账务，但凭证编号需要补齐以便对账。',
+        tab: 'refunds' as const,
+      },
+      {
+        key: 'missingAdSettlement',
+        label: '投流尚未月结',
+        count: missingAdSettlement,
+        help: '投流充值属于客户资金，未月结前不能确认支出、结余或差价收入。',
+        tab: 'ad_funds' as const,
+      },
     ];
-  }, [companyExpenses, customerMap, expenses, payments, receivableRows.length, subscriptions]);
+  }, [adFundSettlements, companyExpenses, customerMap, expenses, payments, receivableRows.length, refunds, subscriptions]);
 
   const financeHealthIssueCount = financeHealthItems.reduce((sum, item) => sum + item.count, 0);
 
@@ -1911,6 +2143,13 @@ export default function Finance() {
     const pendingRenewals = subscriptionsInMonth.filter((subscription: any) => (
       subscription.auto_renew && (subscription.status || computeSubscriptionStatus(subscription)) === 'renewal_pending'
     ));
+    const settledAdKeys = new Set(adFundSettlements
+      .filter((item: any) => item.year_month === month && item.status === 'closed')
+      .map((item: any) => `${item.customer_id}:${normalizeCurrency(item.currency, 'USD')}`));
+    const unsettledAdFunds = new Set(paymentsInMonth
+      .filter((payment: any) => getAdsRechargeAmount(payment) > 0)
+      .map((payment: any) => `${payment.customer_id}:${normalizeCurrency(payment.currency, 'USD')}`)
+      .filter((key: string) => !settledAdKeys.has(key))).size;
     const items = [
       {
         key: 'missingPaymentDate',
@@ -1928,7 +2167,7 @@ export default function Finance() {
         level: 'blocker',
         tab: 'income',
         issueKey: 'splitMismatch',
-        help: '管理费/投流金额缺失或超过实收，会直接影响扣点和利润。',
+        help: '管理费/投流金额缺失或超过实收，会直接影响服务收入和客户资金余额。',
       },
       {
         key: 'missingExpenseMonth',
@@ -1947,6 +2186,15 @@ export default function Finance() {
         tab: 'customer_profit',
         issueKey: 'missingCustomerLink',
         help: '客户关联异常会导致单客利润无法准确合并。',
+      },
+      {
+        key: 'missingAdSettlement',
+        label: '投流资金尚未月结',
+        count: unsettledAdFunds,
+        level: 'blocker',
+        tab: 'ad_funds',
+        issueKey: 'missingAdSettlement',
+        help: '本月有客户投流充值，必须确认广告实支、差价和结余后才能关账。',
       },
       {
         key: 'receivables',
@@ -1983,7 +2231,7 @@ export default function Finance() {
 
   const selectedClosingChecklist = useMemo(
     () => buildClosingChecklist(closingMonth),
-    [closingMonth, payments, expenses, companyExpenses, subscriptions, customerMap],
+    [adFundSettlements, closingMonth, payments, expenses, companyExpenses, subscriptions, customerMap],
   );
 
   const renewalForecast = useMemo(() => {
@@ -2461,6 +2709,123 @@ export default function Finance() {
       toast.error(`保存失败: ${detail}`);
       console.error(err);
     } finally { setSaving(false); }
+  };
+
+  const openRefundPayment = (payment: any) => {
+    const alreadyRefunded = refunds
+      .filter((item: any) => Number(item.payment_id) === Number(payment.id) && ['completed', 'pending'].includes(item.status))
+      .reduce((sum: number, item: any) => sum + toMoneyNumber(item.refund_amount), 0);
+    const remaining = roundMoney(Math.max(toMoneyNumber(payment.amount_paid) - alreadyRefunded, 0));
+    if (remaining <= 0) {
+      toast.error('这笔收款已全部退款或退款处理中');
+      return;
+    }
+    setRefundTarget(payment);
+    setRefundForm({
+      refund_amount: String(remaining), refund_date: getTodayDateInput(), provider_refund_id: '',
+      stripe_fee_refunded_amount: '0', reason: '重复扣款', notes: '',
+    });
+  };
+
+  const handleSaveRefund = async () => {
+    if (!refundTarget) return;
+    const refundAmount = toMoneyNumber(refundForm.refund_amount);
+    if (refundAmount <= 0 || !refundForm.refund_date) {
+      toast.error('请填写正确的退款金额和退款日期');
+      return;
+    }
+    if (isFinanceMonthClosed(refundForm.refund_date)) {
+      toast.error(`${refundForm.refund_date.slice(0, 7)} 已关账，请先重新打开该月份`);
+      return;
+    }
+    setSavingRefund(true);
+    try {
+      await invokeWithAuth({
+        url: '/api/v1/finance/refunds',
+        method: 'POST',
+        data: {
+          payment_id: Number(refundTarget.id),
+          refund_amount: refundAmount,
+          refund_date: toISODatetime(refundForm.refund_date),
+          provider: normalizePaymentMethodKey(refundTarget.payment_method) === 'stripe' ? 'stripe' : 'manual',
+          provider_refund_id: refundForm.provider_refund_id || null,
+          stripe_fee_refunded_amount: toMoneyNumber(refundForm.stripe_fee_refunded_amount),
+          status: 'completed',
+          reason: refundForm.reason || null,
+          notes: refundForm.notes || null,
+          recorded_by: operatorName,
+        },
+      });
+      toast.success('退款已入账；原 Stripe 手续费按公司承担保留');
+      setRefundTarget(null);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err?.data?.detail || err?.response?.data?.detail || err?.message || '退款保存失败');
+    } finally {
+      setSavingRefund(false);
+    }
+  };
+
+  const openAdSettlement = (settlement?: any) => {
+    if (settlement) {
+      setEditingAdSettlementId(Number(settlement.id));
+      setAdSettlementForm({
+        customer_id: String(settlement.customer_id), year_month: settlement.year_month,
+        currency: normalizeCurrency(settlement.currency, 'USD'), opening_balance: String(settlement.opening_balance || 0),
+        actual_ad_spend: String(settlement.actual_ad_spend || 0), customer_refund_amount: String(settlement.customer_refund_amount || 0),
+        recognized_spread_amount: String(settlement.recognized_spread_amount || 0), adjustment_amount: String(settlement.adjustment_amount || 0),
+        status: settlement.status || 'draft', notes: settlement.notes || '',
+      });
+    } else {
+      setEditingAdSettlementId(null);
+      setAdSettlementForm({
+        customer_id: '', year_month: currentMonthKey, currency: 'USD', opening_balance: '0', actual_ad_spend: '',
+        customer_refund_amount: '0', recognized_spread_amount: '0', adjustment_amount: '0', status: 'draft', notes: '',
+      });
+    }
+    setShowAdSettlementForm(true);
+  };
+
+  const handleSaveAdSettlement = async () => {
+    if (!adSettlementForm.customer_id || !adSettlementForm.year_month) {
+      toast.error('请选择客户和结算月份');
+      return;
+    }
+    if (isFinanceMonthClosed(adSettlementForm.year_month)) {
+      toast.error(`${adSettlementForm.year_month} 已关账，请先重新打开该月份`);
+      return;
+    }
+    const customer = customers.find(item => Number(item.id) === Number(adSettlementForm.customer_id));
+    setSavingAdSettlement(true);
+    try {
+      await invokeWithAuth({
+        url: editingAdSettlementId
+          ? `/api/v1/finance/ad-fund-settlements/${editingAdSettlementId}`
+          : '/api/v1/finance/ad-fund-settlements',
+        method: editingAdSettlementId ? 'PUT' : 'POST',
+        data: {
+          customer_id: Number(adSettlementForm.customer_id),
+          customer_name: customer?.business_name || '',
+          year_month: adSettlementForm.year_month,
+          currency: adSettlementForm.currency,
+          opening_balance: toMoneyNumber(adSettlementForm.opening_balance),
+          actual_ad_spend: toMoneyNumber(adSettlementForm.actual_ad_spend),
+          customer_refund_amount: toMoneyNumber(adSettlementForm.customer_refund_amount),
+          recognized_spread_amount: toMoneyNumber(adSettlementForm.recognized_spread_amount),
+          adjustment_amount: toMoneyNumber(adSettlementForm.adjustment_amount),
+          status: adSettlementForm.status,
+          notes: adSettlementForm.notes || null,
+          recorded_by: operatorName,
+        },
+      });
+      toast.success(adSettlementForm.status === 'closed' ? '投流月结已关账' : '投流月结草稿已保存');
+      setShowAdSettlementForm(false);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err?.data?.detail || err?.response?.data?.detail || err?.message || '投流结算保存失败');
+    } finally {
+      setSavingAdSettlement(false);
+    }
   };
 
   const openConfirmSubscriptionRenewal = (subscription: any) => {
@@ -3047,7 +3412,7 @@ export default function Finance() {
             <p className="mt-1 text-sm text-slate-500">掌握收入、成本、利润和待处理事项</p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
               <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">老板视角</span>
-              <span>收入按收款日期归属月份</span>
+              <span>收款与退款按实际资金日期归属月份</span>
             </div>
           </div>
         </div>
@@ -3107,18 +3472,18 @@ export default function Finance() {
           <Card className="border-emerald-100 bg-gradient-to-br from-emerald-50/90 to-white shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-medium text-slate-500">{summaryPeriodLabel}收入</p>
+                <p className="text-xs font-medium text-slate-500">{summaryPeriodLabel}服务收入</p>
                 <ArrowUpRight className="h-4 w-4 text-emerald-600" />
               </div>
               <p className="mt-2 text-xl font-bold text-emerald-700">{fmt(summaryFinance.revenue)}</p>
-              <p className="mt-1 text-[11px] text-slate-400">按实际收款日期统计</p>
+              <p className="mt-1 text-[11px] text-slate-400">净收款 {fmt(summaryFinance.netReceipts)} · 投流资金 {fmt(summaryFinance.adsRevenue)}</p>
             </CardContent>
           </Card>
 
           <Card className={summaryProfitUsd >= 0 ? 'border-blue-100 bg-gradient-to-br from-blue-50/90 to-white shadow-sm' : 'border-red-100 bg-gradient-to-br from-red-50/90 to-white shadow-sm'}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-medium text-slate-500">{summaryPeriodLabel}净利润</p>
+                <p className="text-xs font-medium text-slate-500">{summaryPeriodLabel}经营利润 USD</p>
                 <Wallet className={summaryProfitUsd >= 0 ? 'h-4 w-4 text-blue-600' : 'h-4 w-4 text-red-600'} />
               </div>
               <p className={summaryProfitUsd >= 0 ? 'mt-2 text-xl font-bold text-blue-700' : 'mt-2 text-xl font-bold text-red-700'}>{fmt(summaryProfitUsd)}</p>
@@ -3179,6 +3544,8 @@ export default function Finance() {
           <TabsTrigger value="customer_profit" className="shrink-0 text-xs sm:text-sm"><TrendingUp className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户利润 ({customerProfitRows.length})</TabsTrigger>
           <TabsTrigger value="receivables" className="shrink-0 text-xs sm:text-sm"><AlertTriangle className="w-3.5 h-3.5 mr-1 hidden sm:inline" />应收欠款 ({receivableRows.length})</TabsTrigger>
           <TabsTrigger value="income" className="shrink-0 text-xs sm:text-sm"><DollarSign className="w-3.5 h-3.5 mr-1 hidden sm:inline" />收入管理 ({filteredPayments.length})</TabsTrigger>
+          <TabsTrigger value="refunds" className="shrink-0 text-xs sm:text-sm"><ArrowDownRight className="w-3.5 h-3.5 mr-1 hidden sm:inline" />退款 ({filteredRefunds.length})</TabsTrigger>
+          <TabsTrigger value="ad_funds" className="shrink-0 text-xs sm:text-sm"><ArrowRightLeft className="w-3.5 h-3.5 mr-1 hidden sm:inline" />投流月结 ({filteredAdFundSettlements.length})</TabsTrigger>
           <TabsTrigger value="customer_expense" className="shrink-0 text-xs sm:text-sm"><Users className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户支出 ({filteredExpenses.length})</TabsTrigger>
           <TabsTrigger value="company_expense" className="shrink-0 text-xs sm:text-sm"><Building2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />运营支出 ({filteredCompanyExpenses.length})</TabsTrigger>
           <TabsTrigger value="subscriptions" className="shrink-0 text-xs sm:text-sm"><Receipt className="w-3.5 h-3.5 mr-1 hidden sm:inline" />套餐续费 ({filteredSubscriptions.length})</TabsTrigger>
@@ -3218,7 +3585,7 @@ export default function Finance() {
                       </p>
                     </div>
                     <div className="rounded-2xl bg-white/10 px-4 py-3 text-right backdrop-blur">
-                      <p className="text-xs text-blue-100">净利润 USD</p>
+                      <p className="text-xs text-blue-100">经营利润 USD</p>
                       <p className={`mt-1 text-3xl font-bold ${ownerOverview.profitUsd >= 0 ? 'text-emerald-200' : 'text-red-200'}`}>{fmt(ownerOverview.profitUsd)}</p>
                       <p className="mt-1 text-xs text-blue-100">利润率 {(ownerOverview.profitRate * 100).toFixed(1)}%</p>
                     </div>
@@ -3227,7 +3594,7 @@ export default function Finance() {
                     <div className="rounded-2xl bg-white/10 p-4">
                       <p className="text-xs text-blue-100">实收收入</p>
                       <p className="mt-2 text-2xl font-bold text-emerald-200">{fmt(ownerOverview.revenue)}</p>
-                      <p className="mt-1 text-xs text-blue-100">管理费 {fmt(ownerOverview.managementRevenue)} · 投流 {fmt(ownerOverview.adsRevenue)}</p>
+                      <p className="mt-1 text-xs text-blue-100">服务收入 {fmt(ownerOverview.revenue)} · 客户投流资金 {fmt(ownerOverview.adsRevenue)}</p>
                     </div>
                     <div className="rounded-2xl bg-white/10 p-4">
                       <p className="text-xs text-blue-100">应收未收</p>
@@ -3379,7 +3746,7 @@ export default function Finance() {
                   <button type="button" onClick={() => handleFinanceTabChange('income')} className="rounded-xl border border-green-100 bg-green-50 p-4 text-left hover:bg-green-100/70">
                     <p className="text-sm font-semibold text-green-800">收入结构</p>
                     <p className="mt-2 text-lg font-bold text-green-700">{fmt(ownerOverview.revenue)}</p>
-                    <p className="mt-1 text-xs text-green-700">管理费 {fmt(ownerOverview.managementRevenue)} · 投流 {fmt(ownerOverview.adsRevenue)}</p>
+                    <p className="mt-1 text-xs text-green-700">投流充值 {fmt(ownerOverview.adsRevenue)} 作为客户资金单独核算</p>
                   </button>
                   <button type="button" onClick={() => handleFinanceTabChange('customer_profit')} className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-left hover:bg-emerald-100/70">
                     <p className="text-sm font-semibold text-emerald-800">客户利润</p>
@@ -3446,7 +3813,7 @@ export default function Finance() {
                       </summary>
                       <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-600 md:grid-cols-2">
                         <p>收入按「收款日期」进入月份；服务覆盖期只影响续费和服务周期。</p>
-                        <p>管理费按当月扣点率计算，投流充值固定按 1% 扣点。</p>
+                        <p>管理费按当月扣点率计算；投流充值属于客户资金，只有月结确认差价才计入收入。</p>
                         <p>Stripe 订阅按实收金额计算 2.9% + $0.30/笔；手动收款不算 Stripe 手续费。</p>
                         <p>客户成本进入单客利润；运营支出进入老板总览利润，人民币支出单独统计不混算。</p>
                       </div>
@@ -3653,6 +4020,8 @@ export default function Finance() {
                     <tbody>
                       {paginatedPayments.items.map(p => {
                         const displayIncomeType = getPaymentDisplayIncomeType(p);
+                        const paymentRefunds = refunds.filter((item: any) => Number(item.payment_id) === Number(p.id) && item.status === 'completed');
+                        const refundedAmount = roundMoney(paymentRefunds.reduce((sum: number, item: any) => sum + toMoneyNumber(item.refund_amount), 0));
                         return (
                         <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2.5 font-medium">
@@ -3672,7 +4041,10 @@ export default function Finance() {
                           </td>
                           <td className="px-3 py-2.5 max-w-[160px] truncate">{p.product_name}</td>
                           <td className="px-3 py-2.5">{fmt(p.amount_due)}</td>
-                          <td className="px-3 py-2.5 text-green-600 font-medium">{fmt(p.amount_paid)}</td>
+                          <td className="px-3 py-2.5 text-green-600 font-medium">
+                            {fmt(p.amount_paid)}
+                            {refundedAmount > 0 && <p className="text-xs font-normal text-red-500">已退 {fmt(refundedAmount)}</p>}
+                          </td>
                           <td className="px-3 py-2.5 hidden xl:table-cell">{getManagementRevenueAmount(p) > 0 ? fmt(getManagementRevenueAmount(p)) : '-'}</td>
                           <td className="px-3 py-2.5 hidden xl:table-cell">{getAdsRechargeAmount(p) > 0 ? fmt(getAdsRechargeAmount(p)) : '-'}</td>
                           <td className="px-3 py-2.5 text-cyan-600 hidden lg:table-cell">
@@ -3696,6 +4068,7 @@ export default function Finance() {
                           <td className="px-3 py-2.5 hidden lg:table-cell">{p.has_invoice ? '✅' : '-'}</td>
                           <td className="px-3 py-2.5">
                             <div className="flex gap-1">
+                              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-amber-600 hover:text-amber-700" onClick={() => openRefundPayment(p)}>退款</Button>
                               <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => openEditPayment(p)}><Edit className="w-3.5 h-3.5" /></Button>
                               <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'payment', item: p })}><Trash2 className="w-3.5 h-3.5" /></Button>
                             </div>
@@ -3707,6 +4080,92 @@ export default function Finance() {
                 </div>
               )}
               {filteredPayments.length > 0 && <PaginationFooter pageKey="income" data={paginatedPayments} />}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="refunds">
+          <Card className="border-slate-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">退款台账</CardTitle>
+              <p className="text-xs text-slate-500">退款单独冲减净收款与对应服务收入；Stripe 未退回的手续费继续由公司承担。</p>
+            </CardHeader>
+            <CardContent className="p-0">
+              {filteredRefunds.length === 0 ? (
+                <p className="py-12 text-center text-sm text-slate-400">当前范围暂无退款。请在「收入管理」对应收款右侧点击退款。</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b bg-slate-50 text-left text-slate-500">
+                      <th className="px-4 py-3 font-medium">退款日期</th><th className="px-4 py-3 font-medium">客户</th>
+                      <th className="px-4 py-3 font-medium">退款金额</th><th className="px-4 py-3 font-medium">手续费退回</th>
+                      <th className="px-4 py-3 font-medium">原因</th><th className="px-4 py-3 font-medium">凭证</th><th className="px-4 py-3 font-medium">状态</th>
+                    </tr></thead>
+                    <tbody>{filteredRefunds.map((refund: any) => (
+                      <tr key={refund.id} className="border-b border-slate-100">
+                        <td className="px-4 py-3 text-slate-500">{refund.refund_date?.slice(0, 10) || '-'}</td>
+                        <td className="px-4 py-3 font-medium">{refund.customer_name || customerMap[refund.customer_id]?.business_name || '-'}</td>
+                        <td className="px-4 py-3 font-semibold text-red-600">-{formatMoney(toMoneyNumber(refund.refund_amount), normalizeCurrency(refund.currency, 'USD'))}</td>
+                        <td className="px-4 py-3">{formatMoney(toMoneyNumber(refund.stripe_fee_refunded_amount), normalizeCurrency(refund.currency, 'USD'))}</td>
+                        <td className="px-4 py-3">{refund.reason || '-'}</td><td className="px-4 py-3 font-mono text-xs">{refund.provider_refund_id || '未填写'}</td>
+                        <td className="px-4 py-3"><Badge className={refund.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : refund.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}>{refund.status === 'completed' ? '已完成' : refund.status === 'pending' ? '处理中' : '失败'}</Badge></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ad_funds">
+          <Card className="border-slate-200">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div><CardTitle className="text-base">客户投流资金月结</CardTitle><p className="mt-1 text-xs text-slate-500">客户充值先记资金往来；月底录入实际广告支出，只有明确确认的差价才进入经营收入。</p></div>
+                <Button size="sm" onClick={() => openAdSettlement()} className="bg-blue-600 hover:bg-blue-700"><Plus className="mr-1 h-4 w-4" />新增月结</Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {unsettledAdFundRows.length > 0 && (
+                <div className="mx-4 mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm font-semibold text-amber-900">待月结 {unsettledAdFundRows.length} 项</p>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {unsettledAdFundRows.map((row: any) => (
+                      <button key={`${row.customer_id}:${row.year_month}:${row.currency}`} type="button" onClick={() => {
+                        setEditingAdSettlementId(null);
+                        setAdSettlementForm({ customer_id: String(row.customer_id), year_month: row.year_month, currency: row.currency, opening_balance: '0', actual_ad_spend: '', customer_refund_amount: '0', recognized_spread_amount: '0', adjustment_amount: '0', status: 'draft', notes: '' });
+                        setShowAdSettlementForm(true);
+                      }} className="rounded-lg border border-amber-200 bg-white p-3 text-left hover:bg-amber-100/50">
+                        <p className="truncate text-sm font-medium text-slate-800">{row.customer_name || customerMap[row.customer_id]?.business_name || '-'}</p>
+                        <p className="mt-1 text-xs text-slate-500">{row.year_month} · 待核对客户资金 {formatMoney(row.funds_received, row.currency)}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {filteredAdFundSettlements.length === 0 ? (
+                <div className="px-6 py-12 text-center"><p className="text-sm text-slate-500">当前范围尚未建立投流月结。</p><p className="mt-2 text-xs text-amber-600">未月结前，投流充值不会被当作公司收入或利润。</p></div>
+              ) : (
+                <div className="overflow-x-auto"><table className="w-full text-sm">
+                  <thead><tr className="border-b bg-slate-50 text-left text-slate-500">
+                    <th className="px-4 py-3 font-medium">月份/客户</th><th className="px-4 py-3 font-medium">期初</th><th className="px-4 py-3 font-medium">本月净充值</th>
+                    <th className="px-4 py-3 font-medium">广告实支</th><th className="px-4 py-3 font-medium">退客户</th><th className="px-4 py-3 font-medium">确认差价</th>
+                    <th className="px-4 py-3 font-medium">结余</th><th className="px-4 py-3 font-medium">状态</th><th className="px-4 py-3 font-medium">操作</th>
+                  </tr></thead>
+                  <tbody>{filteredAdFundSettlements.map((item: any) => {
+                    const currency = normalizeCurrency(item.currency, 'USD');
+                    return <tr key={item.id} className="border-b border-slate-100">
+                      <td className="px-4 py-3"><p className="font-medium">{item.year_month}</p><p className="text-xs text-slate-500">{item.customer_name || customerMap[item.customer_id]?.business_name || '-'}</p></td>
+                      <td className="px-4 py-3">{formatMoney(toMoneyNumber(item.opening_balance), currency)}</td><td className="px-4 py-3 text-blue-600">{formatMoney(toMoneyNumber(item.funds_received), currency)}</td>
+                      <td className="px-4 py-3 text-amber-600">{formatMoney(toMoneyNumber(item.actual_ad_spend), currency)}</td><td className="px-4 py-3">{formatMoney(toMoneyNumber(item.customer_refund_amount), currency)}</td>
+                      <td className="px-4 py-3 font-semibold text-emerald-600">{formatMoney(toMoneyNumber(item.recognized_spread_amount), currency)}</td><td className="px-4 py-3 font-semibold">{formatMoney(toMoneyNumber(item.closing_balance), currency)}</td>
+                      <td className="px-4 py-3"><Badge className={item.status === 'closed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>{item.status === 'closed' ? '已结算' : '草稿'}</Badge></td>
+                      <td className="px-4 py-3"><Button size="sm" variant="outline" onClick={() => openAdSettlement(item)}>编辑</Button></td>
+                    </tr>;
+                  })}</tbody>
+                </table></div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -4169,7 +4628,8 @@ export default function Finance() {
             {/* Income vs Expense Trend */}
             <Card className="border-slate-200 lg:col-span-2">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold text-slate-700">收支趋势（近12个月）</CardTitle>
+                <CardTitle className="text-base font-semibold text-slate-700">美元经营趋势（{chartPeriodLabel}）</CardTitle>
+                <p className="text-xs text-slate-500">收入为服务收入，不含客户投流充值；人民币支出在下方单独统计。</p>
               </CardHeader>
               <CardContent>
                 {payments.length === 0 ? (
@@ -4188,11 +4648,9 @@ export default function Finance() {
                             customerExp: '客户支出(USD)',
                             stripeFee: 'Stripe手续费(USD)',
                             companyExpUsd: '运营支出(USD)',
-                            companyExpCny: '运营支出(CNY)',
-                            profitUsd: '利润(USD)',
+                            profitUsd: '经营利润(USD)',
                           };
-                          const formatted = name === 'companyExpCny' ? fmtRMB(value) : fmt(value);
-                          return [formatted, labels[name] || name];
+                          return [fmt(value), labels[name] || name];
                         }}
                       />
                       <Legend formatter={(value) => {
@@ -4201,8 +4659,7 @@ export default function Finance() {
                           customerExp: '客户支出(USD)',
                           stripeFee: 'Stripe手续费(USD)',
                           companyExpUsd: '运营支出(USD)',
-                          companyExpCny: '运营支出(CNY)',
-                          profitUsd: '利润(USD)',
+                          profitUsd: '经营利润(USD)',
                         };
                         return <span className="text-xs text-slate-600">{labels[value] || value}</span>;
                       }} />
@@ -4210,7 +4667,6 @@ export default function Finance() {
                       <Bar dataKey="customerExp" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Bar dataKey="stripeFee" fill="#06b6d4" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Bar dataKey="companyExpUsd" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={24} />
-                      <Bar dataKey="companyExpCny" fill="#94a3b8" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Line type="monotone" dataKey="profitUsd" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3 }} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -4221,7 +4677,8 @@ export default function Finance() {
             {/* Income by Type Pie */}
             <Card className="border-slate-200">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold text-slate-700">收入类型分布</CardTitle>
+                <CardTitle className="text-base font-semibold text-slate-700">净收款结构</CardTitle>
+                <p className="text-xs text-slate-500">已扣除退款；投流充值在这里显示资金流入，但不计入经营收入。</p>
               </CardHeader>
               <CardContent>
                 {incomeByTypeData.length === 0 ? (
@@ -4246,7 +4703,8 @@ export default function Finance() {
             {/* Product Revenue Pie */}
             <Card className="border-slate-200">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold text-slate-700">产品收入占比</CardTitle>
+                <CardTitle className="text-base font-semibold text-slate-700">单一产品净收款占比</CardTitle>
+                <p className="text-xs text-slate-500">仅统计只关联一个产品的收款，避免把组合套餐金额平均拆分造成误导。</p>
               </CardHeader>
               <CardContent>
                 {productRevenueData.length === 0 ? (
@@ -4352,7 +4810,7 @@ export default function Finance() {
             {/* Customer Revenue Ranking */}
             <Card className="border-slate-200">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold text-slate-700">客户收入排行榜（Top 10）</CardTitle>
+                <CardTitle className="text-base font-semibold text-slate-700">客户净收款排行榜（Top 10）</CardTitle>
               </CardHeader>
               <CardContent>
                 {customerRevenueData.length === 0 ? (
@@ -4363,7 +4821,7 @@ export default function Finance() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
                       <XAxis type="number" tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
                       <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#334155' }} width={110} />
-                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }} formatter={(value: number) => [fmt(value), '收入金额']} cursor={{ fill: 'rgba(59, 130, 246, 0.06)' }} />
+                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }} formatter={(value: number) => [fmt(value), '净收款']} cursor={{ fill: 'rgba(59, 130, 246, 0.06)' }} />
                       <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={28}>
                         {customerRevenueData.map((_, index) => (
                           <Cell key={`bar-${index}`} fill={index === 0 ? '#f59e0b' : index === 1 ? '#3b82f6' : index === 2 ? '#10b981' : '#94a3b8'} />
@@ -4381,13 +4839,13 @@ export default function Finance() {
                 <CardTitle className="text-base font-semibold text-slate-700">运营支出明细</CardTitle>
               </CardHeader>
               <CardContent>
-                {companyExpenseByType.length === 0 ? (
+                {chartCompanyExpenseByType.length === 0 ? (
                   <p className="text-center text-slate-400 py-12">暂无运营支出数据</p>
                 ) : (
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                     {(['USD', 'CNY'] as CurrencyCode[]).map(currency => {
-                      const currencyItems = companyExpenseByType.filter(item => item.currency === currency);
-                      const currencyTotal = totalCompanyExpenseByCurrency[currency] || 0;
+                      const currencyItems = chartCompanyExpenseByType.filter(item => item.currency === currency);
+                      const currencyTotal = chartCompanyExpenseTotals[currency] || 0;
                       const isUsd = currency === 'USD';
                       return (
                         <div
@@ -4476,7 +4934,7 @@ export default function Finance() {
                 按月明细 <span className="ml-2 text-xs align-middle text-slate-400">(默认币种: USD)</span>
               </CardTitle>
               <p className="text-xs text-slate-500">
-                管理费按月度扣点比例计算；投流费按充值金额扣 1%。
+                服务收入与客户投流资金分开；退款冲减净收款，投流差价仅在月结确认后进入利润。
               </p>
             </CardHeader>
             <div className="mx-4 mb-4 rounded-xl border border-blue-100 bg-blue-50/70 p-3">
@@ -4613,9 +5071,9 @@ export default function Finance() {
             {!loading && monthlyDetail.rows.length > 0 && (
               <div className="grid grid-cols-2 gap-3 px-4 pb-4 lg:grid-cols-5">
                 <div className="rounded-xl border border-green-100 bg-green-50 p-3">
-                  <p className="text-xs text-green-700">区间总收入</p>
+                  <p className="text-xs text-green-700">区间服务收入</p>
                   <p className="mt-1 text-lg font-bold text-green-700">{fmt(monthlyDetailTotals.revenue)}</p>
-                  <p className="mt-1 text-[11px] text-green-600">管理费 {fmt(monthlyDetailTotals.managementRevenue)} · 投流 {fmt(monthlyDetailTotals.adsRevenue)}</p>
+                  <p className="mt-1 text-[11px] text-green-600">净收款 {fmt(monthlyDetailTotals.netReceipts)} · 退款 {fmt(monthlyDetailTotals.refunds)}</p>
                 </div>
                 <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
                   <p className="text-xs text-violet-700">扣点 + Stripe</p>
@@ -4655,12 +5113,17 @@ export default function Finance() {
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
                         <th className="px-3 py-2.5 font-medium">月份</th>
                         <th className="px-3 py-2.5 font-medium">关账</th>
-                        <th className="px-3 py-2.5 font-medium">收入 (revenue_gross)</th>
+                        <th className="px-3 py-2.5 font-medium">总收款</th>
+                        <th className="px-3 py-2.5 font-medium">退款</th>
+                        <th className="px-3 py-2.5 font-medium">净收款</th>
+                        <th className="px-3 py-2.5 font-medium">服务收入</th>
                         <th className="px-3 py-2.5 font-medium">管理费收入</th>
-                        <th className="px-3 py-2.5 font-medium">投流充值收入</th>
+                        <th className="px-3 py-2.5 font-medium">投流客户资金</th>
+                        <th className="px-3 py-2.5 font-medium">确认投流差价</th>
+                        <th className="px-3 py-2.5 font-medium">广告实支</th>
+                        <th className="px-3 py-2.5 font-medium">投流结余</th>
                         <th className="px-3 py-2.5 font-medium">管理费扣点率</th>
                         <th className="px-3 py-2.5 font-medium">管理费扣点</th>
-                        <th className="px-3 py-2.5 font-medium">投流充值 1%</th>
                         <th className="px-3 py-2.5 font-medium">Stripe手续费</th>
                         <th className="px-3 py-2.5 font-medium">总扣点</th>
                         <th className="px-3 py-2.5 font-medium">客户成本</th>
@@ -4689,12 +5152,17 @@ export default function Finance() {
                               </Button>
                             </div>
                           </td>
-                          <td className="px-3 py-2.5">{fmt(r.revenue_gross)}</td>
+                          <td className="px-3 py-2.5">{fmt(r.gross_receipts || 0)}</td>
+                          <td className="px-3 py-2.5 text-red-600">{r.refund_amount > 0 ? `-${fmt(r.refund_amount)}` : '-'}</td>
+                          <td className="px-3 py-2.5 font-medium">{fmt(r.net_receipts || 0)}</td>
+                          <td className="px-3 py-2.5 text-green-600">{fmt(r.revenue_gross)}</td>
                           <td className="px-3 py-2.5">{fmt(r.management_revenue || 0)}</td>
                           <td className="px-3 py-2.5">{fmt(r.ads_recharge_revenue || 0)}</td>
+                          <td className="px-3 py-2.5 text-emerald-600">{fmt(r.recognized_ad_spread || 0)}</td>
+                          <td className="px-3 py-2.5 text-amber-600">{fmt(r.actual_ad_spend || 0)}</td>
+                          <td className="px-3 py-2.5">{fmt(r.ad_closing_balance || 0)}</td>
                           <td className="px-3 py-2.5">{r.management_rate > 0 ? `${Math.round(r.management_rate * 100)}%` : '-'}</td>
                           <td className="px-3 py-2.5">{fmt(r.management_deduction_amount)}</td>
-                          <td className="px-3 py-2.5">{fmt(r.ads_recharge_deduction_amount)}</td>
                           <td className="px-3 py-2.5">{fmt(r.stripe_platform_fee || 0)}</td>
                           <td className="px-3 py-2.5">{fmt(r.deduction_amount)}</td>
                           <td className="px-3 py-2.5">{fmt(r.customer_cost || 0)}</td>
@@ -4967,7 +5435,7 @@ export default function Finance() {
                   <p className="text-[11px] text-amber-600">{selectedProfitDetail.customerCostCny > 0 ? `${fmtRMB(selectedProfitDetail.customerCostCny)} 单独统计` : '只计入 USD 利润'}</p>
                 </div>
                 <div className={`rounded-xl border p-3 ${selectedProfitDetail.row.profit >= 0 ? 'border-emerald-100 bg-emerald-50' : 'border-red-100 bg-red-50'}`}>
-                  <p className={`text-xs ${selectedProfitDetail.row.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>净利润</p>
+                  <p className={`text-xs ${selectedProfitDetail.row.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>客户贡献（USD）</p>
                   <p className={`mt-1 text-xl font-bold ${selectedProfitDetail.row.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(selectedProfitDetail.row.profit || 0)}</p>
                   <p className={`text-[11px] ${selectedProfitDetail.row.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>利润率 {((selectedProfitDetail.row.profitRate || 0) * 100).toFixed(1)}% · 欠款 {fmt(selectedProfitDetail.row.outstanding || 0)}</p>
                 </div>
@@ -5132,7 +5600,7 @@ export default function Finance() {
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {[
                   { key: 'management', title: '纯管理费', desc: '参与当月管理费扣点' },
-                  { key: 'ads', title: '纯投流充值', desc: '只按充值金额扣 1%' },
+                  { key: 'ads', title: '纯投流充值', desc: '记作客户资金，月底结算' },
                   { key: 'mixed', title: '管理费 + 投流', desc: '一笔钱拆成两部分' },
                   { key: 'other', title: '其他收入', desc: '普通收入分类统计' },
                 ].map(option => (
@@ -5396,7 +5864,7 @@ export default function Finance() {
               })}
             </div>
             <p className="text-xs text-slate-500">
-              管理费会参与管理费扣点，投流费会参与投流 1% 扣点；「管理费+投流费」用于一笔收款同时包含两类金额，其他收入类型只作为普通收入分类统计。
+              管理费会参与管理费扣点；投流充值属于客户资金，不直接算公司收入。「管理费+投流费」用于一笔收款同时包含两类金额，月底在投流月结里确认实际支出、结余和差价。
             </p>
           </div>
           <div className="flex justify-end gap-2 mt-4">
@@ -5660,6 +6128,40 @@ export default function Finance() {
               {savingCompanyExpenseTypes ? '保存中...' : '保存'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!refundTarget} onOpenChange={(open) => { if (!open) setRefundTarget(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>记录退款</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+              <p className="font-medium text-slate-800">{refundTarget?.customer_name || '-'}</p>
+              <p className="mt-1 text-xs text-slate-500">原收款 {fmt(toMoneyNumber(refundTarget?.amount_paid))} · {refundTarget?.payment_date?.slice(0, 10) || '-'}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4"><div><Label>退款金额 *</Label><Input type="number" min="0" step="0.01" value={refundForm.refund_amount} onChange={e => setRefundForm({ ...refundForm, refund_amount: e.target.value })} /></div><div><Label>退款日期 *</Label><Input type="date" value={refundForm.refund_date} onChange={e => setRefundForm({ ...refundForm, refund_date: e.target.value })} /></div></div>
+            <div><Label>Stripe 退款编号</Label><Input value={refundForm.provider_refund_id} onChange={e => setRefundForm({ ...refundForm, provider_refund_id: e.target.value })} placeholder="re_...（可后补）" /></div>
+            <div><Label>Stripe 实际退回的手续费</Label><Input type="number" min="0" step="0.01" value={refundForm.stripe_fee_refunded_amount} onChange={e => setRefundForm({ ...refundForm, stripe_fee_refunded_amount: e.target.value })} /><p className="mt-1 text-xs text-amber-600">当前业务规则是公司承担手续费，Stripe 没有退手续费时保持 0。</p></div>
+            <div><Label>退款原因</Label><Input value={refundForm.reason} onChange={e => setRefundForm({ ...refundForm, reason: e.target.value })} /></div>
+            <div><Label>备注</Label><Textarea value={refundForm.notes} onChange={e => setRefundForm({ ...refundForm, notes: e.target.value })} rows={2} /></div>
+          </div>
+          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setRefundTarget(null)}>取消</Button><Button onClick={handleSaveRefund} disabled={savingRefund} className="bg-red-600 hover:bg-red-700">{savingRefund ? '保存中...' : '确认退款入账'}</Button></div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAdSettlementForm} onOpenChange={(open) => { setShowAdSettlementForm(open); if (!open) setEditingAdSettlementId(null); }}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editingAdSettlementId ? '编辑投流月结' : '新增投流月结'}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4"><div><Label>客户 *</Label><select value={adSettlementForm.customer_id} onChange={e => setAdSettlementForm({ ...adSettlementForm, customer_id: e.target.value })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">请选择客户</option>{customerOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div><div><Label>结算月份 *</Label><Input type="month" value={adSettlementForm.year_month} onChange={e => setAdSettlementForm({ ...adSettlementForm, year_month: e.target.value })} /></div></div>
+            <div className="grid grid-cols-2 gap-4"><div><Label>币种</Label><NativeSelect value={adSettlementForm.currency} onChange={value => setAdSettlementForm({ ...adSettlementForm, currency: normalizeCurrency(value, 'USD') })} options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))} /></div><div><Label>期初结余</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.opening_balance} onChange={e => setAdSettlementForm({ ...adSettlementForm, opening_balance: e.target.value })} /></div></div>
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">本月净充值由系统根据收款中的「投流充值」减去退款自动计算，不能手工修改。</div>
+            <div className="grid grid-cols-2 gap-4"><div><Label>本月广告实际支出 *</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.actual_ad_spend} onChange={e => setAdSettlementForm({ ...adSettlementForm, actual_ad_spend: e.target.value })} /></div><div><Label>退回客户</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.customer_refund_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, customer_refund_amount: e.target.value })} /></div></div>
+            <div className="grid grid-cols-2 gap-4"><div><Label>确认公司差价收入</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.recognized_spread_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, recognized_spread_amount: e.target.value })} /><p className="mt-1 text-xs text-slate-500">只有这里确认的金额才进入利润。</p></div><div><Label>调整金额</Label><Input type="number" step="0.01" value={adSettlementForm.adjustment_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, adjustment_amount: e.target.value })} /><p className="mt-1 text-xs text-slate-500">用于银行差异等，负数会减少可用资金。</p></div></div>
+            <div><Label>状态</Label><NativeSelect value={adSettlementForm.status} onChange={value => setAdSettlementForm({ ...adSettlementForm, status: value })} options={[{ value: 'draft', label: '草稿（可继续核对）' }, { value: 'closed', label: '已结算（差价计入收入）' }]} /></div>
+            <div><Label>备注</Label><Textarea value={adSettlementForm.notes} onChange={e => setAdSettlementForm({ ...adSettlementForm, notes: e.target.value })} rows={2} /></div>
+          </div>
+          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setShowAdSettlementForm(false)}>取消</Button><Button onClick={handleSaveAdSettlement} disabled={savingAdSettlement} className="bg-blue-600 hover:bg-blue-700">{savingAdSettlement ? '保存中...' : '保存月结'}</Button></div>
         </DialogContent>
       </Dialog>
 
