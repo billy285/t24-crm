@@ -722,8 +722,10 @@ export default function ServiceBoard() {
     const taskPending = scopedTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length;
     const taskOverdue = scopedTasks.filter(t => t.due_date && t.due_date < todayStr() && t.status !== 'completed' && t.status !== 'cancelled').length;
     const lowQualityCompleted = scopedTasks.filter(t => t.status === 'completed' && t.completion_quality === 'low_quality').length;
-    const completionRate = taskTotal > 0 ? Math.round((taskCompleted / taskTotal) * 100) : 100;
-    const healthScore = Math.max(0, Math.min(100, completionRate - lowQualityCompleted * 4 - taskOverdue * 5 - longNoUpd * 3 - withIssue * 4 - weeklyMissingPlatforms * 2 - weeklyMissingReports * 3));
+    const completionRate = taskTotal > 0 ? Math.round((taskCompleted / taskTotal) * 100) : 0;
+    const healthScore = taskTotal > 0
+      ? Math.max(0, Math.min(100, completionRate - lowQualityCompleted * 4 - taskOverdue * 5 - longNoUpd * 3 - withIssue * 4 - weeklyMissingPlatforms * 2 - weeklyMissingReports * 3))
+      : 0;
 
     const opsMap: Record<string, { total: number; pending: number; issues: number; completed: number; lowQuality: number }> = {};
     progresses.forEach(p => {
@@ -1047,6 +1049,14 @@ export default function ServiceBoard() {
         last_update_time: now,
         last_update_person: op,
       });
+      try {
+        logOperation({
+          customerId: quickUpdateSp.customer_id,
+          actionType: 'edit_customer',
+          actionDetail: `更新交付摘要: ${quickUpdateSummary || '无'}`,
+          operatorName: op,
+        });
+      } catch { /* operation log failure must not block the update */ }
       toast.success('工作摘要已更新');
       setShowQuickUpdate(false);
       await loadData();
@@ -2340,8 +2350,8 @@ export default function ServiceBoard() {
       <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Delivery</p>
-          <h2 className="mt-1 text-2xl font-bold text-slate-900">客户服务进度看板</h2>
-          <p className="mt-1 text-sm text-slate-500">明确当前阶段、负责人和下一步动作，完成后自动归档查看</p>
+          <h2 className="mt-1 text-2xl font-bold text-slate-900">新客户交付进度看板</h2>
+          <p className="mt-1 text-sm text-slate-500">从成交交接到首次上线，明确阶段、负责人、卡点和下一步动作</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <ExportButton
@@ -2363,7 +2373,7 @@ export default function ServiceBoard() {
               <div className="flex items-start gap-2">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <p>
-                  服务看板现在不会因为新增客户或补录历史成交自动生成。新客户需要交付时，请在成交管理打开“生成服务看板”开关，或在成交列表点击“看板”；旧客户补录可以保持关闭。
+                  本看板主要用于新客户首次交付。新成交需要交付时，请在成交管理打开“生成服务看板”开关，或在成交列表点击“看板”；旧客户补录和已进入长期运营的客户无需重复生成。
                 </p>
               </div>
               <Button size="sm" variant="outline" className="border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-100" onClick={() => { window.location.href = '/deals'; }}>
@@ -2379,22 +2389,22 @@ export default function ServiceBoard() {
           <CardContent className="p-4">
             <div className="flex flex-col lg:flex-row lg:items-center gap-4">
               <div className="flex items-center gap-3 min-w-[210px]">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${stats.healthScore >= 85 ? 'bg-green-100 text-green-700' : stats.healthScore >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${stats.taskTotal === 0 ? 'bg-slate-100 text-slate-500' : stats.healthScore >= 85 ? 'bg-green-100 text-green-700' : stats.healthScore >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
                   <ShieldCheck className="w-6 h-6" />
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">运营健康分</p>
                   <div className="flex items-end gap-1">
-                    <span className={`text-3xl font-bold ${stats.healthScore >= 85 ? 'text-green-700' : stats.healthScore >= 70 ? 'text-amber-700' : 'text-red-700'}`}>{stats.healthScore}</span>
-                    <span className="text-xs text-slate-400 mb-1">/100</span>
+                    <span className={`text-3xl font-bold ${stats.taskTotal === 0 ? 'text-slate-500' : stats.healthScore >= 85 ? 'text-green-700' : stats.healthScore >= 70 ? 'text-amber-700' : 'text-red-700'}`}>{stats.taskTotal === 0 ? '--' : stats.healthScore}</span>
+                    {stats.taskTotal > 0 && <span className="text-xs text-slate-400 mb-1">/100</span>}
                   </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 flex-1">
                 <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
                   <p className="text-xs text-slate-500">任务完成率</p>
-                  <p className="text-lg font-semibold text-slate-800">{stats.completionRate}%</p>
-                  <p className="text-[11px] text-slate-400">{stats.taskCompleted}/{stats.taskTotal} 已完成</p>
+                  <p className="text-lg font-semibold text-slate-800">{stats.taskTotal === 0 ? '待初始化' : `${stats.completionRate}%`}</p>
+                  <p className="text-[11px] text-slate-400">{stats.taskTotal === 0 ? '尚未建立交付任务' : `${stats.taskCompleted}/${stats.taskTotal} 已完成`}</p>
                 </div>
                 <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
                   <p className="text-xs text-slate-500">本周平台更新</p>

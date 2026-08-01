@@ -17,8 +17,10 @@ import {
 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import CustomerCombobox from '@/components/CustomerCombobox';
 import ExportButton from '@/components/ExportButton';
 import PageLoadState from '@/components/PageLoadState';
+import { Combobox } from '@/components/ui/combobox';
 import { useBusinessDicts } from '../lib/dict-config';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
@@ -49,6 +51,12 @@ const callbackReminderMessages: Record<string, { title: string; description: str
 };
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
+const addDays = (date: Date, days: number) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next.toISOString().slice(0, 10);
+};
+
 const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
   const total = items.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -74,6 +82,7 @@ export default function Callbacks() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [callbacks, setCallbacks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,7 +90,8 @@ export default function Callbacks() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
-  const [filterCustomerId, setFilterCustomerId] = useState('all');
+  const [filterCustomerId, setFilterCustomerId] = useState('');
+  const [filterEmployeeId, setFilterEmployeeId] = useState('all');
   const [filterSchedule, setFilterSchedule] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -93,6 +103,7 @@ export default function Callbacks() {
 
   const emptyForm = {
     customer_id: '',
+    employee_id: employee?.id ? String(employee.id) : '',
     callback_date: new Date().toISOString().slice(0, 10),
     callback_type: 'satisfaction',
     status: 'pending',
@@ -134,7 +145,7 @@ export default function Callbacks() {
 
   const loadData = async () => {
     try {
-      const [cbRes, cRes, eRes] = await loadWithRetry(() => Promise.all([
+      const [cbRes, cRes, eRes, tRes] = await loadWithRetry(() => Promise.all([
         client.apiCall.invoke({
           url: '/api/v1/entities/customer_callbacks',
           method: 'GET',
@@ -142,6 +153,7 @@ export default function Callbacks() {
         }),
         client.entities.customers.query({ limit: 1000 }),
         client.entities.employees.queryAll({ limit: 200 }),
+        client.entities.tasks.query({ limit: 1000, sort: '-created_at' }),
       ]));
       let cbs = cbRes?.data?.items || [];
       const custs = cRes?.data?.items || [];
@@ -149,12 +161,13 @@ export default function Callbacks() {
 
       // Filter by data scope
       if (dataScope === 'self' && employee) {
-        cbs = cbs.filter((cb: any) => cb.employee_name === employee.name);
+        cbs = cbs.filter((cb: any) => Number(cb.employee_id) === Number(employee.id) || cb.employee_name === employee.name);
       }
 
       setCallbacks(cbs);
       setCustomers(custs);
       setEmployees(emps);
+      setTasks(tRes?.data?.items || []);
       setLoadError(null);
     } catch (err) {
       console.error('Failed to load callbacks:', err);
@@ -175,36 +188,58 @@ export default function Callbacks() {
     [customers]
   );
 
+  const selectableCustomers = useMemo(() => (
+    dataScope === 'self' && employee
+      ? closedCustomers.filter(c => c.sales_person === employee.name || Number(c.sales_employee_id) === Number(employee.id))
+      : closedCustomers
+  ), [closedCustomers, dataScope, employee]);
+
   const customerMap = useMemo(() =>
     Object.fromEntries(customers.map(c => [c.id, c])),
     [customers]
   );
+
+  const activeEmployees = useMemo(() => employees.filter((item: any) => (
+    (!item.status || ['active', 'probation'].includes(item.status))
+    && (dataScope !== 'self' || !employee || Number(item.id) === Number(employee.id))
+  )), [dataScope, employee, employees]);
+
+  const employeeOptions = useMemo(() => activeEmployees.map((item: any) => ({
+    value: String(item.id),
+    label: [item.name, item.employee_code, item.department].filter(Boolean).join(' · '),
+  })), [activeEmployees]);
 
   // Filtered list
   const filtered = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     return callbacks.filter(cb => {
       const cust = customerMap[cb.customer_id];
-      const matchSearch = !search ||
-        cust?.business_name?.includes(search) ||
-        cust?.contact_name?.includes(search) ||
-        cb.content?.includes(search) ||
-        cb.employee_name?.includes(search);
+      const keyword = search.trim().toLowerCase();
+      const matchSearch = !keyword || [
+        cust?.customer_code,
+        cust?.business_name,
+        cust?.contact_name,
+        cust?.phone,
+        cb.content,
+        cb.employee_name,
+        cb.completed_by_employee_name,
+      ].some(value => String(value || '').toLowerCase().includes(keyword));
       const matchStatus = filterStatus === 'all' || cb.status === filterStatus;
       const matchType = filterType === 'all' || cb.callback_type === filterType;
-      const matchCustomer = filterCustomerId === 'all' || String(cb.customer_id) === filterCustomerId;
+      const matchCustomer = !filterCustomerId || String(cb.customer_id) === filterCustomerId;
+      const matchEmployee = filterEmployeeId === 'all' || String(cb.employee_id) === filterEmployeeId;
       const callbackDate = cb.callback_date?.slice(0, 10) || '';
       const matchSchedule = filterSchedule === 'all'
         || (filterSchedule === 'today' && cb.status === 'pending' && callbackDate === today)
         || (filterSchedule === 'overdue' && cb.status === 'pending' && callbackDate < today);
-      return matchSearch && matchStatus && matchType && matchCustomer && matchSchedule;
+      return matchSearch && matchStatus && matchType && matchCustomer && matchEmployee && matchSchedule;
     });
-  }, [callbacks, customerMap, search, filterStatus, filterType, filterCustomerId, filterSchedule]);
+  }, [callbacks, customerMap, search, filterStatus, filterType, filterCustomerId, filterEmployeeId, filterSchedule]);
   const paginated = useMemo(() => paginateList(filtered, page, pageSize), [filtered, page, pageSize]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, filterStatus, filterType, filterCustomerId, filterSchedule, pageSize]);
+  }, [search, filterStatus, filterType, filterCustomerId, filterEmployeeId, filterSchedule, pageSize]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -223,6 +258,7 @@ export default function Callbacks() {
   const openEdit = (cb: any) => {
     setForm({
       customer_id: String(cb.customer_id || ''),
+      employee_id: String(cb.employee_id || employee?.id || ''),
       callback_date: cb.callback_date?.slice(0, 10) || '',
       callback_type: cb.callback_type || 'satisfaction',
       status: cb.status || 'pending',
@@ -235,43 +271,123 @@ export default function Callbacks() {
     setShowForm(true);
   };
 
+  const ensureFollowUpTask = async (callbackRecord: any, nextDate: string) => {
+    if (!callbackRecord?.id || !['unsatisfied', 'need_followup'].includes(callbackRecord.result)) return;
+    const marker = `来源：电话回访 #${callbackRecord.id}`;
+    if (tasks.some((task: any) => String(task.notes || '').includes(marker) && task.status !== 'cancelled')) return;
+    const customer = customerMap[callbackRecord.customer_id];
+    await client.entities.tasks.create({
+      data: {
+        title: `回访跟进：${customer?.business_name || `客户 #${callbackRecord.customer_id}`}`,
+        customer_id: callbackRecord.customer_id,
+        customer_name: customer?.business_name || '',
+        assignee_id: callbackRecord.employee_id || null,
+        assignee_name: callbackRecord.employee_name || '',
+        collaborator_names: '',
+        task_type: 'follow_up',
+        priority: callbackRecord.result === 'unsatisfied' ? 'high' : 'medium',
+        status: 'pending',
+        due_date: nextDate || addDays(new Date(), 1),
+        notes: `${marker}\n回访结果：${resultLabels[callbackRecord.result] || callbackRecord.result}\n${callbackRecord.content || '需要继续跟进客户'}`,
+        attachment_link: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+  };
+
+  const ensureNextCallback = async (callbackRecord: any, nextDate: string) => {
+    if (!callbackRecord?.id || !nextDate) return;
+    const marker = `自动安排：来自回访 #${callbackRecord.id}`;
+    if (callbacks.some((item: any) => String(item.notes || '').includes(marker))) return;
+    await client.apiCall.invoke({
+      url: '/api/v1/entities/customer_callbacks',
+      method: 'POST',
+      data: {
+        customer_id: callbackRecord.customer_id,
+        employee_id: callbackRecord.employee_id || null,
+        employee_name: callbackRecord.employee_name || '',
+        created_by_employee_id: employee?.id || null,
+        created_by_employee_name: employee?.name || '',
+        callback_date: new Date(nextDate).toISOString(),
+        callback_type: callbackRecord.callback_type || 'satisfaction',
+        status: 'pending',
+        content: '',
+        result: null,
+        next_callback_date: null,
+        notes: marker,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+  };
+
   const handleSave = async () => {
-    if (!form.customer_id || !form.callback_date) {
-      toast.error('请选择客户并填写回访日期');
+    if (!form.customer_id || !form.employee_id || !form.callback_date) {
+      toast.error('请选择客户、回访负责人并填写回访日期');
+      return;
+    }
+    if (form.status === 'completed' && (!form.result || !form.content.trim())) {
+      toast.error('完成回访前，请填写回访结果和沟通内容');
+      return;
+    }
+    if (['unsatisfied', 'need_followup'].includes(form.result) && !form.next_callback_date) {
+      toast.error('客户不满意或需要跟进时，请安排下次回访日期');
+      return;
+    }
+    if (form.status === 'rescheduled' && !form.next_callback_date) {
+      toast.error('改期回访时，请填写下次回访日期');
       return;
     }
     setSaving(true);
     try {
+      const now = new Date().toISOString();
+      const responsibleEmployee = employees.find((item: any) => Number(item.id) === Number(form.employee_id));
+      const nextCallbackDate = form.next_callback_date || (form.status === 'no_answer' ? addDays(new Date(), 1) : '');
       const payload: any = {
         customer_id: Number(form.customer_id),
+        employee_id: Number(form.employee_id),
+        employee_name: responsibleEmployee?.name || '',
         callback_date: form.callback_date ? new Date(form.callback_date).toISOString() : null,
         callback_type: form.callback_type,
         status: form.status,
         content: form.content,
         result: form.result || null,
-        next_callback_date: form.next_callback_date ? new Date(form.next_callback_date).toISOString() : null,
+        next_callback_date: nextCallbackDate ? new Date(nextCallbackDate).toISOString() : null,
         notes: form.notes || null,
+        completed_by_employee_id: form.status === 'completed' ? employee?.id || null : null,
+        completed_by_employee_name: form.status === 'completed' ? employee?.name || '' : null,
+        completed_at: form.status === 'completed' ? now : null,
+        updated_at: now,
       };
 
+      let savedCallback: any = null;
       if (editingId) {
-        payload.updated_at = new Date().toISOString();
-        await client.apiCall.invoke({
+        const response = await client.apiCall.invoke({
           url: `/api/v1/entities/customer_callbacks/${editingId}`,
           method: 'PUT',
           data: payload,
         });
+        savedCallback = response?.data;
         toast.success('回访记录已更新');
       } else {
-        payload.employee_id = employee?.id || null;
-        payload.employee_name = employee?.name || '';
-        payload.created_at = new Date().toISOString();
-        payload.updated_at = new Date().toISOString();
-        await client.apiCall.invoke({
+        payload.created_by_employee_id = employee?.id || null;
+        payload.created_by_employee_name = employee?.name || '';
+        payload.created_at = now;
+        const response = await client.apiCall.invoke({
           url: '/api/v1/entities/customer_callbacks',
           method: 'POST',
           data: payload,
         });
+        savedCallback = response?.data;
         toast.success('回访记录已添加');
+      }
+      if (savedCallback) {
+        await ensureFollowUpTask(savedCallback, nextCallbackDate);
+        if (['no_answer', 'rescheduled'].includes(savedCallback.status)
+          || ['unsatisfied', 'need_followup'].includes(savedCallback.result)) {
+          await ensureNextCallback(savedCallback, nextCallbackDate);
+        }
       }
       setShowForm(false);
       setEditingId(null);
@@ -309,29 +425,25 @@ export default function Callbacks() {
   };
 
   // Quick complete action
-  const handleQuickComplete = async (cb: any) => {
-    try {
-      await client.apiCall.invoke({
-        url: `/api/v1/entities/customer_callbacks/${cb.id}`,
-        method: 'PUT',
-        data: { status: 'completed', updated_at: new Date().toISOString() },
-      });
-      toast.success('已标记为完成');
-      loadData();
-    } catch (err) {
-      toast.error('操作失败');
-    }
+  const handleQuickComplete = (cb: any) => {
+    openEdit({ ...cb, status: 'completed' });
   };
 
   // Quick no-answer action
   const handleQuickNoAnswer = async (cb: any) => {
     try {
-      await client.apiCall.invoke({
+      const nextDate = addDays(new Date(), 1);
+      const response = await client.apiCall.invoke({
         url: `/api/v1/entities/customer_callbacks/${cb.id}`,
         method: 'PUT',
-        data: { status: 'no_answer', updated_at: new Date().toISOString() },
+        data: {
+          status: 'no_answer',
+          next_callback_date: new Date(nextDate).toISOString(),
+          updated_at: new Date().toISOString(),
+        },
       });
-      toast.success('已标记为未接通');
+      await ensureNextCallback(response?.data || { ...cb, status: 'no_answer' }, nextDate);
+      toast.success('已标记为未接通，并自动安排明日回访');
       loadData();
     } catch (err) {
       toast.error('操作失败');
@@ -351,6 +463,7 @@ export default function Callbacks() {
       content: cb.content || '',
       result_label: resultLabels[cb.result] || cb.result || '',
       employee_name: cb.employee_name || '',
+      completed_by_employee_name: cb.completed_by_employee_name || '',
       next_callback_date: cb.next_callback_date?.slice(0, 10) || '',
       notes: cb.notes || '',
       created_at: cb.created_at?.slice(0, 16) || '',
@@ -359,11 +472,6 @@ export default function Callbacks() {
 
   const activeReminder = searchParams.get('reminder') || '';
   const activeReminderMessage = callbackReminderMessages[activeReminder];
-  const customerFilterOptions = useMemo(() => [
-    { value: 'all', label: '全部客户' },
-    ...closedCustomers.map(c => ({ value: String(c.id), label: c.business_name })),
-  ], [closedCustomers]);
-
   const PaginationFooter = () => {
     if (paginated.total === 0) return null;
     return (
@@ -417,7 +525,8 @@ export default function Callbacks() {
               { key: 'status_label', label: '状态' },
               { key: 'content', label: '回访内容' },
               { key: 'result_label', label: '回访结果' },
-              { key: 'employee_name', label: '回访人' },
+              { key: 'employee_name', label: '回访负责人' },
+              { key: 'completed_by_employee_name', label: '实际完成人' },
               { key: 'next_callback_date', label: '下次回访日期' },
               { key: 'notes', label: '备注' },
               { key: 'created_at', label: '创建时间' },
@@ -426,7 +535,11 @@ export default function Callbacks() {
             sheetName="电话回访"
           />
           <Button
-            onClick={() => { setForm(emptyForm); setEditingId(null); setShowForm(true); }}
+            onClick={() => {
+              setForm({ ...emptyForm, employee_id: employee?.id ? String(employee.id) : '' });
+              setEditingId(null);
+              setShowForm(true);
+            }}
             className="bg-blue-600 hover:bg-blue-700"
           >
             <Plus className="w-4 h-4 mr-1" /> 新增回访
@@ -522,7 +635,7 @@ export default function Callbacks() {
       {/* Filters */}
       <Card className="border-slate-200">
         <CardContent className="p-3">
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col xl:flex-row xl:flex-wrap gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -560,11 +673,21 @@ export default function Callbacks() {
                 { value: 'overdue', label: '已逾期' },
               ]}
             />
+            <div className="w-full sm:w-[260px]">
+              <CustomerCombobox
+                customers={selectableCustomers}
+                value={filterCustomerId}
+                onValueChange={setFilterCustomerId}
+                placeholder="搜索客户"
+                allowClear
+                clearLabel="全部客户"
+              />
+            </div>
             <NativeSelect
-              value={filterCustomerId}
-              onChange={setFilterCustomerId}
-              className="w-[180px]"
-              options={customerFilterOptions}
+              value={filterEmployeeId}
+              onChange={setFilterEmployeeId}
+              className="w-[170px]"
+              options={[{ value: 'all', label: '全部负责人' }, ...employeeOptions]}
             />
           </div>
         </CardContent>
@@ -674,7 +797,9 @@ export default function Callbacks() {
                       <p className="text-sm text-slate-700 mb-1">{cb.content}</p>
                     )}
                     <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                      {cb.employee_name && <span>回访人: {cb.employee_name}</span>}
+                      {cb.employee_name && <span>负责人: {cb.employee_name}</span>}
+                      {cb.completed_by_employee_name && <span className="text-green-700">实际完成: {cb.completed_by_employee_name}</span>}
+                      {cb.created_by_employee_name && <span>创建人: {cb.created_by_employee_name}</span>}
                       {cb.result && (
                         <span className="text-purple-600">
                           结果: {resultLabels[cb.result] || cb.result}
@@ -715,27 +840,31 @@ export default function Callbacks() {
           <div className="space-y-4">
             <div>
               <Label>选择客户（已成交） *</Label>
-              <NativeSelect
+              <CustomerCombobox
+                customers={selectableCustomers}
                 value={form.customer_id}
-                onChange={v => setForm({ ...form, customer_id: v })}
+                onValueChange={v => setForm({ ...form, customer_id: v })}
                 placeholder="请选择客户"
-                options={[
-                  { value: '', label: '请选择客户' },
-                  ...(dataScope === 'self' && employee
-                    ? closedCustomers.filter(c => c.sales_person === employee.name || c.sales_employee_id === employee.id)
-                    : closedCustomers
-                  ).map(c => ({
-                    value: String(c.id),
-                    label: `${c.business_name} - ${c.contact_name} (${c.phone || '-'})`,
-                  })),
-                ]}
               />
               {closedCustomers.length === 0 && (
                 <p className="text-xs text-slate-400 mt-1">暂无已成交客户，请先在客户管理中将客户状态设为"已成交"</p>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label>回访负责人 *</Label>
+                <Combobox
+                  options={employeeOptions}
+                  value={form.employee_id}
+                  onValueChange={v => setForm({ ...form, employee_id: v })}
+                  placeholder="选择负责员工"
+                  searchPlaceholder="按姓名、编号或部门搜索"
+                  emptyText="没有找到在职员工"
+                  disabled={dataScope === 'self'}
+                />
+                <p className="mt-1 text-xs text-slate-400">负责人可分配；实际完成人按当前登录员工自动记录。</p>
+              </div>
               <div>
                 <Label>回访日期 *</Label>
                 <Input
@@ -744,14 +873,15 @@ export default function Callbacks() {
                   onChange={e => setForm({ ...form, callback_date: e.target.value })}
                 />
               </div>
-              <div>
-                <Label>回访类型</Label>
-                <NativeSelect
-                  value={form.callback_type}
-                  onChange={v => setForm({ ...form, callback_type: v })}
-                  options={Object.entries(callbackTypeLabels).map(([k, v]) => ({ value: k, label: v }))}
-                />
-              </div>
+            </div>
+
+            <div>
+              <Label>回访类型</Label>
+              <NativeSelect
+                value={form.callback_type}
+                onChange={v => setForm({ ...form, callback_type: v })}
+                options={Object.entries(callbackTypeLabels).map(([k, v]) => ({ value: k, label: v }))}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -777,7 +907,7 @@ export default function Callbacks() {
             </div>
 
             <div>
-              <Label>回访内容</Label>
+              <Label>回访内容{form.status === 'completed' ? ' *' : ''}</Label>
               <Textarea
                 value={form.content}
                 onChange={e => setForm({ ...form, content: e.target.value })}
@@ -793,6 +923,9 @@ export default function Callbacks() {
                 value={form.next_callback_date}
                 onChange={e => setForm({ ...form, next_callback_date: e.target.value })}
               />
+              <p className="mt-1 text-xs text-slate-400">
+                未接通会自动安排明日回访；不满意或需跟进会同步生成任务，避免遗漏。
+              </p>
             </div>
 
             <div>

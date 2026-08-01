@@ -2,7 +2,7 @@ import json
 import logging
 from typing import List, Optional
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_current_user
+from schemas.auth import UserResponse
 from services.customer_callbacks import Customer_callbacksService
 
 # Set up logging
@@ -18,12 +19,47 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/entities/customer_callbacks", tags=["customer_callbacks"], dependencies=[Depends(get_current_user)])
 
 
+def _employee_identity(current_user: UserResponse) -> tuple[Optional[int], str]:
+    try:
+        employee_id = int(current_user.id)
+    except (TypeError, ValueError):
+        employee_id = None
+    return employee_id, current_user.name or current_user.email or ""
+
+
+def _apply_completion_audit(data: dict, current_user: UserResponse, *, creating: bool = False) -> dict:
+    employee_id, employee_name = _employee_identity(current_user)
+    audited = dict(data)
+    if creating:
+        audited["created_by_employee_id"] = employee_id
+        audited["created_by_employee_name"] = employee_name
+
+    if audited.get("status") == "completed":
+        audited["completed_by_employee_id"] = employee_id
+        audited["completed_by_employee_name"] = employee_name
+        audited["completed_at"] = datetime.now(timezone.utc)
+    elif "status" in audited:
+        audited["completed_by_employee_id"] = None
+        audited["completed_by_employee_name"] = None
+        audited["completed_at"] = None
+    else:
+        audited.pop("completed_by_employee_id", None)
+        audited.pop("completed_by_employee_name", None)
+        audited.pop("completed_at", None)
+    return audited
+
+
 # ---------- Pydantic Schemas ----------
 class Customer_callbacksData(BaseModel):
     """Entity data schema (for create/update)"""
     customer_id: int
     employee_id: Optional[int] = None
     employee_name: Optional[str] = None
+    created_by_employee_id: Optional[int] = None
+    created_by_employee_name: Optional[str] = None
+    completed_by_employee_id: Optional[int] = None
+    completed_by_employee_name: Optional[str] = None
+    completed_at: Optional[datetime] = None
     callback_date: datetime
     callback_type: Optional[str] = None
     status: Optional[str] = None
@@ -40,6 +76,11 @@ class Customer_callbacksUpdateData(BaseModel):
     customer_id: Optional[int] = None
     employee_id: Optional[int] = None
     employee_name: Optional[str] = None
+    created_by_employee_id: Optional[int] = None
+    created_by_employee_name: Optional[str] = None
+    completed_by_employee_id: Optional[int] = None
+    completed_by_employee_name: Optional[str] = None
+    completed_at: Optional[datetime] = None
     callback_date: Optional[datetime] = None
     callback_type: Optional[str] = None
     status: Optional[str] = None
@@ -57,6 +98,11 @@ class Customer_callbacksResponse(BaseModel):
     customer_id: int
     employee_id: Optional[int] = None
     employee_name: Optional[str] = None
+    created_by_employee_id: Optional[int] = None
+    created_by_employee_name: Optional[str] = None
+    completed_by_employee_id: Optional[int] = None
+    completed_by_employee_name: Optional[str] = None
+    completed_at: Optional[datetime] = None
     callback_date: Optional[datetime] = None
     callback_type: Optional[str] = None
     status: Optional[str] = None
@@ -201,13 +247,14 @@ async def get_customer_callback(
 async def create_customer_callback(
     data: Customer_callbacksData,
     db: AsyncSession = Depends(get_db),
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """Create a new customer_callback"""
     logger.debug(f"Creating new customer_callback with data: {data}")
 
     service = Customer_callbacksService(db)
     try:
-        result = await service.create(data.model_dump())
+        result = await service.create(_apply_completion_audit(data.model_dump(), current_user, creating=True))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create customer_callback")
 
@@ -225,6 +272,7 @@ async def create_customer_callback(
 async def create_customer_callbacks_batch(
     request: Customer_callbacksBatchCreateRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """Create multiple customer_callbacks in a single request"""
     logger.debug(f"Batch creating {len(request.items)} customer_callbacks")
@@ -234,7 +282,7 @@ async def create_customer_callbacks_batch(
 
     try:
         for item_data in request.items:
-            result = await service.create(item_data.model_dump())
+            result = await service.create(_apply_completion_audit(item_data.model_dump(), current_user, creating=True))
             if result:
                 results.append(result)
 
@@ -250,6 +298,7 @@ async def create_customer_callbacks_batch(
 async def update_customer_callbacks_batch(
     request: Customer_callbacksBatchUpdateRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """Update multiple customer_callbacks in a single request"""
     logger.debug(f"Batch updating {len(request.items)} customer_callbacks")
@@ -260,6 +309,7 @@ async def update_customer_callbacks_batch(
     try:
         for item in request.items:
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
+            update_dict = _apply_completion_audit(update_dict, current_user)
             result = await service.update(item.id, update_dict)
             if result:
                 results.append(result)
@@ -277,6 +327,7 @@ async def update_customer_callback(
     id: int,
     data: Customer_callbacksUpdateData,
     db: AsyncSession = Depends(get_db),
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """Update an existing customer_callback"""
     logger.debug(f"Updating customer_callback {id} with data: {data}")
@@ -284,6 +335,7 @@ async def update_customer_callback(
     service = Customer_callbacksService(db)
     try:
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
+        update_dict = _apply_completion_audit(update_dict, current_user)
         result = await service.update(id, update_dict)
         if not result:
             logger.warning(f"Customer_callback with id {id} not found for update")

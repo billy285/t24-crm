@@ -12,7 +12,10 @@ import { toast } from 'sonner';
 import { Plus, Search, CheckCircle2, Edit, Trash2 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import CustomerCombobox from '@/components/CustomerCombobox';
+import EmployeeMultiSelect from '@/components/EmployeeMultiSelect';
 import PageLoadState from '@/components/PageLoadState';
+import { Combobox } from '@/components/ui/combobox';
 import { useBusinessDicts } from '../lib/dict-config';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
@@ -120,6 +123,10 @@ const getCompletionSummary = (notes?: string) => {
   return notes.slice(index).split('\n')[0];
 };
 
+const parseEmployeeNames = (value?: string) => Array.from(new Set(
+  String(value || '').split(/[,，]/).map(name => name.trim()).filter(Boolean),
+));
+
 const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
   const total = items.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -175,6 +182,19 @@ export default function Tasks() {
     due_date: '', notes: '', attachment_link: '',
   };
   const [form, setForm] = useState(emptyTaskForm);
+
+  const activeEmployeeOptions = useMemo(() => employees
+    .filter((item: any) => !item.status || ['active', 'probation'].includes(item.status))
+    .map((item: any) => ({
+      value: String(item.name || item.full_name || item.username || item.email || '').trim(),
+      label: [item.name || item.full_name || item.username || item.email, item.employee_code, item.department].filter(Boolean).join(' · '),
+    }))
+    .filter((item: any) => item.value), [employees]);
+
+  const assigneeOptions = useMemo(() => {
+    if (!form.assignee_name || activeEmployeeOptions.some(item => item.value === form.assignee_name)) return activeEmployeeOptions;
+    return [{ value: form.assignee_name, label: `${form.assignee_name}（历史负责人）` }, ...activeEmployeeOptions];
+  }, [activeEmployeeOptions, form.assignee_name]);
 
   useEffect(() => { loadData(); }, []);
 
@@ -344,8 +364,9 @@ export default function Tasks() {
         title: form.title,
         customer_id: form.customer_id ? Number(form.customer_id) : null,
         customer_name: cust?.business_name || '',
+        assignee_id: employees.find((item: any) => String(item.name || '').trim() === form.assignee_name)?.id || null,
         assignee_name: form.assignee_name,
-        collaborator_names: form.collaborator_names,
+        collaborator_names: parseEmployeeNames(form.collaborator_names).filter(name => name !== form.assignee_name).join(', '),
         task_type: form.task_type,
         priority: form.priority,
         status: form.status,
@@ -649,25 +670,38 @@ export default function Tasks() {
             <div><Label>任务名称 *</Label><Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></div>
             <div>
               <Label>所属客户</Label>
-              <NativeSelect
+              <CustomerCombobox
+                customers={customers}
                 value={form.customer_id}
-                onChange={v => setForm({ ...form, customer_id: v })}
-                placeholder="选择客户（可选）"
-                options={[{ value: '', label: '选择客户（可选）' }, ...customers.map(c => ({ value: String(c.id), label: c.business_name }))]}
+                onValueChange={v => setForm({ ...form, customer_id: v })}
+                placeholder="搜索客户编号、名称、联系人或电话（可选）"
+                allowClear
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>负责人</Label>
-                <Input list="task-assignee-options" value={form.assignee_name} onChange={e => setForm({ ...form, assignee_name: e.target.value })} />
-                <datalist id="task-assignee-options">
-                  {employees
-                    .map((employee: any) => employee.name || employee.full_name || employee.username || employee.email)
-                    .filter(Boolean)
-                    .map((name: string) => <option key={name} value={name} />)}
-                </datalist>
+                <Combobox
+                  options={assigneeOptions}
+                  value={form.assignee_name}
+                  onValueChange={value => setForm({
+                    ...form,
+                    assignee_name: value,
+                    collaborator_names: parseEmployeeNames(form.collaborator_names).filter(name => name !== value).join(', '),
+                  })}
+                  placeholder="选择负责人"
+                  searchPlaceholder="搜索员工姓名、编号或部门…"
+                  emptyText="没有找到在职员工"
+                />
               </div>
-              <div><Label>协作人</Label><Input value={form.collaborator_names} onChange={e => setForm({ ...form, collaborator_names: e.target.value })} placeholder="逗号分隔" /></div>
+              <div>
+                <Label>协作人</Label>
+                <EmployeeMultiSelect
+                  employees={employees.filter((item: any) => String(item.name || '').trim() !== form.assignee_name)}
+                  value={parseEmployeeNames(form.collaborator_names)}
+                  onValueChange={names => setForm({ ...form, collaborator_names: names.join(', ') })}
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
