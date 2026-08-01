@@ -13,6 +13,7 @@ from routers.finance_adjustments import (
     _net_ads_received,
     create_ad_fund_settlement,
     create_refund,
+    update_ad_fund_settlement,
 )
 from schemas.auth import UserResponse
 
@@ -87,7 +88,18 @@ async def test_ad_fund_settlement_derives_net_topup_and_carries_remaining_balanc
         await _create_tables(engine)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         async with sessions() as db:
-            payment = Payments(
+            june_payment = Payments(
+                customer_id=2,
+                customer_name="B Bistro",
+                income_type="ads_fee",
+                amount_due=100,
+                amount_paid=100,
+                ads_recharge_amount=100,
+                currency="USD",
+                payment_date=datetime(2026, 6, 5, tzinfo=timezone.utc),
+                user_id="finance-user",
+            )
+            july_payment = Payments(
                 customer_id=2,
                 customer_name="B Bistro",
                 income_type="management_ads_mixed",
@@ -99,11 +111,11 @@ async def test_ad_fund_settlement_derives_net_topup_and_carries_remaining_balanc
                 payment_date=datetime(2026, 7, 5, tzinfo=timezone.utc),
                 user_id="finance-user",
             )
-            db.add(payment)
+            db.add_all([june_payment, july_payment])
             await db.commit()
-            await db.refresh(payment)
+            await db.refresh(july_payment)
             db.add(FinanceRefund(
-                payment_id=payment.id,
+                payment_id=july_payment.id,
                 customer_id=2,
                 customer_name="B Bistro",
                 refund_amount=250,
@@ -119,12 +131,28 @@ async def test_ad_fund_settlement_derives_net_topup_and_carries_remaining_balanc
 
             assert await _net_ads_received(db, 2, "2026-07", "USD") == 600
 
-            settlement = await create_ad_fund_settlement(
+            june = await create_ad_fund_settlement(
+                AdFundSettlementWrite(
+                    customer_id=2,
+                    customer_name="B Bistro",
+                    year_month="2026-06",
+                    opening_balance=999,
+                    actual_ad_spend=0,
+                    status="closed",
+                ),
+                _finance_user(),
+                db,
+            )
+            assert june.opening_balance == 0
+            assert june.funds_received == 100
+            assert june.closing_balance == 100
+
+            july = await create_ad_fund_settlement(
                 AdFundSettlementWrite(
                     customer_id=2,
                     customer_name="B Bistro",
                     year_month="2026-07",
-                    opening_balance=100,
+                    opening_balance=999,
                     actual_ad_spend=500,
                     customer_refund_amount=50,
                     recognized_spread_amount=25,
@@ -133,8 +161,60 @@ async def test_ad_fund_settlement_derives_net_topup_and_carries_remaining_balanc
                 _finance_user(),
                 db,
             )
-            assert settlement.funds_received == 600
-            assert settlement.closing_balance == 125
-            assert settlement.recognized_spread_amount == 25
+            assert july.opening_balance == 100
+            assert july.funds_received == 600
+            assert july.closing_balance == 125
+            assert july.recognized_spread_amount == 25
+
+            august = await create_ad_fund_settlement(
+                AdFundSettlementWrite(
+                    customer_id=2,
+                    customer_name="B Bistro",
+                    year_month="2026-08",
+                    opening_balance=0,
+                    status="draft",
+                ),
+                _finance_user(),
+                db,
+            )
+            assert august.opening_balance == 125
+            assert august.funds_received == 0
+            assert august.closing_balance == 125
+
+            updated_july = await update_ad_fund_settlement(
+                july.id,
+                AdFundSettlementWrite(
+                    customer_id=2,
+                    customer_name="B Bistro",
+                    year_month="2026-07",
+                    opening_balance=0,
+                    actual_ad_spend=500,
+                    customer_refund_amount=50,
+                    recognized_spread_amount=75,
+                    status="closed",
+                ),
+                _finance_user(),
+                db,
+            )
+            assert updated_july.opening_balance == 100
+            assert updated_july.closing_balance == 75
+            await db.refresh(august)
+            assert august.opening_balance == 75
+            assert august.closing_balance == 75
+
+            with pytest.raises(HTTPException) as error:
+                await update_ad_fund_settlement(
+                    august.id,
+                    AdFundSettlementWrite(
+                        customer_id=3,
+                        customer_name="Wrong Customer",
+                        year_month="2026-08",
+                        status="draft",
+                    ),
+                    _finance_user(),
+                    db,
+                )
+            assert error.value.status_code == 400
+            assert "不可修改" in error.value.detail
     finally:
         await engine.dispose()

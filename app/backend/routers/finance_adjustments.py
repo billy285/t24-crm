@@ -238,6 +238,77 @@ def _settlement_values(data: AdFundSettlementWrite, funds_received: float) -> tu
     return available, closing
 
 
+async def _previous_ad_fund_settlement(
+    db: AsyncSession,
+    customer_id: int,
+    year_month: str,
+    currency: str,
+) -> Optional[AdFundSettlement]:
+    return await db.scalar(
+        select(AdFundSettlement)
+        .where(
+            AdFundSettlement.customer_id == customer_id,
+            AdFundSettlement.currency == currency,
+            AdFundSettlement.year_month < year_month,
+        )
+        .order_by(AdFundSettlement.year_month.desc(), AdFundSettlement.id.desc())
+        .limit(1)
+    )
+
+
+async def _automatic_opening_balance(
+    db: AsyncSession,
+    customer_id: int,
+    year_month: str,
+    currency: str,
+) -> float:
+    previous = await _previous_ad_fund_settlement(db, customer_id, year_month, currency)
+    return _money(previous.closing_balance) if previous else 0
+
+
+async def _recalculate_future_ad_fund_settlements(
+    db: AsyncSession,
+    customer_id: int,
+    currency: str,
+    after_month: str,
+    carried_balance: float,
+) -> None:
+    future_rows = (
+        await db.scalars(
+            select(AdFundSettlement)
+            .where(
+                AdFundSettlement.customer_id == customer_id,
+                AdFundSettlement.currency == currency,
+                AdFundSettlement.year_month > after_month,
+            )
+            .order_by(AdFundSettlement.year_month, AdFundSettlement.id)
+        )
+    ).all()
+    opening_balance = _money(carried_balance)
+    for row in future_rows:
+        funds_received = await _net_ads_received(db, customer_id, row.year_month, currency)
+        recalculated = AdFundSettlementWrite(
+            customer_id=row.customer_id,
+            customer_name=row.customer_name,
+            year_month=row.year_month,
+            currency=row.currency,
+            opening_balance=opening_balance,
+            actual_ad_spend=row.actual_ad_spend,
+            customer_refund_amount=row.customer_refund_amount,
+            recognized_spread_amount=row.recognized_spread_amount,
+            adjustment_amount=row.adjustment_amount,
+            status=row.status,
+            notes=row.notes,
+            recorded_by=row.recorded_by,
+        )
+        _available, closing_balance = _settlement_values(recalculated, funds_received)
+        row.opening_balance = opening_balance
+        row.funds_received = funds_received
+        row.closing_balance = closing_balance
+        row.updated_at = _utcnow()
+        opening_balance = closing_balance
+
+
 @router.get("/ad-fund-settlements", response_model=AdFundSettlementListResponse)
 async def list_ad_fund_settlements(
     skip: int = Query(0, ge=0),
@@ -270,6 +341,8 @@ async def create_ad_fund_settlement(
     )
     if existing:
         raise HTTPException(status_code=409, detail="该客户该月份已有投流结算，请编辑原记录")
+    opening_balance = await _automatic_opening_balance(db, data.customer_id, data.year_month, data.currency)
+    data = data.model_copy(update={"opening_balance": opening_balance})
     funds_received = await _net_ads_received(db, data.customer_id, data.year_month, data.currency)
     _available, closing = _settlement_values(data, funds_received)
     now = _utcnow()
@@ -286,6 +359,14 @@ async def create_ad_fund_settlement(
         user_id=str(current_user.id),
     )
     db.add(settlement)
+    await db.flush()
+    await _recalculate_future_ad_fund_settlements(
+        db,
+        settlement.customer_id,
+        settlement.currency,
+        settlement.year_month,
+        settlement.closing_balance,
+    )
     await db.commit()
     await db.refresh(settlement)
     return settlement
@@ -301,16 +382,14 @@ async def update_ad_fund_settlement(
     settlement = await db.get(AdFundSettlement, settlement_id)
     if not settlement:
         raise HTTPException(status_code=404, detail="投流结算记录不存在")
-    duplicate = await db.scalar(
-        select(AdFundSettlement).where(
-            AdFundSettlement.customer_id == data.customer_id,
-            AdFundSettlement.year_month == data.year_month,
-            AdFundSettlement.currency == data.currency,
-            AdFundSettlement.id != settlement_id,
-        )
-    )
-    if duplicate:
-        raise HTTPException(status_code=409, detail="该客户该月份已有投流结算")
+    if (
+        settlement.customer_id != data.customer_id
+        or settlement.year_month != data.year_month
+        or settlement.currency != data.currency
+    ):
+        raise HTTPException(status_code=400, detail="客户、结算月份和币种不可修改；如需调整请新建正确月份的月结")
+    opening_balance = await _automatic_opening_balance(db, data.customer_id, data.year_month, data.currency)
+    data = data.model_copy(update={"opening_balance": opening_balance})
     funds_received = await _net_ads_received(db, data.customer_id, data.year_month, data.currency)
     _available, closing = _settlement_values(data, funds_received)
     for key, value in data.model_dump().items():
@@ -318,6 +397,14 @@ async def update_ad_fund_settlement(
     settlement.funds_received = funds_received
     settlement.closing_balance = closing
     settlement.updated_at = _utcnow()
+    await db.flush()
+    await _recalculate_future_ad_fund_settlements(
+        db,
+        settlement.customer_id,
+        settlement.currency,
+        settlement.year_month,
+        settlement.closing_balance,
+    )
     await db.commit()
     await db.refresh(settlement)
     return settlement

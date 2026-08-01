@@ -13,13 +13,15 @@ interface NativeSelectProps {
   options: NativeSelectOption[];
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
 }
 
-export function NativeSelect({ value, onChange, options, placeholder, className }: NativeSelectProps) {
+export function NativeSelect({ value, onChange, options, placeholder, className, disabled = false }: NativeSelectProps) {
   return (
     <div className={cn('relative', className)}>
       <select
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         onPointerDown={(e) => e.stopPropagation()}
         className="flex h-10 w-full appearance-none rounded-md border border-input bg-background px-3 py-2 pr-8 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"

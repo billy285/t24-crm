@@ -707,6 +707,26 @@ export default function Finance() {
     opening_balance: '0', actual_ad_spend: '', customer_refund_amount: '0',
     recognized_spread_amount: '0', adjustment_amount: '0', status: 'draft', notes: '',
   });
+  const adSettlementCarrySource = useMemo(() => {
+    if (!adSettlementForm.customer_id || !adSettlementForm.year_month) return null;
+    const currency = normalizeCurrency(adSettlementForm.currency, 'USD');
+    return adFundSettlements
+      .filter((item: any) => (
+        Number(item.customer_id) === Number(adSettlementForm.customer_id)
+        && normalizeCurrency(item.currency, 'USD') === currency
+        && item.year_month < adSettlementForm.year_month
+      ))
+      .sort((a: any, b: any) => b.year_month.localeCompare(a.year_month) || Number(b.id) - Number(a.id))[0] || null;
+  }, [adFundSettlements, adSettlementForm.currency, adSettlementForm.customer_id, adSettlementForm.year_month]);
+  const automaticAdOpeningBalance = roundMoney(toMoneyNumber(adSettlementCarrySource?.closing_balance));
+  useEffect(() => {
+    const automaticValue = String(automaticAdOpeningBalance);
+    setAdSettlementForm((previous) => (
+      previous.opening_balance === automaticValue
+        ? previous
+        : { ...previous, opening_balance: automaticValue }
+    ));
+  }, [automaticAdOpeningBalance]);
 
   // Customer expense form
   const [showExpenseForm, setShowExpenseForm] = useState(false);
@@ -4149,7 +4169,7 @@ export default function Finance() {
               ) : (
                 <div className="overflow-x-auto"><table className="w-full text-sm">
                   <thead><tr className="border-b bg-slate-50 text-left text-slate-500">
-                    <th className="px-4 py-3 font-medium">月份/客户</th><th className="px-4 py-3 font-medium">期初</th><th className="px-4 py-3 font-medium">本月净充值</th>
+                    <th className="px-4 py-3 font-medium">月份/客户</th><th className="px-4 py-3 font-medium">期初自动结转</th><th className="px-4 py-3 font-medium">本月净充值</th>
                     <th className="px-4 py-3 font-medium">广告实支</th><th className="px-4 py-3 font-medium">退客户</th><th className="px-4 py-3 font-medium">确认差价</th>
                     <th className="px-4 py-3 font-medium">结余</th><th className="px-4 py-3 font-medium">状态</th><th className="px-4 py-3 font-medium">操作</th>
                   </tr></thead>
@@ -6153,9 +6173,9 @@ export default function Finance() {
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingAdSettlementId ? '编辑投流月结' : '新增投流月结'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4"><div><Label>客户 *</Label><select value={adSettlementForm.customer_id} onChange={e => setAdSettlementForm({ ...adSettlementForm, customer_id: e.target.value })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">请选择客户</option>{customerOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div><div><Label>结算月份 *</Label><Input type="month" value={adSettlementForm.year_month} onChange={e => setAdSettlementForm({ ...adSettlementForm, year_month: e.target.value })} /></div></div>
-            <div className="grid grid-cols-2 gap-4"><div><Label>币种</Label><NativeSelect value={adSettlementForm.currency} onChange={value => setAdSettlementForm({ ...adSettlementForm, currency: normalizeCurrency(value, 'USD') })} options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))} /></div><div><Label>期初结余</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.opening_balance} onChange={e => setAdSettlementForm({ ...adSettlementForm, opening_balance: e.target.value })} /></div></div>
-            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">本月净充值由系统根据收款中的「投流充值」减去退款自动计算，不能手工修改。</div>
+            <div className="grid grid-cols-2 gap-4"><div><Label>客户 *</Label><select disabled={!!editingAdSettlementId} value={adSettlementForm.customer_id} onChange={e => setAdSettlementForm({ ...adSettlementForm, customer_id: e.target.value })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"><option value="">请选择客户</option>{customerOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div><div><Label>结算月份 *</Label><Input disabled={!!editingAdSettlementId} type="month" value={adSettlementForm.year_month} onChange={e => setAdSettlementForm({ ...adSettlementForm, year_month: e.target.value })} /></div></div>
+            <div className="grid grid-cols-2 gap-4"><div><Label>币种</Label><NativeSelect disabled={!!editingAdSettlementId} value={adSettlementForm.currency} onChange={value => setAdSettlementForm({ ...adSettlementForm, currency: normalizeCurrency(value, 'USD') })} options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))} /></div><div><Label>期初结余（自动结转）</Label><Input disabled type="number" min="0" step="0.01" value={adSettlementForm.opening_balance} /><p className="mt-1 text-xs text-slate-500">{adSettlementCarrySource ? `自动承接 ${adSettlementCarrySource.year_month} 结余 ${formatMoney(automaticAdOpeningBalance, adSettlementForm.currency)}` : '没有更早的月结，从 0 开始；首次导入余额可填写调整金额。'}</p></div></div>
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">期初结余自动承接上一期，净充值按收款与退款自动计算；修改上月后，系统会同步重算后续月份。</div>
             <div className="grid grid-cols-2 gap-4"><div><Label>本月广告实际支出 *</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.actual_ad_spend} onChange={e => setAdSettlementForm({ ...adSettlementForm, actual_ad_spend: e.target.value })} /></div><div><Label>退回客户</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.customer_refund_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, customer_refund_amount: e.target.value })} /></div></div>
             <div className="grid grid-cols-2 gap-4"><div><Label>确认公司差价收入</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.recognized_spread_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, recognized_spread_amount: e.target.value })} /><p className="mt-1 text-xs text-slate-500">只有这里确认的金额才进入利润。</p></div><div><Label>调整金额</Label><Input type="number" step="0.01" value={adSettlementForm.adjustment_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, adjustment_amount: e.target.value })} /><p className="mt-1 text-xs text-slate-500">用于银行差异等，负数会减少可用资金。</p></div></div>
             <div><Label>状态</Label><NativeSelect value={adSettlementForm.status} onChange={value => setAdSettlementForm({ ...adSettlementForm, status: value })} options={[{ value: 'draft', label: '草稿（可继续核对）' }, { value: 'closed', label: '已结算（差价计入收入）' }]} /></div>
