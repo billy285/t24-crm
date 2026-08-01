@@ -588,10 +588,15 @@ export default function Finance() {
     [incomeTypeLabels],
   );
   const customerExpenseTypeOptions = useMemo(
-    () => Object.entries(customerExpenseTypeLabels).map(([value, label]) => ({ value, label })),
+    () => {
+      const options = Object.entries(customerExpenseTypeLabels)
+        .filter(([value]) => value !== ADS_FEE_KEY)
+        .map(([value, label]) => ({ value, label }));
+      return options.length > 0 ? options : [{ value: 'other', label: '其他客户成本' }];
+    },
     [customerExpenseTypeLabels],
   );
-  const defaultCustomerExpenseType = customerExpenseTypeOptions[0]?.value || 'ads_fee';
+  const defaultCustomerExpenseType = customerExpenseTypeOptions[0]?.value || 'other';
   const companyExpenseTypeOptions = useMemo(
     () => Object.entries(companyExpenseTypeLabels).map(([value, label]) => ({ value, label })),
     [companyExpenseTypeLabels],
@@ -999,6 +1004,10 @@ export default function Finance() {
   };
 
   const handleRemoveCustomerExpenseTypeDraft = (key: string) => {
+    if (key === ADS_FEE_KEY) {
+      toast.error('投流成本是历史系统类型，只能保留查看；新投流支出请在投流月结处理');
+      return;
+    }
     if (customerExpenseTypeDrafts.length <= 1) {
       toast.error('至少保留一个客户支出类型');
       return;
@@ -1357,6 +1366,11 @@ export default function Finance() {
     if (expenseMonth) return e.expense_month === expenseMonth;
     return activeDateRange ? isMonthInRange(e.expense_month, activeDateRange) : true;
   });
+  const activeCustomerExpenses = useMemo(
+    () => filteredExpenses.filter(e => e.expense_type !== ADS_FEE_KEY),
+    [filteredExpenses],
+  );
+  const legacyAdFundExpenseCount = filteredExpenses.length - activeCustomerExpenses.length;
   const filteredCompanyExpenses = companyExpenses.filter(e => {
     if (financeIssueFilter === 'missingExpenseMonth') return !/^\d{4}-\d{2}$/.test(e.expense_month || '');
     const matchesMonth = companyExpenseMonth
@@ -1440,17 +1454,17 @@ export default function Finance() {
 
   // Expense summaries
   const totalCustomerExpense = filteredExpenses
-    .filter(e => getCustomerExpenseCurrency(e) === 'USD')
+    .filter(e => e.expense_type !== ADS_FEE_KEY && getCustomerExpenseCurrency(e) === 'USD')
     .reduce((s, e) => s + (e.amount || 0), 0);
   const customerExpenseByType = useMemo(() => {
     const map: Record<string, number> = {};
-    filteredExpenses
+    activeCustomerExpenses
       .filter(e => getCustomerExpenseCurrency(e) === 'USD')
       .forEach(e => { map[e.expense_type] = (map[e.expense_type] || 0) + (e.amount || 0); });
     return Object.entries(map).map(([type, amount]) => ({
       type, name: customerExpenseTypeLabels[type] || type, amount: Math.round(amount * 100) / 100,
     })).sort((a, b) => b.amount - a.amount);
-  }, [filteredExpenses]);
+  }, [activeCustomerExpenses, customerExpenseTypeLabels]);
 
   const totalCompanyExpenseByCurrency = useMemo(() => ({
     USD: roundMoney(filteredCompanyExpenses.filter(e => getCompanyExpenseCurrency(e) === 'USD').reduce((s, e) => s + Number(e.amount || 0), 0)),
@@ -1868,9 +1882,10 @@ export default function Finance() {
     });
 
     overviewCustomerExpenses.forEach((expense: any) => {
+      if (expense.expense_type === ADS_FEE_KEY) return;
       const row = ensureRow(expense.customer_id, expense.customer_name);
       const amount = toMoneyNumber(expense.amount);
-      if (getCustomerExpenseCurrency(expense) === 'USD' && expense.expense_type !== ADS_FEE_KEY) {
+      if (getCustomerExpenseCurrency(expense) === 'USD') {
         row.customerCostUsd += amount;
       } else {
         row.customerCostCny += amount;
@@ -3089,6 +3104,10 @@ export default function Finance() {
 
   const handleSaveExpense = async () => {
     if (!expenseForm.customer_id || !expenseForm.amount) { toast.error('请填写必填字段'); return; }
+    if (expenseForm.expense_type === ADS_FEE_KEY) {
+      toast.error('投流成本请在投流月结中录入');
+      return;
+    }
     const originalExpense = editingExpenseId ? expenses.find((expense: any) => Number(expense.id) === Number(editingExpenseId)) : null;
     const targetExpenseMonth = normalizeMonthKey(expenseForm.expense_month);
     const originalExpenseMonth = normalizeMonthKey(originalExpense?.expense_month);
@@ -4194,6 +4213,15 @@ export default function Finance() {
         <TabsContent value="customer_expense">
           <Card className="border-slate-200">
             <CardContent className="p-4">
+              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-semibold text-blue-900">这里只记录客户专属的非投流成本</p>
+                  <p className="mt-1 text-xs text-slate-600">网站、域名、服务器、设计制作等费用在这里逐笔录入；广告实际支出统一在投流月结按月确认。</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="shrink-0 border-blue-200 bg-white text-blue-700 hover:bg-blue-100" onClick={() => handleFinanceTabChange('ad_funds')}>
+                  前往投流月结
+                </Button>
+              </div>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
@@ -4230,7 +4258,7 @@ export default function Finance() {
               {/* Summary */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                 <div className="p-3 bg-slate-50 rounded-lg">
-                  <p className="text-xs text-slate-500">总费用 USD</p>
+                  <p className="text-xs text-slate-500">非投流客户成本 USD</p>
                   <p className="text-lg font-bold text-slate-800">{fmt(totalCustomerExpense)}</p>
                 </div>
                 {customerExpenseByType.map(et => (
@@ -4239,6 +4267,13 @@ export default function Finance() {
                     <p className="text-lg font-bold" style={{ color: pickColorByKey(et.type, PIE_COLORS, CUSTOMER_EXPENSE_COLORS) }}>{fmt(et.amount)}</p>
                   </div>
                 ))}
+                {legacyAdFundExpenseCount > 0 && (
+                  <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
+                    <p className="text-xs text-amber-700">历史投流记录</p>
+                    <p className="text-lg font-bold text-amber-800">{legacyAdFundExpenseCount} 笔</p>
+                    <p className="mt-1 text-[11px] text-amber-600">仅保留查看，不重复计入利润</p>
+                  </div>
+                )}
               </div>
 
               {filteredExpenses.length === 0 ? (
@@ -4258,8 +4293,10 @@ export default function Finance() {
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedExpenses.items.map(e => (
-                        <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      {paginatedExpenses.items.map(e => {
+                        const isLegacyAdFundExpense = e.expense_type === ADS_FEE_KEY;
+                        return (
+                        <tr key={e.id} className={isLegacyAdFundExpense ? 'border-b border-amber-100 bg-amber-50/40' : 'border-b border-slate-100 hover:bg-slate-50'}>
                           <td className="px-3 py-2.5 font-medium">
                             <Button
                               type="button"
@@ -4271,22 +4308,31 @@ export default function Finance() {
                             </Button>
                           </td>
                           <td className="px-3 py-2.5">
-                            <Badge style={{ backgroundColor: `${pickColorByKey(e.expense_type, PIE_COLORS, CUSTOMER_EXPENSE_COLORS)}20`, color: pickColorByKey(e.expense_type, PIE_COLORS, CUSTOMER_EXPENSE_COLORS) }} className="text-xs">
-                              {customerExpenseTypeLabels[e.expense_type] || e.expense_type}
-                            </Badge>
+                            {isLegacyAdFundExpense ? (
+                              <Badge className="border border-amber-200 bg-amber-100 text-xs text-amber-700 hover:bg-amber-100">历史投流记录</Badge>
+                            ) : (
+                              <Badge style={{ backgroundColor: `${pickColorByKey(e.expense_type, PIE_COLORS, CUSTOMER_EXPENSE_COLORS)}20`, color: pickColorByKey(e.expense_type, PIE_COLORS, CUSTOMER_EXPENSE_COLORS) }} className="text-xs">
+                                {customerExpenseTypeLabels[e.expense_type] || e.expense_type}
+                              </Badge>
+                            )}
                           </td>
                           <td className="px-3 py-2.5 font-medium">{formatMoney(Number(e.amount || 0), getCustomerExpenseCurrency(e))}</td>
                           <td className="px-3 py-2.5 text-slate-500">{getCustomerExpenseCurrency(e)}</td>
                           <td className="px-3 py-2.5 text-slate-500">{e.expense_month}</td>
                           <td className="px-3 py-2.5 text-slate-500 hidden md:table-cell max-w-[200px] truncate">{e.notes || '-'}</td>
                           <td className="px-3 py-2.5">
-                            <div className="flex gap-1">
+                            {isLegacyAdFundExpense ? (
+                              <span className="text-xs text-slate-400">已归档</span>
+                            ) : (
+                              <div className="flex gap-1">
                               <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => openEditExpense(e)}><Edit className="w-3.5 h-3.5" /></Button>
                               <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteExpenseTarget(e)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                            </div>
+                              </div>
+                            )}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -5962,18 +6008,22 @@ export default function Finance() {
             </div>
             <div className="space-y-2">
               {customerExpenseTypeDrafts.map(item => (
-                <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <div key={item.key} className={item.key === ADS_FEE_KEY ? 'flex items-center justify-between gap-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2' : 'flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2'}>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-700">{item.label}</p>
-                    <p className="text-xs text-slate-400">{item.key}</p>
+                    <p className="text-xs text-slate-400">{item.key === ADS_FEE_KEY ? '历史系统类型 · 新增入口已停用' : item.key}</p>
                   </div>
-                  <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => handleRemoveCustomerExpenseTypeDraft(item.key)}>
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  {item.key === ADS_FEE_KEY ? (
+                    <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">只读</Badge>
+                  ) : (
+                    <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => handleRemoveCustomerExpenseTypeDraft(item.key)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
-            <p className="text-xs text-slate-500">客户支出类型用于绑定具体客户的成本，例如投流成本、网站成本、域名费、主机/服务器费。</p>
+            <p className="text-xs text-slate-500">客户支出类型用于绑定网站、域名、主机/服务器、设计制作等客户专属成本。投流成本统一在「投流月结」处理。</p>
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setShowCustomerExpenseTypeManager(false)}>取消</Button>
@@ -6024,6 +6074,7 @@ export default function Finance() {
                   options={customerExpenseTypeOptions}
                   className="mt-1"
                 />
+                <p className="mt-1 text-xs text-slate-500">投流成本不在这里录入，请前往「投流月结」按月填写广告实际支出。</p>
               </div>
               <div>
                 <Label>金额 *</Label>

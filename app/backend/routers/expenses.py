@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/entities/expenses", tags=["expenses"])
 
+ADS_FEE_KEY = "ads_fee"
+ADS_FEE_BLOCK_DETAIL = "投流成本请在投流月结中录入，客户支出仅用于网站、域名、服务器等客户专属成本"
+
+
+def reject_ad_fund_customer_expense(expense_type: Optional[str]) -> None:
+    """Keep advertising spend in the ad-fund settlement workflow."""
+    if expense_type == ADS_FEE_KEY:
+        raise HTTPException(status_code=400, detail=ADS_FEE_BLOCK_DETAIL)
+
 
 # ---------- Pydantic Schemas ----------
 class ExpensesData(BaseModel):
@@ -213,6 +222,7 @@ async def create_expenses(
 ):
     """Create a new expenses"""
     logger.debug(f"Creating new expenses with data: {data}")
+    reject_ad_fund_customer_expense(data.expense_type)
     
     service = ExpensesService(db)
     try:
@@ -238,6 +248,8 @@ async def create_expensess_batch(
 ):
     """Create multiple expensess in a single request"""
     logger.debug(f"Batch creating {len(request.items)} expensess")
+    for item_data in request.items:
+        reject_ad_fund_customer_expense(item_data.expense_type)
     
     service = ExpensesService(db)
     results = []
@@ -264,6 +276,8 @@ async def update_expensess_batch(
 ):
     """Update multiple expensess in a single request (requires ownership)"""
     logger.debug(f"Batch updating {len(request.items)} expensess")
+    for item in request.items:
+        reject_ad_fund_customer_expense(item.updates.expense_type)
     
     service = ExpensesService(db)
     results = []
@@ -293,6 +307,7 @@ async def update_expenses(
 ):
     """Update an existing expenses"""
     logger.debug(f"Updating expenses {id} with data: {data}")
+    reject_ad_fund_customer_expense(data.expense_type)
 
     service = ExpensesService(db)
     try:
