@@ -16,6 +16,7 @@ from services.emp_auth import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/emp-auth", tags=["employee-auth"])
+ACTIVE_EMPLOYEE_STATUSES = {"active", "probation"}
 
 
 # ---------- Schemas ----------
@@ -57,6 +58,17 @@ def _get_token_payload(authorization: Optional[str]):
     if not payload:
         raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
     return payload
+
+
+async def _get_active_employee(payload: dict, db: AsyncSession) -> dict:
+    emp_id = payload.get("emp_id")
+    if not emp_id:
+        raise HTTPException(status_code=401, detail="无效的登录凭证")
+
+    employee = await EmpAuthService(db).get_employee_by_id(emp_id)
+    if not employee or employee.get("status") not in ACTIVE_EMPLOYEE_STATUSES:
+        raise HTTPException(status_code=401, detail="账号已被停用")
+    return employee
 
 
 # ---------- Routes ----------
@@ -102,17 +114,7 @@ async def get_current_employee(
 ):
     """Get current logged-in employee info."""
     payload = _get_token_payload(authorization)
-    emp_id = payload.get("emp_id")
-    if not emp_id:
-        raise HTTPException(status_code=401, detail="无效的登录凭证")
-
-    service = EmpAuthService(db)
-    emp = await service.get_employee_by_id(emp_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="员工不存在")
-
-    if emp["status"] not in ("active", "probation"):
-        raise HTTPException(status_code=403, detail="账号已被停用")
+    emp = await _get_active_employee(payload, db)
 
     return EmployeeInfo(
         id=emp["id"],
@@ -132,12 +134,9 @@ async def change_password(
 ):
     """Change employee password."""
     payload = _get_token_payload(authorization)
-    emp_id = payload.get("emp_id")
-
+    emp = await _get_active_employee(payload, db)
+    emp_id = emp["id"]
     service = EmpAuthService(db)
-    emp = await service.get_employee_by_id(emp_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="员工不存在")
 
     if not emp["password"] or not verify_password(data.current_password, emp["password"]):
         raise HTTPException(status_code=400, detail="当前密码错误")
@@ -160,7 +159,8 @@ async def set_employee_password(
 ):
     """Admin sets password for an employee."""
     payload = _get_token_payload(authorization)
-    caller_role = payload.get("role", "")
+    caller = await _get_active_employee(payload, db)
+    caller_role = caller.get("role", "")
     if caller_role not in ("admin", "super_admin"):
         raise HTTPException(status_code=403, detail="无权限操作")
 

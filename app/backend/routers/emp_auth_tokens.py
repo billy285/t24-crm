@@ -35,6 +35,13 @@ SECURE_COOKIE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 SAMESITE = os.environ.get("COOKIE_SAMESITE", "lax").capitalize()  # Lax|None|Strict
 COOKIE_PATH = os.environ.get("COOKIE_PATH", "/")
 COOKIE_NAME = os.environ.get("EMP_REFRESH_COOKIE", "emp_refresh_token")
+ACTIVE_EMPLOYEE_STATUSES = {"active", "probation"}
+
+
+def _ensure_active_employee(employee: dict | None) -> dict:
+    if not employee or employee.get("status") not in ACTIVE_EMPLOYEE_STATUSES:
+        raise HTTPException(status_code=401, detail="Employee account is inactive")
+    return employee
 
 @router.post("/set_refresh")
 async def set_refresh_cookie(
@@ -61,9 +68,7 @@ async def set_refresh_cookie(
 
     # Validate employee exists (optional but safer)
     service = EmpAuthService(db)
-    emp = await service.get_employee_by_id(emp_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _ensure_active_employee(await service.get_employee_by_id(emp_id))
 
     # Subject is the employee id; cookie config from env
     refresh_token = create_refresh_token(subject=str(emp_id))
@@ -98,9 +103,7 @@ async def refresh_access_token(request: Request, db: AsyncSession = Depends(get_
         # sub is the emp_id we set when issuing the cookie
         emp_id = int(sub)
         service = EmpAuthService(db)
-        emp = await service.get_employee_by_id(emp_id)
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+        emp = _ensure_active_employee(await service.get_employee_by_id(emp_id))
 
         claims = {
             "emp_id": emp["id"],

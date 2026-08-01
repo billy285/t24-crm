@@ -1,18 +1,27 @@
 import hashlib
 import logging
+import os
 from datetime import datetime
 from typing import Optional
 
 from core.auth import AccessTokenError, decode_access_token
+from core.database import get_db
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from schemas.auth import UserResponse
-from services.emp_auth import decode_access_token as decode_employee_access_token
+from services.emp_auth import EmpAuthService, decode_access_token as decode_employee_access_token
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 bearer_scheme = HTTPBearer(auto_error=False)
 FINANCE_ROLES = {"admin", "super_admin", "finance"}
+ACTIVE_EMPLOYEE_STATUSES = {"active", "probation"}
+
+
+def employee_status_enforcement_enabled() -> bool:
+    """Fail closed by default; tests can explicitly opt out for isolated fixtures."""
+    return (os.environ.get("ENFORCE_EMPLOYEE_STATUS", "true").strip().lower() in {"1", "true", "yes", "on"})
 
 
 async def get_bearer_token(
@@ -26,13 +35,42 @@ async def get_bearer_token(
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication credentials were not provided")
 
 
-async def get_current_user(token: str = Depends(get_bearer_token)) -> UserResponse:
+async def get_current_user(
+    token: str = Depends(get_bearer_token),
+    db: AsyncSession = Depends(get_db),
+) -> UserResponse:
     """Dependency to get current authenticated user via JWT token.
 
     Supports both the legacy platform JWT and the newer employee JWT so the
     admin/configuration endpoints can work consistently with the current
     employee-login flow.
     """
+    employee_payload = decode_employee_access_token(token)
+    employee_id = employee_payload.get("emp_id") if employee_payload else None
+    if employee_id:
+        if employee_status_enforcement_enabled():
+            employee = await EmpAuthService(db).get_employee_by_id(int(employee_id))
+            if not employee or employee.get("status") not in ACTIVE_EMPLOYEE_STATUSES:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Employee account is inactive",
+                )
+            return UserResponse(
+                id=str(employee["id"]),
+                email=employee.get("email") or "",
+                name=employee.get("name"),
+                role=employee.get("role") or "user",
+                last_login=None,
+            )
+
+        return UserResponse(
+            id=str(employee_id),
+            email=employee_payload.get("email", ""),
+            name=employee_payload.get("name"),
+            role=employee_payload.get("role", "user"),
+            last_login=None,
+        )
+
     try:
         payload = decode_access_token(token)
         user_id = payload.get("sub")
@@ -58,17 +96,6 @@ async def get_current_user(token: str = Depends(get_bearer_token)) -> UserRespon
         )
     except (AccessTokenError, AttributeError, ValueError) as exc:
         logger.debug("Legacy token validation unavailable, trying employee token: %s", type(exc).__name__)
-
-    employee_payload = decode_employee_access_token(token)
-    employee_id = employee_payload.get("emp_id") if employee_payload else None
-    if employee_id:
-        return UserResponse(
-            id=str(employee_id),
-            email=employee_payload.get("email", ""),
-            name=employee_payload.get("name"),
-            role=employee_payload.get("role", "user"),
-            last_login=None,
-        )
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
 
