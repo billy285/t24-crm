@@ -9,8 +9,10 @@ from logging.config import fileConfig
 
 import models
 from alembic import context
+from core.config import settings
 from core.database import Base
 from sqlalchemy import pool
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 
 # Automatically import all ORM models under Models
@@ -18,6 +20,20 @@ for _, module_name, _ in pkgutil.iter_modules(models.__path__):
     importlib.import_module(f"{models.__name__}.{module_name}")
 
 config = context.config
+
+
+def _async_database_url(raw_url: str) -> str:
+    """Use the configured application database with an asyncio driver."""
+    url = make_url(raw_url)
+    if url.drivername == "sqlite":
+        url = url.set(drivername="sqlite+aiosqlite")
+    elif url.drivername in ("postgres", "postgresql"):
+        url = url.set(drivername="postgresql+asyncpg")
+    rendered = url.render_as_string(hide_password=False)
+    return rendered.replace("%", "%%")
+
+
+config.set_main_option("sqlalchemy.url", _async_database_url(settings.database_url))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
