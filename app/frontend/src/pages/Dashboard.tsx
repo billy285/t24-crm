@@ -65,6 +65,8 @@ type SalesRecoveryOverview = {
   summary: { recoverable: number; watch: number; protected: number; extended: number; extension_requests: number };
 };
 
+type PayrollSummary = { items: { month: string; status: 'draft' | 'confirmed' | 'paid'; currency: string }[]; pending_count: number };
+
 const buildReminderLink = (path: string, params: Record<string, string | number | null | undefined>) => {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -90,6 +92,7 @@ export default function Dashboard() {
   const [salesPerformance, setSalesPerformance] = useState<SalesPerformanceDashboard | null>(null);
   const [salesRecovery, setSalesRecovery] = useState<SalesRecoveryOverview | null>(null);
   const [salesCockpitLoading, setSalesCockpitLoading] = useState(false);
+  const [payrollSummary, setPayrollSummary] = useState<PayrollSummary | null>(null);
   const now = new Date();
   const [lbYear, setLbYear] = useState<string>(String(now.getFullYear()));
   const [lbMonth, setLbMonth] = useState<string>(String(now.getMonth() + 1));
@@ -256,6 +259,13 @@ export default function Dashboard() {
   useEffect(() => {
     if (isAdm) void loadSalesCockpit(salesPeriod);
   }, [isAdm, salesPeriod]);
+
+  useEffect(() => {
+    if (!isAdm && !isFinance) return;
+    void invokeWithAuth({ url: '/api/v1/payroll/summary', method: 'GET' })
+      .then(response => setPayrollSummary(response.data || null))
+      .catch(() => setPayrollSummary(null));
+  }, [isAdm, isFinance]);
 
   useAutoRefresh(loadDashboard, { intervalMs: 30000 });
 
@@ -586,7 +596,7 @@ export default function Dashboard() {
     const weakNotes = people.filter(item => item.metrics.calls >= 5 && item.metrics.note_quality_rate < 70).length;
     const funnel = [
       { label: '已分配', value: metrics.assigned, color: 'bg-slate-700' },
-      { label: '已拨打', value: metrics.calls, color: 'bg-blue-600' },
+      { label: '已记录通话', value: metrics.calls, color: 'bg-blue-600' },
       { label: '已接通', value: metrics.connected, color: 'bg-cyan-500' },
       { label: '有意向', value: metrics.interested, color: 'bg-amber-500' },
       { label: '已预约', value: metrics.appointments, color: 'bg-violet-500' },
@@ -595,7 +605,7 @@ export default function Dashboard() {
     const funnelBase = Math.max(...funnel.map(item => item.value), 1);
     const salesMetricCards = [
       { label: '已分配任务', value: metrics.assigned, helper: `${metrics.completed} 条已完成`, icon: Target, tone: 'text-slate-700 bg-slate-100', link: '/sales-workbench' },
-      { label: '拨打完成率', value: `${metrics.completion_rate}%`, helper: `${metrics.calls} 次拨打记录`, icon: PhoneCall, tone: 'text-blue-700 bg-blue-50', link: '/sales-workbench' },
+      { label: '任务记录完成率', value: `${metrics.completion_rate}%`, helper: `${metrics.calls} 条员工保存记录`, icon: PhoneCall, tone: 'text-blue-700 bg-blue-50', link: '/sales-workbench' },
       { label: '接通率', value: `${metrics.connection_rate}%`, helper: `${metrics.connected} 次有效接通`, icon: PhoneForwarded, tone: 'text-cyan-700 bg-cyan-50', link: '/sales-leads' },
       { label: '意向率', value: `${metrics.interest_rate}%`, helper: `${metrics.interested} 个有意向`, icon: TrendingUp, tone: 'text-amber-700 bg-amber-50', link: '/sales-leads' },
       { label: '预约率', value: `${metrics.appointment_rate}%`, helper: `${metrics.appointments} 个已预约`, icon: CalendarCheck2, tone: 'text-violet-700 bg-violet-50', link: '/sales-leads' },
@@ -620,8 +630,8 @@ export default function Dashboard() {
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300"><TrendingUp className="h-4 w-4" />销售老板驾驶舱</div>
-                <h3 className="mt-2 text-xl font-semibold">从拨打执行到正式成交，一眼看清销售推进效率</h3>
-                <p className="mt-1 text-xs text-slate-300">销售预测与正式财务数据分开统计；售前收款仅显示销售交接中已确认的金额。</p>
+                <h3 className="mt-2 text-xl font-semibold">从员工记录、跟进纪律到正式成交，一眼看清销售推进效率</h3>
+                <p className="mt-1 text-xs text-slate-300">拨号辅助不作为真实通话证明；销售数据与正式财务分开，绩效只作管理参考。</p>
               </div>
               <div className="flex rounded-lg bg-white/10 p-1">
                 {([{ value: 1, label: '今日' }, { value: 7, label: '近7天' }, { value: 30, label: '近30天' }] as const).map(option => (
@@ -658,7 +668,7 @@ export default function Dashboard() {
         </div>
 
         <Card className="border-slate-200">
-          <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="text-base">团队表现与系统建议</CardTitle><p className="mt-1 text-xs text-slate-500">{salesPeriod === 1 ? '按今天真实拨打与跟进记录评分。' : `按最近${salesPeriod}天真实拨打与跟进记录评分。`}</p></div><Button size="sm" variant="outline" onClick={() => navigate('/sales-leads')}>查看完整评分</Button></div></CardHeader>
+          <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="text-base">团队表现与系统建议</CardTitle><p className="mt-1 text-xs text-slate-500">{salesPeriod === 1 ? '按今天员工已保存的通话与跟进记录评分。' : `按最近${salesPeriod}天员工已保存的通话与跟进记录评分。`}</p></div><Button size="sm" variant="outline" onClick={() => navigate('/sales-leads')}>查看完整评分</Button></div></CardHeader>
           <CardContent className="overflow-x-auto">
             <table className="w-full min-w-[860px] text-left text-sm"><thead className="border-b text-xs text-slate-500"><tr><th className="pb-2">排名 / 销售</th><th className="pb-2">综合分</th><th className="pb-2">任务完成</th><th className="pb-2">接通率</th><th className="pb-2">意向率</th><th className="pb-2">预约 / 转客户</th><th className="pb-2">逾期回访</th><th className="pb-2">下一步建议</th></tr></thead><tbody className="divide-y divide-slate-100">{people.slice(0, 8).map(item => <tr key={item.sales_employee_id}><td className="py-3 font-semibold text-slate-900">#{item.rank} {item.salesperson}<p className="text-[11px] font-normal text-slate-400">{item.confidence}</p></td><td className="py-3 text-lg font-bold text-blue-700">{item.score}</td><td className="py-3">{item.metrics.completion_rate}%</td><td className="py-3">{item.metrics.connection_rate}%</td><td className="py-3">{item.metrics.interest_rate}%</td><td className="py-3">{item.metrics.appointments} / {item.metrics.conversions}</td><td className={`py-3 font-semibold ${item.metrics.overdue_followups ? 'text-rose-600' : 'text-emerald-600'}`}>{item.metrics.overdue_followups}</td><td className="max-w-xs py-3 text-xs text-slate-600">{item.suggestions[0]}</td></tr>)}{people.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-slate-500">暂无足够的销售执行数据</td></tr>}</tbody></table>
           </CardContent>
@@ -778,6 +788,7 @@ export default function Dashboard() {
           {renderStatCard('欠费客户', data.overduePayments || 0, <AlertTriangle className="w-5 h-5 text-red-600" />, '', 'bg-red-50', '/finance')}
           {renderStatCard('即将到期', data.expiringSoon || 0, <Clock className="w-5 h-5 text-orange-600" />, '', 'bg-orange-50', '/finance')}
           {renderStatCard('已到期未续', data.expiredNotRenewed || 0, <Timer className="w-5 h-5 text-red-600" />, '', 'bg-red-50', '/finance')}
+          {renderStatCard('本月工资表', payrollSummary?.items.find(item => item.month === new Date().toISOString().slice(0, 7))?.status === 'paid' ? '已发放' : payrollSummary?.items.find(item => item.month === new Date().toISOString().slice(0, 7))?.status === 'confirmed' ? '待发放' : '待确认', <ListTodo className="w-5 h-5 text-blue-600" />, '', 'bg-blue-50', '/payroll')}
         </div>
       </div>
     );
@@ -803,6 +814,7 @@ export default function Dashboard() {
         {renderStatCard('即将到期', data.expiringSoon || 0, <Clock className="w-5 h-5 text-orange-600" />, '', 'bg-orange-50', '/finance')}
         {renderStatCard('欠费客户', data.overduePayments || 0, <AlertTriangle className="w-5 h-5 text-red-600" />, '', 'bg-red-50', '/finance')}
         {renderStatCard('待办任务', data.pendingTasks || 0, <ListTodo className="w-5 h-5 text-purple-600" />, '', 'bg-purple-50', '/tasks')}
+        {renderStatCard('本月工资表', payrollSummary?.items.find(item => item.month === new Date().toISOString().slice(0, 7))?.status === 'paid' ? '已发放' : payrollSummary?.items.find(item => item.month === new Date().toISOString().slice(0, 7))?.status === 'confirmed' ? '待发放' : '待确认', <ListTodo className="w-5 h-5 text-blue-600" />, '', 'bg-blue-50', '/payroll')}
         {renderStatCard('流失客户', data.lostCustomers || 0, <TrendingUp className="w-5 h-5 text-slate-600" />, '', 'bg-slate-100', '/customers?status=lost')}
       </div>
 

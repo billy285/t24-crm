@@ -105,6 +105,16 @@ def _ensure_lead_role(user: UserResponse) -> None:
         raise HTTPException(status_code=403, detail="无权访问电话销售中心")
 
 
+def _validate_manual_call_result(payload: "SalesCallResultCreate") -> None:
+    notes = (payload.notes or "").strip()
+    if payload.outcome == "callback" and not payload.next_follow_up_at:
+        raise HTTPException(status_code=400, detail="待回访必须设置下次跟进时间")
+    if payload.outcome in {"interested", "appointment"} and (not notes or not payload.next_follow_up_at):
+        raise HTTPException(status_code=400, detail="有意向或已预约必须填写跟进内容和下次跟进时间")
+    if payload.outcome == "do_not_contact" and not notes:
+        raise HTTPException(status_code=400, detail="禁止再联系必须填写商家要求或原因")
+
+
 class SalesLeadCreate(BaseModel):
     business_name: str = Field(min_length=1, max_length=200)
     contact_name: Optional[str] = None
@@ -1502,6 +1512,12 @@ async def sales_performance_dashboard(
         interested = sum(item.outcome in {"interested", "appointment"} for item in employee_activities)
         appointments = sum(item.outcome == "appointment" for item in employee_activities)
         documented = sum(bool((item.notes or "").strip()) and len((item.notes or "").strip()) >= 12 for item in employee_activities)
+        compliant = sum(
+            item.outcome == "no_answer"
+            or (item.outcome in {"callback", "interested", "appointment"} and bool(item.next_follow_up_at) and bool((item.notes or "").strip()))
+            or (item.outcome in {"not_interested", "do_not_contact"} and bool((item.notes or "").strip()))
+            for item in employee_activities
+        )
         completion_rate = round(completed / max(assigned, 1) * 100, 1)
         connection_rate = round(connected / max(calls, 1) * 100, 1)
         interest_rate = round(interested / max(connected, 1) * 100, 1)
@@ -1509,19 +1525,20 @@ async def sales_performance_dashboard(
         overdue_followups = overdue_by_sales.get(sales_id, 0)
         conversions = conversions_by_sales.get(sales_id, 0)
 
-        result_score = min(12, connection_rate * 0.12) + min(12, interest_rate * 0.12) + min(8, appointments * 4) + min(8, conversions * 8)
         execution_score = min(25, completion_rate * 0.25)
         discipline_score = max(0, 20 - min(20, overdue_followups * 5))
-        documentation_score = min(10, note_quality_rate * 0.10)
-        compliance_score = 5
-        total_score = round(result_score + execution_score + discipline_score + documentation_score + compliance_score, 1)
+        opportunity_score = min(8, connection_rate * 0.08) + min(8, interest_rate * 0.08) + min(4, appointments * 2)
+        result_score = min(10, appointments * 5) + min(15, conversions * 15)
+        compliance_rate = round(compliant / max(calls, 1) * 100, 1)
+        documentation_score = min(7, note_quality_rate * 0.07) + min(3, compliance_rate * 0.03)
+        total_score = round(execution_score + discipline_score + opportunity_score + result_score + documentation_score, 1)
         confidence = "数据不足" if calls < 10 else ("参考可靠" if calls >= 30 else "可参考")
         metrics = {
             "assigned": assigned, "completed": completed, "calls": calls, "connected": connected,
             "interested": interested, "appointments": appointments, "conversions": conversions,
             "completion_rate": completion_rate, "connection_rate": connection_rate,
             "interest_rate": interest_rate, "note_quality_rate": note_quality_rate,
-            "overdue_followups": overdue_followups,
+            "overdue_followups": overdue_followups, "compliance_rate": compliance_rate,
         }
         items.append({
             "sales_employee_id": sales_id,
@@ -1529,9 +1546,9 @@ async def sales_performance_dashboard(
             "score": total_score,
             "confidence": confidence,
             "score_breakdown": {
-                "results": round(result_score, 1), "execution": round(execution_score, 1),
-                "discipline": round(discipline_score, 1), "documentation": round(documentation_score, 1),
-                "compliance": compliance_score,
+                "execution": round(execution_score, 1), "discipline": round(discipline_score, 1),
+                "opportunity": round(opportunity_score, 1), "results": round(result_score, 1),
+                "documentation": round(documentation_score, 1),
             },
             "metrics": metrics,
             "suggestions": _performance_suggestions(metrics),
@@ -1550,6 +1567,7 @@ async def record_daily_call_result(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_lead_role(current_user)
+    _validate_manual_call_result(payload)
     task = (await db.execute(select(SalesDailyDialTasks).where(SalesDailyDialTasks.id == task_id))).scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="每日任务不存在")
@@ -1606,6 +1624,7 @@ async def record_supplemental_follow_up(
 ):
     """Record another valid call without reopening or inflating a completed daily task."""
     _ensure_lead_role(current_user)
+    _validate_manual_call_result(payload)
     lead = await _get_scoped_lead(db, lead_id, current_user)
     if _role(current_user) == "sales" and lead.assigned_sales_id != _employee_id(current_user):
         raise HTTPException(status_code=403, detail="只能追加本人负责线索的跟进")

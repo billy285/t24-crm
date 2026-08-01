@@ -196,7 +196,7 @@ async def test_explainable_sales_performance_is_scoped_to_phone_sales_data(sales
     recorded = await sales_app_client.post(
         f"/api/v1/sales-leads/workbench/tasks/{task_id}/result",
         headers=sales_a,
-        json={"outcome": "interested", "notes": "商家希望了解本地推广方案，并约定明天下午继续沟通。"},
+        json={"outcome": "interested", "notes": "商家希望了解本地推广方案，并约定明天下午继续沟通。", "next_follow_up_at": "2026-08-02T16:00:00+08:00"},
     )
     assert recorded.status_code == 200
 
@@ -206,7 +206,7 @@ async def test_explainable_sales_performance_is_scoped_to_phone_sales_data(sales
     assert item["salesperson"] == "Sales A"
     assert item["score"] > 0
     assert item["metrics"]["interested"] == 1
-    assert set(item["score_breakdown"]) == {"results", "execution", "discipline", "documentation", "compliance"}
+    assert set(item["score_breakdown"]) == {"execution", "discipline", "opportunity", "results", "documentation"}
 
     personal_dashboard = await sales_app_client.get("/api/v1/sales-leads/dashboard/performance?days=30", headers=sales_a)
     assert personal_dashboard.status_code == 200

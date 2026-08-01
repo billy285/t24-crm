@@ -94,7 +94,7 @@ async def test_interested_lead_can_record_supplemental_follow_up_after_daily_tas
     first_call = await sales_app_client.post(
         f"/api/v1/sales-leads/workbench/tasks/{task['task_id']}/result",
         headers=sales,
-        json={"outcome": "interested", "notes": "商家愿意了解套餐，希望今天晚些时候再次沟通。"},
+        json={"outcome": "interested", "notes": "商家愿意了解套餐，希望今天晚些时候再次沟通。", "next_follow_up_at": "2026-08-02T18:00:00+08:00"},
     )
     assert first_call.status_code == 200
 
@@ -104,7 +104,7 @@ async def test_interested_lead_can_record_supplemental_follow_up_after_daily_tas
     follow_up = await sales_app_client.post(
         f"/api/v1/sales-leads/{lead_id}/follow-up",
         headers=sales,
-        json={"outcome": "appointment", "notes": "已确认周五下午三点线上预约，发送案例后再次确认。"},
+        json={"outcome": "appointment", "notes": "已确认周五下午三点线上预约，发送案例后再次确认。", "next_follow_up_at": "2026-08-07T15:00:00+08:00"},
     )
     assert follow_up.status_code == 200
     assert follow_up.json()["status"] == "appointment"
