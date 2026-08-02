@@ -58,6 +58,10 @@ const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
 const STRIPE_PLATFORM_FEE_RATE = 0.029;
 const STRIPE_PLATFORM_FEE_FIXED = 0.3;
 const CUSTOMER_PAGE_SIZE_OPTIONS = [20, 50, 100];
+const lifecycleEventLabels: Record<string, string> = {
+  started: '第一笔有效记账', pause: '暂停合作', pending_stop: '进入待确认停止',
+  resume: '恢复合作', stop: '停止合作', reactivate: '重新合作', adjust_start: '修正合作开始日期',
+};
 
 type PaginationResult<T> = {
   items: T[];
@@ -533,6 +537,7 @@ export default function Customers() {
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [serviceProgresses, setServiceProgresses] = useState<any[]>([]);
   const [serviceTasks, setServiceTasks] = useState<any[]>([]);
+  const [lifecycleDetail, setLifecycleDetail] = useState<any>(null);
   const [followUpPage, setFollowUpPage] = useState(1);
   const [followUpPageSize, setFollowUpPageSize] = useState(20);
   const [dealPage, setDealPage] = useState(1);
@@ -966,7 +971,7 @@ export default function Customers() {
     setDetailLoading(true);
     setDetailLoadError(null);
     try {
-      const [customerRes, fuRes, dRes, pRes, expenseRes, sRes, progressRes, taskRes] = await Promise.all([
+      const [customerRes, fuRes, dRes, pRes, expenseRes, sRes, progressRes, taskRes, lifecycleRes] = await Promise.all([
         client.entities.customers.query({ query: { id: customerId }, limit: 1 }),
         client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
         client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 1000 }),
@@ -979,6 +984,9 @@ export default function Customers() {
         client.entities.subscriptions.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
         client.entities.service_progresses.queryAll({ query: { customer_id: customerId }, sort: '-last_update_time', limit: 1000 }),
         client.entities.service_tasks.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
+        canViewFinance
+          ? invokeWithAuth({ url: `/api/v1/customer-lifecycle/customers/${customerId}`, method: 'GET' })
+          : Promise.resolve({ data: null }),
       ]);
 
       const latestCustomer = customerRes?.data?.items?.[0] || fallbackCustomer || null;
@@ -995,6 +1003,7 @@ export default function Customers() {
       setSubscriptions(decorateEffectiveSubscriptions(sRes?.data?.items || []));
       setServiceProgresses(progressRes?.data?.items || []);
       setServiceTasks(taskRes?.data?.items || []);
+      setLifecycleDetail(lifecycleRes?.data || null);
       await reloadContacts(customerId);
     } catch (err) {
       console.error(err);
@@ -1863,6 +1872,13 @@ export default function Customers() {
       ...deals.map((item: any) => ({ type: '成交', title: item.package_name || item.deal_name || '成交记录', detail: item.amount ? `${item.amount} ${item.currency || 'USD'}` : '', date: item.deal_date || item.created_at, tone: 'emerald' })),
       ...payments.map((item: any) => ({ type: '收款', title: item.payment_type || '收款记录', detail: item.amount ? `${item.amount} ${item.currency || 'USD'}` : '', date: item.payment_date || item.created_at, tone: 'cyan' })),
       ...subscriptions.map((item: any) => ({ type: '服务/续费', title: item.package_name || '套餐服务', detail: `${item.start_date || '-'} 至 ${item.end_date || '-'}`, date: item.start_date || item.created_at, tone: 'amber' })),
+      ...(lifecycleDetail?.events || []).map((item: any) => ({
+        type: '生命周期',
+        title: lifecycleEventLabels[item.event_type] || item.event_type,
+        detail: item.reason_label || item.note || (item.source_id ? `${item.source_type} #${item.source_id}` : ''),
+        date: item.effective_at || item.created_at,
+        tone: item.event_type === 'stop' ? 'red' : item.event_type === 'reactivate' || item.event_type === 'resume' ? 'emerald' : 'violet',
+      })),
     ].filter(item => item.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
     return (
@@ -1927,7 +1943,7 @@ export default function Customers() {
                 <div className="relative space-y-3 before:absolute before:bottom-2 before:left-[11px] before:top-2 before:w-px before:bg-slate-200">
                   {timelineEvents.map((event, index) => (
                     <div key={`${event.type}-${event.date}-${index}`} className="relative flex gap-3">
-                      <span className={`z-10 mt-1 h-2.5 w-2.5 shrink-0 rounded-full ring-4 ring-white ${event.tone === 'emerald' ? 'bg-emerald-500' : event.tone === 'cyan' ? 'bg-cyan-500' : event.tone === 'amber' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                      <span className={`z-10 mt-1 h-2.5 w-2.5 shrink-0 rounded-full ring-4 ring-white ${event.tone === 'red' ? 'bg-red-500' : event.tone === 'violet' ? 'bg-violet-500' : event.tone === 'emerald' ? 'bg-emerald-500' : event.tone === 'cyan' ? 'bg-cyan-500' : event.tone === 'amber' ? 'bg-amber-500' : 'bg-blue-500'}`} />
                       <div className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5">
                         <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><Badge className="bg-white text-slate-600">{event.type}</Badge><span className="text-sm font-medium text-slate-800">{event.title}</span></div><span className="text-xs text-slate-400">{String(event.date).slice(0, 16)}</span></div>
                         {event.detail && <p className="mt-1 truncate text-xs text-slate-500">{event.detail}</p>}

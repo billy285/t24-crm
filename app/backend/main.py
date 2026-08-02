@@ -24,6 +24,7 @@ from services.auth import initialize_admin_user
 from services.emp_auth import initialize_default_employee_admin
 from services.emp_auth import decode_access_token as decode_employee_access_token
 from services.deal_payment_sync import backfill_missing_payments_from_deals
+from services.customer_lifecycle import sync_lifecycle_from_payments
 from core.database import db_manager
 from core.auth import decode_access_token as decode_platform_access_token
 # MODULE_IMPORTS_END
@@ -104,6 +105,7 @@ async def lifespan(app: FastAPI):
     await initialize_mock_data()  # re-enabled after user_id autofill
     async with db_manager.async_session_maker() as db:
         await backfill_missing_payments_from_deals(db)
+        await sync_lifecycle_from_payments(db)
     await initialize_default_employee_admin()
     await initialize_admin_user()
     # MODULE_STARTUP_END

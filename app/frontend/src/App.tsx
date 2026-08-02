@@ -27,6 +27,7 @@ const MerchantPool = lazy(() => import('./pages/MerchantPool'));
 const SalesWorkbench = lazy(() => import('./pages/SalesWorkbench'));
 const SalesKnowledge = lazy(() => import('./pages/SalesKnowledge'));
 const MonthlyDeduction = lazy(() => import('./pages/MonthlyDeduction'));
+const CustomerLifecycle = lazy(() => import('./pages/CustomerLifecycle'));
 
 const PageFallback = () => (
   <div className="flex min-h-[50vh] items-center justify-center">
@@ -68,6 +69,7 @@ const App = () => (
               <Route path="/customers" element={<Layout><Customers /></Layout>} />
               <Route path="/sales" element={<Layout><Sales /></Layout>} />
               <Route path="/deals" element={<Layout><Deals /></Layout>} />
+              <Route path="/customer-lifecycle" element={<Layout><CustomerLifecycle /></Layout>} />
               <Route path="/finance" element={<Layout><Finance /></Layout>} />
               <Route path="/payroll" element={<Layout><Payroll /></Layout>} />
               <Route path="/tasks" element={<Layout><Tasks /></Layout>} />

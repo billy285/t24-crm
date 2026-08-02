@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, PhoneCall, Handshake, DollarSign,
   ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
   ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, Activity
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,6 +32,7 @@ const allNavItems = [
   { path: '/customers', label: '客户管理', icon: Users },
   { path: '/sales', label: '成交客户', icon: Handshake },
   { path: '/deals', label: '成交管理', icon: Handshake },
+  { path: '/customer-lifecycle', label: '客户生命周期', icon: Activity },
   { path: '/finance', label: '财务管理', icon: DollarSign },
   { path: '/payroll', label: '工资表', icon: ClipboardList },
   { path: '/tasks', label: '任务协作', icon: ListTodo },
@@ -48,7 +49,7 @@ const navSections = [
     label: '销售管理',
     paths: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge'],
   },
-  { label: '客户与成交', paths: ['/customers', '/sales', '/deals'] },
+  { label: '客户与成交', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle'] },
   { label: '交付协作', paths: ['/tasks', '/service-board', '/callbacks'] },
   { label: '财务管理', paths: ['/finance', '/payroll'] },
   { label: '系统管理', paths: ['/employees', '/settings', '/permissions'] },

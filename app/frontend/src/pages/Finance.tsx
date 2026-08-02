@@ -3018,7 +3018,7 @@ export default function Finance() {
       void logOperation({
         customerId: Number(subscription.customer_id),
         actionType: enabled ? 'enable_subscription_auto_renew' : 'stop_subscription_renewal',
-        actionDetail: `${enabled ? '开启订阅续费' : '停止合作/停止续费'}：${subscription.customer_name || customerMap[subscription.customer_id]?.business_name || ''} ${subscription.package_name || ''}`,
+        actionDetail: `${enabled ? '开启订阅续费' : '停止此套餐续费'}：${subscription.customer_name || customerMap[subscription.customer_id]?.business_name || ''} ${subscription.package_name || ''}`,
         operatorName,
       });
 
@@ -4665,7 +4665,17 @@ export default function Finance() {
                                           onClick={() => handleToggleSubscriptionAutoRenew(s, false)}
                                           disabled={updatingSubscriptionId === Number(s.id)}
                                         >
-                                          停止合作
+                                          停止此套餐
+                                        </Button>
+                                      )}
+                                      {isAdmin && (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-8 px-3 text-xs text-red-700 hover:bg-red-50 hover:text-red-800"
+                                          onClick={() => navigate(`/customer-lifecycle?customer=${s.customer_id}`)}
+                                        >
+                                          客户停止合作
                                         </Button>
                                       )}
                                       <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'subscription', item: s })}>

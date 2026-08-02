@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.payments import PaymentsService
 from services.payment_deal_sync import sync_deal_from_payment, unlink_synced_deal_for_payment
+from services.customer_lifecycle import sync_lifecycle_from_payments
 from dependencies.auth import get_finance_user
 from schemas.auth import UserResponse
 
@@ -270,6 +271,8 @@ async def create_payments(
             except Exception as sync_err:
                 logger.error(f"Failed to sync deal from payment {result.id}: {sync_err}", exc_info=True)
                 raise HTTPException(status_code=500, detail="收款已保存，但同步成交记录失败")
+
+        await sync_lifecycle_from_payments(db, [result.customer_id])
         
         logger.info(f"Payments created successfully with id: {result.id}")
         return result
@@ -301,6 +304,7 @@ async def create_paymentss_batch(
             if result:
                 if sync_to_deal:
                     await sync_deal_from_payment(db, result)
+                await sync_lifecycle_from_payments(db, [result.customer_id])
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} paymentss successfully")
@@ -329,10 +333,16 @@ async def update_paymentss_batch(
             raw_update = item.updates.model_dump()
             sync_to_deal = bool(raw_update.pop("sync_to_deal", False))
             update_dict = {k: v for k, v in raw_update.items() if v is not None}
+            existing = await service.get_by_id(item.id)
+            previous_customer_id = existing.customer_id if existing else None
             result = await service.update(item.id, update_dict)
             if result:
                 if sync_to_deal:
                     await sync_deal_from_payment(db, result)
+                affected_customer_ids = {result.customer_id}
+                if previous_customer_id:
+                    affected_customer_ids.add(previous_customer_id)
+                await sync_lifecycle_from_payments(db, affected_customer_ids)
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} paymentss successfully")
@@ -359,6 +369,8 @@ async def update_payments(
         raw_update = data.model_dump()
         sync_to_deal = bool(raw_update.pop("sync_to_deal", False))
         update_dict = {k: v for k, v in raw_update.items() if v is not None}
+        existing = await service.get_by_id(id)
+        previous_customer_id = existing.customer_id if existing else None
         result = await service.update(id, update_dict)
         if not result:
             logger.warning(f"Payments with id {id} not found for update")
@@ -370,6 +382,11 @@ async def update_payments(
             except Exception as sync_err:
                 logger.error(f"Failed to sync deal from payment {id}: {sync_err}", exc_info=True)
                 raise HTTPException(status_code=500, detail="收款已更新，但同步成交记录失败")
+
+        affected_customer_ids = {result.customer_id}
+        if previous_customer_id:
+            affected_customer_ids.add(previous_customer_id)
+        await sync_lifecycle_from_payments(db, affected_customer_ids)
         
         logger.info(f"Payments {id} updated successfully")
         return result
@@ -397,9 +414,13 @@ async def delete_paymentss_batch(
     
     try:
         for item_id in request.ids:
+            existing = await service.get_by_id(item_id)
+            customer_id = existing.customer_id if existing else None
             success = await service.delete(item_id)
             if success:
                 await unlink_synced_deal_for_payment(db, item_id)
+                if customer_id:
+                    await sync_lifecycle_from_payments(db, [customer_id])
                 deleted_count += 1
         
         logger.info(f"Batch deleted {deleted_count} paymentss successfully")
@@ -421,12 +442,16 @@ async def delete_payments(
     
     service = PaymentsService(db)
     try:
+        existing = await service.get_by_id(id)
+        customer_id = existing.customer_id if existing else None
         success = await service.delete(id)
         if not success:
             logger.warning(f"Payments with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Payments not found")
 
         await unlink_synced_deal_for_payment(db, id)
+        if customer_id:
+            await sync_lifecycle_from_payments(db, [customer_id])
         
         logger.info(f"Payments {id} deleted successfully")
         return {"message": "Payments deleted successfully", "id": id}
