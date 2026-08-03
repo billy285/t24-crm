@@ -39,6 +39,7 @@ class ProjectConfirmation(BaseModel):
     business_line_code: str = Field(min_length=2, max_length=32)
     product_code: Optional[str] = Field(None, max_length=64)
     product_name: Optional[str] = Field(None, max_length=160)
+    package_name: Optional[str] = Field(None, max_length=160)
     status: str = "active_paid"
     billing_cycle: Optional[str] = None
     collection_method: Optional[str] = None
@@ -159,6 +160,7 @@ async def list_customer_engagements(
                 "customer_code": customer.customer_code,
                 "business_line": {"code": line.code, "name": line.name},
                 "product": {"code": product.code, "name": product.name},
+                "package_name": engagement.package_name or product.name,
                 "status": engagement.status,
                 "billing_cycle": engagement.billing_cycle,
                 "collection_method": engagement.collection_method,

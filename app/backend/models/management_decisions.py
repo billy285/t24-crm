@@ -84,6 +84,7 @@ class CustomerEngagement(Base):
     business_line_id = Column(Integer, ForeignKey("business_lines.id", ondelete="RESTRICT"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("product_catalog.id", ondelete="RESTRICT"), nullable=False, index=True)
     engagement_code = Column(String(64), nullable=False, index=True)
+    package_name = Column(String(160), nullable=True)
     status = Column(String(24), nullable=False, default="pending_setup", index=True)
     owner_employee_id = Column(Integer, nullable=True, index=True)
     sales_employee_id = Column(Integer, nullable=True, index=True)

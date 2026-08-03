@@ -98,6 +98,56 @@ const emptyForm = {
   source: 'phone', sales_person: '', sales_employee_id: '' as string | number, level: 'normal', status: 'new', notes: '',
 };
 
+type CustomerProjectDraft = {
+  engagement_id?: number;
+  business_line_code: string;
+  product_code: string;
+  product_name: string;
+  package_name: string;
+  status: string;
+  billing_cycle: string;
+  collection_method: string;
+  currency: string;
+  owner_employee_id: string;
+  paid_started_at: string;
+};
+
+const customerProjectLines: Record<string, { label: string; productCode: string; productName: string }> = {
+  managed_service: { label: '代运营', productCode: 'managed_service_legacy', productName: '代运营服务' },
+  restaurant_os: { label: '餐饮 OS', productCode: 'restaurant_os_legacy', productName: '餐饮 OS' },
+  beauty_os: { label: '美业 OS', productCode: 'beauty_os_legacy', productName: '美业 OS' },
+  one_time_project: { label: '一次性项目', productCode: 'one_time_legacy', productName: '一次性项目' },
+};
+
+const customerProjectStatuses: Record<string, string> = {
+  pending_setup: '待开通', trial: '试用中', active_paid: '付费合作中', at_risk: '有流失风险',
+  paused: '项目暂停', pending_stop: '待停止', stopped: '项目已停止', reactivated: '重新合作', completed: '一次性项目完成',
+};
+
+const customerProjectBillingCycles: Record<string, string> = {
+  monthly: '月付', quarterly: '季付', annual: '年付', one_time: '一次性',
+};
+
+const customerProjectCollectionMethods: Record<string, string> = {
+  stripe_auto: 'Stripe 自动扣款', bank_transfer: '银行转账', check: '支票', zelle: 'Zelle', other: '其他',
+};
+
+function newCustomerProject(lineCode = 'managed_service'): CustomerProjectDraft {
+  const line = customerProjectLines[lineCode] || customerProjectLines.managed_service;
+  return {
+    business_line_code: lineCode,
+    product_code: line.productCode,
+    product_name: line.productName,
+    package_name: line.productName,
+    status: 'pending_setup',
+    billing_cycle: lineCode === 'one_time_project' ? 'one_time' : 'monthly',
+    collection_method: 'other',
+    currency: 'USD',
+    owner_employee_id: '',
+    paid_started_at: '',
+  };
+}
+
 const allColumns = [
   { key: 'customer_code', label: '编号', d: true }, { key: 'business_name', label: '商家名称', d: true },
   { key: 'contact_name', label: '联系人', d: true }, { key: 'phone', label: '电话', d: true },
@@ -526,6 +576,8 @@ export default function Customers() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [customerProjectForms, setCustomerProjectForms] = useState<CustomerProjectDraft[]>([]);
+  const [customerProjectsLoading, setCustomerProjectsLoading] = useState(false);
   const [manualCityInput, setManualCityInput] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [selectedCustomerTab, setSelectedCustomerTab] = useState('info');
@@ -1220,8 +1272,8 @@ export default function Customers() {
     renewalPageSize,
   ]);
 
-  const openCreate = () => { setForm({ ...emptyForm, selected_platforms: [], interested_packages: [], interested_packages_snapshot: {} }); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
-  const openEdit = (c: any) => {
+  const openCreate = () => { setForm({ ...emptyForm, selected_platforms: [], interested_packages: [], interested_packages_snapshot: {} }); setCustomerProjectForms([]); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
+  const openEdit = async (c: any) => {
     const interestedPackages = parseMultiValue(c.interested_packages);
     const snapshot = parsePackageSnapshot(c.interested_packages_snapshot);
     interestedPackages.forEach(key => {
@@ -1230,6 +1282,49 @@ export default function Customers() {
     setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', selected_platforms: parseMultiValue(c.selected_platforms), interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
     setManualCityInput(false);
     setEditingId(c.id); setDuplicateWarning(null); setShowForm(true);
+    setCustomerProjectsLoading(true);
+    try {
+      const response = await invokeWithAuth({ url: `/api/v1/entities/customers/${c.id}/projects`, method: 'GET' });
+      setCustomerProjectForms((response?.data?.items || []).map((row: any) => ({
+        engagement_id: row.id,
+        business_line_code: row.business_line_code,
+        product_code: row.product_code,
+        product_name: row.product_name,
+        package_name: row.package_name || row.product_name,
+        status: row.status || 'pending_setup',
+        billing_cycle: row.billing_cycle || '',
+        collection_method: row.collection_method || 'other',
+        currency: row.currency || 'USD',
+        owner_employee_id: row.owner_employee_id ? String(row.owner_employee_id) : '',
+        paid_started_at: row.paid_started_at ? row.paid_started_at.slice(0, 10) : '',
+      })));
+    } catch (error: any) {
+      toast.error(getErrorDetail(error, '合作项目加载失败'));
+      setCustomerProjectForms([]);
+    } finally {
+      setCustomerProjectsLoading(false);
+    }
+  };
+
+  const addCustomerProject = () => {
+    const nextLine = Object.keys(customerProjectLines).find(code => !customerProjectForms.some(row => row.business_line_code === code));
+    if (!nextLine) { toast.error('四类业务项目都已经添加'); return; }
+    setCustomerProjectForms(rows => [...rows, newCustomerProject(nextLine)]);
+  };
+
+  const updateCustomerProject = (index: number, patch: Partial<CustomerProjectDraft>) => {
+    setCustomerProjectForms(rows => rows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row;
+      const next = { ...row, ...patch };
+      if (patch.business_line_code) {
+        const line = customerProjectLines[patch.business_line_code];
+        next.product_code = line.productCode;
+        next.product_name = line.productName;
+        if (!next.package_name || next.package_name === row.product_name) next.package_name = line.productName;
+        if (patch.business_line_code === 'one_time_project') next.billing_cycle = 'one_time';
+      }
+      return next;
+    }));
   };
 
   const getNextAutoCode = (industry?: string) => {
@@ -1239,6 +1334,9 @@ export default function Customers() {
 
   const handleSave = async () => {
     if (!form.business_name || !form.contact_name || !form.phone) { toast.error('请填写必填字段'); return; }
+    if (new Set(customerProjectForms.map(row => row.business_line_code)).size !== customerProjectForms.length) { toast.error('同一业务项目只能添加一次'); return; }
+    if (customerProjectForms.some(row => !row.package_name.trim())) { toast.error('请填写每个合作项目的套餐或项目名称'); return; }
+    if (customerProjectForms.some(row => ['active_paid', 'reactivated'].includes(row.status) && !row.paid_started_at)) { toast.error('付费合作中的项目必须填写第一笔有效收款日期'); return; }
     setSaving(true);
     try {
       const now = new Date().toISOString();
@@ -1255,8 +1353,16 @@ export default function Customers() {
         sales_employee_id: form.sales_employee_id === '' ? null : Number(form.sales_employee_id),
         monthly_orders: String(form.monthly_orders ?? '').trim() === '' ? null : Number(form.monthly_orders || 0),
       };
+      const projects = customerProjectForms.map(row => ({
+        ...row,
+        owner_employee_id: row.owner_employee_id ? Number(row.owner_employee_id) : null,
+        sales_employee_id: form.sales_employee_id === '' ? null : Number(form.sales_employee_id),
+        paid_started_at: row.paid_started_at ? `${row.paid_started_at}T00:00:00Z` : null,
+        source_payment_ids: [],
+        source_subscription_ids: [],
+      }));
       if (editingId) {
-        const updatedRes = await client.entities.customers.update({ id: String(editingId), data: { ...payload, updated_at: now } });
+        const updatedRes = await invokeWithAuth({ url: `/api/v1/entities/customers/${editingId}/with-projects`, method: 'PUT', data: { customer: { ...payload, updated_at: now }, projects } });
         const updatedCustomer = updatedRes?.data || { ...payload, id: editingId, updated_at: now };
         setCustomers(prev => prev.map(item => (item.id === editingId ? { ...item, ...updatedCustomer } : item)));
         toast.success('客户信息已更新');
@@ -1264,7 +1370,7 @@ export default function Customers() {
       } else {
         const code = form.customer_code.trim() || getNextAutoCode(form.industry);
         if (customers.some(c => c.customer_code === code)) { toast.error(`编号「${code}」已存在`); setSaving(false); return; }
-        const res = await client.entities.customers.create({ data: { ...payload, customer_code: code, created_at: now, updated_at: now } });
+        const res = await invokeWithAuth({ url: '/api/v1/entities/customers/with-projects', method: 'POST', data: { customer: { ...payload, customer_code: code, created_at: now, updated_at: now }, projects } });
         if (res?.data) {
           setCustomers(prev => [res.data, ...prev]);
         }
@@ -1470,7 +1576,7 @@ export default function Customers() {
       </Dialog>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle></DialogHeader>
           {duplicateWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><AlertCircle className="w-4 h-4 flex-shrink-0" />{duplicateWarning}</div>}
           <div className="grid grid-cols-2 gap-4">
@@ -1594,6 +1700,44 @@ export default function Customers() {
               )}
             </div>
             <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <Label className="text-sm font-semibold text-slate-800">合作项目（可多选）</Label>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">在客户首次录入时建立代运营、餐饮 OS、美业 OS 或一次性项目。尚未合作可以暂不添加；以后在这里继续增加项目。</p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={addCustomerProject} disabled={customerProjectForms.length >= 4 || customerProjectsLoading}>
+                  <Plus className="mr-1 h-3.5 w-3.5" />增加合作项目
+                </Button>
+              </div>
+              {customerProjectsLoading ? (
+                <div className="py-6 text-center text-sm text-slate-400">正在加载客户合作项目…</div>
+              ) : customerProjectForms.length === 0 ? (
+                <div className="mt-4 rounded-lg border border-dashed border-blue-200 bg-white/70 px-4 py-5 text-center text-sm text-slate-500">当前未建立合作项目；客户资料仍可正常保存。</div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {customerProjectForms.map((project, index) => (
+                    <div key={`${project.engagement_id || 'new'}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-800">项目 {index + 1}</p>
+                        {!project.engagement_id && <Button type="button" size="sm" variant="ghost" className="text-red-600" onClick={() => setCustomerProjectForms(rows => rows.filter((_row, rowIndex) => rowIndex !== index))}>移除</Button>}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div><Label className="text-xs">业务项目 *</Label><NativeSelect value={project.business_line_code} onChange={value => updateCustomerProject(index, { business_line_code: value })} options={Object.entries(customerProjectLines).map(([value, item]) => ({ value, label: item.label }))} /></div>
+                        <div><Label className="text-xs">套餐/项目名称 *</Label><Input value={project.package_name} onChange={event => updateCustomerProject(index, { package_name: event.target.value })} placeholder="如：基础代运营、餐饮 OS 专业版" /></div>
+                        <div><Label className="text-xs">项目状态 *</Label><NativeSelect value={project.status} onChange={value => updateCustomerProject(index, { status: value })} options={Object.entries(customerProjectStatuses).map(([value, label]) => ({ value, label }))} /></div>
+                        <div><Label className="text-xs">第一笔有效收款日期</Label><Input type="date" value={project.paid_started_at} max={new Date().toISOString().slice(0, 10)} onChange={event => updateCustomerProject(index, { paid_started_at: event.target.value })} /></div>
+                        <div><Label className="text-xs">收费周期</Label><NativeSelect value={project.billing_cycle} onChange={value => updateCustomerProject(index, { billing_cycle: value })} options={[{ value: '', label: '待确认' }, ...Object.entries(customerProjectBillingCycles).map(([value, label]) => ({ value, label }))]} /></div>
+                        <div><Label className="text-xs">收款方式</Label><NativeSelect value={project.collection_method} onChange={value => updateCustomerProject(index, { collection_method: value })} options={Object.entries(customerProjectCollectionMethods).map(([value, label]) => ({ value, label }))} /></div>
+                        <div><Label className="text-xs">币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateCustomerProject(index, { currency: event.target.value.toUpperCase() })} /></div>
+                        <div><Label className="text-xs">项目负责人</Label><NativeSelect value={project.owner_employee_id} onChange={value => updateCustomerProject(index, { owner_employee_id: value })} options={[{ value: '', label: '待分配' }, ...employeesList.map(employeeRow => ({ value: String(employeeRow.id), label: employeeRow.name }))]} /></div>
+                      </div>
+                      <p className="mt-3 text-xs text-slate-400">“付费合作中”必须填写第一笔有效收款日期；待开通或试用项目可以暂不填写。停止单个项目不会改变客户整体状态。</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="col-span-2">
               <Label>客户意向套餐</Label>
               <div className="mt-1 space-y-2">

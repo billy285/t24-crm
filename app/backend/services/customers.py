@@ -38,13 +38,16 @@ class CustomersService:
 
         return or_(*conditions) if conditions else false()
 
-    async def create(self, data: Dict[str, Any]) -> Optional[Customers]:
+    async def create(self, data: Dict[str, Any], *, commit: bool = True) -> Optional[Customers]:
         """Create a new customers"""
         try:
             obj = Customers(**data)
             self.db.add(obj)
-            await self.db.commit()
-            await self.db.refresh(obj)
+            if commit:
+                await self.db.commit()
+                await self.db.refresh(obj)
+            else:
+                await self.db.flush()
             logger.info(f"Created customers with id: {obj.id}")
             return obj
         except Exception as e:
@@ -116,7 +119,7 @@ class CustomersService:
             raise
 
     async def update(
-        self, obj_id: int, update_data: Dict[str, Any], scope_user: Optional[Any] = None
+        self, obj_id: int, update_data: Dict[str, Any], scope_user: Optional[Any] = None, *, commit: bool = True
     ) -> Optional[Customers]:
         """Update customers"""
         try:
@@ -128,8 +131,11 @@ class CustomersService:
                 if hasattr(obj, key):
                     setattr(obj, key, value)
 
-            await self.db.commit()
-            await self.db.refresh(obj)
+            if commit:
+                await self.db.commit()
+                await self.db.refresh(obj)
+            else:
+                await self.db.flush()
             logger.info(f"Updated customers {obj_id}")
             return obj
         except Exception as e:

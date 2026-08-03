@@ -164,6 +164,133 @@ async def test_review_queue_is_readable_by_finance_and_writable_only_by_admin(wo
 
 
 @pytest.mark.asyncio
+async def test_automatic_risk_reminder_never_changes_project_status(workflow_context):
+    client, sessions = workflow_context
+    async with sessions() as session:
+        session.add(CustomerEngagement(
+            id=401,
+            customer_id=11,
+            business_line_id=1,
+            product_id=1,
+            engagement_code="ENG-RISK-401",
+            package_name="待上线套餐",
+            status="pending_setup",
+            currency="USD",
+            created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        ))
+        await session.commit()
+
+    response = await client.get(
+        "/api/v1/management-decisions/classification-review",
+        headers=auth_headers("admin", 1),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    reminder = next(row for row in payload["anomalies"] if row["code"] == "automatic_project_risk_reminder")
+    assert reminder["category"] == "risk"
+    assert "待开通" in reminder["message"]
+    assert payload["summary"]["risk_reminder_count"] == 1
+
+    async with sessions() as session:
+        engagement = (await session.execute(
+            select(CustomerEngagement).where(CustomerEngagement.id == 401)
+        )).scalar_one()
+    assert engagement.status == "pending_setup"
+
+
+@pytest.mark.asyncio
+async def test_customer_create_with_projects_is_atomic_and_admin_can_read_projects(workflow_context):
+    client, sessions = workflow_context
+    payload = {
+        "customer": {
+            "customer_code": "C-NEW",
+            "business_name": "New Multi Service Customer",
+            "contact_name": "Owner",
+            "phone": "555-9000",
+            "industry": "restaurant",
+            "status": "closed",
+        },
+        "projects": [{
+            "business_line_code": "managed_service",
+            "product_code": "managed_service_legacy",
+            "product_name": "代运营服务",
+            "package_name": "代运营基础套餐",
+            "status": "active_paid",
+            "billing_cycle": "monthly",
+            "collection_method": "bank_transfer",
+            "currency": "USD",
+            "paid_started_at": "2026-08-01T00:00:00Z",
+        }],
+    }
+    created = await client.post(
+        "/api/v1/entities/customers/with-projects",
+        headers=auth_headers("admin", 33),
+        json=payload,
+    )
+    assert created.status_code == 201, created.text
+    customer_id = created.json()["id"]
+
+    projects = await client.get(
+        f"/api/v1/entities/customers/{customer_id}/projects",
+        headers=auth_headers("admin", 33),
+    )
+    assert projects.status_code == 200
+    assert projects.json()["items"][0]["package_name"] == "代运营基础套餐"
+
+    async with sessions() as session:
+        engagement = (await session.execute(
+            select(CustomerEngagement).where(CustomerEngagement.customer_id == customer_id)
+        )).scalar_one()
+        decision = (await session.execute(
+            select(ClassificationReviewDecision).where(ClassificationReviewDecision.customer_id == customer_id)
+        )).scalar_one()
+    assert engagement.package_name == "代运营基础套餐"
+    assert decision.decision == "confirmed"
+
+    updated = await client.put(
+        f"/api/v1/entities/customers/{customer_id}/with-projects",
+        headers=auth_headers("admin", 33),
+        json={
+            "customer": {"business_name": "Atomic Customer"},
+            "projects": [{
+                **payload["projects"][0],
+                "engagement_id": engagement.id,
+                "status": "stopped",
+                "stopped_at": "2026-08-03T00:00:00Z",
+                "stop_reason_code": "customer_choice",
+            }],
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    async with sessions() as session:
+        status_events = (await session.execute(
+            select(EngagementLifecycleEvent)
+            .where(EngagementLifecycleEvent.engagement_id == engagement.id)
+            .order_by(EngagementLifecycleEvent.id.asc())
+        )).scalars().all()
+    assert [event.event_type for event in status_events] == ["classification_confirmed", "status_changed"]
+    assert "active_paid -> stopped" in status_events[-1].note
+
+    invalid_payload = {
+        **payload,
+        "customer": {**payload["customer"], "customer_code": "C-BAD", "business_name": "Should Roll Back"},
+        "projects": [{**payload["projects"][0], "paid_started_at": None}],
+    }
+    invalid = await client.post(
+        "/api/v1/entities/customers/with-projects",
+        headers=auth_headers("admin", 33),
+        json=invalid_payload,
+    )
+    assert invalid.status_code == 400
+    async with sessions() as session:
+        rolled_back = (await session.execute(
+            select(Customers).where(Customers.customer_code == "C-BAD")
+        )).scalar_one_or_none()
+    assert rolled_back is None
+
+
+@pytest.mark.asyncio
 async def test_confirming_project_is_idempotent_and_does_not_change_customer_lifecycle(workflow_context):
     client, sessions = workflow_context
     payload = {

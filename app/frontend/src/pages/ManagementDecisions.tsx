@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeft, BriefcaseBusiness, CheckCircle2, Clock3,
-  Layers3, RefreshCw, Search, ShieldCheck, TrendingUp, Users,
+  AlertTriangle, ArrowLeft, BarChart3, BriefcaseBusiness, CheckCircle2, Clock3,
+  Layers3, ListChecks, RefreshCw, Search, ShieldCheck, TrendingUp, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -23,12 +23,16 @@ type Project = {
   customer_code?: string;
   business_line: { code: string; name: string };
   product: { code: string; name: string };
+  package_name?: string;
   status: string;
   billing_cycle?: string;
   collection_method?: string;
   currency: string;
   paid_started_at?: string;
   stopped_at?: string;
+  industry?: string;
+  sales_person?: string;
+  owner_employee_id?: number;
 };
 
 type Suggestion = {
@@ -73,9 +77,20 @@ type ReviewData = {
     multi_project_customers: number;
     project_line_counts: Record<string, number>;
     project_status_counts: Record<string, number>;
+    anomaly_count: number;
+    high_anomaly_count: number;
+    risk_reminder_count: number;
+    line_metrics: Record<string, {
+      name: string; project_count: number; customer_count: number; active_count: number;
+      stopped_count: number; at_risk_count: number; average_months?: number; churn_rate?: number;
+      duration_sample_count: number;
+    }>;
+    multi_project_combinations: Record<string, number>;
   };
   items: ReviewItem[];
   projects: Project[];
+  anomalies: Array<{ code: string; category?: string; severity: string; customer_id: number; customer_name: string; project_id?: number; message: string; suggested_action?: string }>;
+  recommendations: Array<{ level: string; title: string; message: string }>;
 };
 
 type ProjectForm = {
@@ -83,6 +98,7 @@ type ProjectForm = {
   business_line_code: string;
   product_code: string;
   product_name: string;
+  package_name: string;
   status: string;
   billing_cycle: string;
   collection_method: string;
@@ -141,6 +157,7 @@ function suggestionToForm(suggestion: Suggestion): ProjectForm {
     business_line_code: suggestion.business_line,
     product_code: suggestion.product_code,
     product_name: suggestion.product_name,
+    package_name: suggestion.product_name,
     status: 'active_paid',
     billing_cycle: suggestion.billing_cycle || (suggestion.business_line === 'one_time_project' ? 'one_time' : 'monthly'),
     collection_method: 'other',
@@ -158,6 +175,7 @@ function projectToForm(project: Project): ProjectForm {
     business_line_code: project.business_line.code,
     product_code: project.product.code,
     product_name: project.product.name,
+    package_name: project.package_name || project.product.name,
     status: project.status,
     billing_cycle: project.billing_cycle || '',
     collection_method: project.collection_method || 'other',
@@ -177,6 +195,12 @@ export default function ManagementDecisions() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [reviewFilter, setReviewFilter] = useState('pending');
+  const [section, setSection] = useState<'overview' | 'projects' | 'exceptions' | 'history'>('overview');
+  const [projectSearch, setProjectSearch] = useState('');
+  const [projectLineFilter, setProjectLineFilter] = useState('all');
+  const [projectStatusFilter, setProjectStatusFilter] = useState('all');
+  const [projectIndustryFilter, setProjectIndustryFilter] = useState('all');
+  const [anomalyFilter, setAnomalyFilter] = useState('all');
   const [reviewing, setReviewing] = useState<ReviewItem | null>(null);
   const [projectForms, setProjectForms] = useState<ProjectForm[]>([]);
   const [reviewNote, setReviewNote] = useState('');
@@ -213,6 +237,23 @@ export default function ManagementDecisions() {
     });
   }, [data, reviewFilter, search]);
 
+  const industries = useMemo(() => Array.from(new Set((data?.projects || []).map(row => row.industry).filter(Boolean) as string[])).sort(), [data]);
+  const visibleProjects = useMemo(() => {
+    const keyword = projectSearch.trim().toLowerCase();
+    return (data?.projects || []).filter(project => {
+      if (projectLineFilter !== 'all' && project.business_line.code !== projectLineFilter) return false;
+      if (projectStatusFilter !== 'all' && project.status !== projectStatusFilter) return false;
+      if (projectIndustryFilter !== 'all' && project.industry !== projectIndustryFilter) return false;
+      if (!keyword) return true;
+      return [project.customer_name, project.customer_code, project.package_name, project.sales_person]
+        .filter(Boolean).some(value => String(value).toLowerCase().includes(keyword));
+    });
+  }, [data, projectIndustryFilter, projectLineFilter, projectSearch, projectStatusFilter]);
+
+  const visibleAnomalies = useMemo(() => (data?.anomalies || [])
+    .filter(row => anomalyFilter === 'all' || row.severity === anomalyFilter)
+    .map(row => ({ ...row, message: row.suggested_action ? `${row.message}。建议：${row.suggested_action}` : row.message })), [anomalyFilter, data]);
+
   const openReview = (item: ReviewItem) => {
     setReviewing(item);
     setReviewNote(item.review_note || '');
@@ -232,7 +273,11 @@ export default function ManagementDecisions() {
         const product = lineProducts[patch.business_line_code];
         next.product_code = product.code;
         next.product_name = product.name;
+        if (!next.package_name || next.package_name === row.product_name) next.package_name = product.name;
         if (patch.business_line_code === 'one_time_project') next.billing_cycle = 'one_time';
+      }
+      if (patch.product_name !== undefined && patch.package_name === undefined) {
+        next.package_name = patch.product_name;
       }
       return next;
     }));
@@ -240,8 +285,12 @@ export default function ManagementDecisions() {
 
   const saveReview = async (decision: 'confirmed' | 'needs_follow_up') => {
     if (!reviewing) return;
-    if (decision === 'confirmed' && projectForms.some(row => !row.paid_started_at)) {
-      toast.error('每个确认项目都需要填写项目开始日期');
+    if (decision === 'confirmed' && projectForms.some(row => !row.package_name.trim())) {
+      toast.error('请填写每个项目的套餐或项目名称');
+      return;
+    }
+    if (decision === 'confirmed' && projectForms.some(row => ['active_paid', 'reactivated'].includes(row.status) && !row.paid_started_at)) {
+      toast.error('付费合作中的项目必须填写第一笔有效收款日期');
       return;
     }
     setSaving(true);
@@ -323,50 +372,41 @@ export default function ManagementDecisions() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        {[
-          ['待审核客户', pendingCount, '需要逐位确认', Clock3, 'text-orange-600', 'bg-orange-50'],
-          ['稍后核对', followUpCount, '信息仍不完整', AlertTriangle, 'text-amber-600', 'bg-amber-50'],
-          ['分类提示', warningTotal, '不会自动写入', ShieldCheck, 'text-blue-600', 'bg-blue-50'],
-          ['已确认项目', summary?.project_count || 0, '客户与项目已分离', BriefcaseBusiness, 'text-violet-600', 'bg-violet-50'],
-          ['合作中项目', summary?.active_project_count || 0, '按项目口径统计', TrendingUp, 'text-emerald-600', 'bg-emerald-50'],
-          ['多项目客户', summary?.multi_project_customers || 0, '可同时购买多项服务', Layers3, 'text-cyan-600', 'bg-cyan-50'],
-        ].map(([label, value, hint, Icon, color, bg]: any[]) => <Card key={label} className="border-slate-200"><CardContent className="p-4"><div className={`flex h-9 w-9 items-center justify-center rounded-xl ${bg}`}><Icon className={`h-4 w-4 ${color}`} /></div><p className="mt-3 text-xs text-slate-500">{label}</p><p className="mt-1 text-xl font-bold text-slate-900">{value}</p><p className="mt-1 text-[11px] text-slate-400">{hint}</p></CardContent></Card>)}
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
-        <Card className="border-slate-200">
-          <CardHeader><CardTitle className="text-base">老板经营视角</CardTitle><p className="text-xs text-slate-500">项目确认后，逐步形成可用于招聘、投入和产品判断的真实样本。</p></CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            {Object.entries(lineLabels).map(([code, label]) => <div key={code} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-semibold text-slate-800">{label}</p><p className="mt-2 text-2xl font-bold text-blue-700">{summary?.project_line_counts?.[code] || 0}</p><p className="text-xs text-slate-400">已确认项目</p></div>)}
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardHeader><CardTitle className="text-base">当前管理提醒</CardTitle></CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="flex items-center justify-between rounded-xl bg-orange-50 p-3"><span>有流失风险或待停止项目</span><strong className="text-orange-700">{summary?.at_risk_project_count || 0}</strong></div>
-            <div className="flex items-center justify-between rounded-xl bg-blue-50 p-3"><span>正式收款样本</span><strong className="text-blue-700">{summary?.payments || 0}</strong></div>
-            <div className="flex items-center justify-between rounded-xl bg-violet-50 p-3"><span>历史订阅样本</span><strong className="text-violet-700">{summary?.subscriptions || 0}</strong></div>
-            <p className="text-xs leading-5 text-slate-500">在项目审核完成前，不把推断分类当成正式经营结论。生命周期留存仍以客户层为准，项目组合用于判断代运营和 OS 的独立表现。</p>
-          </CardContent>
-        </Card>
-      </div>
-
       <Card className="border-slate-200">
-        <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div><CardTitle className="text-base">客户分类待审核</CardTitle><p className="mt-1 text-xs text-slate-500">显示 {visibleItems.length} 位；逐位确认后才建立正式项目。</p></div>
-          <div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索客户名称或编号" className="w-64 pl-9" /></div><select value={reviewFilter} onChange={event => setReviewFilter(event.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"><option value="pending">待审核</option><option value="needs_follow_up">稍后核对</option><option value="confirmed">已确认</option><option value="all">全部</option></select></div>
-        </CardHeader>
-        <CardContent className="grid gap-3 lg:grid-cols-2">
-          {visibleItems.map(item => <div key={item.customer_id} className="rounded-2xl border border-slate-200 p-4 hover:border-blue-200 hover:bg-blue-50/20"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-900">{item.customer_name}</p><p className="mt-1 text-xs text-slate-400">{item.customer_code || `客户 #${item.customer_id}`} · {item.industry || '行业待补充'}</p></div><Badge className={item.review_status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : item.review_status === 'needs_follow_up' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'}>{reviewLabels[item.review_status]}</Badge></div><div className="mt-3 flex flex-wrap gap-1.5">{item.suggestions.map(suggestion => <Badge key={suggestion.business_line} variant="outline">建议：{lineLabels[suggestion.business_line]}</Badge>)}{item.projects.map(project => <Badge key={project.id} className="bg-blue-100 text-blue-700">已建：{project.business_line.name}</Badge>)}</div>{item.warnings.length > 0 && <div className="mt-3 rounded-xl bg-orange-50 p-3 text-xs text-orange-700"><p className="font-semibold">{item.warnings.length} 项需要确认</p><p className="mt-1 line-clamp-2">{item.warnings.slice(0, 2).map(row => row.message).join('；')}</p></div>}<div className="mt-4 flex items-center justify-between"><p className="text-xs text-slate-400">客户状态：{item.customer_lifecycle?.status === 'active' ? '合作中' : item.customer_lifecycle?.status || '待确认'}</p><Button size="sm" variant={item.review_status === 'confirmed' ? 'outline' : 'default'} onClick={() => openReview(item)} disabled={!isAdmin}>{item.review_status === 'confirmed' ? '重新核对' : '开始审核'}</Button></div></div>)}
-          {!loading && visibleItems.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">当前筛选下没有待审核客户</div>}
+        <CardContent className="flex flex-wrap gap-2 p-2">
+          {[
+            ['overview', '经营总览', BarChart3], ['projects', '项目客户明细', BriefcaseBusiness],
+            ['exceptions', `异常待处理 ${summary?.anomaly_count || 0}`, ListChecks], ['history', `历史补录 ${pendingCount}`, Clock3],
+          ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" variant={section === value ? 'default' : 'ghost'} onClick={() => setSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
         </CardContent>
       </Card>
 
-      <Card className="border-slate-200">
-        <CardHeader><CardTitle className="text-base">已确认项目状态</CardTitle><p className="text-xs text-slate-500">停止某个项目不会自动停止客户整体合作关系。</p></CardHeader>
-        <CardContent className="overflow-x-auto"><table className="w-full min-w-[880px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户</th><th className="px-3 py-3">业务板块</th><th className="px-3 py-3">产品</th><th className="px-3 py-3">开始日期</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">收费</th><th className="px-3 py-3 text-right">操作</th></tr></thead><tbody>{(data?.projects || []).map(project => <tr key={project.id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium">{project.customer_name}<p className="text-xs font-normal text-slate-400">{project.customer_code || '-'}</p></td><td className="px-3 py-3">{project.business_line.name}</td><td className="px-3 py-3">{project.product.name}</td><td className="px-3 py-3">{dateValue(project.paid_started_at) || '-'}</td><td className="px-3 py-3"><Badge className={projectStatusClasses[project.status] || 'bg-slate-100 text-slate-700'}>{projectStatusLabels[project.status] || project.status}</Badge></td><td className="px-3 py-3">{project.billing_cycle || '-'} · {project.currency}</td><td className="px-3 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openStatus(project)} disabled={!isAdmin}>更改项目状态</Button></td></tr>)}</tbody></table>{!loading && (data?.projects || []).length === 0 && <div className="py-12 text-center text-sm text-slate-400">审核确认后，项目会显示在这里</div>}</CardContent>
-      </Card>
+      {section === 'overview' && <>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+          {[
+            ['待补录客户', pendingCount, '仅限历史数据', Clock3, 'text-orange-600', 'bg-orange-50'],
+            ['高优先异常', summary?.high_anomaly_count || 0, '需要老板确认', AlertTriangle, 'text-red-600', 'bg-red-50'],
+            ['自动风险提醒', summary?.risk_reminder_count || 0, '只提醒，不自动停止', AlertTriangle, 'text-amber-600', 'bg-amber-50'],
+            ['分类提示', warningTotal, '不会自动写入', ShieldCheck, 'text-blue-600', 'bg-blue-50'],
+            ['已确认项目', summary?.project_count || 0, '从客户管理产生', BriefcaseBusiness, 'text-violet-600', 'bg-violet-50'],
+            ['合作中项目', summary?.active_project_count || 0, '按项目口径统计', TrendingUp, 'text-emerald-600', 'bg-emerald-50'],
+            ['多项目客户', summary?.multi_project_customers || 0, '交叉销售样本', Layers3, 'text-cyan-600', 'bg-cyan-50'],
+          ].map(([label, value, hint, Icon, color, bg]: any[]) => <Card key={label} className="border-slate-200"><CardContent className="p-4"><div className={`flex h-9 w-9 items-center justify-center rounded-xl ${bg}`}><Icon className={`h-4 w-4 ${color}`} /></div><p className="mt-3 text-xs text-slate-500">{label}</p><p className="mt-1 text-xl font-bold text-slate-900">{value}</p><p className="mt-1 text-[11px] text-slate-400">{hint}</p></CardContent></Card>)}
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <Card className="border-slate-200"><CardHeader><CardTitle className="text-base">各业务生命周期信号</CardTitle><p className="text-xs text-slate-500">项目样本不足时不输出虚假的增长结论。</p></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">{Object.entries(lineLabels).map(([code, label]) => { const metric = summary?.line_metrics?.[code]; return <div key={code} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between"><p className="font-semibold">{label}</p><Badge variant="outline">{metric?.active_count || 0} 合作中</Badge></div><div className="mt-3 grid grid-cols-3 gap-2 text-center"><div><p className="text-lg font-bold">{metric?.project_count || 0}</p><p className="text-[11px] text-slate-400">项目</p></div><div><p className="text-lg font-bold">{metric?.average_months ?? '-'}</p><p className="text-[11px] text-slate-400">平均月数</p></div><div><p className="text-lg font-bold">{metric?.churn_rate == null ? '-' : `${Math.round(metric.churn_rate * 100)}%`}</p><p className="text-[11px] text-slate-400">项目流失</p></div></div><p className="mt-3 text-[11px] text-slate-400">有效时长样本 {metric?.duration_sample_count || 0} 个</p></div>; })}</CardContent></Card>
+          <Card className="border-slate-200"><CardHeader><CardTitle className="text-base">老板决策建议</CardTitle><p className="text-xs text-slate-500">招聘和投入必须同时满足样本、留存与交付产能。</p></CardHeader><CardContent className="space-y-3">{(data?.recommendations || []).map((row, index) => <div key={`${row.title}-${index}`} className={`rounded-xl p-4 ${row.level === 'risk' ? 'bg-red-50 text-red-800' : row.level === 'growth' ? 'bg-emerald-50 text-emerald-800' : 'bg-blue-50 text-blue-800'}`}><p className="text-sm font-semibold">{row.title}</p><p className="mt-1 text-xs leading-5">{row.message}</p></div>)}<div className="rounded-xl border border-slate-200 p-4"><p className="text-sm font-semibold">多项目组合</p><div className="mt-2 space-y-2 text-xs">{Object.entries(summary?.multi_project_combinations || {}).map(([name, count]) => <div key={name} className="flex justify-between"><span>{name}</span><strong>{count} 位客户</strong></div>)}{Object.keys(summary?.multi_project_combinations || {}).length === 0 && <p className="text-slate-400">项目确认后显示交叉销售组合</p>}</div></div></CardContent></Card>
+        </div>
+      </>}
+
+      {section === 'projects' && <Card className="border-slate-200">
+        <CardHeader className="gap-3"><div><CardTitle className="text-base">项目客户明细</CardTitle><p className="mt-1 text-xs text-slate-500">日常项目维护从客户管理进入；本页用于筛选、观察和调整状态。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="客户、编号、套餐或负责人" className="w-64 pl-9" /></div><select value={projectLineFilter} onChange={event => setProjectLineFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部业务</option>{Object.entries(lineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectStatusFilter} onChange={event => setProjectStatusFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部状态</option>{Object.entries(projectStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectIndustryFilter} onChange={event => setProjectIndustryFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部行业</option>{industries.map(value => <option key={value} value={value}>{value}</option>)}</select></div></CardHeader>
+        <CardContent className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户</th><th className="px-3 py-3">业务项目</th><th className="px-3 py-3">套餐/项目名称</th><th className="px-3 py-3">行业/负责人</th><th className="px-3 py-3">首次有效收款</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">收费</th><th className="px-3 py-3 text-right">操作</th></tr></thead><tbody>{visibleProjects.map(project => <tr key={project.id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium"><Link className="text-blue-700 hover:underline" to={`/customers?detail=${project.customer_id}`}>{project.customer_name}</Link><p className="text-xs font-normal text-slate-400">{project.customer_code || '-'}</p></td><td className="px-3 py-3">{project.business_line.name}</td><td className="px-3 py-3">{project.package_name || project.product.name}</td><td className="px-3 py-3">{project.industry || '-'}<p className="text-xs text-slate-400">{project.sales_person || '销售待分配'}</p></td><td className="px-3 py-3">{dateValue(project.paid_started_at) || '待首笔收款'}</td><td className="px-3 py-3"><Badge className={projectStatusClasses[project.status] || 'bg-slate-100 text-slate-700'}>{projectStatusLabels[project.status] || project.status}</Badge></td><td className="px-3 py-3">{project.billing_cycle || '-'} · {project.currency}</td><td className="px-3 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openStatus(project)} disabled={!isAdmin}>更改状态</Button></td></tr>)}</tbody></table>{!loading && visibleProjects.length === 0 && <div className="py-12 text-center text-sm text-slate-400">当前筛选下没有项目</div>}</CardContent>
+      </Card>}
+
+      {section === 'exceptions' && <Card className="border-slate-200"><CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle className="text-base">异常待处理</CardTitle><p className="mt-1 text-xs text-slate-500">只列影响经营判断的数据问题，处理后自动消失。</p></div><select value={anomalyFilter} onChange={event => setAnomalyFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部异常</option><option value="high">高优先</option><option value="warning">待完善</option></select></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{visibleAnomalies.map((row, index) => <div key={`${row.code}-${row.customer_id}-${row.project_id || index}`} className={`rounded-xl border p-4 ${row.severity === 'high' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-900">{row.customer_name}</p><p className={`mt-2 text-sm ${row.severity === 'high' ? 'text-red-700' : 'text-amber-700'}`}>{row.message}</p></div><Badge className={row.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}>{row.severity === 'high' ? '高优先' : '待完善'}</Badge></div><Button asChild size="sm" variant="outline" className="mt-4"><Link to={`/customers?detail=${row.customer_id}`}>打开客户处理</Link></Button></div>)}{!loading && visibleAnomalies.length === 0 && <div className="col-span-full py-12 text-center text-sm text-emerald-600"><CheckCircle2 className="mx-auto mb-2 h-6 w-6" />当前没有这类异常</div>}</CardContent></Card>}
+
+      {section === 'history' && <Card className="border-slate-200"><CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle className="text-base">历史客户一次性补录</CardTitle><p className="mt-1 text-xs text-slate-500">新客户已改为在客户管理首次录入；这里只处理历史资料。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索客户名称或编号" className="w-64 pl-9" /></div><select value={reviewFilter} onChange={event => setReviewFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="pending">待审核</option><option value="needs_follow_up">稍后核对</option><option value="confirmed">已确认</option><option value="all">全部</option></select></div></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{visibleItems.map(item => <div key={item.customer_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.customer_name}</p><p className="mt-1 text-xs text-slate-400">{item.customer_code || `客户 #${item.customer_id}`} · {item.industry || '行业待补充'}</p></div><Badge className={item.review_status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : item.review_status === 'needs_follow_up' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'}>{reviewLabels[item.review_status]}</Badge></div><div className="mt-3 flex flex-wrap gap-1.5">{item.suggestions.map(suggestion => <Badge key={suggestion.business_line} variant="outline">建议：{lineLabels[suggestion.business_line]}</Badge>)}{item.projects.map(project => <Badge key={project.id} className="bg-blue-100 text-blue-700">已建：{project.business_line.name}</Badge>)}</div>{item.warnings.length > 0 && <div className="mt-3 rounded-xl bg-orange-50 p-3 text-xs text-orange-700"><p className="font-semibold">{item.warnings.length} 项需要确认</p><p className="mt-1 line-clamp-2">{item.warnings.slice(0, 2).map(row => row.message).join('；')}</p></div>}<div className="mt-4 flex items-center justify-between"><p className="text-xs text-slate-400">客户状态：{item.customer_lifecycle?.status === 'active' ? '合作中' : item.customer_lifecycle?.status || '待确认'}</p><Button size="sm" variant={item.review_status === 'confirmed' ? 'outline' : 'default'} onClick={() => openReview(item)} disabled={!isAdmin}>{item.review_status === 'confirmed' ? '重新核对' : '开始审核'}</Button></div></div>)}{!loading && visibleItems.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">当前筛选下没有历史客户</div>}</CardContent></Card>}
 
       <Dialog open={!!reviewing} onOpenChange={open => !open && setReviewing(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>{reviewing?.customer_name} · 分类与项目确认</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"><strong>客户整体状态保持不变：</strong>当前为 {reviewing?.customer_lifecycle?.status === 'active' ? '合作中' : reviewing?.customer_lifecycle?.status || '待确认'}。这里只确认该客户购买了哪些项目。</div>{reviewing?.warnings.map((warning, index) => <div key={`${warning.code}-${warning.source_id || index}`} className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">{warning.message}{warning.source_id ? `（${warning.scope} #${warning.source_id}）` : ''}</div>)}<div className="space-y-3">{projectForms.map((project, index) => <div key={`${project.engagement_id || 'new'}-${index}`} className="rounded-2xl border border-slate-200 p-4"><div className="mb-3 flex items-center justify-between"><p className="font-semibold">项目 {index + 1}</p><Button size="sm" variant="ghost" className="text-red-600" onClick={() => setProjectForms(rows => rows.filter((_row, rowIndex) => rowIndex !== index))} disabled={projectForms.length <= 1}>移除</Button></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div><Label>业务板块 *</Label><select value={project.business_line_code} onChange={event => updateProjectForm(index, { business_line_code: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(lineLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>项目状态 *</Label><select value={project.status} onChange={event => updateProjectForm(index, { status: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>开始日期 *</Label><Input type="date" value={project.paid_started_at} max={today} onChange={event => updateProjectForm(index, { paid_started_at: event.target.value })} className="mt-1" /></div><div><Label>结束日期</Label><Input type="date" value={project.stopped_at} max={today} onChange={event => updateProjectForm(index, { stopped_at: event.target.value })} className="mt-1" /></div><div><Label>收费周期</Label><select value={project.billing_cycle} onChange={event => updateProjectForm(index, { billing_cycle: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"><option value="">待确认</option><option value="monthly">月付</option><option value="quarterly">季付</option><option value="annual">年付</option><option value="one_time">一次性</option></select></div><div><Label>收款方式</Label><select value={project.collection_method} onChange={event => updateProjectForm(index, { collection_method: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(collectionLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateProjectForm(index, { currency: event.target.value.toUpperCase() })} className="mt-1" /></div><div><Label>产品名称</Label><Input value={project.product_name} onChange={event => updateProjectForm(index, { product_name: event.target.value })} className="mt-1" /></div></div><p className="mt-3 text-xs text-slate-400">关联收款 {project.source_payment_ids.length} 笔 · 关联订阅 {project.source_subscription_ids.length} 条</p></div>)}</div><Button variant="outline" onClick={() => setProjectForms(rows => [...rows, suggestionToForm({ business_line: 'managed_service', product_code: 'managed_service_legacy', product_name: '代运营历史套餐', currency: 'USD', source_payment_ids: [], source_subscription_ids: [], basis: [] })])}><Layers3 className="mr-2 h-4 w-4" />增加一个项目</Button><div><Label>审核备注</Label><Textarea value={reviewNote} onChange={event => setReviewNote(event.target.value)} rows={3} className="mt-1" placeholder="记录为什么这样分类，方便以后复盘" /></div></div><DialogFooter className="gap-2"><Button variant="outline" onClick={() => void saveReview('needs_follow_up')} disabled={saving}>资料不足，稍后核对</Button><Button onClick={() => void saveReview('confirmed')} disabled={saving}>{saving ? '保存中…' : '确认分类并建立项目'}</Button></DialogFooter></DialogContent>

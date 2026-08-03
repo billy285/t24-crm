@@ -5,13 +5,16 @@ from typing import List, Optional
 from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_admin_user, get_current_user
 from schemas.auth import UserResponse
 from services.customers import CustomersService
+from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
+from services.management_decision_workflow import save_customer_classification_review
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -199,6 +202,40 @@ class CustomersBatchDeleteRequest(BaseModel):
     ids: List[int]
 
 
+class CustomerProjectInput(BaseModel):
+    engagement_id: Optional[int] = None
+    business_line_code: str
+    product_code: Optional[str] = None
+    product_name: Optional[str] = None
+    package_name: Optional[str] = None
+    status: str = "pending_setup"
+    billing_cycle: Optional[str] = None
+    collection_method: Optional[str] = None
+    currency: str = "USD"
+    owner_employee_id: Optional[int] = None
+    sales_employee_id: Optional[int] = None
+    paid_started_at: Optional[datetime] = None
+    stopped_at: Optional[datetime] = None
+    stop_reason_code: Optional[str] = None
+    stop_note: Optional[str] = None
+    source_payment_ids: List[int] = Field(default_factory=list)
+    source_subscription_ids: List[int] = Field(default_factory=list)
+
+
+class CustomerWithProjectsCreateRequest(BaseModel):
+    customer: CustomersData
+    projects: List[CustomerProjectInput] = Field(default_factory=list)
+
+
+class CustomerWithProjectsUpdateRequest(BaseModel):
+    customer: CustomersUpdateData
+    projects: List[CustomerProjectInput] = Field(default_factory=list)
+
+
+def _actor_name(user: UserResponse) -> str:
+    return user.name or user.email or "管理员"
+
+
 # ---------- Routes ----------
 @router.get("", response_model=CustomersListResponse)
 async def query_customerss(
@@ -303,6 +340,44 @@ async def get_customers(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
+@router.get("/{id}/projects")
+async def get_customer_projects(
+    id: int,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = CustomersService(db)
+    customer = await service.get_by_id(id, scope_user=current_user)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customers not found")
+    rows = (await db.execute(
+        select(CustomerEngagement, BusinessLine, ProductCatalog)
+        .join(BusinessLine, BusinessLine.id == CustomerEngagement.business_line_id)
+        .join(ProductCatalog, ProductCatalog.id == CustomerEngagement.product_id)
+        .where(CustomerEngagement.customer_id == id)
+        .order_by(CustomerEngagement.id.asc())
+    )).all()
+    return {
+        "items": [{
+            "id": engagement.id,
+            "business_line_code": line.code,
+            "business_line_name": line.name,
+            "product_code": product.code,
+            "product_name": product.name,
+            "package_name": engagement.package_name or product.name,
+            "status": engagement.status,
+            "billing_cycle": engagement.billing_cycle,
+            "collection_method": engagement.collection_method,
+            "currency": engagement.currency,
+            "owner_employee_id": engagement.owner_employee_id,
+            "sales_employee_id": engagement.sales_employee_id,
+            "paid_started_at": engagement.paid_started_at,
+            "stopped_at": engagement.stopped_at,
+        } for engagement, line, product in rows],
+        "total": len(rows),
+    }
+
+
 @router.post("", response_model=CustomersResponse, status_code=201)
 async def create_customers(
     data: CustomersData,
@@ -329,6 +404,43 @@ async def create_customers(
     except Exception as e:
         logger.error(f"Error creating customers: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/with-projects", response_model=CustomersResponse, status_code=201)
+async def create_customer_with_projects(
+    request: CustomerWithProjectsCreateRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_customer_write_allowed(current_user)
+    if len(request.projects) > 12:
+        raise HTTPException(status_code=400, detail="单个客户最多维护12个合作项目")
+    service = CustomersService(db)
+    try:
+        customer = await service.create(
+            _assigned_to_current_user(request.customer.model_dump(), current_user),
+            commit=False,
+        )
+        if request.projects:
+            await save_customer_classification_review(
+                db,
+                customer_id=customer.id,
+                decision="confirmed",
+                projects=[row.model_dump() for row in request.projects],
+                note="客户管理首次录入时建立合作项目",
+                actor_id=str(current_user.id),
+                actor_name=_actor_name(current_user),
+                commit=False,
+            )
+        await db.commit()
+        await db.refresh(customer)
+        return customer
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        await db.rollback()
+        raise
 
 
 @router.post("/batch", response_model=List[CustomersResponse], status_code=201)
@@ -423,6 +535,48 @@ async def update_customers(
     except Exception as e:
         logger.error(f"Error updating customers {id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.put("/{id}/with-projects", response_model=CustomersResponse)
+async def update_customer_with_projects(
+    id: int,
+    request: CustomerWithProjectsUpdateRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_customer_write_allowed(current_user)
+    if len(request.projects) > 12:
+        raise HTTPException(status_code=400, detail="单个客户最多维护12个合作项目")
+    service = CustomersService(db)
+    try:
+        update_dict = {key: value for key, value in request.customer.model_dump().items() if value is not None}
+        update_dict = _strip_owner_fields_for_non_admin(update_dict, current_user)
+        customer = await service.update(id, update_dict, scope_user=current_user, commit=False)
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customers not found")
+        if request.projects:
+            await save_customer_classification_review(
+                db,
+                customer_id=id,
+                decision="confirmed",
+                projects=[row.model_dump() for row in request.projects],
+                note="客户管理更新合作项目",
+                actor_id=str(current_user.id),
+                actor_name=_actor_name(current_user),
+                commit=False,
+            )
+        await db.commit()
+        await db.refresh(customer)
+        return customer
+    except HTTPException:
+        await db.rollback()
+        raise
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        await db.rollback()
+        raise
 
 
 @router.delete("/batch")
