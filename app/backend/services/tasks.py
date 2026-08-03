@@ -1,10 +1,12 @@
 import logging
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.tasks import Tasks
+from models.automation import DataQualityIssue
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,41 @@ class TasksService:
                 if hasattr(obj, key):
                     setattr(obj, key, value)
 
+            next_status = update_data.get("status")
+            now = datetime.now(timezone.utc)
+            if next_status == "completed":
+                completion_result = str(
+                    update_data.get("completion_result") or obj.completion_result or ""
+                ).strip()
+                if obj.automation_issue_id and not completion_result:
+                    raise ValueError("系统任务完成时必须填写处理结果")
+                obj.completion_result = completion_result or obj.completion_result
+                obj.completed_at = now
+            elif next_status and next_status not in {"completed", "cancelled"}:
+                obj.completed_at = None
+
+            if obj.automation_issue_id and next_status:
+                issue = (await self.db.execute(
+                    select(DataQualityIssue).where(DataQualityIssue.id == obj.automation_issue_id)
+                )).scalar_one_or_none()
+                if issue:
+                    if next_status == "completed":
+                        issue.status = "resolved"
+                        issue.resolved_at = now
+                        issue.resolution_note = obj.completion_result
+                    elif next_status == "cancelled":
+                        issue.status = "resolved"
+                        issue.resolved_at = now
+                        issue.resolution_note = obj.completion_result or "任务已取消，由管理员人工复核"
+                    elif next_status == "pending":
+                        issue.status = "open"
+                        issue.resolved_at = None
+                        issue.resolution_note = None
+                    else:
+                        issue.status = "in_progress"
+                        issue.resolved_at = None
+                        issue.resolution_note = None
+
             await self.db.commit()
             await self.db.refresh(obj)
             logger.info(f"Updated tasks {obj_id}")
@@ -112,6 +149,8 @@ class TasksService:
             if not obj:
                 logger.warning(f"Tasks {obj_id} not found for deletion")
                 return False
+            if obj.automation_issue_id:
+                raise ValueError("系统自动任务属于数据质量闭环，不能删除；可以完成并填写处理结果")
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted tasks {obj_id}")

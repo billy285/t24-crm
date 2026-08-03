@@ -1,10 +1,13 @@
 from core.database import Base
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 
 
 class Tasks(Base):
     __tablename__ = "tasks"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        UniqueConstraint("automation_issue_id", name="uq_tasks_automation_issue_id"),
+        {"extend_existing": True},
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
     title = Column(String, nullable=False)
@@ -19,5 +22,14 @@ class Tasks(Base):
     due_date = Column(DateTime(timezone=True), nullable=True)
     notes = Column(String, nullable=True)
     attachment_link = Column(String, nullable=True)
+    source_type = Column(String(32), nullable=True, index=True)
+    automation_issue_id = Column(
+        Integer,
+        ForeignKey("data_quality_issues.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    completion_result = Column(Text, nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

@@ -21,6 +21,10 @@ from models.management_decisions import (
     ProductCatalog,
 )
 from models.payments import Payments
+from models.automation import DataQualityIssue
+from models.tasks import Tasks
+from services.automation_monitor import automation_overview, run_automation_scan
+from services.tasks import TasksService
 
 
 def auth_headers(role: str, employee_id: int) -> dict[str, str]:
@@ -197,6 +201,87 @@ async def test_automatic_risk_reminder_never_changes_project_status(workflow_con
             select(CustomerEngagement).where(CustomerEngagement.id == 401)
         )).scalar_one()
     assert engagement.status == "pending_setup"
+
+
+@pytest.mark.asyncio
+async def test_daily_scan_is_idempotent_and_task_completion_closes_issue(workflow_context):
+    _, sessions = workflow_context
+    async with sessions() as session:
+        session.add(CustomerEngagement(
+            id=402,
+            customer_id=11,
+            business_line_id=1,
+            product_id=1,
+            engagement_code="ENG-AUTO-402",
+            package_name="待上线自动扫描套餐",
+            status="pending_setup",
+            currency="USD",
+            created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        ))
+        await session.commit()
+
+    async with sessions() as session:
+        first = await run_automation_scan(session, trigger="scheduled", run_key="scheduled:2026-08-03")
+    assert first["status"] == "completed"
+    assert first["task_created_count"] >= 1
+
+    async with sessions() as session:
+        second = await run_automation_scan(session, trigger="scheduled", run_key="scheduled:2026-08-03")
+    assert second["skipped"] is True
+
+    async with sessions() as session:
+        issue = (await session.execute(
+            select(DataQualityIssue).where(
+                DataQualityIssue.code == "automatic_project_risk_reminder",
+                DataQualityIssue.project_id == 402,
+            )
+        )).scalar_one()
+        task = (await session.execute(
+            select(Tasks).where(Tasks.automation_issue_id == issue.id)
+        )).scalar_one()
+        assert issue.status == "open"
+        assert task.source_type == "system"
+        assert task.status == "pending"
+        await TasksService(session).update(task.id, {
+            "status": "completed",
+            "completion_result": "已联系客户，确认周五完成上线",
+            "updated_at": datetime.now(timezone.utc),
+        })
+
+    async with sessions() as session:
+        overview = await automation_overview(session)
+        issue_payload = next(row for row in overview["items"] if row["project_id"] == 402 and row["code"] == "automatic_project_risk_reminder")
+        project = (await session.execute(
+            select(CustomerEngagement).where(CustomerEngagement.id == 402)
+        )).scalar_one()
+    assert issue_payload["status"] == "resolved"
+    assert issue_payload["resolution_note"] == "已联系客户，确认周五完成上线"
+    assert issue_payload["task"]["status"] == "completed"
+    assert project.status == "pending_setup"
+
+
+@pytest.mark.asyncio
+async def test_automation_overview_is_finance_readable_and_scan_is_admin_only(workflow_context):
+    client, _ = workflow_context
+    finance_overview = await client.get(
+        "/api/v1/management-decisions/automation/overview",
+        headers=auth_headers("finance", 2),
+    )
+    denied_scan = await client.post(
+        "/api/v1/management-decisions/automation/scan",
+        headers=auth_headers("finance", 2),
+    )
+    admin_scan = await client.post(
+        "/api/v1/management-decisions/automation/scan",
+        headers=auth_headers("admin", 1),
+    )
+
+    assert finance_overview.status_code == 200
+    assert finance_overview.json()["schedule"]["auto_stop_enabled"] is False
+    assert denied_scan.status_code == 403
+    assert admin_scan.status_code == 200
+    assert admin_scan.json()["scan"]["status"] == "completed"
 
 
 @pytest.mark.asyncio

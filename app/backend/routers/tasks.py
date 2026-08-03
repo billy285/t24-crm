@@ -33,6 +33,8 @@ class TasksData(BaseModel):
     due_date: Optional[datetime] = None
     notes: Optional[str] = None
     attachment_link: Optional[str] = None
+    source_type: Optional[str] = None
+    completion_result: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -51,6 +53,8 @@ class TasksUpdateData(BaseModel):
     due_date: Optional[datetime] = None
     notes: Optional[str] = None
     attachment_link: Optional[str] = None
+    source_type: Optional[str] = None
+    completion_result: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -70,6 +74,10 @@ class TasksResponse(BaseModel):
     due_date: Optional[datetime] = None
     notes: Optional[str] = None
     attachment_link: Optional[str] = None
+    source_type: Optional[str] = None
+    automation_issue_id: Optional[int] = None
+    completion_result: Optional[str] = None
+    completed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -330,6 +338,10 @@ async def delete_taskss_batch(
         
         logger.info(f"Batch deleted {deleted_count} taskss successfully")
         return {"message": f"Successfully deleted {deleted_count} taskss", "deleted_count": deleted_count}
+    except ValueError as e:
+        await db.rollback()
+        logger.error(f"Validation error batch deleting tasks: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch delete: {str(e)}", exc_info=True)
@@ -355,6 +367,9 @@ async def delete_tasks(
         return {"message": "Tasks deleted successfully", "id": id}
     except HTTPException:
         raise
+    except ValueError as e:
+        logger.error(f"Validation error deleting tasks {id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error deleting tasks {id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

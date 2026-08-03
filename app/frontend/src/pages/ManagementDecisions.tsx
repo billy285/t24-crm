@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeft, BarChart3, BriefcaseBusiness, CheckCircle2, Clock3,
-  Layers3, ListChecks, RefreshCw, Search, ShieldCheck, TrendingUp, Users,
+  Database, Layers3, ListChecks, PlayCircle, RefreshCw, Search, ShieldCheck, TrendingUp, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -91,6 +91,55 @@ type ReviewData = {
   projects: Project[];
   anomalies: Array<{ code: string; category?: string; severity: string; customer_id: number; customer_name: string; project_id?: number; message: string; suggested_action?: string }>;
   recommendations: Array<{ level: string; title: string; message: string }>;
+};
+
+type AutomationData = {
+  summary: {
+    total: number;
+    open: number;
+    in_progress: number;
+    resolved: number;
+    open_task_count: number;
+    category_counts: Record<string, number>;
+    severity_counts: Record<string, number>;
+  };
+  items: Array<{
+    id: number;
+    issue_key: string;
+    code: string;
+    category: string;
+    severity: string;
+    status: string;
+    customer_id: number;
+    project_id?: number;
+    customer_name: string;
+    message: string;
+    suggested_action?: string;
+    occurrence_count: number;
+    first_detected_at: string;
+    last_detected_at: string;
+    resolved_at?: string;
+    resolution_note?: string;
+    task?: { id: number; status: string; assignee_name?: string; due_date?: string; completion_result?: string };
+  }>;
+  last_run?: {
+    id: number;
+    trigger: string;
+    status: string;
+    detected_count: number;
+    opened_count: number;
+    resolved_count: number;
+    task_created_count: number;
+    completed_at?: string;
+  };
+  schedule: {
+    enabled: boolean;
+    timezone: string;
+    hour: number;
+    next_run_at: string;
+    auto_stop_enabled: boolean;
+  };
+  write_enabled: boolean;
 };
 
 type ProjectForm = {
@@ -192,7 +241,9 @@ export default function ManagementDecisions() {
   const today = new Date().toISOString().slice(0, 10);
   const [startDate, setStartDate] = useState('2026-01-01');
   const [data, setData] = useState<ReviewData | null>(null);
+  const [automation, setAutomation] = useState<AutomationData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [scanLoading, setScanLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [reviewFilter, setReviewFilter] = useState('pending');
   const [section, setSection] = useState<'overview' | 'projects' | 'exceptions' | 'history'>('overview');
@@ -200,7 +251,8 @@ export default function ManagementDecisions() {
   const [projectLineFilter, setProjectLineFilter] = useState('all');
   const [projectStatusFilter, setProjectStatusFilter] = useState('all');
   const [projectIndustryFilter, setProjectIndustryFilter] = useState('all');
-  const [anomalyFilter, setAnomalyFilter] = useState('all');
+  const [qualityStatusFilter, setQualityStatusFilter] = useState('active');
+  const [qualityCategoryFilter, setQualityCategoryFilter] = useState('all');
   const [reviewing, setReviewing] = useState<ReviewItem | null>(null);
   const [projectForms, setProjectForms] = useState<ProjectForm[]>([]);
   const [reviewNote, setReviewNote] = useState('');
@@ -213,11 +265,18 @@ export default function ManagementDecisions() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const response = await client.apiCall.invoke({
-        url: `/api/v1/management-decisions/classification-review?start_date=${startDate}`,
-        method: 'GET', options: authOptions(),
-      });
+      const [response, automationResponse] = await Promise.all([
+        client.apiCall.invoke({
+          url: `/api/v1/management-decisions/classification-review?start_date=${startDate}`,
+          method: 'GET', options: authOptions(),
+        }),
+        client.apiCall.invoke({
+          url: '/api/v1/management-decisions/automation/overview',
+          method: 'GET', options: authOptions(),
+        }),
+      ]);
       setData(response.data);
+      setAutomation(automationResponse.data);
     } catch (error: any) {
       toast.error(errorMessage(error, '经营分类数据加载失败'));
     } finally {
@@ -250,9 +309,43 @@ export default function ManagementDecisions() {
     });
   }, [data, projectIndustryFilter, projectLineFilter, projectSearch, projectStatusFilter]);
 
-  const visibleAnomalies = useMemo(() => (data?.anomalies || [])
-    .filter(row => anomalyFilter === 'all' || row.severity === anomalyFilter)
-    .map(row => ({ ...row, message: row.suggested_action ? `${row.message}。建议：${row.suggested_action}` : row.message })), [anomalyFilter, data]);
+  const visibleQualityIssues = useMemo(() => (automation?.items || []).filter(row => {
+    const statusMatches = qualityStatusFilter === 'all'
+      || (qualityStatusFilter === 'active' && row.status !== 'resolved')
+      || row.status === qualityStatusFilter;
+    const categoryMatches = qualityCategoryFilter === 'all' || row.category === qualityCategoryFilter;
+    return statusMatches && categoryMatches;
+  }), [automation, qualityCategoryFilter, qualityStatusFilter]);
+
+  const runAutomationScan = async () => {
+    setScanLoading(true);
+    try {
+      const response = await client.apiCall.invoke({
+        url: '/api/v1/management-decisions/automation/scan',
+        method: 'POST', options: authOptions(),
+      });
+      setAutomation(response.data.overview);
+      toast.success(`扫描完成：发现 ${response.data.scan.detected_count} 项，生成 ${response.data.scan.task_created_count} 个任务`);
+      await loadData();
+    } catch (error: any) {
+      toast.error(errorMessage(error, '自动扫描失败'));
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
+  const createQualityTask = async (issueId: number) => {
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/management-decisions/automation/issues/${issueId}/task`,
+        method: 'POST', options: authOptions(),
+      });
+      toast.success('已生成闭环任务');
+      await loadData();
+    } catch (error: any) {
+      toast.error(errorMessage(error, '生成任务失败'));
+    }
+  };
 
   const openReview = (item: ReviewItem) => {
     setReviewing(item);
@@ -376,7 +469,7 @@ export default function ManagementDecisions() {
         <CardContent className="flex flex-wrap gap-2 p-2">
           {[
             ['overview', '经营总览', BarChart3], ['projects', '项目客户明细', BriefcaseBusiness],
-            ['exceptions', `异常待处理 ${summary?.anomaly_count || 0}`, ListChecks], ['history', `历史补录 ${pendingCount}`, Clock3],
+            ['exceptions', `数据质量中心 ${automation?.summary.open || summary?.anomaly_count || 0}`, Database], ['history', `历史补录 ${pendingCount}`, Clock3],
           ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" variant={section === value ? 'default' : 'ghost'} onClick={() => setSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
         </CardContent>
       </Card>
@@ -404,7 +497,62 @@ export default function ManagementDecisions() {
         <CardContent className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户</th><th className="px-3 py-3">业务项目</th><th className="px-3 py-3">套餐/项目名称</th><th className="px-3 py-3">行业/负责人</th><th className="px-3 py-3">首次有效收款</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">收费</th><th className="px-3 py-3 text-right">操作</th></tr></thead><tbody>{visibleProjects.map(project => <tr key={project.id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium"><Link className="text-blue-700 hover:underline" to={`/customers?detail=${project.customer_id}`}>{project.customer_name}</Link><p className="text-xs font-normal text-slate-400">{project.customer_code || '-'}</p></td><td className="px-3 py-3">{project.business_line.name}</td><td className="px-3 py-3">{project.package_name || project.product.name}</td><td className="px-3 py-3">{project.industry || '-'}<p className="text-xs text-slate-400">{project.sales_person || '销售待分配'}</p></td><td className="px-3 py-3">{dateValue(project.paid_started_at) || '待首笔收款'}</td><td className="px-3 py-3"><Badge className={projectStatusClasses[project.status] || 'bg-slate-100 text-slate-700'}>{projectStatusLabels[project.status] || project.status}</Badge></td><td className="px-3 py-3">{project.billing_cycle || '-'} · {project.currency}</td><td className="px-3 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openStatus(project)} disabled={!isAdmin}>更改状态</Button></td></tr>)}</tbody></table>{!loading && visibleProjects.length === 0 && <div className="py-12 text-center text-sm text-slate-400">当前筛选下没有项目</div>}</CardContent>
       </Card>}
 
-      {section === 'exceptions' && <Card className="border-slate-200"><CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle className="text-base">异常待处理</CardTitle><p className="mt-1 text-xs text-slate-500">只列影响经营判断的数据问题，处理后自动消失。</p></div><select value={anomalyFilter} onChange={event => setAnomalyFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部异常</option><option value="high">高优先</option><option value="warning">待完善</option></select></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{visibleAnomalies.map((row, index) => <div key={`${row.code}-${row.customer_id}-${row.project_id || index}`} className={`rounded-xl border p-4 ${row.severity === 'high' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-900">{row.customer_name}</p><p className={`mt-2 text-sm ${row.severity === 'high' ? 'text-red-700' : 'text-amber-700'}`}>{row.message}</p></div><Badge className={row.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}>{row.severity === 'high' ? '高优先' : '待完善'}</Badge></div><Button asChild size="sm" variant="outline" className="mt-4"><Link to={`/customers?detail=${row.customer_id}`}>打开客户处理</Link></Button></div>)}{!loading && visibleAnomalies.length === 0 && <div className="col-span-full py-12 text-center text-sm text-emerald-600"><CheckCircle2 className="mx-auto mb-2 h-6 w-6" />当前没有这类异常</div>}</CardContent></Card>}
+      {section === 'exceptions' && <div className="space-y-4">
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <Database className="mt-0.5 h-5 w-5 text-blue-600" />
+              <div>
+                <p className="font-semibold text-slate-900">数据质量中心</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  每天北京时间 {String(automation?.schedule.hour ?? 8).padStart(2, '0')}:00 自动扫描；高优先和风险问题自动进入任务协作。只提醒、只建任务，不会自动停止客户或项目。
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {automation?.last_run?.completed_at ? `最近扫描：${new Date(automation.last_run.completed_at).toLocaleString('zh-CN', { hour12: false })}` : '尚未执行持久化扫描'}
+                </p>
+              </div>
+            </div>
+            <Button onClick={() => void runAutomationScan()} disabled={!isAdmin || scanLoading}>
+              {scanLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 h-4 w-4" />}
+              {scanLoading ? '扫描中…' : '立即扫描'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {[
+            ['待处理', (automation?.summary.open || 0) + (automation?.summary.in_progress || 0), '仍需处理', 'text-amber-700', 'bg-amber-50'],
+            ['高优先', automation?.summary.severity_counts.high || 0, '老板需要关注', 'text-red-700', 'bg-red-50'],
+            ['风险提醒', automation?.summary.category_counts.risk || 0, '不自动停用', 'text-orange-700', 'bg-orange-50'],
+            ['闭环任务', automation?.summary.open_task_count || 0, '任务协作处理中', 'text-violet-700', 'bg-violet-50'],
+            ['已解决', automation?.summary.resolved || 0, '保留处理结果', 'text-emerald-700', 'bg-emerald-50'],
+          ].map(([label, value, hint, color, bg]) => <Card key={String(label)} className="border-slate-200"><CardContent className="p-4"><div className={`inline-flex rounded-lg px-2 py-1 text-xs font-semibold ${color} ${bg}`}>{label}</div><p className="mt-3 text-2xl font-bold text-slate-900">{value}</p><p className="mt-1 text-xs text-slate-400">{hint}</p></CardContent></Card>)}
+        </div>
+
+        <Card className="border-slate-200">
+          <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div><CardTitle className="text-base">问题与任务闭环</CardTitle><p className="mt-1 text-xs text-slate-500">修正数据后问题会自动解决；完成任务必须填写处理结果。</p></div>
+            <div className="flex flex-wrap gap-2">
+              <select value={qualityStatusFilter} onChange={event => setQualityStatusFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="active">待处理</option><option value="open">未开始</option><option value="in_progress">处理中</option><option value="resolved">已解决</option><option value="all">全部状态</option></select>
+              <select value={qualityCategoryFilter} onChange={event => setQualityCategoryFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部分类</option><option value="risk">风险提醒</option><option value="integrity">状态一致性</option><option value="data_quality">资料完整性</option></select>
+            </div>
+          </CardHeader>
+          <CardContent className="grid gap-3 lg:grid-cols-2">
+            {visibleQualityIssues.map(row => <div key={row.id} className={`rounded-xl border p-4 ${row.status === 'resolved' ? 'border-emerald-200 bg-emerald-50/50' : row.severity === 'high' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div><p className="font-semibold text-slate-900">{row.customer_name}</p><p className="mt-2 text-sm text-slate-700">{row.message}</p>{row.suggested_action && <p className="mt-2 text-xs text-slate-500">建议：{row.suggested_action}</p>}</div>
+                <Badge className={row.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' : row.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}>{row.status === 'resolved' ? '已解决' : row.status === 'in_progress' ? '处理中' : row.severity === 'high' ? '高优先' : '待完善'}</Badge>
+              </div>
+              {row.resolution_note && <div className="mt-3 rounded-lg bg-white/80 px-3 py-2 text-xs text-emerald-700">处理结果：{row.resolution_note}</div>}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button asChild size="sm" variant="outline"><Link to={`/customers?detail=${row.customer_id}`}>打开客户</Link></Button>
+                {row.task ? <Button asChild size="sm" variant="outline"><Link to={`/tasks?task_id=${row.task.id}`}>查看任务{row.task.assignee_name ? ` · ${row.task.assignee_name}` : ''}</Link></Button> : row.status !== 'resolved' && <Button size="sm" variant="outline" onClick={() => void createQualityTask(row.id)} disabled={!isAdmin}><ListChecks className="mr-1 h-3.5 w-3.5" />生成任务</Button>}
+              </div>
+            </div>)}
+            {!loading && visibleQualityIssues.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">{automation?.last_run ? <><CheckCircle2 className="mx-auto mb-2 h-6 w-6 text-emerald-500" />当前筛选下没有问题</> : '点击“立即扫描”建立首批数据质量记录'}</div>}
+          </CardContent>
+        </Card>
+      </div>}
 
       {section === 'history' && <Card className="border-slate-200"><CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle className="text-base">历史客户一次性补录</CardTitle><p className="mt-1 text-xs text-slate-500">新客户已改为在客户管理首次录入；这里只处理历史资料。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索客户名称或编号" className="w-64 pl-9" /></div><select value={reviewFilter} onChange={event => setReviewFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="pending">待审核</option><option value="needs_follow_up">稍后核对</option><option value="confirmed">已确认</option><option value="all">全部</option></select></div></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{visibleItems.map(item => <div key={item.customer_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.customer_name}</p><p className="mt-1 text-xs text-slate-400">{item.customer_code || `客户 #${item.customer_id}`} · {item.industry || '行业待补充'}</p></div><Badge className={item.review_status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : item.review_status === 'needs_follow_up' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'}>{reviewLabels[item.review_status]}</Badge></div><div className="mt-3 flex flex-wrap gap-1.5">{item.suggestions.map(suggestion => <Badge key={suggestion.business_line} variant="outline">建议：{lineLabels[suggestion.business_line]}</Badge>)}{item.projects.map(project => <Badge key={project.id} className="bg-blue-100 text-blue-700">已建：{project.business_line.name}</Badge>)}</div>{item.warnings.length > 0 && <div className="mt-3 rounded-xl bg-orange-50 p-3 text-xs text-orange-700"><p className="font-semibold">{item.warnings.length} 项需要确认</p><p className="mt-1 line-clamp-2">{item.warnings.slice(0, 2).map(row => row.message).join('；')}</p></div>}<div className="mt-4 flex items-center justify-between"><p className="text-xs text-slate-400">客户状态：{item.customer_lifecycle?.status === 'active' ? '合作中' : item.customer_lifecycle?.status || '待确认'}</p><Button size="sm" variant={item.review_status === 'confirmed' ? 'outline' : 'default'} onClick={() => openReview(item)} disabled={!isAdmin}>{item.review_status === 'confirmed' ? '重新核对' : '开始审核'}</Button></div></div>)}{!loading && visibleItems.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">当前筛选下没有历史客户</div>}</CardContent></Card>}
 

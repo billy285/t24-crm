@@ -106,6 +106,7 @@ const isStaleTask = (task: any) => {
 };
 
 const getTaskSource = (task: any) => {
+  if (task?.source_type && taskSourceLabels[task.source_type]) return task.source_type;
   const text = [task?.task_type, task?.title, task?.notes].filter(Boolean).join(' ').toLowerCase();
   if (/续费|到期|renew|subscription/.test(text)) return 'renewal';
   if (/收款|付款|财务|发票|欠款|收入|成本|stripe|payment|finance/.test(text)) return 'finance';
@@ -427,7 +428,12 @@ export default function Tasks() {
       ].filter(Boolean).join('\n\n');
       await client.entities.tasks.update({
         id: String(completeTarget.id),
-        data: { status: 'completed', notes: nextNotes, updated_at: now.toISOString() },
+        data: {
+          status: 'completed',
+          completion_result: completionNote.trim(),
+          notes: nextNotes,
+          updated_at: now.toISOString(),
+        },
       });
       toast.success('任务已完成并记录结果');
       setCompleteTarget(null);
@@ -557,7 +563,7 @@ export default function Tasks() {
                 const dueToday = isDueTodayTask(t);
                 const waitingClient = isWaitingClientTask(t);
                 const stale = isStaleTask(t);
-                const completionSummary = getCompletionSummary(t.notes);
+                const completionSummary = t.completion_result || getCompletionSummary(t.notes);
                 return (
                   <div
                     key={t.id}
@@ -571,6 +577,7 @@ export default function Tasks() {
                           <Badge className={`text-xs ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}`}>{extendedStatusLabels[t.status] || t.status || '未设置'}</Badge>
                           <Badge className={`text-xs ${priorityColors[t.priority] || 'bg-slate-100 text-slate-600'}`}>{priorityLabels[t.priority] || t.priority || '普通'}</Badge>
                           <Badge className={`text-xs ${taskSourceColors[source] || taskSourceColors.manual}`}>来源: {taskSourceLabels[source]}</Badge>
+                          {t.automation_issue_id && <Badge className="bg-violet-100 text-violet-700 text-xs">自动闭环</Badge>}
                           {overdue && <Badge className="bg-red-100 text-red-700 text-xs">逾期</Badge>}
                           {dueToday && <Badge className="bg-blue-100 text-blue-700 text-xs">今日到期</Badge>}
                           {waitingClient && <Badge className="bg-purple-100 text-purple-700 text-xs">等待客户</Badge>}
@@ -613,7 +620,7 @@ export default function Tasks() {
                           </Button>
                         )}
                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /></Button>
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        {!t.automation_issue_id && <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /></Button>}
                       </div>
                     </div>
                   </div>

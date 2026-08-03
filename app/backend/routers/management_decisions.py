@@ -25,6 +25,7 @@ from services.management_decision_workflow import (
     save_customer_classification_review,
     update_customer_engagement,
 )
+from services.automation_monitor import automation_overview, create_task_for_issue, run_automation_scan
 
 
 router = APIRouter(prefix="/api/v1/management-decisions", tags=["management-decisions"])
@@ -211,6 +212,49 @@ async def get_classification_review(
     payload = await build_classification_review_queue(db, start_date)
     payload["write_enabled"] = _can_write(current_user)
     return payload
+
+
+@router.get("/automation/overview")
+async def get_automation_overview(
+    current_user: UserResponse = Depends(get_finance_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return persisted daily scan issues and their linked task status."""
+    payload = await automation_overview(db)
+    payload["write_enabled"] = _can_write(current_user)
+    return payload
+
+
+@router.post("/automation/scan")
+async def trigger_automation_scan(
+    current_user: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run the same idempotent scanner used by the daily background schedule."""
+    scan = await run_automation_scan(db, trigger="manual")
+    overview = await automation_overview(db)
+    return {"scan": scan, "overview": overview}
+
+
+@router.post("/automation/issues/{issue_id}/task", status_code=201)
+async def create_automation_issue_task(
+    issue_id: int,
+    current_user: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create one tracked task for a warning that did not require an automatic task."""
+    try:
+        task = await create_task_for_issue(db, issue_id)
+        return {
+            "id": task.id,
+            "status": task.status,
+            "customer_id": task.customer_id,
+            "assignee_name": task.assignee_name,
+            "due_date": task.due_date,
+            "automation_issue_id": task.automation_issue_id,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/classification-review/customers/{customer_id}")

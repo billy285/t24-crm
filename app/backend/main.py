@@ -25,6 +25,7 @@ from services.emp_auth import initialize_default_employee_admin
 from services.emp_auth import decode_access_token as decode_employee_access_token
 from services.deal_payment_sync import backfill_missing_payments_from_deals
 from services.customer_lifecycle import sync_lifecycle_from_payments
+from services.automation_monitor import start_automation_scheduler, stop_automation_scheduler
 from core.database import db_manager
 from core.auth import decode_access_token as decode_platform_access_token
 # MODULE_IMPORTS_END
@@ -108,11 +109,13 @@ async def lifespan(app: FastAPI):
         await sync_lifecycle_from_payments(db)
     await initialize_default_employee_admin()
     await initialize_admin_user()
+    automation_scheduler = start_automation_scheduler()
     # MODULE_STARTUP_END
 
     logger.info("=== Application startup completed successfully ===")
     yield
     # MODULE_SHUTDOWN_START
+    await stop_automation_scheduler(automation_scheduler)
     await close_database()
     # MODULE_SHUTDOWN_END
 
