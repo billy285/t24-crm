@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Activity, AlertTriangle, CalendarDays, Clock3, History, PauseCircle,
+  Activity, AlertTriangle, CalendarDays, Clock3, History, Layers3, PauseCircle,
   RefreshCw, Search, UserCheck, Users, UserX,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -273,6 +273,7 @@ export default function CustomerLifecycle() {
           <p className="mt-1 text-sm text-slate-500">从第一笔有效记账开始，观察留存、暂停、停止与重新合作。</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline"><Link to="/management-decisions"><Layers3 className="mr-2 h-4 w-4" />经营分类与项目</Link></Button>
           {isAdmin && <Button variant="outline" onClick={() => void runBackfill()} disabled={loading}><History className="mr-2 h-4 w-4" />回溯历史</Button>}
           <Button onClick={() => void loadData()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新数据</Button>
         </div>

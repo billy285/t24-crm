@@ -78,6 +78,16 @@ customer_id
 
 此检查点不是正式回填工具，也不会自动修正旧生命周期；所有正式关联仍须经过备份、报告和管理员确认。
 
+### 人工审核与独立项目检查点（2026-08-03）
+
+- `GET /api/v1/management-decisions/classification-review` 汇总真实历史分类、提示和已确认项目；
+- `POST /api/v1/management-decisions/classification-review/customers/{customer_id}` 仅允许管理员逐位确认或暂缓；
+- `PATCH /api/v1/management-decisions/engagements/{id}/status` 只改变项目状态，不修改客户总生命周期；
+- 每个来源必须属于当前客户，跨客户关联直接拒绝；
+- 重复确认复用同一项目、来源关联和幂等事件；
+- Finance 可以查看分类与项目，但不能写入；
+- 确认写入前仍要求正式数据库备份和 migration 验证。
+
 ## 5. 阶段 3：影子指标与只读看板
 
 新指标使用独立 API 前缀，建议：

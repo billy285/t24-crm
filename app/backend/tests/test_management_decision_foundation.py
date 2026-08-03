@@ -96,7 +96,7 @@ async def test_management_metadata_is_finance_protected_and_read_only(management
     assert allowed.status_code == 200
     payload = allowed.json()
     assert payload["write_enabled"] is False
-    assert payload["phase"] == "foundation_read_only"
+    assert payload["phase"] == "review_and_project_management"
     assert {item["code"] for item in payload["business_lines"]} == {
         "managed_service",
         "restaurant_os",
@@ -126,7 +126,7 @@ async def test_business_lines_and_engagements_are_filterable(management_context)
     assert engagements.json()["total"] == 1
     assert engagements.json()["items"][0]["customer_name"] == "The Q"
     assert engagements.json()["items"][0]["business_line"]["code"] == "managed_service"
-    assert engagements.json()["write_enabled"] is False
+    assert engagements.json()["write_enabled"] is True
     assert empty.status_code == 200
     assert empty.json()["items"] == []
 

@@ -459,6 +459,8 @@ async def apply_lifecycle_action(
         upper_date = (ensure_aware(cycle.ended_at) if cycle.ended_at else now).date()
         if effective_at.date() > upper_date:
             raise ValueError("合作开始日期不能晚于停止日期或当前时间")
+        previous_started_at = ensure_aware(cycle.started_at)
+        previous_payment_id = cycle.first_payment_id
         if first_payment_id:
             payment = (
                 await db.execute(
@@ -476,6 +478,12 @@ async def apply_lifecycle_action(
         cycle.first_payment_id = first_payment_id
         cycle.start_source = "manual"
         cycle.start_locked = True
+        audit_summary = (
+            f"原开始日期 {previous_started_at.date().isoformat()}"
+            f"（记账 #{previous_payment_id or '人工'}）调整为 {effective_at.date().isoformat()}"
+            f"（记账 #{first_payment_id or '人工'}）"
+        )
+        note = f"{audit_summary}；{note}" if note else audit_summary
     elif action == "pause":
         if cycle.status != "active":
             raise ValueError("只有合作中的客户可以暂停")

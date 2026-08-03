@@ -26,6 +26,7 @@ export const PAGE_PATHS = {
   sales: '/sales',
   deals: '/deals',
   customer_lifecycle: '/customer-lifecycle',
+  management_decisions: '/management-decisions',
   finance: '/finance',
   payroll: '/payroll',
   tasks: '/tasks',
@@ -46,6 +47,7 @@ export const pageLabels: Record<string, string> = {
   '/sales': '成交客户管理',
   '/deals': '成交管理',
   '/customer-lifecycle': '客户生命周期',
+  '/management-decisions': '经营分类与项目',
   '/finance': '财务管理',
   '/payroll': '工资表',
   '/tasks': '任务协作',
@@ -123,7 +125,7 @@ export interface RolePermissionConfig {
 // 默认角色权限配置
 export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = {
   super_admin: {
-    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers', '/sales', '/deals', '/customer-lifecycle', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -140,7 +142,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: true, copyPassword: true, viewFinance: true },
   },
   admin: {
-    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers', '/sales', '/deals', '/customer-lifecycle', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -188,7 +190,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
   },
   finance: {
-    pages: ['/', '/finance', '/payroll', '/customers', '/customer-lifecycle', '/service-board'],
+    pages: ['/', '/finance', '/payroll', '/customers', '/customer-lifecycle', '/management-decisions', '/service-board'],
     buttons: [
       'payment_create', 'payment_edit',
       'customer_export',
@@ -203,7 +205,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
 const PERMISSIONS_STORAGE_KEY = 'crm_role_permissions';
 const PERMISSIONS_VERSION_KEY = 'crm_role_permissions_version';
 // Bump this version whenever default permissions change (e.g., new pages added)
-const CURRENT_PERMISSIONS_VERSION = 9;
+const CURRENT_PERMISSIONS_VERSION = 10;
 
 function uniq<T>(items: T[]): T[] {
   return Array.from(new Set(items));
@@ -260,6 +262,7 @@ export function loadRolePermissions(): Record<SystemRole, RolePermissionConfig> 
     for (const role of ['super_admin', 'admin', 'finance'] as SystemRole[]) {
       if (!normalized[role].pages.includes('/payroll')) normalized[role].pages.push('/payroll');
       if (!normalized[role].pages.includes('/customer-lifecycle')) normalized[role].pages.push('/customer-lifecycle');
+      if (!normalized[role].pages.includes('/management-decisions')) normalized[role].pages.push('/management-decisions');
     }
     for (const role of ['super_admin', 'admin'] as SystemRole[]) {
       if (!normalized[role].pages.includes('/merchant-pool')) normalized[role].pages.push('/merchant-pool');
@@ -332,6 +335,7 @@ export function canAccessPage(role: string, path: string): boolean {
   // finance administrators even when an older cached permission config exists.
   if (path === '/payroll' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
   if (path === '/customer-lifecycle' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
+  if (path === '/management-decisions' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
   const perms = getPermissions(role);
   return perms.pages.includes(path);
 }

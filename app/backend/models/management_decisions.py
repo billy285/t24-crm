@@ -141,3 +141,22 @@ class EngagementLifecycleEvent(Base):
     actor_name = Column(String(160), nullable=True)
     note = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ClassificationReviewDecision(Base):
+    __tablename__ = "classification_review_decisions"
+    __table_args__ = (
+        UniqueConstraint("review_key", name="uq_classification_review_decisions_key"),
+        {"extend_existing": True},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    review_key = Column(String(160), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)
+    decision = Column(String(24), nullable=False, default="pending", index=True)
+    note = Column(Text, nullable=True)
+    reviewed_by_id = Column(String(64), nullable=True)
+    reviewed_by_name = Column(String(160), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
