@@ -26,6 +26,7 @@ from services.management_decision_workflow import (
     update_customer_engagement,
 )
 from services.automation_monitor import automation_overview, create_task_for_issue, run_automation_scan
+from services.owner_cockpit import build_owner_cockpit
 
 
 router = APIRouter(prefix="/api/v1/management-decisions", tags=["management-decisions"])
@@ -223,6 +224,15 @@ async def get_automation_overview(
     payload = await automation_overview(db)
     payload["write_enabled"] = _can_write(current_user)
     return payload
+
+
+@router.get("/owner-cockpit")
+async def get_owner_cockpit(
+    current_user: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Owner-facing operating summary built from the same finance and workflow sources."""
+    return await build_owner_cockpit(db)
 
 
 @router.post("/automation/scan")

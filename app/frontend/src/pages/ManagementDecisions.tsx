@@ -188,6 +188,15 @@ const collectionLabels: Record<string, string> = {
   stripe_auto: 'Stripe 自动扣款', bank_transfer: '银行转账', check: '支票', zelle: 'Zelle', other: '其他',
 };
 
+const qualityCategoryLabels: Record<string, string> = {
+  risk: '客户风险',
+  integrity: '状态一致性',
+  data_quality: '资料完整性',
+  finance: '财务闭环',
+  customer_success: '客户跟进',
+  delivery: '交付执行',
+};
+
 function authOptions() {
   const token = localStorage.getItem('emp_auth_token') || localStorage.getItem('token');
   return token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
@@ -534,14 +543,14 @@ export default function ManagementDecisions() {
             <div><CardTitle className="text-base">问题与任务闭环</CardTitle><p className="mt-1 text-xs text-slate-500">修正数据后问题会自动解决；完成任务必须填写处理结果。</p></div>
             <div className="flex flex-wrap gap-2">
               <select value={qualityStatusFilter} onChange={event => setQualityStatusFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="active">待处理</option><option value="open">未开始</option><option value="in_progress">处理中</option><option value="resolved">已解决</option><option value="all">全部状态</option></select>
-              <select value={qualityCategoryFilter} onChange={event => setQualityCategoryFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部分类</option><option value="risk">风险提醒</option><option value="integrity">状态一致性</option><option value="data_quality">资料完整性</option></select>
+              <select value={qualityCategoryFilter} onChange={event => setQualityCategoryFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部分类</option>{Object.entries(qualityCategoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             </div>
           </CardHeader>
           <CardContent className="grid gap-3 lg:grid-cols-2">
             {visibleQualityIssues.map(row => <div key={row.id} className={`rounded-xl border p-4 ${row.status === 'resolved' ? 'border-emerald-200 bg-emerald-50/50' : row.severity === 'high' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
               <div className="flex items-start justify-between gap-3">
                 <div><p className="font-semibold text-slate-900">{row.customer_name}</p><p className="mt-2 text-sm text-slate-700">{row.message}</p>{row.suggested_action && <p className="mt-2 text-xs text-slate-500">建议：{row.suggested_action}</p>}</div>
-                <Badge className={row.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' : row.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}>{row.status === 'resolved' ? '已解决' : row.status === 'in_progress' ? '处理中' : row.severity === 'high' ? '高优先' : '待完善'}</Badge>
+                <div className="flex shrink-0 flex-col items-end gap-1.5"><Badge variant="outline" className="bg-white/70 text-slate-600">{qualityCategoryLabels[row.category] || row.category}</Badge><Badge className={row.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' : row.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}>{row.status === 'resolved' ? '已解决' : row.status === 'in_progress' ? '处理中' : row.severity === 'high' ? '高优先' : '待完善'}</Badge></div>
               </div>
               {row.resolution_note && <div className="mt-3 rounded-lg bg-white/80 px-3 py-2 text-xs text-emerald-700">处理结果：{row.resolution_note}</div>}
               <div className="mt-4 flex flex-wrap gap-2">

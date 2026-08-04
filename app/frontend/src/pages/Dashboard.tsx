@@ -11,7 +11,8 @@ import {
   Users, UserPlus, Handshake, AlertTriangle, DollarSign,
   Clock, TrendingUp, ListTodo, Bell, CalendarClock, CreditCard, PackageCheck,
   Palette, CheckCircle2, Timer, PhoneCall, Target, PhoneForwarded,
-  CalendarCheck2, ShieldAlert, FileCheck2, Banknote, ArrowRight
+  CalendarCheck2, ShieldAlert, FileCheck2, Banknote, ArrowRight,
+  Activity, Database, Gauge, RefreshCw, Layers3, CircleDollarSign, Workflow
 } from 'lucide-react';
 import { useBusinessDicts } from '../lib/dict-config';
 import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
@@ -67,6 +68,34 @@ type SalesRecoveryOverview = {
 
 type PayrollSummary = { items: { month: string; status: 'draft' | 'confirmed' | 'paid'; currency: string }[]; pending_count: number };
 
+type OwnerCockpit = {
+  as_of: string;
+  period: { month: string; today: string };
+  finance: {
+    month: string;
+    USD: {
+      gross_receipts: number; refund_amount: number; net_receipts: number;
+      service_revenue: number; ads_client_funds: number; recognized_ad_spread: number;
+      deduction_amount: number; stripe_platform_fee: number; cost: number; profit: number;
+    };
+    company_cost_cny: number;
+    currency_policy: string;
+  };
+  customers: {
+    active_projects: number; at_risk_projects: number; stopped_this_month: number;
+    business_lines: { code: string; name: string; active_projects: number }[];
+  };
+  execution: { open_tasks: number; overdue_tasks: number; system_tasks: number; completed_this_month: number };
+  delivery: { active_service_records: number; overdue_service_tasks: number; unresolved_service_issues: number; overdue_callbacks: number };
+  quality: { open: number; in_progress: number; resolved: number; open_task_count: number; category_counts: Record<string, number>; severity_counts: Record<string, number> };
+  automation: {
+    last_run: null | { status: string; detected_count: number; completed_at?: string };
+    schedule: { enabled: boolean; timezone: string; hour: number; next_run_at: string; auto_stop_enabled: boolean };
+  };
+  decisions: { key: string; level: 'critical' | 'high' | 'medium'; title: string; count: number; description: string; link: string }[];
+  decision_state: 'healthy' | 'attention';
+};
+
 const buildReminderLink = (path: string, params: Record<string, string | number | null | undefined>) => {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -93,6 +122,8 @@ export default function Dashboard() {
   const [salesRecovery, setSalesRecovery] = useState<SalesRecoveryOverview | null>(null);
   const [salesCockpitLoading, setSalesCockpitLoading] = useState(false);
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary | null>(null);
+  const [ownerCockpit, setOwnerCockpit] = useState<OwnerCockpit | null>(null);
+  const [ownerCockpitLoading, setOwnerCockpitLoading] = useState(false);
   const now = new Date();
   const [lbYear, setLbYear] = useState<string>(String(now.getFullYear()));
   const [lbMonth, setLbMonth] = useState<string>(String(now.getMonth() + 1));
@@ -256,9 +287,27 @@ export default function Dashboard() {
     }
   };
 
+  const loadOwnerCockpit = async () => {
+    if (!isAdm) return;
+    setOwnerCockpitLoading(true);
+    try {
+      const response = await invokeWithAuth({ url: '/api/v1/management-decisions/owner-cockpit', method: 'GET' });
+      setOwnerCockpit(response.data || null);
+    } catch (error) {
+      console.error('Failed to load owner cockpit:', error);
+      setOwnerCockpit(null);
+    } finally {
+      setOwnerCockpitLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (isAdm) void loadSalesCockpit(salesPeriod);
   }, [isAdm, salesPeriod]);
+
+  useEffect(() => {
+    if (isAdm) void loadOwnerCockpit();
+  }, [isAdm]);
 
   useEffect(() => {
     if (!isAdm && !isFinance) return;
@@ -267,7 +316,10 @@ export default function Dashboard() {
       .catch(() => setPayrollSummary(null));
   }, [isAdm, isFinance]);
 
-  useAutoRefresh(loadDashboard, { intervalMs: 30000 });
+  useAutoRefresh(() => {
+    void loadDashboard();
+    if (isAdm) void loadOwnerCockpit();
+  }, { intervalMs: 30000 });
 
   const buildReminders = (customers: any[], followUps: any[], subs: any[], payments: any[], tasks: any[], now: Date, sevenDaysAgo: Date, callbacksList?: any[]) => {
     const newReminders: Reminder[] = [];
@@ -565,6 +617,99 @@ export default function Dashboard() {
     );
   };
 
+  const renderOwnerCommandCenter = () => {
+    if (!isAdm) return null;
+    if (!ownerCockpit && ownerCockpitLoading) {
+      return <Card className="border-slate-200"><CardContent className="flex h-52 items-center justify-center text-sm text-slate-500"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />正在生成老板经营摘要...</CardContent></Card>;
+    }
+    if (!ownerCockpit) {
+      return <Card className="border-amber-200 bg-amber-50"><CardContent className="flex items-center justify-between gap-4 p-4"><div><p className="font-semibold text-amber-900">老板经营摘要暂时无法读取</p><p className="mt-1 text-xs text-amber-700">客户与任务基础数据仍可继续使用，请稍后刷新。</p></div><Button variant="outline" size="sm" onClick={() => void loadOwnerCockpit()}>重新读取</Button></CardContent></Card>;
+    }
+
+    const usd = ownerCockpit.finance.USD;
+    const lastRunAt = ownerCockpit.automation.last_run?.completed_at
+      ? new Date(ownerCockpit.automation.last_run.completed_at).toLocaleString('zh-CN', { hour12: false })
+      : '尚未完成扫描';
+    const nextRunAt = ownerCockpit.automation.schedule?.next_run_at
+      ? new Date(ownerCockpit.automation.schedule.next_run_at).toLocaleString('zh-CN', { hour12: false })
+      : '-';
+    const decisionTone: Record<string, string> = {
+      critical: 'border-rose-200 bg-rose-50 text-rose-800',
+      high: 'border-amber-200 bg-amber-50 text-amber-800',
+      medium: 'border-blue-200 bg-blue-50 text-blue-800',
+    };
+    const decisionLabel: Record<string, string> = { critical: '立即处理', high: '优先处理', medium: '尽快完善' };
+    const topMetrics = [
+      { label: `${ownerCockpit.period.month} 经营利润 USD`, value: `$${usd.profit.toLocaleString()}`, helper: `服务收入 $${usd.service_revenue.toLocaleString()} · 已确认投流差价 $${usd.recognized_ad_spread.toLocaleString()}`, icon: CircleDollarSign, tone: usd.profit < 0 ? 'text-rose-700 bg-rose-50' : 'text-emerald-700 bg-emerald-50', link: '/finance?tab=monthly_detail' },
+      { label: '本月净收款 USD', value: `$${usd.net_receipts.toLocaleString()}`, helper: `客户投流资金 $${usd.ads_client_funds.toLocaleString()}（不计收入）`, icon: Banknote, tone: 'text-blue-700 bg-blue-50', link: '/finance?tab=income' },
+      { label: '当前合作项目', value: ownerCockpit.customers.active_projects, helper: `${ownerCockpit.customers.at_risk_projects} 个风险 · 本月停止 ${ownerCockpit.customers.stopped_this_month}`, icon: Layers3, tone: 'text-violet-700 bg-violet-50', link: '/customer-lifecycle' },
+      { label: '系统推动中的任务', value: ownerCockpit.execution.system_tasks, helper: `${ownerCockpit.execution.overdue_tasks} 个全部任务已逾期`, icon: Workflow, tone: 'text-orange-700 bg-orange-50', link: '/tasks?source=system' },
+    ];
+
+    return (
+      <section className="space-y-4">
+        <Card className="overflow-hidden border-0 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white shadow-xl">
+          <CardContent className="p-5 md:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-3xl">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300"><Gauge className="h-4 w-4" />T24 Owner Command Center</div>
+                <h2 className="mt-2 text-2xl font-semibold">今天先看结果，再看风险，最后确认谁来处理</h2>
+                <p className="mt-2 text-sm text-slate-300">{ownerCockpit.finance.currency_policy}</p>
+              </div>
+              <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${ownerCockpit.decision_state === 'healthy' ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-300/30 bg-amber-300/10'}`}>
+                {ownerCockpit.decision_state === 'healthy' ? <CheckCircle2 className="h-5 w-5 text-emerald-300" /> : <ShieldAlert className="h-5 w-5 text-amber-300" />}
+                <div><p className="text-sm font-semibold">{ownerCockpit.decision_state === 'healthy' ? '当前经营闭环正常' : `${ownerCockpit.decisions.length} 类事项需要关注`}</p><p className="mt-0.5 text-[11px] text-slate-300">数据截至 {new Date(ownerCockpit.as_of).toLocaleString('zh-CN', { hour12: false })}</p></div>
+              </div>
+            </div>
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {topMetrics.map(item => {
+                const Icon = item.icon;
+                return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="rounded-xl border border-white/10 bg-white/[0.07] p-4 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.12]"><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="text-xs text-slate-300">{item.label}</p><p className="mt-1 text-2xl font-bold">{item.value}</p><p className="mt-1 text-[11px] leading-5 text-slate-400">{item.helper}</p></button>;
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+          <Card className="border-slate-200">
+            <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-4 w-4 text-rose-500" />老板今天需要推动</CardTitle><p className="mt-1 text-xs text-slate-500">按影响程度排序，点击直接进入处理页面。</p></div><Button size="sm" variant="outline" onClick={() => navigate('/tasks?source=system')}>查看系统任务</Button></div></CardHeader>
+            <CardContent>
+              <div className="grid gap-2 md:grid-cols-2">
+                {ownerCockpit.decisions.map(item => <button key={item.key} type="button" onClick={() => navigate(item.link)} className={`rounded-xl border p-3 text-left transition hover:shadow-sm ${decisionTone[item.level]}`}><div className="flex items-start justify-between gap-3"><div><span className="text-[10px] font-semibold uppercase tracking-wide opacity-70">{decisionLabel[item.level]}</span><p className="mt-1 text-sm font-semibold">{item.title}</p></div><span className="rounded-full bg-white px-2.5 py-1 text-sm font-bold shadow-sm">{item.count}</span></div><p className="mt-2 text-xs leading-5 opacity-80">{item.description}</p></button>)}
+                {ownerCockpit.decisions.length === 0 && <div className="col-span-2 rounded-xl bg-emerald-50 p-8 text-center text-sm text-emerald-700"><CheckCircle2 className="mx-auto mb-2 h-7 w-7" />当前没有需要老板推动的异常事项</div>}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Database className="h-4 w-4 text-blue-600" />自动化与数据可信度</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => navigate('/management-decisions?section=quality')} className="rounded-lg bg-rose-50 p-3 text-left"><p className="text-xs text-rose-600">开放问题</p><p className="mt-1 text-xl font-bold text-rose-800">{ownerCockpit.quality.open + ownerCockpit.quality.in_progress}</p></button>
+                <button type="button" onClick={() => navigate('/tasks?source=system')} className="rounded-lg bg-blue-50 p-3 text-left"><p className="text-xs text-blue-600">关联任务</p><p className="mt-1 text-xl font-bold text-blue-800">{ownerCockpit.quality.open_task_count}</p></button>
+                <button type="button" onClick={() => navigate('/service-board')} className="rounded-lg bg-amber-50 p-3 text-left"><p className="text-xs text-amber-600">交付逾期</p><p className="mt-1 text-xl font-bold text-amber-800">{ownerCockpit.delivery.overdue_service_tasks}</p></button>
+                <button type="button" onClick={() => navigate('/callbacks?status=pending&schedule=overdue')} className="rounded-lg bg-violet-50 p-3 text-left"><p className="text-xs text-violet-600">逾期回访</p><p className="mt-1 text-xl font-bold text-violet-800">{ownerCockpit.delivery.overdue_callbacks}</p></button>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600"><div className="flex items-center justify-between"><span>每日扫描</span><Badge className={ownerCockpit.automation.schedule.enabled ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-200 text-slate-600 hover:bg-slate-200'}>{ownerCockpit.automation.schedule.enabled ? '已开启' : '未开启'}</Badge></div><p className="mt-2">上次：{lastRunAt}</p><p className="mt-1">下次：{nextRunAt}</p><p className="mt-2 text-[11px] text-slate-400">只提醒、建任务和追踪结果，不会自动停止客户。</p></div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="border-slate-200">
+          <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="text-base">业务结构与团队执行</CardTitle><p className="mt-1 text-xs text-slate-500">用于判断当前人力应该投向获客、交付还是客户留存。</p></div><Button size="sm" variant="outline" onClick={() => navigate('/management-decisions')}>查看经营决策</Button></div></CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">在合作项目构成</p><div className="mt-3 space-y-2">{ownerCockpit.customers.business_lines.map(line => <div key={line.code} className="flex items-center justify-between text-sm"><span className="text-slate-600">{line.name}</span><span className="font-bold text-slate-900">{line.active_projects}</span></div>)}{ownerCockpit.customers.business_lines.length === 0 && <p className="text-sm text-slate-400">尚无已确认项目</p>}</div></div>
+              <div className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">任务执行</p><p className="mt-2 text-2xl font-bold text-slate-900">{ownerCockpit.execution.completed_this_month}</p><p className="mt-1 text-xs text-slate-500">本月已完成 · 当前待办 {ownerCockpit.execution.open_tasks}</p></div>
+              <div className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">客户交付</p><p className="mt-2 text-2xl font-bold text-slate-900">{ownerCockpit.delivery.active_service_records}</p><p className="mt-1 text-xs text-slate-500">服务记录 · 未解决问题 {ownerCockpit.delivery.unresolved_service_issues}</p></div>
+              <div className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">人民币公司支出</p><p className="mt-2 text-2xl font-bold text-slate-900">¥{ownerCockpit.finance.company_cost_cny.toLocaleString()}</p><p className="mt-1 text-xs text-slate-500">与美元利润分开，不做临时汇率换算</p></div>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+    );
+  };
+
   const renderSalesOwnerCockpit = () => {
     if (!isAdm) return null;
     if (!salesManagement && salesCockpitLoading) {
@@ -800,9 +945,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-slate-800">管理员工作台</h2>
-      {renderSalesOwnerCockpit()}
+      {renderOwnerCommandCenter()}
       {renderReminders()}
+      {renderSalesOwnerCockpit()}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {renderStatCard('客户总数', data.totalCustomers || 0, <Users className="w-5 h-5 text-blue-600" />, '', 'bg-blue-50', '/customers')}

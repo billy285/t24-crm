@@ -14,8 +14,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import db_manager
 from models.automation import AutomationScanRun, DataQualityIssue
+from models.ad_fund_settlements import AdFundSettlement
+from models.customer_callbacks import Customer_callbacks
+from models.customers import Customers
 from models.employees import Employees
+from models.follow_ups import Follow_ups
 from models.management_decisions import CustomerEngagement
+from models.payments import Payments
+from models.service_progresses import Service_progresses
+from models.service_tasks import Service_tasks
+from models.subscriptions import Subscriptions
 from models.tasks import Tasks
 from services.management_decision_workflow import build_classification_review_queue
 
@@ -53,7 +61,8 @@ def next_scheduled_scan(now: Optional[datetime] = None) -> datetime:
 
 
 def issue_key(row: dict[str, Any]) -> str:
-    return f"{row['code']}:customer:{int(row['customer_id'])}:project:{int(row.get('project_id') or 0)}"
+    suffix = f":scope:{row['scope_key']}" if row.get("scope_key") else ""
+    return f"{row['code']}:customer:{int(row['customer_id'])}:project:{int(row.get('project_id') or 0)}{suffix}"
 
 
 def _issue_category(row: dict[str, Any]) -> str:
@@ -72,6 +81,15 @@ def _issue_title(issue: DataQualityIssue) -> str:
         "active_project_missing_owner": "分配项目负责人",
         "active_project_missing_billing_config": "补齐收费信息",
         "historical_classification_pending": "确认历史客户项目分类",
+        "finance_receivable_open": "跟进客户欠款",
+        "finance_payment_missing_date": "补齐收款日期",
+        "finance_income_split_mismatch": "核对收入拆分",
+        "finance_ad_fund_unsettled": "完成投流月结",
+        "subscription_missing_next_payment": "补齐订阅扣款日期",
+        "customer_follow_up_overdue": "完成逾期客户跟进",
+        "customer_callback_overdue": "完成逾期客户回访",
+        "delivery_task_overdue": "完成逾期交付任务",
+        "delivery_issue_unresolved": "处理客户服务问题",
     }
     return titles.get(issue.code, "处理经营数据异常")
 
@@ -96,6 +114,7 @@ async def _ensure_task(
     issue: DataQualityIssue,
     *,
     owner_by_project: Optional[dict[int, tuple[Optional[int], Optional[str]]]] = None,
+    fallback_owner: tuple[Optional[int], Optional[str]] = (None, None),
     force: bool = False,
 ) -> tuple[Tasks, bool, bool]:
     existing = (await db.execute(
@@ -116,6 +135,8 @@ async def _ensure_task(
     owner_name: Optional[str] = None
     if issue.project_id and owner_by_project:
         owner_id, owner_name = owner_by_project.get(int(issue.project_id), (None, None))
+    if not owner_id and not owner_name:
+        owner_id, owner_name = fallback_owner
     due_days = 1 if issue.severity == "high" else 2
     now = utcnow()
 
@@ -192,6 +213,258 @@ async def _owner_map(
     }
 
 
+def _as_date(value: Any) -> Optional[date]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return _aware(value).date() if _aware(value) else None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+        except ValueError:
+            try:
+                return datetime.strptime(raw[:10], "%Y-%m-%d").date()
+            except ValueError:
+                return None
+    return None
+
+
+def _money(value: Any) -> float:
+    try:
+        return round(float(value or 0), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _ads_recharge(payment: Payments) -> float:
+    if payment.ads_recharge_amount is not None:
+        return max(_money(payment.ads_recharge_amount), 0)
+    return max(_money(payment.amount_paid), 0) if payment.income_type == "ads_fee" else 0
+
+
+def _income_split_mismatch(payment: Payments) -> bool:
+    management = max(_money(payment.management_amount), 0)
+    ads = _ads_recharge(payment)
+    paid = max(_money(payment.amount_paid), 0)
+    if management + ads > paid + 0.01:
+        return True
+    return payment.income_type == "management_ads_mixed" and (management <= 0 or ads <= 0)
+
+
+async def _business_anomalies(db: AsyncSession, now: datetime) -> list[dict[str, Any]]:
+    """Cross-functional daily checks. Every item remains advisory until a human closes its task."""
+    today = now.astimezone(BEIJING).date()
+    current_month = f"{today.year:04d}-{today.month:02d}"
+    customers = (await db.execute(select(Customers))).scalars().all()
+    customer_by_id = {int(row.id): row for row in customers}
+    anomalies: list[dict[str, Any]] = []
+
+    def customer_payload(customer_id: int) -> Optional[dict[str, Any]]:
+        customer = customer_by_id.get(int(customer_id))
+        if not customer:
+            return None
+        return {
+            "customer_id": int(customer.id),
+            "customer_name": customer.business_name,
+            "assignee_id": customer.sales_employee_id,
+            "assignee_name": customer.sales_person,
+        }
+
+    payments = (await db.execute(select(Payments))).scalars().all()
+    receivables: dict[int, list[Payments]] = {}
+    ad_months: dict[tuple[int, str, str], list[Payments]] = {}
+    for payment in payments:
+        base = customer_payload(payment.customer_id)
+        if not base:
+            continue
+        if payment.payment_date is None:
+            anomalies.append({
+                **base,
+                "code": "finance_payment_missing_date",
+                "category": "finance",
+                "severity": "high",
+                "scope_key": f"payment-{payment.id}",
+                "message": f"收款记录 #{payment.id} 缺少收款日期，无法进入正确月份",
+                "suggested_action": "核对银行或 Stripe 记录并补齐实际收款日期",
+            })
+        if _income_split_mismatch(payment):
+            anomalies.append({
+                **base,
+                "code": "finance_income_split_mismatch",
+                "category": "finance",
+                "severity": "high",
+                "scope_key": f"payment-{payment.id}",
+                "message": f"收款记录 #{payment.id} 的管理费与投流充值拆分不一致",
+                "suggested_action": "核对实收金额，重新填写管理费与投流充值金额",
+            })
+        if _money(payment.outstanding_amount) > 0.01:
+            receivables.setdefault(int(payment.customer_id), []).append(payment)
+        payment_day = _as_date(payment.payment_date)
+        ads_amount = _ads_recharge(payment)
+        if payment_day and ads_amount > 0:
+            month = f"{payment_day.year:04d}-{payment_day.month:02d}"
+            currency = str(payment.currency or "USD").upper()
+            ad_months.setdefault((int(payment.customer_id), month, currency), []).append(payment)
+
+    for customer_id, rows in receivables.items():
+        base = customer_payload(customer_id)
+        if not base:
+            continue
+        amounts = Counter()
+        for row in rows:
+            amounts[str(row.currency or "USD").upper()] += _money(row.outstanding_amount)
+        amount_text = " / ".join(f"{currency} {amounts[currency]:,.2f}" for currency in sorted(amounts))
+        anomalies.append({
+            **base,
+            "code": "finance_receivable_open",
+            "category": "finance",
+            "severity": "high",
+            "message": f"存在 {len(rows)} 笔未收齐款项，合计 {amount_text}",
+            "suggested_action": "核对约定付款时间并记录催收结果",
+        })
+
+    settlements = (await db.execute(select(AdFundSettlement))).scalars().all()
+    closed_settlements = {
+        (int(row.customer_id), str(row.year_month)[:7], str(row.currency or "USD").upper())
+        for row in settlements if row.status == "closed"
+    }
+    for (customer_id, month, currency), rows in ad_months.items():
+        if month >= current_month or (customer_id, month, currency) in closed_settlements:
+            continue
+        base = customer_payload(customer_id)
+        if not base:
+            continue
+        anomalies.append({
+            **base,
+            "code": "finance_ad_fund_unsettled",
+            "category": "finance",
+            "severity": "high",
+            "scope_key": f"{month}-{currency}",
+            "message": f"{month} 有 {currency} 投流充值，但尚未完成月结关账",
+            "suggested_action": "录入广告实支、客户退款、确认差价与结余后关账",
+        })
+
+    subscriptions = (await db.execute(select(Subscriptions))).scalars().all()
+    for subscription in subscriptions:
+        if not subscription.auto_renew or subscription.next_payment_date or subscription.status in {"stopped", "cancelled"}:
+            continue
+        base = customer_payload(subscription.customer_id)
+        if not base:
+            continue
+        anomalies.append({
+            **base,
+            "code": "subscription_missing_next_payment",
+            "category": "data_quality",
+            "severity": "warning",
+            "scope_key": f"subscription-{subscription.id}",
+            "message": f"自动续费套餐“{subscription.package_name}”缺少下次付款日期",
+            "suggested_action": "在套餐续费管理中补齐实际计划扣款日",
+        })
+
+    follow_ups = (await db.execute(select(Follow_ups))).scalars().all()
+    latest_follow_up: dict[int, Follow_ups] = {}
+    for row in follow_ups:
+        current = latest_follow_up.get(int(row.customer_id))
+        if current is None or str(row.created_at or "") > str(current.created_at or ""):
+            latest_follow_up[int(row.customer_id)] = row
+    for customer_id, row in latest_follow_up.items():
+        due = _as_date(row.next_follow_date)
+        if not due or due >= today or row.stage in {"closed", "lost"}:
+            continue
+        base = customer_payload(customer_id)
+        if not base:
+            continue
+        overdue_days = (today - due).days
+        anomalies.append({
+            **base,
+            "assignee_id": row.employee_id or base.get("assignee_id"),
+            "assignee_name": row.employee_name or base.get("assignee_name"),
+            "code": "customer_follow_up_overdue",
+            "category": "customer_success",
+            "severity": "high" if overdue_days >= 3 else "warning",
+            "message": f"客户跟进已逾期 {overdue_days} 天",
+            "suggested_action": "联系客户并记录本次结果与下一次明确日期",
+        })
+
+    callbacks = (await db.execute(select(Customer_callbacks))).scalars().all()
+    overdue_callbacks: dict[int, list[Customer_callbacks]] = {}
+    for row in callbacks:
+        due = _as_date(row.callback_date)
+        if row.status == "pending" and due and due < today:
+            overdue_callbacks.setdefault(int(row.customer_id), []).append(row)
+    for customer_id, rows in overdue_callbacks.items():
+        base = customer_payload(customer_id)
+        if not base:
+            continue
+        oldest = min(_as_date(row.callback_date) or today for row in rows)
+        overdue_days = (today - oldest).days
+        owner = sorted(rows, key=lambda row: _as_date(row.callback_date) or today)[0]
+        anomalies.append({
+            **base,
+            "assignee_id": owner.employee_id or base.get("assignee_id"),
+            "assignee_name": owner.employee_name or base.get("assignee_name"),
+            "code": "customer_callback_overdue",
+            "category": "customer_success",
+            "severity": "high" if overdue_days >= 3 else "warning",
+            "message": f"存在 {len(rows)} 条逾期回访，最早已逾期 {overdue_days} 天",
+            "suggested_action": "完成回访并填写回访结果；如需延期请更新下次日期",
+        })
+
+    employees = (await db.execute(select(Employees))).scalars().all()
+    employee_by_name = {str(row.name).strip(): row for row in employees if row.name}
+    service_tasks = (await db.execute(select(Service_tasks))).scalars().all()
+    overdue_service: dict[int, list[Service_tasks]] = {}
+    for row in service_tasks:
+        due = _as_date(row.due_date)
+        if row.status not in {"completed", "cancelled"} and due and due < today:
+            overdue_service.setdefault(int(row.customer_id), []).append(row)
+    for customer_id, rows in overdue_service.items():
+        base = customer_payload(customer_id)
+        if not base:
+            continue
+        oldest = min(_as_date(row.due_date) or today for row in rows)
+        overdue_days = (today - oldest).days
+        owner_name = next((row.assignee_name for row in rows if row.assignee_name), None)
+        owner = employee_by_name.get(str(owner_name).strip()) if owner_name else None
+        anomalies.append({
+            **base,
+            "assignee_id": owner.id if owner else base.get("assignee_id"),
+            "assignee_name": owner_name or base.get("assignee_name"),
+            "code": "delivery_task_overdue",
+            "category": "delivery",
+            "severity": "high",
+            "message": f"存在 {len(rows)} 个交付任务逾期，最早已逾期 {overdue_days} 天",
+            "suggested_action": "确认阻塞原因、负责人和新的完成日期",
+        })
+
+    service_progresses = (await db.execute(select(Service_progresses))).scalars().all()
+    for row in service_progresses:
+        if not row.issue_status or row.issue_resolved:
+            continue
+        base = customer_payload(row.customer_id)
+        if not base:
+            continue
+        owner = employee_by_name.get(str(row.issue_owner or row.ops_person or "").strip())
+        anomalies.append({
+            **base,
+            "assignee_id": owner.id if owner else base.get("assignee_id"),
+            "assignee_name": row.issue_owner or row.ops_person or base.get("assignee_name"),
+            "code": "delivery_issue_unresolved",
+            "category": "delivery",
+            "severity": "high",
+            "scope_key": f"service-{row.id}",
+            "message": row.issue_description or f"{row.service_type or '客户服务'}存在未解决问题",
+            "suggested_action": "补充处理进度，解决后在服务进度看板标记完成",
+        })
+
+    return anomalies
+
+
 async def run_automation_scan(
     db: AsyncSession,
     *,
@@ -220,7 +493,7 @@ async def run_automation_scan(
 
     try:
         review = await build_classification_review_queue(db, start_date)
-        anomalies = review.get("anomalies", [])
+        anomalies = [*review.get("anomalies", []), *(await _business_anomalies(db, now))]
         keys = {issue_key(row) for row in anomalies}
         existing_issues = (await db.execute(select(DataQualityIssue))).scalars().all()
         issue_by_key = {row.issue_key: row for row in existing_issues}
@@ -273,7 +546,12 @@ async def run_automation_scan(
                     opened_count += 1
 
             if issue.status in {"open", "in_progress"} and _task_worthy(issue):
-                _, created, updated = await _ensure_task(db, issue, owner_by_project=owner_by_project)
+                _, created, updated = await _ensure_task(
+                    db,
+                    issue,
+                    owner_by_project=owner_by_project,
+                    fallback_owner=(anomaly.get("assignee_id"), anomaly.get("assignee_name")),
+                )
                 task_created_count += int(created)
                 task_updated_count += int(updated)
 

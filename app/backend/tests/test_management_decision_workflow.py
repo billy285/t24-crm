@@ -12,6 +12,7 @@ from backend.services.emp_auth import create_access_token
 from core.database import Base, get_db
 from models.customer_lifecycles import CustomerLifecycleCycle
 from models.customers import Customers
+from models.customer_callbacks import Customer_callbacks
 from models.management_decisions import (
     BusinessLine,
     ClassificationReviewDecision,
@@ -21,6 +22,7 @@ from models.management_decisions import (
     ProductCatalog,
 )
 from models.payments import Payments
+from models.service_tasks import Service_tasks
 from models.automation import DataQualityIssue
 from models.tasks import Tasks
 from services.automation_monitor import automation_overview, run_automation_scan
@@ -282,6 +284,77 @@ async def test_automation_overview_is_finance_readable_and_scan_is_admin_only(wo
     assert denied_scan.status_code == 403
     assert admin_scan.status_code == 200
     assert admin_scan.json()["scan"]["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_daily_scan_covers_finance_customer_success_and_delivery(workflow_context):
+    _, sessions = workflow_context
+    async with sessions() as session:
+        session.add_all([
+            Payments(
+                id=301,
+                customer_id=12,
+                customer_name="Other Customer",
+                income_type="management_fee",
+                product_name="基础套餐",
+                amount_due=300,
+                amount_paid=100,
+                outstanding_amount=200,
+                currency="USD",
+                payment_date=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                user_id="1",
+            ),
+            Customer_callbacks(
+                id=401,
+                customer_id=12,
+                employee_id=9,
+                employee_name="Billy Li",
+                callback_date=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                status="pending",
+                content="确认续费意向",
+            ),
+            Service_tasks(
+                id=501,
+                customer_id=12,
+                customer_name="Other Customer",
+                task_name="完成网站上线",
+                assignee_name="Billy Li",
+                status="pending",
+                due_date="2026-07-01",
+                user_id="1",
+            ),
+        ])
+        await session.commit()
+
+    async with sessions() as session:
+        result = await run_automation_scan(session, trigger="manual", run_key="manual:cross-functional")
+        overview = await automation_overview(session)
+
+    assert result["status"] == "completed"
+    codes = {item["code"] for item in overview["items"] if item["status"] != "resolved"}
+    assert "finance_receivable_open" in codes
+    assert "customer_callback_overdue" in codes
+    assert "delivery_task_overdue" in codes
+    assert overview["summary"]["category_counts"]["finance"] >= 1
+    assert overview["summary"]["category_counts"]["customer_success"] >= 1
+    assert overview["summary"]["category_counts"]["delivery"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_owner_cockpit_uses_separate_currency_policy_and_workflow_counts(workflow_context):
+    client, _ = workflow_context
+    response = await client.get(
+        "/api/v1/management-decisions/owner-cockpit",
+        headers=auth_headers("admin", 1),
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["finance"]["currency_policy"].startswith("USD 与 CNY 独立统计")
+    assert payload["finance"]["USD"]["ads_client_funds"] >= 0
+    assert payload["customers"]["active_projects"] >= 0
+    assert payload["execution"]["open_tasks"] >= 0
+    assert payload["automation"]["schedule"]["auto_stop_enabled"] is False
 
 
 @pytest.mark.asyncio
