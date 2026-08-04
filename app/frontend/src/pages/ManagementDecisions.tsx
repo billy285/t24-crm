@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeft, BarChart3, BriefcaseBusiness, CheckCircle2, Clock3,
   Database, Layers3, ListChecks, PlayCircle, RefreshCw, Search, ShieldCheck, TrendingUp, Users,
@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { client } from '@/lib/api';
 import { useRole } from '@/lib/role-context';
+import { buildReturnLink } from '@/lib/navigation-state';
 
 type Project = {
   id: number;
@@ -197,6 +198,21 @@ const qualityCategoryLabels: Record<string, string> = {
   delivery: '交付执行',
 };
 
+const sectionQueryValues: Record<'overview' | 'projects' | 'exceptions' | 'history', string> = {
+  overview: 'overview',
+  projects: 'projects',
+  exceptions: 'quality',
+  history: 'history',
+};
+
+const querySectionValues: Record<string, 'overview' | 'projects' | 'exceptions' | 'history'> = {
+  overview: 'overview',
+  projects: 'projects',
+  quality: 'exceptions',
+  exceptions: 'exceptions',
+  history: 'history',
+};
+
 function authOptions() {
   const token = localStorage.getItem('emp_auth_token') || localStorage.getItem('token');
   return token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
@@ -247,6 +263,8 @@ function projectToForm(project: Project): ProjectForm {
 
 export default function ManagementDecisions() {
   const { isAdmin } = useRole();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const today = new Date().toISOString().slice(0, 10);
   const [startDate, setStartDate] = useState('2026-01-01');
   const [data, setData] = useState<ReviewData | null>(null);
@@ -255,13 +273,13 @@ export default function ManagementDecisions() {
   const [scanLoading, setScanLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [reviewFilter, setReviewFilter] = useState('pending');
-  const [section, setSection] = useState<'overview' | 'projects' | 'exceptions' | 'history'>('overview');
+  const [section, setSection] = useState<'overview' | 'projects' | 'exceptions' | 'history'>(() => querySectionValues[searchParams.get('section') || ''] || 'overview');
   const [projectSearch, setProjectSearch] = useState('');
   const [projectLineFilter, setProjectLineFilter] = useState('all');
   const [projectStatusFilter, setProjectStatusFilter] = useState('all');
   const [projectIndustryFilter, setProjectIndustryFilter] = useState('all');
-  const [qualityStatusFilter, setQualityStatusFilter] = useState('active');
-  const [qualityCategoryFilter, setQualityCategoryFilter] = useState('all');
+  const [qualityStatusFilter, setQualityStatusFilter] = useState(searchParams.get('qualityStatus') || 'active');
+  const [qualityCategoryFilter, setQualityCategoryFilter] = useState(searchParams.get('qualityCategory') || 'all');
   const [reviewing, setReviewing] = useState<ReviewItem | null>(null);
   const [projectForms, setProjectForms] = useState<ProjectForm[]>([]);
   const [reviewNote, setReviewNote] = useState('');
@@ -294,6 +312,45 @@ export default function ManagementDecisions() {
   };
 
   useEffect(() => { void loadData(); }, []);
+
+  useEffect(() => {
+    const nextSection = querySectionValues[searchParams.get('section') || ''];
+    if (nextSection && nextSection !== section) setSection(nextSection);
+    const nextStatus = searchParams.get('qualityStatus');
+    if (nextStatus && nextStatus !== qualityStatusFilter) setQualityStatusFilter(nextStatus);
+    const nextCategory = searchParams.get('qualityCategory');
+    if (nextCategory && nextCategory !== qualityCategoryFilter) setQualityCategoryFilter(nextCategory);
+  }, [qualityCategoryFilter, qualityStatusFilter, searchParams, section]);
+
+  const changeSection = (nextSection: 'overview' | 'projects' | 'exceptions' | 'history') => {
+    setSection(nextSection);
+    const next = new URLSearchParams(searchParams);
+    if (nextSection === 'overview') next.delete('section');
+    else next.set('section', sectionQueryValues[nextSection]);
+    setSearchParams(next, { replace: true });
+  };
+
+  const changeQualityFilter = (key: 'qualityStatus' | 'qualityCategory', value: string) => {
+    if (key === 'qualityStatus') setQualityStatusFilter(value);
+    else setQualityCategoryFilter(value);
+    const next = new URLSearchParams(searchParams);
+    next.set('section', 'quality');
+    if ((key === 'qualityStatus' && value === 'active') || (key === 'qualityCategory' && value === 'all')) next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  };
+
+  const currentDecisionPath = () => {
+    const next = new URLSearchParams(location.search);
+    next.set('section', sectionQueryValues[section]);
+    if (section === 'exceptions') {
+      if (qualityStatusFilter !== 'active') next.set('qualityStatus', qualityStatusFilter);
+      else next.delete('qualityStatus');
+      if (qualityCategoryFilter !== 'all') next.set('qualityCategory', qualityCategoryFilter);
+      else next.delete('qualityCategory');
+    }
+    return `${location.pathname}?${next.toString()}`;
+  };
 
   const visibleItems = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -479,7 +536,7 @@ export default function ManagementDecisions() {
           {[
             ['overview', '经营总览', BarChart3], ['projects', '项目客户明细', BriefcaseBusiness],
             ['exceptions', `数据质量中心 ${automation?.summary.open || summary?.anomaly_count || 0}`, Database], ['history', `历史补录 ${pendingCount}`, Clock3],
-          ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" variant={section === value ? 'default' : 'ghost'} onClick={() => setSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
+          ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" variant={section === value ? 'default' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
         </CardContent>
       </Card>
 
@@ -503,7 +560,7 @@ export default function ManagementDecisions() {
 
       {section === 'projects' && <Card className="border-slate-200">
         <CardHeader className="gap-3"><div><CardTitle className="text-base">项目客户明细</CardTitle><p className="mt-1 text-xs text-slate-500">日常项目维护从客户管理进入；本页用于筛选、观察和调整状态。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="客户、编号、套餐或负责人" className="w-64 pl-9" /></div><select value={projectLineFilter} onChange={event => setProjectLineFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部业务</option>{Object.entries(lineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectStatusFilter} onChange={event => setProjectStatusFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部状态</option>{Object.entries(projectStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectIndustryFilter} onChange={event => setProjectIndustryFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部行业</option>{industries.map(value => <option key={value} value={value}>{value}</option>)}</select></div></CardHeader>
-        <CardContent className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户</th><th className="px-3 py-3">业务项目</th><th className="px-3 py-3">套餐/项目名称</th><th className="px-3 py-3">行业/负责人</th><th className="px-3 py-3">首次有效收款</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">收费</th><th className="px-3 py-3 text-right">操作</th></tr></thead><tbody>{visibleProjects.map(project => <tr key={project.id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium"><Link className="text-blue-700 hover:underline" to={`/customers?detail=${project.customer_id}`}>{project.customer_name}</Link><p className="text-xs font-normal text-slate-400">{project.customer_code || '-'}</p></td><td className="px-3 py-3">{project.business_line.name}</td><td className="px-3 py-3">{project.package_name || project.product.name}</td><td className="px-3 py-3">{project.industry || '-'}<p className="text-xs text-slate-400">{project.sales_person || '销售待分配'}</p></td><td className="px-3 py-3">{dateValue(project.paid_started_at) || '待首笔收款'}</td><td className="px-3 py-3"><Badge className={projectStatusClasses[project.status] || 'bg-slate-100 text-slate-700'}>{projectStatusLabels[project.status] || project.status}</Badge></td><td className="px-3 py-3">{project.billing_cycle || '-'} · {project.currency}</td><td className="px-3 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openStatus(project)} disabled={!isAdmin}>更改状态</Button></td></tr>)}</tbody></table>{!loading && visibleProjects.length === 0 && <div className="py-12 text-center text-sm text-slate-400">当前筛选下没有项目</div>}</CardContent>
+        <CardContent className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户</th><th className="px-3 py-3">业务项目</th><th className="px-3 py-3">套餐/项目名称</th><th className="px-3 py-3">行业/负责人</th><th className="px-3 py-3">首次有效收款</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">收费</th><th className="px-3 py-3 text-right">操作</th></tr></thead><tbody>{visibleProjects.map(project => <tr key={project.id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium"><Link className="text-blue-700 hover:underline" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="text-xs font-normal text-slate-400">{project.customer_code || '-'}</p></td><td className="px-3 py-3">{project.business_line.name}</td><td className="px-3 py-3">{project.package_name || project.product.name}</td><td className="px-3 py-3">{project.industry || '-'}<p className="text-xs text-slate-400">{project.sales_person || '销售待分配'}</p></td><td className="px-3 py-3">{dateValue(project.paid_started_at) || '待首笔收款'}</td><td className="px-3 py-3"><Badge className={projectStatusClasses[project.status] || 'bg-slate-100 text-slate-700'}>{projectStatusLabels[project.status] || project.status}</Badge></td><td className="px-3 py-3">{project.billing_cycle || '-'} · {project.currency}</td><td className="px-3 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openStatus(project)} disabled={!isAdmin}>更改状态</Button></td></tr>)}</tbody></table>{!loading && visibleProjects.length === 0 && <div className="py-12 text-center text-sm text-slate-400">当前筛选下没有项目</div>}</CardContent>
       </Card>}
 
       {section === 'exceptions' && <div className="space-y-4">
@@ -542,8 +599,8 @@ export default function ManagementDecisions() {
           <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div><CardTitle className="text-base">问题与任务闭环</CardTitle><p className="mt-1 text-xs text-slate-500">修正数据后问题会自动解决；完成任务必须填写处理结果。</p></div>
             <div className="flex flex-wrap gap-2">
-              <select value={qualityStatusFilter} onChange={event => setQualityStatusFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="active">待处理</option><option value="open">未开始</option><option value="in_progress">处理中</option><option value="resolved">已解决</option><option value="all">全部状态</option></select>
-              <select value={qualityCategoryFilter} onChange={event => setQualityCategoryFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部分类</option>{Object.entries(qualityCategoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+              <select value={qualityStatusFilter} onChange={event => changeQualityFilter('qualityStatus', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="active">待处理</option><option value="open">未开始</option><option value="in_progress">处理中</option><option value="resolved">已解决</option><option value="all">全部状态</option></select>
+              <select value={qualityCategoryFilter} onChange={event => changeQualityFilter('qualityCategory', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部分类</option>{Object.entries(qualityCategoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             </div>
           </CardHeader>
           <CardContent className="grid gap-3 lg:grid-cols-2">
@@ -554,8 +611,8 @@ export default function ManagementDecisions() {
               </div>
               {row.resolution_note && <div className="mt-3 rounded-lg bg-white/80 px-3 py-2 text-xs text-emerald-700">处理结果：{row.resolution_note}</div>}
               <div className="mt-4 flex flex-wrap gap-2">
-                <Button asChild size="sm" variant="outline"><Link to={`/customers?detail=${row.customer_id}`}>打开客户</Link></Button>
-                {row.task ? <Button asChild size="sm" variant="outline"><Link to={`/tasks?task_id=${row.task.id}`}>查看任务{row.task.assignee_name ? ` · ${row.task.assignee_name}` : ''}</Link></Button> : row.status !== 'resolved' && <Button size="sm" variant="outline" onClick={() => void createQualityTask(row.id)} disabled={!isAdmin}><ListChecks className="mr-1 h-3.5 w-3.5" />生成任务</Button>}
+                <Button asChild size="sm" variant="outline"><Link to={buildReturnLink(`/customers?detail=${row.customer_id}`, currentDecisionPath(), 'management-decisions')}>打开客户</Link></Button>
+                {row.task ? <Button asChild size="sm" variant="outline"><Link to={buildReturnLink(`/tasks?task_id=${row.task.id}&view=system`, currentDecisionPath(), 'management-decisions')}>查看任务{row.task.assignee_name ? ` · ${row.task.assignee_name}` : ''}</Link></Button> : row.status !== 'resolved' && <Button size="sm" variant="outline" onClick={() => void createQualityTask(row.id)} disabled={!isAdmin}><ListChecks className="mr-1 h-3.5 w-3.5" />生成任务</Button>}
               </div>
             </div>)}
             {!loading && visibleQualityIssues.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">{automation?.last_run ? <><CheckCircle2 className="mx-auto mb-2 h-6 w-6 text-emerald-500" />当前筛选下没有问题</> : '点击“立即扫描”建立首批数据质量记录'}</div>}

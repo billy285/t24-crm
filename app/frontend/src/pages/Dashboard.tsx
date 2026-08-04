@@ -6,13 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NativeSelect } from '@/components/ui/native-select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, UserPlus, Handshake, AlertTriangle, DollarSign,
   Clock, TrendingUp, ListTodo, Bell, CalendarClock, CreditCard, PackageCheck,
   Palette, CheckCircle2, Timer, PhoneCall, Target, PhoneForwarded,
   CalendarCheck2, ShieldAlert, FileCheck2, Banknote, ArrowRight,
-  Activity, Database, Gauge, RefreshCw, Layers3, CircleDollarSign, Workflow
+  Activity, Database, Gauge, RefreshCw, Layers3, CircleDollarSign, Workflow, ChevronDown
 } from 'lucide-react';
 import { useBusinessDicts } from '../lib/dict-config';
 import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
@@ -117,6 +118,7 @@ export default function Dashboard() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [salesPeriod, setSalesPeriod] = useState<1 | 7 | 30>(7);
+  const [showMoreOwnerDetails, setShowMoreOwnerDetails] = useState(false);
   const [salesManagement, setSalesManagement] = useState<SalesManagementDashboard | null>(null);
   const [salesPerformance, setSalesPerformance] = useState<SalesPerformanceDashboard | null>(null);
   const [salesRecovery, setSalesRecovery] = useState<SalesRecoveryOverview | null>(null);
@@ -947,9 +949,26 @@ export default function Dashboard() {
     <div className="space-y-6">
       {renderOwnerCommandCenter()}
       {renderReminders()}
-      {renderSalesOwnerCockpit()}
+      <Collapsible open={showMoreOwnerDetails} onOpenChange={setShowMoreOwnerDetails} className="space-y-6">
+        <Card className="border-dashed border-slate-300 bg-slate-50/70">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">更多经营明细</p>
+              <p className="mt-1 text-xs text-slate-500">销售漏斗、基础统计、排行榜和最近记录默认收起，需要复盘时再展开。</p>
+            </div>
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" className="shrink-0 bg-white">
+                {showMoreOwnerDetails ? '收起明细' : '展开明细'}
+                <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showMoreOwnerDetails ? 'rotate-180' : ''}`} />
+              </Button>
+            </CollapsibleTrigger>
+          </CardContent>
+        </Card>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <CollapsibleContent className="space-y-6">
+          {renderSalesOwnerCockpit()}
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {renderStatCard('客户总数', data.totalCustomers || 0, <Users className="w-5 h-5 text-blue-600" />, '', 'bg-blue-50', '/customers')}
         {renderStatCard('本月新增', data.newThisMonth || 0, <UserPlus className="w-5 h-5 text-purple-600" />, '', 'bg-purple-50', '/customers')}
         {renderStatCard('本月成交额', `$${(data.monthlyDealAmount || 0).toLocaleString()}`, <Handshake className="w-5 h-5 text-green-600" />, '', 'bg-green-50', '/deals')}
@@ -961,9 +980,9 @@ export default function Dashboard() {
         {renderStatCard('待办任务', data.pendingTasks || 0, <ListTodo className="w-5 h-5 text-purple-600" />, '', 'bg-purple-50', '/tasks')}
         {renderStatCard('本月工资表', payrollSummary?.items.find(item => item.month === new Date().toISOString().slice(0, 7))?.status === 'paid' ? '已发放' : payrollSummary?.items.find(item => item.month === new Date().toISOString().slice(0, 7))?.status === 'confirmed' ? '待发放' : '待确认', <ListTodo className="w-5 h-5 text-blue-600" />, '', 'bg-blue-50', '/payroll')}
         {renderStatCard('流失客户', data.lostCustomers || 0, <TrendingUp className="w-5 h-5 text-slate-600" />, '', 'bg-slate-100', '/customers?status=lost')}
-      </div>
+          </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-3 gap-6">
         {/* Sales Leaderboard */}
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
@@ -1020,7 +1039,9 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-      </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,10 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Search, CheckCircle2, Edit, Trash2 } from 'lucide-react';
+import {
+  Plus, Search, CheckCircle2, Edit, Trash2, ArrowLeft, Bot,
+  ClipboardList, UserCheck, Users, ExternalLink,
+} from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import CustomerCombobox from '@/components/CustomerCombobox';
@@ -19,6 +22,8 @@ import { Combobox } from '@/components/ui/combobox';
 import { useBusinessDicts } from '../lib/dict-config';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
+import { useRole } from '../lib/role-context';
+import { buildReturnLink, getReturnLabel, getSafeInternalPath } from '../lib/navigation-state';
 
 const priorityColors: Record<string, string> = {
   high: 'bg-red-100 text-red-700', medium: 'bg-amber-100 text-amber-700', low: 'bg-slate-100 text-slate-600',
@@ -62,6 +67,13 @@ const taskReminderMessages: Record<string, { title: string; description: string 
   },
 };
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
+const primaryViewLabels: Record<string, string> = {
+  all: '全部任务',
+  mine: '我的任务',
+  system: '系统提醒',
+  team: '团队待办',
+  completed: '已完成',
+};
 
 const getLocalDateKey = (date = new Date()) => {
   const year = date.getFullYear();
@@ -144,6 +156,9 @@ const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
 };
 
 export default function Tasks() {
+  const { employee, isAdmin } = useRole();
+  const location = useLocation();
+  const navigate = useNavigate();
   const {
     taskTypes: taskTypeLabels,
     taskPriorities: priorityLabels,
@@ -155,19 +170,42 @@ export default function Tasks() {
     internal_waiting: '等待内部协作',
     cancelled: '已取消',
   }), [statusLabels]);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tasks, setTasks] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterPriority, setFilterPriority] = useState('all');
-  const [filterSource, setFilterSource] = useState('all');
-  const [quickFilter, setQuickFilter] = useState('all');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  const [filterStatus, setFilterStatus] = useState(() => {
+    const value = searchParams.get('status');
+    return value === 'all' || (value && extendedStatusLabels[value]) ? value : 'all';
+  });
+  const [filterPriority, setFilterPriority] = useState(() => {
+    const value = searchParams.get('priority');
+    return value === 'all' || (value && priorityLabels[value]) ? value : 'all';
+  });
+  const [filterSource, setFilterSource] = useState(() => {
+    const value = searchParams.get('source');
+    return value === 'all' || (value && taskSourceLabels[value]) ? value : 'all';
+  });
+  const [quickFilter, setQuickFilter] = useState(() => {
+    const value = searchParams.get('quick');
+    return value && quickFilterLabels[value] ? value : 'all';
+  });
+  const [primaryView, setPrimaryView] = useState(() => (
+    searchParams.get('source') === 'system'
+      ? 'system'
+      : searchParams.get('view') || (isAdmin ? 'all' : 'mine')
+  ));
+  const [page, setPage] = useState(() => {
+    const value = Number(searchParams.get('page') || 1);
+    return Number.isFinite(value) && value > 0 ? value : 1;
+  });
+  const [pageSize, setPageSize] = useState(() => {
+    const value = Number(searchParams.get('pageSize') || 20);
+    return PAGE_SIZE_OPTIONS.includes(value) ? value : 20;
+  });
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -176,7 +214,10 @@ export default function Tasks() {
   const [completeTarget, setCompleteTarget] = useState<any>(null);
   const [completionNote, setCompletionNote] = useState('');
   const [completing, setCompleting] = useState(false);
-  const [focusTaskId, setFocusTaskId] = useState<number | null>(null);
+  const [focusTaskId, setFocusTaskId] = useState<number | null>(() => {
+    const value = Number(searchParams.get('task_id') || 0);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  });
   const emptyTaskForm = {
     title: '', customer_id: '', assignee_name: '', collaborator_names: '',
     task_type: 'other', priority: 'medium', status: 'pending',
@@ -200,6 +241,11 @@ export default function Tasks() {
   useEffect(() => { loadData(); }, []);
 
   useEffect(() => {
+    const nextView = searchParams.get('view');
+    const nextSource = searchParams.get('source');
+    if (nextView && primaryViewLabels[nextView]) setPrimaryView(nextView);
+    else if (nextSource === 'system') setPrimaryView('system');
+
     const nextStatus = searchParams.get('status');
     if (nextStatus === 'all' || (nextStatus && extendedStatusLabels[nextStatus])) {
       setFilterStatus(nextStatus);
@@ -215,9 +261,42 @@ export default function Tasks() {
       setSearch(nextSearch);
     }
 
+    if (nextSource === 'all' || (nextSource && taskSourceLabels[nextSource])) {
+      setFilterSource(nextSource);
+    }
+
+    const nextQuick = searchParams.get('quick');
+    if (nextQuick && quickFilterLabels[nextQuick]) setQuickFilter(nextQuick);
+
+    const nextPage = Number(searchParams.get('page') || 1);
+    if (Number.isFinite(nextPage) && nextPage > 0) setPage(nextPage);
+
+    const nextPageSize = Number(searchParams.get('pageSize') || 20);
+    if (PAGE_SIZE_OPTIONS.includes(nextPageSize)) setPageSize(nextPageSize);
+
     const rawTaskId = Number(searchParams.get('task_id') || 0);
     setFocusTaskId(Number.isFinite(rawTaskId) && rawTaskId > 0 ? rawTaskId : null);
   }, [extendedStatusLabels, priorityLabels, searchParams]);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    const setOrDelete = (key: string, value: string, emptyValue: string) => {
+      if (!value || value === emptyValue) next.delete(key);
+      else next.set(key, value);
+    };
+    setOrDelete('view', primaryView, isAdmin ? 'all' : 'mine');
+    setOrDelete('status', filterStatus, 'all');
+    setOrDelete('priority', filterPriority, 'all');
+    setOrDelete('source', filterSource, 'all');
+    setOrDelete('quick', quickFilter, 'all');
+    if (search.trim()) next.set('search', search.trim());
+    else next.delete('search');
+    if (page > 1) next.set('page', String(page));
+    else next.delete('page');
+    if (pageSize !== 20) next.set('pageSize', String(pageSize));
+    else next.delete('pageSize');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [filterPriority, filterSource, filterStatus, isAdmin, page, pageSize, primaryView, quickFilter, search, searchParams, setSearchParams]);
 
   const loadData = async () => {
     try {
@@ -243,6 +322,7 @@ export default function Tasks() {
   });
 
   const filtered = useMemo(() => tasks.filter(t => {
+    if (focusTaskId && Number(t.id) === Number(focusTaskId)) return true;
     const keyword = search.trim().toLowerCase();
     const searchText = [
       t.title,
@@ -257,6 +337,15 @@ export default function Tasks() {
     const matchStatus = filterStatus === 'all' || t.status === filterStatus;
     const matchPriority = filterPriority === 'all' || t.priority === filterPriority;
     const matchSource = filterSource === 'all' || getTaskSource(t) === filterSource;
+    const employeeName = String(employee?.name || '').trim();
+    const collaborators = parseEmployeeNames(t.collaborator_names);
+    const isMine = Boolean(employeeName) && (String(t.assignee_name || '').trim() === employeeName || collaborators.includes(employeeName));
+    const source = getTaskSource(t);
+    const matchPrimaryView = primaryView === 'all'
+      || (primaryView === 'mine' && isMine && !isClosedTask(t))
+      || (primaryView === 'system' && (source === 'system' || Boolean(t.automation_issue_id)) && !isClosedTask(t))
+      || (primaryView === 'team' && !isClosedTask(t))
+      || (primaryView === 'completed' && t.status === 'completed');
     const matchQuick = quickFilter === 'all'
       || (quickFilter === 'today_due' && isDueTodayTask(t))
       || (quickFilter === 'overdue' && isOverdueTask(t))
@@ -264,8 +353,8 @@ export default function Tasks() {
       || (quickFilter === 'stale' && isStaleTask(t))
       || (quickFilter === 'high_priority' && t.priority === 'high' && !isClosedTask(t))
       || (quickFilter === 'unassigned' && !isClosedTask(t) && !String(t.assignee_name || '').trim());
-    return matchSearch && matchStatus && matchPriority && matchSource && matchQuick;
-  }), [filterPriority, filterSource, filterStatus, quickFilter, search, taskTypeLabels, tasks]);
+    return matchSearch && matchStatus && matchPriority && matchSource && matchQuick && matchPrimaryView;
+  }), [employee?.name, filterPriority, filterSource, filterStatus, focusTaskId, primaryView, quickFilter, search, taskTypeLabels, tasks]);
   const paginated = useMemo(() => paginateList(filtered, page, pageSize), [filtered, page, pageSize]);
 
   useEffect(() => {
@@ -278,10 +367,7 @@ export default function Tasks() {
     if (index >= 0) setPage(Math.floor(index / pageSize) + 1);
   }, [filtered, focusTaskId, pageSize]);
 
-  const pendingCount = tasks.filter(t => t.status === 'pending').length;
-  const inProgressCount = tasks.filter(t => t.status === 'in_progress').length;
   const completedCount = tasks.filter(t => t.status === 'completed').length;
-  const openCount = tasks.filter(t => !isClosedTask(t)).length;
   const quickCards = useMemo(() => [
     { key: 'today_due', title: '今日到期', value: tasks.filter(isDueTodayTask).length, hint: '今天必须推进', color: 'border-blue-200 bg-blue-50 text-blue-700' },
     { key: 'overdue', title: '已逾期', value: tasks.filter(isOverdueTask).length, hint: '需要马上处理', color: 'border-red-200 bg-red-50 text-red-700' },
@@ -290,6 +376,22 @@ export default function Tasks() {
     { key: 'high_priority', title: '高优先级未完', value: tasks.filter(t => t.priority === 'high' && !isClosedTask(t)).length, hint: '老板重点看', color: 'border-rose-200 bg-rose-50 text-rose-700' },
     { key: 'unassigned', title: '未分配', value: tasks.filter(t => !isClosedTask(t) && !String(t.assignee_name || '').trim()).length, hint: '需要安排负责人', color: 'border-slate-200 bg-slate-50 text-slate-700' },
   ], [tasks]);
+  const primaryViews = useMemo(() => {
+    const employeeName = String(employee?.name || '').trim();
+    const mineCount = tasks.filter(task => {
+      const collaborators = parseEmployeeNames(task.collaborator_names);
+      return !isClosedTask(task) && Boolean(employeeName) && (
+        String(task.assignee_name || '').trim() === employeeName || collaborators.includes(employeeName)
+      );
+    }).length;
+    return [
+      { key: 'all', label: '全部任务', count: tasks.length, hint: '所有状态与来源', icon: ClipboardList },
+      { key: 'mine', label: '我的任务', count: mineCount, hint: employeeName ? `${employeeName} 负责或协作` : '登录员工负责或协作', icon: UserCheck },
+      { key: 'system', label: '系统提醒', count: tasks.filter(task => (getTaskSource(task) === 'system' || task.automation_issue_id) && !isClosedTask(task)).length, hint: '自动扫描产生', icon: Bot },
+      { key: 'team', label: '团队待办', count: tasks.filter(task => !isClosedTask(task)).length, hint: '全部未完成任务', icon: Users },
+      { key: 'completed', label: '已完成', count: completedCount, hint: '查看处理结果', icon: CheckCircle2 },
+    ];
+  }, [completedCount, employee?.name, tasks]);
   const workload = useMemo(() => {
     const counter = tasks.reduce<Record<string, number>>((acc, task) => {
       if (isClosedTask(task)) return acc;
@@ -303,6 +405,21 @@ export default function Tasks() {
   }, [tasks]);
   const activeReminder = searchParams.get('reminder') || '';
   const activeReminderMessage = taskReminderMessages[activeReminder];
+  const returnTo = getSafeInternalPath(searchParams.get('returnTo'));
+  const getCurrentTaskPath = (taskId?: number) => {
+    const params = new URLSearchParams(location.search);
+    if (taskId) params.set('task_id', String(taskId));
+    const query = params.toString();
+    return `${location.pathname}${query ? `?${query}` : ''}`;
+  };
+
+  const changePrimaryView = (nextView: string) => {
+    setPrimaryView(nextView);
+    setQuickFilter('all');
+    setFocusTaskId(null);
+    if (nextView === 'system') setFilterSource('system');
+    else if (filterSource === 'system') setFilterSource('all');
+  };
 
   useEffect(() => {
     if (!focusTaskId) return;
@@ -458,8 +575,13 @@ export default function Tasks() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
+          {returnTo && (
+            <Button variant="ghost" size="sm" className="-ml-3 mb-1 h-8 text-slate-600" onClick={() => navigate(returnTo)}>
+              <ArrowLeft className="mr-1 h-4 w-4" />{getReturnLabel(returnTo)}
+            </Button>
+          )}
           <h2 className="text-xl font-semibold text-slate-800">任务协作</h2>
-          <p className="text-sm text-slate-500">未完成 {openCount} · 待处理 {pendingCount} · 进行中 {inProgressCount} · 已完成 {completedCount}</p>
+          <p className="text-sm text-slate-500">先选择工作视角，再处理任务；完成时必须填写结果。</p>
         </div>
         <Button onClick={() => { setForm(emptyTaskForm); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
           <Plus className="w-4 h-4 mr-1" /> 新建任务
@@ -474,6 +596,24 @@ export default function Tasks() {
           </CardContent>
         </Card>
       )}
+
+      <Card className="border-slate-200">
+        <CardContent className="p-2">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            {primaryViews.map(view => {
+              const Icon = view.icon;
+              const active = primaryView === view.key;
+              return (
+                <button key={view.key} type="button" onClick={() => changePrimaryView(view.key)} className={`rounded-xl border px-3 py-3 text-left transition ${active ? 'border-blue-300 bg-blue-50 text-blue-800 shadow-sm' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50'}`}>
+                  <div className="flex items-center justify-between gap-2"><Icon className="h-4 w-4" /><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{view.count}</span></div>
+                  <p className="mt-2 text-sm font-semibold">{view.label}</p>
+                  <p className="mt-0.5 truncate text-[11px] opacity-70">{view.hint}</p>
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border-slate-200 bg-gradient-to-br from-white to-slate-50">
         <CardContent className="p-4">
@@ -553,7 +693,7 @@ export default function Tasks() {
           {loading ? (
             <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
           ) : filtered.length === 0 ? (
-            <p className="text-center text-slate-400 py-12">暂无任务</p>
+            <div className="py-12 text-center"><p className="text-sm font-medium text-slate-500">当前视角下暂无任务</p><p className="mt-1 text-xs text-slate-400">可以切换任务分层或清除筛选条件。</p></div>
           ) : (
             <div className="divide-y divide-slate-100">
               {paginated.items.map(t => {
@@ -599,14 +739,14 @@ export default function Tasks() {
                         )}
                       </div>
                       <div className="flex flex-wrap gap-1 shrink-0 lg:justify-end">
-                        {!completed && (
-                          <Button size="sm" variant="outline" className="border-green-200 text-green-700 hover:bg-green-50 h-8 px-2" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
-                            <CheckCircle2 className="w-4 h-4 mr-1" /> 完成
+                        {t.status === 'pending' && (
+                          <Button size="sm" className="h-8 bg-blue-600 px-3 text-xs hover:bg-blue-700" onClick={() => handleStatusChange(t.id, 'in_progress')}>
+                            开始处理
                           </Button>
                         )}
-                        {t.status === 'pending' && (
-                          <Button size="sm" variant="ghost" className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 h-8 px-2 text-xs" onClick={() => handleStatusChange(t.id, 'in_progress')}>
-                            开始
+                        {!completed && t.status !== 'pending' && (
+                          <Button size="sm" className="h-8 bg-green-600 px-3 text-xs hover:bg-green-700" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
+                            <CheckCircle2 className="mr-1 h-4 w-4" />完成并记录
                           </Button>
                         )}
                         {!completed && t.status !== 'waiting_client' && (
@@ -619,8 +759,13 @@ export default function Tasks() {
                             继续
                           </Button>
                         )}
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /></Button>
-                        {!t.automation_issue_id && <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /></Button>}
+                        {t.customer_id && (
+                          <Button size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={() => navigate(buildReturnLink(`/customers?detail=${t.customer_id}`, getCurrentTaskPath(t.id), 'tasks'))}>
+                            <ExternalLink className="mr-1 h-3.5 w-3.5" />打开客户
+                          </Button>
+                        )}
+                        <Button aria-label="编辑任务" title="编辑任务" size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /></Button>
+                        {!t.automation_issue_id && <Button aria-label="删除任务" title="删除任务" size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /></Button>}
                       </div>
                     </div>
                   </div>
@@ -643,7 +788,7 @@ export default function Tasks() {
 
       <Dialog open={!!completeTarget} onOpenChange={(v) => { if (!v) { setCompleteTarget(null); setCompletionNote(''); } }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>完成任务</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>填写处理结果并完成</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="rounded-lg bg-slate-50 px-3 py-2">
               <p className="text-sm font-medium text-slate-800">{completeTarget?.title}</p>
@@ -657,7 +802,7 @@ export default function Tasks() {
                 rows={4}
                 placeholder="例如：已联系客户并确认资料齐全，下一步进入正式运营。"
               />
-              <p className="mt-1 text-xs text-slate-400">这段结果会自动写入任务备注，后续监管可以直接查看。</p>
+              <p className="mt-1 text-xs text-slate-400">结果会写入任务记录；系统问题会据此继续追踪是否真正解决。</p>
             </div>
           </div>
           <div className="mt-4 flex justify-end gap-2">

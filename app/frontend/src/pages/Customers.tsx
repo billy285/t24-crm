@@ -44,6 +44,7 @@ import {
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
+import { getReturnLabel, getSafeInternalPath } from '../lib/navigation-state';
 
 const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', following: 'bg-amber-100 text-amber-700', closed: 'bg-green-100 text-green-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
 const levelColors: Record<string, string> = { high: 'bg-orange-100 text-orange-700', normal: 'bg-slate-100 text-slate-600', low: 'bg-gray-100 text-gray-500', vip: 'bg-purple-100 text-purple-700' };
@@ -946,6 +947,7 @@ export default function Customers() {
   const activeReminder = searchParams.get('reminder') || '';
   const activeReminderMessage = customerReminderMessages[activeReminder];
   const detailFromFinance = searchParams.get('from') === 'finance';
+  const detailReturnTo = getSafeInternalPath(searchParams.get('returnTo'));
   const normalizeCustomerDetailTab = (tab?: string | null) => {
     if (tab === 'payments' && !canViewFinance) return 'info';
     return tab && customerDetailTabValues.has(tab) ? tab : 'info';
@@ -1510,6 +1512,10 @@ export default function Customers() {
   };
 
   const closeDetail = () => {
+    if (detailReturnTo) {
+      navigate(detailReturnTo);
+      return;
+    }
     if (detailFromFinance) {
       const financeTab = searchParams.get('financeTab');
       navigate(`/finance${financeTab ? `?tab=${encodeURIComponent(financeTab)}` : ''}`);
@@ -1517,13 +1523,14 @@ export default function Customers() {
     }
     setSelectedCustomer(null);
     setSelectedCustomerTab('info');
-    if (searchParams.get('detail') || searchParams.get('tab') || searchParams.get('reminder') || searchParams.get('from') || searchParams.get('financeTab')) {
+    if (searchParams.get('detail') || searchParams.get('tab') || searchParams.get('reminder') || searchParams.get('from') || searchParams.get('financeTab') || searchParams.get('returnTo')) {
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('detail');
       nextParams.delete('tab');
       nextParams.delete('reminder');
       nextParams.delete('from');
       nextParams.delete('financeTab');
+      nextParams.delete('returnTo');
       setSearchParams(nextParams);
     }
   };
@@ -2029,7 +2036,7 @@ export default function Customers() {
       <div className="app-page space-y-5">
         <div className="app-page-title items-center">
           <div className="flex min-w-0 items-center gap-3 flex-wrap">
-          <Button variant="ghost" size="sm" onClick={closeDetail}><ArrowLeft className="w-4 h-4 mr-1" /> {detailFromFinance ? '返回财务' : '返回列表'}</Button>
+          <Button variant="ghost" size="sm" onClick={closeDetail}><ArrowLeft className="w-4 h-4 mr-1" /> {detailReturnTo ? getReturnLabel(detailReturnTo) : detailFromFinance ? '返回财务' : '返回列表'}</Button>
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-blue-600">客户详情</p>
             <h2 className="truncate text-xl font-bold text-slate-900">{c.business_name}</h2>
