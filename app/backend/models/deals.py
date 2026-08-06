@@ -1,5 +1,5 @@
 from core.database import Base
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
 
 
 class Deals(Base):
@@ -8,6 +8,7 @@ class Deals(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
     source_payment_id = Column(Integer, nullable=True)
+    opportunity_id = Column(Integer, ForeignKey("opportunities.id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
     customer_id = Column(Integer, nullable=False)
     customer_name = Column(String, nullable=True)
     sales_employee_id = Column(Integer, nullable=True)

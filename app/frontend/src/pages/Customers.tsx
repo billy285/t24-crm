@@ -24,6 +24,7 @@ import MediaAccountsTab from '@/components/MediaAccountsTab';
 import OperationLogsTab from '@/components/OperationLogsTab';
 import CustomerAiCopyTab from '@/components/CustomerAiCopyTab';
 import CustomerMaterialsTab from '@/components/CustomerMaterialsTab';
+import CustomerOpportunitiesTab from '@/components/CustomerOpportunitiesTab';
 import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../lib/customer-code-settings';
 import { saveRemoteAppConfig } from '../lib/app-config';
 import {
@@ -205,7 +206,7 @@ const emptyAdvancedFilters = {
 
 const inlineSelectClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
 const inlineInputClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
-const customerDetailTabValues = new Set(['info', 'timeline', 'contacts', 'followups', 'deals', 'subscriptions', 'payments', 'renewals', 'materials', 'ai_copy', 'media', 'logs']);
+const customerDetailTabValues = new Set(['info', 'timeline', 'contacts', 'opportunities', 'followups', 'deals', 'subscriptions', 'payments', 'renewals', 'materials', 'ai_copy', 'media', 'logs']);
 const customerReminderMessages: Record<string, { title: string; description: string }> = {
   follow_up_today: { title: '今日跟进提醒', description: '这位客户今天需要继续跟进，已为你直接打开跟进记录。' },
   follow_up_overdue: { title: '逾期跟进提醒', description: '这位客户的计划跟进时间已过，建议尽快补跟进并更新下一次时间。' },
@@ -588,6 +589,7 @@ export default function Customers() {
   const [customerExpenses, setCustomerExpenses] = useState<any[]>([]);
   const [customerDeductionRates, setCustomerDeductionRates] = useState<Record<string, number>>({});
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [productCatalog, setProductCatalog] = useState<any>({ business_lines: [], products: [], plans: [] });
   const [serviceProgresses, setServiceProgresses] = useState<any[]>([]);
   const [serviceTasks, setServiceTasks] = useState<any[]>([]);
   const [lifecycleDetail, setLifecycleDetail] = useState<any>(null);
@@ -1025,7 +1027,7 @@ export default function Customers() {
     setDetailLoading(true);
     setDetailLoadError(null);
     try {
-      const [customerRes, fuRes, dRes, pRes, expenseRes, sRes, progressRes, taskRes, lifecycleRes] = await Promise.all([
+      const [customerRes, fuRes, dRes, pRes, expenseRes, sRes, progressRes, taskRes, lifecycleRes, catalogRes] = await Promise.all([
         client.entities.customers.query({ query: { id: customerId }, limit: 1 }),
         client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
         client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 1000 }),
@@ -1041,6 +1043,7 @@ export default function Customers() {
         canViewFinance
           ? invokeWithAuth({ url: `/api/v1/customer-lifecycle/customers/${customerId}`, method: 'GET' })
           : Promise.resolve({ data: null }),
+        invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }).catch(() => ({ data: { business_lines: [], products: [], plans: [] } })),
       ]);
 
       const latestCustomer = customerRes?.data?.items?.[0] || fallbackCustomer || null;
@@ -1058,6 +1061,7 @@ export default function Customers() {
       setServiceProgresses(progressRes?.data?.items || []);
       setServiceTasks(taskRes?.data?.items || []);
       setLifecycleDetail(lifecycleRes?.data || null);
+      setProductCatalog(catalogRes?.data || { business_lines: [], products: [], plans: [] });
       await reloadContacts(customerId);
     } catch (err) {
       console.error(err);
@@ -1746,7 +1750,7 @@ export default function Customers() {
               )}
             </div>
             <div className="col-span-2">
-              <Label>客户意向套餐</Label>
+              <Label>历史意向套餐（兼容旧资料）</Label>
               <div className="mt-1 space-y-2">
                 <div className="flex items-start gap-1.5">
                   <div className="flex-1 rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -1773,6 +1777,7 @@ export default function Customers() {
                     <p className="text-xs text-slate-500 mt-3">
                       已选: {form.interested_packages.length > 0 ? form.interested_packages.map(item => getPackageLabelForSnapshot(item, form.interested_packages_snapshot)).join('、') : '未选择'}
                     </p>
+                    <p className="mt-1 text-xs text-blue-600">新需求请保存客户后在“客户商机”中选择业务线、正式套餐和实际服务范围；这里仅保留历史资料。</p>
                   </div>
                   <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={openPackageManager}><Plus className="w-3.5 h-3.5" /></Button>
                 </div>
@@ -1831,7 +1836,7 @@ export default function Customers() {
               </div>
             </div>
             <div className="col-span-2">
-              <Label>平台选择</Label>
+              <Label>客户现有平台（基础资料）</Label>
               <div className="mt-1 rounded-md border border-slate-200 bg-slate-50 p-3">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {platformOptionsForForm.map(({ key, label }) => {
@@ -1852,11 +1857,12 @@ export default function Customers() {
                 <p className="text-xs text-slate-500 mt-3">
                   已选: {formatSelectedPlatforms(form.selected_platforms)}
                 </p>
+                <p className="mt-1 text-xs text-blue-600">这里只记录客户目前已有的平台，不代表 T24 实际代运营范围；实际运营平台随每个商机/订阅单独确认。</p>
               </div>
             </div>
             <div><Label>负责销售</Label><NativeSelect value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
             <div><Label>官网</Label><Input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
-            <div><Label>当前平台备注</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} placeholder="可填写当前已在运营的平台备注" /></div>
+            <div><Label>客户平台现状备注</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} placeholder="如：客户自营 Facebook，Google 暂未维护" /></div>
             <div className="col-span-2 border-t border-slate-200 pt-3 mt-1">
               <h4 className="text-sm font-medium text-slate-600 mb-3">社交媒体链接</h4>
               <div className="grid grid-cols-2 gap-3">
@@ -2009,6 +2015,9 @@ export default function Customers() {
         const bTime = b.end_date ? new Date(b.end_date).getTime() : Number.MAX_SAFE_INTEGER;
         return aTime - bTime;
       });
+    const detailBusinessLineMap = Object.fromEntries((productCatalog.business_lines || []).map((item: any) => [item.id, item]));
+    const detailProductMap = Object.fromEntries((productCatalog.products || []).map((item: any) => [item.id, item]));
+    const detailPlanMap = Object.fromEntries((productCatalog.plans || []).map((item: any) => [item.id, item]));
     const paginatedFollowUps = paginateList(followUps, followUpPage, followUpPageSize);
     const paginatedDeals = paginateList(deals, dealPage, dealPageSize);
     const paginatedServiceInfo = paginateList(subscriptions, serviceInfoPage, serviceInfoPageSize);
@@ -2073,6 +2082,7 @@ export default function Customers() {
             <TabsTrigger value="info" className="shrink-0 text-xs">基础信息</TabsTrigger>
             <TabsTrigger value="timeline" className="shrink-0 text-xs">客户时间线 ({detailLoading ? '…' : timelineEvents.length})</TabsTrigger>
             <TabsTrigger value="contacts" className="shrink-0 text-xs">联系人 ({detailLoading ? '…' : contacts.length})</TabsTrigger>
+            <TabsTrigger value="opportunities" className="shrink-0 text-xs">客户商机</TabsTrigger>
             <TabsTrigger value="followups" className="shrink-0 text-xs">跟进记录 ({detailLoading ? '…' : followUps.length})</TabsTrigger>
             <TabsTrigger value="deals" className="shrink-0 text-xs">成交记录 ({detailLoading ? '…' : deals.length})</TabsTrigger>
             <TabsTrigger value="subscriptions" className="shrink-0 text-xs">服务信息 ({detailLoading ? '…' : serviceRecordCount})</TabsTrigger>
@@ -2106,6 +2116,10 @@ export default function Customers() {
             </CardContent></Card>
           </TabsContent>
 
+          <TabsContent value="opportunities">
+            <CustomerOpportunitiesTab customer={c} />
+          </TabsContent>
+
           <TabsContent value="info">
             <Card className="border-slate-200"><CardContent className="p-5">
               <div className="flex justify-end mb-4 gap-2">
@@ -2125,9 +2139,9 @@ export default function Customers() {
                 <div className="flex gap-2 items-center col-span-2"><MapPin className="w-3 h-3 text-slate-400" /><span>{[c.address, c.city, c.state, c.country].filter(Boolean).join(', ')}</span></div>
                 {c.website && <div className="flex gap-2 items-center col-span-2"><Globe className="w-3 h-3 text-slate-400" /><a href={c.website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{c.website}</a></div>}
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">负责销售:</span><span>{c.sales_person || '-'}</span></div>
-                <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">当前平台:</span><span>{c.current_platform || '-'}</span></div>
-                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">平台选择:</span><span>{formatSelectedPlatforms(c.selected_platforms)}</span></div>
-                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">意向套餐:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => getCustomerPackageLabel(c, item)).join('、') : '-'}</span></div>
+                <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">平台现状:</span><span>{c.current_platform || '-'}</span></div>
+                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">客户已有平台:</span><span>{formatSelectedPlatforms(c.selected_platforms)}</span></div>
+                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">历史意向:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => getCustomerPackageLabel(c, item)).join('、') : '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">月订单量:</span><span>{c.monthly_orders || 0}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">已有点餐:</span><span>{c.has_ordering_system ? '是' : '否'}</span></div>
               </div>
@@ -2444,9 +2458,19 @@ export default function Customers() {
                     const computedStatus = s.computed_status || computeSubscriptionState(s);
                     const statusView = subscriptionStatusView[computedStatus] || subscriptionStatusView.active;
                     const remainDays = s.days_left ?? getSubscriptionRemainingDays(s);
+                    const businessLine = detailBusinessLineMap[s.business_line_id];
+                    const linkedProduct = detailProductMap[s.product_id];
+                    const linkedPlan = detailPlanMap[s.product_plan_id];
+                    const actualPlatforms = (() => {
+                      if (!s.selected_platforms) return [];
+                      try { const value = JSON.parse(s.selected_platforms); return Array.isArray(value) ? value : parseMultiValue(s.selected_platforms); }
+                      catch { return parseMultiValue(s.selected_platforms); }
+                    })();
                     return (<div key={s.id} className={`p-3 rounded-lg border ${statusView.cardClass}`}>
                       <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={statusView.badgeClass}>{subStatusLabels[computedStatus] || statusView.label}</Badge></div>
-                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-500"><span>到期: {s.end_date?.slice(0, 10) || '-'}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span><span>续费负责: {s.renewal_person || '-'}</span><span>下次付款: {s.next_payment_date?.slice(0, 10) || '-'}</span></div>
+                      <div className="mb-2 flex flex-wrap gap-1"><Badge variant="outline" className={businessLine ? 'border-blue-200 bg-white text-blue-700' : 'border-amber-200 bg-white text-amber-700'}>{businessLine?.name || '业务待确认'}</Badge>{linkedProduct && <Badge variant="secondary">{linkedProduct.name}</Badge>}{linkedPlan && linkedPlan.name !== s.package_name && <Badge variant="secondary">{linkedPlan.name}</Badge>}</div>
+                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-500"><span>金额: {s.package_price == null ? '-' : `${s.package_price} ${linkedPlan?.default_currency || 'USD'}`}</span><span>周期: {customerProjectBillingCycles[s.billing_cycle] || s.billing_cycle || '-'}</span><span>到期: {s.end_date?.slice(0, 10) || '-'}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span><span>续费负责: {s.renewal_person || '-'}</span><span>下次付款: {s.next_payment_date?.slice(0, 10) || '-'}</span></div>
+                      <p className={`mt-2 text-xs ${actualPlatforms.length > 0 ? 'text-slate-600' : 'text-amber-600'}`}>{actualPlatforms.length > 0 ? `实际服务：${formatSelectedPlatforms(actualPlatforms)}` : businessLine?.code === 'managed_service' ? '实际运营平台待确认' : businessLine ? '服务范围按项目确认' : '历史套餐待归类，不影响历史收款'}</p>
                       <div className={`text-xs mt-2 ${
                         remainDays == null
                           ? 'text-slate-400'

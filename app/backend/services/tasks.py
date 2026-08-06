@@ -151,6 +151,8 @@ class TasksService:
                 return False
             if obj.automation_issue_id:
                 raise ValueError("系统自动任务属于数据质量闭环，不能删除；可以完成并填写处理结果")
+            if obj.opportunity_id:
+                raise ValueError("商机跟进任务属于商机闭环，不能单独删除；请在商机中成交或关闭")
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted tasks {obj_id}")

@@ -139,6 +139,11 @@ class SubscriptionsService:
                 raise ValueError("部分替代套餐不存在，请刷新后重试")
             if any(item.customer_id != old_subscription.customer_id for item in replacements):
                 raise ValueError("替代套餐必须属于同一客户")
+            if old_subscription.business_line_id and any(
+                item.business_line_id and item.business_line_id != old_subscription.business_line_id
+                for item in replacements
+            ):
+                raise ValueError("套餐变更只能在同一业务线内替换；跨业务线请新增独立项目")
             if any(item.status in {"stopped", "lost", "paused", "upgraded"} for item in replacements):
                 raise ValueError("已归档套餐不能作为新的替代套餐")
 

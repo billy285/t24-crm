@@ -29,7 +29,7 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { loadRemoteAppConfig, saveRemoteAppConfig } from '../lib/app-config';
-import { buildOptionKey, sanitizeDictLabel, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
+import { buildOptionKey, platformLabels, sanitizeDictLabel, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
 import { logOperation } from '../lib/operation-log-helper';
 import {
   AUTO_PAYMENT_METHOD_KEYS,
@@ -548,6 +548,15 @@ const parseMultiValue = (value?: string | null) => (
     .filter(Boolean)
 );
 
+const parseServicePlatforms = (value?: string | null) => {
+  if (!value) return [] as string[];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.map(item => String(item)).filter(Boolean);
+  } catch { /* legacy comma-separated value */ }
+  return parseMultiValue(value);
+};
+
 // ─── Helper: retry transient failures and fail closed ──────────────
 const safeQuery = async (queryFn: () => Promise<any>): Promise<any[]> => {
   const res = await loadWithRetry(queryFn);
@@ -655,6 +664,7 @@ export default function Finance() {
   // ─── State ───────────────────────────────────────────────────────
   const [payments, setPayments] = useState<any[]>([]);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [productCatalog, setProductCatalog] = useState<any>({ business_lines: [], products: [], plans: [] });
   const [customers, setCustomers] = useState<any[]>([]);
   const [deals, setDeals] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -844,6 +854,12 @@ export default function Finance() {
       setRefunds(refundItems);
       setAdFundSettlements(settlementItems);
       setLoadError(null);
+      try {
+        const catalogRes = await loadWithRetry(() => invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }));
+        setProductCatalog(catalogRes?.data || { business_lines: [], products: [], plans: [] });
+      } catch (catalogError) {
+        console.warn('load product catalog failed; keeping finance records available', catalogError);
+      }
       try {
         const months = new Set<string>();
         [...pItems, ...eItems, ...ceItems, ...refundItems, ...settlementItems].forEach((it: any) => {
@@ -1780,6 +1796,9 @@ export default function Finance() {
 
   // ─── Customer map for lookups ────────────────────────────────────
   const customerMap = useMemo(() => Object.fromEntries(customers.map(c => [c.id, c])), [customers]);
+  const businessLineMap = useMemo(() => Object.fromEntries((productCatalog.business_lines || []).map((item: any) => [item.id, item])), [productCatalog]);
+  const productMap = useMemo(() => Object.fromEntries((productCatalog.products || []).map((item: any) => [item.id, item])), [productCatalog]);
+  const productPlanMap = useMemo(() => Object.fromEntries((productCatalog.plans || []).map((item: any) => [item.id, item])), [productCatalog]);
 
   const overviewPayments = filteredPayments;
   const overviewCustomerExpenses = useMemo(
@@ -4578,6 +4597,10 @@ export default function Finance() {
                               const plannedDate = getSubscriptionPlannedPaymentDate(s);
                               const status = s.status || computeSubscriptionStatus(s);
                               const packageChangeResult = parsePackageChangeResult(s.renewal_result);
+                              const businessLine = businessLineMap[s.business_line_id];
+                              const linkedProduct = productMap[s.product_id];
+                              const linkedPlan = productPlanMap[s.product_plan_id];
+                              const servicePlatforms = parseServicePlatforms(s.selected_platforms);
                               return (
                                 <div key={s.id} className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-4">
                                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -4591,8 +4614,20 @@ export default function Finance() {
                                         <span className="truncate">{s.customer_name || customerMap[s.customer_id]?.business_name || '-'}</span>
                                       </Button>
                                       <p className="mt-1 text-sm font-medium text-slate-700">{s.package_name || '-'}</p>
+                                      <div className="mt-1 flex flex-wrap gap-1">
+                                        <Badge variant="outline" className={businessLine ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-amber-200 bg-amber-50 text-amber-700'}>
+                                          {businessLine?.name || '业务待确认'}
+                                        </Badge>
+                                        {linkedProduct && <Badge variant="secondary">{linkedProduct.name}</Badge>}
+                                        {linkedPlan && linkedPlan.name !== s.package_name && <Badge variant="secondary">{linkedPlan.name}</Badge>}
+                                      </div>
                                       <p className="mt-1 text-xs text-slate-500">
                                         {fmt(toMoneyNumber(s.package_price))} · {cycleLabels[s.billing_cycle] || s.billing_cycle || '周期未设置'} · 负责人 {s.renewal_person || '-'}
+                                      </p>
+                                      <p className={`mt-1 text-xs ${servicePlatforms.length > 0 ? 'text-slate-600' : 'text-amber-600'}`}>
+                                        {servicePlatforms.length > 0
+                                          ? `实际服务：${servicePlatforms.map(item => platformLabels[item] || item).join('、')}`
+                                          : businessLine?.code === 'managed_service' ? '实际运营平台待确认' : businessLine ? '服务范围按项目确认' : '历史套餐尚未归类，不影响续费金额'}
                                       </p>
                                     </div>
                                     <Badge className={`w-fit text-xs ${subStatusColors[status] || subStatusColors.active}`}>{getSubscriptionStatusLabel(status)}</Badge>

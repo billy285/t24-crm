@@ -4,6 +4,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -66,6 +67,37 @@ class ProductCatalog(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
+class ProductPlan(Base):
+    """Sellable plan/version underneath a business product.
+
+    ProductCatalog identifies the product family (managed service, restaurant
+    OS, beauty OS). ProductPlan captures the plan/version customers actually
+    compare and buy. Prices may stay blank while a product is still being
+    designed; subscriptions keep their own agreed price snapshot.
+    """
+
+    __tablename__ = "product_plans"
+    __table_args__ = (UniqueConstraint("code", name="uq_product_plans_code"), {"extend_existing": True})
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey("product_catalog.id", ondelete="RESTRICT"), nullable=False, index=True)
+    code = Column(String(80), nullable=False, index=True)
+    name = Column(String(160), nullable=False)
+    version_label = Column(String(80), nullable=True)
+    pricing_status = Column(String(24), nullable=False, default="draft", index=True)
+    standard_price = Column(Float, nullable=True)
+    default_currency = Column(String(3), nullable=False, default="USD")
+    default_billing_cycle = Column(String(24), nullable=True)
+    platform_limit = Column(Integer, nullable=True)
+    scope_type = Column(String(32), nullable=False, default="generic", index=True)
+    entitlements_json = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    effective_from = Column(Date, nullable=True)
+    effective_to = Column(Date, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
 class CustomerEngagement(Base):
     __tablename__ = "customer_engagements"
     __table_args__ = (
@@ -83,6 +115,7 @@ class CustomerEngagement(Base):
     customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)
     business_line_id = Column(Integer, ForeignKey("business_lines.id", ondelete="RESTRICT"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("product_catalog.id", ondelete="RESTRICT"), nullable=False, index=True)
+    product_plan_id = Column(Integer, ForeignKey("product_plans.id", ondelete="SET NULL"), nullable=True, index=True)
     engagement_code = Column(String(64), nullable=False, index=True)
     package_name = Column(String(160), nullable=True)
     status = Column(String(24), nullable=False, default="pending_setup", index=True)
@@ -91,6 +124,8 @@ class CustomerEngagement(Base):
     billing_cycle = Column(String(24), nullable=True, index=True)
     collection_method = Column(String(32), nullable=True, index=True)
     currency = Column(String(3), nullable=False, default="USD", index=True)
+    selected_platforms = Column(Text, nullable=True)
+    service_scope_json = Column(Text, nullable=True)
     trial_started_at = Column(DateTime(timezone=True), nullable=True)
     paid_started_at = Column(DateTime(timezone=True), nullable=True, index=True)
     paused_at = Column(DateTime(timezone=True), nullable=True)

@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/v1/entities/follow_ups", tags=["follow_ups"], de
 class Follow_upsData(BaseModel):
     """Entity data schema (for create/update)"""
     customer_id: int
+    opportunity_id: Optional[int] = None
     employee_id: Optional[int] = None
     employee_name: Optional[str] = None
     contact_method: Optional[str] = None
@@ -39,6 +40,7 @@ class Follow_upsData(BaseModel):
 class Follow_upsUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
     customer_id: Optional[int] = None
+    opportunity_id: Optional[int] = None
     employee_id: Optional[int] = None
     employee_name: Optional[str] = None
     contact_method: Optional[str] = None
@@ -57,6 +59,7 @@ class Follow_upsResponse(BaseModel):
     """Entity response schema"""
     id: int
     customer_id: int
+    opportunity_id: Optional[int] = None
     employee_id: Optional[int] = None
     employee_name: Optional[str] = None
     contact_method: Optional[str] = None

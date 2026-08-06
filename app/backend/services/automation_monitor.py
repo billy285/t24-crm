@@ -21,6 +21,7 @@ from models.employees import Employees
 from models.follow_ups import Follow_ups
 from models.management_decisions import CustomerEngagement
 from models.payments import Payments
+from models.opportunities import Opportunities
 from models.service_progresses import Service_progresses
 from models.service_tasks import Service_tasks
 from models.subscriptions import Subscriptions
@@ -86,6 +87,9 @@ def _issue_title(issue: DataQualityIssue) -> str:
         "finance_income_split_mismatch": "核对收入拆分",
         "finance_ad_fund_unsettled": "完成投流月结",
         "subscription_missing_next_payment": "补齐订阅扣款日期",
+        "subscription_missing_business_line": "确认历史订阅业务归类",
+        "subscription_missing_service_scope": "确认订阅实际服务范围",
+        "opportunity_missing_next_follow_up": "补齐商机跟进日期",
         "customer_follow_up_overdue": "完成逾期客户跟进",
         "customer_callback_overdue": "完成逾期客户回访",
         "delivery_task_overdue": "完成逾期交付任务",
@@ -351,10 +355,33 @@ async def _business_anomalies(db: AsyncSession, now: datetime) -> list[dict[str,
 
     subscriptions = (await db.execute(select(Subscriptions))).scalars().all()
     for subscription in subscriptions:
-        if not subscription.auto_renew or subscription.next_payment_date or subscription.status in {"stopped", "cancelled"}:
-            continue
         base = customer_payload(subscription.customer_id)
         if not base:
+            continue
+        if not subscription.business_line_id:
+            anomalies.append({
+                **base,
+                "code": "subscription_missing_business_line",
+                "category": "data_quality",
+                "severity": "warning",
+                "scope_key": f"subscription-{subscription.id}",
+                "message": f"历史套餐“{subscription.package_name}”尚未关联业务线",
+                "suggested_action": "核对该套餐属于代运营、餐饮 OS、美业 OS 或一次性项目；仅补分类，不改历史金额",
+            })
+        elif subscription.business_line_id and not subscription.selected_platforms:
+            engagement = await db.get(CustomerEngagement, subscription.engagement_id) if subscription.engagement_id else None
+            if engagement and not engagement.selected_platforms:
+                anomalies.append({
+                    **base,
+                    "project_id": engagement.id,
+                    "code": "subscription_missing_service_scope",
+                    "category": "data_quality",
+                    "severity": "warning",
+                    "scope_key": f"subscription-{subscription.id}",
+                    "message": f"套餐“{subscription.package_name}”已归类，但尚未确认实际服务范围",
+                    "suggested_action": "在客户商机或项目中确认实际运营平台/系统版本，不修改套餐数量定义",
+                })
+        if not subscription.auto_renew or subscription.next_payment_date or subscription.status in {"stopped", "cancelled"}:
             continue
         anomalies.append({
             **base,
@@ -364,6 +391,25 @@ async def _business_anomalies(db: AsyncSession, now: datetime) -> list[dict[str,
             "scope_key": f"subscription-{subscription.id}",
             "message": f"自动续费套餐“{subscription.package_name}”缺少下次付款日期",
             "suggested_action": "在套餐续费管理中补齐实际计划扣款日",
+        })
+
+    opportunities = (await db.execute(select(Opportunities).where(Opportunities.status == "open"))).scalars().all()
+    for opportunity in opportunities:
+        if opportunity.next_follow_up_at:
+            continue
+        base = customer_payload(opportunity.customer_id)
+        if not base:
+            continue
+        anomalies.append({
+            **base,
+            "assignee_id": opportunity.owner_employee_id or base.get("assignee_id"),
+            "assignee_name": opportunity.owner_name or base.get("assignee_name"),
+            "code": "opportunity_missing_next_follow_up",
+            "category": "customer_success",
+            "severity": "high",
+            "scope_key": f"opportunity-{opportunity.id}",
+            "message": f"商机“{opportunity.title}”处于跟进中，但没有下次跟进时间",
+            "suggested_action": "进入客户商机补充明确的下一次跟进时间",
         })
 
     follow_ups = (await db.execute(select(Follow_ups))).scalars().all()

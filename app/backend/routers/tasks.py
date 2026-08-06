@@ -23,6 +23,7 @@ class TasksData(BaseModel):
     """Entity data schema (for create/update)"""
     title: str
     customer_id: Optional[int] = None
+    opportunity_id: Optional[int] = None
     customer_name: Optional[str] = None
     assignee_id: Optional[int] = None
     assignee_name: Optional[str] = None
@@ -43,6 +44,7 @@ class TasksUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
     title: Optional[str] = None
     customer_id: Optional[int] = None
+    opportunity_id: Optional[int] = None
     customer_name: Optional[str] = None
     assignee_id: Optional[int] = None
     assignee_name: Optional[str] = None
@@ -64,6 +66,7 @@ class TasksResponse(BaseModel):
     id: int
     title: str
     customer_id: Optional[int] = None
+    opportunity_id: Optional[int] = None
     customer_name: Optional[str] = None
     assignee_id: Optional[int] = None
     assignee_name: Optional[str] = None

@@ -23,6 +23,7 @@ router = APIRouter(prefix="/api/v1/entities/deals", tags=["deals"], dependencies
 class DealsData(BaseModel):
     """Entity data schema (for create/update)"""
     source_payment_id: Optional[int] = None
+    opportunity_id: Optional[int] = None
     customer_id: int
     customer_name: Optional[str] = None
     sales_employee_id: Optional[int] = None
@@ -46,6 +47,7 @@ class DealsData(BaseModel):
 class DealsUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
     source_payment_id: Optional[int] = None
+    opportunity_id: Optional[int] = None
     customer_id: Optional[int] = None
     customer_name: Optional[str] = None
     sales_employee_id: Optional[int] = None
@@ -70,6 +72,7 @@ class DealsResponse(BaseModel):
     """Entity response schema"""
     id: int
     source_payment_id: Optional[int] = None
+    opportunity_id: Optional[int] = None
     customer_id: int
     customer_name: Optional[str] = None
     sales_employee_id: Optional[int] = None

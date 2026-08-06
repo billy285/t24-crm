@@ -19,6 +19,7 @@ import { actionTypeLabels } from '../lib/operation-log-helper';
 import { type CustomerCodeSettings, defaultSettings, defaultIndustryPrefixes, loadSettings, saveSettings, previewCode } from '../lib/customer-code-settings';
 import { type BusinessDictConfig, defaultBusinessDictConfig, normalizeDictConfig } from '../lib/dict-config';
 import { settingsApi, type AiSettings, type EnvConfig } from '../api/settings';
+import ProductPlanSettings from '@/components/ProductPlanSettings';
 
 const industryLabels: Record<string, string> = { restaurant: '餐厅', nail: '美甲', massage: '按摩', beauty: '美容', supermarket: '超市', other: '其他' };
 type EnvScope = 'backend_vars' | 'frontend_vars';
@@ -426,6 +427,7 @@ export default function Settings() {
           <TabsTrigger value="env" className="text-xs">环境配置</TabsTrigger>
           <TabsTrigger value="company" className="text-xs">公司信息</TabsTrigger>
           <TabsTrigger value="dict" className="text-xs">字典配置</TabsTrigger>
+          <TabsTrigger value="products" className="text-xs">产品套餐</TabsTrigger>
           <TabsTrigger value="code" className="text-xs">编号规则</TabsTrigger>
           <TabsTrigger value="dashboard" className="text-xs">仪表盘</TabsTrigger>
           <TabsTrigger value="reminder" className="text-xs">提醒规则</TabsTrigger>
@@ -675,6 +677,10 @@ export default function Settings() {
             <div><Label>任务状态</Label><Textarea value={dictConfig.taskStatuses} onChange={e => { setDictConfig({ ...dictConfig, taskStatuses: e.target.value }); setDictChanged(true); }} rows={2} /></div>
             <div className="flex justify-end"><Button onClick={saveDict} disabled={!dictChanged} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" /> 保存</Button></div>
           </CardContent></Card>
+        </TabsContent>
+
+        <TabsContent value="products">
+          <ProductPlanSettings canEdit={canEditSettings} />
         </TabsContent>
 
         {/* Customer Code */}

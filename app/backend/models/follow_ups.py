@@ -1,5 +1,5 @@
 from core.database import Base
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 
 
 class Follow_ups(Base):
@@ -8,6 +8,7 @@ class Follow_ups(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
     customer_id = Column(Integer, nullable=False)
+    opportunity_id = Column(Integer, ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=True, index=True)
     employee_id = Column(Integer, nullable=True)
     employee_name = Column(String, nullable=True)
     contact_method = Column(String, nullable=True)

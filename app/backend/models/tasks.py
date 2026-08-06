@@ -6,6 +6,7 @@ class Tasks(Base):
     __tablename__ = "tasks"
     __table_args__ = (
         UniqueConstraint("automation_issue_id", name="uq_tasks_automation_issue_id"),
+        UniqueConstraint("opportunity_id", name="uq_tasks_opportunity_id"),
         {"extend_existing": True},
     )
 
@@ -26,6 +27,12 @@ class Tasks(Base):
     automation_issue_id = Column(
         Integer,
         ForeignKey("data_quality_issues.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    opportunity_id = Column(
+        Integer,
+        ForeignKey("opportunities.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
