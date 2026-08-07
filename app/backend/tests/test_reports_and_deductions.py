@@ -85,6 +85,7 @@ def test_apply_deductions_treats_ad_recharge_as_client_funds():
         "deduction_rate": "0.0500",
         "deduction_amount": "150.00",
         "stripe_platform_fee": "0.00",
+        "channel_commission": "0.00",
         "cost": "2000.00",
         "profit": "850.00",
         "notes": "management_fee 15%; ads recharge held as client funds",
@@ -125,6 +126,14 @@ async def test_aggregate_monthly_separates_customer_costs_and_operating_currenci
                 )
             """))
             await conn.execute(text("""
+                CREATE TABLE commission_entries (
+                    service_month TEXT,
+                    currency TEXT,
+                    commission_amount REAL,
+                    status TEXT
+                )
+            """))
+            await conn.execute(text("""
                 INSERT INTO payments (id, customer_id, customer_name, income_type, amount_paid, payment_date)
                 VALUES
                   (1, 1, 'A Cafe', 'management_fee', 1000, '2026-06-10'),
@@ -141,6 +150,14 @@ async def test_aggregate_monthly_separates_customer_costs_and_operating_currenci
                   (500, 'CNY', '2026-06', '2026-06-15'),
                   (300, NULL, '2026-06', '2026-06-15')
             """))
+            await conn.execute(text("""
+                INSERT INTO commission_entries (service_month, currency, commission_amount, status)
+                VALUES
+                  ('2026-06', 'USD', 200, 'confirmed'),
+                  ('2026-06', 'USD', 50, 'payable'),
+                  ('2026-06', 'USD', 25, 'paid'),
+                  ('2026-06', 'USD', 500, 'pending_confirmation')
+            """))
 
         session_maker = async_sessionmaker(engine, expire_on_commit=False)
         async with session_maker() as db:
@@ -150,7 +167,8 @@ async def test_aggregate_monthly_separates_customer_costs_and_operating_currenci
         assert data["USD"]["2026-06"]["revenue_gross"] == 1000.0
         assert data["USD"]["2026-06"]["management_revenue"] == 1000.0
         assert data["USD"]["2026-06"]["ads_recharge_revenue"] == 2000.0
-        assert data["USD"]["2026-06"]["cost"] == 350.0
+        assert data["USD"]["2026-06"]["channel_commission"] == 275.0
+        assert data["USD"]["2026-06"]["cost"] == 625.0
         assert data["CNY"]["2026-06"]["revenue_gross"] == 0.0
         assert data["CNY"]["2026-06"]["cost"] == 800.0
 
@@ -158,9 +176,10 @@ async def test_aggregate_monthly_separates_customer_costs_and_operating_currenci
         usd_row = next(row for row in rows if row["currency_or_base"] == "USD")
         cny_row = next(row for row in rows if row["currency_or_base"] == "CNY")
 
-        assert usd_row["cost"] == "350.00"
+        assert usd_row["channel_commission"] == "275.00"
+        assert usd_row["cost"] == "625.00"
         assert usd_row["stripe_platform_fee"] == "0.00"
-        assert usd_row["profit"] == "500.00"
+        assert usd_row["profit"] == "225.00"
         assert usd_row["notes"] == "management_fee 15%; ads recharge held as client funds"
         assert cny_row["cost"] == "800.00"
         assert cny_row["stripe_platform_fee"] == "0.00"

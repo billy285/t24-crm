@@ -81,6 +81,7 @@ async def _monthly_finance(db: AsyncSession, month: str) -> dict[str, Any]:
             "recognized_ad_spread": _money(row["recognized_ad_spread"]),
             "deduction_amount": _money(row["deduction_amount"]),
             "stripe_platform_fee": _money(row["stripe_platform_fee"]),
+            "channel_commission": _money(row.get("channel_commission")),
             "cost": _money(row["cost"]),
             "profit": _money(row["profit"]),
         }
@@ -104,11 +105,12 @@ async def _monthly_finance(db: AsyncSession, month: str) -> dict[str, Any]:
             "recognized_ad_spread": 0.0,
             "deduction_amount": 0.0,
             "stripe_platform_fee": 0.0,
+            "channel_commission": 0.0,
             "cost": 0.0,
             "profit": 0.0,
         }),
         "company_cost_cny": company_cost_cny,
-        "currency_policy": "USD 与 CNY 独立统计；客户投流充值不计经营收入，只有已关账差价进入利润。",
+        "currency_policy": "USD 与 CNY 独立统计；客户投流充值不计经营收入，只有已关账差价进入利润；已确认渠道佣金单独计入成本。",
     }
 
 

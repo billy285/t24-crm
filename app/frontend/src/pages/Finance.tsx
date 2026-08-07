@@ -280,6 +280,7 @@ type MonthlyFinanceBucket = {
   stripePlatformFee: number;
   customerCost: number;
   operatingCostUsd: number;
+  channelCommissionUsd: number;
   cost: number;
 };
 
@@ -291,7 +292,7 @@ const createEmptyMonthlyFinanceBucket = (): MonthlyFinanceBucket => ({
   grossReceipts: 0, refunds: 0, netReceipts: 0, revenue: 0,
   managementRevenue: 0, adsRevenue: 0, recognizedAdSpread: 0,
   actualAdSpend: 0, adClosingBalance: 0, stripePlatformFee: 0,
-  customerCost: 0, operatingCostUsd: 0, cost: 0,
+  customerCost: 0, operatingCostUsd: 0, channelCommissionUsd: 0, cost: 0,
 });
 
 const getOrCreateMonthlyFinanceBucket = (
@@ -371,6 +372,7 @@ const buildMonthlyFinanceBuckets = (
   companyExpenseList: any[] = [],
   refundsList: any[] = [],
   adSettlements: any[] = [],
+  commissionEntries: any[] = [],
 ) => {
   const map: Record<string, MonthlyFinanceBucket> = {};
   const paymentMap = new Map<number, any>();
@@ -444,6 +446,17 @@ const buildMonthlyFinanceBuckets = (
     bucket.operatingCostUsd += amount;
     bucket.cost += amount;
   });
+
+  commissionEntries
+    .filter(entry => ['confirmed', 'payable', 'paid'].includes(entry.status))
+    .forEach((entry) => {
+      const ym = String(entry.service_month || '').slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(ym) || normalizeCurrency(entry.currency, 'USD') !== 'USD') return;
+      const bucket = getOrCreateMonthlyFinanceBucket(map, ym);
+      const amount = toMoneyNumber(entry.commission_amount);
+      bucket.channelCommissionUsd += amount;
+      bucket.cost += amount;
+    });
 
   return map;
 };
@@ -671,6 +684,7 @@ export default function Finance() {
   const [companyExpenses, setCompanyExpenses] = useState<any[]>([]);
   const [refunds, setRefunds] = useState<any[]>([]);
   const [adFundSettlements, setAdFundSettlements] = useState<any[]>([]);
+  const [commissionEntries, setCommissionEntries] = useState<any[]>([]);
   const [deductionRates, setDeductionRates] = useState<Record<string, number>>({});
   const [exportConfig, setExportConfig] = useState<Record<string, any>>({});
   const [closingMonth, setClosingMonth] = useState(() => getTodayDateInput().slice(0, 7));
@@ -833,7 +847,7 @@ export default function Finance() {
   const loadData = async () => {
     try {
       // Keep the previous snapshot unless every required finance source succeeds.
-      const [pItems, sItems, cItems, dItems, eItems, ceItems, refundItems, settlementItems] = await Promise.all([
+      const [pItems, sItems, cItems, dItems, eItems, ceItems, refundItems, settlementItems, commissionData] = await Promise.all([
         safeQuery(() => client.entities.payments.queryAll({ limit: 1000, sort: '-payment_date' })),
         safeQuery(() => client.entities.subscriptions.query({ limit: 1000, sort: '-end_date' })),
         safeQuery(() => client.entities.customers.query({ limit: 1000 })),
@@ -844,6 +858,8 @@ export default function Finance() {
           .then(res => res?.data?.items || []),
         loadWithRetry(() => invokeWithAuth({ url: '/api/v1/finance/ad-fund-settlements', method: 'GET', data: { limit: 1000 } }))
           .then(res => res?.data?.items || []),
+        loadWithRetry(() => invokeWithAuth({ url: '/api/v1/commissions/dashboard', method: 'GET' }))
+          .then(res => res?.data || { entries: [] }),
       ]);
       setPayments(pItems);
       setSubscriptions(decorateEffectiveSubscriptions(sItems));
@@ -853,6 +869,7 @@ export default function Finance() {
       setCompanyExpenses(ceItems);
       setRefunds(refundItems);
       setAdFundSettlements(settlementItems);
+      setCommissionEntries(commissionData.entries || []);
       setLoadError(null);
       try {
         const catalogRes = await loadWithRetry(() => invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }));
@@ -1403,6 +1420,10 @@ export default function Finance() {
     () => (activeDateRange ? companyExpenses.filter(e => isMonthInRange(e.expense_month, activeDateRange)) : companyExpenses),
     [activeDateRange, companyExpenses],
   );
+  const summaryCommissionEntries = useMemo(
+    () => (activeDateRange ? commissionEntries.filter(entry => isMonthInRange(entry.service_month, activeDateRange)) : commissionEntries),
+    [activeDateRange, commissionEntries],
+  );
   const paginatedPayments = useMemo(
     () => paginateList(filteredPayments, financePages.income, pageSize),
     [filteredPayments, financePages.income, pageSize],
@@ -1416,16 +1437,16 @@ export default function Finance() {
     [filteredCompanyExpenses, financePages.company_expense, pageSize],
   );
   const monthlyFinanceBuckets = useMemo(
-    () => buildMonthlyFinanceBuckets(payments, expenses, companyExpenses, refunds, adFundSettlements),
-    [payments, expenses, companyExpenses, refunds, adFundSettlements],
+    () => buildMonthlyFinanceBuckets(payments, expenses, companyExpenses, refunds, adFundSettlements, commissionEntries),
+    [payments, expenses, companyExpenses, refunds, adFundSettlements, commissionEntries],
   );
 
   // ─── Stats ───────────────────────────────────────────────────────
   const now = dateAnchor;
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const summaryFinanceBuckets = useMemo(
-    () => buildMonthlyFinanceBuckets(filteredPayments, summaryCustomerExpenses, summaryCompanyExpenses, filteredRefunds, filteredAdFundSettlements),
-    [filteredPayments, summaryCustomerExpenses, summaryCompanyExpenses, filteredRefunds, filteredAdFundSettlements],
+    () => buildMonthlyFinanceBuckets(filteredPayments, summaryCustomerExpenses, summaryCompanyExpenses, filteredRefunds, filteredAdFundSettlements, summaryCommissionEntries),
+    [filteredPayments, summaryCustomerExpenses, summaryCompanyExpenses, filteredRefunds, filteredAdFundSettlements, summaryCommissionEntries],
   );
   const summaryFinance = useMemo(() => (
     Object.values(summaryFinanceBuckets).reduce<MonthlyFinanceBucket>((acc, bucket) => ({
@@ -1441,6 +1462,7 @@ export default function Finance() {
       stripePlatformFee: roundMoney(acc.stripePlatformFee + bucket.stripePlatformFee),
       customerCost: roundMoney(acc.customerCost + bucket.customerCost),
       operatingCostUsd: roundMoney(acc.operatingCostUsd + bucket.operatingCostUsd),
+      channelCommissionUsd: roundMoney(acc.channelCommissionUsd + bucket.channelCommissionUsd),
       cost: roundMoney(acc.cost + bucket.cost),
     }), createEmptyMonthlyFinanceBucket())
   ), [summaryFinanceBuckets]);
@@ -1533,11 +1555,12 @@ export default function Finance() {
   }), [chartCompanyExpenses]);
   const chartRefunds = filteredRefunds;
   const chartAdFundSettlements = filteredAdFundSettlements;
+  const chartCommissionEntries = summaryCommissionEntries;
   const chartMonthlyFinanceBuckets = useMemo(
     () => (activeDateRange
-      ? buildMonthlyFinanceBuckets(chartPayments, chartExpenses, chartCompanyExpenses, chartRefunds, chartAdFundSettlements)
+      ? buildMonthlyFinanceBuckets(chartPayments, chartExpenses, chartCompanyExpenses, chartRefunds, chartAdFundSettlements, chartCommissionEntries)
       : monthlyFinanceBuckets),
-    [activeDateRange, chartPayments, chartExpenses, chartCompanyExpenses, chartRefunds, chartAdFundSettlements, monthlyFinanceBuckets],
+    [activeDateRange, chartPayments, chartExpenses, chartCompanyExpenses, chartRefunds, chartAdFundSettlements, chartCommissionEntries, monthlyFinanceBuckets],
   );
   const chartMonthKeys = useMemo(() => {
     if (activeDateRange) return getMonthKeysInRange(activeDateRange.start, activeDateRange.end);
@@ -1559,7 +1582,7 @@ export default function Finance() {
           : `${filterStartDate || '最早'} 至 ${filterEndDate || '最新'}`;
 
   const monthlyTrendData = useMemo(() => {
-    const months: { key: string; label: string; income: number; customerExp: number; stripeFee: number; companyExpUsd: number; profitUsd: number }[] = [];
+    const months: { key: string; label: string; income: number; customerExp: number; stripeFee: number; companyExpUsd: number; channelCommissionUsd: number; profitUsd: number }[] = [];
     chartMonthKeys.forEach((key) => {
       const monthNumber = Number(key.slice(5, 7));
       const label = `${monthNumber}月`;
@@ -1568,9 +1591,10 @@ export default function Finance() {
       const custExp = bucket.customerCost; // USD
       const stripeFee = bucket.stripePlatformFee;
       const compExpUsd = bucket.operatingCostUsd; // USD operating costs
+      const channelCommissionUsd = bucket.channelCommissionUsd;
       const rate = getDeductionRate(deductionRates, key);
       const { profit } = calculateMonthlyProfit(bucket, rate);
-      months.push({ key, label, income, customerExp: custExp, stripeFee, companyExpUsd: compExpUsd, profitUsd: roundMoney(profit) });
+      months.push({ key, label, income, customerExp: custExp, stripeFee, companyExpUsd: compExpUsd, channelCommissionUsd, profitUsd: roundMoney(profit) });
     });
     return months;
   }, [chartMonthKeys, chartMonthlyFinanceBuckets, deductionRates]);
@@ -1625,7 +1649,8 @@ export default function Finance() {
       return /^\d{4}-\d{2}$/.test(ym || '') && inRange(ym!);
     });
     const scopedAdSettlements = adFundSettlements.filter((item: any) => inRange(item.year_month));
-    const map = buildMonthlyFinanceBuckets(scopedPayments, scopedExpenses, scopedCompanyExpenses, scopedRefunds, scopedAdSettlements);
+    const scopedCommissionEntries = commissionEntries.filter((item: any) => inRange(String(item.service_month || '')));
+    const map = buildMonthlyFinanceBuckets(scopedPayments, scopedExpenses, scopedCompanyExpenses, scopedRefunds, scopedAdSettlements, scopedCommissionEntries);
 
     const rows = Object.keys(map).sort().map(ym => {
       const bucket = map[ym];
@@ -1660,13 +1685,14 @@ export default function Finance() {
         stripe_platform_fee: Math.round(bucket.stripePlatformFee * 100) / 100,
         customer_cost: Math.round(bucket.customerCost * 100) / 100,
         operating_cost_usd: Math.round(bucket.operatingCostUsd * 100) / 100,
+        channel_commission_usd: Math.round(bucket.channelCommissionUsd * 100) / 100,
         cost: Math.round(cost * 100) / 100,
         profit: Math.round(profit * 100) / 100,
       };
     });
 
     return { rows, range: { start, end } };
-  }, [payments, expenses, companyExpenses, refunds, adFundSettlements, deductionRates, activeDateRange, closedFinanceMonths]);
+  }, [payments, expenses, companyExpenses, refunds, adFundSettlements, commissionEntries, deductionRates, activeDateRange, closedFinanceMonths]);
 
   const paginatedMonthlyDetail = useMemo(
     () => paginateList(monthlyDetail.rows, financePages.monthly_detail, pageSize),
@@ -1684,6 +1710,7 @@ export default function Finance() {
       stripeFee: roundMoney(acc.stripeFee + Number(row.stripe_platform_fee || 0)),
       customerCost: roundMoney(acc.customerCost + Number(row.customer_cost || 0)),
       operatingCostUsd: roundMoney(acc.operatingCostUsd + Number(row.operating_cost_usd || 0)),
+      channelCommissionUsd: roundMoney(acc.channelCommissionUsd + Number(row.channel_commission_usd || 0)),
       cost: roundMoney(acc.cost + Number(row.cost || 0)),
       profit: roundMoney(acc.profit + Number(row.profit || 0)),
     }), {
@@ -1697,6 +1724,7 @@ export default function Finance() {
       stripeFee: 0,
       customerCost: 0,
       operatingCostUsd: 0,
+      channelCommissionUsd: 0,
       cost: 0,
       profit: 0,
     })
@@ -1811,6 +1839,7 @@ export default function Finance() {
   );
   const overviewRefunds = filteredRefunds;
   const overviewAdFundSettlements = filteredAdFundSettlements;
+  const overviewCommissionEntries = summaryCommissionEntries;
 
   const customerProfitRows = useMemo(() => {
     const rows: Record<string, {
@@ -1823,6 +1852,7 @@ export default function Finance() {
       stripeFee: number;
       managementDeduction: number;
       adsDeduction: number;
+      channelCommissionUsd: number;
       customerCostUsd: number;
       customerCostCny: number;
       outstanding: number;
@@ -1844,6 +1874,7 @@ export default function Finance() {
           stripeFee: 0,
           managementDeduction: 0,
           adsDeduction: 0,
+          channelCommissionUsd: 0,
           customerCostUsd: 0,
           customerCostCny: 0,
           outstanding: 0,
@@ -1911,6 +1942,13 @@ export default function Finance() {
       }
     });
 
+    overviewCommissionEntries
+      .filter((entry: any) => ['confirmed', 'payable', 'paid'].includes(entry.status) && normalizeCurrency(entry.currency, 'USD') === 'USD')
+      .forEach((entry: any) => {
+        const row = ensureRow(entry.customer_id, entry.customer_name);
+        row.channelCommissionUsd += toMoneyNumber(entry.commission_amount);
+      });
+
     return Object.values(rows)
       .filter(row => (
         financeIssueFilter === 'missingCustomerLink'
@@ -1918,7 +1956,7 @@ export default function Finance() {
           : true
       ))
       .map(row => {
-        const totalFee = row.stripeFee + row.managementDeduction + row.adsDeduction;
+        const totalFee = row.stripeFee + row.managementDeduction + row.adsDeduction + row.channelCommissionUsd;
         const profit = row.revenue - totalFee - row.customerCostUsd;
         const profitRate = row.revenue > 0 ? profit / row.revenue : 0;
         const warningLevel = profit < 0 ? 'loss' : (row.revenue > 0 && profitRate < CUSTOMER_PROFIT_WARNING_RATE ? 'low_margin' : 'healthy');
@@ -1941,6 +1979,7 @@ export default function Finance() {
           stripeFee: roundMoney(row.stripeFee),
           managementDeduction: roundMoney(row.managementDeduction),
           adsDeduction: roundMoney(row.adsDeduction),
+          channelCommissionUsd: roundMoney(row.channelCommissionUsd),
           customerCostUsd: roundMoney(row.customerCostUsd),
           customerCostCny: roundMoney(row.customerCostCny),
           outstanding: roundMoney(row.outstanding),
@@ -1953,7 +1992,7 @@ export default function Finance() {
         };
       })
       .sort((a, b) => b.profit - a.profit);
-  }, [customerMap, deductionRates, financeIssueFilter, overviewAdFundSettlements, overviewCustomerExpenses, overviewPayments, overviewRefunds]);
+  }, [customerMap, deductionRates, financeIssueFilter, overviewAdFundSettlements, overviewCommissionEntries, overviewCustomerExpenses, overviewPayments, overviewRefunds]);
 
   const profitWarningRows = useMemo(() => (
     customerProfitRows
@@ -1991,14 +2030,15 @@ export default function Finance() {
       .sort((a: any, b: any) => String(b.expense_month || '').localeCompare(String(a.expense_month || '')));
     const detailRefunds = overviewRefunds.filter(matchesCustomer);
     const detailSettlements = overviewAdFundSettlements.filter(matchesCustomer);
-    const bucketMap = buildMonthlyFinanceBuckets(detailPayments, detailExpenses, [], detailRefunds, detailSettlements);
+    const detailCommissionEntries = overviewCommissionEntries.filter(matchesCustomer);
+    const bucketMap = buildMonthlyFinanceBuckets(detailPayments, detailExpenses, [], detailRefunds, detailSettlements, detailCommissionEntries);
     const monthlyRows = Object.keys(bucketMap)
       .sort((a, b) => b.localeCompare(a))
       .map(month => {
         const bucket = bucketMap[month];
         const rate = getDeductionRate(deductionRates, month);
         const calc = calculateMonthlyProfit(bucket, rate);
-        const totalFee = calc.deductionAmount + bucket.stripePlatformFee;
+        const totalFee = calc.deductionAmount + bucket.stripePlatformFee + bucket.channelCommissionUsd;
         return {
           month,
           revenue: roundMoney(bucket.revenue),
@@ -2006,6 +2046,7 @@ export default function Finance() {
           adsRevenue: roundMoney(bucket.adsRevenue),
           stripeFee: roundMoney(bucket.stripePlatformFee),
           deduction: roundMoney(calc.deductionAmount),
+          channelCommission: roundMoney(bucket.channelCommissionUsd),
           totalFee: roundMoney(totalFee),
           customerCost: roundMoney(bucket.customerCost),
           profit: roundMoney(calc.profit),
@@ -2023,7 +2064,7 @@ export default function Finance() {
       monthlyRows,
       customerCostCny,
     };
-  }, [customerMap, customerProfitRows, deductionRates, overviewAdFundSettlements, overviewCustomerExpenses, overviewPayments, overviewRefunds, profitDetailTarget]);
+  }, [customerMap, customerProfitRows, deductionRates, overviewAdFundSettlements, overviewCommissionEntries, overviewCustomerExpenses, overviewPayments, overviewRefunds, profitDetailTarget]);
 
   const receivableRows = useMemo(() => (
     overviewPayments
@@ -2048,7 +2089,7 @@ export default function Finance() {
   ), [customerMap, overviewPayments]);
 
   const ownerOverview = useMemo(() => {
-    const buckets = buildMonthlyFinanceBuckets(overviewPayments, overviewCustomerExpenses, overviewCompanyExpenses, overviewRefunds, overviewAdFundSettlements);
+    const buckets = buildMonthlyFinanceBuckets(overviewPayments, overviewCustomerExpenses, overviewCompanyExpenses, overviewRefunds, overviewAdFundSettlements, overviewCommissionEntries);
     const totals = Object.entries(buckets).reduce((acc, [ym, bucket]) => {
       const rate = getDeductionRate(deductionRates, ym);
       const profit = calculateMonthlyProfit(bucket, rate);
@@ -2057,6 +2098,7 @@ export default function Finance() {
       acc.adsRevenue += bucket.adsRevenue;
       acc.customerCostUsd += bucket.customerCost;
       acc.companyCostUsd += bucket.operatingCostUsd;
+      acc.channelCommissionUsd += bucket.channelCommissionUsd;
       acc.stripeFee += bucket.stripePlatformFee;
       acc.deduction += profit.deductionAmount;
       acc.profitUsd += profit.profit;
@@ -2067,6 +2109,7 @@ export default function Finance() {
       adsRevenue: 0,
       customerCostUsd: 0,
       companyCostUsd: 0,
+      channelCommissionUsd: 0,
       stripeFee: 0,
       deduction: 0,
       profitUsd: 0,
@@ -2082,6 +2125,7 @@ export default function Finance() {
       adsRevenue: roundMoney(totals.adsRevenue),
       customerCostUsd: roundMoney(totals.customerCostUsd),
       companyCostUsd: roundMoney(totals.companyCostUsd),
+      channelCommissionUsd: roundMoney(totals.channelCommissionUsd),
       companyCostCny: roundMoney(companyCostCny),
       stripeFee: roundMoney(totals.stripeFee),
       deduction: roundMoney(totals.deduction),
@@ -2091,7 +2135,7 @@ export default function Finance() {
       receivableCount: receivableRows.length,
       profitRate: totals.revenue > 0 ? totals.profitUsd / totals.revenue : 0,
     };
-  }, [deductionRates, overviewAdFundSettlements, overviewCompanyExpenses, overviewCustomerExpenses, overviewPayments, overviewRefunds, receivableRows]);
+  }, [deductionRates, overviewAdFundSettlements, overviewCommissionEntries, overviewCompanyExpenses, overviewCustomerExpenses, overviewPayments, overviewRefunds, receivableRows]);
 
   const financeHealthItems = useMemo(() => {
     const missingPaymentDate = payments.filter((payment: any) => !payment.payment_date).length;
@@ -3552,11 +3596,11 @@ export default function Finance() {
           <Card className="border-slate-200 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-medium text-slate-500">运营支出</p>
+                <p className="text-xs font-medium text-slate-500">运营及渠道成本</p>
                 <ArrowDownRight className="h-4 w-4 text-red-500" />
               </div>
-              <p className="mt-2 text-xl font-bold text-red-600">{fmt(summaryFinance.operatingCostUsd)}</p>
-              <p className="mt-1 text-[11px] text-slate-400">{fmtRMB(summaryCompanyExpenseCny)} 单独统计</p>
+              <p className="mt-2 text-xl font-bold text-red-600">{fmt(summaryFinance.operatingCostUsd + summaryFinance.channelCommissionUsd)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">运营 {fmt(summaryFinance.operatingCostUsd)} · 渠道佣金 {fmt(summaryFinance.channelCommissionUsd)}</p>
             </CardContent>
           </Card>
 
@@ -3774,9 +3818,9 @@ export default function Finance() {
                 <p className="mt-1 text-xs text-slate-400">直接影响单客利润</p>
               </CardContent></Card>
               <Card className="border-slate-200"><CardContent className="p-4">
-                <p className="text-xs text-slate-500">运营支出 USD</p>
-                <p className="mt-1 text-xl font-bold text-red-600">{fmt(ownerOverview.companyCostUsd)}</p>
-                <p className="mt-1 text-xs text-slate-400">{fmtRMB(ownerOverview.companyCostCny)} 单独统计</p>
+                <p className="text-xs text-slate-500">运营及渠道成本 USD</p>
+                <p className="mt-1 text-xl font-bold text-red-600">{fmt(ownerOverview.companyCostUsd + ownerOverview.channelCommissionUsd)}</p>
+                <p className="mt-1 text-xs text-slate-400">运营 {fmt(ownerOverview.companyCostUsd)} · 渠道 {fmt(ownerOverview.channelCommissionUsd)}</p>
               </CardContent></Card>
               <Card className="border-slate-200"><CardContent className="p-4">
                 <p className="text-xs text-slate-500">活跃订阅</p>
@@ -3811,10 +3855,10 @@ export default function Finance() {
                     <p className="mt-2 text-lg font-bold text-emerald-700">{fmt(ownerOverview.profitUsd)}</p>
                     <p className="mt-1 text-xs text-emerald-700">找出赚钱客户和亏损客户</p>
                   </button>
-                  <button type="button" onClick={() => handleFinanceTabChange('company_expense')} className="rounded-xl border border-red-100 bg-red-50 p-4 text-left hover:bg-red-100/70">
-                    <p className="text-sm font-semibold text-red-800">运营支出</p>
-                    <p className="mt-2 text-lg font-bold text-red-700">{fmt(ownerOverview.companyCostUsd)}</p>
-                    <p className="mt-1 text-xs text-red-700">{fmtRMB(ownerOverview.companyCostCny)} 单独统计</p>
+                  <button type="button" onClick={() => navigate('/commissions')} className="rounded-xl border border-red-100 bg-red-50 p-4 text-left hover:bg-red-100/70">
+                    <p className="text-sm font-semibold text-red-800">运营及渠道成本</p>
+                    <p className="mt-2 text-lg font-bold text-red-700">{fmt(ownerOverview.companyCostUsd + ownerOverview.channelCommissionUsd)}</p>
+                    <p className="mt-1 text-xs text-red-700">渠道佣金 {fmt(ownerOverview.channelCommissionUsd)} · 点击查看分润台账</p>
                   </button>
                 </CardContent>
               </Card>
@@ -3935,7 +3979,7 @@ export default function Finance() {
                       <th className="px-3 py-2.5 font-medium">实收</th>
                       <th className="px-3 py-2.5 font-medium hidden lg:table-cell">管理费</th>
                       <th className="px-3 py-2.5 font-medium hidden lg:table-cell">投流</th>
-                      <th className="px-3 py-2.5 font-medium">扣点/手续费</th>
+                      <th className="px-3 py-2.5 font-medium">扣点/手续费/佣金</th>
 	                      <th className="px-3 py-2.5 font-medium">客户成本</th>
 	                      <th className="px-3 py-2.5 font-medium">利润</th>
 	                      <th className="px-3 py-2.5 font-medium">预警</th>
@@ -4759,6 +4803,7 @@ export default function Finance() {
                             customerExp: '客户支出(USD)',
                             stripeFee: 'Stripe手续费(USD)',
                             companyExpUsd: '运营支出(USD)',
+                            channelCommissionUsd: '渠道佣金(USD)',
                             profitUsd: '经营利润(USD)',
                           };
                           return [fmt(value), labels[name] || name];
@@ -4770,6 +4815,7 @@ export default function Finance() {
                           customerExp: '客户支出(USD)',
                           stripeFee: 'Stripe手续费(USD)',
                           companyExpUsd: '运营支出(USD)',
+                          channelCommissionUsd: '渠道佣金(USD)',
                           profitUsd: '经营利润(USD)',
                         };
                         return <span className="text-xs text-slate-600">{labels[value] || value}</span>;
@@ -4778,6 +4824,7 @@ export default function Finance() {
                       <Bar dataKey="customerExp" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Bar dataKey="stripeFee" fill="#06b6d4" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Bar dataKey="companyExpUsd" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                      <Bar dataKey="channelCommissionUsd" fill="#8b5cf6" radius={[4, 4, 0, 0]} maxBarSize={24} />
                       <Line type="monotone" dataKey="profitUsd" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3 }} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -5180,7 +5227,7 @@ export default function Finance() {
               </div>
             </div>
             {!loading && monthlyDetail.rows.length > 0 && (
-              <div className="grid grid-cols-2 gap-3 px-4 pb-4 lg:grid-cols-5">
+              <div className="grid grid-cols-2 gap-3 px-4 pb-4 lg:grid-cols-6">
                 <div className="rounded-xl border border-green-100 bg-green-50 p-3">
                   <p className="text-xs text-green-700">区间服务收入</p>
                   <p className="mt-1 text-lg font-bold text-green-700">{fmt(monthlyDetailTotals.revenue)}</p>
@@ -5200,6 +5247,11 @@ export default function Finance() {
                   <p className="text-xs text-red-700">USD运营支出</p>
                   <p className="mt-1 text-lg font-bold text-red-700">{fmt(monthlyDetailTotals.operatingCostUsd)}</p>
                   <p className="mt-1 text-[11px] text-red-600">公司运营类成本</p>
+                </div>
+                <div className="rounded-xl border border-purple-100 bg-purple-50 p-3">
+                  <p className="text-xs text-purple-700">渠道佣金 USD</p>
+                  <p className="mt-1 text-lg font-bold text-purple-700">{fmt(monthlyDetailTotals.channelCommissionUsd)}</p>
+                  <p className="mt-1 text-[11px] text-purple-600">仅已确认、待发放或已发放</p>
                 </div>
                 <div className={`rounded-xl border p-3 ${monthlyDetailTotals.profit >= 0 ? 'border-emerald-100 bg-emerald-50' : 'border-red-100 bg-red-50'}`}>
                   <p className={`text-xs ${monthlyDetailTotals.profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>区间利润</p>
@@ -5239,6 +5291,7 @@ export default function Finance() {
                         <th className="px-3 py-2.5 font-medium">总扣点</th>
                         <th className="px-3 py-2.5 font-medium">客户成本</th>
                         <th className="px-3 py-2.5 font-medium">USD运营支出</th>
+                        <th className="px-3 py-2.5 font-medium">渠道佣金</th>
                         <th className="px-3 py-2.5 font-medium">总成本 (cost)</th>
                         <th className="px-3 py-2.5 font-medium">利润 (profit)</th>
                       </tr>
@@ -5278,6 +5331,7 @@ export default function Finance() {
                           <td className="px-3 py-2.5">{fmt(r.deduction_amount)}</td>
                           <td className="px-3 py-2.5">{fmt(r.customer_cost || 0)}</td>
                           <td className="px-3 py-2.5">{fmt(r.operating_cost_usd || 0)}</td>
+                          <td className="px-3 py-2.5 text-purple-600">{fmt(r.channel_commission_usd || 0)}</td>
                           <td className="px-3 py-2.5">{fmt(r.cost)}</td>
                           <td className="px-3 py-2.5 font-semibold" style={{ color: r.profit >= 0 ? '#059669' : '#ef4444' }}>
                             {fmt(r.profit)}
@@ -5536,9 +5590,9 @@ export default function Finance() {
                   <p className="text-[11px] text-green-600">管理费 {fmt(selectedProfitDetail.row.managementRevenue || 0)} · 投流 {fmt(selectedProfitDetail.row.adsRevenue || 0)}</p>
                 </div>
                 <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
-                  <p className="text-xs text-violet-700">扣点 / Stripe</p>
+                  <p className="text-xs text-violet-700">扣点 / Stripe / 渠道佣金</p>
                   <p className="mt-1 text-xl font-bold text-violet-700">{fmt(selectedProfitDetail.row.totalFee || 0)}</p>
-                  <p className="text-[11px] text-violet-600">扣点 {fmt((selectedProfitDetail.row.managementDeduction || 0) + (selectedProfitDetail.row.adsDeduction || 0))} · Stripe {fmt(selectedProfitDetail.row.stripeFee || 0)}</p>
+                  <p className="text-[11px] text-violet-600">扣点 {fmt((selectedProfitDetail.row.managementDeduction || 0) + (selectedProfitDetail.row.adsDeduction || 0))} · Stripe {fmt(selectedProfitDetail.row.stripeFee || 0)} · 渠道 {fmt(selectedProfitDetail.row.channelCommissionUsd || 0)}</p>
                 </div>
                 <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
                   <p className="text-xs text-amber-700">客户成本</p>

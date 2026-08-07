@@ -12,6 +12,7 @@ from core.database import get_db
 from services.payments import PaymentsService
 from services.payment_deal_sync import sync_deal_from_payment, unlink_synced_deal_for_payment
 from services.customer_lifecycle import sync_lifecycle_from_payments
+from services.commissions import commission_ledger_available, sync_payment_commission
 from dependencies.auth import get_finance_user
 from schemas.auth import UserResponse
 
@@ -26,6 +27,9 @@ class PaymentsData(BaseModel):
     """Entity data schema (for create/update)"""
     sync_to_deal: Optional[bool] = False
     source_deal_id: Optional[int] = None
+    engagement_id: Optional[int] = None
+    business_line_id: Optional[int] = None
+    product_id: Optional[int] = None
     customer_id: int
     customer_name: Optional[str] = None
     income_type: Optional[str] = None
@@ -56,6 +60,9 @@ class PaymentsUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
     sync_to_deal: Optional[bool] = False
     source_deal_id: Optional[int] = None
+    engagement_id: Optional[int] = None
+    business_line_id: Optional[int] = None
+    product_id: Optional[int] = None
     customer_id: Optional[int] = None
     customer_name: Optional[str] = None
     income_type: Optional[str] = None
@@ -86,6 +93,9 @@ class PaymentsResponse(BaseModel):
     """Entity response schema"""
     id: int
     source_deal_id: Optional[int] = None
+    engagement_id: Optional[int] = None
+    business_line_id: Optional[int] = None
+    product_id: Optional[int] = None
     customer_id: int
     customer_name: Optional[str] = None
     income_type: Optional[str] = None
@@ -273,6 +283,14 @@ async def create_payments(
                 raise HTTPException(status_code=500, detail="收款已保存，但同步成交记录失败")
 
         await sync_lifecycle_from_payments(db, [result.customer_id])
+        try:
+            if not await commission_ledger_available(db):
+                return result
+            await sync_payment_commission(db, result)
+            await db.commit()
+        except Exception as commission_err:
+            await db.rollback()
+            logger.error("Payment %s saved but commission sync failed: %s", result.id, commission_err, exc_info=True)
         
         logger.info(f"Payments created successfully with id: {result.id}")
         return result
@@ -305,6 +323,9 @@ async def create_paymentss_batch(
                 if sync_to_deal:
                     await sync_deal_from_payment(db, result)
                 await sync_lifecycle_from_payments(db, [result.customer_id])
+                if await commission_ledger_available(db):
+                    await sync_payment_commission(db, result)
+                    await db.commit()
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} paymentss successfully")
@@ -343,6 +364,9 @@ async def update_paymentss_batch(
                 if previous_customer_id:
                     affected_customer_ids.add(previous_customer_id)
                 await sync_lifecycle_from_payments(db, affected_customer_ids)
+                if await commission_ledger_available(db):
+                    await sync_payment_commission(db, result)
+                    await db.commit()
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} paymentss successfully")
@@ -387,6 +411,14 @@ async def update_payments(
         if previous_customer_id:
             affected_customer_ids.add(previous_customer_id)
         await sync_lifecycle_from_payments(db, affected_customer_ids)
+        try:
+            if not await commission_ledger_available(db):
+                return result
+            await sync_payment_commission(db, result)
+            await db.commit()
+        except Exception as commission_err:
+            await db.rollback()
+            logger.error("Payment %s updated but commission sync failed: %s", result.id, commission_err, exc_info=True)
         
         logger.info(f"Payments {id} updated successfully")
         return result

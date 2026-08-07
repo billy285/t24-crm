@@ -1,4 +1,5 @@
 import re
+import logging
 from datetime import datetime, timezone
 from calendar import monthrange
 from typing import Literal, Optional
@@ -13,10 +14,12 @@ from dependencies.auth import get_finance_user
 from models.ad_fund_settlements import AdFundSettlement
 from models.finance_refunds import FinanceRefund
 from models.payments import Payments
+from services.commissions import commission_ledger_available, sync_refund_commission
 from schemas.auth import UserResponse
 
 
 router = APIRouter(prefix="/api/v1/finance", tags=["finance-adjustments"])
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -142,6 +145,15 @@ async def create_refund(
     db.add(refund)
     await db.commit()
     await db.refresh(refund)
+    if await commission_ledger_available(db):
+        refund_id = refund.id
+        try:
+            await sync_refund_commission(db, refund)
+            await db.commit()
+        except Exception as commission_err:
+            await db.rollback()
+            await db.refresh(refund)
+            logger.error("Refund %s saved but commission reversal sync failed: %s", refund_id, commission_err, exc_info=True)
     return refund
 
 

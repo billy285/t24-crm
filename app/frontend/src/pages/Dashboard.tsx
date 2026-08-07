@@ -77,7 +77,7 @@ type OwnerCockpit = {
     USD: {
       gross_receipts: number; refund_amount: number; net_receipts: number;
       service_revenue: number; ads_client_funds: number; recognized_ad_spread: number;
-      deduction_amount: number; stripe_platform_fee: number; cost: number; profit: number;
+      deduction_amount: number; stripe_platform_fee: number; channel_commission: number; cost: number; profit: number;
     };
     company_cost_cny: number;
     currency_policy: string;
@@ -642,7 +642,7 @@ export default function Dashboard() {
     };
     const decisionLabel: Record<string, string> = { critical: '立即处理', high: '优先处理', medium: '尽快完善' };
     const topMetrics = [
-      { label: `${ownerCockpit.period.month} 经营利润 USD`, value: `$${usd.profit.toLocaleString()}`, helper: `服务收入 $${usd.service_revenue.toLocaleString()} · 已确认投流差价 $${usd.recognized_ad_spread.toLocaleString()}`, icon: CircleDollarSign, tone: usd.profit < 0 ? 'text-rose-700 bg-rose-50' : 'text-emerald-700 bg-emerald-50', link: '/finance?tab=monthly_detail' },
+      { label: `${ownerCockpit.period.month} 经营利润 USD`, value: `$${usd.profit.toLocaleString()}`, helper: `服务收入 $${usd.service_revenue.toLocaleString()} · 渠道佣金 $${Number(usd.channel_commission || 0).toLocaleString()}`, icon: CircleDollarSign, tone: usd.profit < 0 ? 'text-rose-700 bg-rose-50' : 'text-emerald-700 bg-emerald-50', link: '/finance?tab=monthly_detail' },
       { label: '本月净收款 USD', value: `$${usd.net_receipts.toLocaleString()}`, helper: `客户投流资金 $${usd.ads_client_funds.toLocaleString()}（不计收入）`, icon: Banknote, tone: 'text-blue-700 bg-blue-50', link: '/finance?tab=income' },
       { label: '当前合作项目', value: ownerCockpit.customers.active_projects, helper: `${ownerCockpit.customers.at_risk_projects} 个风险 · 本月停止 ${ownerCockpit.customers.stopped_this_month}`, icon: Layers3, tone: 'text-violet-700 bg-violet-50', link: '/customer-lifecycle' },
       { label: '系统推动中的任务', value: ownerCockpit.execution.system_tasks, helper: `${ownerCockpit.execution.overdue_tasks} 个全部任务已逾期`, icon: Workflow, tone: 'text-orange-700 bg-orange-50', link: '/tasks?source=system' },

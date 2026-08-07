@@ -1,0 +1,158 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { invokeWithAuth } from '@/lib/tokenStore';
+import { AlertTriangle, BadgeDollarSign, Building2, HandCoins, RefreshCw, ShieldCheck, UserPlus, Users } from 'lucide-react';
+import { toast } from 'sonner';
+
+type Partner = { id: number; partner_code: string; name: string; partner_type: string; employee_id?: number; status: string; joined_at: string; stopped_at?: string; notes?: string };
+type Agreement = { id: number; partner_id: number; version: number; business_line_id?: number; product_id?: number; first_order_rate: number; renewal_rate: number; activity_decay: Record<string, number>; refund_guard_days: number; effective_from: string; effective_to?: string; status: string };
+type Attribution = { id: number; customer_id: number; customer_name?: string; engagement_id?: number; partner_id: number; partner_name?: string; effective_from: string; effective_to?: string; is_active: boolean; source_note?: string };
+type Entry = { id: number; partner_name?: string; customer_id: number; customer_name?: string; payment_id: number; refund_id?: number; entry_type: string; status: string; service_month: string; occurred_at: string; currency: string; gross_receipt_amount: number; eligible_service_amount: number; contract_rate: number; inactivity_months: number; activity_multiplier: number; commission_amount: number; payout_reference?: string };
+type DashboardData = { summary: { partner_count: number; active_partner_count: number; pending_count: number; currencies: Record<string, Record<string, number>>; accounting_rule: string }; partners: Partner[]; agreements: Agreement[]; attributions: Attribution[]; entries: Entry[] };
+type OptionsData = { employees: Array<{ id: number; name: string; employee_code?: string }>; customers: Array<{ id: number; name: string; code?: string }>; business_lines: Array<{ id: number; name: string; code: string }>; products: Array<{ id: number; name: string; business_line_id: number }>; engagements: Array<{ id: number; customer_id: number; package_name?: string; status: string }> };
+
+const partnerTypeLabels: Record<string, string> = { agency: '代理商', partner: '销售合伙人', employee: '内部销售', direct: '公司直营' };
+const partnerStatusLabels: Record<string, string> = { active: '合作中', suspended: '暂停结算', terminated: '已终止', settled: '已结清' };
+const entryTypeLabels: Record<string, string> = { first_order: '首单佣金', renewal: '续费佣金', refund_reversal: '退款冲回' };
+const entryStatusLabels: Record<string, string> = { pending_confirmation: '待确认', confirmed: '已确认入账', payable: '待发放', paid: '已发放', reversed: '已作废' };
+const today = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
+const percent = (value: number) => `${(Number(value || 0) * 100).toFixed(0)}%`;
+const money = (value: number, currency: string) => `${currency === 'CNY' ? '¥' : '$'}${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const errorMessage = (error: any) => error?.data?.detail || error?.response?.data?.detail || error?.message || '操作失败';
+
+export default function Commissions() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [options, setOptions] = useState<OptionsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [working, setWorking] = useState(false);
+  const [month, setMonth] = useState('');
+  const [search, setSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [dialog, setDialog] = useState<'partner' | 'agreement' | 'attribution' | null>(null);
+  const [partnerForm, setPartnerForm] = useState({ partner_code: '', name: '', partner_type: 'partner', employee_id: '', joined_at: today(), contact_name: '', contact_phone: '', contact_email: '', notes: '' });
+  const [agreementForm, setAgreementForm] = useState({ partner_id: '', business_line_id: 'all', product_id: 'all', first_order_rate: '50', renewal_rate: '20', refund_guard_days: '30', decay_rates: ['100', '80', '60', '40', '25', '10', '0'], effective_from: today(), notes: '' });
+  const [attributionForm, setAttributionForm] = useState({ customer_id: '', partner_id: '', engagement_id: 'all', effective_from: today(), source_note: '' });
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [dashboardResponse, optionsResponse] = await Promise.all([
+        invokeWithAuth({ url: `/api/v1/commissions/dashboard${month ? `?month=${month}` : ''}`, method: 'GET' }),
+        invokeWithAuth({ url: '/api/v1/commissions/options', method: 'GET' }),
+      ]);
+      setData(dashboardResponse.data);
+      setOptions(optionsResponse.data);
+    } catch (error) { toast.error(errorMessage(error)); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { void load(); }, [month]);
+
+  const filteredEntries = useMemo(() => (data?.entries || []).filter(item => `${item.partner_name || ''} ${item.customer_name || ''} ${item.payment_id}`.toLowerCase().includes(search.toLowerCase())), [data?.entries, search]);
+  const filteredAttributions = useMemo(() => (data?.attributions || []).filter(item => `${item.partner_name || ''} ${item.customer_name || ''}`.toLowerCase().includes(search.toLowerCase())), [data?.attributions, search]);
+  const selectedLineId = agreementForm.business_line_id === 'all' ? undefined : Number(agreementForm.business_line_id);
+  const agreementProducts = (options?.products || []).filter(product => !selectedLineId || product.business_line_id === selectedLineId);
+  const selectedCustomerId = Number(attributionForm.customer_id || 0);
+  const customerEngagements = (options?.engagements || []).filter(item => item.customer_id === selectedCustomerId);
+  const customerOptions = (options?.customers || []).filter(item => `${item.code || ''} ${item.name}`.toLowerCase().includes(customerSearch.toLowerCase())).slice(0, 80);
+
+  const submit = async () => {
+    setWorking(true);
+    try {
+      if (dialog === 'partner') {
+        await invokeWithAuth({ url: '/api/v1/commissions/partners', method: 'POST', data: { ...partnerForm, employee_id: partnerForm.employee_id ? Number(partnerForm.employee_id) : null } });
+      } else if (dialog === 'agreement') {
+        await invokeWithAuth({ url: '/api/v1/commissions/agreements', method: 'POST', data: {
+          ...agreementForm,
+          partner_id: Number(agreementForm.partner_id), business_line_id: agreementForm.business_line_id === 'all' ? null : Number(agreementForm.business_line_id),
+          product_id: agreementForm.product_id === 'all' ? null : Number(agreementForm.product_id),
+          first_order_rate: Number(agreementForm.first_order_rate) / 100, renewal_rate: Number(agreementForm.renewal_rate) / 100,
+          refund_guard_days: Number(agreementForm.refund_guard_days),
+          activity_decay: Object.fromEntries(agreementForm.decay_rates.map((rate, index) => [index, Number(rate) / 100])),
+        } });
+      } else if (dialog === 'attribution') {
+        await invokeWithAuth({ url: '/api/v1/commissions/attributions', method: 'POST', data: {
+          ...attributionForm, customer_id: Number(attributionForm.customer_id), partner_id: Number(attributionForm.partner_id),
+          engagement_id: attributionForm.engagement_id === 'all' ? null : Number(attributionForm.engagement_id),
+        } });
+      }
+      toast.success('已保存；历史协议和已确认佣金快照未被改写');
+      setDialog(null);
+      await load();
+    } catch (error) { toast.error(errorMessage(error)); }
+    finally { setWorking(false); }
+  };
+
+  const scan = async () => {
+    setWorking(true);
+    try {
+      const response = await invokeWithAuth({ url: '/api/v1/commissions/scan', method: 'POST' });
+      toast.success(`扫描完成，新生成 ${response.data.entries_created} 条佣金记录`);
+      await load();
+    } catch (error) { toast.error(errorMessage(error)); }
+    finally { setWorking(false); }
+  };
+
+  const transition = async (entry: Entry, to_status: string) => {
+    let reason = '';
+    let payout_reference = '';
+    if (to_status === 'reversed') { reason = window.prompt('请输入作废原因：') || ''; if (!reason) return; }
+    if (to_status === 'paid') { payout_reference = window.prompt('请输入付款流水号或凭证编号：') || ''; if (!payout_reference) return; }
+    try {
+      await invokeWithAuth({ url: `/api/v1/commissions/entries/${entry.id}/transition`, method: 'POST', data: { to_status, reason: reason || null, payout_reference: payout_reference || null } });
+      toast.success('佣金状态已更新'); await load();
+    } catch (error) { toast.error(errorMessage(error)); }
+  };
+
+  const changePartnerStatus = async (partner: Partner, next: string) => {
+    const reason = window.prompt(next === 'terminated' ? '请输入停止合作原因。停止日后的续费自动归公司：' : '请输入状态变更原因：') || '';
+    if (!reason) return;
+    const effective_date = window.prompt('请输入生效日期（YYYY-MM-DD）：', today()) || '';
+    if (!effective_date) return;
+    try {
+      await invokeWithAuth({ url: `/api/v1/commissions/partners/${partner.id}/status`, method: 'POST', data: { status: next, effective_date, reason } });
+      toast.success('渠道状态已更新，历史已确认佣金保持不变'); await load();
+    } catch (error) { toast.error(errorMessage(error)); }
+  };
+
+  if (loading && !data) return <div className="app-page"><div className="app-loading">正在读取渠道与分润台账...</div></div>;
+
+  return <div className="app-page space-y-5">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Channel Commission</p><h1 className="mt-1 text-2xl font-bold text-slate-900">渠道与分润中心</h1><p className="mt-1 text-sm text-slate-500">收入按实收总额记录；佣金独立计提、确认、应付和发放，避免财务重复入账。</p></div>
+      <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setDialog('partner')}><UserPlus className="mr-1 h-4 w-4" />新增渠道</Button><Button variant="outline" onClick={() => setDialog('agreement')}><ShieldCheck className="mr-1 h-4 w-4" />新增协议版本</Button><Button variant="outline" onClick={() => setDialog('attribution')}><Users className="mr-1 h-4 w-4" />客户归属</Button><Button onClick={scan} disabled={working}><RefreshCw className={`mr-1 h-4 w-4 ${working ? 'animate-spin' : ''}`} />扫描实收与退款</Button></div>
+    </div>
+
+    <Card className="border-blue-100 bg-blue-50/50"><CardContent className="flex gap-3 p-4 text-sm text-blue-900"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-semibold">总财务不会被打乱</p><p className="mt-1 text-blue-800">{data?.summary.accounting_rule}。广告代充值不会参与佣金计算；退款生成独立负数冲回记录。</p></div></CardContent></Card>
+
+    <div className="grid gap-3 md:grid-cols-4">
+      <Card><CardContent className="p-4"><p className="text-xs text-slate-500">渠道总数</p><p className="mt-1 text-2xl font-bold">{data?.summary.partner_count || 0}</p><p className="text-xs text-emerald-600">合作中 {data?.summary.active_partner_count || 0}</p></CardContent></Card>
+      <Card><CardContent className="p-4"><p className="text-xs text-slate-500">待确认佣金</p><p className="mt-1 text-2xl font-bold text-amber-600">{data?.summary.pending_count || 0}</p><p className="text-xs text-slate-400">确认后才进入费用</p></CardContent></Card>
+      {Object.entries(data?.summary.currencies || {}).slice(0, 2).map(([currency, values]) => <Card key={currency}><CardContent className="p-4"><p className="text-xs text-slate-500">{currency} 已确认渠道佣金</p><p className="mt-1 text-2xl font-bold text-blue-700">{money(values.confirmed_expense, currency)}</p><p className="text-xs text-slate-400">待发放 {money(values.payable, currency)} · 已发放 {money(values.paid, currency)}</p></CardContent></Card>)}
+    </div>
+
+    <div className="flex flex-wrap gap-3"><Input className="max-w-sm" placeholder="搜索渠道、客户或收款编号" value={search} onChange={event => setSearch(event.target.value)} /><Input type="month" className="w-44" value={month} onChange={event => setMonth(event.target.value)} /><Button variant="ghost" onClick={() => { setMonth(''); setSearch(''); }}>清除筛选</Button></div>
+
+    <Tabs defaultValue="ledger">
+      <TabsList className="h-auto flex-wrap"><TabsTrigger value="ledger">佣金台账 ({filteredEntries.length})</TabsTrigger><TabsTrigger value="partners">渠道与协议 ({data?.partners.length || 0})</TabsTrigger><TabsTrigger value="attributions">客户归属 ({filteredAttributions.length})</TabsTrigger><TabsTrigger value="rules">计算规则</TabsTrigger></TabsList>
+      <TabsContent value="ledger"><Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><BadgeDollarSign className="h-5 w-5 text-blue-600" />佣金状态闭环</CardTitle></CardHeader><CardContent className="overflow-x-auto p-0"><table className="w-full min-w-[1080px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">月份 / 对象</th><th>类型</th><th>计佣基数</th><th>合同 × 活跃</th><th>佣金</th><th>状态</th><th className="px-4">操作</th></tr></thead><tbody>{filteredEntries.map(entry => <tr key={entry.id} className="border-t"><td className="px-4 py-3"><p className="font-medium">{entry.service_month} · {entry.customer_name || `客户 #${entry.customer_id}`}</p><p className="text-xs text-slate-400">{entry.partner_name} · 收款 #{entry.payment_id}{entry.refund_id ? ` · 退款 #${entry.refund_id}` : ''}</p></td><td><Badge variant="outline">{entryTypeLabels[entry.entry_type] || entry.entry_type}</Badge></td><td>{money(entry.eligible_service_amount, entry.currency)}<p className="text-xs text-slate-400">实收 {money(entry.gross_receipt_amount, entry.currency)}</p></td><td>{percent(entry.contract_rate)} × {percent(entry.activity_multiplier)}<p className="text-xs text-slate-400">{entry.inactivity_months} 月无新客</p></td><td className={entry.commission_amount < 0 ? 'font-semibold text-red-600' : 'font-semibold text-blue-700'}>{money(entry.commission_amount, entry.currency)}</td><td><Badge className={entry.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : entry.status === 'pending_confirmation' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}>{entryStatusLabels[entry.status] || entry.status}</Badge></td><td className="px-4"><div className="flex gap-1">{entry.status === 'pending_confirmation' && <Button size="sm" variant="outline" onClick={() => transition(entry, 'confirmed')}>确认</Button>}{entry.status === 'confirmed' && <Button size="sm" variant="outline" onClick={() => transition(entry, 'payable')}>转应付</Button>}{entry.status === 'payable' && <Button size="sm" onClick={() => transition(entry, 'paid')}>已发放</Button>}{['pending_confirmation', 'confirmed'].includes(entry.status) && <Button size="sm" variant="ghost" className="text-red-600" onClick={() => transition(entry, 'reversed')}>作废</Button>}</div></td></tr>)}{filteredEntries.length === 0 && <tr><td colSpan={7} className="py-12 text-center text-slate-400">暂无佣金记录。先建立渠道、协议和客户归属，再扫描实收。</td></tr>}</tbody></table></CardContent></Card></TabsContent>
+      <TabsContent value="partners"><div className="grid gap-4 lg:grid-cols-2">{(data?.partners || []).map(partner => { const rules = (data?.agreements || []).filter(item => item.partner_id === partner.id); return <Card key={partner.id}><CardHeader className="pb-3"><div className="flex items-start justify-between"><div><CardTitle className="text-base">{partner.name}</CardTitle><p className="text-xs text-slate-400">{partner.partner_code} · {partnerTypeLabels[partner.partner_type]}</p></div><Badge>{partnerStatusLabels[partner.status]}</Badge></div></CardHeader><CardContent><div className="space-y-2">{rules.map(rule => <div key={rule.id} className="rounded-lg border bg-slate-50 p-3 text-sm"><div className="flex justify-between"><span>协议 V{rule.version}</span><Badge variant="outline">{rule.status === 'active' ? '当前生效' : '历史版本'}</Badge></div><p className="mt-1 text-slate-600">首单 {percent(rule.first_order_rate)} · 续费 {percent(rule.renewal_rate)} · 观察期 {rule.refund_guard_days} 天</p><p className="text-xs text-slate-400">{rule.effective_from} 至 {rule.effective_to || '长期'}</p></div>)}{rules.length === 0 && <p className="text-sm text-amber-600">尚未配置分润协议</p>}</div>{partner.status === 'active' && <div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={() => changePartnerStatus(partner, 'suspended')}>暂停结算</Button><Button size="sm" variant="outline" className="text-red-600" onClick={() => changePartnerStatus(partner, 'terminated')}>停止合作</Button></div>}{partner.status === 'suspended' && <Button className="mt-4" size="sm" onClick={() => changePartnerStatus(partner, 'active')}>恢复合作</Button>}</CardContent></Card>})}{!data?.partners.length && <Card><CardContent className="py-12 text-center text-slate-400">先新增销售合伙人、代理商或内部销售。</CardContent></Card>}</div></TabsContent>
+      <TabsContent value="attributions"><Card><CardContent className="overflow-x-auto p-0"><table className="w-full text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">客户</th><th>归属渠道</th><th>项目</th><th>生效期间</th><th>当前状态</th></tr></thead><tbody>{filteredAttributions.map(item => <tr className="border-t" key={item.id}><td className="px-4 py-3 font-medium">{item.customer_name || `客户 #${item.customer_id}`}</td><td>{item.partner_name}</td><td>{item.engagement_id ? `项目 #${item.engagement_id}` : '客户全部项目'}</td><td>{item.effective_from} 至 {item.effective_to || '当前'}</td><td><Badge className={item.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>{item.is_active ? '当前归属' : '历史归属'}</Badge></td></tr>)}</tbody></table></CardContent></Card></TabsContent>
+      <TabsContent value="rules"><div className="grid gap-4 lg:grid-cols-3"><Card><CardContent className="p-5"><HandCoins className="h-6 w-6 text-blue-600" /><h3 className="mt-3 font-semibold">首单与续费分开</h3><p className="mt-1 text-sm text-slate-500">首笔有效服务费使用首单比例；同一客户后续实收使用续费比例。广告代充值始终排除。</p></CardContent></Card><Card><CardContent className="p-5"><AlertTriangle className="h-6 w-6 text-amber-600" /><h3 className="mt-3 font-semibold">续费活跃衰减</h3><p className="mt-1 text-sm text-slate-500">当月有新客 100%，连续 1–6 月无新客依次为 80%、60%、40%、25%、10%、0%。</p></CardContent></Card><Card><CardContent className="p-5"><Building2 className="h-6 w-6 text-emerald-600" /><h3 className="mt-3 font-semibold">停止合作自动归公司</h3><p className="mt-1 text-sm text-slate-500">停止日前已产生的分润继续结算；停止日后的续费不再计佣，原始客户来源和历史记录永久保留。</p></CardContent></Card></div></TabsContent>
+    </Tabs>
+
+    <Dialog open={dialog === 'partner'} onOpenChange={open => !open && setDialog(null)}><DialogContent><DialogHeader><DialogTitle>新增渠道或销售身份</DialogTitle></DialogHeader><div className="grid gap-3 sm:grid-cols-2"><div><Label>渠道编号 *</Label><Input value={partnerForm.partner_code} onChange={e => setPartnerForm(v => ({ ...v, partner_code: e.target.value }))} placeholder="例如 PARTNER-001" /></div><div><Label>名称 *</Label><Input value={partnerForm.name} onChange={e => setPartnerForm(v => ({ ...v, name: e.target.value }))} /></div><div><Label>身份类型</Label><Select value={partnerForm.partner_type} onValueChange={value => setPartnerForm(v => ({ ...v, partner_type: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(partnerTypeLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div><div><Label>加入日期</Label><Input type="date" value={partnerForm.joined_at} onChange={e => setPartnerForm(v => ({ ...v, joined_at: e.target.value }))} /></div>{partnerForm.partner_type === 'employee' && <div className="sm:col-span-2"><Label>关联员工 *</Label><Select value={partnerForm.employee_id} onValueChange={value => setPartnerForm(v => ({ ...v, employee_id: value }))}><SelectTrigger><SelectValue placeholder="选择员工" /></SelectTrigger><SelectContent>{(options?.employees || []).map(item => <SelectItem key={item.id} value={String(item.id)}>{item.name} {item.employee_code ? `· ${item.employee_code}` : ''}</SelectItem>)}</SelectContent></Select></div>}<div><Label>联系人</Label><Input value={partnerForm.contact_name} onChange={e => setPartnerForm(v => ({ ...v, contact_name: e.target.value }))} /></div><div><Label>联系电话</Label><Input value={partnerForm.contact_phone} onChange={e => setPartnerForm(v => ({ ...v, contact_phone: e.target.value }))} /></div><div className="sm:col-span-2"><Label>邮箱</Label><Input value={partnerForm.contact_email} onChange={e => setPartnerForm(v => ({ ...v, contact_email: e.target.value }))} /></div><div className="sm:col-span-2"><Label>备注</Label><Textarea value={partnerForm.notes} onChange={e => setPartnerForm(v => ({ ...v, notes: e.target.value }))} /></div></div><DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>取消</Button><Button disabled={working || !partnerForm.partner_code || !partnerForm.name} onClick={submit}>保存渠道</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={dialog === 'agreement'} onOpenChange={open => !open && setDialog(null)}><DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>新增协议版本</DialogTitle></DialogHeader><div className="space-y-3"><div><Label>渠道 *</Label><Select value={agreementForm.partner_id} onValueChange={value => setAgreementForm(v => ({ ...v, partner_id: value }))}><SelectTrigger><SelectValue placeholder="选择渠道" /></SelectTrigger><SelectContent>{(data?.partners || []).filter(item => !['terminated', 'settled'].includes(item.status)).map(item => <SelectItem key={item.id} value={String(item.id)}>{item.name} · {item.partner_code}</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-2 gap-3"><div><Label>业务线</Label><Select value={agreementForm.business_line_id} onValueChange={value => setAgreementForm(v => ({ ...v, business_line_id: value, product_id: 'all' }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部业务线</SelectItem>{(options?.business_lines || []).map(item => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent></Select></div><div><Label>具体产品</Label><Select value={agreementForm.product_id} onValueChange={value => setAgreementForm(v => ({ ...v, product_id: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">该范围全部产品</SelectItem>{agreementProducts.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent></Select></div></div><div className="grid grid-cols-3 gap-3"><div><Label>首单比例 %</Label><Input type="number" min="0" max="100" value={agreementForm.first_order_rate} onChange={e => setAgreementForm(v => ({ ...v, first_order_rate: e.target.value }))} /></div><div><Label>续费比例 %</Label><Input type="number" min="0" max="100" value={agreementForm.renewal_rate} onChange={e => setAgreementForm(v => ({ ...v, renewal_rate: e.target.value }))} /></div><div><Label>退款观察天数</Label><Input type="number" min="0" value={agreementForm.refund_guard_days} onChange={e => setAgreementForm(v => ({ ...v, refund_guard_days: e.target.value }))} /></div></div><div><Label>连续无新客户时，续费比例保留倍率</Label><div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-7">{agreementForm.decay_rates.map((rate, index) => <div key={index}><p className="mb-1 text-[11px] text-slate-500">{index} 月</p><Input type="number" min="0" max="100" value={rate} onChange={event => setAgreementForm(value => ({ ...value, decay_rates: value.decay_rates.map((item, itemIndex) => itemIndex === index ? event.target.value : item) }))} /></div>)}</div><p className="mt-1 text-xs text-slate-400">这里的 100% 是“保留全部合同续费比例”，不是把客户收入全部分给渠道。</p></div><div><Label>生效日期</Label><Input type="date" value={agreementForm.effective_from} onChange={e => setAgreementForm(v => ({ ...v, effective_from: e.target.value }))} /></div><div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">保存后创建新版本，旧版本只会结束生效，不会重算过去已确认的佣金。</div><div><Label>备注</Label><Textarea value={agreementForm.notes} onChange={e => setAgreementForm(v => ({ ...v, notes: e.target.value }))} /></div></div><DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>取消</Button><Button disabled={working || !agreementForm.partner_id} onClick={submit}>保存协议版本</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={dialog === 'attribution'} onOpenChange={open => !open && setDialog(null)}><DialogContent><DialogHeader><DialogTitle>设置客户/项目销售归属</DialogTitle></DialogHeader><div className="space-y-3"><div><Label>搜索客户编号或名称</Label><Input value={customerSearch} onChange={event => setCustomerSearch(event.target.value)} placeholder="输入客户编号或商家名称筛选" /></div><div><Label>客户 *</Label><Select value={attributionForm.customer_id} onValueChange={value => setAttributionForm(v => ({ ...v, customer_id: value, engagement_id: 'all' }))}><SelectTrigger><SelectValue placeholder="从搜索结果选择客户" /></SelectTrigger><SelectContent>{customerOptions.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.code ? `${item.code} · ` : ''}{item.name}</SelectItem>)}</SelectContent></Select></div><div><Label>具体项目</Label><Select value={attributionForm.engagement_id} onValueChange={value => setAttributionForm(v => ({ ...v, engagement_id: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">客户全部项目</SelectItem>{customerEngagements.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.package_name || `项目 #${item.id}`} · {item.status}</SelectItem>)}</SelectContent></Select></div><div><Label>归属渠道 *</Label><Select value={attributionForm.partner_id} onValueChange={value => setAttributionForm(v => ({ ...v, partner_id: value }))}><SelectTrigger><SelectValue placeholder="选择合作中的渠道" /></SelectTrigger><SelectContent>{(data?.partners || []).filter(item => item.status === 'active').map(item => <SelectItem key={item.id} value={String(item.id)}>{item.name} · {partnerTypeLabels[item.partner_type]}</SelectItem>)}</SelectContent></Select></div><div><Label>生效日期</Label><Input type="date" value={attributionForm.effective_from} onChange={e => setAttributionForm(v => ({ ...v, effective_from: e.target.value }))} /></div><div><Label>归属依据</Label><Textarea value={attributionForm.source_note} onChange={e => setAttributionForm(v => ({ ...v, source_note: e.target.value }))} placeholder="例如：由该合伙人开发并完成首笔服务费收款" /></div></div><DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>取消</Button><Button disabled={working || !attributionForm.customer_id || !attributionForm.partner_id} onClick={submit}>保存归属</Button></DialogFooter></DialogContent></Dialog>
+  </div>;
+}

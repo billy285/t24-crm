@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, PhoneCall, Handshake, DollarSign,
   ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
   ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen,
-  PanelLeftClose, PanelLeftOpen, Activity, BriefcaseBusiness
+  PanelLeftClose, PanelLeftOpen, Activity, BriefcaseBusiness, BadgeDollarSign,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,6 +35,7 @@ const allNavItems = [
   { path: '/customer-lifecycle', label: '客户生命周期', icon: Activity },
   { path: '/management-decisions', label: '经营分类与项目', icon: BriefcaseBusiness },
   { path: '/finance', label: '财务管理', icon: DollarSign },
+  { path: '/commissions', label: '渠道与分润', icon: BadgeDollarSign },
   { path: '/payroll', label: '工资表', icon: ClipboardList },
   { path: '/tasks', label: '任务协作', icon: ListTodo },
   { path: '/service-board', label: '服务进度看板', icon: ClipboardList },
@@ -52,7 +53,7 @@ const navSections = [
   },
   { label: '客户与成交', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions'] },
   { label: '交付协作', paths: ['/tasks', '/service-board', '/callbacks'] },
-  { label: '财务管理', paths: ['/finance', '/payroll'] },
+  { label: '财务管理', paths: ['/finance', '/commissions', '/payroll'] },
   { label: '系统管理', paths: ['/employees', '/settings', '/permissions'] },
 ];
 

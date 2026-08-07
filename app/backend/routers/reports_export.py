@@ -213,6 +213,7 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
     ads_recharge_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
     cost_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
     stripe_platform_fee_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    channel_commission_map: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
     months_set = set()
 
     # Date filtering
@@ -381,6 +382,31 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
         months_set.add(ym)
         cost_map[currency][ym] += amt
 
+    # Confirmed channel commission is a standalone P&L cost. Moving an entry
+    # from confirmed -> payable -> paid only changes the liability/cash state,
+    # so it must never be counted a second time here.
+    commission_columns = await _get_table_columns(db, "commission_entries")
+    if commission_columns:
+        commission_res = await db.execute(text("""
+            SELECT service_month, currency, commission_amount, status
+            FROM commission_entries
+            WHERE status IN ('confirmed', 'payable', 'paid')
+        """))
+        for row in commission_res.mappings().all():
+            ym = str(row.get("service_month") or "")[:7]
+            if len(ym) != 7:
+                continue
+            month_date = date(int(ym[:4]), int(ym[5:7]), 1)
+            if start_dt and month_date < date(start_dt.year, start_dt.month, 1):
+                continue
+            if end_dt and month_date > date(end_dt.year, end_dt.month, 1):
+                continue
+            currency = row.get("currency") if row.get("currency") in ("USD", "CNY") else "USD"
+            amount = float(row.get("commission_amount") or 0)
+            months_set.add(ym)
+            channel_commission_map[currency][ym] += amount
+            cost_map[currency][ym] += amount
+
     # Combine
     all_data: Dict[str, Dict[str, Dict[str, float]]] = {}
     for cur in set(list(revenue_map.keys()) + list(cost_map.keys())):
@@ -395,6 +421,7 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
                 "ads_recharge_revenue": ads_recharge_map[cur].get(ym, 0.0),
                 "recognized_ad_spread": recognized_spread_map[cur].get(ym, 0.0),
                 "stripe_platform_fee": stripe_platform_fee_map[cur].get(ym, 0.0),
+                "channel_commission": channel_commission_map[cur].get(ym, 0.0),
                 "cost": cost_map[cur].get(ym, 0.0),
             }
 
@@ -404,7 +431,7 @@ async def _aggregate_monthly(db: AsyncSession, start: Optional[str], end: Option
 
 def _build_csv(rows: List[Dict[str, str]]) -> io.BytesIO:
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=["month", "currency_or_base", "gross_receipts", "refund_amount", "net_receipts", "service_revenue", "ads_client_funds", "recognized_ad_spread", "deduction_rate", "deduction_amount", "stripe_platform_fee", "cost", "profit", "notes"])
+    writer = csv.DictWriter(buf, fieldnames=["month", "currency_or_base", "gross_receipts", "refund_amount", "net_receipts", "service_revenue", "ads_client_funds", "recognized_ad_spread", "deduction_rate", "deduction_amount", "stripe_platform_fee", "channel_commission", "cost", "profit", "notes"])
     writer.writeheader()
     for r in rows:
         writer.writerow(r)
@@ -422,7 +449,7 @@ def _build_xlsx(rows: List[Dict[str, str]]) -> io.BytesIO:
     wb = Workbook()
     ws = wb.active
     ws.title = "profit_monthly"
-    headers = ["month", "currency_or_base", "gross_receipts", "refund_amount", "net_receipts", "service_revenue", "ads_client_funds", "recognized_ad_spread", "deduction_rate", "deduction_amount", "stripe_platform_fee", "cost", "profit", "notes"]
+    headers = ["month", "currency_or_base", "gross_receipts", "refund_amount", "net_receipts", "service_revenue", "ads_client_funds", "recognized_ad_spread", "deduction_rate", "deduction_amount", "stripe_platform_fee", "channel_commission", "cost", "profit", "notes"]
     ws.append(headers)
     for r in rows:
         ws.append([r.get(h, "") for h in headers])
@@ -448,6 +475,7 @@ def _apply_deductions(rows_in: Dict[str, Dict[str, Dict[str, float]]], months: L
             management_revenue = float(per_month.get(ym, {}).get("management_revenue", 0.0))
             ads_recharge_revenue = float(per_month.get(ym, {}).get("ads_recharge_revenue", 0.0))
             stripe_platform_fee = float(per_month.get(ym, {}).get("stripe_platform_fee", 0.0))
+            channel_commission = float(per_month.get(ym, {}).get("channel_commission", 0.0))
             cost = float(per_month.get(ym, {}).get("cost", 0.0))
             rate = float(rate_map.get(ym, default_rate))
             _, _, deduction_amt, effective_rate = _calculate_deductions(
@@ -469,6 +497,7 @@ def _apply_deductions(rows_in: Dict[str, Dict[str, Dict[str, float]]], months: L
                 "deduction_rate": f"{effective_rate:.4f}",
                 "deduction_amount": f"{deduction_amt:.2f}",
                 "stripe_platform_fee": f"{stripe_platform_fee:.2f}",
+                "channel_commission": f"{channel_commission:.2f}",
                 "cost": f"{cost:.2f}",
                 "profit": f"{profit:.2f}",
                 "notes": _build_deduction_note(management_revenue, ads_recharge_revenue, rate, stripe_platform_fee=stripe_platform_fee, base_currency=base_currency),
@@ -542,6 +571,7 @@ class ProfitMonthlyJSONRow(BaseModel):
     deduction_rate: float
     deduction_amount: float
     stripe_platform_fee: float
+    channel_commission: float
     cost: float
     profit: float
     notes: Optional[str] = None
@@ -596,6 +626,7 @@ async def profit_monthly_json(
                 management_revenue = float(per_month.get(ym, {}).get("management_revenue", 0.0))
                 ads_recharge_revenue = float(per_month.get(ym, {}).get("ads_recharge_revenue", 0.0))
                 stripe_platform_fee = float(per_month.get(ym, {}).get("stripe_platform_fee", 0.0))
+                channel_commission = float(per_month.get(ym, {}).get("channel_commission", 0.0))
                 cost = float(per_month.get(ym, {}).get("cost", 0.0))
                 if revenue == 0.0 and cost == 0.0:
                     continue
@@ -622,6 +653,7 @@ async def profit_monthly_json(
                     deduction_rate=round(effective_rate, 4),
                     deduction_amount=deduction_amt,
                     stripe_platform_fee=round(stripe_platform_fee, 2),
+                    channel_commission=round(channel_commission, 2),
                     cost=round(cost, 2),
                     profit=profit,
                     notes=_build_deduction_note(management_revenue, ads_recharge_revenue, rate, stripe_platform_fee=stripe_platform_fee, fallback_note=fallback_note, base_currency=base_currency)

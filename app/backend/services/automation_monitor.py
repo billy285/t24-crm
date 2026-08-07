@@ -620,6 +620,13 @@ async def run_automation_scan(
                 task_updated_count += 1
             resolved_count += 1
 
+        # The same daily job also reconciles newly recorded receipts/refunds
+        # into the commission subledger. It is idempotent and remains a no-op
+        # before the commission migration is installed.
+        from services.commissions import commission_ledger_available, scan_commissions
+        if await commission_ledger_available(db):
+            await scan_commissions(db, commit=False)
+
         scan_run.detected_count = len(anomalies)
         scan_run.opened_count = opened_count
         scan_run.resolved_count = resolved_count
