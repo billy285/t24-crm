@@ -20,6 +20,8 @@ from models.commissions import (
 from models.customers import Customers
 from models.employees import Employees
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
+from models.payments import Payments
+from models.subscriptions import Subscriptions
 from schemas.auth import UserResponse
 from services.commissions import (
     DEFAULT_DECAY,
@@ -31,6 +33,7 @@ from services.commissions import (
     transfer_partner_attributions_to_direct,
     utcnow,
 )
+from services.partner_portal import build_partner_customer_status_rows, partner_status_summary
 
 
 router = APIRouter(prefix="/api/v1/commissions", tags=["commissions"])
@@ -264,16 +267,21 @@ async def my_partner_dashboard(
     ).order_by(CommissionEntry.occurred_at.desc(), CommissionEntry.id.desc()))).all()
 
     customer_ids = {row.customer_id for row in attributions} | {row.customer_id for row in entries}
-    engagement_ids = {row.engagement_id for row in attributions if row.engagement_id} | {row.engagement_id for row in entries if row.engagement_id}
     customers = (await db.scalars(select(Customers).where(Customers.id.in_(customer_ids)))).all() if customer_ids else []
-    engagements = (await db.scalars(select(CustomerEngagement).where(CustomerEngagement.id.in_(engagement_ids)))).all() if engagement_ids else []
-    line_ids = {row.business_line_id for row in agreements if row.business_line_id}
-    product_ids = {row.product_id for row in agreements if row.product_id}
+    engagements = (await db.scalars(select(CustomerEngagement).where(CustomerEngagement.customer_id.in_(customer_ids)))).all() if customer_ids else []
+    subscriptions = (await db.scalars(select(Subscriptions).where(Subscriptions.customer_id.in_(customer_ids)))).all() if customer_ids else []
+    payments = (await db.scalars(select(Payments).where(
+        Payments.customer_id.in_(customer_ids),
+        Payments.amount_paid > 0,
+    ))).all() if customer_ids else []
+    line_ids = {row.business_line_id for row in agreements if row.business_line_id} | {row.business_line_id for row in engagements if row.business_line_id}
+    product_ids = {row.product_id for row in agreements if row.product_id} | {row.product_id for row in engagements if row.product_id}
     lines = (await db.scalars(select(BusinessLine).where(BusinessLine.id.in_(line_ids)))).all() if line_ids else []
     products = (await db.scalars(select(ProductCatalog).where(ProductCatalog.id.in_(product_ids)))).all() if product_ids else []
     customer_map = {row.id: row for row in customers}
     engagement_map = {row.id: row for row in engagements}
     line_map = {row.id: row.name for row in lines}
+    line_recurring_map = {row.id: row.is_recurring for row in lines}
     product_map = {row.id: row.name for row in products}
 
     currencies: dict[str, dict[str, float]] = {}
@@ -284,29 +292,33 @@ async def my_partner_dashboard(
         if entry.status == "payable": bucket["payable"] += entry.commission_amount
         if entry.status == "paid": bucket["paid"] += entry.commission_amount
 
+    customer_status_rows = build_partner_customer_status_rows(
+        attributions=list(attributions),
+        customer_map=customer_map,
+        engagements=list(engagements),
+        subscriptions=list(subscriptions),
+        payments=list(payments),
+        business_line_map=line_map,
+        business_line_recurring_map=line_recurring_map,
+        product_map=product_map,
+    )
+    status_summary = partner_status_summary(customer_status_rows)
+
     return {
         "partner": _partner_payload(partner),
         "summary": {
             "active_customer_count": len({row.customer_id for row in attributions if row.is_active}),
             "ledger_count": len(entries),
             "currencies": currencies,
+            **status_summary,
+            "status_updated_at": utcnow(),
         },
         "agreements": [{
             **_agreement_payload(row),
             "business_line_name": line_map.get(row.business_line_id) if row.business_line_id else "全部业务线",
             "product_name": product_map.get(row.product_id) if row.product_id else "全部产品",
         } for row in agreements],
-        "customers": [{
-            "attribution_id": row.id,
-            "customer_id": row.customer_id,
-            "customer_code": customer_map.get(row.customer_id).customer_code if customer_map.get(row.customer_id) else None,
-            "customer_name": customer_map.get(row.customer_id).business_name if customer_map.get(row.customer_id) else f"客户 #{row.customer_id}",
-            "engagement_id": row.engagement_id,
-            "engagement_name": engagement_map.get(row.engagement_id).package_name if row.engagement_id and engagement_map.get(row.engagement_id) else None,
-            "effective_from": row.effective_from,
-            "effective_to": row.effective_to,
-            "is_active": row.is_active,
-        } for row in attributions],
+        "customers": customer_status_rows,
         "entries": [{
             "id": row.id,
             "customer_id": row.customer_id,

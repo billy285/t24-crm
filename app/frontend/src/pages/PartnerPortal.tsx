@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BadgeDollarSign, BriefcaseBusiness, RefreshCw, Users } from 'lucide-react';
+import { AlertTriangle, BadgeDollarSign, BriefcaseBusiness, Handshake, RefreshCw, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,9 +11,9 @@ import { useAutoRefresh } from '@/lib/use-auto-refresh';
 type CurrencySummary = { pending: number; confirmed: number; payable: number; paid: number };
 type PortalData = {
   partner: { name: string; partner_code: string; status: string; joined_at: string; stopped_at?: string | null };
-  summary: { active_customer_count: number; ledger_count: number; currencies: Record<string, CurrencySummary> };
+  summary: { active_customer_count: number; cooperation_customer_count: number; renewal_attention_count: number; stopped_customer_count: number; ledger_count: number; currencies: Record<string, CurrencySummary>; status_updated_at: string };
   agreements: Array<{ id: number; version: number; business_line_name: string; product_name: string; first_order_rate: number; renewal_rate: number; activity_decay: Record<string, number>; refund_guard_days: number; effective_from: string; effective_to?: string | null; status: string }>;
-  customers: Array<{ attribution_id: number; customer_code?: string | null; customer_name: string; engagement_name?: string | null; effective_from: string; effective_to?: string | null; is_active: boolean }>;
+  customers: Array<{ row_key: string; attribution_id: number; customer_code?: string | null; customer_name: string; engagement_name?: string | null; business_line_name?: string | null; product_name?: string | null; cooperation_status: string; renewal_status: string; next_due_at?: string | null; last_receipt_at?: string | null; commission_impact: string; effective_from: string; effective_to?: string | null; is_active: boolean }>;
   entries: Array<{ id: number; customer_name: string; engagement_name?: string | null; entry_type: string; status: string; service_month: string; currency: string; eligible_service_amount: number; contract_rate: number; inactivity_months: number; activity_multiplier: number; commission_amount: number; paid_at?: string | null; payout_reference?: string | null }>;
 };
 
@@ -27,8 +27,29 @@ const entryStatusClasses: Record<string, string> = {
   paid: 'bg-emerald-100 text-emerald-700',
   reversed: 'bg-slate-100 text-slate-600',
 };
+const cooperationStatusLabels: Record<string, string> = {
+  pending_setup: '待启动', trial: '试用中', active_paid: '合作中', at_risk: '合作风险', paused: '暂停服务',
+  pending_stop: '待停止', stopped: '已停止', reactivated: '已恢复', completed: '已完成', unknown: '待补资料', historical: '历史归属',
+};
+const cooperationStatusClasses: Record<string, string> = {
+  pending_setup: 'bg-blue-100 text-blue-700', trial: 'bg-violet-100 text-violet-700', active_paid: 'bg-emerald-100 text-emerald-700',
+  at_risk: 'bg-amber-100 text-amber-700', paused: 'bg-slate-100 text-slate-700', pending_stop: 'bg-orange-100 text-orange-700',
+  stopped: 'bg-rose-100 text-rose-700', reactivated: 'bg-cyan-100 text-cyan-700', completed: 'bg-slate-100 text-slate-600',
+  unknown: 'bg-amber-50 text-amber-700', historical: 'bg-slate-100 text-slate-500',
+};
+const renewalStatusLabels: Record<string, string> = {
+  active: '续费正常', expiring_soon: '即将到期', renewal_pending: '待扣款确认', expired: '已到期', renewed: '已续费',
+  upgraded: '已升级结束', stopped: '停止续费', paused: '暂停续费', lost: '已流失', not_configured: '未建订阅资料', not_applicable: '无需续费', historical: '不再展示',
+};
+const renewalStatusClasses: Record<string, string> = {
+  active: 'bg-emerald-100 text-emerald-700', expiring_soon: 'bg-amber-100 text-amber-700', renewal_pending: 'bg-cyan-100 text-cyan-700',
+  expired: 'bg-rose-100 text-rose-700', renewed: 'bg-green-100 text-green-700', upgraded: 'bg-violet-100 text-violet-700',
+  stopped: 'bg-slate-100 text-slate-600', paused: 'bg-slate-100 text-slate-600', lost: 'bg-rose-100 text-rose-700',
+  not_configured: 'bg-amber-50 text-amber-700', not_applicable: 'bg-slate-100 text-slate-600', historical: 'bg-slate-100 text-slate-500',
+};
 const money = (value: number, currency: string) => `${currency} ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const percent = (value: number) => `${(Number(value || 0) * 100).toFixed(0)}%`;
+const formatDate = (value?: string | null) => value ? new Date(value).toLocaleDateString('zh-CN', { timeZone: 'UTC' }) : '-';
 
 export default function PartnerPortal() {
   const [data, setData] = useState<PortalData | null>(null);
@@ -77,7 +98,27 @@ export default function PartnerPortal() {
 
       {Object.entries(data.summary.currencies).length > 0 && <div className="grid gap-3 md:grid-cols-2">{Object.entries(data.summary.currencies).map(([currency, row]) => <Card key={currency}><CardHeader className="pb-2"><CardTitle className="text-base">{currency} 分润概况</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4"><div><p className="text-xs text-slate-400">待确认</p><p className="mt-1 font-semibold text-amber-700">{money(row.pending, currency)}</p></div><div><p className="text-xs text-slate-400">累计确认</p><p className="mt-1 font-semibold text-blue-700">{money(row.confirmed, currency)}</p></div><div><p className="text-xs text-slate-400">可结算</p><p className="mt-1 font-semibold text-violet-700">{money(row.payable, currency)}</p></div><div><p className="text-xs text-slate-400">已发放</p><p className="mt-1 font-semibold text-emerald-700">{money(row.paid, currency)}</p></div></CardContent></Card>)}</div>}
 
-      <Card><CardHeader><CardTitle className="text-base">我的客户归属</CardTitle></CardHeader><CardContent className="overflow-x-auto p-0"><table className="w-full min-w-[720px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">客户</th><th>归属项目</th><th>生效日期</th><th>状态</th></tr></thead><tbody>{data.customers.map(row => <tr key={row.attribution_id} className="border-t"><td className="px-4 py-3"><p className="font-medium">{row.customer_name}</p><p className="text-xs text-slate-400">{row.customer_code || '-'}</p></td><td>{row.engagement_name || '客户全部项目'}</td><td>{row.effective_from}{row.effective_to ? ` 至 ${row.effective_to}` : ''}</td><td><Badge className={row.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>{row.is_active ? '当前归属' : '历史归属'}</Badge></td></tr>)}{data.customers.length === 0 && <tr><td colSpan={4} className="py-10 text-center text-slate-400">目前没有归属到您的客户</td></tr>}</tbody></table></CardContent></Card>
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div><CardTitle className="text-base">客户合作与续费状态</CardTitle><p className="mt-1 text-xs text-slate-500">由客户生命周期、订阅到期和服务实收自动更新；此处仅供查看。</p></div>
+            <p className="text-xs text-slate-400">最近核对 {formatDate(data.summary.status_updated_at)}</p>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3"><p className="flex items-center gap-2 text-xs text-emerald-700"><Handshake className="h-4 w-4" />仍在合作</p><p className="mt-2 text-2xl font-semibold text-emerald-800">{data.summary.cooperation_customer_count}</p></div>
+            <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-3"><p className="flex items-center gap-2 text-xs text-amber-700"><AlertTriangle className="h-4 w-4" />续费需关注</p><p className="mt-2 text-2xl font-semibold text-amber-800">{data.summary.renewal_attention_count}</p></div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs text-slate-600">已停止合作</p><p className="mt-2 text-2xl font-semibold text-slate-800">{data.summary.stopped_customer_count}</p></div>
+          </div>
+        </CardContent>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full min-w-[1180px] text-sm">
+            <thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">客户</th><th>合作项目</th><th>合作状态</th><th>续费状态</th><th>续费关键日期</th><th>分润影响</th><th className="px-4">归属</th></tr></thead>
+            <tbody>{data.customers.map(row => <tr key={row.row_key} className="border-t align-top"><td className="px-4 py-3"><p className="font-medium">{row.customer_name}</p><p className="text-xs text-slate-400">{row.customer_code || '-'}</p></td><td className="py-3"><p>{row.engagement_name || row.product_name || '客户全部项目'}</p><p className="mt-1 text-xs text-slate-400">{[row.business_line_name, row.product_name].filter(Boolean).join(' · ') || '项目资料待补充'}</p></td><td className="py-3"><Badge className={cooperationStatusClasses[row.cooperation_status] || cooperationStatusClasses.unknown}>{cooperationStatusLabels[row.cooperation_status] || row.cooperation_status}</Badge></td><td className="py-3"><Badge className={renewalStatusClasses[row.renewal_status] || renewalStatusClasses.not_configured}>{renewalStatusLabels[row.renewal_status] || row.renewal_status}</Badge></td><td className="py-3 text-xs"><p>下次到期：{formatDate(row.next_due_at)}</p><p className="mt-1 text-slate-400">最近实收：{formatDate(row.last_receipt_at)}</p></td><td className="max-w-[220px] py-3 text-xs text-slate-600">{row.commission_impact}</td><td className="px-4 py-3"><Badge className={row.is_active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}>{row.is_active ? '当前归属' : '历史归属'}</Badge><p className="mt-1 text-xs text-slate-400">{row.effective_from}{row.effective_to ? ` 至 ${row.effective_to}` : ' 起'}</p></td></tr>)}{data.customers.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-slate-400">目前没有归属到您的客户</td></tr>}</tbody>
+          </table>
+        </CardContent>
+      </Card>
 
       <Card><CardHeader><CardTitle className="text-base">我的分润明细</CardTitle></CardHeader><CardContent className="overflow-x-auto p-0"><table className="w-full min-w-[980px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">月份 / 客户</th><th>类型</th><th>计佣金额</th><th>合同 × 活跃</th><th>我的佣金</th><th>状态</th><th className="px-4">发放凭证</th></tr></thead><tbody>{data.entries.map(row => <tr key={row.id} className="border-t"><td className="px-4 py-3"><p className="font-medium">{row.service_month} · {row.customer_name}</p><p className="text-xs text-slate-400">{row.engagement_name || '全部项目'}</p></td><td>{entryTypeLabels[row.entry_type] || row.entry_type}</td><td>{money(row.eligible_service_amount, row.currency)}</td><td>{percent(row.contract_rate)} × {percent(row.activity_multiplier)}<p className="text-xs text-slate-400">{row.inactivity_months} 个月无新客</p></td><td className={row.commission_amount < 0 ? 'font-semibold text-rose-600' : 'font-semibold text-blue-700'}>{money(row.commission_amount, row.currency)}</td><td><Badge className={entryStatusClasses[row.status] || 'bg-slate-100 text-slate-700'}>{entryStatusLabels[row.status] || row.status}</Badge></td><td className="px-4 text-xs text-slate-500">{row.payout_reference || '-'}</td></tr>)}{data.entries.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-slate-400">目前没有分润记录</td></tr>}</tbody></table></CardContent></Card>
 
