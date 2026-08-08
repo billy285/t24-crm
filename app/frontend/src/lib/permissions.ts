@@ -41,7 +41,7 @@ export const PAGE_PATHS = {
 } as const;
 
 export const pageLabels: Record<string, string> = {
-  '/': '仪表盘',
+  '/': '老板工作台',
   '/merchant-pool': '待清洗商家池',
   '/sales-leads': '电话销售中心',
   '/sales-workbench': '每日拨打工作台',

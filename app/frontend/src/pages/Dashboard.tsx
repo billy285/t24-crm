@@ -304,8 +304,8 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (isAdm) void loadSalesCockpit(salesPeriod);
-  }, [isAdm, salesPeriod]);
+    if (isAdm && showMoreOwnerDetails) void loadSalesCockpit(salesPeriod);
+  }, [isAdm, salesPeriod, showMoreOwnerDetails]);
 
   useEffect(() => {
     if (isAdm) void loadOwnerCockpit();
@@ -313,10 +313,11 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!isAdm && !isFinance) return;
+    if (isAdm && !showMoreOwnerDetails) return;
     void invokeWithAuth({ url: '/api/v1/payroll/summary', method: 'GET' })
       .then(response => setPayrollSummary(response.data || null))
       .catch(() => setPayrollSummary(null));
-  }, [isAdm, isFinance]);
+  }, [isAdm, isFinance, showMoreOwnerDetails]);
 
   useAutoRefresh(() => {
     void loadDashboard();
@@ -647,6 +648,12 @@ export default function Dashboard() {
       { label: '当前合作项目', value: ownerCockpit.customers.active_projects, helper: `${ownerCockpit.customers.at_risk_projects} 个风险 · 本月停止 ${ownerCockpit.customers.stopped_this_month}`, icon: Layers3, tone: 'text-violet-700 bg-violet-50', link: '/customer-lifecycle' },
       { label: '系统推动中的任务', value: ownerCockpit.execution.system_tasks, helper: `${ownerCockpit.execution.overdue_tasks} 个全部任务已逾期`, icon: Workflow, tone: 'text-orange-700 bg-orange-50', link: '/tasks?source=system' },
     ];
+    const ownerShortcuts = [
+      { label: '客户中心', helper: '客户、成交与生命周期', path: '/customers' },
+      { label: '财务与结算', helper: '收款、成本、续费与分润', path: '/finance' },
+      { label: '销售中心', helper: '拨打、商机与销售执行', path: '/sales-workbench' },
+      { label: '任务与交付', helper: '任务、服务进度与回访', path: '/tasks' },
+    ];
 
     return (
       <section className="space-y-4">
@@ -668,6 +675,14 @@ export default function Dashboard() {
                 const Icon = item.icon;
                 return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="rounded-xl border border-white/10 bg-white/[0.07] p-4 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.12]"><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="text-xs text-slate-300">{item.label}</p><p className="mt-1 text-2xl font-bold">{item.value}</p><p className="mt-1 text-[11px] leading-5 text-slate-400">{item.helper}</p></button>;
               })}
+            </div>
+            <div className="mt-4 grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+              {ownerShortcuts.map(item => (
+                <button key={item.path} type="button" onClick={() => navigate(item.path)} className="group flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-slate-300 transition hover:bg-white/[0.08] hover:text-white">
+                  <span><span className="block text-sm font-medium">{item.label}</span><span className="mt-0.5 block text-[10px] text-slate-500 group-hover:text-slate-400">{item.helper}</span></span>
+                  <ArrowRight className="h-4 w-4 text-slate-500 transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-300" />
+                </button>
+              ))}
             </div>
           </CardContent>
         </Card>

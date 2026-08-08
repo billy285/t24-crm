@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, PhoneCall, Handshake, DollarSign,
   ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
   ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen,
-  PanelLeftClose, PanelLeftOpen, Activity, BriefcaseBusiness, BadgeDollarSign,
+  PanelLeftClose, PanelLeftOpen, Activity, BriefcaseBusiness, BadgeDollarSign, ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,14 +17,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { client } from '@/lib/api';
-import { requestBusinessDataRefresh } from '@/lib/data-refresh';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
 const allNavItems = [
-  { path: '/', label: '仪表盘', icon: LayoutDashboard },
+  { path: '/', label: '老板工作台', icon: LayoutDashboard },
   { path: '/merchant-pool', label: '待清洗商家池', icon: Database },
   { path: '/sales-leads', label: '电话销售中心', icon: Headphones },
   { path: '/sales-workbench', label: '每日拨打工作台', icon: Headphones },
@@ -47,30 +46,40 @@ const allNavItems = [
 ];
 
 const navSections = [
-  { label: '总览', paths: ['/'] },
+  { label: '老板工作台', paths: ['/'], icon: LayoutDashboard },
   {
-    label: '销售管理',
-    paths: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge'],
+    label: '销售中心',
+    paths: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],
+    icon: Headphones,
   },
-  { label: '客户与成交', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions'] },
-  { label: '交付协作', paths: ['/tasks', '/service-board', '/callbacks'] },
-  { label: '财务管理', paths: ['/finance', '/commissions', '/payroll'] },
-  { label: '合伙人工作台', paths: ['/partner-portal'] },
-  { label: '系统管理', paths: ['/employees', '/settings', '/permissions'] },
+  { label: '客户中心', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions'], icon: Users },
+  { label: '任务与交付', paths: ['/tasks', '/service-board', '/callbacks'], icon: ListTodo },
+  { label: '财务与结算', paths: ['/finance', '/commissions', '/payroll'], icon: DollarSign },
+  { label: '我的客户与分润', paths: ['/partner-portal'], icon: BadgeDollarSign },
+  { label: '组织与设置', paths: ['/employees', '/settings', '/permissions'], icon: Settings },
 ];
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const currentPath = location.pathname;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
+  );
+  const [expandedSection, setExpandedSection] = useState<string | null>(
+    () => navSections.find(section => section.paths.includes(location.pathname))?.label || '老板工作台',
   );
   const { employee, role, loading, isLoggedIn, isDisabled, logout, canAccess } = useRole();
 
   useEffect(() => {
     window.localStorage.setItem('t24_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    const activeSection = navSections.find(section => section.paths.includes(currentPath));
+    if (activeSection) setExpandedSection(activeSection.label);
+  }, [currentPath]);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: '', newPwd: '', confirm: '' });
   const [changingPwd, setChangingPwd] = useState(false);
@@ -86,15 +95,6 @@ export default function Layout({ children }: LayoutProps) {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-
-  useEffect(() => {
-    if (!isLoggedIn || !role) return undefined;
-    const refreshId = window.setTimeout(
-      () => requestBusinessDataRefresh('route-change'),
-      300,
-    );
-    return () => window.clearTimeout(refreshId);
-  }, [isLoggedIn, role, location.pathname]);
 
   const handleLogout = () => {
     logout();
@@ -176,7 +176,6 @@ export default function Layout({ children }: LayoutProps) {
   }
 
   // Check page access permission
-  const currentPath = location.pathname;
   const hasPageAccess = canAccess(currentPath);
 
   // Keep the business grouping stable while hiding pages the current role cannot access.
@@ -226,37 +225,73 @@ export default function Layout({ children }: LayoutProps) {
         </div>
 
         <nav className="app-sidebar-nav flex-1 overflow-y-auto px-3 py-3">
-          {visibleNavSections.map((section, sectionIndex) => (
-            <div
-              key={section.label}
-              className={sectionIndex === 0 ? 'pb-3' : 'border-t border-white/[0.07] py-3'}
-            >
-              <div className={`px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>
-                {section.label}
-              </div>
-              <div className="space-y-1">
-                {section.items.map((item) => {
-                  const isActive = location.pathname === item.path;
-                  return (
+          <div className={`px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>
+            业务中心
+          </div>
+          <div className="space-y-1.5">
+            {visibleNavSections.map((section) => {
+              const SectionIcon = section.icon;
+              const primaryItem = section.items[0];
+              const childItems = section.items.slice(1);
+              const isSectionActive = section.paths.includes(currentPath);
+              const isExpanded = expandedSection === section.label;
+              return (
+                <div key={section.label} className="space-y-1">
+                  <div className={`group flex items-center rounded-xl ${isSectionActive ? 'bg-white/[0.08]' : 'hover:bg-white/[0.05]'}`}>
                     <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={() => setSidebarOpen(false)}
-                      title={sidebarCollapsed ? item.label : undefined}
-                      className={`app-nav-item relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${
-                        isActive
+                      to={primaryItem.path}
+                      onClick={() => {
+                        setExpandedSection(section.label);
+                        setSidebarOpen(false);
+                      }}
+                      title={sidebarCollapsed ? section.label : undefined}
+                      className={`app-nav-item relative flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${
+                        currentPath === primaryItem.path
                           ? 'app-nav-item-active text-white'
-                          : 'text-slate-300 hover:bg-white/[0.07] hover:text-white'
+                          : isSectionActive ? 'text-white' : 'text-slate-300 hover:text-white'
                       } ${sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:px-2' : ''}`}
                     >
-                      <item.icon className="h-4 w-4 flex-shrink-0" />
-                      <span className={sidebarCollapsed ? 'lg:hidden' : ''}>{item.label}</span>
+                      <SectionIcon className="h-4 w-4 flex-shrink-0" />
+                      <span className={`truncate font-medium ${sidebarCollapsed ? 'lg:hidden' : ''}`}>{section.label}</span>
                     </Link>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+                    {childItems.length > 0 && !sidebarCollapsed && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedSection(value => value === section.label ? null : section.label)}
+                        className="mr-1 block rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white"
+                        aria-label={`${isExpanded ? '收起' : '展开'}${section.label}`}
+                      >
+                        <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                      </button>
+                    )}
+                  </div>
+                  {childItems.length > 0 && isExpanded && (
+                    <div className={`space-y-0.5 border-l border-white/10 pl-3 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
+                      {childItems.map(item => {
+                        const isActive = currentPath === item.path;
+                        return (
+                          <Link
+                            key={item.path}
+                            to={item.path}
+                            onClick={() => setSidebarOpen(false)}
+                            className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] ${isActive ? 'bg-blue-500/20 font-medium text-blue-100' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}`}
+                          >
+                            <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span>{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {!sidebarCollapsed && (
+            <p className="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-[11px] leading-5 text-slate-500">
+              先进入业务中心，再按需展开明细。日常不需要遍历所有页面。
+            </p>
+          )}
         </nav>
 
         <div className="border-t border-white/10 p-3">

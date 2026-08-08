@@ -18,7 +18,7 @@ export function useAutoRefresh(
     intervalMs = 30000,
     refreshOnFocus = true,
     refreshOnReconnect = true,
-    refreshOnMount = true,
+    refreshOnMount = false,
   }: AutoRefreshOptions = {},
 ) {
   const refreshRef = useRef(refresh);
@@ -59,8 +59,8 @@ export function useAutoRefresh(
     if (refreshOnFocus) window.addEventListener('focus', handleBusinessDataRefresh);
     if (refreshOnReconnect) window.addEventListener('online', handleBusinessDataRefresh);
 
-    // The page's own initial request can race with authentication restoration.
-    // A short post-mount refresh guarantees a fresh server read without a manual reload.
+    // Pages perform their own initial request. Keep the mount refresh opt-in so
+    // navigation does not immediately duplicate every page's API calls.
     const mountRefreshId = refreshOnMount
       ? window.setTimeout(() => void runRefresh(), 250)
       : undefined;
