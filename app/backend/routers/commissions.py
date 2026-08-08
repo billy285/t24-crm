@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_finance_user
+from dependencies.auth import get_current_user, get_finance_user
 from models.commissions import (
     CommissionAgreement,
     CommissionEntry,
@@ -21,7 +21,14 @@ from models.customers import Customers
 from models.employees import Employees
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from schemas.auth import UserResponse
-from services.commissions import DEFAULT_DECAY, scan_commissions, utcnow
+from services.commissions import (
+    DEFAULT_DECAY,
+    assign_customer_commission_owner,
+    commission_data_quality,
+    scan_commissions,
+    transfer_partner_attributions_to_direct,
+    utcnow,
+)
 
 
 router = APIRouter(prefix="/api/v1/commissions", tags=["commissions"])
@@ -152,6 +159,7 @@ async def dashboard(
     customers = (await db.scalars(select(Customers).where(Customers.id.in_(customer_ids)))).all() if customer_ids else []
     customer_map = {row.id: row.business_name for row in customers}
     partner_map = {row.id: row.name for row in partners}
+    quality = await commission_data_quality(db)
     currencies: dict[str, dict[str, float]] = {}
     for entry in entries:
         bucket = currencies.setdefault(entry.currency, {"pending": 0, "confirmed_expense": 0, "payable": 0, "paid": 0})
@@ -166,7 +174,9 @@ async def dashboard(
             "pending_count": sum(row.status == "pending_confirmation" for row in entries),
             "currencies": {code: {key: round(value, 2) for key, value in values.items()} for code, values in currencies.items()},
             "accounting_rule": "收入按实收总额记录；仅已确认佣金进入渠道佣金费用；发放仅冲减应付，不重复计费",
+            "quality": {key: value for key, value in quality.items() if key != "issues"},
         },
+        "quality_issues": quality["issues"],
         "partners": [_partner_payload(row) for row in partners],
         "agreements": [_agreement_payload(row) for row in agreements],
         "attributions": [{
@@ -188,6 +198,26 @@ async def dashboard(
             "confirmed_at": row.confirmed_at, "payable_at": row.payable_at,
             "paid_at": row.paid_at, "payout_reference": row.payout_reference,
         } for row in entries],
+    }
+
+
+@router.get("/assignment-options")
+async def assignment_options(
+    _user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Safe selector data for customer intake; agreement rates stay finance-only."""
+    partners = (await db.scalars(select(SalesPartner).where(
+        SalesPartner.status == "active"
+    ).order_by(SalesPartner.partner_type, SalesPartner.name))).all()
+    return {
+        "items": [{
+            "id": row.id,
+            "partner_code": row.partner_code,
+            "name": row.name,
+            "partner_type": row.partner_type,
+        } for row in partners],
+        "automatic_rule": "优先匹配已建档的内部销售；未匹配时归属公司直营",
     }
 
 
@@ -217,6 +247,8 @@ async def create_partner(
     user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if payload.partner_type == "direct":
+        raise HTTPException(status_code=409, detail="公司直营由系统自动建立，不能手工新增")
     if await db.scalar(select(SalesPartner.id).where(SalesPartner.partner_code == payload.partner_code)):
         raise HTTPException(status_code=409, detail="渠道编号已存在")
     if payload.employee_id and not await db.get(Employees, payload.employee_id):
@@ -238,21 +270,24 @@ async def change_partner_status(
     partner = await db.get(SalesPartner, partner_id)
     if not partner:
         raise HTTPException(status_code=404, detail="渠道不存在")
+    if partner.partner_type == "direct":
+        raise HTTPException(status_code=409, detail="公司直营是系统归属，不能暂停或停止合作")
     if payload.effective_date < partner.joined_at:
         raise HTTPException(status_code=400, detail="生效日期不能早于加入日期")
     partner.status = payload.status
     partner.stopped_at = payload.effective_date if payload.status in {"terminated", "settled"} else None
     partner.notes = "\n".join(filter(None, [partner.notes, f"{payload.effective_date} {payload.status}: {payload.reason}"]))
+    transferred = 0
     if payload.status in {"terminated", "settled"}:
-        active_links = (await db.scalars(select(CustomerCommissionAttribution).where(
-            CustomerCommissionAttribution.partner_id == partner.id,
-            CustomerCommissionAttribution.is_active.is_(True),
-        ))).all()
-        for link in active_links:
-            link.effective_to = payload.effective_date
-            link.is_active = False
+        transferred = await transfer_partner_attributions_to_direct(
+            db,
+            partner_id=partner.id,
+            stopped_at=payload.effective_date,
+            actor_id=str(user.id),
+            actor_name=actor_name(user),
+        )
     await db.commit()
-    return _partner_payload(partner)
+    return {**_partner_payload(partner), "transferred_to_direct": transferred}
 
 
 @router.post("/agreements", status_code=status.HTTP_201_CREATED)
@@ -264,6 +299,8 @@ async def create_agreement(
     partner = await db.get(SalesPartner, payload.partner_id)
     if not partner:
         raise HTTPException(status_code=404, detail="渠道不存在")
+    if partner.partner_type == "direct":
+        raise HTTPException(status_code=409, detail="公司直营不产生外部佣金，无需配置分润协议")
     if partner.status in {"terminated", "settled"}:
         raise HTTPException(status_code=409, detail="已终止或已结清的渠道不能新增协议")
     if payload.product_id:
@@ -314,22 +351,15 @@ async def create_attribution(
         engagement = await db.get(CustomerEngagement, payload.engagement_id)
         if not engagement or engagement.customer_id != payload.customer_id:
             raise HTTPException(status_code=400, detail="项目不属于所选客户")
-    current = (await db.scalars(select(CustomerCommissionAttribution).where(
-        CustomerCommissionAttribution.customer_id == payload.customer_id,
-        CustomerCommissionAttribution.engagement_id.is_(payload.engagement_id) if payload.engagement_id is None else CustomerCommissionAttribution.engagement_id == payload.engagement_id,
-        CustomerCommissionAttribution.attribution_role == "primary",
-        CustomerCommissionAttribution.is_active.is_(True),
-    ))).all()
-    for link in current:
-        if link.effective_from >= payload.effective_from:
-            raise HTTPException(status_code=409, detail="当前归属的生效日期不早于新归属，请先核对日期")
-        link.effective_to = payload.effective_from - timedelta(days=1)
-        link.is_active = False
-    row = CustomerCommissionAttribution(
-        **payload.model_dump(), attribution_role="primary", is_active=True,
-        created_by_id=str(user.id), created_by_name=actor_name(user),
-    )
-    db.add(row)
+    try:
+        row = await assign_customer_commission_owner(
+            db,
+            **payload.model_dump(),
+            actor_id=str(user.id),
+            actor_name=actor_name(user),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await db.commit()
     await db.refresh(row)
     await scan_commissions(db)

@@ -13,7 +13,9 @@ from core.database import get_db
 from dependencies.auth import get_admin_user, get_current_user
 from schemas.auth import UserResponse
 from services.customers import CustomersService
+from models.customers import Customers
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
+from services.commissions import auto_assign_new_customer
 from services.management_decision_workflow import save_customer_classification_review
 
 # Set up logging
@@ -225,6 +227,8 @@ class CustomerProjectInput(BaseModel):
 class CustomerWithProjectsCreateRequest(BaseModel):
     customer: CustomersData
     projects: List[CustomerProjectInput] = Field(default_factory=list)
+    commission_partner_id: Optional[int] = Field(None, gt=0)
+    commission_effective_from: Optional[date] = None
 
 
 class CustomerWithProjectsUpdateRequest(BaseModel):
@@ -234,6 +238,41 @@ class CustomerWithProjectsUpdateRequest(BaseModel):
 
 def _actor_name(user: UserResponse) -> str:
     return user.name or user.email or "管理员"
+
+
+def _new_customer_commission_date(
+    customer: Customers,
+    projects: List[CustomerProjectInput] | None = None,
+    requested: date | None = None,
+) -> date:
+    if requested:
+        return requested
+    paid_dates = [row.paid_started_at.date() for row in (projects or []) if row.paid_started_at]
+    if paid_dates:
+        return min(paid_dates)
+    if customer.created_at:
+        return customer.created_at.date()
+    return date.today()
+
+
+async def _auto_assign_created_customer(
+    db: AsyncSession,
+    customer: Customers,
+    user: UserResponse,
+    *,
+    projects: List[CustomerProjectInput] | None = None,
+    partner_id: int | None = None,
+    effective_from: date | None = None,
+) -> None:
+    await auto_assign_new_customer(
+        db,
+        customer_id=customer.id,
+        sales_employee_id=customer.sales_employee_id,
+        explicit_partner_id=partner_id,
+        effective_from=_new_customer_commission_date(customer, projects, effective_from),
+        actor_id=str(user.id),
+        actor_name=_actor_name(user),
+    )
 
 
 # ---------- Routes ----------
@@ -390,9 +429,12 @@ async def create_customers(
     service = CustomersService(db)
     try:
         _ensure_customer_write_allowed(current_user)
-        result = await service.create(_assigned_to_current_user(data.model_dump(), current_user))
+        result = await service.create(_assigned_to_current_user(data.model_dump(), current_user), commit=False)
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create customers")
+        await _auto_assign_created_customer(db, result, current_user)
+        await db.commit()
+        await db.refresh(result)
         
         logger.info(f"Customers created successfully with id: {result.id}")
         return result
@@ -432,6 +474,14 @@ async def create_customer_with_projects(
                 actor_name=_actor_name(current_user),
                 commit=False,
             )
+        await _auto_assign_created_customer(
+            db,
+            customer,
+            current_user,
+            projects=request.projects,
+            partner_id=request.commission_partner_id,
+            effective_from=request.commission_effective_from,
+        )
         await db.commit()
         await db.refresh(customer)
         return customer
@@ -458,9 +508,13 @@ async def create_customerss_batch(
     try:
         _ensure_customer_write_allowed(current_user)
         for item_data in request.items:
-            result = await service.create(_assigned_to_current_user(item_data.model_dump(), current_user))
+            result = await service.create(_assigned_to_current_user(item_data.model_dump(), current_user), commit=False)
             if result:
+                await _auto_assign_created_customer(db, result, current_user)
                 results.append(result)
+        await db.commit()
+        for result in results:
+            await db.refresh(result)
         
         logger.info(f"Batch created {len(results)} customerss successfully")
         return results

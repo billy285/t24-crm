@@ -60,6 +60,9 @@ const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
 const STRIPE_PLATFORM_FEE_RATE = 0.029;
 const STRIPE_PLATFORM_FEE_FIXED = 0.3;
 const CUSTOMER_PAGE_SIZE_OPTIONS = [20, 50, 100];
+const todayShanghai = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
 const lifecycleEventLabels: Record<string, string> = {
   started: '第一笔有效记账', pause: '暂停合作', pending_stop: '进入待确认停止',
   resume: '恢复合作', stop: '停止合作', reactivate: '重新合作', adjust_start: '修正合作开始日期',
@@ -580,6 +583,9 @@ export default function Customers() {
   const [form, setForm] = useState(emptyForm);
   const [customerProjectForms, setCustomerProjectForms] = useState<CustomerProjectDraft[]>([]);
   const [customerProjectsLoading, setCustomerProjectsLoading] = useState(false);
+  const [commissionPartners, setCommissionPartners] = useState<Array<{ id: number; partner_code: string; name: string; partner_type: string }>>([]);
+  const [commissionPartnerId, setCommissionPartnerId] = useState('auto');
+  const [commissionEffectiveFrom, setCommissionEffectiveFrom] = useState(todayShanghai());
   const [manualCityInput, setManualCityInput] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [selectedCustomerTab, setSelectedCustomerTab] = useState('info');
@@ -1162,6 +1168,13 @@ export default function Customers() {
 
   useEffect(() => { if (showForm) setCodeSettings(loadSettings()); }, [showForm]);
 
+  useEffect(() => {
+    if (!showForm || editingId) return;
+    invokeWithAuth({ url: '/api/v1/commissions/assignment-options', method: 'GET' })
+      .then(response => setCommissionPartners(response?.data?.items || []))
+      .catch(() => setCommissionPartners([]));
+  }, [showForm, editingId]);
+
   const loadEmployees = async () => {
     try {
       const res = await client.entities.employees.queryAll({ query: { status: 'active' }, limit: 100 });
@@ -1278,7 +1291,7 @@ export default function Customers() {
     renewalPageSize,
   ]);
 
-  const openCreate = () => { setForm({ ...emptyForm, selected_platforms: [], interested_packages: [], interested_packages_snapshot: {} }); setCustomerProjectForms([]); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
+  const openCreate = () => { setForm({ ...emptyForm, selected_platforms: [], interested_packages: [], interested_packages_snapshot: {} }); setCustomerProjectForms([]); setCommissionPartnerId('auto'); setCommissionEffectiveFrom(todayShanghai()); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
   const openEdit = async (c: any) => {
     const interestedPackages = parseMultiValue(c.interested_packages);
     const snapshot = parsePackageSnapshot(c.interested_packages_snapshot);
@@ -1376,7 +1389,12 @@ export default function Customers() {
       } else {
         const code = form.customer_code.trim() || getNextAutoCode(form.industry);
         if (customers.some(c => c.customer_code === code)) { toast.error(`编号「${code}」已存在`); setSaving(false); return; }
-        const res = await invokeWithAuth({ url: '/api/v1/entities/customers/with-projects', method: 'POST', data: { customer: { ...payload, customer_code: code, created_at: now, updated_at: now }, projects } });
+        const res = await invokeWithAuth({ url: '/api/v1/entities/customers/with-projects', method: 'POST', data: {
+          customer: { ...payload, customer_code: code, created_at: now, updated_at: now },
+          projects,
+          commission_partner_id: commissionPartnerId === 'auto' ? null : Number(commissionPartnerId),
+          commission_effective_from: commissionEffectiveFrom || now.slice(0, 10),
+        } });
         if (res?.data) {
           setCustomers(prev => [res.data, ...prev]);
         }
@@ -1711,6 +1729,16 @@ export default function Customers() {
               )}
             </div>
             <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            {!editingId && <div className="col-span-2 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+              <div>
+                <Label className="text-sm font-semibold text-slate-800">客户来源与分润归属</Label>
+                <p className="mt-1 text-xs leading-5 text-slate-500">首次保存时建立归属。自动模式会优先匹配“负责销售”对应的内部销售渠道，未匹配时归为公司直营；以后变更请到“渠道与分润中心”保留历史。</p>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div><Label className="text-xs">归属渠道</Label><NativeSelect value={commissionPartnerId} onChange={setCommissionPartnerId} options={[{ value: 'auto', label: '系统自动：内部销售 / 公司直营' }, ...commissionPartners.map(item => ({ value: String(item.id), label: `${item.name} · ${item.partner_code}` }))]} /></div>
+                <div><Label className="text-xs">归属生效日期</Label><Input type="date" value={commissionEffectiveFrom} onChange={event => setCommissionEffectiveFrom(event.target.value)} /></div>
+              </div>
+            </div>}
             <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

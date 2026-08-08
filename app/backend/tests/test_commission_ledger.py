@@ -20,7 +20,13 @@ from models.management_decisions import BusinessLine, CustomerEngagement, Produc
 from models.payments import Payments
 from routers.commissions import EntryTransitionInput, transition_entry
 from schemas.auth import UserResponse
-from services.commissions import scan_commissions
+from services.commissions import (
+    DIRECT_PARTNER_CODE,
+    auto_assign_new_customer,
+    commission_data_quality,
+    scan_commissions,
+    transfer_partner_attributions_to_direct,
+)
 
 
 async def _create_tables(engine) -> None:
@@ -136,5 +142,77 @@ async def test_confirmed_snapshot_is_locked_and_partner_stop_blocks_future_recei
         entries = (await db.scalars(select(CommissionEntry).order_by(CommissionEntry.id))).all()
         assert len(entries) == 1
         assert entries[0].commission_amount == original_amount
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_new_customer_auto_assignment_and_partner_stop_transfer_to_direct():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    await _create_tables(engine)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        db.add_all([
+            Employees(id=7, user_id="employee-7", role="sales", employee_code="E007", name="Internal Sales", status="active"),
+            Customers(id=1, business_name="Employee Customer", contact_name="Owner", phone="1", sales_employee_id=7),
+            Customers(id=2, business_name="Direct Customer", contact_name="Owner", phone="2"),
+            SalesPartner(id=1, partner_code="EMP-007", name="Internal Sales", partner_type="employee", employee_id=7, status="active", joined_at=date(2026, 1, 1)),
+        ])
+        await db.commit()
+
+        employee_link = await auto_assign_new_customer(
+            db, customer_id=1, sales_employee_id=7, effective_from=date(2026, 4, 1), actor_id="1", actor_name="Admin"
+        )
+        direct_link = await auto_assign_new_customer(
+            db, customer_id=2, sales_employee_id=None, effective_from=date(2026, 4, 1), actor_id="1", actor_name="Admin"
+        )
+        await db.commit()
+
+        direct_partner = await db.scalar(select(SalesPartner).where(SalesPartner.partner_code == DIRECT_PARTNER_CODE))
+        assert employee_link.partner_id == 1
+        assert direct_partner is not None
+        assert direct_link.partner_id == direct_partner.id
+
+        transferred = await transfer_partner_attributions_to_direct(
+            db, partner_id=1, stopped_at=date(2026, 5, 31), actor_id="1", actor_name="Admin"
+        )
+        await db.commit()
+        links = (await db.scalars(select(CustomerCommissionAttribution).where(
+            CustomerCommissionAttribution.customer_id == 1
+        ).order_by(CustomerCommissionAttribution.id))).all()
+        assert transferred == 1
+        assert links[0].is_active is False
+        assert links[0].effective_to == date(2026, 5, 31)
+        assert links[1].partner_id == direct_partner.id
+        assert links[1].effective_from == date(2026, 6, 1)
+        assert links[1].is_active is True
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_commission_data_quality_finds_unassigned_receipts_and_missing_agreements():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    await _create_tables(engine)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        db.add_all([
+            Customers(id=1, business_name="No Owner", contact_name="Owner", phone="1"),
+            Customers(id=2, business_name="No Agreement", contact_name="Owner", phone="2"),
+            SalesPartner(id=1, partner_code="P001", name="Partner", partner_type="partner", status="active", joined_at=date(2026, 1, 1)),
+            CustomerCommissionAttribution(id=1, customer_id=2, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
+            _payment(1, 1, datetime(2026, 2, 1, tzinfo=timezone.utc)),
+            _payment(2, 2, datetime(2026, 2, 1, tzinfo=timezone.utc)),
+        ])
+        await db.commit()
+
+        quality = await commission_data_quality(db)
+        issue_types = {row["type"] for row in quality["issues"]}
+        assert "unattributed_payment" in issue_types
+        assert "payment_without_agreement" in issue_types
+        assert "partner_without_agreement" in issue_types
+        assert quality["coverage_rate"] == 0.0
 
     await engine.dispose()

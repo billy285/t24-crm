@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import and_, inspect, or_, select
@@ -11,6 +11,7 @@ from models.commissions import (
     CustomerCommissionAttribution,
     SalesPartner,
 )
+from models.customers import Customers
 from models.deals import Deals
 from models.finance_refunds import FinanceRefund
 from models.management_decisions import CustomerEngagement
@@ -21,11 +22,162 @@ from models.subscriptions import Subscriptions
 
 DEFAULT_DECAY = {0: 1.0, 1: 0.8, 2: 0.6, 3: 0.4, 4: 0.25, 5: 0.1, 6: 0.0}
 LOCKED_STATUSES = {"confirmed", "payable", "paid", "reversed"}
+DIRECT_PARTNER_CODE = "DIRECT-T24"
+DIRECT_PARTNER_NAME = "T24 公司直营"
 
 
 async def commission_ledger_available(db: AsyncSession) -> bool:
     connection = await db.connection()
     return bool(await connection.run_sync(lambda sync_connection: inspect(sync_connection).has_table("commission_entries")))
+
+
+async def ensure_company_direct_partner(
+    db: AsyncSession,
+    *,
+    actor_id: str | None = None,
+    actor_name: str | None = None,
+) -> SalesPartner:
+    """Return the system-owned direct channel, creating it when first needed."""
+    partner = await db.scalar(
+        select(SalesPartner).where(SalesPartner.partner_code == DIRECT_PARTNER_CODE).limit(1)
+    )
+    if partner:
+        if partner.partner_type != "direct":
+            raise ValueError(f"渠道编号 {DIRECT_PARTNER_CODE} 已被非直营渠道占用")
+        if partner.status != "active":
+            partner.status = "active"
+            partner.stopped_at = None
+        return partner
+
+    partner = SalesPartner(
+        partner_code=DIRECT_PARTNER_CODE,
+        name=DIRECT_PARTNER_NAME,
+        partner_type="direct",
+        status="active",
+        joined_at=date(2026, 1, 1),
+        notes="系统直营归属；仅用于客户来源和归属闭环，不产生渠道佣金。",
+        created_by_id=actor_id,
+        created_by_name=actor_name,
+    )
+    db.add(partner)
+    await db.flush()
+    return partner
+
+
+async def assign_customer_commission_owner(
+    db: AsyncSession,
+    *,
+    customer_id: int,
+    partner_id: int,
+    effective_from: date,
+    engagement_id: int | None = None,
+    source_note: str | None = None,
+    actor_id: str | None = None,
+    actor_name: str | None = None,
+) -> CustomerCommissionAttribution:
+    """Create a single effective-dated primary owner while preserving history."""
+    partner = await db.get(SalesPartner, partner_id)
+    if not partner or partner.status != "active":
+        raise ValueError("只能归属给正常合作中的渠道")
+
+    current = (await db.scalars(select(CustomerCommissionAttribution).where(
+        CustomerCommissionAttribution.customer_id == customer_id,
+        CustomerCommissionAttribution.engagement_id.is_(engagement_id)
+        if engagement_id is None else CustomerCommissionAttribution.engagement_id == engagement_id,
+        CustomerCommissionAttribution.attribution_role == "primary",
+        CustomerCommissionAttribution.is_active.is_(True),
+    ))).all()
+    for link in current:
+        if link.partner_id == partner_id:
+            if source_note and not link.source_note:
+                link.source_note = source_note
+            return link
+        if link.effective_from >= effective_from:
+            raise ValueError("当前归属的生效日期不早于新归属，请先核对日期")
+        link.effective_to = effective_from - timedelta(days=1)
+        link.is_active = False
+
+    row = CustomerCommissionAttribution(
+        customer_id=customer_id,
+        engagement_id=engagement_id,
+        partner_id=partner_id,
+        attribution_role="primary",
+        effective_from=effective_from,
+        is_active=True,
+        source_note=source_note,
+        created_by_id=actor_id,
+        created_by_name=actor_name,
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def auto_assign_new_customer(
+    db: AsyncSession,
+    *,
+    customer_id: int,
+    sales_employee_id: int | None,
+    effective_from: date,
+    explicit_partner_id: int | None = None,
+    actor_id: str | None = None,
+    actor_name: str | None = None,
+) -> CustomerCommissionAttribution | None:
+    """Assign a new customer to an explicit/employee channel, otherwise direct."""
+    if not await commission_ledger_available(db):
+        return None
+    partner = await db.get(SalesPartner, explicit_partner_id) if explicit_partner_id else None
+    if explicit_partner_id and (not partner or partner.status != "active"):
+        raise ValueError("所选分润渠道不存在或已停止合作")
+    if not partner and sales_employee_id:
+        partner = await db.scalar(select(SalesPartner).where(
+            SalesPartner.partner_type == "employee",
+            SalesPartner.employee_id == sales_employee_id,
+            SalesPartner.status == "active",
+        ).order_by(SalesPartner.id.desc()).limit(1))
+    if not partner:
+        partner = await ensure_company_direct_partner(db, actor_id=actor_id, actor_name=actor_name)
+    return await assign_customer_commission_owner(
+        db,
+        customer_id=customer_id,
+        partner_id=partner.id,
+        effective_from=effective_from,
+        source_note="客户首次录入自动建立分润归属",
+        actor_id=actor_id,
+        actor_name=actor_name,
+    )
+
+
+async def transfer_partner_attributions_to_direct(
+    db: AsyncSession,
+    *,
+    partner_id: int,
+    stopped_at: date,
+    actor_id: str | None = None,
+    actor_name: str | None = None,
+) -> int:
+    """Close a stopped partner's active links and continue them as company direct."""
+    direct = await ensure_company_direct_partner(db, actor_id=actor_id, actor_name=actor_name)
+    links = (await db.scalars(select(CustomerCommissionAttribution).where(
+        CustomerCommissionAttribution.partner_id == partner_id,
+        CustomerCommissionAttribution.is_active.is_(True),
+    ))).all()
+    transferred = 0
+    for link in links:
+        link.effective_to = stopped_at
+        link.is_active = False
+        await assign_customer_commission_owner(
+            db,
+            customer_id=link.customer_id,
+            engagement_id=link.engagement_id,
+            partner_id=direct.id,
+            effective_from=stopped_at + timedelta(days=1),
+            source_note=f"原渠道停止合作后自动转公司直营；原归属 #{link.id}",
+            actor_id=actor_id,
+            actor_name=actor_name,
+        )
+        transferred += 1
+    return transferred
 
 
 def utcnow() -> datetime:
@@ -112,7 +264,7 @@ async def _agreement_for(
     engagement = await db.get(CustomerEngagement, attribution.engagement_id) if attribution.engagement_id else None
     statement = select(CommissionAgreement).where(
         CommissionAgreement.partner_id == attribution.partner_id,
-        CommissionAgreement.status == "active",
+        CommissionAgreement.status.in_(("active", "expired")),
         CommissionAgreement.effective_from <= day,
         or_(CommissionAgreement.effective_to.is_(None), CommissionAgreement.effective_to >= day),
         or_(CommissionAgreement.business_line_id.is_(None), CommissionAgreement.business_line_id == (payment.business_line_id or getattr(engagement, "business_line_id", None))),
@@ -206,6 +358,8 @@ async def sync_payment_commission(db: AsyncSession, payment: Payments) -> Option
     attribution = attributions[0]
     partner = await db.get(SalesPartner, attribution.partner_id)
     if not partner:
+        return None
+    if partner.partner_type == "direct":
         return None
     if partner.stopped_at and _as_date(occurred_at) > partner.stopped_at:
         return None
@@ -340,3 +494,130 @@ async def scan_commissions(db: AsyncSession, *, commit: bool = True) -> dict[str
         await db.flush()
     created_after = len((await db.scalars(select(CommissionEntry.id))).all())
     return {"payments_scanned": len(payments), "refunds_scanned": len(refunds), "entries_created": max(created_after - created_before, 0)}
+
+
+async def commission_data_quality(db: AsyncSession) -> dict:
+    """Return actionable attribution/agreement gaps without changing accounting data."""
+    if not await commission_ledger_available(db):
+        return {"issues": [], "issue_count": 0, "covered_count": 0, "coverage_rate": 100.0}
+
+    customers = (await db.scalars(select(Customers))).all()
+    customer_names = {row.id: row.business_name for row in customers}
+    partners = (await db.scalars(select(SalesPartner))).all()
+    partner_map = {row.id: row for row in partners}
+    issues: list[dict] = []
+    covered_keys: set[tuple[str, int]] = set()
+    examined_keys: set[tuple[str, int]] = set()
+
+    today = utcnow().date()
+    for partner in partners:
+        if partner.status != "active" or partner.partner_type == "direct":
+            continue
+        agreement = await db.scalar(select(CommissionAgreement.id).where(
+            CommissionAgreement.partner_id == partner.id,
+            CommissionAgreement.status == "active",
+            CommissionAgreement.effective_from <= today,
+            or_(CommissionAgreement.effective_to.is_(None), CommissionAgreement.effective_to >= today),
+        ).limit(1))
+        if not agreement:
+            issues.append({
+                "key": f"partner:{partner.id}:agreement",
+                "type": "partner_without_agreement",
+                "severity": "high",
+                "partner_id": partner.id,
+                "partner_name": partner.name,
+                "title": "合作渠道缺少当前协议",
+                "description": f"{partner.name} 当前没有生效的分润协议，相关实收无法计佣。",
+            })
+
+    payments = (await db.scalars(select(Payments).order_by(Payments.payment_date, Payments.id))).all()
+    accounted_payment_ids = set((await db.scalars(select(CommissionEntry.payment_id).where(
+        CommissionEntry.refund_id.is_(None)
+    ))).all())
+    for payment in payments:
+        if eligible_service_amount(payment) <= 0 or not (payment.payment_date or payment.created_at):
+            continue
+        key = ("payment", payment.id)
+        examined_keys.add(key)
+        if payment.id in accounted_payment_ids:
+            covered_keys.add(key)
+            continue
+        attributions = await _attributions_for_payment(db, payment)
+        if not attributions:
+            issues.append({
+                "key": f"payment:{payment.id}:attribution",
+                "type": "unattributed_payment",
+                "severity": "high",
+                "customer_id": payment.customer_id,
+                "customer_name": customer_names.get(payment.customer_id) or payment.customer_name,
+                "engagement_id": payment.engagement_id,
+                "payment_id": payment.id,
+                "title": "服务实收尚未归属渠道",
+                "description": f"收款 #{payment.id} 已到账，但没有找到对应客户/项目的分润归属。",
+            })
+            continue
+        attribution = attributions[0]
+        partner = partner_map.get(attribution.partner_id)
+        if partner and partner.partner_type == "direct":
+            covered_keys.add(key)
+            continue
+        agreement = await _agreement_for(db, attribution, payment, payment.payment_date or payment.created_at)
+        if not agreement:
+            issues.append({
+                "key": f"payment:{payment.id}:agreement",
+                "type": "payment_without_agreement",
+                "severity": "high",
+                "customer_id": payment.customer_id,
+                "customer_name": customer_names.get(payment.customer_id) or payment.customer_name,
+                "engagement_id": payment.engagement_id,
+                "payment_id": payment.id,
+                "partner_id": attribution.partner_id,
+                "partner_name": partner.name if partner else None,
+                "title": "归属渠道缺少适用协议",
+                "description": f"收款 #{payment.id} 已有归属，但付款日期或产品范围没有匹配的协议版本。",
+            })
+            continue
+        covered_keys.add(key)
+
+    active_engagements = (await db.scalars(select(CustomerEngagement).where(
+        CustomerEngagement.status.in_(("active_paid", "reactivated"))
+    ))).all()
+    for engagement in active_engagements:
+        key = ("engagement", engagement.id)
+        examined_keys.add(key)
+        attribution = await db.scalar(select(CustomerCommissionAttribution).where(
+            CustomerCommissionAttribution.customer_id == engagement.customer_id,
+            or_(
+                CustomerCommissionAttribution.engagement_id == engagement.id,
+                CustomerCommissionAttribution.engagement_id.is_(None),
+            ),
+            CustomerCommissionAttribution.is_active.is_(True),
+            CustomerCommissionAttribution.effective_from <= today,
+        ).order_by(
+            CustomerCommissionAttribution.engagement_id.desc(),
+            CustomerCommissionAttribution.effective_from.desc(),
+        ).limit(1))
+        if attribution:
+            covered_keys.add(key)
+            continue
+        issues.append({
+            "key": f"engagement:{engagement.id}:attribution",
+            "type": "unattributed_engagement",
+            "severity": "medium",
+            "customer_id": engagement.customer_id,
+            "customer_name": customer_names.get(engagement.customer_id),
+            "engagement_id": engagement.id,
+            "title": "付费项目尚未归属渠道",
+            "description": f"项目 #{engagement.id} 处于付费合作中，但没有当前分润归属。",
+        })
+
+    examined_count = len(examined_keys)
+    coverage_rate = round((len(covered_keys) / examined_count * 100) if examined_count else 100.0, 1)
+    return {
+        "issues": issues,
+        "issue_count": len(issues),
+        "high_count": sum(row["severity"] == "high" for row in issues),
+        "covered_count": len(covered_keys),
+        "examined_count": examined_count,
+        "coverage_rate": coverage_rate,
+    }
