@@ -3,13 +3,14 @@ import { readCachedAppConfig, writeCachedAppConfig } from './app-config';
 // ==================== 权限系统核心配置 ====================
 
 // 系统角色类型
-export type SystemRole = 'super_admin' | 'admin' | 'sales' | 'sales_manager' | 'ops' | 'design' | 'finance';
+export type SystemRole = 'super_admin' | 'admin' | 'sales' | 'sales_manager' | 'sales_partner' | 'ops' | 'design' | 'finance';
 
 export const systemRoleLabels: Record<SystemRole, string> = {
   super_admin: '超级管理员',
   admin: '管理员',
   sales: '销售',
   sales_manager: '销售主管',
+  sales_partner: '销售合伙人',
   ops: '运营',
   design: '设计',
   finance: '财务',
@@ -29,6 +30,7 @@ export const PAGE_PATHS = {
   management_decisions: '/management-decisions',
   finance: '/finance',
   commissions: '/commissions',
+  partner_portal: '/partner-portal',
   payroll: '/payroll',
   tasks: '/tasks',
   service_board: '/service-board',
@@ -51,6 +53,7 @@ export const pageLabels: Record<string, string> = {
   '/management-decisions': '经营分类与项目',
   '/finance': '财务管理',
   '/commissions': '渠道与分润',
+  '/partner-portal': '我的客户与分润',
   '/payroll': '工资表',
   '/tasks': '任务协作',
   '/service-board': '服务进度看板',
@@ -170,6 +173,12 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     pages: ['/sales-leads', '/sales-workbench', '/sales-knowledge'],
     buttons: [],
     dataScope: 'department',
+    sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
+  },
+  sales_partner: {
+    pages: ['/partner-portal'],
+    buttons: [],
+    dataScope: 'self',
     sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
   },
   ops: {
@@ -309,6 +318,10 @@ function mapToSystemRole(role: string): SystemRole {
     salesmanager: 'sales_manager',
     '销售主管': 'sales_manager',
     '销售经理': 'sales_manager',
+    sales_partner: 'sales_partner',
+    salespartner: 'sales_partner',
+    partner_sales: 'sales_partner',
+    '销售合伙人': 'sales_partner',
     ops: 'ops',
     operations: 'ops',
     operation: 'ops',

@@ -9,7 +9,7 @@ import {
 import { APP_CONFIG_UPDATED_EVENT, readCachedAppConfig, syncAppConfigCache } from './app-config';
 import { getToken, setToken as setAccessToken, clearToken as clearTokenStore, refreshToken, invokeWithAuth } from './tokenStore';
 
-export type RoleType = 'super_admin' | 'admin' | 'sales' | 'sales_manager' | 'ops' | 'design' | 'finance' | '';
+export type RoleType = 'super_admin' | 'admin' | 'sales' | 'sales_manager' | 'sales_partner' | 'ops' | 'design' | 'finance' | '';
 
 interface RoleContextType {
   user: any;
@@ -50,6 +50,7 @@ export function useRole() {
 export const roleLabels: Record<string, string> = {
   super_admin: '超级管理员', admin: '管理员',
   sales: '销售', sales_manager: '销售主管', ops: '运营', design: '设计', finance: '财务',
+  sales_partner: '销售合伙人',
   boss: '老板', // Legacy
 };
 
@@ -79,6 +80,7 @@ export const roleNavAccess: Record<string, string[]> = {
   boss: ['/', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
   sales: ['/sales-leads', '/sales-workbench', '/sales-knowledge'],
   sales_manager: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge'],
+  sales_partner: ['/partner-portal'],
   ops: ['/', '/customers', '/tasks'],
   design: ['/', '/tasks'],
   finance: ['/', '/finance', '/customers'],

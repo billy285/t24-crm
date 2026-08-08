@@ -29,6 +29,7 @@ import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../li
 import { saveRemoteAppConfig } from '../lib/app-config';
 import {
   buildOptionKey,
+  classifyPackageDisplay,
   customerPlatformLabels,
   platformLabels,
   sanitizeDictLabel,
@@ -658,7 +659,17 @@ export default function Customers() {
   );
 
   const getCustomerPackageLabel = (customer: any, key: string) => (
-    getPackageLabelForSnapshot(key, parsePackageSnapshot(customer?.interested_packages_snapshot))
+    customerPackageLabels[key] || getPackageLabelForSnapshot(key, parsePackageSnapshot(customer?.interested_packages_snapshot))
+  );
+
+  const getHistoricalPackageLabel = (customer: any, key: string) => {
+    const historical = getPackageLabelForSnapshot(key, parsePackageSnapshot(customer?.interested_packages_snapshot));
+    const active = customerPackageLabels[key] || historical;
+    return historical !== active ? historical : '';
+  };
+
+  const getPackageClassification = (packageName?: string | null) => (
+    classifyPackageDisplay(packageName, customerPackageLabels)
   );
 
   const packageOptionsForForm = useMemo(() => {
@@ -1785,8 +1796,9 @@ export default function Customers() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {packageOptionsForForm.map(({ key, label, activeLabel, historical }) => {
                         const checked = form.interested_packages.includes(key);
-                        const displayLabel = checked ? getPackageLabelForSnapshot(key, form.interested_packages_snapshot) : label;
-                        const isRenamedSnapshot = checked && activeLabel && displayLabel !== activeLabel;
+                        const savedLabel = checked ? getPackageLabelForSnapshot(key, form.interested_packages_snapshot) : '';
+                        const displayLabel = activeLabel || label;
+                        const isRenamedSnapshot = checked && activeLabel && savedLabel !== activeLabel;
                         return (
                         <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
                           <input
@@ -1797,13 +1809,13 @@ export default function Customers() {
                           />
                           <span>{displayLabel}</span>
                           {historical && <Badge className="bg-slate-100 text-slate-600 text-[10px]">历史已选</Badge>}
-                          {isRenamedSnapshot && <Badge className="bg-amber-100 text-amber-700 text-[10px]">按保存时名称</Badge>}
+                          {isRenamedSnapshot && <Badge className="bg-amber-100 text-amber-700 text-[10px]">原记录：{savedLabel}</Badge>}
                         </label>
                         );
                       })}
                     </div>
                     <p className="text-xs text-slate-500 mt-3">
-                      已选: {form.interested_packages.length > 0 ? form.interested_packages.map(item => getPackageLabelForSnapshot(item, form.interested_packages_snapshot)).join('、') : '未选择'}
+                      已选（当前归类）: {form.interested_packages.length > 0 ? form.interested_packages.map(item => customerPackageLabels[item] || getPackageLabelForSnapshot(item, form.interested_packages_snapshot)).join('、') : '未选择'}
                     </p>
                     <p className="mt-1 text-xs text-blue-600">新需求请保存客户后在“客户商机”中选择业务线、正式套餐和实际服务范围；这里仅保留历史资料。</p>
                   </div>
@@ -2169,7 +2181,7 @@ export default function Customers() {
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">负责销售:</span><span>{c.sales_person || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">平台现状:</span><span>{c.current_platform || '-'}</span></div>
                 <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">客户已有平台:</span><span>{formatSelectedPlatforms(c.selected_platforms)}</span></div>
-                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">历史意向:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => getCustomerPackageLabel(c, item)).join('、') : '-'}</span></div>
+                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">套餐归类:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => getCustomerPackageLabel(c, item)).join('、') : '-'}{parseMultiValue(c.interested_packages).some(item => getHistoricalPackageLabel(c, item)) && <span className="ml-2 text-xs text-slate-400">（历史：{parseMultiValue(c.interested_packages).map(item => getHistoricalPackageLabel(c, item)).filter(Boolean).join('、')}）</span>}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">月订单量:</span><span>{c.monthly_orders || 0}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">已有点餐:</span><span>{c.has_ordering_system ? '是' : '否'}</span></div>
               </div>
@@ -2303,7 +2315,8 @@ export default function Customers() {
                 <>
                   <div className="space-y-3">{paginatedDeals.items.map((d: any) => (
                     <div key={d.id} className="p-3 bg-slate-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{d.package_name}</span><span className="text-green-600 font-bold">${d.deal_amount}</span></div>
+                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(d.package_name).currentLabel}</span><span className="text-green-600 font-bold">${d.deal_amount}</span></div>
+                      {getPackageClassification(d.package_name).changed && <p className="mb-2 text-xs text-slate-400">历史成交原名：{getPackageClassification(d.package_name).historicalLabel}</p>}
                       <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
                         <span>产品: {productLabels[d.product_type] || d.product_type}</span><span>周期: {cycleLabels[d.billing_cycle] || d.billing_cycle}</span>
                         <span>成交日: {d.deal_date?.slice(0, 10)}</span><span>销售: {d.sales_name}</span>
@@ -2323,7 +2336,8 @@ export default function Customers() {
                 <>
                   <div className="space-y-3">{paginatedServiceInfo.items.map((s: any) => (
                     <div key={s.id} className="p-3 bg-slate-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={subStatusColors[s.status]}>{subStatusLabels[s.status] || s.status}</Badge></div>
+                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(s.package_name).currentLabel}</span><Badge className={subStatusColors[s.status]}>{subStatusLabels[s.status] || s.status}</Badge></div>
+                      {getPackageClassification(s.package_name).changed && <p className="mb-2 text-xs text-slate-400">历史服务原名：{getPackageClassification(s.package_name).historicalLabel}</p>}
                       <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
                         <span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span>
                         <span>开始: {s.start_date?.slice(0, 10)}</span><span>到期: {s.end_date?.slice(0, 10)}</span>
@@ -2495,7 +2509,8 @@ export default function Customers() {
                       catch { return parseMultiValue(s.selected_platforms); }
                     })();
                     return (<div key={s.id} className={`p-3 rounded-lg border ${statusView.cardClass}`}>
-                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{s.package_name}</span><Badge className={statusView.badgeClass}>{subStatusLabels[computedStatus] || statusView.label}</Badge></div>
+                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(s.package_name).currentLabel}</span><Badge className={statusView.badgeClass}>{subStatusLabels[computedStatus] || statusView.label}</Badge></div>
+                      {getPackageClassification(s.package_name).changed && <p className="mb-2 text-xs text-slate-400">历史服务原名：{getPackageClassification(s.package_name).historicalLabel}</p>}
                       <div className="mb-2 flex flex-wrap gap-1"><Badge variant="outline" className={businessLine ? 'border-blue-200 bg-white text-blue-700' : 'border-amber-200 bg-white text-amber-700'}>{businessLine?.name || '业务待确认'}</Badge>{linkedProduct && <Badge variant="secondary">{linkedProduct.name}</Badge>}{linkedPlan && linkedPlan.name !== s.package_name && <Badge variant="secondary">{linkedPlan.name}</Badge>}</div>
                       <div className="grid grid-cols-2 gap-1 text-xs text-slate-500"><span>金额: {s.package_price == null ? '-' : `${s.package_price} ${linkedPlan?.default_currency || 'USD'}`}</span><span>周期: {customerProjectBillingCycles[s.billing_cycle] || s.billing_cycle || '-'}</span><span>到期: {s.end_date?.slice(0, 10) || '-'}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span><span>续费负责: {s.renewal_person || '-'}</span><span>下次付款: {s.next_payment_date?.slice(0, 10) || '-'}</span></div>
                       <p className={`mt-2 text-xs ${actualPlatforms.length > 0 ? 'text-slate-600' : 'text-amber-600'}`}>{actualPlatforms.length > 0 ? `实际服务：${formatSelectedPlatforms(actualPlatforms)}` : businessLine?.code === 'managed_service' ? '实际运营平台待确认' : businessLine ? '服务范围按项目确认' : '历史套餐待归类，不影响历史收款'}</p>

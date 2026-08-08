@@ -18,7 +18,8 @@ from models.employees import Employees
 from models.finance_refunds import FinanceRefund
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from models.payments import Payments
-from routers.commissions import EntryTransitionInput, transition_entry
+from routers.commissions import EntryTransitionInput, my_partner_dashboard, transition_entry
+from routers.employees import EmployeesData, create_employees
 from schemas.auth import UserResponse
 from services.commissions import (
     DIRECT_PARTNER_CODE,
@@ -285,5 +286,76 @@ async def test_bulk_attribution_preview_and_apply_are_safe_and_idempotent():
                 actor_id="1",
                 actor_name="Admin",
             )
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sales_partner_dashboard_is_scoped_to_linked_partner_and_hides_gross_receipts():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    await _create_tables(engine)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    partner_user = UserResponse(id="7", email="partner@example.com", name="Partner Login", role="sales_partner")
+
+    async with session_factory() as db:
+        db.add_all([
+            Employees(id=7, user_id="partner-7", role="sales_partner", name="Partner Login", status="active"),
+            Customers(id=1, customer_code="C001", business_name="Visible Customer", contact_name="Owner", phone="1"),
+            Customers(id=2, customer_code="C002", business_name="Hidden Customer", contact_name="Owner", phone="2"),
+            SalesPartner(id=1, partner_code="P001", name="Visible Partner", partner_type="partner", employee_id=7, status="active", joined_at=date(2026, 1, 1)),
+            SalesPartner(id=2, partner_code="P002", name="Other Partner", partner_type="partner", status="active", joined_at=date(2026, 1, 1)),
+            CommissionAgreement(id=1, partner_id=1, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1, 6: 0}), refund_guard_days=30, effective_from=date(2026, 1, 1), status="active"),
+            CommissionAgreement(id=2, partner_id=2, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1, 6: 0}), refund_guard_days=30, effective_from=date(2026, 1, 1), status="active"),
+            CustomerCommissionAttribution(id=1, customer_id=1, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
+            CustomerCommissionAttribution(id=2, customer_id=2, partner_id=2, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
+            _payment(1, 1, datetime(2026, 1, 5, tzinfo=timezone.utc)),
+            _payment(2, 2, datetime(2026, 1, 5, tzinfo=timezone.utc)),
+            CommissionEntry(id=1, partner_id=1, agreement_id=1, attribution_id=1, customer_id=1, payment_id=1, entry_type="first_order", status="paid", service_month="2026-01", occurred_at=datetime(2026, 1, 5, tzinfo=timezone.utc), currency="USD", gross_receipt_amount=3000, eligible_service_amount=1000, contract_rate=.5, inactivity_months=0, activity_multiplier=1, commission_amount=500, snapshot_json="{}", idempotency_key="visible"),
+            CommissionEntry(id=2, partner_id=2, agreement_id=2, attribution_id=2, customer_id=2, payment_id=2, entry_type="first_order", status="paid", service_month="2026-01", occurred_at=datetime(2026, 1, 5, tzinfo=timezone.utc), currency="USD", gross_receipt_amount=5000, eligible_service_amount=2000, contract_rate=.5, inactivity_months=0, activity_multiplier=1, commission_amount=1000, snapshot_json="{}", idempotency_key="hidden"),
+        ])
+        await db.commit()
+
+        payload = await my_partner_dashboard(partner_user, db)
+        assert payload["partner"]["id"] == 1
+        assert [row["customer_name"] for row in payload["customers"]] == ["Visible Customer"]
+        assert [row["customer_name"] for row in payload["entries"]] == ["Visible Customer"]
+        assert "gross_receipt_amount" not in payload["entries"][0]
+        assert payload["summary"]["currencies"]["USD"]["paid"] == 500
+
+        with pytest.raises(HTTPException) as finance_error:
+            await my_partner_dashboard(UserResponse(id="1", email="finance@example.com", role="finance"), db)
+        assert finance_error.value.status_code == 403
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_creating_sales_partner_employee_atomically_links_partner_profile():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    await _create_tables(engine)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    admin = UserResponse(id="1", email="admin@example.com", name="Admin", role="admin")
+
+    async with session_factory() as db:
+        employee = await create_employees(
+            EmployeesData(
+                name="New Partner",
+                role="sales_partner",
+                email="partner@example.com",
+                employee_code="SP-001",
+                hire_date="2026-08-08",
+            ),
+            admin,
+            db,
+        )
+        linked = await db.scalar(select(SalesPartner).where(SalesPartner.employee_id == employee.id))
+
+        assert employee.role == "sales_partner"
+        assert linked is not None
+        assert linked.partner_code == "SP-001"
+        assert linked.partner_type == "partner"
+        assert linked.name == "New Partner"
+        assert linked.contact_email == "partner@example.com"
+        assert linked.joined_at == date(2026, 8, 8)
 
     await engine.dispose()

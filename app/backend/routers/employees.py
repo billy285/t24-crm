@@ -6,17 +6,68 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_admin_user, get_current_user
 from schemas.auth import UserResponse
 from services.employees import EmployeesService
+from models.commissions import SalesPartner
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/entities/employees", tags=["employees"], dependencies=[Depends(get_current_user)])
+
+
+async def _ensure_sales_partner_profile(
+    db: AsyncSession,
+    employee,
+    admin: UserResponse,
+) -> SalesPartner:
+    """Create or synchronize the external partner profile linked to a login account."""
+    existing = await db.scalar(
+        select(SalesPartner).where(
+            SalesPartner.employee_id == employee.id,
+            SalesPartner.partner_type.in_(["agency", "partner"]),
+        )
+    )
+    if existing:
+        existing.name = employee.name
+        existing.contact_name = employee.name
+        existing.contact_phone = employee.phone
+        existing.contact_email = employee.email
+        return existing
+
+    joined_at = date.today()
+    if employee.hire_date:
+        try:
+            joined_at = date.fromisoformat(employee.hire_date)
+        except ValueError:
+            pass
+    base_code = (employee.employee_code or f"PARTNER-{employee.id}").strip().upper()
+    partner_code = base_code
+    suffix = 1
+    while await db.scalar(select(SalesPartner.id).where(SalesPartner.partner_code == partner_code)):
+        suffix += 1
+        partner_code = f"{base_code}-{suffix}"
+    partner = SalesPartner(
+        partner_code=partner_code,
+        name=employee.name,
+        partner_type="partner",
+        employee_id=employee.id,
+        status="active",
+        joined_at=joined_at,
+        contact_name=employee.name,
+        contact_phone=employee.phone,
+        contact_email=employee.email,
+        notes=employee.notes,
+        created_by_id=str(admin.id),
+        created_by_name=admin.name or admin.email,
+    )
+    db.add(partner)
+    return partner
 
 
 # ---------- Pydantic Schemas ----------
@@ -230,16 +281,23 @@ async def create_employees(
             )
         if not payload.get("status"):
             payload["status"] = "active"
-        result = await service.create(payload)
+        is_sales_partner = payload.get("role") == "sales_partner"
+        result = await service.create(payload, commit=not is_sales_partner)
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create employees")
+        if is_sales_partner:
+            await _ensure_sales_partner_profile(db, result, _admin)
+            await db.commit()
+            await db.refresh(result)
         
         logger.info(f"Employees created successfully with id: {result.id}")
         return result
     except ValueError as e:
+        await db.rollback()
         logger.error(f"Validation error creating employees: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        await db.rollback()
         logger.error(f"Error creating employees: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -257,6 +315,11 @@ async def create_employeess_batch(
     results = []
     
     try:
+        if any(item.role == "sales_partner" for item in request.items):
+            raise HTTPException(
+                status_code=400,
+                detail="销售合伙人账号请使用单个新增，以确保登录账号与分润档案同步建立",
+            )
         for item_data in request.items:
             result = await service.create(item_data.model_dump())
             if result:
@@ -264,6 +327,8 @@ async def create_employeess_batch(
         
         logger.info(f"Batch created {len(results)} employeess successfully")
         return results
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch create: {str(e)}", exc_info=True)
@@ -283,6 +348,11 @@ async def update_employeess_batch(
     results = []
     
     try:
+        if any(item.updates.role == "sales_partner" for item in request.items):
+            raise HTTPException(
+                status_code=400,
+                detail="销售合伙人角色请使用单个编辑，以确保登录账号与分润档案同步",
+            )
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
@@ -292,6 +362,8 @@ async def update_employeess_batch(
         
         logger.info(f"Batch updated {len(results)} employeess successfully")
         return results
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
@@ -312,19 +384,32 @@ async def update_employees(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        result = await service.update(id, update_dict)
+        existing = await service.get_by_id(id)
+        if not existing:
+            logger.warning(f"Employees with id {id} not found for update")
+            raise HTTPException(status_code=404, detail="Employees not found")
+        target_role = update_dict.get("role", existing.role)
+        is_sales_partner = target_role == "sales_partner"
+        result = await service.update(id, update_dict, commit=not is_sales_partner)
         if not result:
             logger.warning(f"Employees with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Employees not found")
+        if is_sales_partner:
+            await _ensure_sales_partner_profile(db, result, _admin)
+            await db.commit()
+            await db.refresh(result)
         
         logger.info(f"Employees {id} updated successfully")
         return result
     except HTTPException:
+        await db.rollback()
         raise
     except ValueError as e:
+        await db.rollback()
         logger.error(f"Validation error updating employees {id}: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        await db.rollback()
         logger.error(f"Error updating employees {id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 

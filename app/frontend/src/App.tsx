@@ -30,6 +30,7 @@ const MonthlyDeduction = lazy(() => import('./pages/MonthlyDeduction'));
 const CustomerLifecycle = lazy(() => import('./pages/CustomerLifecycle'));
 const ManagementDecisions = lazy(() => import('./pages/ManagementDecisions'));
 const Commissions = lazy(() => import('./pages/Commissions'));
+const PartnerPortal = lazy(() => import('./pages/PartnerPortal'));
 
 const PageFallback = () => (
   <div className="flex min-h-[50vh] items-center justify-center">
@@ -75,6 +76,7 @@ const App = () => (
               <Route path="/management-decisions" element={<Layout><ManagementDecisions /></Layout>} />
               <Route path="/finance" element={<Layout><Finance /></Layout>} />
               <Route path="/commissions" element={<Layout><Commissions /></Layout>} />
+              <Route path="/partner-portal" element={<Layout><PartnerPortal /></Layout>} />
               <Route path="/payroll" element={<Layout><Payroll /></Layout>} />
               <Route path="/tasks" element={<Layout><Tasks /></Layout>} />
               <Route path="/employees" element={<Layout><Employees /></Layout>} />

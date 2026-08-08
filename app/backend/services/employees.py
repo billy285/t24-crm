@@ -16,13 +16,16 @@ class EmployeesService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, data: Dict[str, Any]) -> Optional[Employees]:
+    async def create(self, data: Dict[str, Any], *, commit: bool = True) -> Optional[Employees]:
         """Create a new employees"""
         try:
             obj = Employees(**data)
             self.db.add(obj)
-            await self.db.commit()
-            await self.db.refresh(obj)
+            if commit:
+                await self.db.commit()
+                await self.db.refresh(obj)
+            else:
+                await self.db.flush()
             logger.info(f"Created employees with id: {obj.id}")
             return obj
         except Exception as e:
@@ -85,7 +88,13 @@ class EmployeesService:
             logger.error(f"Error fetching employees list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any]) -> Optional[Employees]:
+    async def update(
+        self,
+        obj_id: int,
+        update_data: Dict[str, Any],
+        *,
+        commit: bool = True,
+    ) -> Optional[Employees]:
         """Update employees"""
         try:
             obj = await self.get_by_id(obj_id)
@@ -96,8 +105,11 @@ class EmployeesService:
                 if hasattr(obj, key):
                     setattr(obj, key, value)
 
-            await self.db.commit()
-            await self.db.refresh(obj)
+            if commit:
+                await self.db.commit()
+                await self.db.refresh(obj)
+            else:
+                await self.db.flush()
             logger.info(f"Updated employees {obj_id}")
             return obj
         except Exception as e:

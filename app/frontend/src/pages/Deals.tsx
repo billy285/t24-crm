@@ -18,6 +18,7 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import { saveRemoteAppConfig } from '../lib/app-config';
 import {
   buildOptionKey,
+  classifyPackageDisplay,
   inferPackagePlatforms,
   platformLabels,
   sanitizeDictLabel,
@@ -397,6 +398,9 @@ export default function Deals() {
   const [form, setForm] = useState(emptyDealForm);
   const dealPackageLabels = { ...customerPackageLabels, ...packageOverrideLabels };
   const dealPackageOptions = Object.entries(dealPackageLabels).map(([value, label]) => ({ value, label }));
+  const getPackageClassification = (packageName?: string | null) => (
+    classifyPackageDisplay(packageName, dealPackageLabels)
+  );
 
   const loadData = async () => {
     try {
@@ -596,9 +600,11 @@ export default function Deals() {
     if (search) {
       const q = search.toLowerCase();
       const cust = customerMap.get(d.customer_id);
+      const packageClassification = getPackageClassification(d.package_name);
       const matchSearch =
         d.customer_name?.toLowerCase().includes(q) ||
         d.package_name?.toLowerCase().includes(q) ||
+        packageClassification.currentLabel.toLowerCase().includes(q) ||
         d.sales_name?.toLowerCase().includes(q) ||
         cust?.phone?.toLowerCase().includes(q) ||
         cust?.email?.toLowerCase().includes(q) ||
@@ -1040,6 +1046,8 @@ export default function Deals() {
           <ExportButton
             data={filtered.map(d => ({
               ...d,
+              package_classification: getPackageClassification(d.package_name).currentLabel,
+              package_historical_name: getPackageClassification(d.package_name).changed ? d.package_name : '',
               product_type_label: productLabels[d.product_type] || d.product_type,
               billing_cycle_label: cycleLabels[d.billing_cycle] || d.billing_cycle,
               is_paid_label: d.is_paid ? '已付' : '未付',
@@ -1053,7 +1061,8 @@ export default function Deals() {
               { key: 'customer_name', label: '客户名称' },
               { key: 'sales_name', label: '销售' },
               { key: 'product_type_label', label: '产品类型' },
-              { key: 'package_name', label: '套餐名称' },
+              { key: 'package_classification', label: '当前套餐归类' },
+              { key: 'package_historical_name', label: '历史成交原名' },
               { key: 'deal_amount', label: '成交金额' },
               { key: 'billing_cycle_label', label: '服务周期' },
               { key: 'deal_date_short', label: '成交日期' },
@@ -1194,6 +1203,7 @@ export default function Deals() {
             <div className="grid gap-3 p-3 md:hidden">
               {paginated.items.map(d => {
                 const isDuplicate = duplicateDealIds.has(d.id);
+                const packageClassification = getPackageClassification(d.package_name);
                 return (
                 <div key={d.id} className={`rounded-xl border bg-white p-4 shadow-sm ${isDuplicate ? 'border-orange-200 ring-1 ring-orange-100' : 'border-slate-200'}`}>
                   <div className="flex items-start justify-between gap-3">
@@ -1207,7 +1217,8 @@ export default function Deals() {
                     </div>
                   </div>
                   <div className="mt-3 rounded-lg bg-slate-50 p-3">
-                    <div className="flex items-center justify-between gap-3"><p className="font-medium text-slate-800">{d.package_name || '-'}</p><p className="font-semibold text-emerald-600">${Number(d.deal_amount || 0).toLocaleString()}</p></div>
+                    <div className="flex items-center justify-between gap-3"><p className="font-medium text-slate-800">{packageClassification.currentLabel}</p><p className="font-semibold text-emerald-600">${Number(d.deal_amount || 0).toLocaleString()}</p></div>
+                    {packageClassification.changed && <p className="mt-1 text-xs text-slate-400">历史成交原名：{packageClassification.historicalLabel}</p>}
                     <p className="mt-1 text-xs text-slate-500">{productLabels[d.product_type] || d.product_type || '-'} · {cycleLabels[d.billing_cycle] || d.billing_cycle || '-'}</p>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -1228,8 +1239,8 @@ export default function Deals() {
                 <thead>
                   <tr className="border-b bg-slate-50 text-left text-slate-500">
                     <th className="px-4 py-3 font-medium">客户</th>
-                    <th className="px-4 py-3 font-medium">套餐</th>
-                    <th className="px-4 py-3 font-medium">产品类型</th>
+                    <th className="px-4 py-3 font-medium">套餐归类</th>
+                    <th className="px-4 py-3 font-medium">业务类型</th>
                     <th className="px-4 py-3 font-medium">金额</th>
                     <th className="px-4 py-3 font-medium">周期</th>
                     <th className="px-4 py-3 font-medium hidden md:table-cell">成交日</th>
@@ -1245,7 +1256,10 @@ export default function Deals() {
                         <button type="button" className="text-left text-blue-700 hover:underline" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals`)}>{d.customer_name}</button>
                         {duplicateDealIds.has(d.id) && <div className="mt-1 text-xs font-medium text-orange-600">疑似重复记录</div>}
                       </td>
-                      <td className="px-4 py-3">{d.package_name}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-700">{getPackageClassification(d.package_name).currentLabel}</div>
+                        {getPackageClassification(d.package_name).changed && <div className="mt-1 text-xs text-slate-400">历史：{getPackageClassification(d.package_name).historicalLabel}</div>}
+                      </td>
                       <td className="px-4 py-3"><Badge variant="secondary" className="text-xs">{productLabels[d.product_type] || d.product_type}</Badge></td>
                       <td className="px-4 py-3 font-bold text-green-600">${d.deal_amount}</td>
                       <td className="px-4 py-3 text-slate-500">{cycleLabels[d.billing_cycle] || d.billing_cycle}</td>

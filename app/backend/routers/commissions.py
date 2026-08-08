@@ -73,6 +73,15 @@ def _agreement_payload(row: CommissionAgreement) -> dict:
     }
 
 
+def _require_sales_partner(user: UserResponse) -> int:
+    if str(user.role or "").lower() != "sales_partner":
+        raise HTTPException(status_code=403, detail="Sales partner access required")
+    try:
+        return int(user.id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=403, detail="Sales partner account is not linked to an employee") from exc
+
+
 class PartnerInput(BaseModel):
     partner_code: str = Field(min_length=2, max_length=48)
     name: str = Field(min_length=1, max_length=160)
@@ -227,6 +236,98 @@ async def assignment_options(
     }
 
 
+@router.get("/my-dashboard")
+async def my_partner_dashboard(
+    user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Read-only, partner-scoped portal data. Never returns company-wide finance."""
+    employee_id = _require_sales_partner(user)
+    partners = (await db.scalars(select(SalesPartner).where(
+        SalesPartner.employee_id == employee_id,
+        SalesPartner.partner_type.in_(("agency", "partner")),
+    ).order_by(SalesPartner.id))).all()
+    if not partners:
+        raise HTTPException(status_code=409, detail="该登录账号尚未关联销售合伙人档案，请联系管理员完成关联")
+    if len(partners) > 1:
+        raise HTTPException(status_code=409, detail="该登录账号关联了多个销售合伙人档案，请联系管理员处理重复关联")
+
+    partner = partners[0]
+    agreements = (await db.scalars(select(CommissionAgreement).where(
+        CommissionAgreement.partner_id == partner.id,
+    ).order_by(CommissionAgreement.version.desc()))).all()
+    attributions = (await db.scalars(select(CustomerCommissionAttribution).where(
+        CustomerCommissionAttribution.partner_id == partner.id,
+    ).order_by(CustomerCommissionAttribution.is_active.desc(), CustomerCommissionAttribution.effective_from.desc()))).all()
+    entries = (await db.scalars(select(CommissionEntry).where(
+        CommissionEntry.partner_id == partner.id,
+    ).order_by(CommissionEntry.occurred_at.desc(), CommissionEntry.id.desc()))).all()
+
+    customer_ids = {row.customer_id for row in attributions} | {row.customer_id for row in entries}
+    engagement_ids = {row.engagement_id for row in attributions if row.engagement_id} | {row.engagement_id for row in entries if row.engagement_id}
+    customers = (await db.scalars(select(Customers).where(Customers.id.in_(customer_ids)))).all() if customer_ids else []
+    engagements = (await db.scalars(select(CustomerEngagement).where(CustomerEngagement.id.in_(engagement_ids)))).all() if engagement_ids else []
+    line_ids = {row.business_line_id for row in agreements if row.business_line_id}
+    product_ids = {row.product_id for row in agreements if row.product_id}
+    lines = (await db.scalars(select(BusinessLine).where(BusinessLine.id.in_(line_ids)))).all() if line_ids else []
+    products = (await db.scalars(select(ProductCatalog).where(ProductCatalog.id.in_(product_ids)))).all() if product_ids else []
+    customer_map = {row.id: row for row in customers}
+    engagement_map = {row.id: row for row in engagements}
+    line_map = {row.id: row.name for row in lines}
+    product_map = {row.id: row.name for row in products}
+
+    currencies: dict[str, dict[str, float]] = {}
+    for entry in entries:
+        bucket = currencies.setdefault(entry.currency, {"pending": 0.0, "confirmed": 0.0, "payable": 0.0, "paid": 0.0})
+        if entry.status == "pending_confirmation": bucket["pending"] += entry.commission_amount
+        if entry.status in {"confirmed", "payable", "paid"}: bucket["confirmed"] += entry.commission_amount
+        if entry.status == "payable": bucket["payable"] += entry.commission_amount
+        if entry.status == "paid": bucket["paid"] += entry.commission_amount
+
+    return {
+        "partner": _partner_payload(partner),
+        "summary": {
+            "active_customer_count": len({row.customer_id for row in attributions if row.is_active}),
+            "ledger_count": len(entries),
+            "currencies": currencies,
+        },
+        "agreements": [{
+            **_agreement_payload(row),
+            "business_line_name": line_map.get(row.business_line_id) if row.business_line_id else "全部业务线",
+            "product_name": product_map.get(row.product_id) if row.product_id else "全部产品",
+        } for row in agreements],
+        "customers": [{
+            "attribution_id": row.id,
+            "customer_id": row.customer_id,
+            "customer_code": customer_map.get(row.customer_id).customer_code if customer_map.get(row.customer_id) else None,
+            "customer_name": customer_map.get(row.customer_id).business_name if customer_map.get(row.customer_id) else f"客户 #{row.customer_id}",
+            "engagement_id": row.engagement_id,
+            "engagement_name": engagement_map.get(row.engagement_id).package_name if row.engagement_id and engagement_map.get(row.engagement_id) else None,
+            "effective_from": row.effective_from,
+            "effective_to": row.effective_to,
+            "is_active": row.is_active,
+        } for row in attributions],
+        "entries": [{
+            "id": row.id,
+            "customer_id": row.customer_id,
+            "customer_name": customer_map.get(row.customer_id).business_name if customer_map.get(row.customer_id) else f"客户 #{row.customer_id}",
+            "engagement_name": engagement_map.get(row.engagement_id).package_name if row.engagement_id and engagement_map.get(row.engagement_id) else None,
+            "entry_type": row.entry_type,
+            "status": row.status,
+            "service_month": row.service_month,
+            "occurred_at": row.occurred_at,
+            "currency": row.currency,
+            "eligible_service_amount": row.eligible_service_amount,
+            "contract_rate": row.contract_rate,
+            "inactivity_months": row.inactivity_months,
+            "activity_multiplier": row.activity_multiplier,
+            "commission_amount": row.commission_amount,
+            "paid_at": row.paid_at,
+            "payout_reference": row.payout_reference,
+        } for row in entries],
+    }
+
+
 @router.get("/options")
 async def options(
     _user: UserResponse = Depends(get_finance_user),
@@ -238,7 +339,7 @@ async def options(
     products = (await db.scalars(select(ProductCatalog).where(ProductCatalog.is_active.is_(True)).order_by(ProductCatalog.name))).all()
     engagements = (await db.scalars(select(CustomerEngagement).order_by(CustomerEngagement.customer_id, CustomerEngagement.id))).all()
     return {
-        "employees": [{"id": row.id, "name": row.name, "employee_code": row.employee_code} for row in employees],
+        "employees": [{"id": row.id, "name": row.name, "employee_code": row.employee_code, "role": row.role} for row in employees],
         "customers": [{"id": row.id, "name": row.business_name, "code": row.customer_code} for row in customers],
         "business_lines": [{"id": row.id, "name": row.name, "code": row.code} for row in lines],
         "products": [{"id": row.id, "name": row.name, "business_line_id": row.business_line_id} for row in products],
@@ -257,8 +358,18 @@ async def create_partner(
         raise HTTPException(status_code=409, detail="公司直营由系统自动建立，不能手工新增")
     if await db.scalar(select(SalesPartner.id).where(SalesPartner.partner_code == payload.partner_code)):
         raise HTTPException(status_code=409, detail="渠道编号已存在")
-    if payload.employee_id and not await db.get(Employees, payload.employee_id):
-        raise HTTPException(status_code=404, detail="关联员工不存在")
+    if payload.employee_id:
+        employee = await db.get(Employees, payload.employee_id)
+        if not employee:
+            raise HTTPException(status_code=404, detail="关联登录账号不存在")
+        duplicate_link = await db.scalar(select(SalesPartner.id).where(
+            SalesPartner.employee_id == payload.employee_id,
+            SalesPartner.partner_type.in_(("agency", "partner")),
+        ))
+        if duplicate_link:
+            raise HTTPException(status_code=409, detail="该登录账号已经关联其他销售合伙人档案")
+        if payload.partner_type in {"agency", "partner"} and employee.role != "sales_partner":
+            raise HTTPException(status_code=409, detail="外部渠道必须关联“销售合伙人”角色的登录账号")
     row = SalesPartner(**payload.model_dump(), status="active", created_by_id=str(user.id), created_by_name=actor_name(user))
     db.add(row)
     await db.commit()

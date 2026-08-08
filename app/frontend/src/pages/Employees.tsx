@@ -181,6 +181,7 @@ export default function Employees() {
         } else {
           toast.success('员工已添加，请为该员工设置登录密码');
         }
+        if (form.role === 'sales_partner') toast.success('销售合伙人账号及分润档案已同时建立');
         logOperation({ actionType: 'other', actionDetail: `新增员工: ${form.name}`, operatorName: op });
       }
       setShowForm(false); loadEmployees();

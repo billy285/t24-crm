@@ -63,6 +63,73 @@ export const standardCustomerPackageLabels: Record<string, string> = {
 
 export const coreCustomerPackageLabels = standardCustomerPackageLabels;
 
+export interface PackageDisplayClassification {
+  currentLabel: string;
+  historicalLabel: string;
+  changed: boolean;
+}
+
+const normalizePackageClassificationText = (value?: string | null) => (
+  (value || '').toLowerCase().replace(/[\s·]/g, '')
+);
+
+const stripTrailingPackageQualifier = (value?: string | null) => (
+  (value || '').replace(/\s*[（(][^（）()]*[）)]\s*$/, '').trim()
+);
+
+/**
+ * Resolve immutable deal/payment package snapshots to the package's current
+ * dictionary label without overwriting the original financial wording.
+ */
+export function classifyPackageDisplay(
+  packageName?: string | null,
+  customerPackageLabels: Record<string, string> = {},
+): PackageDisplayClassification {
+  const historicalTokens = (packageName || '')
+    .split(/[、,，]/)
+    .map(item => item.trim())
+    .filter(Boolean);
+  if (historicalTokens.length === 0) {
+    return { currentLabel: '-', historicalLabel: '', changed: false };
+  }
+
+  const configuredEntries = Object.entries(customerPackageLabels);
+  const legacyKeyByLabel = new Map(
+    Object.entries(standardCustomerPackageLabels).map(([key, label]) => [
+      normalizePackageClassificationText(label),
+      key,
+    ]),
+  );
+
+  const resolveToken = (token: string) => {
+    const normalizedToken = normalizePackageClassificationText(token);
+    const exactMatch = configuredEntries.find(([key, label]) => (
+      normalizePackageClassificationText(key) === normalizedToken
+      || normalizePackageClassificationText(label) === normalizedToken
+    ));
+    if (exactMatch) return exactMatch[1];
+
+    const legacyKey = legacyKeyByLabel.get(normalizedToken);
+    if (legacyKey && customerPackageLabels[legacyKey]) return customerPackageLabels[legacyKey];
+
+    const baseMatches = configuredEntries.filter(([, label]) => (
+      normalizePackageClassificationText(stripTrailingPackageQualifier(label)) === normalizedToken
+    ));
+    if (baseMatches.length === 1) return baseMatches[0][1];
+
+    return token;
+  };
+
+  const currentTokens = Array.from(new Set(historicalTokens.map(resolveToken)));
+  const historicalLabel = historicalTokens.join('、');
+  const currentLabel = currentTokens.join('、');
+  return {
+    currentLabel,
+    historicalLabel,
+    changed: normalizePackageClassificationText(currentLabel) !== normalizePackageClassificationText(historicalLabel),
+  };
+}
+
 export const platformLabels: Record<string, string> = {
   google_business: 'Google商家',
   facebook: 'Facebook',

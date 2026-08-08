@@ -126,6 +126,12 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
             "dataScope": "department",
             "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": False},
         },
+        "sales_partner": {
+            "pages": ["/partner-portal"],
+            "buttons": [],
+            "dataScope": "self",
+            "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": False},
+        },
         "ops": {
             "pages": ["/", "/customers", "/tasks", "/service-board"],
             "buttons": [

@@ -16,7 +16,9 @@ export default function LoginPage() {
 
   const state = location.state as LoginLocationState | null;
   const requestedRedirect = state?.from?.pathname || '/';
-  const redirectTo = role === 'sales' || role === 'sales_manager' ? '/sales-leads' : requestedRedirect;
+  const redirectTo = role === 'sales_partner'
+    ? '/partner-portal'
+    : role === 'sales' || role === 'sales_manager' ? '/sales-leads' : requestedRedirect;
 
   if (loading) {
     return (
@@ -38,9 +40,9 @@ export default function LoginPage() {
     <Login
       onLoginSuccess={async (token, employee) => {
         await login(token, employee);
-        const nextPath = employee?.role === 'sales' || employee?.role === 'sales_manager'
-          ? '/sales-leads'
-          : requestedRedirect;
+        const nextPath = employee?.role === 'sales_partner'
+          ? '/partner-portal'
+          : employee?.role === 'sales' || employee?.role === 'sales_manager' ? '/sales-leads' : requestedRedirect;
         navigate(nextPath, { replace: true });
         window.setTimeout(() => requestBusinessDataRefresh('login'), 300);
       }}

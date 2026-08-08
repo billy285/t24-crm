@@ -12,7 +12,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Combobox } from '@/components/ui/combobox';
 import ExportButton from '@/components/ExportButton';
 import PageLoadState from '@/components/PageLoadState';
-import { useBusinessDicts } from '../lib/dict-config';
+import { classifyPackageDisplay, useBusinessDicts } from '../lib/dict-config';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import {
   computeSubscriptionStatus,
@@ -243,6 +243,8 @@ export default function Sales() {
             currentServiceNames.length > 0
               ? { name: currentServiceNames.join('、'), source: 'subscription' }
               : selectedPackage;
+          const selectedPackageClassification = classifyPackageDisplay(selectedPackage.name, customerPackageLabels);
+          const currentPackageClassification = classifyPackageDisplay(currentPackage.name, customerPackageLabels);
 
           return {
             id: customer.id,
@@ -255,9 +257,11 @@ export default function Sales() {
             country_label: customer.country ? getCountryLabel(customer.country) : '-',
             state: customer.state || '',
             state_label: customer.country && customer.state ? getStateLabel(customer.country, customer.state) : (customer.state || '-'),
-            selected_package_name: selectedPackage.name,
+            selected_package_name: selectedPackageClassification.currentLabel,
+            selected_package_historical_name: selectedPackageClassification.changed ? selectedPackageClassification.historicalLabel : '',
             selected_package_source: selectedPackage.source ? packageSourceLabels[selectedPackage.source] : '',
-            latest_package_name: currentPackage.name,
+            latest_package_name: currentPackageClassification.currentLabel,
+            latest_package_historical_name: currentPackageClassification.changed ? currentPackageClassification.historicalLabel : '',
             latest_package_source: currentPackage.source ? packageSourceLabels[currentPackage.source] : '',
             active_service_count: serviceSubscriptions.length,
             latest_deal_amount: Number(latestDeal?.deal_amount || latestPayment?.amount_due || 0),
@@ -352,8 +356,10 @@ export default function Sales() {
     state: row.state || '',
     country: row.country_label,
     selected_package_name: row.selected_package_name,
+    selected_package_historical_name: row.selected_package_historical_name,
     selected_package_source: row.selected_package_source,
     latest_package_name: row.latest_package_name,
+    latest_package_historical_name: row.latest_package_historical_name,
     latest_package_source: row.latest_package_source,
     latest_deal_amount: row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-',
     latest_deal_date: row.latest_deal_date?.slice(0, 10) || '',
@@ -426,8 +432,10 @@ export default function Sales() {
             { key: 'state', label: '州/省' },
             { key: 'country', label: '国家' },
             { key: 'selected_package_name', label: '成交套餐' },
+            { key: 'selected_package_historical_name', label: '成交历史原名' },
             { key: 'selected_package_source', label: '成交套餐来源' },
             { key: 'latest_package_name', label: '当前服务套餐' },
+            { key: 'latest_package_historical_name', label: '服务历史原名' },
             { key: 'latest_package_source', label: '当前服务套餐来源' },
             { key: 'latest_deal_amount', label: '成交金额' },
             { key: 'latest_deal_date', label: '最近成交时间' },
@@ -528,6 +536,7 @@ export default function Sales() {
                   <div className="mt-3 rounded-lg bg-slate-50 p-3">
                     <p className="text-xs text-slate-400">当前服务{row.active_service_count > 1 ? ` · ${row.active_service_count} 个套餐` : ''}</p>
                     <p className="mt-1 text-sm font-medium text-slate-800">{row.latest_package_name || '-'}</p>
+                    {row.latest_package_historical_name && <p className="mt-1 text-xs text-slate-400">历史：{row.latest_package_historical_name}</p>}
                     <p className="mt-1 text-xs text-slate-500">到期 {row.service_end_date?.slice(0, 10) || '-'} · {row.service_remaining_days == null ? '剩余 -' : row.service_remaining_days <= 0 ? `已超期 ${Math.abs(row.service_remaining_days)} 天` : `剩余 ${row.service_remaining_days} 天`}</p>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -581,10 +590,12 @@ export default function Sales() {
                       </td>
                       <td className="px-4 py-3 text-slate-600">
                         <div className="font-medium text-slate-700">{row.selected_package_name}</div>
+                        {row.selected_package_historical_name && <div className="mt-1 text-xs text-slate-400">历史：{row.selected_package_historical_name}</div>}
                         <div className="text-xs text-slate-400 mt-1">{row.selected_package_source || '-'}</div>
                       </td>
                       <td className="px-4 py-3 text-slate-600">
                         <div>{row.latest_package_name}</div>
+                        {row.latest_package_historical_name && <div className="mt-1 text-xs text-slate-400">历史：{row.latest_package_historical_name}</div>}
                         <div className="text-xs text-slate-400 mt-1">
                           {cycleLabels[row.billing_cycle] || row.billing_cycle || '-'}
                           {row.latest_package_source ? ` · ${row.latest_package_source}` : ''}

@@ -19,6 +19,26 @@ FINANCE_ROLES = {"admin", "super_admin", "finance"}
 ACTIVE_EMPLOYEE_STATUSES = {"active", "probation"}
 
 
+def enforce_sales_partner_route(user: UserResponse, request: Request) -> UserResponse:
+    """Keep external partner accounts on an explicit read-only API allowlist."""
+    if str(user.role or "").lower() != "sales_partner":
+        return user
+    path = request.url.path.rstrip("/") or "/"
+    allowed = (
+        request.method == "GET" and (
+            path == "/api/v1/commissions/my-dashboard"
+            or path == "/api/v1/app-config"
+            or path.startswith("/api/v1/app-config/")
+        )
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sales partner accounts can only access their own partner portal",
+        )
+    return user
+
+
 def employee_status_enforcement_enabled() -> bool:
     """Fail closed by default; tests can explicitly opt out for isolated fixtures."""
     return (os.environ.get("ENFORCE_EMPLOYEE_STATUS", "true").strip().lower() in {"1", "true", "yes", "on"})
@@ -36,6 +56,7 @@ async def get_bearer_token(
 
 
 async def get_current_user(
+    request: Request,
     token: str = Depends(get_bearer_token),
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
@@ -55,21 +76,21 @@ async def get_current_user(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Employee account is inactive",
                 )
-            return UserResponse(
+            return enforce_sales_partner_route(UserResponse(
                 id=str(employee["id"]),
                 email=employee.get("email") or "",
                 name=employee.get("name"),
                 role=employee.get("role") or "user",
                 last_login=None,
-            )
+            ), request)
 
-        return UserResponse(
+        return enforce_sales_partner_route(UserResponse(
             id=str(employee_id),
             email=employee_payload.get("email", ""),
             name=employee_payload.get("name"),
             role=employee_payload.get("role", "user"),
             last_login=None,
-        )
+        ), request)
 
     try:
         payload = decode_access_token(token)
@@ -87,13 +108,13 @@ async def get_current_user(
                 user_hash = hashlib.sha256(str(user_id).encode()).hexdigest()[:8] if user_id else "unknown"
                 logger.debug("Failed to parse last_login for user hash: %s", user_hash)
 
-        return UserResponse(
+        return enforce_sales_partner_route(UserResponse(
             id=user_id,
             email=payload.get("email", ""),
             name=payload.get("name"),
             role=payload.get("role", "user"),
             last_login=last_login,
-        )
+        ), request)
     except (AccessTokenError, AttributeError, ValueError) as exc:
         logger.debug("Legacy token validation unavailable, trying employee token: %s", type(exc).__name__)
 

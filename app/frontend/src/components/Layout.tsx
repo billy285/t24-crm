@@ -36,6 +36,7 @@ const allNavItems = [
   { path: '/management-decisions', label: '经营分类与项目', icon: BriefcaseBusiness },
   { path: '/finance', label: '财务管理', icon: DollarSign },
   { path: '/commissions', label: '渠道与分润', icon: BadgeDollarSign },
+  { path: '/partner-portal', label: '我的客户与分润', icon: BadgeDollarSign },
   { path: '/payroll', label: '工资表', icon: ClipboardList },
   { path: '/tasks', label: '任务协作', icon: ListTodo },
   { path: '/service-board', label: '服务进度看板', icon: ClipboardList },
@@ -54,6 +55,7 @@ const navSections = [
   { label: '客户与成交', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions'] },
   { label: '交付协作', paths: ['/tasks', '/service-board', '/callbacks'] },
   { label: '财务管理', paths: ['/finance', '/commissions', '/payroll'] },
+  { label: '合伙人工作台', paths: ['/partner-portal'] },
   { label: '系统管理', paths: ['/employees', '/settings', '/permissions'] },
 ];
 
@@ -190,6 +192,7 @@ export default function Layout({ children }: LayoutProps) {
   const displayRole = employee
     ? (roleLabels[employee.role] || employee.role)
     : '管理员模式';
+  const homePath = role === 'sales_partner' ? '/partner-portal' : '/';
 
   return (
     <div className="app-shell flex h-screen overflow-hidden">
@@ -202,7 +205,7 @@ export default function Layout({ children }: LayoutProps) {
       <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col text-white transition-[width,transform] duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}`}>
         <div className={`border-b border-white/10 px-4 py-5 ${sidebarCollapsed ? 'lg:px-3' : ''}`}>
           <div className="flex items-center justify-between">
-            <Link to="/" className={`flex min-w-0 items-center gap-3 ${sidebarCollapsed ? 'lg:w-full lg:justify-center' : ''}`} onClick={() => setSidebarOpen(false)}>
+            <Link to={homePath} className={`flex min-w-0 items-center gap-3 ${sidebarCollapsed ? 'lg:w-full lg:justify-center' : ''}`} onClick={() => setSidebarOpen(false)}>
               <img
                 src="/t2-marketing-logo.png?v=t2-20260709b"
                 alt="T24 Marketing"
@@ -336,7 +339,7 @@ export default function Layout({ children }: LayoutProps) {
               </div>
               <h2 className="text-lg font-semibold text-slate-700 mb-2">无权限访问</h2>
               <p className="text-sm text-slate-500 mb-4">您没有访问此页面的权限，请联系管理员。</p>
-              <Button variant="outline" onClick={() => navigate('/')}>返回首页</Button>
+              <Button variant="outline" onClick={() => navigate(homePath)}>返回可用页面</Button>
             </div>
           )}
         </main>
