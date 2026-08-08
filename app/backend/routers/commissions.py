@@ -23,8 +23,10 @@ from models.management_decisions import BusinessLine, CustomerEngagement, Produc
 from schemas.auth import UserResponse
 from services.commissions import (
     DEFAULT_DECAY,
+    apply_bulk_customer_attributions,
     assign_customer_commission_owner,
     commission_data_quality,
+    preview_bulk_customer_attributions,
     scan_commissions,
     transfer_partner_attributions_to_direct,
     utcnow,
@@ -128,6 +130,10 @@ class AttributionInput(BaseModel):
     engagement_id: Optional[int] = Field(None, gt=0)
     effective_from: date
     source_note: Optional[str] = Field(None, max_length=4000)
+
+
+class BulkAttributionApplyInput(BaseModel):
+    preview_token: str = Field(min_length=64, max_length=64)
 
 
 class PartnerStatusInput(BaseModel):
@@ -333,6 +339,37 @@ async def create_agreement(
     await db.refresh(row)
     await scan_commissions(db)
     return _agreement_payload(row)
+
+
+@router.get("/attributions/bulk-preview")
+async def bulk_attribution_preview(
+    _user: UserResponse = Depends(get_finance_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await preview_bulk_customer_attributions(db)
+
+
+@router.post("/attributions/bulk-apply")
+async def bulk_attribution_apply(
+    payload: BulkAttributionApplyInput,
+    user: UserResponse = Depends(get_finance_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await apply_bulk_customer_attributions(
+            db,
+            preview_token=payload.preview_token,
+            actor_id=str(user.id),
+            actor_name=actor_name(user),
+        )
+        await db.commit()
+        return result
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        await db.rollback()
+        raise
 
 
 @router.post("/attributions", status_code=status.HTTP_201_CREATED)

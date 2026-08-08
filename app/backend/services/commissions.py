@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -620,4 +621,211 @@ async def commission_data_quality(db: AsyncSession) -> dict:
         "covered_count": len(covered_keys),
         "examined_count": examined_count,
         "coverage_rate": coverage_rate,
+    }
+
+
+async def preview_bulk_customer_attributions(db: AsyncSession) -> dict:
+    """Build a deterministic, non-mutating plan for historical attribution gaps."""
+    quality = await commission_data_quality(db)
+    attribution_issues = [
+        row for row in quality["issues"]
+        if row["type"] in {"unattributed_payment", "unattributed_engagement"}
+        and row.get("customer_id")
+    ]
+
+    customers = (await db.scalars(select(Customers))).all()
+    customer_map = {row.id: row for row in customers}
+    engagements = (await db.scalars(select(CustomerEngagement))).all()
+    engagement_map = {row.id: row for row in engagements}
+    engagements_by_customer: dict[int, list[CustomerEngagement]] = {}
+    for row in engagements:
+        engagements_by_customer.setdefault(row.customer_id, []).append(row)
+    payments = (await db.scalars(select(Payments))).all()
+    payment_map = {row.id: row for row in payments}
+    partners = (await db.scalars(select(SalesPartner))).all()
+    direct_partner = next((row for row in partners if row.partner_code == DIRECT_PARTNER_CODE), None)
+    employee_partners: dict[int, list[SalesPartner]] = {}
+    for row in partners:
+        if row.partner_type == "employee" and row.employee_id and row.status == "active":
+            employee_partners.setdefault(row.employee_id, []).append(row)
+    active_links = (await db.scalars(select(CustomerCommissionAttribution).where(
+        CustomerCommissionAttribution.attribution_role == "primary",
+        CustomerCommissionAttribution.is_active.is_(True),
+    ))).all()
+
+    targets: dict[tuple[int, int | None], dict] = {}
+    for issue in attribution_issues:
+        customer_id = int(issue["customer_id"])
+        engagement_id = issue.get("engagement_id")
+        key = (customer_id, int(engagement_id) if engagement_id else None)
+        effective_from: date | None = None
+        if issue.get("payment_id"):
+            payment = payment_map.get(int(issue["payment_id"]))
+            occurred_at = payment.payment_date or payment.created_at if payment else None
+            effective_from = _as_date(occurred_at) if occurred_at else None
+        if effective_from is None and engagement_id:
+            engagement = engagement_map.get(int(engagement_id))
+            if engagement and engagement.paid_started_at:
+                effective_from = _as_date(engagement.paid_started_at)
+        customer = customer_map.get(customer_id)
+        if effective_from is None and customer and customer.created_at:
+            effective_from = _as_date(customer.created_at)
+        effective_from = effective_from or utcnow().date()
+
+        target = targets.setdefault(key, {
+            "customer_id": customer_id,
+            "engagement_id": key[1],
+            "effective_from": effective_from,
+            "issue_keys": [],
+        })
+        target["effective_from"] = min(target["effective_from"], effective_from)
+        target["issue_keys"].append(issue["key"])
+
+    items: list[dict] = []
+    for (customer_id, engagement_id), target in targets.items():
+        customer = customer_map.get(customer_id)
+        engagement = engagement_map.get(engagement_id) if engagement_id else None
+        item = {
+            **target,
+            "customer_code": customer.customer_code if customer else None,
+            "customer_name": customer.business_name if customer else f"客户 #{customer_id}",
+            "engagement_name": engagement.package_name if engagement else None,
+            "partner_id": None,
+            "partner_name": None,
+            "partner_type": None,
+            "status": "ready",
+            "basis": "",
+        }
+
+        covering_links = [
+            row for row in active_links
+            if row.customer_id == customer_id and (
+                row.engagement_id == engagement_id
+                or (engagement_id is not None and row.engagement_id is None)
+            )
+        ]
+        if covering_links:
+            item["status"] = "manual_review"
+            item["basis"] = "已有较晚生效的归属，不能自动回溯旧收款日期"
+            items.append(item)
+            continue
+
+        if engagement_id is None:
+            project_links = [row for row in active_links if row.customer_id == customer_id and row.engagement_id is not None]
+            if project_links:
+                item["status"] = "manual_review"
+                item["basis"] = "客户已有项目级归属，但旧收款未指定项目"
+                items.append(item)
+                continue
+
+        employee_id = engagement.sales_employee_id if engagement and engagement.sales_employee_id else (
+            customer.sales_employee_id if customer else None
+        )
+        if engagement_id is None:
+            project_employee_ids = {
+                row.sales_employee_id for row in engagements_by_customer.get(customer_id, [])
+                if row.sales_employee_id
+            }
+            if employee_id and any(row_id != employee_id for row_id in project_employee_ids):
+                item["status"] = "manual_review"
+                item["basis"] = "客户下存在不同项目销售负责人，旧收款未指定项目"
+                items.append(item)
+                continue
+            if not employee_id and len(project_employee_ids) == 1:
+                employee_id = next(iter(project_employee_ids))
+            elif not employee_id and len(project_employee_ids) > 1:
+                item["status"] = "manual_review"
+                item["basis"] = "客户下存在多个项目销售负责人，旧收款未指定项目"
+                items.append(item)
+                continue
+
+        matches = employee_partners.get(employee_id, []) if employee_id else []
+        if len(matches) > 1:
+            item["status"] = "manual_review"
+            item["basis"] = "同一员工匹配到多个合作中的内部销售渠道"
+        elif matches:
+            partner = matches[0]
+            item.update({
+                "partner_id": partner.id,
+                "partner_name": partner.name,
+                "partner_type": partner.partner_type,
+                "basis": f"批量自动补齐：匹配客户/项目销售员工 #{employee_id}",
+            })
+        else:
+            item.update({
+                "partner_id": direct_partner.id if direct_partner else None,
+                "partner_name": DIRECT_PARTNER_NAME,
+                "partner_type": "direct",
+                "basis": "批量自动补齐：没有可确认的合作渠道，归公司直营",
+            })
+        items.append(item)
+
+    items.sort(key=lambda row: (row["status"] != "ready", row["customer_name"], row["engagement_id"] or 0))
+    fingerprint_rows = [{
+        "customer_id": row["customer_id"],
+        "engagement_id": row["engagement_id"],
+        "effective_from": row["effective_from"].isoformat(),
+        "partner_id": row["partner_id"],
+        "partner_type": row["partner_type"],
+        "status": row["status"],
+        "basis": row["basis"],
+    } for row in items]
+    preview_token = hashlib.sha256(
+        json.dumps(fingerprint_rows, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    ready = [row for row in items if row["status"] == "ready"]
+    return {
+        "preview_token": preview_token,
+        "source_issue_count": len(attribution_issues),
+        "target_count": len(items),
+        "ready_count": len(ready),
+        "employee_count": sum(row["partner_type"] == "employee" for row in ready),
+        "direct_count": sum(row["partner_type"] == "direct" for row in ready),
+        "manual_review_count": sum(row["status"] == "manual_review" for row in items),
+        "items": items,
+    }
+
+
+async def apply_bulk_customer_attributions(
+    db: AsyncSession,
+    *,
+    preview_token: str,
+    actor_id: str | None = None,
+    actor_name: str | None = None,
+) -> dict:
+    """Apply exactly the last previewed ready rows; never overwrite active links."""
+    preview = await preview_bulk_customer_attributions(db)
+    if preview["preview_token"] != preview_token:
+        raise ValueError("归属数据在预览后发生变化，请重新预览再确认")
+
+    ready = [row for row in preview["items"] if row["status"] == "ready"]
+    direct = None
+    assigned = 0
+    for item in ready:
+        partner_id = item["partner_id"]
+        if item["partner_type"] == "direct":
+            if direct is None:
+                direct = await ensure_company_direct_partner(
+                    db, actor_id=actor_id, actor_name=actor_name
+                )
+            partner_id = direct.id
+        await assign_customer_commission_owner(
+            db,
+            customer_id=item["customer_id"],
+            engagement_id=item["engagement_id"],
+            partner_id=partner_id,
+            effective_from=item["effective_from"],
+            source_note=item["basis"],
+            actor_id=actor_id,
+            actor_name=actor_name,
+        )
+        assigned += 1
+
+    scan = await scan_commissions(db, commit=False)
+    return {
+        "assigned_count": assigned,
+        "employee_count": preview["employee_count"],
+        "direct_count": preview["direct_count"],
+        "manual_review_count": preview["manual_review_count"],
+        "entries_created": scan["entries_created"],
     }

@@ -22,8 +22,10 @@ from routers.commissions import EntryTransitionInput, transition_entry
 from schemas.auth import UserResponse
 from services.commissions import (
     DIRECT_PARTNER_CODE,
+    apply_bulk_customer_attributions,
     auto_assign_new_customer,
     commission_data_quality,
+    preview_bulk_customer_attributions,
     scan_commissions,
     transfer_partner_attributions_to_direct,
 )
@@ -214,5 +216,74 @@ async def test_commission_data_quality_finds_unassigned_receipts_and_missing_agr
         assert "payment_without_agreement" in issue_types
         assert "partner_without_agreement" in issue_types
         assert quality["coverage_rate"] == 0.0
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_bulk_attribution_preview_and_apply_are_safe_and_idempotent():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    await _create_tables(engine)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        db.add_all([
+            Employees(id=7, user_id="employee-7", role="sales", employee_code="E007", name="Internal Sales", status="active"),
+            Customers(id=1, customer_code="C001", business_name="Employee Customer", contact_name="Owner", phone="1", sales_employee_id=7),
+            Customers(id=2, customer_code="C002", business_name="Direct Customer", contact_name="Owner", phone="2"),
+            Customers(id=3, customer_code="C003", business_name="Later Owner", contact_name="Owner", phone="3", sales_employee_id=7),
+            SalesPartner(id=1, partner_code="EMP-007", name="Internal Sales", partner_type="employee", employee_id=7, status="active", joined_at=date(2026, 1, 1)),
+            CustomerCommissionAttribution(id=1, customer_id=3, partner_id=1, attribution_role="primary", effective_from=date(2026, 5, 1), is_active=True),
+            _payment(1, 1, datetime(2026, 1, 5, tzinfo=timezone.utc)),
+            _payment(2, 2, datetime(2026, 2, 5, tzinfo=timezone.utc)),
+            _payment(3, 3, datetime(2026, 3, 5, tzinfo=timezone.utc)),
+        ])
+        await db.commit()
+
+        preview = await preview_bulk_customer_attributions(db)
+        assert preview["source_issue_count"] == 3
+        assert preview["target_count"] == 3
+        assert preview["ready_count"] == 2
+        assert preview["employee_count"] == 1
+        assert preview["direct_count"] == 1
+        assert preview["manual_review_count"] == 1
+        employee_item = next(row for row in preview["items"] if row["customer_id"] == 1)
+        direct_item = next(row for row in preview["items"] if row["customer_id"] == 2)
+        review_item = next(row for row in preview["items"] if row["customer_id"] == 3)
+        assert employee_item["partner_id"] == 1
+        assert employee_item["effective_from"] == date(2026, 1, 5)
+        assert direct_item["partner_type"] == "direct"
+        assert review_item["status"] == "manual_review"
+
+        applied = await apply_bulk_customer_attributions(
+            db,
+            preview_token=preview["preview_token"],
+            actor_id="1",
+            actor_name="Admin",
+        )
+        await db.commit()
+        assert applied["assigned_count"] == 2
+        assert applied["employee_count"] == 1
+        assert applied["direct_count"] == 1
+
+        links = (await db.scalars(select(CustomerCommissionAttribution).order_by(
+            CustomerCommissionAttribution.customer_id,
+            CustomerCommissionAttribution.id,
+        ))).all()
+        assert len(links) == 3
+        assert next(row for row in links if row.customer_id == 1).partner_id == 1
+        direct_partner = await db.scalar(select(SalesPartner).where(SalesPartner.partner_code == DIRECT_PARTNER_CODE))
+        assert next(row for row in links if row.customer_id == 2).partner_id == direct_partner.id
+
+        refreshed = await preview_bulk_customer_attributions(db)
+        assert refreshed["ready_count"] == 0
+        assert refreshed["manual_review_count"] == 1
+        with pytest.raises(ValueError, match="重新预览"):
+            await apply_bulk_customer_attributions(
+                db,
+                preview_token=preview["preview_token"],
+                actor_id="1",
+                actor_name="Admin",
+            )
 
     await engine.dispose()
