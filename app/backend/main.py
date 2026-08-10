@@ -146,8 +146,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=6)
 
@@ -162,6 +162,12 @@ NO_CACHE_HEADERS = {
     "Expires": "0",
 }
 SLOW_REQUEST_SECONDS = float(os.environ.get("SLOW_REQUEST_SECONDS", "1.0"))
+CONTENT_SECURITY_POLICY = os.environ.get(
+    "CONTENT_SECURITY_POLICY",
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:; "
+    "frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
+)
 
 PHONE_SALES_ROLES = {"sales", "sales_manager"}
 PHONE_SALES_ALLOWED_API_PREFIXES = (
@@ -216,6 +222,7 @@ async def add_security_and_observability_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=(self)"
+    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     response.headers["Server-Timing"] = f"app;dur={elapsed * 1000:.1f}"
     if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"

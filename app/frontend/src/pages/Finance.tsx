@@ -685,6 +685,8 @@ export default function Finance() {
   const [refunds, setRefunds] = useState<any[]>([]);
   const [adFundSettlements, setAdFundSettlements] = useState<any[]>([]);
   const [commissionEntries, setCommissionEntries] = useState<any[]>([]);
+  const [auditedFinanceRows, setAuditedFinanceRows] = useState<any[] | null>(null);
+  const [auditedFinanceLoading, setAuditedFinanceLoading] = useState(false);
   const [deductionRates, setDeductionRates] = useState<Record<string, number>>({});
   const [exportConfig, setExportConfig] = useState<Record<string, any>>({});
   const [closingMonth, setClosingMonth] = useState(() => getTodayDateInput().slice(0, 7));
@@ -812,6 +814,32 @@ export default function Finance() {
     () => getDateFilterRange(dateFilterMode, filterStartDate, filterEndDate, dateAnchor),
     [dateFilterMode, filterStartDate, filterEndDate, dateAnchor],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeDateRange?.start || !activeDateRange?.end) {
+      setAuditedFinanceRows(null);
+      return () => { cancelled = true; };
+    }
+    setAuditedFinanceLoading(true);
+    const params = new URLSearchParams({
+      start: activeDateRange.start,
+      end: activeDateRange.end,
+      currency: 'USD',
+    });
+    void invokeWithAuth({ url: `/api/v1/reports/profit-monthly.json?${params.toString()}`, method: 'GET' })
+      .then(response => {
+        if (!cancelled) setAuditedFinanceRows(Array.isArray(response.data) ? response.data : []);
+      })
+      .catch(error => {
+        console.warn('load audited finance summary failed; using detailed local records', error);
+        if (!cancelled) setAuditedFinanceRows(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAuditedFinanceLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeDateRange?.end, activeDateRange?.start]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setDateAnchor(new Date()), 60_000);
@@ -1466,11 +1494,25 @@ export default function Finance() {
       cost: roundMoney(acc.cost + bucket.cost),
     }), createEmptyMonthlyFinanceBucket())
   ), [summaryFinanceBuckets]);
-  const summaryProfitUsd = useMemo(() => roundMoney(
+  const auditedSummary = useMemo(() => {
+    if (!auditedFinanceRows) return null;
+    return auditedFinanceRows.reduce((acc, row) => ({
+      revenue: roundMoney(acc.revenue + toMoneyNumber(row.revenue_gross)),
+      grossReceipts: roundMoney(acc.grossReceipts + toMoneyNumber(row.gross_receipts)),
+      refunds: roundMoney(acc.refunds + toMoneyNumber(row.refund_amount)),
+      netReceipts: roundMoney(acc.netReceipts + toMoneyNumber(row.net_receipts)),
+      adsRevenue: roundMoney(acc.adsRevenue + toMoneyNumber(row.ads_client_funds)),
+      stripePlatformFee: roundMoney(acc.stripePlatformFee + toMoneyNumber(row.stripe_platform_fee)),
+      channelCommissionUsd: roundMoney(acc.channelCommissionUsd + toMoneyNumber(row.channel_commission)),
+      cost: roundMoney(acc.cost + toMoneyNumber(row.cost)),
+      profit: roundMoney(acc.profit + toMoneyNumber(row.profit)),
+    }), { revenue: 0, grossReceipts: 0, refunds: 0, netReceipts: 0, adsRevenue: 0, stripePlatformFee: 0, channelCommissionUsd: 0, cost: 0, profit: 0 });
+  }, [auditedFinanceRows]);
+  const summaryProfitUsd = useMemo(() => auditedSummary?.profit ?? roundMoney(
     Object.entries(summaryFinanceBuckets).reduce((sum, [monthKey, bucket]) => (
       sum + calculateMonthlyProfit(bucket, getDeductionRate(deductionRates, monthKey)).profit
     ), 0),
-  ), [deductionRates, summaryFinanceBuckets]);
+  ), [auditedSummary, deductionRates, summaryFinanceBuckets]);
   const summaryCompanyExpenseCny = useMemo(() => roundMoney(
     summaryCompanyExpenses
       .filter(e => getCompanyExpenseCurrency(e) === 'CNY')
@@ -1487,7 +1529,8 @@ export default function Finance() {
           : '本月';
   const totalOutstanding = payments.reduce((s, p) => s + (p.outstanding_amount || 0), 0);
   const renewalPendingSubs = subscriptions.filter(s => s.status === 'renewal_pending').length;
-  const expiringSubs = subscriptions.filter(s => s.status === 'expiring_soon' || s.status === 'expired' || s.status === 'renewal_pending');
+  const expiringSubs = subscriptions.filter(s => s.status === 'expiring_soon' || s.status === 'expired');
+  const renewalAttentionCount = renewalPendingSubs + expiringSubs.length;
   const activeSubs = subscriptions.filter(s => s.status === 'active').length;
 
   // Expense summaries
@@ -3577,8 +3620,8 @@ export default function Finance() {
                 <p className="text-xs font-medium text-slate-500">{summaryPeriodLabel}服务收入</p>
                 <ArrowUpRight className="h-4 w-4 text-emerald-600" />
               </div>
-              <p className="mt-2 text-xl font-bold text-emerald-700">{fmt(summaryFinance.revenue)}</p>
-              <p className="mt-1 text-[11px] text-slate-400">净收款 {fmt(summaryFinance.netReceipts)} · 投流资金 {fmt(summaryFinance.adsRevenue)}</p>
+              <p className="mt-2 text-xl font-bold text-emerald-700">{fmt(auditedSummary?.revenue ?? summaryFinance.revenue)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">净收款 {fmt(auditedSummary?.netReceipts ?? summaryFinance.netReceipts)} · 投流资金 {fmt(auditedSummary?.adsRevenue ?? summaryFinance.adsRevenue)}</p>
             </CardContent>
           </Card>
 
@@ -3589,7 +3632,7 @@ export default function Finance() {
                 <Wallet className={summaryProfitUsd >= 0 ? 'h-4 w-4 text-blue-600' : 'h-4 w-4 text-red-600'} />
               </div>
               <p className={summaryProfitUsd >= 0 ? 'mt-2 text-xl font-bold text-blue-700' : 'mt-2 text-xl font-bold text-red-700'}>{fmt(summaryProfitUsd)}</p>
-              <p className="mt-1 text-[11px] text-slate-400">利润率 {(ownerOverview.profitRate * 100).toFixed(1)}%</p>
+              <p className="mt-1 text-[11px] text-slate-400">{auditedFinanceLoading ? '正在核对月度审计口径…' : `利润率 ${((summaryProfitUsd / Math.max(auditedSummary?.revenue ?? summaryFinance.revenue, 1)) * 100).toFixed(1)}% · 月度统一口径`}</p>
             </CardContent>
           </Card>
 
@@ -3611,7 +3654,7 @@ export default function Finance() {
                 <ArrowDownRight className="h-4 w-4 text-amber-500" />
               </div>
               <p className="mt-2 text-xl font-bold text-amber-600">{fmt(summaryFinance.customerCost)}</p>
-              <p className="mt-1 text-[11px] text-slate-400">Stripe {fmt(summaryFinance.stripePlatformFee)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">Stripe 净手续费 {fmt(auditedSummary?.stripePlatformFee ?? summaryFinance.stripePlatformFee)}{(auditedSummary?.stripePlatformFee ?? summaryFinance.stripePlatformFee) < 0 ? '（含手续费返还）' : ''}</p>
             </CardContent>
           </Card>
 
@@ -3626,14 +3669,14 @@ export default function Finance() {
             </CardContent>
           </Card>
 
-          <Card className={renewalPendingSubs + expiringSubs.length > 0 ? 'border-cyan-100 bg-cyan-50/50 shadow-sm' : 'border-slate-200 shadow-sm'}>
+          <Card className={renewalAttentionCount > 0 ? 'border-cyan-100 bg-cyan-50/50 shadow-sm' : 'border-slate-200 shadow-sm'}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-medium text-slate-500">续费提醒</p>
                 <Clock className="h-4 w-4 text-cyan-600" />
               </div>
-              <p className="mt-2 text-xl font-bold text-cyan-700">{renewalPendingSubs + expiringSubs.length}</p>
-              <p className="mt-1 text-[11px] text-slate-400">待确认 {renewalPendingSubs} · 到期 {expiringSubs.length} · 活跃 {activeSubs}</p>
+              <p className="mt-2 text-xl font-bold text-cyan-700">{renewalAttentionCount}</p>
+              <p className="mt-1 text-[11px] text-slate-400">仅统计需处理：待确认 {renewalPendingSubs} · 到期 {expiringSubs.length}</p>
             </CardContent>
           </Card>
         </div>
@@ -4542,7 +4585,7 @@ export default function Finance() {
                     <p className="mt-1 text-xs text-slate-500">
                       先处理待确认扣款，再处理即将到期；停止合作或套餐变更只关闭旧套餐的未来续费，不影响历史财务。
                     </p>
-                    <p className="mt-2 text-[11px] text-slate-400">每张卡片只展示当前续费所需信息，历史收款记录保持不变。</p>
+                    <p className="mt-2 text-[11px] text-slate-400">顶部“续费提醒”只统计需要处理的套餐；这里的总数包含筛选范围内正常、手动收款和已停止的套餐，二者口径不同。历史收款记录保持不变。</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-3 xl:min-w-[610px] xl:grid-cols-5">
                     {subscriptionWorkbenchGroups.map(group => {

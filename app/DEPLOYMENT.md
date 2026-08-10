@@ -106,6 +106,22 @@ crontab -e
 15 3 * * * APP_DIR=/opt/t24-crm /opt/t24-crm/deploy/backup-sqlite.sh >> /opt/t24-crm/backups/backup.log 2>&1
 ```
 
+Backups are only trustworthy after a restore test. Run the non-destructive
+verification after installation and at least weekly:
+
+```bash
+chmod +x deploy/verify-backup-restore.sh
+APP_DIR=/opt/t24-crm ./deploy/verify-backup-restore.sh
+```
+
+The verification checks the SHA-256 file, gzip archive, SQLite integrity and
+required business tables inside a temporary directory. It never overwrites the
+production database.
+
+Keep a second encrypted copy outside this server (for example OSS with versioning
+and lifecycle retention). A backup stored only on the application server does
+not protect against disk loss, accidental server deletion or account compromise.
+
 ## 7. Update The App Later
 
 ```bash
@@ -121,5 +137,7 @@ docker compose --env-file .env.production up -d --build
 - Admin password is strong.
 - `ENABLE_DEFAULT_EMPLOYEE_ADMIN=false` after initial setup.
 - Database backup runs daily.
+- Latest backup passes `verify-backup-restore.sh` every week.
+- An encrypted, versioned backup copy exists outside the application server.
 - `/health` returns `{"status":"healthy"}`.
 - Only ports `80`, `443`, and SSH are open.

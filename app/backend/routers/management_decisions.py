@@ -74,6 +74,10 @@ class EngagementStatusRequest(BaseModel):
     note: Optional[str] = Field(None, max_length=1000)
 
 
+class AutomationIssueTaskBatchRequest(BaseModel):
+    issue_ids: list[int] = Field(min_length=1, max_length=200)
+
+
 def _business_line_payload(row: BusinessLine) -> dict:
     return {
         "id": row.id,
@@ -265,6 +269,24 @@ async def create_automation_issue_task(
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/automation/issues/tasks-batch")
+async def create_automation_issue_tasks_batch(
+    request: AutomationIssueTaskBatchRequest,
+    current_user: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create idempotent tracked tasks for the currently selected issues."""
+    created: list[dict] = []
+    errors: list[dict] = []
+    for issue_id in dict.fromkeys(request.issue_ids):
+        try:
+            task = await create_task_for_issue(db, issue_id)
+            created.append({"issue_id": issue_id, "task_id": task.id, "status": task.status})
+        except ValueError as exc:
+            errors.append({"issue_id": issue_id, "detail": str(exc)})
+    return {"processed": len(created), "errors": errors}
 
 
 @router.post("/classification-review/customers/{customer_id}")

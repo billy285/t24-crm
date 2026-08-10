@@ -1,7 +1,8 @@
 import logging
+import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,7 @@ from services.emp_auth import (
     decode_access_token,
     verify_password,
 )
+from services.login_rate_limit import login_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -75,17 +77,39 @@ async def _get_active_employee(payload: dict, db: AsyncSession) -> dict:
 @router.post("/login", response_model=LoginResponse)
 async def employee_login(
     data: LoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Employee login with email and password."""
+    client_ip = request.client.host if request.client else "unknown"
+    if os.getenv("TRUST_PROXY_HEADERS", "").strip().lower() in {"1", "true", "yes", "on"}:
+        forwarded_ip = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+        if forwarded_ip:
+            client_ip = forwarded_ip
+    rate_limit_keys = login_rate_limiter.keys(client_ip, data.email)
+    retry_after = login_rate_limiter.retry_after(rate_limit_keys)
+    if retry_after:
+        raise HTTPException(
+            status_code=429,
+            detail="登录尝试过多，请稍后再试",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     service = EmpAuthService(db)
     emp = await service.authenticate(data.email, data.password)
 
     if not emp:
+        retry_after = login_rate_limiter.record_failure(rate_limit_keys)
+        headers = {"Retry-After": str(retry_after)} if retry_after else None
+        if retry_after:
+            raise HTTPException(status_code=429, detail="登录尝试过多，请稍后再试", headers=headers)
         raise HTTPException(status_code=401, detail="邮箱或密码错误")
 
     if emp["status"] not in ("active", "probation"):
+        login_rate_limiter.record_failure(rate_limit_keys)
         raise HTTPException(status_code=403, detail="账号已被停用，请联系管理员")
+
+    login_rate_limiter.clear(rate_limit_keys)
 
     token = create_access_token({
         "emp_id": emp["id"],
@@ -141,8 +165,8 @@ async def change_password(
     if not emp["password"] or not verify_password(data.current_password, emp["password"]):
         raise HTTPException(status_code=400, detail="当前密码错误")
 
-    if len(data.new_password) < 6:
-        raise HTTPException(status_code=400, detail="新密码至少6个字符")
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=400, detail="新密码至少8个字符")
 
     success = await service.update_password(emp_id, data.new_password)
     if not success:
@@ -164,8 +188,8 @@ async def set_employee_password(
     if caller_role not in ("admin", "super_admin"):
         raise HTTPException(status_code=403, detail="无权限操作")
 
-    if len(data.new_password) < 6:
-        raise HTTPException(status_code=400, detail="密码至少6个字符")
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=400, detail="密码至少8个字符")
 
     service = EmpAuthService(db)
     success = await service.update_password(data.employee_id, data.new_password)

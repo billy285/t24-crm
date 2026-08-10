@@ -1,5 +1,6 @@
 import logging
 import os
+import hashlib
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
@@ -28,6 +29,12 @@ def _is_truthy_env(name: str) -> bool:
 def _is_production_env() -> bool:
     raw = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("ENV") or "").strip().lower()
     return raw in {"prod", "production"}
+
+
+def _email_log_token(email: str) -> str:
+    """Return a stable non-PII token for authentication audit logs."""
+    normalized = (email or "").strip().lower()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
 
 
 def validate_employee_auth_security_config() -> None:
@@ -87,11 +94,16 @@ class EmpAuthService:
         self.db = db
 
     async def ensure_password_column(self) -> None:
-        """Ensure employee auth schema includes the password column."""
+        """Verify auth schema; only allow an explicit local repair."""
         try:
             await self.db.execute(text("SELECT password FROM employees LIMIT 1"))
-        except Exception:
-            logger.warning("employees.password column missing, applying local schema repair")
+        except Exception as exc:
+            await self.db.rollback()
+            if _is_production_env() or not _is_truthy_env("ALLOW_RUNTIME_SCHEMA_REPAIR"):
+                raise RuntimeError(
+                    "employees.password column is missing; run the database migration before starting the service"
+                ) from exc
+            logger.warning("employees.password column missing, applying explicitly enabled local schema repair")
             await self.db.execute(text("ALTER TABLE employees ADD COLUMN password VARCHAR"))
             await self.db.commit()
 
@@ -102,15 +114,17 @@ class EmpAuthService:
     async def authenticate(self, email: str, password: str) -> Optional[Dict[str, Any]]:
         """Authenticate an employee by email and password. Returns dict with employee data."""
         await self.ensure_password_column()
+        normalized_email = (email or "").strip().lower()
+        email_token = _email_log_token(normalized_email)
         try:
             result = await self.db.execute(
                 text("SELECT id, user_id, name, role, phone, email, status, password FROM employees WHERE email = :email"),
-                {"email": email},
+                {"email": normalized_email},
             )
             row = result.fetchone()
 
             if not row:
-                logger.warning(f"Employee not found with email: {email}")
+                logger.warning("Employee login account not found token=%s", email_token)
                 return None
 
             emp_data = {
@@ -125,11 +139,11 @@ class EmpAuthService:
             }
 
             if not emp_data["password"]:
-                logger.warning(f"Employee {email} has no password set")
+                logger.warning("Employee login has no password token=%s", email_token)
                 return None
 
             if not verify_password(password, emp_data["password"]):
-                logger.warning(f"Invalid password for employee: {email}")
+                logger.warning("Invalid employee password token=%s", email_token)
                 return None
 
             return emp_data

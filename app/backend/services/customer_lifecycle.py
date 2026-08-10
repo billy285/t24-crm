@@ -12,12 +12,15 @@ from models.customer_lifecycles import CustomerLifecycleCycle, CustomerLifecycle
 from models.customers import Customers
 from models.management_decisions import CustomerEngagement, EngagementLifecycleEvent
 from models.payments import Payments
+from models.service_progresses import Service_progresses
+from models.service_tasks import Service_tasks
 from models.subscriptions import Subscriptions
 
 
 ACTIVE_LIFECYCLE_STATUSES = {"active", "paused", "pending_stop"}
 ACTIVE_ENGAGEMENT_STATUSES = {"pending_setup", "trial", "active_paid", "at_risk", "paused", "pending_stop", "reactivated"}
 CLOSABLE_SUBSCRIPTION_STATUSES = {"active", "expiring_soon", "renewal_pending", "paused"}
+OPEN_SERVICE_TASK_STATUSES = {"pending", "in_progress", "waiting_client", "internal_waiting", "delayed"}
 STOP_REASONS = {
     "performance": "效果不满意",
     "price": "价格问题",
@@ -91,7 +94,7 @@ async def close_related_customer_records(
     actor_name: str,
     lifecycle_cycle_id: int,
 ) -> dict[str, int]:
-    """Stop active projects and renewal plans without deleting commercial history."""
+    """Stop active projects, renewals and delivery work without deleting history."""
     effective_at = ensure_aware(effective_at)
     now = utcnow()
     projects = list((await db.execute(
@@ -140,9 +143,45 @@ async def close_related_customer_records(
         subscription.updated_at = now
         stopped_subscription_count += 1
 
+    # Delivery rows are historical operating records, so keep them and mark
+    # them ended instead of deleting them. This prevents a lost customer from
+    # continuing to appear as an active onboarding/operations client.
+    progresses = list((await db.execute(
+        select(Service_progresses).where(Service_progresses.customer_id == customer_id)
+    )).scalars().all())
+    ended_service_count = 0
+    for progress in progresses:
+        if str(progress.service_stage or "").lower() == "ended":
+            continue
+        progress.service_stage = "ended"
+        progress.progress_percent = 100
+        progress.service_end_date = effective_at.date().isoformat()
+        progress.last_update_time = now.isoformat()
+        progress.last_update_person = actor_name
+        progress.last_work_summary = "客户停止合作，服务记录已自动归档"
+        progress.issue_resolved = True
+        progress.issue_resolved_date = effective_at.date().isoformat()
+        ended_service_count += 1
+
+    service_tasks = list((await db.execute(
+        select(Service_tasks).where(Service_tasks.customer_id == customer_id)
+    )).scalars().all())
+    cancelled_service_task_count = 0
+    for task in service_tasks:
+        if str(task.status or "").lower() not in OPEN_SERVICE_TASK_STATUSES:
+            continue
+        task.status = "cancelled"
+        task.completed_date = effective_at.date().isoformat()
+        task.completed_at = now.isoformat()
+        task.completed_by = actor_name
+        task.completion_note = "客户停止合作，未完成交付任务自动取消并保留历史"
+        cancelled_service_task_count += 1
+
     return {
         "stopped_projects": stopped_project_count,
         "stopped_subscriptions": stopped_subscription_count,
+        "ended_services": ended_service_count,
+        "cancelled_service_tasks": cancelled_service_task_count,
     }
 
 
@@ -319,6 +358,28 @@ async def lifecycle_overview(db: AsyncSession, start_date: datetime, as_of: date
         await db.execute(select(Payments).where(Payments.id.in_(first_payment_ids)))
     ).scalars().all() if first_payment_ids else []
     first_payment_map = {int(payment.id): payment for payment in first_payments}
+    projects = (await db.execute(select(CustomerEngagement))).scalars().all()
+    subscriptions = (await db.execute(select(Subscriptions))).scalars().all()
+    service_progresses = (await db.execute(select(Service_progresses))).scalars().all()
+    service_tasks = (await db.execute(select(Service_tasks))).scalars().all()
+    active_projects_by_customer = Counter(
+        int(row.customer_id) for row in projects if row.status in ACTIVE_ENGAGEMENT_STATUSES
+    )
+    active_subscriptions_by_customer = Counter()
+    for row in subscriptions:
+        status = str(row.status or "").lower()
+        if status in CLOSABLE_SUBSCRIPTION_STATUSES or bool(row.auto_renew) or bool(row.next_payment_date):
+            active_subscriptions_by_customer[int(row.customer_id)] += 1
+    active_services_by_customer = Counter(
+        int(row.customer_id)
+        for row in service_progresses
+        if str(row.service_stage or "").lower() not in {"ended", "paused"}
+    )
+    active_service_tasks_by_customer = Counter(
+        int(row.customer_id)
+        for row in service_tasks
+        if str(row.status or "").lower() in OPEN_SERVICE_TASK_STATUSES
+    )
 
     in_window = [
         cycle for cycle in cycles
@@ -370,6 +431,13 @@ async def lifecycle_overview(db: AsyncSession, start_date: datetime, as_of: date
                 or ensure_aware(source_payment.payment_date) != ensure_aware(cycle.started_at)
             )
         )
+        closure_counts = {
+            "projects": active_projects_by_customer.get(customer_id, 0),
+            "subscriptions": active_subscriptions_by_customer.get(customer_id, 0),
+            "services": active_services_by_customer.get(customer_id, 0),
+            "service_tasks": active_service_tasks_by_customer.get(customer_id, 0),
+        }
+        closure_needed = cycle.status == "stopped" and any(closure_counts.values())
         customer_rows.append({
             **_cycle_dict(cycle),
             "business_name": customer.business_name,
@@ -378,8 +446,11 @@ async def lifecycle_overview(db: AsyncSession, start_date: datetime, as_of: date
             "sales_person": customer.sales_person,
             "customer_status": customer.status,
             "cooperation_months": months_between(cycle.started_at, duration_end),
+            "closure_needed": closure_needed,
+            "closure_open_counts": closure_counts,
             "needs_review": (
                 cycle.status == "pending_stop"
+                or closure_needed
                 or payment_source_mismatch
                 or (not cycle.first_payment_id and not cycle.start_locked)
                 or bool(cycle.ended_at and ensure_aware(cycle.ended_at) < ensure_aware(cycle.started_at))

@@ -126,6 +126,7 @@ export default function Dashboard() {
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary | null>(null);
   const [ownerCockpit, setOwnerCockpit] = useState<OwnerCockpit | null>(null);
   const [ownerCockpitLoading, setOwnerCockpitLoading] = useState(false);
+  const [ownerCockpitAttempted, setOwnerCockpitAttempted] = useState(false);
   const now = new Date();
   const [lbYear, setLbYear] = useState<string>(String(now.getFullYear()));
   const [lbMonth, setLbMonth] = useState<string>(String(now.getMonth() + 1));
@@ -300,6 +301,7 @@ export default function Dashboard() {
       setOwnerCockpit(null);
     } finally {
       setOwnerCockpitLoading(false);
+      setOwnerCockpitAttempted(true);
     }
   };
 
@@ -560,10 +562,13 @@ export default function Dashboard() {
     return Object.values(salesMap).sort((a, b) => b.amount - a.amount).slice(0, 5);
   }, [data.deals, lbYear, lbMonth]);
 
-  if (loading) {
+  if (isAdm && !ownerCockpitAttempted) {
+    return <PageLoadState loading message="正在生成老板经营摘要…" />;
+  }
+  if (!isAdm && loading) {
     return <PageLoadState loading message="正在汇总客户、任务与财务数据…" />;
   }
-  if (loadError && !hasLoaded) {
+  if (loadError && !hasLoaded && !ownerCockpit) {
     return <PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadDashboard(); }} />;
   }
 
@@ -646,7 +651,7 @@ export default function Dashboard() {
       { label: `${ownerCockpit.period.month} 经营利润 USD`, value: `$${usd.profit.toLocaleString()}`, helper: `服务收入 $${usd.service_revenue.toLocaleString()} · 渠道佣金 $${Number(usd.channel_commission || 0).toLocaleString()}`, icon: CircleDollarSign, tone: usd.profit < 0 ? 'text-rose-700 bg-rose-50' : 'text-emerald-700 bg-emerald-50', link: '/finance?tab=monthly_detail' },
       { label: '本月净收款 USD', value: `$${usd.net_receipts.toLocaleString()}`, helper: `客户投流资金 $${usd.ads_client_funds.toLocaleString()}（不计收入）`, icon: Banknote, tone: 'text-blue-700 bg-blue-50', link: '/finance?tab=income' },
       { label: '当前合作项目', value: ownerCockpit.customers.active_projects, helper: `${ownerCockpit.customers.at_risk_projects} 个风险 · 本月停止 ${ownerCockpit.customers.stopped_this_month}`, icon: Layers3, tone: 'text-violet-700 bg-violet-50', link: '/customer-lifecycle' },
-      { label: '系统推动中的任务', value: ownerCockpit.execution.system_tasks, helper: `${ownerCockpit.execution.overdue_tasks} 个全部任务已逾期`, icon: Workflow, tone: 'text-orange-700 bg-orange-50', link: '/tasks?source=system' },
+      { label: '系统推动中的任务', value: ownerCockpit.execution.system_tasks, helper: `全部任务中 ${ownerCockpit.execution.overdue_tasks} 个已逾期`, icon: Workflow, tone: 'text-orange-700 bg-orange-50', link: '/tasks?source=system' },
     ];
     const ownerShortcuts = [
       { label: '客户中心', helper: '客户、成交与生命周期', path: '/customers' },

@@ -18,6 +18,7 @@ from models.employees import Employees
 from models.finance_refunds import FinanceRefund
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from models.payments import Payments
+from models.subscriptions import Subscriptions
 from routers.commissions import EntryTransitionInput, my_partner_dashboard, transition_entry
 from routers.employees import EmployeesData, create_employees
 from schemas.auth import UserResponse
@@ -35,6 +36,7 @@ from services.commissions import (
 async def _create_tables(engine) -> None:
     tables = [
         Employees.__table__, Customers.__table__, Payments.__table__, FinanceRefund.__table__,
+        Subscriptions.__table__,
         BusinessLine.__table__, ProductCatalog.__table__, CustomerEngagement.__table__,
         SalesPartner.__table__, CommissionAgreement.__table__, CustomerCommissionAttribution.__table__,
         CommissionEntry.__table__, CommissionStatusEvent.__table__,

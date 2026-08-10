@@ -501,6 +501,7 @@ export default function ServiceBoard() {
   const [allCustomers, setAllCustomers] = useState<CustomerRecord[]>([]);
   const [allEmployees, setAllEmployees] = useState<EmployeeRecord[]>([]);
   const [allSubscriptions, setAllSubscriptions] = useState<SubscriptionRecord[]>([]);
+  const [archivedStoppedCount, setArchivedStoppedCount] = useState(0);
 
   // Views
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'employee'>('list');
@@ -564,12 +565,15 @@ export default function ServiceBoard() {
         authedListEntity<EmployeeRecord>('employees', { limit: 200, sort: 'name' }),
         authedListEntity<SubscriptionRecord>('subscriptions', { limit: 1000, sort: '-created_at' }),
       ]);
-      let items = progressItems;
+      const customerStatusById = new Map(customerItems.map(customer => [Number(customer.id), customer.status]));
+      const stoppedProgresses = progressItems.filter(progress => customerStatusById.get(Number(progress.customer_id)) === 'lost');
+      let items = progressItems.filter(progress => customerStatusById.get(Number(progress.customer_id)) !== 'lost');
       if (dataScope === 'self' && employee) {
         items = items.filter((p: ServiceProgress) =>
           p.ops_person === employee.name || p.sales_person === employee.name || p.design_person === employee.name
         );
       }
+      setArchivedStoppedCount(stoppedProgresses.length);
       setProgresses(items);
       setAllTasks(taskItems);
       setAllCustomers(customerItems);
@@ -2380,6 +2384,15 @@ export default function ServiceBoard() {
                 去成交管理生成
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {archivedStoppedCount > 0 && (
+        <Card className="border-slate-200 bg-slate-50/80">
+          <CardContent className="flex items-center gap-2 p-3 text-sm text-slate-600">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+            已自动隐藏 {archivedStoppedCount} 条停止合作客户的历史交付记录；历史仍保留在客户生命周期与操作记录中。
           </CardContent>
         </Card>
       )}

@@ -271,6 +271,7 @@ export default function ManagementDecisions() {
   const [automation, setAutomation] = useState<AutomationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [scanLoading, setScanLoading] = useState(false);
+  const [bulkTaskLoading, setBulkTaskLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [reviewFilter, setReviewFilter] = useState('pending');
   const [section, setSection] = useState<'overview' | 'projects' | 'exceptions' | 'history'>(() => querySectionValues[searchParams.get('section') || ''] || 'overview');
@@ -382,6 +383,8 @@ export default function ManagementDecisions() {
     const categoryMatches = qualityCategoryFilter === 'all' || row.category === qualityCategoryFilter;
     return statusMatches && categoryMatches;
   }), [automation, qualityCategoryFilter, qualityStatusFilter]);
+  const activeQualityCount = (automation?.summary.open || 0) + (automation?.summary.in_progress || 0);
+  const visibleIssuesWithoutTask = visibleQualityIssues.filter(row => row.status !== 'resolved' && !row.task);
 
   const runAutomationScan = async () => {
     setScanLoading(true);
@@ -410,6 +413,33 @@ export default function ManagementDecisions() {
       await loadData();
     } catch (error: any) {
       toast.error(errorMessage(error, '生成任务失败'));
+    }
+  };
+
+  const createVisibleQualityTasks = async () => {
+    if (visibleIssuesWithoutTask.length === 0) return;
+    if (!window.confirm(`为当前筛选中的 ${visibleIssuesWithoutTask.length} 个问题生成闭环任务？已有任务不会重复创建。`)) return;
+    setBulkTaskLoading(true);
+    try {
+      const issueIds = visibleIssuesWithoutTask.map(row => row.id);
+      let processed = 0;
+      let errorCount = 0;
+      for (let index = 0; index < issueIds.length; index += 200) {
+        const response = await client.apiCall.invoke({
+          url: '/api/v1/management-decisions/automation/issues/tasks-batch',
+          method: 'POST',
+          data: { issue_ids: issueIds.slice(index, index + 200) },
+          options: authOptions(),
+        });
+        processed += Number(response.data?.processed || 0);
+        errorCount += Array.isArray(response.data?.errors) ? response.data.errors.length : 0;
+      }
+      toast.success(errorCount ? `已处理 ${processed} 个问题，${errorCount} 个需人工核对` : `已处理 ${processed} 个问题`);
+      await loadData();
+    } catch (error: any) {
+      toast.error(errorMessage(error, '批量生成任务失败'));
+    } finally {
+      setBulkTaskLoading(false);
     }
   };
 
@@ -535,7 +565,7 @@ export default function ManagementDecisions() {
         <CardContent className="flex flex-wrap gap-2 p-2">
           {[
             ['overview', '经营总览', BarChart3], ['projects', '项目客户明细', BriefcaseBusiness],
-            ['exceptions', `数据质量中心 ${automation?.summary.open || summary?.anomaly_count || 0}`, Database], ['history', `历史补录 ${pendingCount}`, Clock3],
+            ['exceptions', `数据质量中心 ${activeQualityCount || summary?.anomaly_count || 0}`, Database], ['history', `历史补录 ${pendingCount}`, Clock3],
           ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" variant={section === value ? 'default' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
         </CardContent>
       </Card>
@@ -599,6 +629,7 @@ export default function ManagementDecisions() {
           <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div><CardTitle className="text-base">问题与任务闭环</CardTitle><p className="mt-1 text-xs text-slate-500">修正数据后问题会自动解决；完成任务必须填写处理结果。</p></div>
             <div className="flex flex-wrap gap-2">
+              {isAdmin && visibleIssuesWithoutTask.length > 0 && <Button variant="outline" onClick={() => void createVisibleQualityTasks()} disabled={bulkTaskLoading}>{bulkTaskLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <ListChecks className="mr-2 h-4 w-4" />}为当前筛选生成任务 ({visibleIssuesWithoutTask.length})</Button>}
               <select value={qualityStatusFilter} onChange={event => changeQualityFilter('qualityStatus', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="active">待处理</option><option value="open">未开始</option><option value="in_progress">处理中</option><option value="resolved">已解决</option><option value="all">全部状态</option></select>
               <select value={qualityCategoryFilter} onChange={event => changeQualityFilter('qualityCategory', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部分类</option>{Object.entries(qualityCategoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             </div>

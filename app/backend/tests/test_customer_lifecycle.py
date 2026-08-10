@@ -13,6 +13,8 @@ from core.database import Base, get_db
 from models.customers import Customers
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from models.payments import Payments
+from models.service_progresses import Service_progresses
+from models.service_tasks import Service_tasks
 from models.subscriptions import Subscriptions
 from services.customer_lifecycle import _kaplan_meier_median_months
 
@@ -127,6 +129,24 @@ async def test_stop_requires_admin_reason_and_reactivation_uses_new_payment(life
                 next_payment_date=datetime(2026, 6, 1, tzinfo=timezone.utc),
                 status="active",
             ),
+            Service_progresses(
+                id=1,
+                customer_id=11,
+                customer_name="The Q",
+                service_stage="operating",
+                progress_percent=70,
+                issue_resolved=False,
+                user_id="1",
+            ),
+            Service_tasks(
+                id=1,
+                service_progress_id=1,
+                customer_id=11,
+                customer_name="The Q",
+                task_name="继续优化广告",
+                status="pending",
+                user_id="1",
+            ),
         ])
         await session.commit()
     finance_denied = await client.post(
@@ -151,15 +171,25 @@ async def test_stop_requires_admin_reason_and_reactivation_uses_new_payment(life
     assert stopped.status_code == 200
     assert stopped.json()["status"] == "stopped"
     assert stopped.json()["stop_reason"] == "price"
-    assert stopped.json()["closure_summary"] == {"stopped_projects": 1, "stopped_subscriptions": 1}
+    assert stopped.json()["closure_summary"] == {
+        "stopped_projects": 1,
+        "stopped_subscriptions": 1,
+        "ended_services": 1,
+        "cancelled_service_tasks": 1,
+    }
     async with sessions() as session:
         engagement = await session.get(CustomerEngagement, 1)
         subscription = await session.get(Subscriptions, 1)
+        service_progress = await session.get(Service_progresses, 1)
+        service_task = await session.get(Service_tasks, 1)
         assert engagement.status == "stopped"
         assert engagement.stop_reason_code == "price"
         assert subscription.status == "stopped"
         assert subscription.auto_renew is False
         assert subscription.next_payment_date is None
+        assert service_progress.service_stage == "ended"
+        assert service_progress.progress_percent == 100
+        assert service_task.status == "cancelled"
 
         # Simulate an older inconsistent record and verify the manual repair is idempotent.
         engagement.status = "active_paid"
@@ -173,7 +203,12 @@ async def test_stop_requires_admin_reason_and_reactivation_uses_new_payment(life
         headers=auth_headers(),
     )
     assert reconciled.status_code == 200, reconciled.text
-    assert reconciled.json()["closure_summary"] == {"stopped_projects": 1, "stopped_subscriptions": 1}
+    assert reconciled.json()["closure_summary"] == {
+        "stopped_projects": 1,
+        "stopped_subscriptions": 1,
+        "ended_services": 0,
+        "cancelled_service_tasks": 0,
+    }
 
     no_payment = await client.post(
         "/api/v1/customer-lifecycle/customers/11/actions",

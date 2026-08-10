@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.automation import DataQualityIssue
 from models.company_expenses import Company_expenses
 from models.customer_callbacks import Customer_callbacks
+from models.customers import Customers
 from models.management_decisions import BusinessLine, CustomerEngagement
 from models.service_progresses import Service_progresses
 from models.service_tasks import Service_tasks
@@ -133,6 +134,14 @@ async def build_owner_cockpit(
     callbacks = (await db.execute(select(Customer_callbacks))).scalars().all()
     service_progresses = (await db.execute(select(Service_progresses))).scalars().all()
     service_tasks = (await db.execute(select(Service_tasks))).scalars().all()
+    customers = (await db.execute(select(Customers.id, Customers.status))).all()
+    customer_status = {int(customer_id): str(status or "").lower() for customer_id, status in customers}
+    active_service_progresses = [
+        row for row in service_progresses
+        if customer_status.get(int(row.customer_id)) != "lost"
+        and str(row.service_stage or "").lower() not in {"ended", "paused"}
+    ]
+    active_service_ids = {int(row.id) for row in active_service_progresses}
     open_issues = (await db.execute(
         select(DataQualityIssue).where(DataQualityIssue.status != "resolved")
     )).scalars().all()
@@ -162,10 +171,13 @@ async def build_owner_cockpit(
     ]
     overdue_service_tasks = [
         row for row in service_tasks
-        if row.status not in FINISHED_TASK_STATUSES and (_date_value(row.due_date) or today) < today
+        if row.status not in FINISHED_TASK_STATUSES
+        and (not row.service_progress_id or int(row.service_progress_id) in active_service_ids)
+        and customer_status.get(int(row.customer_id)) != "lost"
+        and (_date_value(row.due_date) or today) < today
     ]
     unresolved_service_issues = [
-        row for row in service_progresses
+        row for row in active_service_progresses
         if row.issue_status and not row.issue_resolved
     ]
     issue_categories = Counter(row.category for row in open_issues)
@@ -219,7 +231,7 @@ async def build_owner_cockpit(
             "completed_this_month": len(completed_this_month),
         },
         "delivery": {
-            "active_service_records": len(service_progresses),
+            "active_service_records": len(active_service_progresses),
             "overdue_service_tasks": len(overdue_service_tasks),
             "unresolved_service_issues": len(unresolved_service_issues),
             "overdue_callbacks": len(overdue_callbacks),
