@@ -522,24 +522,33 @@ const getSubscriptionPlannedPaymentDate = (subscription: any) => (
 );
 
 const addBillingCycle = (dateStr: string, cycle?: string | null) => {
-  const base = new Date(`${dateStr}T00:00:00.000Z`);
-  if (Number.isNaN(base.getTime())) return '';
-  const next = new Date(base);
+  const parts = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!parts) return '';
+  const year = Number(parts[1]);
+  const monthIndex = Number(parts[2]) - 1;
+  const day = Number(parts[3]);
+  if (!Number.isFinite(year) || monthIndex < 0 || monthIndex > 11 || day < 1 || day > 31) return '';
+  let monthsToAdd = 1;
   switch (cycle) {
     case 'annual':
-      next.setUTCFullYear(next.getUTCFullYear() + 1);
+      monthsToAdd = 12;
       break;
     case 'semi_annual':
-      next.setUTCMonth(next.getUTCMonth() + 6);
+      monthsToAdd = 6;
       break;
     case 'quarterly':
-      next.setUTCMonth(next.getUTCMonth() + 3);
+      monthsToAdd = 3;
       break;
     case 'monthly':
     default:
-      next.setUTCMonth(next.getUTCMonth() + 1);
+      monthsToAdd = 1;
       break;
   }
+  const targetFirstDay = new Date(Date.UTC(year, monthIndex + monthsToAdd, 1));
+  const targetYear = targetFirstDay.getUTCFullYear();
+  const targetMonthIndex = targetFirstDay.getUTCMonth();
+  const targetMonthLastDay = new Date(Date.UTC(targetYear, targetMonthIndex + 1, 0)).getUTCDate();
+  const next = new Date(Date.UTC(targetYear, targetMonthIndex, Math.min(day, targetMonthLastDay)));
   return next.toISOString().slice(0, 10);
 };
 
@@ -795,6 +804,8 @@ export default function Finance() {
   const [confirmingRenewalId, setConfirmingRenewalId] = useState<number | null>(null);
   const [subscriptionRenewalTarget, setSubscriptionRenewalTarget] = useState<any | null>(null);
   const [renewalPaymentDate, setRenewalPaymentDate] = useState('');
+  const [renewalPaymentMethod, setRenewalPaymentMethod] = useState('zelle');
+  const [renewalTransactionReference, setRenewalTransactionReference] = useState('');
   const [updatingSubscriptionId, setUpdatingSubscriptionId] = useState<number | null>(null);
   const [subscriptionChangeTarget, setSubscriptionChangeTarget] = useState<any | null>(null);
   const [subscriptionChangeReplacementIds, setSubscriptionChangeReplacementIds] = useState<number[]>([]);
@@ -2452,7 +2463,7 @@ export default function Finance() {
       {
         key: 'manual',
         title: '手动收款',
-        description: '尚未到期的支票、Zelle、转账等手动收款；到期后自动进入风险队列。',
+        description: '支票、Zelle、转账到账后直接确认收款；服务周期按原到期日自动顺延。',
         tone: 'slate',
         priorityLabel: '线下收款',
         rows: rows.filter((subscription: any) => (
@@ -2975,18 +2986,27 @@ export default function Finance() {
     if (!subscription?.id) return;
     const plannedPaymentDate = getSubscriptionPlannedPaymentDate(subscription);
     setSubscriptionRenewalTarget(subscription);
-    setRenewalPaymentDate(plannedPaymentDate);
+    setRenewalPaymentDate(subscription.auto_renew ? plannedPaymentDate : getTodayDateInput());
+    setRenewalPaymentMethod(subscription.auto_renew ? 'stripe' : defaultManualPaymentMethod);
+    setRenewalTransactionReference('');
   };
 
-  const handleConfirmSubscriptionRenewal = async (subscription: any, actualPaymentDate?: string) => {
+  const handleConfirmSubscriptionRenewal = async (
+    subscription: any,
+    actualPaymentDate?: string,
+    selectedPaymentMethod?: string,
+    transactionReference?: string,
+  ) => {
     if (!subscription?.id) return;
     const amount = Number(subscription.package_price || 0);
     if (amount <= 0) {
       toast.error('该套餐缺少续费金额，无法自动生成收入');
       return;
     }
+    const isAutomaticRenewal = Boolean(subscription.auto_renew);
     const plannedPaymentDate = getSubscriptionPlannedPaymentDate(subscription);
-    const paymentDateOnly = actualPaymentDate || plannedPaymentDate;
+    const serviceStartDate = toDateOnly(subscription.end_date) || plannedPaymentDate;
+    const paymentDateOnly = actualPaymentDate || (isAutomaticRenewal ? plannedPaymentDate : getTodayDateInput());
     if (!paymentDateOnly) {
       toast.error('缺少实际收款日期，无法确认续费');
       return;
@@ -2995,69 +3015,102 @@ export default function Finance() {
       toast.error(`${paymentDateOnly.slice(0, 7)} 已关账，请先在按月明细里重新打开该月份`);
       return;
     }
-    const nextPaymentDate = addBillingCycle(plannedPaymentDate, subscription.billing_cycle || 'monthly');
+    if (!serviceStartDate) {
+      toast.error('缺少原套餐服务到期日，请先检查套餐续费信息');
+      return;
+    }
+    const nextPaymentDate = addBillingCycle(serviceStartDate, subscription.billing_cycle || 'monthly');
     if (!nextPaymentDate) {
       toast.error('无法识别计费周期，请先检查套餐续费信息');
       return;
     }
 
-    const existingEndDate = toDateOnly(subscription.end_date);
-    const nextServiceEndDate = existingEndDate && existingEndDate > nextPaymentDate ? existingEndDate : nextPaymentDate;
+    const normalizedPaymentMethod = isAutomaticRenewal
+      ? 'stripe'
+      : normalizePaymentMethodKey(selectedPaymentMethod || defaultManualPaymentMethod);
+    if (!isAutomaticRenewal && AUTO_PAYMENT_METHOD_KEYS.has(normalizedPaymentMethod)) {
+      toast.error('手动收款请选择支票、Zelle、转账或其他线下收款方式');
+      return;
+    }
     const paymentDateISO = toISODatetime(paymentDateOnly) || new Date().toISOString();
     const operationTimeISO = new Date().toISOString();
     const customerName = subscription.customer_name || customerMap[subscription.customer_id]?.business_name || '';
     const packageName = subscription.package_name || '订阅套餐';
     const incomeType = inferSubscriptionIncomeType(packageName);
     const { managementAmount, adsRechargeAmount } = derivePaymentIncomeSplit(incomeType, amount, '', '');
-    const stripeFeeAmount = calculateStripePlatformFeeFromValues(amount, 'subscription_auto', 'stripe');
+    const paymentMode = isAutomaticRenewal ? 'subscription_auto' : 'manual_collection';
+    const stripeFeeAmount = calculateStripePlatformFeeFromValues(amount, paymentMode, normalizedPaymentMethod);
+    const paymentPackageKey = buildSubscriptionPackageKey(subscription.customer_id, packageName);
+    const existingCyclePayment = payments.find((payment: any) => (
+      buildSubscriptionPackageKey(payment.customer_id, payment.product_name) === paymentPackageKey
+      && toDateOnly(payment.coverage_start) === serviceStartDate
+      && toDateOnly(payment.coverage_end) === nextPaymentDate
+      && toMoneyNumber(payment.amount_paid) > 0
+    ));
+    const subscriptionAlreadyExtended = toDateOnly(subscription.end_date) === nextPaymentDate
+      && toDateOnly(subscription.last_payment_date) === paymentDateOnly;
+    if (existingCyclePayment && subscriptionAlreadyExtended) {
+      toast.error(`这一个服务周期已经在 ${toDateOnly(existingCyclePayment.payment_date) || '此前'} 确认收款，请勿重复入账`);
+      return;
+    }
 
     setConfirmingRenewalId(Number(subscription.id));
+    let paymentCreated = false;
     try {
-      await invokeWithAuth({
-        url: '/api/v1/entities/payments',
-        method: 'POST',
-        data: {
-          customer_id: Number(subscription.customer_id),
-          customer_name: customerName,
-          income_type: incomeType,
-          product_name: packageName,
-          amount_due: amount,
-          amount_paid: amount,
-          management_amount: managementAmount,
-          ads_recharge_amount: adsRechargeAmount,
-          stripe_fee_amount: stripeFeeAmount,
-          net_amount: roundMoney(Math.max(amount - stripeFeeAmount, 0)),
-          currency: 'USD',
-          payment_date: paymentDateISO,
-          payment_mode: 'subscription_auto',
-          payment_method: 'stripe',
-          billing_cycle: subscription.billing_cycle || 'monthly',
-          coverage_start: toISODatetime(plannedPaymentDate),
-          coverage_end: toISODatetime(nextPaymentDate),
-          has_invoice: false,
-          outstanding_amount: 0,
-          expense_month: paymentDateOnly.slice(0, 7),
-          recorded_by: operatorName,
-          notes: `Stripe订阅续费确认：${packageName}，实际扣费日 ${paymentDateOnly}，确认时间 ${operationTimeISO.slice(0, 10)}，覆盖 ${plannedPaymentDate} 至 ${nextPaymentDate}。手续费按 2.9% + $0.30 自动计入报表成本。`,
-          created_at: operationTimeISO,
-        },
-      });
+      if (!existingCyclePayment) {
+        await invokeWithAuth({
+          url: '/api/v1/entities/payments',
+          method: 'POST',
+          data: {
+            customer_id: Number(subscription.customer_id),
+            customer_name: customerName,
+            engagement_id: subscription.engagement_id || null,
+            business_line_id: subscription.business_line_id || null,
+            product_id: subscription.product_id || null,
+            income_type: incomeType,
+            product_name: packageName,
+            amount_due: amount,
+            amount_paid: amount,
+            management_amount: managementAmount,
+            ads_recharge_amount: adsRechargeAmount,
+            stripe_fee_amount: stripeFeeAmount,
+            net_amount: roundMoney(Math.max(amount - stripeFeeAmount, 0)),
+            currency: 'USD',
+            payment_date: paymentDateISO,
+            payment_mode: paymentMode,
+            payment_method: normalizedPaymentMethod,
+            transaction_reference: transactionReference?.trim() || null,
+            billing_cycle: subscription.billing_cycle || 'monthly',
+            coverage_start: toISODatetime(serviceStartDate),
+            coverage_end: toISODatetime(nextPaymentDate),
+            has_invoice: false,
+            outstanding_amount: 0,
+            expense_month: paymentDateOnly.slice(0, 7),
+            recorded_by: operatorName,
+            notes: isAutomaticRenewal
+              ? `Stripe订阅续费确认：${packageName}，实际扣费日 ${paymentDateOnly}，确认时间 ${operationTimeISO.slice(0, 10)}，服务覆盖 ${serviceStartDate} 至 ${nextPaymentDate}。手续费按 2.9% + $0.30 自动计入报表成本。`
+              : `手动续费收款确认：${packageName}，${getPaymentMethodLabel({ payment_method: normalizedPaymentMethod }, payMethodLabels)}到账日 ${paymentDateOnly}，确认时间 ${operationTimeISO.slice(0, 10)}，服务覆盖 ${serviceStartDate} 至 ${nextPaymentDate}。`,
+            created_at: operationTimeISO,
+          },
+        });
+        paymentCreated = true;
+      }
 
       const nextSubscriptionPayload = {
         package_price: amount,
         billing_cycle: subscription.billing_cycle || 'monthly',
-        auto_renew: true,
+        auto_renew: isAutomaticRenewal,
         last_payment_date: paymentDateISO,
         next_payment_date: toISODatetime(nextPaymentDate),
-        end_date: toISODatetime(nextServiceEndDate),
+        end_date: toISODatetime(nextPaymentDate),
         status: computeSubscriptionStatus({
           ...subscription,
-          auto_renew: true,
+          auto_renew: isAutomaticRenewal,
           next_payment_date: toISODatetime(nextPaymentDate),
-          end_date: toISODatetime(nextServiceEndDate),
+          end_date: toISODatetime(nextPaymentDate),
           status: 'active',
         }),
-        renewal_result: 'stripe_subscription_confirmed',
+        renewal_result: isAutomaticRenewal ? 'stripe_subscription_confirmed' : 'manual_payment_confirmed',
         updated_at: operationTimeISO,
       };
 
@@ -3070,18 +3123,24 @@ export default function Finance() {
       void logOperation({
         customerId: Number(subscription.customer_id),
         actionType: 'confirm_subscription_renewal',
-        actionDetail: `确认Stripe订阅续费：${customerName} ${packageName} ${fmt(amount)}，实际扣费日 ${paymentDateOnly}，下次付款 ${nextPaymentDate}`,
+        actionDetail: `${isAutomaticRenewal ? '确认Stripe订阅续费' : '确认手动续费收款'}：${customerName} ${packageName} ${fmt(amount)}，到账日 ${paymentDateOnly}，服务覆盖 ${serviceStartDate} 至 ${nextPaymentDate}`,
         operatorName,
       });
 
       setSubscriptionRenewalTarget(null);
       setRenewalPaymentDate('');
-      toast.success(`已按 ${paymentDateOnly} 入账，下次付款时间：${nextPaymentDate}`);
+      setRenewalTransactionReference('');
+      toast.success(existingCyclePayment
+        ? `已识别已有收款并补齐套餐周期，服务延长至 ${nextPaymentDate}`
+        : `已按 ${paymentDateOnly} 确认收款，服务延长至 ${nextPaymentDate}`);
       await loadData();
     } catch (err: any) {
       const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '确认续费失败';
-      toast.error(`确认续费失败: ${detail}`);
+      toast.error(paymentCreated
+        ? `收款已入账，但套餐周期同步失败：${detail}。请刷新后再次确认，系统会识别已有收款并只补齐套餐周期。`
+        : `确认续费失败: ${detail}`);
       console.error('Confirm subscription renewal failed:', err);
+      if (paymentCreated) await loadData();
     } finally {
       setConfirmingRenewalId(null);
     }
@@ -4724,7 +4783,7 @@ export default function Finance() {
 
                                   <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
                                     <div className="rounded-lg bg-slate-50 p-2">
-                                      <p className="text-slate-400">计划扣款</p>
+                                      <p className="text-slate-400">{s.auto_renew ? '计划扣款' : '计划收款'}</p>
                                       <p className="mt-1 font-semibold text-slate-700">{plannedDate || '-'}</p>
                                     </div>
                                     <div className="rounded-lg bg-slate-50 p-2">
@@ -4768,6 +4827,17 @@ export default function Finance() {
                                         >
                                           <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
                                           {confirmingRenewalId === Number(s.id) ? '确认中' : '确认扣款'}
+                                        </Button>
+                                      )}
+                                      {!s.auto_renew && !['stopped', 'lost', 'upgraded', 'paused'].includes(status) && (
+                                        <Button
+                                          size="sm"
+                                          className="h-8 bg-emerald-600 px-3 text-xs hover:bg-emerald-700"
+                                          onClick={() => openConfirmSubscriptionRenewal(s)}
+                                          disabled={confirmingRenewalId === Number(s.id)}
+                                        >
+                                          <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                                          {confirmingRenewalId === Number(s.id) ? '确认中' : '确认收款'}
                                         </Button>
                                       )}
                                       {!['stopped', 'lost', 'upgraded', 'paused'].includes(status) && (
@@ -5403,19 +5473,24 @@ export default function Finance() {
           if (!v) {
             setSubscriptionRenewalTarget(null);
             setRenewalPaymentDate('');
+            setRenewalTransactionReference('');
           }
         }}
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>确认订阅扣款</DialogTitle>
+            <DialogTitle>{subscriptionRenewalTarget?.auto_renew ? '确认订阅扣款' : '确认手动收款'}</DialogTitle>
           </DialogHeader>
           {subscriptionRenewalTarget && (() => {
+            const isAutomaticRenewal = Boolean(subscriptionRenewalTarget.auto_renew);
             const plannedDate = getSubscriptionPlannedPaymentDate(subscriptionRenewalTarget);
-            const actualDate = renewalPaymentDate || plannedDate;
-            const nextDate = addBillingCycle(plannedDate, subscriptionRenewalTarget.billing_cycle || 'monthly');
+            const serviceStartDate = toDateOnly(subscriptionRenewalTarget.end_date) || plannedDate;
+            const actualDate = renewalPaymentDate || (isAutomaticRenewal ? plannedDate : getTodayDateInput());
+            const nextDate = addBillingCycle(serviceStartDate, subscriptionRenewalTarget.billing_cycle || 'monthly');
             const amount = toMoneyNumber(subscriptionRenewalTarget.package_price);
-            const stripeFee = calculateStripePlatformFeeFromValues(amount, 'subscription_auto', 'stripe');
+            const stripeFee = isAutomaticRenewal
+              ? calculateStripePlatformFeeFromValues(amount, 'subscription_auto', 'stripe')
+              : 0;
             const monthClosed = isFinanceMonthClosed(actualDate);
             return (
               <div className="space-y-4">
@@ -5423,32 +5498,59 @@ export default function Finance() {
                   <p className="font-semibold text-slate-800">{subscriptionRenewalTarget.customer_name || customerMap[subscriptionRenewalTarget.customer_id]?.business_name || '-'}</p>
                   <p className="mt-1 text-sm text-slate-600">{subscriptionRenewalTarget.package_name || '订阅套餐'} · {fmt(amount)}</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    计划扣款日：{plannedDate || '-'} · 下一次扣款：{nextDate || '-'}
+                    当前服务到期：{serviceStartDate || '-'} · 续费后到期：{nextDate || '-'}
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>实际收款日期 / Stripe 扣款日</Label>
+                  <Label>{isAutomaticRenewal ? '实际 Stripe 扣款日' : '实际到账日期'}</Label>
                   <Input
                     type="date"
                     value={actualDate}
                     onChange={e => setRenewalPaymentDate(e.target.value)}
                   />
                   <p className="text-xs text-slate-500">
-                    财务收入会按这个日期归属月份。比如 1月1日扣费、1月5日确认，这里应保持 1月1日。
+                    {isAutomaticRenewal
+                      ? '财务收入按实际扣款日归属月份；晚几天确认也应填写真实扣款日。'
+                      : '默认今天，可改为支票或转账实际到账日；只影响财务月份，不改变套餐服务周期。'}
                   </p>
                 </div>
+                {!isAutomaticRenewal && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>收款方式</Label>
+                      <NativeSelect
+                        value={renewalPaymentMethod}
+                        onChange={setRenewalPaymentMethod}
+                        options={manualPaymentMethodOptions}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>流水 / 支票编号</Label>
+                      <Input
+                        value={renewalTransactionReference}
+                        onChange={event => setRenewalTransactionReference(event.target.value)}
+                        placeholder="可选"
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-lg bg-cyan-50 p-3 text-cyan-700">
-                    <p className="text-xs">Stripe手续费</p>
-                    <p className="mt-1 font-bold">{fmt(stripeFee)}</p>
-                    <p className="text-[11px]">2.9% + $0.30/笔</p>
+                  <div className={`rounded-lg p-3 ${isAutomaticRenewal ? 'bg-cyan-50 text-cyan-700' : 'bg-blue-50 text-blue-700'}`}>
+                    <p className="text-xs">{isAutomaticRenewal ? 'Stripe手续费' : '实收金额'}</p>
+                    <p className="mt-1 font-bold">{fmt(isAutomaticRenewal ? stripeFee : amount)}</p>
+                    <p className="text-[11px]">{isAutomaticRenewal ? '2.9% + $0.30/笔' : '按套餐续费金额入账'}</p>
                   </div>
                   <div className="rounded-lg bg-emerald-50 p-3 text-emerald-700">
-                    <p className="text-xs">净入账参考</p>
-                    <p className="mt-1 font-bold">{fmt(Math.max(amount - stripeFee, 0))}</p>
-                    <p className="text-[11px]">收款减平台手续费</p>
+                    <p className="text-xs">{isAutomaticRenewal ? '净入账参考' : '服务周期'}</p>
+                    <p className="mt-1 font-bold">{isAutomaticRenewal ? fmt(Math.max(amount - stripeFee, 0)) : `${cycleLabels[subscriptionRenewalTarget.billing_cycle] || '按月'}`}</p>
+                    <p className="text-[11px]">{isAutomaticRenewal ? '收款减平台手续费' : `${serviceStartDate || '-'} → ${nextDate || '-'}`}</p>
                   </div>
                 </div>
+                {!isAutomaticRenewal && (
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
+                    即使提前收到支票或转账，新服务周期仍从原到期日 {serviceStartDate || '-'} 衔接，不会从到账日重新起算。
+                  </div>
+                )}
                 {monthClosed && (
                   <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700">
                     {actualDate.slice(0, 7)} 已关账，请先在“按月明细”重新打开该月份。
@@ -5461,17 +5563,25 @@ export default function Finance() {
                     onClick={() => {
                       setSubscriptionRenewalTarget(null);
                       setRenewalPaymentDate('');
+                      setRenewalTransactionReference('');
                     }}
                   >
                     取消
                   </Button>
                   <Button
                     type="button"
-                    className="bg-cyan-600 hover:bg-cyan-700"
+                    className={isAutomaticRenewal ? 'bg-cyan-600 hover:bg-cyan-700' : 'bg-emerald-600 hover:bg-emerald-700'}
                     disabled={monthClosed || confirmingRenewalId === Number(subscriptionRenewalTarget.id)}
-                    onClick={() => handleConfirmSubscriptionRenewal(subscriptionRenewalTarget, actualDate)}
+                    onClick={() => handleConfirmSubscriptionRenewal(
+                      subscriptionRenewalTarget,
+                      actualDate,
+                      renewalPaymentMethod,
+                      renewalTransactionReference,
+                    )}
                   >
-                    {confirmingRenewalId === Number(subscriptionRenewalTarget.id) ? '确认中...' : '确认并入账'}
+                    {confirmingRenewalId === Number(subscriptionRenewalTarget.id)
+                      ? '确认中...'
+                      : isAutomaticRenewal ? '确认扣款并入账' : '确认收款并续期'}
                   </Button>
                 </div>
               </div>
