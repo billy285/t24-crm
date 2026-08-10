@@ -22,6 +22,7 @@ from models.management_decisions import (
     ProductCatalog,
 )
 from models.payments import Payments
+from models.subscriptions import Subscriptions
 from models.service_tasks import Service_tasks
 from models.automation import DataQualityIssue
 from models.tasks import Tasks
@@ -403,8 +404,29 @@ async def test_customer_create_with_projects_is_atomic_and_admin_can_read_projec
         decision = (await session.execute(
             select(ClassificationReviewDecision).where(ClassificationReviewDecision.customer_id == customer_id)
         )).scalar_one()
+        linked_subscription = Subscriptions(
+            customer_id=customer_id,
+            customer_name="New Multi Service Customer",
+            engagement_id=engagement.id,
+            package_name="代运营基础套餐",
+            package_price=499,
+            auto_renew=True,
+            next_payment_date=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            status="active",
+        )
+        session.add(linked_subscription)
+        await session.commit()
+        subscription_id = linked_subscription.id
     assert engagement.package_name == "代运营基础套餐"
     assert decision.decision == "confirmed"
+
+    inconsistent = await client.put(
+        f"/api/v1/entities/customers/{customer_id}/with-projects",
+        headers=auth_headers("admin", 33),
+        json={"customer": {"status": "lost"}, "projects": [{**payload["projects"][0], "engagement_id": engagement.id}]},
+    )
+    assert inconsistent.status_code == 400
+    assert "成交和收款历史无需删除" in inconsistent.json()["detail"]
 
     updated = await client.put(
         f"/api/v1/entities/customers/{customer_id}/with-projects",
@@ -427,8 +449,12 @@ async def test_customer_create_with_projects_is_atomic_and_admin_can_read_projec
             .where(EngagementLifecycleEvent.engagement_id == engagement.id)
             .order_by(EngagementLifecycleEvent.id.asc())
         )).scalars().all()
+        linked_subscription = await session.get(Subscriptions, subscription_id)
     assert [event.event_type for event in status_events] == ["classification_confirmed", "status_changed"]
     assert "active_paid -> stopped" in status_events[-1].note
+    assert linked_subscription.status == "stopped"
+    assert linked_subscription.auto_renew is False
+    assert linked_subscription.next_payment_date is None
 
     invalid_payload = {
         **payload,

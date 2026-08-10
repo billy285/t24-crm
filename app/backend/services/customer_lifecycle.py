@@ -10,10 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customer_lifecycles import CustomerLifecycleCycle, CustomerLifecycleEvent
 from models.customers import Customers
+from models.management_decisions import CustomerEngagement, EngagementLifecycleEvent
 from models.payments import Payments
+from models.subscriptions import Subscriptions
 
 
 ACTIVE_LIFECYCLE_STATUSES = {"active", "paused", "pending_stop"}
+ACTIVE_ENGAGEMENT_STATUSES = {"pending_setup", "trial", "active_paid", "at_risk", "paused", "pending_stop", "reactivated"}
+CLOSABLE_SUBSCRIPTION_STATUSES = {"active", "expiring_soon", "renewal_pending", "paused"}
 STOP_REASONS = {
     "performance": "效果不满意",
     "price": "价格问题",
@@ -73,6 +77,72 @@ def _cycle_dict(cycle: CustomerLifecycleCycle) -> dict[str, Any]:
         "confirmed_by_name": cycle.confirmed_by_name,
         "created_at": cycle.created_at,
         "updated_at": cycle.updated_at,
+    }
+
+
+async def close_related_customer_records(
+    db: AsyncSession,
+    *,
+    customer_id: int,
+    effective_at: datetime,
+    reason_code: Optional[str],
+    note: Optional[str],
+    actor_id: str,
+    actor_name: str,
+    lifecycle_cycle_id: int,
+) -> dict[str, int]:
+    """Stop active projects and renewal plans without deleting commercial history."""
+    effective_at = ensure_aware(effective_at)
+    now = utcnow()
+    projects = list((await db.execute(
+        select(CustomerEngagement).where(CustomerEngagement.customer_id == customer_id)
+    )).scalars().all())
+    stopped_project_count = 0
+    for project in projects:
+        if project.status not in ACTIVE_ENGAGEMENT_STATUSES:
+            continue
+        previous_status = project.status
+        project.status = "stopped"
+        project.stopped_at = effective_at
+        project.paused_at = None
+        project.stop_reason_code = reason_code
+        project.stop_note = note
+        event_key = f"customer-stop:{lifecycle_cycle_id}:{project.id}"
+        existing_event = (await db.execute(
+            select(EngagementLifecycleEvent).where(EngagementLifecycleEvent.idempotency_key == event_key)
+        )).scalar_one_or_none()
+        if not existing_event:
+            db.add(EngagementLifecycleEvent(
+                engagement_id=project.id,
+                event_type="status_changed",
+                effective_at=effective_at,
+                reason_code=reason_code,
+                idempotency_key=event_key,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                note=f"{previous_status} -> stopped；客户整体停止合作" + (f"；{note}" if note else ""),
+            ))
+        stopped_project_count += 1
+
+    subscriptions = list((await db.execute(
+        select(Subscriptions).where(Subscriptions.customer_id == customer_id)
+    )).scalars().all())
+    stopped_subscription_count = 0
+    for subscription in subscriptions:
+        status = str(subscription.status or "").lower()
+        next_payment_at = ensure_aware(subscription.next_payment_date) if subscription.next_payment_date else None
+        has_future_collection = bool(next_payment_at and next_payment_at >= effective_at)
+        if status not in CLOSABLE_SUBSCRIPTION_STATUSES and not subscription.auto_renew and not has_future_collection:
+            continue
+        subscription.status = "stopped"
+        subscription.auto_renew = False
+        subscription.next_payment_date = None
+        subscription.updated_at = now
+        stopped_subscription_count += 1
+
+    return {
+        "stopped_projects": stopped_project_count,
+        "stopped_subscriptions": stopped_subscription_count,
     }
 
 
@@ -510,6 +580,16 @@ async def apply_lifecycle_action(
         cycle.confirmed_by_id = actor_id
         cycle.confirmed_by_name = actor_name
         customer.status = "lost"
+        closure_summary = await close_related_customer_records(
+            db,
+            customer_id=customer_id,
+            effective_at=effective_at,
+            reason_code=reason_code,
+            note=note,
+            actor_id=actor_id,
+            actor_name=actor_name,
+            lifecycle_cycle_id=cycle.id,
+        )
     elif action == "reactivate":
         if cycle.status != "stopped" or not cycle.ended_at:
             raise ValueError("只有已停止合作的客户可以重新合作")
@@ -563,4 +643,42 @@ async def apply_lifecycle_action(
     )
     await db.commit()
     await db.refresh(cycle)
-    return _cycle_dict(cycle)
+    payload = _cycle_dict(cycle)
+    if action == "stop":
+        payload["closure_summary"] = closure_summary
+    return payload
+
+
+async def reconcile_stopped_customer(
+    db: AsyncSession,
+    *,
+    customer_id: int,
+    actor_id: str,
+    actor_name: str,
+) -> dict[str, Any]:
+    """Repair older stopped customers whose project or renewal status stayed active."""
+    customer = (await db.execute(select(Customers).where(Customers.id == customer_id))).scalar_one_or_none()
+    if not customer:
+        raise ValueError("Customer not found")
+    cycle = (
+        await db.execute(
+            select(CustomerLifecycleCycle)
+            .where(CustomerLifecycleCycle.customer_id == customer_id)
+            .order_by(CustomerLifecycleCycle.cycle_number.desc())
+        )
+    ).scalars().first()
+    if not cycle or cycle.status != "stopped" or not cycle.ended_at:
+        raise ValueError("只有已停止合作的客户可以同步闭环")
+    customer.status = "lost"
+    summary = await close_related_customer_records(
+        db,
+        customer_id=customer_id,
+        effective_at=cycle.ended_at,
+        reason_code=cycle.stop_reason,
+        note=cycle.stop_note,
+        actor_id=actor_id,
+        actor_name=actor_name,
+        lifecycle_cycle_id=cycle.id,
+    )
+    await db.commit()
+    return {"customer_id": customer_id, "status": "stopped", "closure_summary": summary}

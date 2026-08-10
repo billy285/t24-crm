@@ -11,7 +11,9 @@ from backend.main import app
 from backend.services.emp_auth import create_access_token
 from core.database import Base, get_db
 from models.customers import Customers
+from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from models.payments import Payments
+from models.subscriptions import Subscriptions
 from services.customer_lifecycle import _kaplan_meier_median_months
 
 
@@ -99,6 +101,34 @@ async def test_first_positive_payment_starts_lifecycle_and_package_dates_do_not_
 @pytest.mark.asyncio
 async def test_stop_requires_admin_reason_and_reactivation_uses_new_payment(lifecycle_context):
     client, sessions = lifecycle_context
+    async with sessions() as session:
+        session.add_all([
+            BusinessLine(id=1, code="managed_service", name="代运营", is_recurring=True, is_active=True),
+            ProductCatalog(id=1, business_line_id=1, code="managed_service_legacy", name="代运营服务", billing_kind="recurring", default_currency="USD", is_active=True),
+            CustomerEngagement(
+                id=1,
+                customer_id=11,
+                business_line_id=1,
+                product_id=1,
+                engagement_code="ENG-000011-MANAGED",
+                package_name="专业套餐",
+                status="active_paid",
+                paid_started_at=datetime(2026, 1, 10, tzinfo=timezone.utc),
+                currency="USD",
+            ),
+            Subscriptions(
+                id=1,
+                customer_id=11,
+                customer_name="The Q",
+                engagement_id=1,
+                package_name="专业套餐",
+                package_price=499,
+                auto_renew=True,
+                next_payment_date=datetime(2026, 6, 1, tzinfo=timezone.utc),
+                status="active",
+            ),
+        ])
+        await session.commit()
     finance_denied = await client.post(
         "/api/v1/customer-lifecycle/customers/11/actions",
         headers=auth_headers("finance", 2),
@@ -121,6 +151,29 @@ async def test_stop_requires_admin_reason_and_reactivation_uses_new_payment(life
     assert stopped.status_code == 200
     assert stopped.json()["status"] == "stopped"
     assert stopped.json()["stop_reason"] == "price"
+    assert stopped.json()["closure_summary"] == {"stopped_projects": 1, "stopped_subscriptions": 1}
+    async with sessions() as session:
+        engagement = await session.get(CustomerEngagement, 1)
+        subscription = await session.get(Subscriptions, 1)
+        assert engagement.status == "stopped"
+        assert engagement.stop_reason_code == "price"
+        assert subscription.status == "stopped"
+        assert subscription.auto_renew is False
+        assert subscription.next_payment_date is None
+
+        # Simulate an older inconsistent record and verify the manual repair is idempotent.
+        engagement.status = "active_paid"
+        subscription.status = "active"
+        subscription.auto_renew = True
+        subscription.next_payment_date = datetime(2026, 7, 1, tzinfo=timezone.utc)
+        await session.commit()
+
+    reconciled = await client.post(
+        "/api/v1/customer-lifecycle/customers/11/reconcile-closure",
+        headers=auth_headers(),
+    )
+    assert reconciled.status_code == 200, reconciled.text
+    assert reconciled.json()["closure_summary"] == {"stopped_projects": 1, "stopped_subscriptions": 1}
 
     no_payment = await client.post(
         "/api/v1/customer-lifecycle/customers/11/actions",

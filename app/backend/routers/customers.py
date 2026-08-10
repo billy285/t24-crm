@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api/v1/entities/customers", tags=["customers"], depe
 
 CUSTOMER_WRITE_ROLES = {"admin", "super_admin", "sales", "ops", "operations"}
 CUSTOMER_OWNER_FIELDS = {"sales_person", "sales_employee_id"}
+ACTIVE_PROJECT_STATUSES = {"pending_setup", "trial", "active_paid", "at_risk", "paused", "pending_stop", "reactivated"}
 
 
 class CustomerPayloadMixin(BaseModel):
@@ -236,6 +237,22 @@ class CustomerWithProjectsUpdateRequest(BaseModel):
     projects: List[CustomerProjectInput] = Field(default_factory=list)
 
 
+def _validate_customer_project_consistency(status: Optional[str], projects: List[CustomerProjectInput]) -> None:
+    if status == "lost" and any(row.status in ACTIVE_PROJECT_STATUSES for row in projects):
+        raise ValueError("客户标记流失前，请先将所有合作项目改为“项目已停止”或“已完成”；成交和收款历史无需删除")
+
+
+async def _ensure_no_active_projects_before_direct_loss(db: AsyncSession, customer_id: int) -> None:
+    active_project = (await db.execute(
+        select(CustomerEngagement.id).where(
+            CustomerEngagement.customer_id == customer_id,
+            CustomerEngagement.status.in_(ACTIVE_PROJECT_STATUSES),
+        ).limit(1)
+    )).scalar_one_or_none()
+    if active_project:
+        raise ValueError("该客户仍有合作项目，请使用“客户生命周期—停止合作”完成状态闭环；成交和收款历史无需删除")
+
+
 def _actor_name(user: UserResponse) -> str:
     return user.name or user.email or "管理员"
 
@@ -412,6 +429,8 @@ async def get_customer_projects(
             "sales_employee_id": engagement.sales_employee_id,
             "paid_started_at": engagement.paid_started_at,
             "stopped_at": engagement.stopped_at,
+            "stop_reason_code": engagement.stop_reason_code,
+            "stop_note": engagement.stop_note,
         } for engagement, line, product in rows],
         "total": len(rows),
     }
@@ -459,6 +478,7 @@ async def create_customer_with_projects(
         raise HTTPException(status_code=400, detail="单个客户最多维护12个合作项目")
     service = CustomersService(db)
     try:
+        _validate_customer_project_consistency(request.customer.status, request.projects)
         customer = await service.create(
             _assigned_to_current_user(request.customer.model_dump(), current_user),
             commit=False,
@@ -541,6 +561,8 @@ async def update_customerss_batch(
     try:
         _ensure_customer_write_allowed(current_user)
         for item in request.items:
+            if item.updates.status == "lost":
+                await _ensure_no_active_projects_before_direct_loss(db, item.id)
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
             update_dict = _strip_owner_fields_for_non_admin(update_dict, current_user)
@@ -571,6 +593,8 @@ async def update_customers(
     service = CustomersService(db)
     try:
         _ensure_customer_write_allowed(current_user)
+        if data.status == "lost":
+            await _ensure_no_active_projects_before_direct_loss(db, id)
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
         update_dict = _strip_owner_fields_for_non_admin(update_dict, current_user)
@@ -603,6 +627,7 @@ async def update_customer_with_projects(
         raise HTTPException(status_code=400, detail="单个客户最多维护12个合作项目")
     service = CustomersService(db)
     try:
+        _validate_customer_project_consistency(request.customer.status, request.projects)
         update_dict = {key: value for key, value in request.customer.model_dump().items() if value is not None}
         update_dict = _strip_owner_fields_for_non_admin(update_dict, current_user)
         customer = await service.update(id, update_dict, scope_user=current_user, commit=False)

@@ -13,6 +13,7 @@ from services.customer_lifecycle import (
     apply_lifecycle_action,
     customer_lifecycle_detail,
     lifecycle_overview,
+    reconcile_stopped_customer,
     sync_lifecycle_from_payments,
 )
 
@@ -92,6 +93,23 @@ async def update_customer_lifecycle(
             reason_code=request.reason_code,
             note=request.note,
             first_payment_id=request.first_payment_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/customers/{customer_id}/reconcile-closure")
+async def reconcile_customer_closure(
+    customer_id: int,
+    current_user: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await reconcile_stopped_customer(
+            db,
+            customer_id=customer_id,
+            actor_id=str(current_user.id),
+            actor_name=current_user.name or current_user.email or "管理员",
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

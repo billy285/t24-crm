@@ -116,6 +116,9 @@ type CustomerProjectDraft = {
   currency: string;
   owner_employee_id: string;
   paid_started_at: string;
+  stopped_at: string;
+  stop_reason_code: string;
+  stop_note: string;
 };
 
 const customerProjectLines: Record<string, { label: string; productCode: string; productName: string }> = {
@@ -128,6 +131,14 @@ const customerProjectLines: Record<string, { label: string; productCode: string;
 const customerProjectStatuses: Record<string, string> = {
   pending_setup: '待开通', trial: '试用中', active_paid: '付费合作中', at_risk: '有流失风险',
   paused: '项目暂停', pending_stop: '待停止', stopped: '项目已停止', reactivated: '重新合作', completed: '一次性项目完成',
+};
+
+const activeCustomerProjectStatuses = new Set(['pending_setup', 'trial', 'active_paid', 'at_risk', 'paused', 'pending_stop', 'reactivated']);
+
+const customerProjectStopReasons: Record<string, string> = {
+  performance: '效果不满意', price: '价格问题', service: '服务问题', closed_business: '客户关店',
+  business_difficulty: '客户经营困难', changed_provider: '更换服务商', seasonal_pause: '季节性暂停',
+  payment: '付款问题', owner_change: '老板变更', data_correction: '历史数据修正', other: '其他',
 };
 
 const customerProjectBillingCycles: Record<string, string> = {
@@ -151,6 +162,9 @@ function newCustomerProject(lineCode = 'managed_service'): CustomerProjectDraft 
     currency: 'USD',
     owner_employee_id: '',
     paid_started_at: '',
+    stopped_at: '',
+    stop_reason_code: '',
+    stop_note: '',
   };
 }
 
@@ -600,6 +614,7 @@ export default function Customers() {
   const [serviceProgresses, setServiceProgresses] = useState<any[]>([]);
   const [serviceTasks, setServiceTasks] = useState<any[]>([]);
   const [lifecycleDetail, setLifecycleDetail] = useState<any>(null);
+  const [closureSyncing, setClosureSyncing] = useState(false);
   const [followUpPage, setFollowUpPage] = useState(1);
   const [followUpPageSize, setFollowUpPageSize] = useState(20);
   const [dealPage, setDealPage] = useState(1);
@@ -1227,6 +1242,24 @@ export default function Customers() {
     enabled: !showForm && !showFollowForm && !showContactForm,
   });
 
+  const reconcileSelectedCustomerClosure = async () => {
+    if (!selectedCustomer?.id) return;
+    setClosureSyncing(true);
+    try {
+      const response = await invokeWithAuth({
+        url: `/api/v1/customer-lifecycle/customers/${selectedCustomer.id}/reconcile-closure`,
+        method: 'POST',
+      });
+      const summary = response?.data?.closure_summary || {};
+      toast.success(`状态闭环完成：停止项目 ${summary.stopped_projects || 0} 个，关闭续费 ${summary.stopped_subscriptions || 0} 条`);
+      await loadCustomerDetail(selectedCustomer.id, selectedCustomer);
+    } catch (error: any) {
+      toast.error(getErrorDetail(error, '状态闭环失败'));
+    } finally {
+      setClosureSyncing(false);
+    }
+  };
+
   const checkDuplicate = (name: string, phone: string) => {
     if (!name && !phone) { setDuplicateWarning(null); return; }
     const dupes = customers.filter(c => {
@@ -1327,6 +1360,9 @@ export default function Customers() {
         currency: row.currency || 'USD',
         owner_employee_id: row.owner_employee_id ? String(row.owner_employee_id) : '',
         paid_started_at: row.paid_started_at ? row.paid_started_at.slice(0, 10) : '',
+        stopped_at: row.stopped_at ? row.stopped_at.slice(0, 10) : '',
+        stop_reason_code: row.stop_reason_code || '',
+        stop_note: row.stop_note || '',
       })));
     } catch (error: any) {
       toast.error(getErrorDetail(error, '合作项目加载失败'));
@@ -1367,6 +1403,8 @@ export default function Customers() {
     if (new Set(customerProjectForms.map(row => row.business_line_code)).size !== customerProjectForms.length) { toast.error('同一业务项目只能添加一次'); return; }
     if (customerProjectForms.some(row => !row.package_name.trim())) { toast.error('请填写每个合作项目的套餐或项目名称'); return; }
     if (customerProjectForms.some(row => ['active_paid', 'reactivated'].includes(row.status) && !row.paid_started_at)) { toast.error('付费合作中的项目必须填写第一笔有效收款日期'); return; }
+    if (customerProjectForms.some(row => ['stopped', 'completed'].includes(row.status) && !row.stopped_at)) { toast.error('已停止或已完成项目必须填写结束日期'); return; }
+    if (form.status === 'lost' && customerProjectForms.some(row => activeCustomerProjectStatuses.has(row.status))) { toast.error('客户标记流失前，请先停止所有合作项目；成交和收款历史无需删除'); return; }
     setSaving(true);
     try {
       const now = new Date().toISOString();
@@ -1388,6 +1426,9 @@ export default function Customers() {
         owner_employee_id: row.owner_employee_id ? Number(row.owner_employee_id) : null,
         sales_employee_id: form.sales_employee_id === '' ? null : Number(form.sales_employee_id),
         paid_started_at: row.paid_started_at ? `${row.paid_started_at}T00:00:00Z` : null,
+        stopped_at: row.stopped_at ? `${row.stopped_at}T00:00:00Z` : null,
+        stop_reason_code: row.stop_reason_code || null,
+        stop_note: row.stop_note || null,
         source_payment_ids: [],
         source_subscription_ids: [],
       }));
@@ -1766,6 +1807,11 @@ export default function Customers() {
                 <div className="mt-4 rounded-lg border border-dashed border-blue-200 bg-white/70 px-4 py-5 text-center text-sm text-slate-500">当前未建立合作项目；客户资料仍可正常保存。</div>
               ) : (
                 <div className="mt-4 space-y-3">
+                  {form.status === 'lost' && customerProjectForms.some(row => activeCustomerProjectStatuses.has(row.status)) && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      客户已选择“流失”，但仍有合作项目未停止。请把相关项目改为“项目已停止”并填写结束信息；历史成交和收款不会被删除。
+                    </div>
+                  )}
                   {customerProjectForms.map((project, index) => (
                     <div key={`${project.engagement_id || 'new'}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
                       <div className="mb-3 flex items-center justify-between">
@@ -1775,14 +1821,22 @@ export default function Customers() {
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         <div><Label className="text-xs">业务项目 *</Label><NativeSelect value={project.business_line_code} onChange={value => updateCustomerProject(index, { business_line_code: value })} options={Object.entries(customerProjectLines).map(([value, item]) => ({ value, label: item.label }))} /></div>
                         <div><Label className="text-xs">套餐/项目名称 *</Label><Input value={project.package_name} onChange={event => updateCustomerProject(index, { package_name: event.target.value })} placeholder="如：基础代运营、餐饮 OS 专业版" /></div>
-                        <div><Label className="text-xs">项目状态 *</Label><NativeSelect value={project.status} onChange={value => updateCustomerProject(index, { status: value })} options={Object.entries(customerProjectStatuses).map(([value, label]) => ({ value, label }))} /></div>
+                        <div><Label className="text-xs">项目状态 *</Label><NativeSelect value={project.status} onChange={value => updateCustomerProject(index, {
+                          status: value,
+                          stopped_at: ['stopped', 'completed'].includes(value) ? (project.stopped_at || todayShanghai()) : '',
+                          stop_reason_code: value === 'stopped' ? project.stop_reason_code : '',
+                          stop_note: ['stopped', 'completed'].includes(value) ? project.stop_note : '',
+                        })} options={Object.entries(customerProjectStatuses).map(([value, label]) => ({ value, label }))} /></div>
                         <div><Label className="text-xs">第一笔有效收款日期</Label><Input type="date" value={project.paid_started_at} max={new Date().toISOString().slice(0, 10)} onChange={event => updateCustomerProject(index, { paid_started_at: event.target.value })} /></div>
                         <div><Label className="text-xs">收费周期</Label><NativeSelect value={project.billing_cycle} onChange={value => updateCustomerProject(index, { billing_cycle: value })} options={[{ value: '', label: '待确认' }, ...Object.entries(customerProjectBillingCycles).map(([value, label]) => ({ value, label }))]} /></div>
                         <div><Label className="text-xs">收款方式</Label><NativeSelect value={project.collection_method} onChange={value => updateCustomerProject(index, { collection_method: value })} options={Object.entries(customerProjectCollectionMethods).map(([value, label]) => ({ value, label }))} /></div>
                         <div><Label className="text-xs">币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateCustomerProject(index, { currency: event.target.value.toUpperCase() })} /></div>
                         <div><Label className="text-xs">项目负责人</Label><NativeSelect value={project.owner_employee_id} onChange={value => updateCustomerProject(index, { owner_employee_id: value })} options={[{ value: '', label: '待分配' }, ...employeesList.map(employeeRow => ({ value: String(employeeRow.id), label: employeeRow.name }))]} /></div>
+                        {['stopped', 'completed'].includes(project.status) && <div><Label className="text-xs">结束日期 *</Label><Input type="date" value={project.stopped_at} max={todayShanghai()} onChange={event => updateCustomerProject(index, { stopped_at: event.target.value })} /></div>}
+                        {project.status === 'stopped' && <div><Label className="text-xs">停止原因</Label><NativeSelect value={project.stop_reason_code} onChange={value => updateCustomerProject(index, { stop_reason_code: value })} options={[{ value: '', label: '待补充' }, ...Object.entries(customerProjectStopReasons).map(([value, label]) => ({ value, label }))]} /></div>}
+                        {['stopped', 'completed'].includes(project.status) && <div className="sm:col-span-2"><Label className="text-xs">结束备注</Label><Input value={project.stop_note} onChange={event => updateCustomerProject(index, { stop_note: event.target.value })} placeholder="记录停止或完成背景，方便以后复盘" /></div>}
                       </div>
-                      <p className="mt-3 text-xs text-slate-400">“付费合作中”必须填写第一笔有效收款日期；待开通或试用项目可以暂不填写。停止单个项目不会改变客户整体状态。</p>
+                      <p className="mt-3 text-xs text-slate-400">“付费合作中”必须填写第一笔有效收款日期；停止项目会同步关闭该项目关联的续费计划，但成交和收款历史永久保留。</p>
                     </div>
                   ))}
                 </div>
@@ -2041,6 +2095,8 @@ export default function Customers() {
     const latestDealDate = deals[0]?.deal_date?.slice(0, 10) || '-';
     const serviceRecordCount = serviceProgresses.length > 0 ? serviceProgresses.length : subscriptions.length;
     const activeSubscriptionCount = subscriptions.filter(item => computeSubscriptionState(item) === 'active').length;
+    const currentLifecycleStatus = lifecycleDetail?.cycles?.[0]?.status;
+    const hasClosureMismatch = currentLifecycleStatus === 'stopped' && activeSubscriptionCount > 0;
     const pendingServiceTasks = serviceTasks.filter(item => !['completed', 'cancelled'].includes(item.status || '')).length;
     const overdueServiceTasks = serviceTasks.filter(item => item.due_date && item.due_date < new Date().toISOString().slice(0, 10) && !['completed', 'cancelled'].includes(item.status || '')).length;
     const openServiceIssues = serviceProgresses.filter(item => item.issue_status && item.issue_status !== 'none' && !item.issue_resolved).length;
@@ -2109,6 +2165,12 @@ export default function Customers() {
           <div className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
             <span>客户关联数据加载失败：{detailLoadError}</span>
             <Button size="sm" variant="outline" className="border-red-200 bg-white text-red-700 hover:bg-red-100" onClick={() => loadCustomerDetail(c.id, c)}>重新加载</Button>
+          </div>
+        )}
+        {hasClosureMismatch && (
+          <div className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="font-semibold">客户已停止，但仍有项目或续费显示合作中</p><p className="mt-1 text-xs text-red-600">同步只关闭未来合作与扣款，不会删除成交、收款或历史服务。</p></div>
+            {isAdmin && <Button size="sm" className="shrink-0 bg-red-600 hover:bg-red-700" disabled={closureSyncing} onClick={() => void reconcileSelectedCustomerClosure()}>{closureSyncing ? '同步中…' : '一键同步闭环'}</Button>}
           </div>
         )}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">

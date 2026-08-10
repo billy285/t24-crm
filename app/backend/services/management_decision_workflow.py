@@ -565,6 +565,21 @@ async def save_customer_classification_review(
             engagement.stopped_at = None
         await db.flush()
 
+        if status in {"stopped", "completed"}:
+            linked_subscriptions = list((await db.execute(
+                select(Subscriptions).where(Subscriptions.engagement_id == engagement.id)
+            )).scalars().all())
+            for subscription in linked_subscriptions:
+                subscription_status = str(subscription.status or "").lower()
+                next_payment_at = ensure_aware(subscription.next_payment_date)
+                has_future_collection = bool(next_payment_at and stopped_at and next_payment_at >= stopped_at)
+                if subscription_status not in {"active", "expiring_soon", "renewal_pending", "paused"} and not subscription.auto_renew and not has_future_collection:
+                    continue
+                subscription.status = "stopped"
+                subscription.auto_renew = False
+                subscription.next_payment_date = None
+                subscription.updated_at = now
+
         payment_ids, subscription_ids = await _validate_sources(
             db,
             customer_id,
