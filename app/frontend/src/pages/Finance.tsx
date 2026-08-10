@@ -2463,7 +2463,7 @@ export default function Finance() {
       {
         key: 'manual',
         title: '手动收款',
-        description: '支票、Zelle、转账到账后直接确认收款；服务周期按原到期日自动顺延。',
+        description: '尚未到期的支票、Zelle、转账客户；到期当天自动进入风险队列并显示确认收款。',
         tone: 'slate',
         priorityLabel: '线下收款',
         rows: rows.filter((subscription: any) => (
@@ -4829,7 +4829,7 @@ export default function Finance() {
                                           {confirmingRenewalId === Number(s.id) ? '确认中' : '确认扣款'}
                                         </Button>
                                       )}
-                                      {!s.auto_renew && !['stopped', 'lost', 'upgraded', 'paused'].includes(status) && (
+                                      {!s.auto_renew && status === 'expired' && (
                                         <Button
                                           size="sm"
                                           className="h-8 bg-emerald-600 px-3 text-xs hover:bg-emerald-700"
