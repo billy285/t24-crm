@@ -103,6 +103,11 @@ const subscriptionStatusFallbackLabels: Record<string, string> = {
   paused: '暂停',
   lost: '流失',
 };
+const ACTIONABLE_SUBSCRIPTION_STATUSES = new Set(['renewal_pending', 'expiring_soon', 'expired']);
+
+const getEffectiveSubscriptionStatus = (subscription: any) => (
+  subscription?.status || computeSubscriptionStatus(subscription)
+);
 
 const PIE_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1'];
 const financeTabValues = new Set(['overview', 'customer_profit', 'receivables', 'income', 'refunds', 'ad_funds', 'customer_expense', 'company_expense', 'subscriptions', 'charts', 'monthly_detail']);
@@ -1415,12 +1420,8 @@ export default function Finance() {
     if (financeIssueFilter === 'autoRenewMissingNextDate') {
       return subscriptions.filter(s => s.auto_renew && !s.next_payment_date);
     }
-    if (!activeDateRange) return subscriptions;
-    return subscriptions.filter(s => (
-      isDateInRange(s.start_date || s.created_at, activeDateRange)
-      || isDateInRange(s.next_payment_date || s.end_date, activeDateRange)
-    ));
-  }, [subscriptions, activeDateRange, financeIssueFilter]);
+    return subscriptions;
+  }, [subscriptions, financeIssueFilter]);
 
   const filteredExpenses = expenses.filter(e => {
     if (financeIssueFilter === 'missingExpenseMonth') return !/^\d{4}-\d{2}$/.test(e.expense_month || '');
@@ -1528,8 +1529,8 @@ export default function Finance() {
           ? '筛选期'
           : '本月';
   const totalOutstanding = payments.reduce((s, p) => s + (p.outstanding_amount || 0), 0);
-  const renewalPendingSubs = subscriptions.filter(s => s.status === 'renewal_pending').length;
-  const expiringSubs = subscriptions.filter(s => s.status === 'expiring_soon' || s.status === 'expired');
+  const renewalPendingSubs = subscriptions.filter(s => getEffectiveSubscriptionStatus(s) === 'renewal_pending').length;
+  const expiringSubs = subscriptions.filter(s => ['expiring_soon', 'expired'].includes(getEffectiveSubscriptionStatus(s)));
   const renewalAttentionCount = renewalPendingSubs + expiringSubs.length;
   const activeSubs = subscriptions.filter(s => s.status === 'active').length;
 
@@ -2406,7 +2407,7 @@ export default function Finance() {
       .reduce((sum: number, item: any) => sum + toMoneyNumber(item.package_price), 0)
   ), [subscriptions]);
   const subscriptionWorkbenchGroups = useMemo(() => {
-    const getStatus = (subscription: any) => subscription.status || computeSubscriptionStatus(subscription);
+    const getStatus = getEffectiveSubscriptionStatus;
     const rows = filteredSubscriptions;
     const archivedStatuses = new Set(['stopped', 'lost', 'upgraded', 'paused']);
     const groups: Array<{
@@ -2420,10 +2421,10 @@ export default function Finance() {
       {
         key: 'pending',
         title: '待确认扣款',
-        description: 'Stripe 已到计划扣款日，需要确认实际入账日期。',
+        description: '已到计划扣款或收款日，需要确认实际入账日期。',
         tone: 'cyan',
         priorityLabel: '优先 1',
-        rows: rows.filter((subscription: any) => subscription.auto_renew && getStatus(subscription) === 'renewal_pending'),
+        rows: rows.filter((subscription: any) => getStatus(subscription) === 'renewal_pending'),
       },
       {
         key: 'risk',
@@ -2431,10 +2432,7 @@ export default function Finance() {
         description: '需要决定续费、停止合作或手动收款。',
         tone: 'amber',
         priorityLabel: '优先 2',
-        rows: rows.filter((subscription: any) => {
-          const status = getStatus(subscription);
-          return subscription.auto_renew && (status === 'expiring_soon' || status === 'expired');
-        }),
+        rows: rows.filter((subscription: any) => ['expiring_soon', 'expired'].includes(getStatus(subscription))),
       },
       {
         key: 'active_auto',
@@ -2454,10 +2452,14 @@ export default function Finance() {
       {
         key: 'manual',
         title: '手动收款',
-        description: '支票、Zelle、转账等手动录入，不产生 Stripe 手续费。',
+        description: '尚未到期的支票、Zelle、转账等手动收款；到期后自动进入风险队列。',
         tone: 'slate',
         priorityLabel: '线下收款',
-        rows: rows.filter((subscription: any) => !subscription.auto_renew && !archivedStatuses.has(getStatus(subscription))),
+        rows: rows.filter((subscription: any) => (
+          !subscription.auto_renew
+          && !archivedStatuses.has(getStatus(subscription))
+          && !ACTIONABLE_SUBSCRIPTION_STATUSES.has(getStatus(subscription))
+        )),
       },
       {
         key: 'stopped',
@@ -4585,7 +4587,7 @@ export default function Finance() {
                     <p className="mt-1 text-xs text-slate-500">
                       先处理待确认扣款，再处理即将到期；停止合作或套餐变更只关闭旧套餐的未来续费，不影响历史财务。
                     </p>
-                    <p className="mt-2 text-[11px] text-slate-400">顶部“续费提醒”只统计需要处理的套餐；这里的总数包含筛选范围内正常、手动收款和已停止的套餐，二者口径不同。历史收款记录保持不变。</p>
+                    <p className="mt-2 text-[11px] text-slate-400">套餐续费固定显示全部，不受顶部时间筛选影响；待确认、到期风险、正常订阅、手动收款和历史归档统一在这里查看。历史收款记录保持不变。</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-3 xl:min-w-[610px] xl:grid-cols-5">
                     {subscriptionWorkbenchGroups.map(group => {
