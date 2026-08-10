@@ -11,6 +11,7 @@ from backend.main import app
 from backend.services.emp_auth import create_access_token
 from core.database import Base, get_db
 from models.employees import Employees
+from models.management_decisions import BusinessLine, ProductCatalog, ProductPlan
 
 
 def _auth_headers(role: str, emp_id: int, name: str) -> dict[str, str]:
@@ -38,6 +39,10 @@ async def sales_app_client():
             Employees(id=10, user_id="manager", name="Manager A", role="sales_manager", status="active"),
             Employees(id=11, user_id="sales-a", name="Sales A", role="sales", status="active", supervisor="Manager A"),
             Employees(id=12, user_id="sales-b", name="Sales B", role="sales", status="active", supervisor="Manager B"),
+            Employees(id=13, user_id="ops-a", name="Ops A", role="operations", department="运营", status="active"),
+            BusinessLine(id=1, code="managed_service", name="代运营", is_recurring=True, is_active=True),
+            ProductCatalog(id=1, business_line_id=1, code="managed-service", name="实体商家代运营", billing_kind="recurring", default_currency="USD", is_active=True),
+            ProductPlan(id=1, product_id=1, code="managed-pro", name="专业套餐", pricing_status="published", standard_price=398, default_currency="USD", default_billing_cycle="quarterly", platform_limit=3, scope_type="platforms", is_active=True),
         ])
         await session.commit()
 
@@ -176,6 +181,28 @@ async def test_sales_recovery_requires_manager_confirmation_and_keeps_protected_
         json={"assigned_sales_id": 12, "reason": "原销售离职，主管确认交接", "confirm_protected_transfer": True},
     )
     assert confirmed_transfer.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_batch_reassign_keeps_protected_lead_audit_guard(sales_app_client):
+    admin = _auth_headers("admin", 1, "Admin")
+    created = await sales_app_client.post(
+        "/api/v1/sales-leads", headers=admin,
+        json={"business_name": "Batch Protected Cafe", "phone": "555-2100", "assigned_sales_id": 11, "status": "interested"},
+    )
+    lead_id = created.json()["id"]
+    blocked = await sales_app_client.post(
+        "/api/v1/sales-leads/recovery/batch", headers=admin,
+        json={"lead_ids": [lead_id], "action": "reassign", "assigned_sales_id": 12, "reason": "主管平衡销售负荷", "confirm_protected_transfer": False},
+    )
+    assert blocked.status_code == 400
+    reassigned = await sales_app_client.post(
+        "/api/v1/sales-leads/recovery/batch", headers=admin,
+        json={"lead_ids": [lead_id], "action": "reassign", "assigned_sales_id": 12, "reason": "主管确认转交并通知原负责人", "confirm_protected_transfer": True},
+    )
+    assert reassigned.status_code == 200
+    lead = await sales_app_client.get(f"/api/v1/sales-leads/{lead_id}", headers=admin)
+    assert lead.json()["assigned_sales_name"] == "Sales B"
 
 
 @pytest.mark.asyncio

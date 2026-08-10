@@ -1,5 +1,5 @@
 from core.database import Base
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, func
 
 
 class SalesQuoteRequests(Base):
@@ -10,9 +10,13 @@ class SalesQuoteRequests(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     lead_id = Column(Integer, nullable=False, index=True)
+    business_line_id = Column(Integer, ForeignKey("business_lines.id", ondelete="SET NULL"), nullable=True, index=True)
+    product_id = Column(Integer, ForeignKey("product_catalog.id", ondelete="SET NULL"), nullable=True, index=True)
+    product_plan_id = Column(Integer, ForeignKey("product_plans.id", ondelete="SET NULL"), nullable=True, index=True)
     package_name = Column(String, nullable=False)
     selected_platforms = Column(Text, nullable=True)
     billing_mode = Column(String, nullable=False, default="manual")
+    billing_cycle = Column(String, nullable=False, default="one_time")
     payment_method = Column(String, nullable=False, default="stripe")
     currency = Column(String, nullable=False, default="USD")
     list_amount = Column(Float, nullable=False, default=0)
@@ -47,6 +51,8 @@ class SalesHandoffChecklists(Base):
     service_end_date = Column(String, nullable=True)
     special_commitments = Column(Text, nullable=True)
     operations_owner = Column(String, nullable=True)
+    operations_owner_employee_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True, index=True)
+    collaborator_employee_ids = Column(Text, nullable=True)
     operations_group_created = Column(Boolean, nullable=False, default=False)
     finance_payment_confirmed = Column(Boolean, nullable=False, default=False)
     payment_status = Column(String, nullable=False, default="pending")

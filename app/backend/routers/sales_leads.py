@@ -2,6 +2,7 @@ import json
 import re
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -25,6 +26,7 @@ from models.customer_contacts import Customer_contacts
 from models.deals import Deals
 from models.service_progresses import Service_progresses
 from models.subscriptions import Subscriptions
+from models.management_decisions import BusinessLine, CustomerEngagement
 from schemas.auth import UserResponse
 from schemas.aihub import ChatMessage, GenTxtRequest
 from services.ai_config import humanize_ai_error, resolve_ai_runtime_config
@@ -250,6 +252,13 @@ class RecoveryExtensionRequest(RecoveryReasonRequest):
 
 class RecoveryReassignRequest(RecoveryReasonRequest):
     assigned_sales_id: int
+    confirm_protected_transfer: bool = False
+
+
+class RecoveryBatchRequest(RecoveryReasonRequest):
+    lead_ids: list[int] = Field(min_length=1, max_length=200)
+    action: str = Field(pattern="^(reclaim|reassign)$")
+    assigned_sales_id: Optional[int] = Field(default=None, ge=1)
     confirm_protected_transfer: bool = False
 
 
@@ -879,6 +888,67 @@ async def get_my_recovery_alerts(
     return {"items": [item for item in items if item["state"] in {"watch", "recoverable"}]}
 
 
+@router.post("/recovery/batch")
+async def batch_update_lead_recovery(
+    payload: RecoveryBatchRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_lead_role(current_user)
+    if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
+        raise HTTPException(status_code=403, detail="只有销售主管或系统管理员可以批量处理线索归属")
+    lead_ids = list(dict.fromkeys(payload.lead_ids))
+    leads = [await _get_scoped_lead(db, lead_id, current_user) for lead_id in lead_ids]
+    snapshot = {item["lead_id"]: item for item in await _load_recovery_snapshot(db, current_user)}
+    target = None
+    if payload.action == "reassign":
+        if not payload.assigned_sales_id:
+            raise HTTPException(status_code=400, detail="批量重新分配必须选择目标销售")
+        target = (await db.execute(select(Employees).where(
+            Employees.id == payload.assigned_sales_id,
+            Employees.role == "sales",
+            Employees.status.in_(["active", "probation"]),
+        ))).scalar_one_or_none()
+        if not target:
+            raise HTTPException(status_code=400, detail="只能重新分配给在职电话销售")
+        if _role(current_user) == "sales_manager" and target.supervisor != (current_user.name or ""):
+            raise HTTPException(status_code=403, detail="只能重新分配给直属销售")
+
+    invalid = []
+    for lead in leads:
+        item = snapshot.get(lead.id)
+        state = item["state"] if item else "unassigned"
+        if payload.action == "reclaim" and state != "recoverable":
+            invalid.append(f"{lead.business_name}（{state}）")
+        if payload.action == "reassign" and state == "protected" and not payload.confirm_protected_transfer:
+            invalid.append(f"{lead.business_name}（受保护）")
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"以下线索不符合本次批量操作：{'、'.join(invalid[:8])}")
+
+    for lead in leads:
+        old_id, old_name = lead.assigned_sales_id, lead.assigned_sales_name
+        if payload.action == "reclaim":
+            lead.assigned_sales_id = None
+            lead.assigned_sales_name = None
+            await _append_assignment_log(
+                db, lead, "reclaimed", current_user,
+                from_employee_id=old_id, from_employee_name=old_name, reason=payload.reason.strip(),
+            )
+        else:
+            lead.assigned_sales_id = target.id
+            lead.assigned_sales_name = target.name
+            if _role(current_user) == "sales_manager":
+                lead.team_manager_id = _employee_id(current_user)
+            await _append_assignment_log(
+                db, lead, "reassigned", current_user,
+                from_employee_id=old_id, from_employee_name=old_name,
+                to_employee_id=target.id, to_employee_name=target.name, reason=payload.reason.strip(),
+            )
+    await db.commit()
+    verb = "回收至待分配" if payload.action == "reclaim" else f"重新分配给 {target.name}"
+    return {"message": f"已将 {len(leads)} 条线索{verb}", "updated": len(leads)}
+
+
 @router.post("/{lead_id}/recovery/request-extension")
 async def request_lead_recovery_extension(
     lead_id: int,
@@ -1199,14 +1269,14 @@ async def convert_sales_lead_to_customer(
         if handoff.quote_id != approved_quote.id: blockers.append("交接清单需要关联当前已审批报价")
         if not (handoff.customer_goal or "").strip(): blockers.append("请填写客户目标")
         if not (handoff.key_contacts or "").strip(): blockers.append("请填写关键联系人或对接方式")
-        if not (handoff.operations_owner or "").strip(): blockers.append("请填写运营对接负责人")
+        if not handoff.operations_owner_employee_id and not (handoff.operations_owner or "").strip(): blockers.append("请选择运营对接负责人")
         if not handoff.operations_group_created: blockers.append("请确认已建立运营对接群")
         payment_status = handoff.payment_status or ("paid" if handoff.finance_payment_confirmed else "pending")
         if payment_status != "paid": blockers.append("等待财务确认全额收款")
         service_start = handoff.service_start_date or approved_quote.service_start_date
         service_end = handoff.service_end_date or approved_quote.service_end_date
-        if approved_quote.billing_mode == "subscription" and (not service_start or not service_end):
-            blockers.append("订阅套餐必须填写服务开始和结束日期")
+        if approved_quote.billing_cycle != "one_time" and (not service_start or not service_end):
+            blockers.append("周期性服务必须填写服务开始和结束日期")
     if blockers:
         raise HTTPException(status_code=400, detail={"message": "成交审核尚未完成", "blockers": blockers})
     duplicates = await _find_customer_duplicates(db, lead)
@@ -1243,8 +1313,48 @@ async def convert_sales_lead_to_customer(
     service_end = _parse_optional_datetime(handoff.service_end_date or approved_quote.service_end_date)
     payment_date = _parse_optional_datetime(handoff.payment_date) or handoff.payment_confirmed_at or datetime.now(timezone.utc)
     product_type = _quote_product_type(approved_quote.package_name, approved_quote.selected_platforms)
-    billing_cycle = "monthly" if approved_quote.billing_mode == "subscription" else "one_time"
+    billing_cycle = approved_quote.billing_cycle or ("monthly" if approved_quote.billing_mode == "subscription" else "one_time")
+    if approved_quote.business_line_id:
+        business_line = await db.get(BusinessLine, approved_quote.business_line_id)
+        if business_line:
+            product_type = business_line.code
+    collaborator_ids = []
+    try:
+        collaborator_ids = [int(item) for item in json.loads(handoff.collaborator_employee_ids or "[]")]
+    except (TypeError, ValueError):
+        collaborator_ids = []
+    engagement = None
+    if approved_quote.business_line_id and approved_quote.product_id:
+        engagement = CustomerEngagement(
+            customer_id=customer.id,
+            business_line_id=approved_quote.business_line_id,
+            product_id=approved_quote.product_id,
+            product_plan_id=approved_quote.product_plan_id,
+            engagement_code=f"ENG-{datetime.now(timezone.utc):%Y%m%d}-{uuid4().hex[:8].upper()}",
+            package_name=approved_quote.package_name,
+            status="active_paid",
+            owner_employee_id=handoff.operations_owner_employee_id,
+            sales_employee_id=lead.assigned_sales_id,
+            billing_cycle=billing_cycle,
+            collection_method=(
+                "stripe_auto" if approved_quote.billing_mode == "subscription"
+                else approved_quote.payment_method if approved_quote.payment_method in {"check", "zelle", "bank_transfer"}
+                else "other"
+            ),
+            currency=approved_quote.currency or "USD",
+            selected_platforms=approved_quote.selected_platforms,
+            service_scope_json=json.dumps({"collaborator_employee_ids": collaborator_ids}, ensure_ascii=False),
+            paid_started_at=payment_date,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(engagement)
+        await db.flush()
     deal = Deals(
+        engagement_id=engagement.id if engagement else None,
+        business_line_id=approved_quote.business_line_id,
+        product_id=approved_quote.product_id,
+        product_plan_id=approved_quote.product_plan_id,
         customer_id=customer.id, customer_name=customer.business_name,
         sales_employee_id=lead.assigned_sales_id, sales_name=lead.assigned_sales_name,
         product_type=product_type, package_name=approved_quote.package_name,
@@ -1266,12 +1376,26 @@ async def convert_sales_lead_to_customer(
         transaction_reference_override=handoff.payment_reference,
         payment_date_override=payment_date,
     )
+    payment.engagement_id = engagement.id if engagement else None
+    payment.business_line_id = approved_quote.business_line_id
+    payment.product_id = approved_quote.product_id
+    payment.billing_cycle = billing_cycle
+    payment.coverage_start = service_start
+    payment.coverage_end = service_end
     subscription = None
-    if approved_quote.billing_mode == "subscription":
+    if billing_cycle != "one_time":
         subscription = Subscriptions(
             customer_id=customer.id, customer_name=customer.business_name, deal_id=deal.id,
+            engagement_id=engagement.id if engagement else None,
+            business_line_id=approved_quote.business_line_id,
+            product_id=approved_quote.product_id,
+            product_plan_id=approved_quote.product_plan_id,
             package_name=approved_quote.package_name, package_price=float(approved_quote.final_amount or 0),
-            billing_cycle="monthly", start_date=service_start, end_date=service_end, auto_renew=True,
+            list_price_snapshot=float(approved_quote.list_amount or 0), pricing_source="approved_quote",
+            selected_platforms=approved_quote.selected_platforms,
+            service_scope_json=json.dumps({"collaborator_employee_ids": collaborator_ids}, ensure_ascii=False),
+            billing_cycle=billing_cycle, start_date=service_start, end_date=service_end,
+            auto_renew=approved_quote.billing_mode == "subscription",
             renewal_person=lead.assigned_sales_name, last_payment_date=payment_date,
             next_payment_date=service_end, status="active", renewal_result="initial_contract_approved",
             created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
@@ -1297,10 +1421,15 @@ async def convert_sales_lead_to_customer(
     snapshot["approved_quote"] = {
         "id": approved_quote.id, "package_name": approved_quote.package_name, "selected_platforms": approved_quote.selected_platforms,
         "currency": approved_quote.currency, "final_amount": approved_quote.final_amount, "payment_method": approved_quote.payment_method,
-        "billing_mode": approved_quote.billing_mode, "service_start_date": approved_quote.service_start_date, "service_end_date": approved_quote.service_end_date,
+        "billing_mode": approved_quote.billing_mode, "billing_cycle": billing_cycle,
+        "business_line_id": approved_quote.business_line_id, "product_id": approved_quote.product_id,
+        "product_plan_id": approved_quote.product_plan_id,
+        "service_start_date": approved_quote.service_start_date, "service_end_date": approved_quote.service_end_date,
     }
     snapshot["handoff"] = {
         "customer_goal": handoff.customer_goal, "key_contacts": handoff.key_contacts, "operations_owner": handoff.operations_owner,
+        "operations_owner_employee_id": handoff.operations_owner_employee_id,
+        "collaborator_employee_ids": collaborator_ids,
         "operations_group_created": handoff.operations_group_created, "finance_payment_confirmed": handoff.finance_payment_confirmed,
         "payment_status": handoff.payment_status, "amount_received": handoff.amount_received,
         "payment_date": handoff.payment_date, "payment_reference": handoff.payment_reference,
@@ -1321,7 +1450,8 @@ async def convert_sales_lead_to_customer(
     return {
         "message": "已转为正式客户，并自动生成成交、收款和订阅信息。",
         "customer_id": customer.id, "customer_code": customer_code, "deal_id": deal.id,
-        "payment_id": payment.id, "subscription_id": subscription.id if subscription else None,
+        "payment_id": payment.id, "engagement_id": engagement.id if engagement else None,
+        "subscription_id": subscription.id if subscription else None,
         "service_progress_id": service_progress.id if service_progress else None,
     }
 

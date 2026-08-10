@@ -33,7 +33,7 @@ ENGAGEMENT_STATUSES = (
     "completed",
 )
 
-BILLING_CYCLES = ("monthly", "quarterly", "annual", "one_time")
+BILLING_CYCLES = ("monthly", "quarterly", "semi_annual", "annual", "one_time")
 COLLECTION_METHODS = ("stripe_auto", "bank_transfer", "check", "zelle", "other")
 
 

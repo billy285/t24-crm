@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1/product-plans", tags=["product-plans"])
 
 PRICING_STATUSES = {"draft", "published", "retired"}
 SCOPE_TYPES = {"platforms", "restaurant_os", "beauty_os", "generic"}
-BILLING_CYCLES = {"monthly", "quarterly", "annual", "one_time"}
+BILLING_CYCLES = {"monthly", "quarterly", "semi_annual", "annual", "one_time"}
 CODE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,79}$")
 
 
@@ -47,7 +47,7 @@ class PlanInput(BaseModel):
     pricing_status: Literal["draft", "published", "retired"] = "draft"
     standard_price: Optional[float] = Field(None, ge=0)
     default_currency: str = Field("USD", min_length=3, max_length=3)
-    default_billing_cycle: Optional[Literal["monthly", "quarterly", "annual", "one_time"]] = None
+    default_billing_cycle: Optional[Literal["monthly", "quarterly", "semi_annual", "annual", "one_time"]] = None
     platform_limit: Optional[int] = Field(None, ge=1, le=50)
     scope_type: Literal["platforms", "restaurant_os", "beauty_os", "generic"] = "generic"
     entitlements: list[str] = Field(default_factory=list, max_length=100)

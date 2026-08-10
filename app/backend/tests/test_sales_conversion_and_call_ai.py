@@ -175,3 +175,56 @@ async def test_newly_approved_quote_supersedes_previous_approved_quote(sales_app
     assert statuses[quote_ids[1]] == "approved"
     assert readiness.json()["handoff"]["payment_status"] == "pending"
     assert readiness.json()["handoff"]["finance_payment_confirmed"] is False
+
+
+@pytest.mark.asyncio
+async def test_structured_quote_creates_quarterly_engagement_and_employee_handoff(sales_app_client):
+    admin = _auth_headers("admin", 1, "Admin")
+    manager = _auth_headers("sales_manager", 10, "Manager A")
+    sales = _auth_headers("sales", 11, "Sales A")
+    created = await sales_app_client.post(
+        "/api/v1/sales-leads", headers=admin,
+        json={"business_name": "Structured Spa", "contact_name": "Owner", "phone": "+12125550222", "assigned_sales_id": 11},
+    )
+    lead_id = created.json()["id"]
+    quote = await sales_app_client.post(
+        f"/api/v1/sales-deal-controls/{lead_id}/quotes", headers=sales,
+        json={
+            "business_line_id": 1, "product_id": 1, "product_plan_id": 1,
+            "package_name": "不会采用的自由文本", "selected_platforms": ["Google", "Instagram"],
+            "billing_mode": "manual", "billing_cycle": "quarterly", "payment_method": "check",
+            "list_amount": 398, "service_start_date": "2026-08-01", "service_end_date": "2026-11-01",
+        },
+    )
+    assert quote.status_code == 201
+    assert quote.json()["package_name"] == "专业套餐"
+    assert quote.json()["billing_cycle"] == "quarterly"
+    quote_id = quote.json()["id"]
+    assert (await sales_app_client.post(f"/api/v1/sales-deal-controls/quotes/{quote_id}/review", headers=manager, json={"decision": "approved"})).status_code == 200
+    handoff = await sales_app_client.put(
+        f"/api/v1/sales-deal-controls/{lead_id}/handoff", headers=sales,
+        json={
+            "quote_id": quote_id, "customer_goal": "提升预约量", "key_contacts": "Owner / phone",
+            "operations_owner_employee_id": 13, "collaborator_employee_ids": [10], "operations_group_created": True,
+        },
+    )
+    assert handoff.status_code == 200
+    assert handoff.json()["operations_owner"] == "Ops A"
+    assert handoff.json()["collaborator_employee_ids"] == [10]
+    assert (await sales_app_client.post(
+        f"/api/v1/sales-deal-controls/{lead_id}/handoff/finance-confirmation", headers=manager,
+        json={"payment_status": "paid", "amount_received": 398, "payment_date": "2026-08-01", "payment_reference": "CHK-222"},
+    )).status_code == 200
+    converted = await sales_app_client.post(
+        f"/api/v1/sales-leads/{lead_id}/convert-to-customer", headers=manager,
+        json={"confirmation_notes": "结构化报价与交接确认完成"},
+    )
+    assert converted.status_code == 200
+    assert converted.json()["engagement_id"]
+    assert converted.json()["subscription_id"]
+    subscriptions = await sales_app_client.get(
+        "/api/v1/entities/subscriptions", headers=admin,
+        params={"query": '{"customer_id":' + str(converted.json()["customer_id"]) + '}'},
+    )
+    assert subscriptions.json()["items"][0]["billing_cycle"] == "quarterly"
+    assert subscriptions.json()["items"][0]["auto_renew"] is False

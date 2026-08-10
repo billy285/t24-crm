@@ -11,6 +11,7 @@ from core.database import get_db
 from dependencies.auth import get_current_user
 from models.sales_deal_controls import SalesHandoffChecklists, SalesQuoteRequests
 from models.employees import Employees
+from models.management_decisions import BusinessLine, ProductCatalog, ProductPlan
 from models.sales_leads import SalesLeads
 from schemas.auth import UserResponse
 
@@ -74,7 +75,10 @@ def _list_json(raw: Optional[str]) -> list[str]:
 def _quote_data(row: SalesQuoteRequests) -> dict:
     return {
         "id": row.id, "lead_id": row.lead_id, "package_name": row.package_name,
+        "business_line_id": row.business_line_id, "product_id": row.product_id,
+        "product_plan_id": row.product_plan_id,
         "selected_platforms": _list_json(row.selected_platforms), "billing_mode": row.billing_mode,
+        "billing_cycle": row.billing_cycle or ("monthly" if row.billing_mode == "subscription" else "one_time"),
         "payment_method": row.payment_method, "currency": row.currency,
         "list_amount": row.list_amount, "discount_amount": row.discount_amount,
         "final_amount": row.final_amount, "service_start_date": row.service_start_date,
@@ -93,6 +97,8 @@ def _handoff_data(row: Optional[SalesHandoffChecklists]) -> dict:
         "customer_goal": row.customer_goal, "key_contacts": row.key_contacts,
         "service_start_date": row.service_start_date, "service_end_date": row.service_end_date,
         "special_commitments": row.special_commitments, "operations_owner": row.operations_owner,
+        "operations_owner_employee_id": row.operations_owner_employee_id,
+        "collaborator_employee_ids": [int(item) for item in _list_json(row.collaborator_employee_ids) if str(item).isdigit()],
         "operations_group_created": row.operations_group_created,
         "finance_payment_confirmed": row.finance_payment_confirmed,
         "payment_status": row.payment_status or "pending", "amount_received": row.amount_received or 0,
@@ -117,8 +123,8 @@ def _blockers(quotes: list[SalesQuoteRequests], handoff: Optional[SalesHandoffCh
         result.append("请填写客户目标")
     if not (handoff.key_contacts or "").strip():
         result.append("请填写关键联系人或对接方式")
-    if not (handoff.operations_owner or "").strip():
-        result.append("请填写运营对接负责人")
+    if not handoff.operations_owner_employee_id and not (handoff.operations_owner or "").strip():
+        result.append("请选择运营对接负责人")
     if not handoff.operations_group_created:
         result.append("请确认已建立运营对接群")
     payment_status = handoff.payment_status or ("paid" if handoff.finance_payment_confirmed else "pending")
@@ -127,15 +133,19 @@ def _blockers(quotes: list[SalesQuoteRequests], handoff: Optional[SalesHandoffCh
         result.append(payment_labels.get(payment_status, "等待财务确认全额收款"))
     start_date = handoff.service_start_date or approved.service_start_date
     end_date = handoff.service_end_date or approved.service_end_date
-    if approved.billing_mode == "subscription" and (not start_date or not end_date):
-        result.append("订阅套餐必须填写服务开始和结束日期")
+    if approved.billing_cycle != "one_time" and (not start_date or not end_date):
+        result.append("周期性服务必须填写服务开始和结束日期")
     return result
 
 
 class QuoteCreatePayload(BaseModel):
+    business_line_id: Optional[int] = Field(default=None, ge=1)
+    product_id: Optional[int] = Field(default=None, ge=1)
+    product_plan_id: Optional[int] = Field(default=None, ge=1)
     package_name: str = Field(min_length=1, max_length=160)
     selected_platforms: list[str] = Field(default_factory=list, max_length=12)
     billing_mode: str = Field(default="manual", pattern="^(manual|subscription)$")
+    billing_cycle: str = Field(default="one_time", pattern="^(monthly|quarterly|semi_annual|annual|one_time)$")
     payment_method: str = Field(default="stripe", pattern="^(stripe|check|zelle|bank_transfer|other)$")
     currency: str = Field(default="USD", max_length=8)
     list_amount: float = Field(ge=0, le=1_000_000)
@@ -163,6 +173,8 @@ class HandoffPayload(BaseModel):
     service_end_date: Optional[str] = Field(default=None, max_length=32)
     special_commitments: Optional[str] = Field(default=None, max_length=4000)
     operations_owner: Optional[str] = Field(default=None, max_length=160)
+    operations_owner_employee_id: Optional[int] = Field(default=None, ge=1)
+    collaborator_employee_ids: list[int] = Field(default_factory=list, max_length=20)
     operations_group_created: bool = False
     generate_service_board: bool = False
     handoff_notes: Optional[str] = Field(default=None, max_length=4000)
@@ -174,6 +186,48 @@ class FinanceConfirmationPayload(BaseModel):
     payment_date: Optional[str] = Field(default=None, max_length=32)
     payment_reference: Optional[str] = Field(default=None, max_length=240)
     finance_payment_confirmed: Optional[bool] = None
+
+
+async def _validate_catalog_selection(db: AsyncSession, payload: QuoteCreatePayload):
+    identifiers = (payload.business_line_id, payload.product_id, payload.product_plan_id)
+    if payload.billing_mode == "subscription" and payload.billing_cycle == "one_time":
+        raise HTTPException(status_code=400, detail="自动订阅不能使用一次性收费周期")
+    if not any(identifiers):
+        return None, None, None
+    if not payload.business_line_id or not payload.product_id:
+        raise HTTPException(status_code=400, detail="结构化报价必须选择业务线和具体产品")
+    line = await db.get(BusinessLine, payload.business_line_id)
+    product = await db.get(ProductCatalog, payload.product_id)
+    plan = await db.get(ProductPlan, payload.product_plan_id) if payload.product_plan_id else None
+    if not line or not line.is_active or not product or not product.is_active:
+        raise HTTPException(status_code=400, detail="所选业务线或产品已停用，请重新选择")
+    if product.business_line_id != line.id:
+        raise HTTPException(status_code=400, detail="所选产品不属于当前业务线")
+    if plan and (not plan.is_active or plan.product_id != product.id):
+        raise HTTPException(status_code=400, detail="所选套餐版本不属于当前产品或已停用")
+    selected_platforms = list(dict.fromkeys(item.strip() for item in payload.selected_platforms if item.strip()))
+    if plan and plan.platform_limit and len(selected_platforms) > plan.platform_limit:
+        raise HTTPException(status_code=400, detail=f"该套餐最多可选择 {plan.platform_limit} 个运营平台")
+    return line, product, plan
+
+
+@router.get("/options")
+async def get_sales_deal_options(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_sales_access(current_user)
+    employees = (await db.scalars(
+        select(Employees)
+        .where(Employees.status.in_(["active", "probation"]))
+        .order_by(Employees.department.asc(), Employees.name.asc())
+    )).all()
+    return {
+        "employees": [
+            {"id": row.id, "name": row.name, "role": row.role, "department": row.department, "position": row.position}
+            for row in employees
+        ]
+    }
 
 
 @router.get("/{lead_id}/readiness")
@@ -207,9 +261,16 @@ async def create_quote(
     final_amount = round(payload.list_amount - payload.discount_amount, 2)
     if final_amount < 0:
         raise HTTPException(status_code=400, detail="优惠金额不能大于报价金额")
+    if "billing_cycle" not in payload.model_fields_set:
+        payload.billing_cycle = "monthly" if payload.billing_mode == "subscription" else "one_time"
+    line, product, plan = await _validate_catalog_selection(db, payload)
+    package_name = (plan.name if plan else product.name) if product else payload.package_name
     row = SalesQuoteRequests(
-        lead_id=lead.id, package_name=payload.package_name, selected_platforms=json.dumps(payload.selected_platforms, ensure_ascii=False),
-        billing_mode=payload.billing_mode, payment_method=payload.payment_method, currency=payload.currency.upper(),
+        lead_id=lead.id, business_line_id=line.id if line else None, product_id=product.id if product else None,
+        product_plan_id=plan.id if plan else None, package_name=package_name,
+        selected_platforms=json.dumps(list(dict.fromkeys(payload.selected_platforms)), ensure_ascii=False),
+        billing_mode=payload.billing_mode, billing_cycle=payload.billing_cycle,
+        payment_method=payload.payment_method, currency=payload.currency.upper(),
         list_amount=payload.list_amount, discount_amount=payload.discount_amount, final_amount=final_amount,
         service_start_date=payload.service_start_date, service_end_date=payload.service_end_date,
         special_terms=payload.special_terms, status="submitted", submitted_by_id=_employee_id(current_user), submitted_by_name=current_user.name,
@@ -272,6 +333,18 @@ async def save_handoff(
         quote = await db.get(SalesQuoteRequests, payload.quote_id)
         if not quote or quote.lead_id != lead.id:
             raise HTTPException(status_code=400, detail="交接清单只能关联该线索的报价单")
+    owner = None
+    if payload.operations_owner_employee_id:
+        owner = await db.get(Employees, payload.operations_owner_employee_id)
+        if not owner or owner.status not in {"active", "probation"}:
+            raise HTTPException(status_code=400, detail="运营负责人必须是在职员工")
+    collaborator_ids = list(dict.fromkeys(payload.collaborator_employee_ids))
+    if collaborator_ids:
+        valid_ids = set((await db.scalars(select(Employees.id).where(
+            Employees.id.in_(collaborator_ids), Employees.status.in_(["active", "probation"])
+        ))).all())
+        if valid_ids != set(collaborator_ids):
+            raise HTTPException(status_code=400, detail="协作人中包含不存在或已停用的员工")
     row = await db.scalar(select(SalesHandoffChecklists).where(SalesHandoffChecklists.lead_id == lead.id))
     if not row:
         row = SalesHandoffChecklists(lead_id=lead.id)
@@ -290,7 +363,9 @@ async def save_handoff(
     row.service_start_date = payload.service_start_date
     row.service_end_date = payload.service_end_date
     row.special_commitments = (payload.special_commitments or "").strip() or None
-    row.operations_owner = (payload.operations_owner or "").strip() or None
+    row.operations_owner_employee_id = owner.id if owner else None
+    row.operations_owner = owner.name if owner else ((payload.operations_owner or "").strip() or None)
+    row.collaborator_employee_ids = json.dumps(collaborator_ids)
     row.operations_group_created = payload.operations_group_created
     row.generate_service_board = payload.generate_service_board
     row.handoff_notes = (payload.handoff_notes or "").strip() or None
