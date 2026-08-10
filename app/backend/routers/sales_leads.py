@@ -32,6 +32,11 @@ from schemas.aihub import ChatMessage, GenTxtRequest
 from services.ai_config import humanize_ai_error, resolve_ai_runtime_config
 from services.aihub import AIHubService
 from services.deal_payment_sync import sync_payment_from_deal
+from services.sales_lead_cycle import (
+    automation_overview as sales_automation_overview,
+    ensure_daily_batch,
+    run_sales_lead_cycle,
+)
 
 
 router = APIRouter(prefix="/api/v1/sales-leads", tags=["sales-leads"])
@@ -54,6 +59,8 @@ CALL_OUTCOMES = {
     "callback": "待回访",
     "interested": "有意向",
     "appointment": "已预约",
+    "not_now": "暂时不需要",
+    "existing_provider": "已有服务商",
     "not_interested": "无意向",
     "do_not_contact": "禁止再联系",
 }
@@ -65,6 +72,8 @@ FOLLOW_UP_RULES = {
     "callback": (1, "待回访：建议在约定时间前再次确认"),
     "interested": (1, "有意向：建议 24 小时内跟进需求或报价"),
     "appointment": (1, "已预约：建议在预约前确认时间与参会人"),
+    "not_now": (60, "暂时不需要：冷却 60 天后进入跨销售轮换池"),
+    "existing_provider": (90, "已有服务商：冷却 90 天后进入跨销售轮换池"),
     "not_interested": (None, "无意向：不再自动安排回访"),
     "do_not_contact": (None, "禁止再联系：已从后续拨打任务排除"),
 }
@@ -185,6 +194,14 @@ class SalesLeadResponse(BaseModel):
     notes: Optional[str] = None
     next_follow_up_at: Optional[datetime] = None
     last_contact_at: Optional[datetime] = None
+    assigned_at: Optional[datetime] = None
+    automation_state: str = "eligible"
+    cooldown_until: Optional[datetime] = None
+    contact_attempt_count: int = 0
+    rotation_count: int = 0
+    last_assigned_sales_id: Optional[int] = None
+    last_recycle_reason: Optional[str] = None
+    last_automation_at: Optional[datetime] = None
     created_by_id: Optional[int] = None
     created_by_name: Optional[str] = None
     created_at: datetime
@@ -403,53 +420,7 @@ async def _daily_quota(db: AsyncSession, sales_employee_id: int, target_date: da
 async def _ensure_daily_batch(
     db: AsyncSession, sales_employee_id: int, target_date: date, quota: int
 ) -> None:
-    existing = (await db.execute(
-        select(SalesDailyDialTasks).where(
-            SalesDailyDialTasks.sales_employee_id == sales_employee_id,
-            SalesDailyDialTasks.task_date == target_date,
-        )
-    )).scalars().all()
-    if len(existing) >= quota:
-        return
-
-    existing_lead_ids = {task.lead_id for task in existing}
-    candidates = (await db.execute(
-        select(SalesLeads)
-        .where(
-            SalesLeads.assigned_sales_id == sales_employee_id,
-            SalesLeads.is_blacklisted.is_(False),
-            SalesLeads.do_not_contact.is_(False),
-            SalesLeads.status.notin_(["lost", "blocked"]),
-        )
-    )).scalars().all()
-
-    # A future callback must not occupy today's quota. New leads can still fill
-    # the remaining slots so each salesperson has a usable fixed batch.
-    due_candidates = [
-        lead for lead in candidates
-        if not lead.next_follow_up_at or (_business_date(lead.next_follow_up_at) or target_date) <= target_date
-    ]
-
-    priority_order = {"appointment": 0, "interested": 1, "follow_up": 2, "contacted": 3, "new": 4}
-    due_candidates.sort(key=lambda lead: (
-        priority_order.get(lead.status, 9),
-        lead.next_follow_up_at is None,
-        lead.next_follow_up_at.isoformat() if lead.next_follow_up_at else "9999-12-31T23:59:59",
-        lead.id,
-    ))
-    for lead in due_candidates:
-        if len(existing_lead_ids) >= quota:
-            break
-        if lead.id in existing_lead_ids:
-            continue
-        db.add(SalesDailyDialTasks(
-            sales_employee_id=sales_employee_id,
-            task_date=target_date,
-            lead_id=lead.id,
-            status="pending",
-        ))
-        existing_lead_ids.add(lead.id)
-    await db.commit()
+    await ensure_daily_batch(db, sales_employee_id, target_date, quota)
 
 
 def _lead_status_from_outcome(outcome: str) -> str:
@@ -458,6 +429,8 @@ def _lead_status_from_outcome(outcome: str) -> str:
         "callback": "follow_up",
         "interested": "interested",
         "appointment": "appointment",
+        "not_now": "contacted",
+        "existing_provider": "contacted",
         "not_interested": "lost",
         "do_not_contact": "blocked",
     }[outcome]
@@ -466,6 +439,55 @@ def _lead_status_from_outcome(outcome: str) -> str:
 def _suggest_follow_up(outcome: str, now: datetime) -> tuple[Optional[datetime], str]:
     days, label = FOLLOW_UP_RULES[outcome]
     return (now + timedelta(days=days) if days is not None else None), label
+
+
+def _apply_automation_outcome(lead: SalesLeads, outcome: str, now: datetime, next_follow_up_at: Optional[datetime]) -> Optional[datetime]:
+    """Apply deterministic retry/cooling rules while keeping every call activity immutable."""
+    lead.last_contact_at = now
+    lead.last_automation_at = now
+    if outcome == "no_answer":
+        attempts = int(lead.contact_attempt_count or 0) + 1
+        lead.contact_attempt_count = attempts
+        if attempts >= 3:
+            old_id = lead.assigned_sales_id
+            lead.last_assigned_sales_id = old_id
+            lead.assigned_sales_id = None
+            lead.assigned_sales_name = None
+            lead.assigned_at = None
+            lead.rotation_count = int(lead.rotation_count or 0) + 1
+            lead.cooldown_until = now + timedelta(days=30)
+            lead.next_follow_up_at = lead.cooldown_until
+            lead.automation_state = "cooling"
+            lead.last_recycle_reason = "同一销售连续3次未接通，冷却30天后由其他销售轮换"
+            return lead.cooldown_until
+        retry_days = 2 if attempts == 1 else 7
+        lead.next_follow_up_at = now + timedelta(days=retry_days)
+        lead.automation_state = "assigned"
+        lead.last_recycle_reason = f"第{attempts}次未接通，{retry_days}天后重试"
+        return lead.next_follow_up_at
+    if outcome in {"not_now", "existing_provider"}:
+        days = 60 if outcome == "not_now" else 90
+        lead.last_assigned_sales_id = lead.assigned_sales_id
+        lead.assigned_sales_id = None
+        lead.assigned_sales_name = None
+        lead.assigned_at = None
+        lead.rotation_count = int(lead.rotation_count or 0) + 1
+        lead.contact_attempt_count = 0
+        lead.cooldown_until = now + timedelta(days=days)
+        lead.next_follow_up_at = lead.cooldown_until
+        lead.automation_state = "cooling"
+        lead.last_recycle_reason = f"{CALL_OUTCOMES[outcome]}，冷却{days}天后跨销售轮换"
+        return lead.cooldown_until
+    lead.contact_attempt_count = 0
+    lead.cooldown_until = None
+    lead.next_follow_up_at = next_follow_up_at
+    if outcome in {"callback", "interested", "appointment"}:
+        lead.automation_state = "protected"
+    elif outcome in {"not_interested", "do_not_contact"}:
+        lead.automation_state = "closed" if outcome == "not_interested" else "blocked"
+    else:
+        lead.automation_state = "assigned"
+    return next_follow_up_at
 
 
 def _workbench_priority(lead: SalesLeads, target_date: date) -> tuple[str, str]:
@@ -723,7 +745,7 @@ async def get_daily_call_workbench(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return a fixed daily calling batch. Finished batches never refill automatically."""
+    """Return a fixed mixed daily batch generated from the reusable company lead pool."""
     _ensure_lead_role(current_user)
     target_date = target_date or datetime.now(BUSINESS_TIMEZONE).date()
     salesperson = await _resolve_workbench_salesperson(db, current_user, sales_employee_id)
@@ -739,7 +761,7 @@ async def get_daily_call_workbench(
         .order_by(SalesDailyDialTasks.status.asc(), SalesLeads.next_follow_up_at.is_(None), SalesLeads.next_follow_up_at.asc(), SalesDailyDialTasks.id.asc())
     )).all()
     items = []
-    categories = {"unfinished": 0, "callback": 0, "interested": 0, "appointment": 0}
+    categories = {"unfinished": 0, "callback": 0, "interested": 0, "appointment": 0, "new": 0, "retry": 0, "recycled": 0, "follow_up": 0}
     for task, lead in tasks:
         if task.status != "completed":
             categories["unfinished"] += 1
@@ -749,6 +771,8 @@ async def get_daily_call_workbench(
             categories["interested"] += 1
         elif lead.status == "appointment":
             categories["appointment"] += 1
+        queue_category = task.queue_category or "new"
+        categories[queue_category] = categories.get(queue_category, 0) + 1
         priority, next_action_label = _workbench_priority(lead, target_date)
         items.append({
             "task_id": task.id,
@@ -756,6 +780,7 @@ async def get_daily_call_workbench(
             "completed_at": task.completed_at,
             "priority": priority,
             "next_action_label": next_action_label,
+            "queue_category": queue_category,
             "lead": SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
         })
     completed = sum(1 for task, _lead in tasks if task.status == "completed")
@@ -790,6 +815,29 @@ async def get_daily_call_workbench(
         },
         "items": items,
     }
+
+
+@router.get("/automation/overview")
+async def get_sales_automation_overview(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_lead_role(current_user)
+    if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
+        raise HTTPException(status_code=403, detail="只有主管或管理员可以查看公司线索资产")
+    return await sales_automation_overview(db)
+
+
+@router.post("/automation/run")
+async def run_sales_automation_now(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_lead_role(current_user)
+    if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
+        raise HTTPException(status_code=403, detail="只有主管或管理员可以执行线索自动扫描")
+    result = await run_sales_lead_cycle(db)
+    return {"message": "线索自动循环扫描完成；历史记录、成交归属和分润归属均未改动", **result}
 
 
 @router.get("/workbench/quota")
@@ -930,6 +978,9 @@ async def batch_update_lead_recovery(
         if payload.action == "reclaim":
             lead.assigned_sales_id = None
             lead.assigned_sales_name = None
+            lead.assigned_at = None
+            lead.automation_state = "eligible"
+            lead.last_assigned_sales_id = old_id
             await _append_assignment_log(
                 db, lead, "reclaimed", current_user,
                 from_employee_id=old_id, from_employee_name=old_name, reason=payload.reason.strip(),
@@ -937,6 +988,8 @@ async def batch_update_lead_recovery(
         else:
             lead.assigned_sales_id = target.id
             lead.assigned_sales_name = target.name
+            lead.assigned_at = datetime.now(timezone.utc)
+            lead.automation_state = "assigned"
             if _role(current_user) == "sales_manager":
                 lead.team_manager_id = _employee_id(current_user)
             await _append_assignment_log(
@@ -1024,6 +1077,9 @@ async def reclaim_sales_lead(
     old_id, old_name = lead.assigned_sales_id, lead.assigned_sales_name
     lead.assigned_sales_id = None
     lead.assigned_sales_name = None
+    lead.assigned_at = None
+    lead.automation_state = "eligible"
+    lead.last_assigned_sales_id = old_id
     await _append_assignment_log(
         db, lead, "reclaimed", current_user,
         from_employee_id=old_id, from_employee_name=old_name,
@@ -1061,6 +1117,8 @@ async def reassign_sales_lead(
     old_id, old_name = lead.assigned_sales_id, lead.assigned_sales_name
     lead.assigned_sales_id = target.id
     lead.assigned_sales_name = target.name
+    lead.assigned_at = datetime.now(timezone.utc)
+    lead.automation_state = "protected" if lead.status in PROTECTED_LEAD_STATUSES else "assigned"
     if _role(current_user) == "sales_manager":
         lead.team_manager_id = _employee_id(current_user)
     await _append_assignment_log(
@@ -1722,9 +1780,17 @@ async def record_daily_call_result(
     )
     db.add(activity)
     await db.flush()
+    old_assignment = (lead.assigned_sales_id, lead.assigned_sales_name)
     lead.status = _lead_status_from_outcome(payload.outcome)
-    lead.last_contact_at = now
-    lead.next_follow_up_at = next_follow_up_at
+    next_follow_up_at = _apply_automation_outcome(lead, payload.outcome, now, next_follow_up_at)
+    activity.next_follow_up_at = next_follow_up_at
+    if old_assignment[0] and lead.assigned_sales_id is None:
+        db.add(SalesLeadAssignmentLogs(
+            lead_id=lead.id, action="auto_cooling_released",
+            from_sales_employee_id=old_assignment[0], from_sales_employee_name=old_assignment[1],
+            reason=lead.last_recycle_reason, operated_by_name="系统自动循环",
+            effective_until=lead.cooldown_until,
+        ))
     if payload.notes:
         lead.notes = payload.notes
     if payload.outcome == "do_not_contact":
@@ -1766,7 +1832,7 @@ async def record_supplemental_follow_up(
     now = datetime.now(timezone.utc)
     suggested_follow_up_at, next_action_label = _suggest_follow_up(payload.outcome, now)
     next_follow_up_at = payload.next_follow_up_at or suggested_follow_up_at
-    db.add(SalesCallActivities(
+    activity = SalesCallActivities(
         lead_id=lead.id,
         sales_employee_id=_employee_id(current_user),
         sales_employee_name=current_user.name,
@@ -1774,10 +1840,19 @@ async def record_supplemental_follow_up(
         notes=payload.notes,
         next_follow_up_at=next_follow_up_at,
         called_at=now,
-    ))
+    )
+    db.add(activity)
+    old_assignment = (lead.assigned_sales_id, lead.assigned_sales_name)
     lead.status = _lead_status_from_outcome(payload.outcome)
-    lead.last_contact_at = now
-    lead.next_follow_up_at = next_follow_up_at
+    next_follow_up_at = _apply_automation_outcome(lead, payload.outcome, now, next_follow_up_at)
+    activity.next_follow_up_at = next_follow_up_at
+    if old_assignment[0] and lead.assigned_sales_id is None:
+        db.add(SalesLeadAssignmentLogs(
+            lead_id=lead.id, action="auto_cooling_released",
+            from_sales_employee_id=old_assignment[0], from_sales_employee_name=old_assignment[1],
+            reason=lead.last_recycle_reason, operated_by_name="系统自动循环",
+            effective_until=lead.cooldown_until,
+        ))
     if payload.notes:
         lead.notes = payload.notes
     if payload.outcome == "do_not_contact":
@@ -1853,6 +1928,8 @@ async def create_sales_lead(
         team_manager_id=manager_id,
         created_by_id=current_id,
         created_by_name=current_user.name,
+        assigned_at=datetime.now(timezone.utc) if assigned_id else None,
+        automation_state="assigned" if assigned_id else "eligible",
     )
     db.add(lead)
     await db.commit()
@@ -1882,6 +1959,8 @@ async def update_sales_lead(
         )
         updates["assigned_sales_id"] = assigned_id
         updates["assigned_sales_name"] = assigned_name
+        updates["assigned_at"] = datetime.now(timezone.utc) if assigned_id else None
+        updates["automation_state"] = "assigned" if assigned_id else "eligible"
         if role == "sales_manager":
             updates["team_manager_id"] = manager_id
 

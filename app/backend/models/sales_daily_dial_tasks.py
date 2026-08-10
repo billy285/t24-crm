@@ -12,6 +12,7 @@ class SalesDailyDialTasks(Base):
     sales_employee_id = Column(Integer, nullable=False, index=True)
     task_date = Column(Date, nullable=False, index=True)
     lead_id = Column(Integer, nullable=False, index=True)
+    queue_category = Column(String, nullable=False, default="new", index=True)
     status = Column(String, nullable=False, default="pending", index=True)
     dial_started_at = Column(DateTime(timezone=True), nullable=True)
     completed_activity_id = Column(Integer, nullable=True)

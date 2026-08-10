@@ -24,6 +24,7 @@ from models.payments import Payments
 from models.opportunities import Opportunities
 from models.service_progresses import Service_progresses
 from models.service_tasks import Service_tasks
+from models.sales_daily_quotas import SalesDailyQuotas
 from models.subscriptions import Subscriptions
 from models.tasks import Tasks
 from services.management_decision_workflow import build_classification_review_queue
@@ -626,6 +627,25 @@ async def run_automation_scan(
         from services.commissions import commission_ledger_available, scan_commissions
         if await commission_ledger_available(db):
             await scan_commissions(db, commit=False)
+
+        # Keep the finite phone-sales lead pool reusable. This scan only moves
+        # execution ownership/cooling state; it never changes customers, deals,
+        # commission attribution, or protected interested/appointment leads.
+        from services.sales_lead_cycle import ensure_daily_batch, run_sales_lead_cycle
+        await run_sales_lead_cycle(db, now=now, commit=False)
+        active_sales = (await db.execute(select(Employees).where(
+            Employees.role == "sales", Employees.status.in_(["active", "probation"])
+        ))).scalars().all()
+        for salesperson in active_sales:
+            quota = (await db.execute(select(SalesDailyQuotas).where(
+                SalesDailyQuotas.sales_employee_id == salesperson.id,
+                SalesDailyQuotas.target_date == local_date,
+            ))).scalar_one_or_none()
+            await ensure_daily_batch(
+                db, salesperson.id, local_date,
+                int(quota.target_count) if quota else 100,
+                commit=False,
+            )
 
         scan_run.detected_count = len(anomalies)
         scan_run.opened_count = opened_count

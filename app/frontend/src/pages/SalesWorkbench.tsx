@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, CalendarClock, CheckCircle2, ChevronRight, Clipboard, ClipboardList, Headphones, History, Link2, PhoneCall, ShieldAlert, Sparkles, Target, Users } from 'lucide-react';
+import { BarChart3, CalendarClock, CheckCircle2, ChevronRight, Clipboard, ClipboardList, Headphones, History, Link2, PhoneCall, RefreshCw, ShieldAlert, Sparkles, Target, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -15,8 +15,9 @@ import { invokeWithAuth } from '@/lib/tokenStore';
 import { useAutoRefresh } from '@/lib/use-auto-refresh';
 
 type Lead = { id: number; business_name: string; contact_name?: string; phone: string; industry?: string; city?: string; state?: string; country?: string; status: string; next_follow_up_at?: string; last_contact_at?: string; do_not_contact: boolean; is_blacklisted: boolean };
-type Task = { task_id: number; task_status: string; completed_at?: string; priority?: 'urgent' | 'high' | 'normal'; next_action_label?: string; lead: Lead };
-type Workbench = { salesperson: { id: number; name: string }; quota: number; assigned_count: number; completed_count: number; remaining_count: number; is_target_complete: boolean; categories: { unfinished: number; callback: number; interested: number; appointment: number }; performance: { attempted: number; connected: number; interested: number; appointments: number; callbacks_due: number; connection_rate: number }; items: Task[] };
+type Task = { task_id: number; task_status: string; completed_at?: string; priority?: 'urgent' | 'high' | 'normal'; next_action_label?: string; queue_category?: 'new' | 'retry' | 'recycled' | 'follow_up'; lead: Lead };
+type Workbench = { salesperson: { id: number; name: string }; quota: number; assigned_count: number; completed_count: number; remaining_count: number; is_target_complete: boolean; categories: { unfinished: number; callback: number; interested: number; appointment: number; new: number; retry: number; recycled: number; follow_up: number }; performance: { attempted: number; connected: number; interested: number; appointments: number; callbacks_due: number; connection_rate: number }; items: Task[] };
+type AutomationOverview = { counts: { eligible: number; assigned: number; protected: number; cooling: number; blocked: number; closed: number }; total: number; reusable: number; active_sales: number; daily_capacity: number; estimated_pool_days?: number; rules: { unstarted_release_hours: number; same_sales_no_answer_attempts: number; no_answer_cooldown_days: number; soft_reject_cooldown_days: number; existing_provider_cooldown_days: number } };
 type Assignee = { id: number; name: string };
 type HistoryItem = { id: number; outcome: string; outcome_label: string; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string };
 type Analysis = { available: boolean; message?: string; analysis?: { warning?: string; cards: { title: string; content: string; kind: string; sources: { label: string; value?: string | number; updated_at?: string }[] }[] } };
@@ -28,6 +29,7 @@ type WorkbenchReturnContext = { filter?: string; selectedSalesId?: string; date?
 const outcomeOptions = [
   { value: 'no_answer', label: '未接通' }, { value: 'callback', label: '待回访' },
   { value: 'interested', label: '有意向' }, { value: 'appointment', label: '已预约' },
+  { value: 'not_now', label: '暂时不需要（60天后轮换）' }, { value: 'existing_provider', label: '已有服务商（90天后轮换）' },
   { value: 'not_interested', label: '无意向' }, { value: 'do_not_contact', label: '禁止再联系' },
 ];
 const statusLabels: Record<string, string> = { new: '新线索', contacted: '已联系', follow_up: '待回访', interested: '有意向', appointment: '已预约', lost: '无意向', blocked: '禁止联系' };
@@ -57,7 +59,7 @@ function readWorkbenchReturnContext() {
 }
 
 function suggestedFollowUpValue(value: string) {
-  if (value === 'not_interested' || value === 'do_not_contact') return '';
+  if (['not_interested', 'do_not_contact', 'not_now', 'existing_provider'].includes(value)) return '';
   const next = new Date(Date.now() + 24 * 60 * 60 * 1000);
   next.setMinutes(0, 0, 0);
   return new Date(next.getTime() - next.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -89,6 +91,8 @@ export default function SalesWorkbench() {
   const [ringCentral, setRingCentral] = useState<RingCentralStatus | null>(null);
   const [returnLeadId, setReturnLeadId] = useState<number | null>(null);
   const [visibleCount, setVisibleCount] = useState(20);
+  const [automationOverview, setAutomationOverview] = useState<AutomationOverview | null>(null);
+  const [automationBusy, setAutomationBusy] = useState(false);
 
   const salesIdParam = canManage ? selectedSalesId : '';
   const loadAssignees = async () => {
@@ -131,6 +135,22 @@ export default function SalesWorkbench() {
       setRingCentral(response.data);
     } catch { setRingCentral(null); }
   };
+  const loadAutomationOverview = async () => {
+    if (!canManage) return;
+    try {
+      const response = await invokeWithAuth({ url: '/api/v1/sales-leads/automation/overview', method: 'GET' });
+      setAutomationOverview(response.data);
+    } catch { setAutomationOverview(null); }
+  };
+  const runAutomation = async () => {
+    setAutomationBusy(true);
+    try {
+      const response = await invokeWithAuth({ url: '/api/v1/sales-leads/automation/run', method: 'POST' });
+      toast.success(response.data?.message || '自动循环扫描完成');
+      await Promise.all([loadAutomationOverview(), loadWorkbench()]);
+    } catch (error: any) { toast.error(error?.data?.detail || error?.message || '自动扫描失败'); }
+    finally { setAutomationBusy(false); }
+  };
   const connectRingCentral = async (leadId?: number) => {
     try {
       const response = await invokeWithAuth({ url: '/api/ringcentral/connect', method: 'GET' });
@@ -142,7 +162,7 @@ export default function SalesWorkbench() {
   };
 
   useEffect(() => { void loadAssignees(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [canManage]);
-  useEffect(() => { void loadWorkbench(); void loadRecoveryAlerts(); void loadPersonalPerformance(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [selectedSalesId, date, canManage, role]);
+  useEffect(() => { void loadWorkbench(); void loadRecoveryAlerts(); void loadPersonalPerformance(); void loadAutomationOverview(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [selectedSalesId, date, canManage, role]);
   useEffect(() => {
     void loadRingCentral();
     const url = new URL(window.location.href);
@@ -275,8 +295,9 @@ export default function SalesWorkbench() {
 
   const progress = workbench ? `${workbench.completed_count}/${workbench.quota}` : '0/100';
   return <div className="space-y-5">
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><div className="mb-1 flex items-center gap-2 text-sm font-medium text-blue-600"><Headphones className="h-4 w-4" /> 独立售前执行区</div><h2 className="text-2xl font-bold text-slate-900">每日{workbench?.quota || Number(quotaInput) || 100}条拨打工作台</h2><p className="mt-1 text-sm text-slate-500">固定每日任务批次，按逾期、优先级和下次跟进时间排序，完成后不会自动补充新线索。</p></div><div className="flex flex-wrap gap-2"><Input className="w-40" type="date" value={date} onChange={event => setDate(event.target.value)} />{canManage && <NativeSelect className="w-40" value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} />}</div></div>
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><div className="mb-1 flex items-center gap-2 text-sm font-medium text-blue-600"><Headphones className="h-4 w-4" /> 独立售前执行区</div><h2 className="text-2xl font-bold text-slate-900">每日{workbench?.quota || Number(quotaInput) || 100}条拨打工作台</h2><p className="mt-1 text-sm text-slate-500">系统从新线索、到期重试、保护跟进和冷却回流中生成固定批次；完成后当天不无限补量。</p></div><div className="flex flex-wrap gap-2"><Input className="w-40" type="date" value={date} onChange={event => setDate(event.target.value)} />{canManage && <NativeSelect className="w-40" value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} />}</div></div>
     <Card className="border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 shadow-sm"><CardContent className="grid gap-4 p-5 lg:grid-cols-[1.3fr_repeat(4,1fr)]"><div><p className="text-sm font-medium text-blue-700">今日任务</p><p className="mt-1 text-4xl font-bold text-slate-900">{progress}</p><p className="mt-1 text-xs text-slate-500">{workbench?.salesperson.name || employee?.name || '当前销售'} · 已固定 {workbench?.assigned_count || 0} 条任务</p></div>{[{ label: '未完成', value: workbench?.categories.unfinished || 0, icon: ClipboardList }, { label: '待回访', value: workbench?.categories.callback || 0, icon: CalendarClock }, { label: '有意向', value: workbench?.categories.interested || 0, icon: Target }, { label: '已预约', value: workbench?.categories.appointment || 0, icon: CheckCircle2 }].map(stat => <div key={stat.label} className="rounded-xl bg-white/80 p-3"><stat.icon className="h-4 w-4 text-blue-600" /><p className="mt-2 text-xl font-bold text-slate-900">{stat.value}</p><p className="text-xs text-slate-500">{stat.label}</p></div>)}</CardContent></Card>
+    {canManage && automationOverview && <Card className="border-indigo-100 bg-indigo-50/40 shadow-sm"><CardContent className="p-4"><div className="flex flex-col gap-4 lg:flex-row lg:items-center"><div className="flex-1"><div className="flex items-center gap-2"><RefreshCw className="h-5 w-5 text-indigo-600" /><p className="font-semibold text-slate-900">公司线索资产自动循环</p></div><p className="mt-1 text-xs text-slate-600">可复用 {automationOverview.reusable} / 总计 {automationOverview.total} · 当前约可支撑 {automationOverview.estimated_pool_days ?? '-'} 个工作日。成交与分润归属不随执行轮换改变。</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge className="bg-emerald-100 text-emerald-700">现在可分 {automationOverview.counts.eligible}</Badge><Badge className="bg-blue-100 text-blue-700">执行中 {automationOverview.counts.assigned}</Badge><Badge className="bg-amber-100 text-amber-800">跟进保护 {automationOverview.counts.protected}</Badge><Badge className="bg-violet-100 text-violet-700">冷却中 {automationOverview.counts.cooling}</Badge><Badge className="bg-slate-100 text-slate-600">禁止/关闭 {automationOverview.counts.blocked + automationOverview.counts.closed}</Badge></div></div><div className="rounded-lg bg-white p-3 text-xs text-slate-600"><p>未开始 {automationOverview.rules.unstarted_release_hours} 小时自动回收</p><p>未接通 {automationOverview.rules.same_sales_no_answer_attempts} 次后冷却 {automationOverview.rules.no_answer_cooldown_days} 天并换人</p><p>暂不需要 {automationOverview.rules.soft_reject_cooldown_days} 天 · 已有服务商 {automationOverview.rules.existing_provider_cooldown_days} 天</p></div><Button variant="outline" disabled={automationBusy} onClick={() => void runAutomation()}><RefreshCw className={`mr-1.5 h-4 w-4 ${automationBusy ? 'animate-spin' : ''}`} />{automationBusy ? '扫描中' : '立即扫描'}</Button></div></CardContent></Card>}
     <Card className="border-sky-100 shadow-sm"><CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><div className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-100 text-sky-700"><Link2 className="h-4 w-4" /></div><div className="flex-1"><p className="text-sm font-semibold text-slate-800">拨号辅助（可选）</p><p className="mt-0.5 text-xs text-slate-500">默认使用“复制号码 + 手动拨打 + 保存结果”。RingCentral 已连接只代表授权可用，不代表桌面软件一定能被浏览器调起。</p></div>{ringCentral?.configured && <Button size="sm" variant="outline" onClick={() => void connectRingCentral()}>{ringCentral?.connected ? '检查 / 重连' : '连接 RingCentral'}</Button>}</CardContent></Card>
     {role === 'sales' && personalPerformance && <Card className="border-violet-100 bg-violet-50/50 shadow-sm"><CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center"><BarChart3 className="h-7 w-7 text-violet-600" /><div className="flex-1"><p className="font-semibold text-slate-900">个人成长评分</p><p className="mt-1 text-xs text-slate-600">近 30 天 #{personalPerformance.rank} · {personalPerformance.confidence}。这是管理参考，不自动影响工资或线索归属。</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge className="bg-violet-100 text-violet-700">总分 {personalPerformance.score}/100</Badge><Badge className="bg-white text-slate-700">执行 {personalPerformance.score_breakdown.execution}/25</Badge><Badge className="bg-white text-slate-700">纪律 {personalPerformance.score_breakdown.discipline}/20</Badge><Badge className="bg-white text-slate-700">商机质量 {personalPerformance.score_breakdown.opportunity}/20</Badge><Badge className="bg-white text-slate-700">销售结果 {personalPerformance.score_breakdown.results}/25</Badge><Badge className="bg-white text-slate-700">记录合规 {personalPerformance.score_breakdown.documentation}/10</Badge></div></div><div className="max-w-md rounded-lg bg-white/80 p-3 text-sm text-slate-700"><p className="font-medium text-violet-800">本周建议</p><p className="mt-1">{personalPerformance.suggestions[0]}</p></div></CardContent></Card>}
     {role === 'sales' && recoveryAlerts.length > 0 && <Card className="border-amber-200 bg-amber-50/70 shadow-sm"><CardContent className="p-4"><div className="flex items-start gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 text-amber-700" /><div className="min-w-0 flex-1"><p className="font-semibold text-amber-950">线索保护提醒</p><p className="mt-1 text-sm text-amber-900">以下线索尚未完成有效跟进。系统不会自动转给其他销售，但主管可能在查看后回收；如已和商家约好时间，可申请延期保护。</p><div className="mt-3 space-y-2">{recoveryAlerts.slice(0, 5).map(alert => <div key={alert.lead_id} className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-white/80 p-3 sm:flex-row sm:items-center"><div className="flex-1"><p className="text-sm font-medium text-slate-900">{alert.business_name}</p><p className="text-xs text-slate-600">{alert.message}{alert.deadline ? ` · 截止：${formatDate(alert.deadline)}` : ''}</p></div><Button size="sm" variant="outline" disabled={!!alert.extension_request || extensionBusy === alert.lead_id} onClick={() => void requestExtension(alert)}>{alert.extension_request ? '已申请延期' : extensionBusy === alert.lead_id ? '提交中...' : '申请延期'}</Button></div>)}</div></div></div></CardContent></Card>}
