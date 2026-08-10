@@ -610,6 +610,7 @@ export default function Customers() {
   const [customerExpenses, setCustomerExpenses] = useState<any[]>([]);
   const [customerDeductionRates, setCustomerDeductionRates] = useState<Record<string, number>>({});
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [customerProjects, setCustomerProjects] = useState<any[]>([]);
   const [productCatalog, setProductCatalog] = useState<any>({ business_lines: [], products: [], plans: [] });
   const [serviceProgresses, setServiceProgresses] = useState<any[]>([]);
   const [serviceTasks, setServiceTasks] = useState<any[]>([]);
@@ -1059,7 +1060,7 @@ export default function Customers() {
     setDetailLoading(true);
     setDetailLoadError(null);
     try {
-      const [customerRes, fuRes, dRes, pRes, expenseRes, sRes, progressRes, taskRes, lifecycleRes, catalogRes] = await Promise.all([
+      const [customerRes, fuRes, dRes, pRes, expenseRes, sRes, progressRes, taskRes, lifecycleRes, projectRes, catalogRes] = await Promise.all([
         client.entities.customers.query({ query: { id: customerId }, limit: 1 }),
         client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
         client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 1000 }),
@@ -1075,6 +1076,7 @@ export default function Customers() {
         canViewFinance
           ? invokeWithAuth({ url: `/api/v1/customer-lifecycle/customers/${customerId}`, method: 'GET' })
           : Promise.resolve({ data: null }),
+        invokeWithAuth({ url: `/api/v1/entities/customers/${customerId}/projects`, method: 'GET' }),
         invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }).catch(() => ({ data: { business_lines: [], products: [], plans: [] } })),
       ]);
 
@@ -1093,6 +1095,7 @@ export default function Customers() {
       setServiceProgresses(progressRes?.data?.items || []);
       setServiceTasks(taskRes?.data?.items || []);
       setLifecycleDetail(lifecycleRes?.data || null);
+      setCustomerProjects(projectRes?.data?.items || []);
       setProductCatalog(catalogRes?.data || { business_lines: [], products: [], plans: [] });
       await reloadContacts(customerId);
     } catch (err) {
@@ -1578,6 +1581,7 @@ export default function Customers() {
     setCustomerExpenses([]);
     setCustomerDeductionRates({});
     setSubscriptions([]);
+    setCustomerProjects([]);
     setServiceProgresses([]);
     setServiceTasks([]);
     setContacts([]);
@@ -2095,8 +2099,9 @@ export default function Customers() {
     const latestDealDate = deals[0]?.deal_date?.slice(0, 10) || '-';
     const serviceRecordCount = serviceProgresses.length > 0 ? serviceProgresses.length : subscriptions.length;
     const activeSubscriptionCount = subscriptions.filter(item => computeSubscriptionState(item) === 'active').length;
+    const activeCustomerProjectCount = customerProjects.filter(item => activeCustomerProjectStatuses.has(item.status)).length;
     const currentLifecycleStatus = lifecycleDetail?.cycles?.[0]?.status;
-    const hasClosureMismatch = currentLifecycleStatus === 'stopped' && activeSubscriptionCount > 0;
+    const hasClosureMismatch = currentLifecycleStatus === 'stopped' && (activeSubscriptionCount > 0 || activeCustomerProjectCount > 0);
     const pendingServiceTasks = serviceTasks.filter(item => !['completed', 'cancelled'].includes(item.status || '')).length;
     const overdueServiceTasks = serviceTasks.filter(item => item.due_date && item.due_date < new Date().toISOString().slice(0, 10) && !['completed', 'cancelled'].includes(item.status || '')).length;
     const openServiceIssues = serviceProgresses.filter(item => item.issue_status && item.issue_status !== 'none' && !item.issue_resolved).length;
