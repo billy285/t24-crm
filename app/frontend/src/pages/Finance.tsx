@@ -2395,7 +2395,7 @@ export default function Finance() {
       end.setDate(end.getDate() + days);
       const rows = subscriptions.filter((subscription: any) => {
         const status = computeSubscriptionStatus(subscription);
-        if (['stopped', 'lost', 'paused', 'upgraded'].includes(status)) return false;
+        if (['stopped', 'lost', 'paused', 'upgraded', 'renewed'].includes(status)) return false;
         const dateValue = (subscription.next_payment_date || subscription.end_date || '').slice(0, 10);
         if (!dateValue) return false;
         const date = new Date(`${dateValue}T00:00:00`);
@@ -2420,7 +2420,7 @@ export default function Finance() {
   const subscriptionWorkbenchGroups = useMemo(() => {
     const getStatus = getEffectiveSubscriptionStatus;
     const rows = filteredSubscriptions;
-    const archivedStatuses = new Set(['stopped', 'lost', 'upgraded', 'paused']);
+    const archivedStatuses = new Set(['stopped', 'lost', 'upgraded', 'paused', 'renewed']);
     const groups: Array<{
       key: SubscriptionGroupKey;
       title: string;
@@ -2496,7 +2496,7 @@ export default function Finance() {
   );
   const subscriptionChangeReplacementOptions = useMemo(() => {
     if (!subscriptionChangeTarget) return [];
-    const archivedStatuses = new Set(['stopped', 'lost', 'upgraded', 'paused']);
+    const archivedStatuses = new Set(['stopped', 'lost', 'upgraded', 'paused', 'renewed']);
     return subscriptions
       .filter(subscription => (
         Number(subscription.id) !== Number(subscriptionChangeTarget.id)
@@ -4857,7 +4857,7 @@ export default function Finance() {
                                       <Switch
                                         checked={Boolean(s.auto_renew)}
                                         onCheckedChange={checked => handleToggleSubscriptionAutoRenew(s, checked)}
-                                        disabled={updatingSubscriptionId === Number(s.id) || ['stopped', 'lost', 'upgraded', 'paused'].includes(status)}
+                                        disabled={updatingSubscriptionId === Number(s.id) || ['stopped', 'lost', 'upgraded', 'paused', 'renewed'].includes(status)}
                                       />
                                       <span className="text-xs font-medium text-slate-600">{s.auto_renew ? 'Stripe 自动扣款' : '手动收款'}</span>
                                     </div>
@@ -4884,7 +4884,7 @@ export default function Finance() {
                                           {confirmingRenewalId === Number(s.id) ? '确认中' : '确认收款'}
                                         </Button>
                                       )}
-                                      {!['stopped', 'lost', 'upgraded', 'paused'].includes(status) && (
+                                      {!['stopped', 'lost', 'upgraded', 'paused', 'renewed'].includes(status) && (
                                         <Button
                                           size="sm"
                                           variant="outline"
@@ -4895,7 +4895,7 @@ export default function Finance() {
                                           套餐变更
                                         </Button>
                                       )}
-                                      {!['stopped', 'lost', 'upgraded', 'paused'].includes(status) && (
+                                      {!['stopped', 'lost', 'upgraded', 'paused', 'renewed'].includes(status) && (
                                         <Button
                                           size="sm"
                                           variant="outline"

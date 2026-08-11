@@ -86,7 +86,7 @@ const packageSourceLabels: Record<string, string> = {
   customer: '来自客户资料',
 };
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
-const archivedServiceStatuses = new Set(['stopped', 'lost', 'paused', 'upgraded']);
+const archivedServiceStatuses = new Set(['stopped', 'lost', 'paused', 'upgraded', 'renewed']);
 const serviceStatusPriority: Record<string, number> = {
   renewal_pending: 0,
   expiring_soon: 1,

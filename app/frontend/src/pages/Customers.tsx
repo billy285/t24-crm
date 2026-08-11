@@ -560,7 +560,7 @@ const subscriptionStatusView: Record<string, { label: string; cardClass: string;
   upgraded: { label: '已升级结束', cardClass: 'border-violet-200 bg-violet-50', badgeClass: 'bg-violet-100 text-violet-700' },
   stopped: { label: '停止续费', cardClass: 'border-slate-200 bg-slate-50', badgeClass: 'bg-slate-200 text-slate-700' },
 };
-const archivedSubscriptionStatuses = new Set(['stopped', 'lost', 'paused', 'upgraded']);
+const archivedSubscriptionStatuses = new Set(['stopped', 'lost', 'paused', 'upgraded', 'renewed']);
 
 export default function Customers() {
   const navigate = useNavigate();
