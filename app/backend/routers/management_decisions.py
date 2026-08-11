@@ -18,6 +18,7 @@ from models.management_decisions import (
     CustomerEngagement,
     ProductCatalog,
 )
+from models.finance_exchange_rates import MonthlyExchangeRate
 from schemas.auth import UserResponse
 from services.management_decision_preview import build_classification_preview
 from services.management_decision_workflow import (
@@ -27,6 +28,7 @@ from services.management_decision_workflow import (
 )
 from services.automation_monitor import automation_overview, create_task_for_issue, run_automation_scan
 from services.owner_cockpit import build_owner_cockpit
+from services.business_intelligence import build_growth_dashboard
 
 
 router = APIRouter(prefix="/api/v1/management-decisions", tags=["management-decisions"])
@@ -76,6 +78,18 @@ class EngagementStatusRequest(BaseModel):
 
 class AutomationIssueTaskBatchRequest(BaseModel):
     issue_ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class MonthlyExchangeRateRequest(BaseModel):
+    average_rate: float = Field(gt=0.1, lt=20)
+    source: str = Field(min_length=2, max_length=160)
+    notes: Optional[str] = Field(None, max_length=1000)
+    status: Literal["draft", "locked"] = "locked"
+
+    @field_validator("source")
+    @classmethod
+    def normalize_source(cls, value: str) -> str:
+        return value.strip()
 
 
 def _business_line_payload(row: BusinessLine) -> dict:
@@ -237,6 +251,68 @@ async def get_owner_cockpit(
 ):
     """Owner-facing operating summary built from the same finance and workflow sources."""
     return await build_owner_cockpit(db)
+
+
+@router.get("/growth-dashboard")
+async def get_growth_dashboard(
+    start_date: date = Query(date(2026, 1, 1)),
+    end_date: date = Query(default_factory=date.today),
+    project_capacity_target: int = Query(12, ge=1, le=100),
+    capacity_warning_ratio: float = Query(0.85, ge=0.5, le=1),
+    current_user: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Owner-only project economics, health and capacity decision data."""
+    if end_date < start_date:
+        raise HTTPException(status_code=400, detail="结束日期不能早于开始日期")
+    return await build_growth_dashboard(
+        db,
+        start_date=start_date,
+        end_date=end_date,
+        project_capacity_target=project_capacity_target,
+        capacity_warning_ratio=capacity_warning_ratio,
+    )
+
+
+@router.put("/exchange-rates/{year_month}")
+async def save_monthly_exchange_rate(
+    year_month: str,
+    payload: MonthlyExchangeRateRequest,
+    current_user: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        datetime.strptime(year_month, "%Y-%m")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="月份格式必须为 YYYY-MM") from exc
+    row = (await db.execute(select(MonthlyExchangeRate).where(
+        MonthlyExchangeRate.year_month == year_month,
+        MonthlyExchangeRate.base_currency == "USD",
+        MonthlyExchangeRate.quote_currency == "CNY",
+    ))).scalar_one_or_none()
+    if not row:
+        row = MonthlyExchangeRate(
+            year_month=year_month, base_currency="USD", quote_currency="CNY",
+            average_rate=payload.average_rate, source=payload.source,
+            status=payload.status, notes=payload.notes,
+            recorded_by=current_user.name or current_user.email,
+        )
+        db.add(row)
+    else:
+        row.average_rate = payload.average_rate
+        row.source = payload.source
+        row.status = payload.status
+        row.notes = payload.notes
+        row.recorded_by = current_user.name or current_user.email
+        row.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(row)
+    return {
+        "id": row.id, "year_month": row.year_month, "base_currency": row.base_currency,
+        "quote_currency": row.quote_currency, "average_rate": row.average_rate,
+        "source": row.source, "status": row.status, "notes": row.notes,
+        "recorded_by": row.recorded_by, "updated_at": row.updated_at,
+    }
 
 
 @router.post("/automation/scan")

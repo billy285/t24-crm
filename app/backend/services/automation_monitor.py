@@ -78,6 +78,7 @@ def _issue_category(row: dict[str, Any]) -> str:
 def _issue_title(issue: DataQualityIssue) -> str:
     titles = {
         "automatic_project_risk_reminder": "核对客户项目风险",
+        "customer_health_risk": "处理客户健康度风险",
         "customer_project_status_mismatch": "核对客户与项目状态",
         "active_project_missing_paid_start": "补齐首次有效收款日期",
         "active_project_missing_owner": "分配项目负责人",
@@ -540,7 +541,12 @@ async def run_automation_scan(
 
     try:
         review = await build_classification_review_queue(db, start_date)
-        anomalies = [*review.get("anomalies", []), *(await _business_anomalies(db, now))]
+        from services.business_intelligence import health_risk_anomalies
+        anomalies = [
+            *review.get("anomalies", []),
+            *(await _business_anomalies(db, now)),
+            *(await health_risk_anomalies(db, today=local_date)),
+        ]
         keys = {issue_key(row) for row in anomalies}
         existing_issues = (await db.execute(select(DataQualityIssue))).scalars().all()
         issue_by_key = {row.issue_key: row for row in existing_issues}

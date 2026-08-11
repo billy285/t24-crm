@@ -26,6 +26,10 @@ from models.subscriptions import Subscriptions
 from models.service_tasks import Service_tasks
 from models.automation import DataQualityIssue
 from models.tasks import Tasks
+from models.ad_fund_settlements import AdFundSettlement
+from models.employees import Employees
+from models.expenses import Expenses
+from models.payroll import PayrollItems, PayrollSheets
 from services.automation_monitor import automation_overview, run_automation_scan
 from services.tasks import TasksService
 
@@ -204,6 +208,98 @@ async def test_automatic_risk_reminder_never_changes_project_status(workflow_con
             select(CustomerEngagement).where(CustomerEngagement.id == 401)
         )).scalar_one()
     assert engagement.status == "pending_setup"
+
+
+@pytest.mark.asyncio
+async def test_growth_dashboard_separates_ad_funds_and_drives_owner_decisions(workflow_context):
+    client, sessions = workflow_context
+    now = datetime(2026, 8, 3, tzinfo=timezone.utc)
+    async with sessions() as session:
+        session.add_all([
+            Employees(id=7, user_id="7", name="Ops Owner", role="operations", status="active"),
+            CustomerEngagement(
+                id=410, customer_id=11, business_line_id=1, product_id=1,
+                engagement_code="ENG-GROWTH-410", package_name="代运营套餐", status="active_paid",
+                owner_employee_id=7, currency="USD", paid_started_at=datetime(2026, 1, 10, tzinfo=timezone.utc),
+                created_at=now, updated_at=now,
+            ),
+            AdFundSettlement(
+                id=501, customer_id=11, customer_name="Ocean Buffet", year_month="2026-07", currency="USD",
+                opening_balance=0, funds_received=2000, actual_ad_spend=1800, customer_refund_amount=0,
+                recognized_spread_amount=200, adjustment_amount=0, closing_balance=0, status="closed",
+                created_at=now, updated_at=now, user_id="1",
+            ),
+            Expenses(
+                id=601, customer_id=11, customer_name="Ocean Buffet", expense_category="website",
+                expense_type="domain", amount=50, currency="USD", expense_date=now, user_id="1",
+            ),
+            Subscriptions(
+                id=701, customer_id=11, customer_name="Ocean Buffet", engagement_id=410,
+                business_line_id=1, product_id=1, package_name="代运营套餐", package_price=198,
+                start_date=datetime(2026, 7, 1, tzinfo=timezone.utc), end_date=datetime(2026, 8, 1, tzinfo=timezone.utc),
+                auto_renew=False, status="active",
+            ),
+            Tasks(
+                id=801, title="逾期客户任务", customer_id=11, customer_name="Ocean Buffet",
+                assignee_id=7, assignee_name="Ops Owner", status="pending",
+                due_date=datetime(2026, 7, 20, tzinfo=timezone.utc), created_at=now, updated_at=now,
+            ),
+            PayrollSheets(id=901, month="2026-02", status="paid", currency="CNY", paid_at=now),
+            PayrollItems(
+                id=902, sheet_id=901, employee_id=7, employee_name="Ops Owner",
+                base_salary=1000, payment_status="paid", payment_date="2026-02-28",
+            ),
+        ])
+        payment = await session.get(Payments, 102)
+        payment.engagement_id = 410
+        payment.management_amount = 198
+        payment.outstanding_amount = 198
+        ad_payment = await session.get(Payments, 101)
+        ad_payment.engagement_id = 410
+        ad_payment.ads_recharge_amount = 2000
+        await session.commit()
+
+    response = await client.get(
+        "/api/v1/management-decisions/growth-dashboard?start_date=2026-01-01&end_date=2026-08-03&project_capacity_target=1",
+        headers=auth_headers("admin", 1),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    usd = payload["unit_economics"]["totals"]["USD"]
+    assert usd["service_revenue"] == 198
+    assert usd["ad_spread"] == 200
+    assert usd["customer_cost"] == 50
+    assert usd["contribution_profit"] == 348
+    managed_line = next(row for row in payload["unit_economics"]["business_lines"] if row["business_line_code"] == "managed_service")
+    assert managed_line["average_project_contribution"] == 348
+    health = next(row for row in payload["customer_health"]["items"] if row["project_id"] == 410)
+    assert health["level"] in {"risk", "critical"}
+    assert health["project_status"] == "active_paid"
+    owner = next(row for row in payload["team_capacity"]["employees"] if row["employee_id"] == 7)
+    assert owner["utilization"] == 1
+    assert payload["team_capacity"]["summary"]["near_or_over_capacity"] == 1
+
+    rate_saved = await client.put(
+        "/api/v1/management-decisions/exchange-rates/2026-02",
+        headers=auth_headers("admin", 1),
+        json={"average_rate": 7.2, "source": "月度平均中间价", "status": "locked"},
+    )
+    assert rate_saved.status_code == 200
+    refreshed = await client.get(
+        "/api/v1/management-decisions/growth-dashboard?start_date=2026-01-01&end_date=2026-08-03&project_capacity_target=1",
+        headers=auth_headers("admin", 1),
+    )
+    february = next(row for row in refreshed.json()["formal_monthly_profit"]["rows"] if row["year_month"] == "2026-02")
+    assert february["exchange_rate"] == 7.2
+    assert february["payroll_cost_cny"] == 1000
+    assert february["payroll_source"] == "paid_payroll"
+    assert february["formal_profit_cny"] == 425.6
+
+    denied = await client.get(
+        "/api/v1/management-decisions/growth-dashboard",
+        headers=auth_headers("finance", 2),
+    )
+    assert denied.status_code == 403
 
 
 @pytest.mark.asyncio
