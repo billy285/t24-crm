@@ -224,7 +224,7 @@ const emptyAdvancedFilters = {
 
 const inlineSelectClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
 const inlineInputClassName = 'h-8 w-full min-w-[110px] rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
-const customerDetailTabValues = new Set(['info', 'timeline', 'contacts', 'opportunities', 'followups', 'deals', 'subscriptions', 'payments', 'renewals', 'materials', 'ai_copy', 'media', 'logs']);
+const customerDetailTabValues = new Set(['overview', 'info', 'timeline', 'contacts', 'opportunities', 'followups', 'deals', 'subscriptions', 'payments', 'renewals', 'materials', 'ai_copy', 'media', 'logs']);
 const customerReminderMessages: Record<string, { title: string; description: string }> = {
   follow_up_today: { title: '今日跟进提醒', description: '这位客户今天需要继续跟进，已为你直接打开跟进记录。' },
   follow_up_overdue: { title: '逾期跟进提醒', description: '这位客户的计划跟进时间已过，建议尽快补跟进并更新下一次时间。' },
@@ -606,7 +606,7 @@ export default function Customers() {
   const [commissionEffectiveFrom, setCommissionEffectiveFrom] = useState(todayShanghai());
   const [manualCityInput, setManualCityInput] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-  const [selectedCustomerTab, setSelectedCustomerTab] = useState('info');
+  const [selectedCustomerTab, setSelectedCustomerTab] = useState('overview');
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [deals, setDeals] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
@@ -987,8 +987,8 @@ export default function Customers() {
   const detailFromFinance = searchParams.get('from') === 'finance';
   const detailReturnTo = getSafeInternalPath(searchParams.get('returnTo'));
   const normalizeCustomerDetailTab = (tab?: string | null) => {
-    if (tab === 'payments' && !canViewFinance) return 'info';
-    return tab && customerDetailTabValues.has(tab) ? tab : 'info';
+    if (tab === 'payments' && !canViewFinance) return 'overview';
+    return tab && customerDetailTabValues.has(tab) ? tab : 'overview';
   };
 
   useEffect(() => {
@@ -1576,7 +1576,7 @@ export default function Customers() {
     }
   };
 
-  const openDetail = async (c: any, nextTab = 'info') => {
+  const openDetail = async (c: any, nextTab = 'overview') => {
     setSelectedCustomerTab(normalizeCustomerDetailTab(nextTab));
     setFollowUps([]);
     setDeals([]);
@@ -1603,7 +1603,7 @@ export default function Customers() {
       return;
     }
     setSelectedCustomer(null);
-    setSelectedCustomerTab('info');
+    setSelectedCustomerTab('overview');
     if (searchParams.get('detail') || searchParams.get('tab') || searchParams.get('reminder') || searchParams.get('from') || searchParams.get('financeTab') || searchParams.get('returnTo')) {
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('detail');
@@ -2113,7 +2113,6 @@ export default function Customers() {
       });
     const currentServiceRows = renewalRows.filter(item => !archivedSubscriptionStatuses.has(item.computed_status));
     const historicalServiceRows = renewalRows.filter(item => archivedSubscriptionStatuses.has(item.computed_status));
-    const serviceRecordCount = serviceProgresses.length > 0 ? serviceProgresses.length : currentServiceRows.length;
     const activeSubscriptionCount = currentServiceRows.length;
     const activeCustomerProjectCount = customerProjects.filter(item => activeCustomerProjectStatuses.has(item.status)).length;
     const currentLifecycleStatus = lifecycleDetail?.cycles?.[0]?.status;
@@ -2146,6 +2145,60 @@ export default function Customers() {
         tone: item.event_type === 'stop' ? 'red' : item.event_type === 'reactivate' || item.event_type === 'resume' ? 'emerald' : 'violet',
       })),
     ].filter(item => item.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const reminderActionTab = activeReminder === 'overdue_payment'
+      ? 'payments'
+      : activeReminder === 'renewal_due'
+        ? 'renewals'
+        : activeReminder
+          ? 'followups'
+          : '';
+    const secondaryDetailTabs = [
+      { value: 'info', label: '基础信息' },
+      { value: 'contacts', label: `联系人 (${contacts.length})` },
+      { value: 'followups', label: `跟进记录 (${followUps.length})` },
+      { value: 'deals', label: `成交记录 (${deals.length})` },
+      { value: 'materials', label: '素材管理' },
+      { value: 'ai_copy', label: 'AI 文案' },
+      { value: 'media', label: '媒体账号' },
+      { value: 'logs', label: '操作日志' },
+    ];
+    const secondaryDetailTabValues = new Set(secondaryDetailTabs.map(item => item.value));
+    const customer360Actions: Array<{
+      key: string;
+      title: string;
+      description: string;
+      button: string;
+      tone: string;
+      onClick: () => void;
+    }> = [];
+    if (totalOutstanding > 0 && canViewFinance) customer360Actions.push({
+      key: 'outstanding', title: `核对未结清款项 ${formatCurrency(totalOutstanding)}`,
+      description: '确认应收、实收和退款记录，避免财务状态与服务状态不一致。', button: '核对财务',
+      tone: 'border-rose-200 bg-rose-50', onClick: () => handleDetailTabChange('payments'),
+    });
+    if (upcomingRenewalCount > 0) customer360Actions.push({
+      key: 'renewal', title: `${upcomingRenewalCount} 个套餐即将到期`,
+      description: '核对收款方式、服务区间与下一次付款时间。', button: '处理续费',
+      tone: 'border-amber-200 bg-amber-50', onClick: () => handleDetailTabChange('renewals'),
+    });
+    if (overdueServiceTasks > 0) customer360Actions.push({
+      key: 'overdue-task', title: `${overdueServiceTasks} 个服务任务已逾期`,
+      description: '先确认卡点和负责人，再更新服务进度或完成结果。', button: '处理服务',
+      tone: 'border-rose-200 bg-rose-50', onClick: () => handleDetailTabChange('subscriptions'),
+    });
+    if (openServiceIssues > 0) customer360Actions.push({
+      key: 'service-issue', title: `${openServiceIssues} 个服务问题未解决`,
+      description: '进入服务信息核对问题描述、处理人和结果。', button: '解决问题',
+      tone: 'border-violet-200 bg-violet-50', onClick: () => handleDetailTabChange('subscriptions'),
+    });
+    if (contacts.length === 0) customer360Actions.push({
+      key: 'contact', title: '补充关键联系人', description: '至少记录老板或主要对接人，避免后续交付找不到人。', button: '添加联系人',
+      tone: 'border-slate-200 bg-slate-50', onClick: () => { handleDetailTabChange('contacts'); setContactForm(emptyContactForm); setEditingContactId(null); setShowContactForm(true); },
+    });
+    if (followUps.length === 0) customer360Actions.push({
+      key: 'followup', title: '补充首次跟进记录', description: '记录客户当前情况和下一步安排，让团队接手时不丢上下文。', button: '新增跟进',
+      tone: 'border-slate-200 bg-slate-50', onClick: () => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); },
+    });
 
     return (
       <div className="app-page space-y-5">
@@ -2165,9 +2218,9 @@ export default function Customers() {
         </div>
         {activeReminderMessage && (
           <Card className="border-blue-200 bg-blue-50">
-            <CardContent className="p-4">
-              <p className="text-sm font-medium text-blue-700">{activeReminderMessage.title}</p>
-              <p className="text-xs text-blue-600 mt-1">{activeReminderMessage.description}</p>
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div><p className="text-sm font-medium text-blue-700">{activeReminderMessage.title}</p><p className="text-xs text-blue-600 mt-1">{activeReminderMessage.description}</p></div>
+              {reminderActionTab && <Button size="sm" onClick={() => handleDetailTabChange(reminderActionTab)}>立即处理</Button>}
             </CardContent>
           </Card>
         )}
@@ -2183,28 +2236,59 @@ export default function Customers() {
             {isAdmin && <Button size="sm" className="shrink-0 bg-red-600 hover:bg-red-700" disabled={closureSyncing} onClick={() => void reconcileSelectedCustomerClosure()}>{closureSyncing ? '同步中…' : '一键同步闭环'}</Button>}
           </div>
         )}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计成交</p>{detailLoading ? <div className="mt-2 h-9 w-28 animate-pulse rounded bg-slate-100" /> : <><p className="text-2xl font-semibold text-slate-800 mt-1">{formatCurrency(totalDealAmount)}</p><p className="text-xs text-slate-400 mt-1">最近成交: {latestDealDate}</p></>}</CardContent></Card>
-          {canViewFinance && <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">累计实收</p>{detailLoading ? <div className="mt-2 h-9 w-28 animate-pulse rounded bg-slate-100" /> : <><p className="text-2xl font-semibold text-green-600 mt-1">{formatCurrency(totalAmountPaid)}</p><p className="text-xs text-slate-400 mt-1">最近收款: {latestPaymentDate}</p></>}</CardContent></Card>}
-          {canViewFinance && <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">当前尾款</p>{detailLoading ? <div className="mt-2 h-9 w-28 animate-pulse rounded bg-slate-100" /> : <><p className="text-2xl font-semibold text-red-600 mt-1">{formatCurrency(totalOutstanding)}</p><p className="text-xs text-slate-400 mt-1">累计应收: {formatCurrency(totalAmountDue)}</p></>}</CardContent></Card>}
-          <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">服务概况</p>{detailLoading ? <div className="mt-2 h-9 w-28 animate-pulse rounded bg-slate-100" /> : <><p className="text-2xl font-semibold text-blue-600 mt-1">{serviceRecordCount}</p><p className="text-xs text-slate-400 mt-1">在服 {activeSubscriptionCount} · 待处理任务 {pendingServiceTasks}</p></>}</CardContent></Card>
-        </div>
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
+          <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
           <TabsList className="h-auto max-w-full flex-nowrap justify-start gap-1 overflow-x-auto bg-slate-100 p-1 sm:flex-wrap sm:overflow-visible">
-            <TabsTrigger value="info" className="shrink-0 text-xs">基础信息</TabsTrigger>
-            <TabsTrigger value="timeline" className="shrink-0 text-xs">客户时间线 ({detailLoading ? '…' : timelineEvents.length})</TabsTrigger>
-            <TabsTrigger value="contacts" className="shrink-0 text-xs">联系人 ({detailLoading ? '…' : contacts.length})</TabsTrigger>
+            <TabsTrigger value="overview" className="shrink-0 text-xs">客户 360</TabsTrigger>
+            <TabsTrigger value="timeline" className="shrink-0 text-xs">时间线 ({detailLoading ? '…' : timelineEvents.length})</TabsTrigger>
             <TabsTrigger value="opportunities" className="shrink-0 text-xs">客户商机</TabsTrigger>
-            <TabsTrigger value="followups" className="shrink-0 text-xs">跟进记录 ({detailLoading ? '…' : followUps.length})</TabsTrigger>
-            <TabsTrigger value="deals" className="shrink-0 text-xs">成交记录 ({detailLoading ? '…' : deals.length})</TabsTrigger>
             <TabsTrigger value="subscriptions" className="shrink-0 text-xs">服务信息 ({detailLoading ? '…' : currentServiceRows.length})</TabsTrigger>
             {canViewFinance && <TabsTrigger value="payments" className="shrink-0 text-xs">财务信息 ({detailLoading ? '…' : customerFinanceRecordCount})</TabsTrigger>}
             <TabsTrigger value="renewals" className="shrink-0 text-xs">续费信息 ({detailLoading ? '…' : renewalRows.length})</TabsTrigger>
-            <TabsTrigger value="materials" className="shrink-0 text-xs">素材管理</TabsTrigger>
-            <TabsTrigger value="ai_copy" className="shrink-0 text-xs">AI文案</TabsTrigger>
-            <TabsTrigger value="media" className="shrink-0 text-xs">媒体账号</TabsTrigger>
-            <TabsTrigger value="logs" className="shrink-0 text-xs">操作日志</TabsTrigger>
           </TabsList>
+          <NativeSelect
+            value={secondaryDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
+            onChange={value => { if (value) handleDetailTabChange(value); }}
+            options={[{ value: '', label: '更多资料与工具' }, ...secondaryDetailTabs]}
+            className="h-9 w-full lg:w-48"
+          />
+          </div>
+
+          <TabsContent value="overview">
+            <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="space-y-4">
+                <Card className="border-slate-200"><CardContent className="p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">下一步动作</h3><p className="mt-1 text-xs text-slate-500">提醒已转换成可直接处理的动作，不再需要先去别的页面找记录。</p></div><Badge className={customer360Actions.length ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}>{customer360Actions.length ? `${customer360Actions.length} 项待处理` : '当前无风险事项'}</Badge></div>
+                  {customer360Actions.length === 0 ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-sm text-emerald-800">客户资料、服务和财务状态目前没有发现需要立即处理的问题。</div> : <div className="mt-4 space-y-2">{customer360Actions.slice(0, 6).map(action => <div key={action.key} className={`flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center ${action.tone}`}><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{action.title}</p><p className="mt-1 text-xs text-slate-600">{action.description}</p></div><Button size="sm" variant="outline" className="shrink-0 bg-white" onClick={action.onClick}>{action.button}</Button></div>)}</div>}
+                </CardContent></Card>
+
+                <Card className="border-slate-200"><CardContent className="p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">当前合作与交付</h3><p className="mt-1 text-xs text-slate-500">项目、套餐和服务任务统一查看。</p></div><Button size="sm" variant="outline" onClick={() => handleDetailTabChange('subscriptions')}>查看服务明细</Button></div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-blue-50 p-3"><p className="text-xs text-blue-700">合作中项目</p><p className="mt-1 text-xl font-semibold text-blue-900">{activeCustomerProjectCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">在服套餐</p><p className="mt-1 text-xl font-semibold text-slate-900">{activeSubscriptionCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">待处理服务任务</p><p className="mt-1 text-xl font-semibold text-slate-900">{pendingServiceTasks}</p></div></div>
+                </CardContent></Card>
+
+                <Card className="border-slate-200"><CardContent className="p-5">
+                  <div className="flex items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">最近动态</h3><p className="mt-1 text-xs text-slate-500">跟进、成交、收款、服务和生命周期的统一时间线。</p></div><Button size="sm" variant="ghost" onClick={() => handleDetailTabChange('timeline')}>查看全部</Button></div>
+                  {timelineEvents.length === 0 ? <div className="app-empty mt-4">暂无历史事件</div> : <div className="mt-4 divide-y divide-slate-100">{timelineEvents.slice(0, 5).map((event, index) => <div key={`${event.type}-${event.date}-${index}`} className="flex items-start gap-3 py-3"><Badge variant="outline" className="shrink-0">{event.type}</Badge><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-slate-800">{event.title}</p>{event.detail && <p className="mt-1 truncate text-xs text-slate-500">{event.detail}</p>}</div><span className="shrink-0 text-xs text-slate-400">{String(event.date).slice(0, 10)}</span></div>)}</div>}
+                </CardContent></Card>
+              </div>
+
+              <div className="space-y-4">
+                <Card className="border-slate-200"><CardContent className="p-5">
+                  <h3 className="text-base font-semibold text-slate-900">客户摘要</h3>
+                  <div className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{c.phone || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
+                  <div className="mt-4 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button><Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button><Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>管理新商机</Button></div>
+                </CardContent></Card>
+
+                <Card className="border-slate-200"><CardContent className="p-5">
+                  <div className="flex items-center justify-between gap-3"><h3 className="text-base font-semibold text-slate-900">经营摘要</h3>{canViewFinance && <Button size="sm" variant="ghost" onClick={() => handleDetailTabChange('payments')}>财务明细</Button>}</div>
+                  <div className="mt-4 space-y-3"><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计成交</p><p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(totalDealAmount)}</p></div><span className="text-xs text-slate-400">最近 {latestDealDate}</span></div>{canViewFinance && <><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计实收</p><p className="mt-1 text-xl font-semibold text-emerald-700">{formatCurrency(totalAmountPaid)}</p></div><span className="text-xs text-slate-400">最近 {latestPaymentDate}</span></div><div className="flex items-end justify-between"><div><p className="text-xs text-slate-500">当前未结清</p><p className={`mt-1 text-xl font-semibold ${totalOutstanding > 0 ? 'text-rose-700' : 'text-slate-900'}`}>{formatCurrency(totalOutstanding)}</p></div><span className="text-xs text-slate-400">累计应收 {formatCurrency(totalAmountDue)}</span></div></>}{!canViewFinance && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">当前角色不显示财务敏感数据。</p>}</div>
+                </CardContent></Card>
+
+                <Card className="border-slate-200"><CardContent className="p-5"><h3 className="text-base font-semibold text-slate-900">续费摘要</h3><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-amber-50 p-3"><p className="text-xs text-amber-700">即将到期</p><p className="mt-1 text-xl font-semibold text-amber-900">{upcomingRenewalCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">自动续费</p><p className="mt-1 text-xl font-semibold text-slate-900">{autoRenewCount}</p></div></div><Button className="mt-4 w-full" variant="outline" onClick={() => handleDetailTabChange('renewals')}>查看续费与收款状态</Button></CardContent></Card>
+              </div>
+            </div>
+          </TabsContent>
 
           <TabsContent value="timeline">
             <Card className="border-slate-200"><CardContent className="p-5">

@@ -26,6 +26,7 @@ const Payroll = lazy(() => import('./pages/Payroll'));
 const SalesLeads = lazy(() => import('./pages/SalesLeads'));
 const MerchantPool = lazy(() => import('./pages/MerchantPool'));
 const SalesWorkbench = lazy(() => import('./pages/SalesWorkbench'));
+const OperationsWorkbench = lazy(() => import('./pages/OperationsWorkbench'));
 const SalesKnowledge = lazy(() => import('./pages/SalesKnowledge'));
 const MonthlyDeduction = lazy(() => import('./pages/MonthlyDeduction'));
 const CustomerLifecycle = lazy(() => import('./pages/CustomerLifecycle'));
@@ -69,6 +70,7 @@ const App = () => (
               <Route path="/merchant-pool" element={<Layout><MerchantPool /></Layout>} />
               <Route path="/sales-leads" element={<Layout><SalesLeads /></Layout>} />
               <Route path="/sales-workbench" element={<Layout><SalesWorkbench /></Layout>} />
+              <Route path="/operations-workbench" element={<Layout><OperationsWorkbench /></Layout>} />
               <Route path="/sales-knowledge" element={<Layout><SalesKnowledge /></Layout>} />
               <Route path="/customers" element={<Layout><Customers /></Layout>} />
               <Route path="/sales" element={<Layout><Sales /></Layout>} />

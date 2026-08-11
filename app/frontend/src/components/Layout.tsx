@@ -23,10 +23,11 @@ interface LayoutProps {
 }
 
 const allNavItems = [
-  { path: '/', label: '老板工作台', icon: LayoutDashboard },
+  { path: '/', label: '老板今日工作台', icon: LayoutDashboard },
   { path: '/merchant-pool', label: '待清洗商家池', icon: Database },
   { path: '/sales-leads', label: '电话销售中心', icon: Headphones },
-  { path: '/sales-workbench', label: '每日拨打工作台', icon: Headphones },
+  { path: '/sales-workbench', label: '销售今日工作台', icon: Headphones },
+  { path: '/operations-workbench', label: '运营今日工作台', icon: ListTodo },
   { path: '/sales-knowledge', label: '销售知识库', icon: BookOpen },
   { path: '/customers', label: '客户管理', icon: Users },
   { path: '/sales', label: '成交客户', icon: Handshake },
@@ -47,14 +48,14 @@ const allNavItems = [
 ];
 
 const navSections = [
-  { label: '老板工作台', paths: ['/'], icon: LayoutDashboard },
+  { label: '老板今日工作台', paths: ['/'], icon: LayoutDashboard },
   {
     label: '销售中心',
     paths: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],
     icon: Headphones,
   },
   { label: '客户中心', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle'], icon: Users },
-  { label: '任务与交付', paths: ['/tasks', '/service-board', '/callbacks'], icon: ListTodo },
+  { label: '任务与交付', paths: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'], icon: ListTodo },
   { label: '财务与结算', paths: ['/finance', '/rmb-profit', '/management-decisions', '/commissions', '/payroll'], icon: DollarSign },
   { label: '我的客户与分润', paths: ['/partner-portal'], icon: BadgeDollarSign },
   { label: '组织与设置', paths: ['/employees', '/settings', '/permissions'], icon: Settings },
@@ -69,7 +70,7 @@ export default function Layout({ children }: LayoutProps) {
     () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
   );
   const [expandedSection, setExpandedSection] = useState<string | null>(
-    () => navSections.find(section => section.paths.includes(location.pathname))?.label || '老板工作台',
+    () => navSections.find(section => section.paths.includes(location.pathname))?.label || '老板今日工作台',
   );
   const { employee, role, loading, isLoggedIn, isDisabled, logout, canAccess } = useRole();
 
@@ -192,7 +193,13 @@ export default function Layout({ children }: LayoutProps) {
   const displayRole = employee
     ? (roleLabels[employee.role] || employee.role)
     : '管理员模式';
-  const homePath = role === 'sales_partner' ? '/partner-portal' : '/';
+  const homePath = role === 'sales_partner'
+    ? '/partner-portal'
+    : role === 'sales' || role === 'sales_manager'
+      ? '/sales-workbench'
+      : role === 'ops'
+        ? '/operations-workbench'
+        : '/';
   const currentPageLabel = currentPath === '/management-decisions'
     && new URLSearchParams(location.search).get('section') === 'insights'
     ? '经营健康与决策'

@@ -81,7 +81,7 @@ export const roleNavAccess: Record<string, string[]> = {
   sales: ['/sales-leads', '/sales-workbench', '/sales-knowledge'],
   sales_manager: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge'],
   sales_partner: ['/partner-portal'],
-  ops: ['/', '/customers', '/tasks'],
+  ops: ['/operations-workbench', '/customers', '/tasks', '/service-board', '/callbacks'],
   design: ['/', '/tasks'],
   finance: ['/', '/finance', '/customers'],
 };

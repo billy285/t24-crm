@@ -22,6 +22,7 @@ export const PAGE_PATHS = {
   merchant_pool: '/merchant-pool',
   sales_leads: '/sales-leads',
   sales_workbench: '/sales-workbench',
+  operations_workbench: '/operations-workbench',
   sales_knowledge: '/sales-knowledge',
   customers: '/customers',
   sales: '/sales',
@@ -42,10 +43,11 @@ export const PAGE_PATHS = {
 } as const;
 
 export const pageLabels: Record<string, string> = {
-  '/': '老板工作台',
+  '/': '老板今日工作台',
   '/merchant-pool': '待清洗商家池',
   '/sales-leads': '电话销售中心',
-  '/sales-workbench': '每日拨打工作台',
+  '/sales-workbench': '销售今日工作台',
+  '/operations-workbench': '运营今日工作台',
   '/sales-knowledge': '销售知识库',
   '/customers': '客户管理',
   '/sales': '成交客户管理',
@@ -132,7 +134,7 @@ export interface RolePermissionConfig {
 // 默认角色权限配置
 export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = {
   super_admin: {
-    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/rmb-profit', '/commissions', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/operations-workbench', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/rmb-profit', '/commissions', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -149,7 +151,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: true, copyPassword: true, viewFinance: true },
   },
   admin: {
-    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/rmb-profit', '/commissions', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/operations-workbench', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/rmb-profit', '/commissions', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -184,7 +186,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
   },
   ops: {
-    pages: ['/', '/customers', '/tasks', '/service-board'],
+    pages: ['/operations-workbench', '/customers', '/tasks', '/service-board', '/callbacks'],
     buttons: [
       'customer_edit',
       'task_create', 'task_edit',
@@ -218,7 +220,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
 const PERMISSIONS_STORAGE_KEY = 'crm_role_permissions';
 const PERMISSIONS_VERSION_KEY = 'crm_role_permissions_version';
 // Bump this version whenever default permissions change (e.g., new pages added)
-const CURRENT_PERMISSIONS_VERSION = 12;
+const CURRENT_PERMISSIONS_VERSION = 13;
 
 function uniq<T>(items: T[]): T[] {
   return Array.from(new Set(items));
@@ -251,6 +253,7 @@ export function normalizeRolePermissions(
       if (!pages.includes('/sales-leads')) pages.push('/sales-leads');
       if (!pages.includes('/sales-workbench')) pages.push('/sales-workbench');
       if (!pages.includes('/sales-knowledge')) pages.push('/sales-knowledge');
+      if (!pages.includes('/operations-workbench')) pages.push('/operations-workbench');
     }
     normalized[role] = {
       pages,
@@ -284,7 +287,10 @@ export function loadRolePermissions(): Record<SystemRole, RolePermissionConfig> 
       if (!normalized[role].pages.includes('/sales-leads')) normalized[role].pages.push('/sales-leads');
       if (!normalized[role].pages.includes('/sales-workbench')) normalized[role].pages.push('/sales-workbench');
       if (!normalized[role].pages.includes('/sales-knowledge')) normalized[role].pages.push('/sales-knowledge');
+      if (!normalized[role].pages.includes('/operations-workbench')) normalized[role].pages.push('/operations-workbench');
     }
+    if (!normalized.ops.pages.includes('/operations-workbench')) normalized.ops.pages.push('/operations-workbench');
+    if (!normalized.ops.pages.includes('/callbacks')) normalized.ops.pages.push('/callbacks');
     localStorage.setItem(PERMISSIONS_VERSION_KEY, String(CURRENT_PERMISSIONS_VERSION));
   }
   return normalized;
