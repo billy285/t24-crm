@@ -13,6 +13,7 @@ const Customers = lazy(() => import('./pages/Customers'));
 const Sales = lazy(() => import('./pages/Sales'));
 const Deals = lazy(() => import('./pages/Deals'));
 const Finance = lazy(() => import('./pages/Finance'));
+const RmbProfitEstimate = lazy(() => import('./pages/RmbProfitEstimate'));
 const Tasks = lazy(() => import('./pages/Tasks'));
 const Employees = lazy(() => import('./pages/Employees'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -75,6 +76,7 @@ const App = () => (
               <Route path="/customer-lifecycle" element={<Layout><CustomerLifecycle /></Layout>} />
               <Route path="/management-decisions" element={<Layout><ManagementDecisions /></Layout>} />
               <Route path="/finance" element={<Layout><Finance /></Layout>} />
+              <Route path="/rmb-profit" element={<Layout><RmbProfitEstimate /></Layout>} />
               <Route path="/commissions" element={<Layout><Commissions /></Layout>} />
               <Route path="/partner-portal" element={<Layout><PartnerPortal /></Layout>} />
               <Route path="/payroll" element={<Layout><Payroll /></Layout>} />

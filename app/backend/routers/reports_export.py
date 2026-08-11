@@ -109,6 +109,102 @@ def _calculate_deductions(
     return management_deduction, ads_deduction, deduction_amount, effective_rate
 
 
+def _month_sequence(start_date: date, end_date: date) -> List[str]:
+    months: List[str] = []
+    cursor = date(start_date.year, start_date.month, 1)
+    last = date(end_date.year, end_date.month, 1)
+    while cursor <= last:
+        months.append(ym_key(cursor))
+        cursor = date(cursor.year + (cursor.month == 12), 1 if cursor.month == 12 else cursor.month + 1, 1)
+    return months
+
+
+def _profit_period_rollup(rows: List[dict], label: str) -> dict:
+    return {
+        "period": label,
+        "month_count": len(rows),
+        "usd_operating_balance": round(sum(float(row["usd_operating_balance"]) for row in rows), 2),
+        "usd_converted_cny": round(sum(float(row["usd_converted_cny"]) for row in rows), 2),
+        "cny_operating_income": round(sum(float(row["cny_operating_income"]) for row in rows), 2),
+        "cny_actual_expense": round(sum(float(row["cny_actual_expense"]) for row in rows), 2),
+        "estimated_profit_cny": round(sum(float(row["estimated_profit_cny"]) for row in rows), 2),
+        "profitable_months": sum(1 for row in rows if float(row["estimated_profit_cny"]) > 0),
+        "loss_months": sum(1 for row in rows if float(row["estimated_profit_cny"]) < 0),
+        "break_even_months": sum(1 for row in rows if float(row["estimated_profit_cny"]) == 0),
+    }
+
+
+def _build_rmb_profit_estimate(
+    data: Dict[str, Dict[str, Dict[str, float]]],
+    months: List[str],
+    deduction_rate_map: Dict[str, float],
+    default_deduction_rate: float,
+    exchange_rate_map: Dict[str, dict],
+    fallback_exchange_rate: float,
+) -> dict:
+    """Combine the existing USD cash-basis profit with native CNY activity once.
+
+    Payroll stays independent. A salary is included only when it has already
+    been recorded in company_expenses as a CNY actual expense.
+    """
+    rows: List[dict] = []
+    for month in months:
+        usd = data.get("USD", {}).get(month, {})
+        cny = data.get("CNY", {}).get(month, {})
+        deduction_rate = float(deduction_rate_map.get(month, default_deduction_rate))
+        usd_revenue = round(float(usd.get("revenue_gross", 0) or 0), 2)
+        usd_management_revenue = round(float(usd.get("management_revenue", 0) or 0), 2)
+        usd_deduction = round(usd_management_revenue * deduction_rate, 2)
+        usd_cost = round(float(usd.get("cost", 0) or 0), 2)
+        usd_operating_balance = round(usd_revenue - usd_deduction - usd_cost, 2)
+
+        rate_record = exchange_rate_map.get(month) or {}
+        exchange_rate = round(float(rate_record.get("average_rate") or fallback_exchange_rate), 4)
+        rate_status = str(rate_record.get("status") or "estimated")
+        rate_source = str(rate_record.get("source") or f"页面预估汇率 {fallback_exchange_rate:g}")
+        usd_converted_cny = round(usd_operating_balance * exchange_rate, 2)
+
+        cny_revenue = round(float(cny.get("revenue_gross", 0) or 0), 2)
+        cny_management_revenue = round(float(cny.get("management_revenue", 0) or 0), 2)
+        cny_deduction = round(cny_management_revenue * deduction_rate, 2)
+        cny_operating_income = round(cny_revenue - cny_deduction, 2)
+        cny_actual_expense = round(float(cny.get("cost", 0) or 0), 2)
+        estimated_profit_cny = round(usd_converted_cny + cny_operating_income - cny_actual_expense, 2)
+
+        rows.append({
+            "year_month": month,
+            "usd_revenue": usd_revenue,
+            "usd_management_deduction": usd_deduction,
+            "usd_cost": usd_cost,
+            "usd_operating_balance": usd_operating_balance,
+            "exchange_rate": exchange_rate,
+            "exchange_rate_status": rate_status,
+            "exchange_rate_source": rate_source,
+            "usd_converted_cny": usd_converted_cny,
+            "cny_operating_income": cny_operating_income,
+            "cny_actual_expense": cny_actual_expense,
+            "estimated_profit_cny": estimated_profit_cny,
+            "status": "profit" if estimated_profit_cny > 0 else "loss" if estimated_profit_cny < 0 else "break_even",
+        })
+
+    quarter_groups: Dict[str, List[dict]] = defaultdict(list)
+    year_groups: Dict[str, List[dict]] = defaultdict(list)
+    for row in rows:
+        year, month_number = row["year_month"].split("-")
+        quarter_groups[f"{year}-Q{(int(month_number) - 1) // 3 + 1}"].append(row)
+        year_groups[year].append(row)
+
+    return {
+        "definition": "预估人民币净利润 = 美元经营结余 × 当月平均汇率 + 人民币经营收入 - 人民币实际支出",
+        "usd_definition": "美元经营结余沿用财务按月明细口径：美元服务收入及已确认投流差价 - 管理扣点 - 退款及 Stripe 手续费 - 美元客户成本 - 美元运营支出 - 已确认美元分润。",
+        "payroll_note": "工资表保持独立；只有已录入财务运营支出的人民币工资才包含在人民币实际支出中，不会从工资表再次扣除。",
+        "rows": rows,
+        "summary": _profit_period_rollup(rows, "所选期间"),
+        "quarterly": [_profit_period_rollup(group, label) for label, group in sorted(quarter_groups.items())],
+        "yearly": [_profit_period_rollup(group, label) for label, group in sorted(year_groups.items())],
+    }
+
+
 def _normalize_payment_method(method: Optional[str]) -> str:
     if not method:
         return "other"
@@ -664,3 +760,54 @@ async def profit_monthly_json(
     except Exception as e:
         logger.error(f"profit_monthly_json failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate monthly report JSON")
+
+
+@router.get("/rmb-profit-estimate")
+async def rmb_profit_estimate(
+    start: str = Query("2026-01-01", description="YYYY-MM-DD"),
+    end: str = Query(default_factory=lambda: date.today().isoformat(), description="YYYY-MM-DD"),
+    fallback_rate: float = Query(6.7, gt=0.1, lt=20, description="Used only when a month has no saved USD/CNY rate"),
+    _current_user: UserResponse = Depends(get_finance_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Owner estimate based on the existing USD monthly balance and native CNY expenses."""
+    try:
+        start_date = datetime.strptime(start, "%Y-%m-%d").date()
+        end_date = datetime.strptime(end, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="日期格式必须为 YYYY-MM-DD") from exc
+    if end_date < start_date:
+        raise HTTPException(status_code=400, detail="结束日期不能早于开始日期")
+
+    data, _ = await _aggregate_monthly(db, start, end)
+    months = _month_sequence(start_date, end_date)
+    default_deduction_rate = await _get_default_deduction_rate(db)
+    deduction_rate_map = await _get_monthly_deduction_map(db, months[0], months[-1])
+
+    exchange_rate_map: Dict[str, dict] = {}
+    if await _get_table_columns(db, "monthly_exchange_rates"):
+        rate_rows = await db.execute(text("""
+            SELECT year_month, average_rate, source, status
+            FROM monthly_exchange_rates
+            WHERE base_currency = 'USD' AND quote_currency = 'CNY'
+              AND year_month >= :start_month AND year_month <= :end_month
+        """), {"start_month": months[0], "end_month": months[-1]})
+        exchange_rate_map = {
+            str(row["year_month"])[:7]: dict(row)
+            for row in rate_rows.mappings().all()
+        }
+
+    payload = _build_rmb_profit_estimate(
+        data,
+        months,
+        deduction_rate_map,
+        default_deduction_rate,
+        exchange_rate_map,
+        fallback_rate,
+    )
+    payload.update({
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "fallback_exchange_rate": fallback_rate,
+    })
+    return payload

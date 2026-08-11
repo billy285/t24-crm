@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, PhoneCall, Handshake, DollarSign,
   ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
   ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen,
-  PanelLeftClose, PanelLeftOpen, Activity, BadgeDollarSign, ChevronRight,
+  PanelLeftClose, PanelLeftOpen, Activity, BadgeDollarSign, ChevronRight, TrendingUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,6 +34,7 @@ const allNavItems = [
   { path: '/customer-lifecycle', label: '客户生命周期', icon: Activity },
   { path: '/management-decisions', label: '经营利润与决策', icon: BadgeDollarSign },
   { path: '/finance', label: '财务管理', icon: DollarSign },
+  { path: '/rmb-profit', label: '人民币利润预估', icon: TrendingUp },
   { path: '/commissions', label: '渠道与分润', icon: BadgeDollarSign },
   { path: '/partner-portal', label: '我的客户与分润', icon: BadgeDollarSign },
   { path: '/payroll', label: '工资表', icon: ClipboardList },
@@ -54,7 +55,7 @@ const navSections = [
   },
   { label: '客户中心', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle'], icon: Users },
   { label: '任务与交付', paths: ['/tasks', '/service-board', '/callbacks'], icon: ListTodo },
-  { label: '财务与结算', paths: ['/finance', '/management-decisions', '/commissions', '/payroll'], icon: DollarSign },
+  { label: '财务与结算', paths: ['/finance', '/rmb-profit', '/management-decisions', '/commissions', '/payroll'], icon: DollarSign },
   { label: '我的客户与分润', paths: ['/partner-portal'], icon: BadgeDollarSign },
   { label: '组织与设置', paths: ['/employees', '/settings', '/permissions'], icon: Settings },
 ];

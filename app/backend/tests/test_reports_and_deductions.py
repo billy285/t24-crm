@@ -4,7 +4,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.main import app
-from backend.routers.reports_export import _aggregate_monthly, _apply_deductions, _coerce_date
+from backend.routers.reports_export import (
+    _aggregate_monthly,
+    _apply_deductions,
+    _build_rmb_profit_estimate,
+    _coerce_date,
+)
 from backend.services.emp_auth import create_access_token
 
 
@@ -53,6 +58,46 @@ async def test_profit_reports_require_finance_report_access():
             headers=_auth_headers("sales"),
         )
         assert unauthorized.status_code == 403
+
+        rmb_unauthorized = await ac.get(
+            "/api/v1/reports/rmb-profit-estimate?start=2026-07-01&end=2026-07-31",
+            headers=_auth_headers("sales"),
+        )
+        assert rmb_unauthorized.status_code == 403
+
+
+def test_rmb_profit_estimate_combines_usd_balance_and_cny_expense_once():
+    payload = _build_rmb_profit_estimate(
+        {
+            "USD": {
+                "2026-07": {
+                    "revenue_gross": 13932.74,
+                    "management_revenue": 10464.64,
+                    "cost": 7298.82,
+                },
+            },
+            "CNY": {
+                "2026-07": {
+                    "revenue_gross": 0,
+                    "management_revenue": 0,
+                    "cost": 32062,
+                },
+            },
+        },
+        ["2026-07"],
+        {"2026-07": 0.15},
+        0.15,
+        {"2026-07": {"average_rate": 6.7, "source": "当月平均汇率", "status": "locked"}},
+        6.7,
+    )
+
+    row = payload["rows"][0]
+    assert row["usd_operating_balance"] == 5064.22
+    assert row["usd_converted_cny"] == 33930.27
+    assert row["cny_actual_expense"] == 32062
+    assert row["estimated_profit_cny"] == 1868.27
+    assert payload["summary"]["estimated_profit_cny"] == 1868.27
+    assert "工资表保持独立" in payload["payroll_note"]
 
 
 def test_apply_deductions_treats_ad_recharge_as_client_funds():

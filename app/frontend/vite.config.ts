@@ -27,7 +27,9 @@ export default defineConfig(({ mode }) => ({
     proxy: {
       '/api': {
         target: `http://localhost:8000`,
-        changeOrigin: true,
+        // Keep the browser-facing host so /api/config returns the Vite origin
+        // and subsequent API calls continue through this same-origin proxy.
+        changeOrigin: false,
         secure: false,
       },
     },
