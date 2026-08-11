@@ -35,11 +35,27 @@ export default function PageLoadState({
   if (!loading) return null;
 
   return (
-    <div className="flex min-h-[320px] items-center justify-center p-6">
-      <div className="text-center">
-        <div className="mx-auto h-9 w-9 animate-spin rounded-full border-b-2 border-blue-600" />
-        <p className="mt-4 text-sm text-slate-500">{message}</p>
-        <p className="mt-1 text-xs text-slate-400">请勿重复刷新，数据加载完成后会自动显示</p>
+    <div className="mx-auto w-full max-w-[1600px] space-y-4 animate-pulse" aria-live="polite" aria-busy="true">
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-2">
+          <div className="h-3 w-28 rounded bg-slate-200" />
+          <div className="h-7 w-48 rounded bg-slate-200" />
+          <div className="h-3 w-72 max-w-full rounded bg-slate-100" />
+        </div>
+        <div className="h-10 w-28 rounded-lg bg-slate-200" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map(item => <div key={item} className="h-28 rounded-xl border border-slate-200 bg-white" />)}
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="h-10 rounded-lg bg-slate-100" />
+        <div className="mt-4 space-y-3">
+          {[0, 1, 2, 3, 4].map(item => <div key={item} className="h-12 rounded-lg bg-slate-50" />)}
+        </div>
+      </div>
+      <div className="sr-only">
+        <p>{message}</p>
+        <p>数据加载完成后会自动显示</p>
       </div>
     </div>
   );

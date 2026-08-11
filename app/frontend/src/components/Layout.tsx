@@ -32,7 +32,7 @@ const allNavItems = [
   { path: '/sales', label: '成交客户', icon: Handshake },
   { path: '/deals', label: '成交管理', icon: Handshake },
   { path: '/customer-lifecycle', label: '客户生命周期', icon: Activity },
-  { path: '/management-decisions', label: '经营利润与决策', icon: BadgeDollarSign },
+  { path: '/management-decisions', label: '经营健康与决策', icon: BadgeDollarSign },
   { path: '/finance', label: '财务管理', icon: DollarSign },
   { path: '/rmb-profit', label: '人民币利润预估', icon: TrendingUp },
   { path: '/commissions', label: '渠道与分润', icon: BadgeDollarSign },
@@ -195,7 +195,7 @@ export default function Layout({ children }: LayoutProps) {
   const homePath = role === 'sales_partner' ? '/partner-portal' : '/';
   const currentPageLabel = currentPath === '/management-decisions'
     && new URLSearchParams(location.search).get('section') === 'insights'
-    ? '经营利润与决策'
+    ? '经营健康与决策'
     : pageLabels[currentPath] || allNavItems.find(n => n.path === currentPath)?.label || '';
 
   return (
@@ -206,14 +206,14 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
       {/* Sidebar */}
-      <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col text-white transition-[width,transform] duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}`}>
+      <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 flex w-[248px] transform flex-col text-white transition-[width,transform] duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-[248px]'}`}>
         <div className={`border-b border-white/10 px-4 py-5 ${sidebarCollapsed ? 'lg:px-3' : ''}`}>
           <div className="flex items-center justify-between">
             <Link to={homePath} className={`flex min-w-0 items-center gap-3 ${sidebarCollapsed ? 'lg:w-full lg:justify-center' : ''}`} onClick={() => setSidebarOpen(false)}>
               <img
                 src="/t2-marketing-logo.png?v=t2-20260709b"
                 alt="T24 Marketing"
-                className="h-11 w-11 flex-shrink-0 rounded-2xl border border-white/15 bg-white object-cover shadow-lg shadow-black/20"
+                className="h-10 w-10 flex-shrink-0 rounded-xl border border-white/15 bg-white object-cover shadow-md shadow-black/20"
               />
               <div className={`min-w-0 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
                 <h1 className="truncate text-[17px] font-semibold leading-tight tracking-tight">T24 Marketing</h1>
@@ -242,7 +242,7 @@ export default function Layout({ children }: LayoutProps) {
               const isExpanded = expandedSection === section.label;
               return (
                 <div key={section.label} className="space-y-1">
-                  <div className={`group flex items-center rounded-xl ${isSectionActive ? 'bg-white/[0.08]' : 'hover:bg-white/[0.05]'}`}>
+                  <div className={`group flex items-center rounded-lg ${isSectionActive ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'}`}>
                     <Link
                       to={primaryItem.path}
                       onClick={() => {
@@ -250,7 +250,7 @@ export default function Layout({ children }: LayoutProps) {
                         setSidebarOpen(false);
                       }}
                       title={sidebarCollapsed ? section.label : undefined}
-                      className={`app-nav-item relative flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${
+                      className={`app-nav-item relative flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${
                         currentPath === primaryItem.path
                           ? 'app-nav-item-active text-white'
                           : isSectionActive ? 'text-white' : 'text-slate-300 hover:text-white'
@@ -293,7 +293,7 @@ export default function Layout({ children }: LayoutProps) {
             })}
           </div>
           {!sidebarCollapsed && (
-            <p className="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-[11px] leading-5 text-slate-500">
+            <p className="mt-4 border-t border-white/[0.07] px-3 pt-3 text-[11px] leading-5 text-slate-500">
               先进入业务中心，再按需展开明细。日常不需要遍历所有页面。
             </p>
           )}
@@ -330,7 +330,7 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         )}
         {/* Top bar */}
-        <header className="app-topbar sticky top-0 z-30 flex items-center justify-between px-4 py-3 lg:px-6">
+        <header className="app-topbar sticky top-0 z-30 flex min-h-16 items-center justify-between px-4 py-3 lg:px-6">
           <button className="lg:hidden text-slate-600 hover:text-slate-800" onClick={() => setSidebarOpen(true)}>
             <Menu className="w-5 h-5" />
           </button>
@@ -371,7 +371,7 @@ export default function Layout({ children }: LayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-7">
+        <main className="app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
           {hasPageAccess ? children : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">

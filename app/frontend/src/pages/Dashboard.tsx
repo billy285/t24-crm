@@ -662,29 +662,29 @@ export default function Dashboard() {
 
     return (
       <section className="space-y-4">
-        <Card className="overflow-hidden border-0 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white shadow-xl">
-          <CardContent className="p-5 md:p-6">
+        <Card className="overflow-hidden border border-slate-800 bg-[#0f1b34] text-white shadow-[0_16px_42px_-30px_rgba(15,23,42,0.9)]">
+          <CardContent className="p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300"><Gauge className="h-4 w-4" />T24 Owner Command Center</div>
-                <h2 className="mt-2 text-2xl font-semibold">今天先看结果，再看风险，最后确认谁来处理</h2>
-                <p className="mt-2 text-sm text-slate-300">{ownerCockpit.finance.currency_policy}</p>
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-300"><Gauge className="h-4 w-4" />T24 Owner Command Center</div>
+                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.02em]">今天先看结果，再看风险，最后确认谁来处理</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">{ownerCockpit.finance.currency_policy}</p>
               </div>
               <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${ownerCockpit.decision_state === 'healthy' ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-300/30 bg-amber-300/10'}`}>
                 {ownerCockpit.decision_state === 'healthy' ? <CheckCircle2 className="h-5 w-5 text-emerald-300" /> : <ShieldAlert className="h-5 w-5 text-amber-300" />}
                 <div><p className="text-sm font-semibold">{ownerCockpit.decision_state === 'healthy' ? '当前经营闭环正常' : `${ownerCockpit.decisions.length} 类事项需要关注`}</p><p className="mt-0.5 text-[11px] text-slate-300">数据截至 {new Date(ownerCockpit.as_of).toLocaleString('zh-CN', { hour12: false })}</p></div>
               </div>
             </div>
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
               {topMetrics.map(item => {
                 const Icon = item.icon;
-                return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="rounded-xl border border-white/10 bg-white/[0.07] p-4 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.12]"><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="text-xs text-slate-300">{item.label}</p><p className="mt-1 text-2xl font-bold">{item.value}</p><p className="mt-1 text-[11px] leading-5 text-slate-400">{item.helper}</p></button>;
+                return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="rounded-xl border border-white/10 bg-white/[0.055] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.09]"><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="text-xs text-slate-300">{item.label}</p><p className="mt-1 text-2xl font-semibold tracking-[-0.02em]">{item.value}</p><p className="mt-1 text-[11px] leading-5 text-slate-400">{item.helper}</p></button>;
               })}
             </div>
             <div className="mt-4 grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-2 xl:grid-cols-4">
               {ownerShortcuts.map(item => (
                 <button key={item.path} type="button" onClick={() => navigate(item.path)} className="group flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-slate-300 transition hover:bg-white/[0.08] hover:text-white">
-                  <span><span className="block text-sm font-medium">{item.label}</span><span className="mt-0.5 block text-[10px] text-slate-500 group-hover:text-slate-400">{item.helper}</span></span>
+                  <span><span className="block text-sm font-medium">{item.label}</span><span className="mt-0.5 block text-[11px] text-slate-500 group-hover:text-slate-400">{item.helper}</span></span>
                   <ArrowRight className="h-4 w-4 text-slate-500 transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-300" />
                 </button>
               ))}

@@ -580,8 +580,9 @@ export default function Tasks() {
               <ArrowLeft className="mr-1 h-4 w-4" />{getReturnLabel(returnTo)}
             </Button>
           )}
-          <h2 className="text-xl font-semibold text-slate-800">任务协作</h2>
-          <p className="text-sm text-slate-500">先选择工作视角，再处理任务；完成时必须填写结果。</p>
+          <p className="app-page-kicker">T24 Marketing · Work</p>
+          <h2 className="app-page-heading">任务协作</h2>
+          <p className="app-page-description">选择工作视角后直接处理；完成任务必须填写结果，系统会继续追踪闭环。</p>
         </div>
         <Button onClick={() => { setForm(emptyTaskForm); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
           <Plus className="w-4 h-4 mr-1" /> 新建任务
@@ -604,8 +605,8 @@ export default function Tasks() {
               const Icon = view.icon;
               const active = primaryView === view.key;
               return (
-                <button key={view.key} type="button" onClick={() => changePrimaryView(view.key)} className={`rounded-xl border px-3 py-3 text-left transition ${active ? 'border-blue-300 bg-blue-50 text-blue-800 shadow-sm' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50'}`}>
-                  <div className="flex items-center justify-between gap-2"><Icon className="h-4 w-4" /><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{view.count}</span></div>
+                <button key={view.key} type="button" onClick={() => changePrimaryView(view.key)} className={`rounded-lg border px-3 py-3 text-left transition ${active ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50'}`}>
+                  <div className="flex items-center justify-between gap-2"><Icon className="h-4 w-4" /><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${active ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'}`}>{view.count}</span></div>
                   <p className="mt-2 text-sm font-semibold">{view.label}</p>
                   <p className="mt-0.5 truncate text-[11px] opacity-70">{view.hint}</p>
                 </button>
@@ -615,12 +616,12 @@ export default function Tasks() {
         </CardContent>
       </Card>
 
-      <Card className="border-slate-200 bg-gradient-to-br from-white to-slate-50">
+      <Card className="border-slate-200/90 bg-white">
         <CardContent className="p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-sm font-semibold text-slate-800">老板卡点看板</p>
-              <p className="mt-1 text-xs text-slate-500">点一个卡片，就能直接筛出需要处理的任务。</p>
+              <p className="app-section-title">需要处理</p>
+              <p className="app-section-description">点击一个问题类型，直接筛出对应任务。</p>
             </div>
             {quickFilter !== 'all' && (
               <Button size="sm" variant="outline" onClick={() => setQuickFilter('all')}>
@@ -634,7 +635,7 @@ export default function Tasks() {
                 key={card.key}
                 type="button"
                 onClick={() => setQuickFilter(quickFilter === card.key ? 'all' : card.key)}
-                className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${card.color} ${quickFilter === card.key ? 'ring-2 ring-blue-300' : ''}`}
+                className={`rounded-lg border p-3 text-left transition hover:shadow-sm ${card.color} ${quickFilter === card.key ? 'ring-2 ring-blue-300' : ''}`}
               >
                 <div className="text-2xl font-semibold">{card.value}</div>
                 <div className="mt-1 text-sm font-medium">{card.title}</div>
@@ -658,8 +659,7 @@ export default function Tasks() {
       </Card>
 
       {/* Filters */}
-      <Card className="border-slate-200">
-        <CardContent className="p-3">
+      <div className="app-toolbar">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -684,8 +684,7 @@ export default function Tasks() {
               options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]}
             />
           </div>
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Task list */}
       <Card className="border-slate-200">

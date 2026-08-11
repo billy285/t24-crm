@@ -759,9 +759,9 @@ export default function ManagementDecisions() {
     <div className="app-page space-y-5">
       <div className="app-page-title gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">{isFinancialInsights ? 'T24 Marketing · Finance Decisions' : 'T24 Marketing · Management Decisions'}</p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">{isFinancialInsights ? '经营利润与决策' : '经营分类与项目'}</h1>
-          <p className="mt-1 text-sm text-slate-500">{isFinancialInsights ? '统一查看人民币管理利润、项目单位经济、客户风险与团队产能。' : '逐位确认真实业务线；客户合作状态与代运营、OS、一次性项目分别管理。'}</p>
+          <p className="app-page-kicker">{isFinancialInsights ? 'T24 Marketing · Operating Decisions' : 'T24 Marketing · Management Decisions'}</p>
+          <h1 className="app-page-heading">{isFinancialInsights ? '经营健康与决策' : '经营分类与项目'}</h1>
+          <p className="app-page-description">{isFinancialInsights ? '集中查看项目效益、客户健康与团队产能；公司人民币利润使用独立报表。' : '逐位确认真实业务线；客户合作状态与代运营、OS、一次性项目分别管理。'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline"><Link to={isFinancialInsights ? '/finance' : '/customer-lifecycle'}><ArrowLeft className="mr-2 h-4 w-4" />{isFinancialInsights ? '财务管理' : '客户生命周期'}</Link></Button>
@@ -779,7 +779,7 @@ export default function ManagementDecisions() {
       <Card className="border-slate-200">
         <CardContent className="flex flex-wrap gap-2 p-2">
           {[
-            ['overview', '经营总览', BarChart3], ...(isAdmin ? [['insights', '利润·健康·产能', Gauge]] : []), ['projects', '项目客户明细', BriefcaseBusiness],
+            ['overview', '经营总览', BarChart3], ...(isAdmin ? [['insights', '项目效益·健康·产能', Gauge]] : []), ['projects', '项目客户明细', BriefcaseBusiness],
             ['exceptions', `数据质量中心 ${activeQualityCount || summary?.anomaly_count || 0}`, Database], ['history', `历史补录 ${pendingCount}`, Clock3],
           ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" variant={section === value ? 'default' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
         </CardContent>
@@ -806,6 +806,19 @@ export default function ManagementDecisions() {
       {section === 'insights' && <div className="space-y-5">
         {!growth && !loading && <Card className="border-amber-200 bg-amber-50"><CardContent className="p-6 text-sm text-amber-800">当前账号没有老板经营分析权限，或数据尚未加载。</CardContent></Card>}
         {growth && <>
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-slate-900">公司人民币利润已使用独立报表</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">月度、季度和年度预估统一在“人民币利润预估”查看；本页只保留项目、客户和团队经营判断。</p>
+              </div>
+              <Button asChild><Link to="/rmb-profit">查看人民币利润预估<ArrowLeft className="ml-2 h-4 w-4 rotate-180" /></Link></Button>
+            </CardContent>
+          </Card>
+
+          <details className="rounded-xl border border-slate-200 bg-white">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">高级财务月结与历史口径</summary>
+            <div className="space-y-4 border-t border-slate-200 p-4">
           <Card className="border-blue-200 bg-blue-50/40">
             <CardContent className="flex flex-col gap-4 p-4 xl:flex-row xl:items-end xl:justify-between">
               <div><p className="flex items-center gap-2 font-semibold text-slate-900"><CalendarRange className="h-4 w-4 text-blue-600" />人民币利润查看期间</p><p className="mt-1 text-xs text-slate-500">季度、年度和自定义区间均逐月使用已锁定汇率，不用当前汇率重算历史。</p></div>
@@ -844,6 +857,8 @@ export default function ManagementDecisions() {
               </div>
             </CardContent>
           </Card>
+            </div>
+          </details>
           <Card className="border-slate-200">
             <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><WalletCards className="h-5 w-5 text-blue-600" />项目级真实利润与单位经济</CardTitle><p className="mt-1 text-xs text-slate-500">{growth.unit_economics.definition}</p></div><Badge variant="outline">{growth.period.start_date} 至 {growth.period.end_date}</Badge></CardHeader>
             <CardContent className="space-y-4">

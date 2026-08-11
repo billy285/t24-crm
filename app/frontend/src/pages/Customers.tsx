@@ -2650,26 +2650,28 @@ export default function Customers() {
     <div className="app-page space-y-5">
       <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · CRM</p>
-          <h2 className="mt-1 text-2xl font-bold text-slate-900">客户管理</h2>
-          <p className="mt-1 text-sm text-slate-500">从线索、成交到服务和续费，统一管理客户全生命周期</p>
+          <p className="app-page-kicker">T24 Marketing · CRM</p>
+          <h2 className="app-page-heading">客户管理</h2>
+          <p className="app-page-description">从线索、成交到服务和续费，统一管理客户全生命周期</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {hasPermission('customer_create') && <ImportCustomers existingCustomers={customers} onImportComplete={loadCustomers} />}
-          {hasPermission('customer_export') && <ExportButton data={filtered.map(c => ({ ...c, industry_label: industryLabels[c.industry] || c.industry, status_label: statusLabels[c.status] || c.status, level_label: levelLabels[c.level] || c.level, source_label: sourceLabels[c.source] || c.source, country_label: c.country ? getCountryLabel(c.country) : '' }))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+            {hasPermission('customer_create') && <ImportCustomers existingCustomers={customers} onImportComplete={loadCustomers} />}
+            {hasPermission('customer_export') && <ExportButton data={filtered.map(c => ({ ...c, industry_label: industryLabels[c.industry] || c.industry, status_label: statusLabels[c.status] || c.status, level_label: levelLabels[c.level] || c.level, source_label: sourceLabels[c.source] || c.source, country_label: c.country ? getCountryLabel(c.country) : '' }))}
             columns={[{ key: 'customer_code', label: '编号' }, { key: 'business_name', label: '商家名称' }, { key: 'contact_name', label: '联系人' }, { key: 'phone', label: '电话' }, { key: 'email', label: '邮箱' }, { key: 'industry_label', label: '行业' }, { key: 'city', label: '城市' }, { key: 'state', label: '州' }, { key: 'country_label', label: '国家' }, { key: 'status_label', label: '状态' }, { key: 'level_label', label: '等级' }, { key: 'source_label', label: '来源' }, { key: 'sales_person', label: '负责销售' }, { key: 'facebook_link', label: 'Facebook' }, { key: 'instagram_link', label: 'Instagram' }, { key: 'google_business_link', label: 'Google Business' }, { key: 'yelp_link', label: 'Yelp' }, { key: 'tiktok_link', label: 'TikTok' }, { key: 'notes', label: '备注' }]}
             filename={`客户列表_${new Date().toISOString().slice(0, 10)}`} sheetName="客户列表" />}
-          <Button variant="outline" size="sm" className="h-10 gap-1.5" onClick={() => setShowColPicker(!showColPicker)}><Columns3 className="w-4 h-4" /> 列设置</Button>
-          {hasPermission('customer_edit') && (
-            <Button
-              variant={inlineEditMode ? 'default' : 'outline'}
-              size="sm"
-              className={`h-10 gap-1.5 ${inlineEditMode ? 'bg-violet-600 text-white hover:bg-violet-700' : ''}`}
-              onClick={() => setInlineEditMode(value => !value)}
-            >
-              <Edit className="w-4 h-4" /> {inlineEditMode ? '退出快捷编辑' : '快捷编辑'}
-            </Button>
-          )}
+            <Button variant="ghost" size="sm" className="h-9 gap-1.5" onClick={() => setShowColPicker(!showColPicker)}><Columns3 className="w-4 h-4" /> 列设置</Button>
+            {hasPermission('customer_edit') && (
+              <Button
+                variant={inlineEditMode ? 'default' : 'ghost'}
+                size="sm"
+                className={`h-9 gap-1.5 ${inlineEditMode ? 'bg-violet-600 text-white hover:bg-violet-700' : ''}`}
+                onClick={() => setInlineEditMode(value => !value)}
+              >
+                <Edit className="w-4 h-4" /> {inlineEditMode ? '退出快捷编辑' : '快捷编辑'}
+              </Button>
+            )}
+          </div>
           {hasPermission('customer_create') && <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 新增客户</Button>}
         </div>
       </div>
@@ -2681,7 +2683,7 @@ export default function Customers() {
         </CardContent></Card>
       )}
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="app-toolbar flex flex-wrap gap-1.5">
         <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`h-8 text-xs ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
         {Object.entries(statusLabels).map(([k, v]) => (
           <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`h-8 text-xs ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
@@ -2694,7 +2696,7 @@ export default function Customers() {
         </div>
       )}
 
-      <Card className="border-slate-200"><CardContent className="p-3 space-y-3">
+      <div className="app-toolbar space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索编号、名称、联系人、电话..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
           <NativeSelect value={filterStatus} onChange={setFilterStatus} className="w-[120px]" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
@@ -2754,7 +2756,7 @@ export default function Customers() {
             </div>
           </div>
         )}
-      </CardContent></Card>
+      </div>
 
       <div className="text-xs text-slate-500">共 {filtered.length} 条{filtered.length !== customers.length ? ` (筛选自 ${customers.length} 条)` : ''}</div>
 

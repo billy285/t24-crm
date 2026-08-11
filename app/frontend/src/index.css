@@ -4,35 +4,35 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 220 33% 98%;
+    --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 220 20% 96%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 220 20% 96%;
+    --muted-foreground: 215 16% 42%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 214 95% 96%;
+    --accent-foreground: 221 83% 45%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 220 18% 90%;
+    --input: 220 18% 87%;
+    --ring: 221 83% 53%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
 
@@ -97,8 +97,9 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    font-feature-settings: "tnum";
+    font-family: Inter, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "tnum" 1, "cv02" 1, "cv03" 1, "cv04" 1;
+    color: #0f172a;
   }
 
   button, a, input, select, textarea {
@@ -118,16 +119,13 @@
 
 @layer components {
   .app-shell {
-    background:
-      radial-gradient(circle at 82% -10%, rgb(219 234 254 / 0.72), transparent 33rem),
-      linear-gradient(135deg, #f8fafc 0%, #f4f7fb 58%, #eef4fb 100%);
+    background: #f6f8fb;
   }
 
   .app-sidebar {
-    background:
-      radial-gradient(circle at 15% 5%, rgb(37 99 235 / 0.2), transparent 18rem),
-      linear-gradient(180deg, #0b162b 0%, #101d33 50%, #0a1426 100%);
-    box-shadow: 18px 0 45px -32px rgb(15 23 42 / 0.9);
+    background: #0c172a;
+    border-right: 1px solid rgb(148 163 184 / 0.12);
+    box-shadow: 12px 0 36px -30px rgb(15 23 42 / 0.75);
   }
 
   .app-sidebar-nav {
@@ -140,12 +138,12 @@
   }
 
   .app-nav-item:hover {
-    transform: translateX(2px);
+    transform: translateX(1px);
   }
 
   .app-nav-item-active {
-    background: linear-gradient(110deg, #2563eb 0%, #0ea5e9 120%);
-    box-shadow: 0 12px 28px -16px rgb(37 99 235 / 0.9), inset 0 1px 0 rgb(255 255 255 / 0.18);
+    background: #1d4ed8;
+    box-shadow: 0 8px 18px -12px rgb(37 99 235 / 0.85), inset 0 1px 0 rgb(255 255 255 / 0.14);
   }
 
   .app-nav-item-active::before {
@@ -155,28 +153,26 @@
     width: 3px;
     height: 1.45rem;
     border-radius: 0 999px 999px 0;
-    background: #7dd3fc;
+    background: #93c5fd;
   }
 
   .app-topbar {
-    border-bottom: 1px solid rgb(226 232 240 / 0.82);
-    background: rgb(255 255 255 / 0.84);
-    box-shadow: 0 10px 30px -28px rgb(15 23 42 / 0.5);
-    backdrop-filter: blur(18px) saturate(150%);
+    border-bottom: 1px solid rgb(226 232 240 / 0.92);
+    background: rgb(255 255 255 / 0.94);
+    box-shadow: 0 6px 24px -24px rgb(15 23 42 / 0.42);
+    backdrop-filter: blur(14px) saturate(130%);
   }
 
   .app-main {
-    background:
-      radial-gradient(circle at 92% 0%, rgb(191 219 254 / 0.3), transparent 30rem),
-      radial-gradient(circle at 5% 100%, rgb(224 242 254 / 0.3), transparent 28rem);
+    background: #f6f8fb;
   }
 
   .app-page {
-    @apply mx-auto w-full max-w-[1720px];
+    @apply mx-auto w-full max-w-[1600px];
   }
 
   .app-page-title {
-    @apply flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-4 mb-5;
+    @apply mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-5;
   }
 
   .app-page-title h1,
@@ -185,12 +181,12 @@
   }
 
   .app-card {
-    @apply rounded-2xl border border-slate-200/80 bg-white;
-    box-shadow: 0 18px 50px -42px rgb(15 23 42 / 0.45);
+    @apply rounded-xl border border-slate-200/90 bg-white;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.035), 0 8px 24px -22px rgb(15 23 42 / 0.28);
   }
 
   .app-card-hover {
-    @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md;
+    @apply transition-all duration-200 hover:border-blue-200 hover:shadow-sm;
   }
 
   .app-empty {
@@ -198,7 +194,37 @@
   }
 
   .app-table-wrap {
-    @apply overflow-x-auto rounded-2xl border border-slate-200 bg-white;
+    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white;
+  }
+
+  .app-page-kicker {
+    @apply text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-600;
+  }
+
+  .app-page-heading {
+    @apply mt-1 text-[26px] font-semibold leading-tight tracking-[-0.02em] text-slate-950;
+  }
+
+  .app-page-description {
+    @apply mt-1.5 max-w-3xl text-sm leading-6 text-slate-500;
+  }
+
+  .app-toolbar {
+    @apply rounded-xl border border-slate-200/90 bg-white p-3;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.025);
+  }
+
+  .app-metric {
+    @apply rounded-xl border border-slate-200/90 bg-white p-4;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.025);
+  }
+
+  .app-section-title {
+    @apply text-base font-semibold tracking-[-0.01em] text-slate-900;
+  }
+
+  .app-section-description {
+    @apply mt-1 text-xs leading-5 text-slate-500;
   }
 
   .app-table-wrap table {

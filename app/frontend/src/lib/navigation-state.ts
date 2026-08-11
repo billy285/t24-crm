@@ -23,7 +23,7 @@ export const getReturnLabel = (path?: string | null) => {
   if (safePath.startsWith('/management-decisions')) {
     const target = new URL(safePath, 'https://t24-crm.local');
     if (target.searchParams.get('section') === 'quality') return '返回数据质量中心';
-    if (target.searchParams.get('section') === 'insights') return '返回经营利润与决策';
+    if (target.searchParams.get('section') === 'insights') return '返回经营健康与决策';
     return '返回经营分类与项目';
   }
   if (safePath.startsWith('/tasks')) return '返回任务协作';
