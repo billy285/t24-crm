@@ -74,3 +74,18 @@ async def test_payroll_role_workflow_and_lock(payroll_client):
     assert reopened.status_code == 200
     audit = await payroll_client.get("/api/v1/payroll/2026-08/audit", headers=admin)
     assert {entry["action"] for entry in audit.json()} >= {"item_created", "confirm", "mark_paid", "reopen"}
+
+    report = await payroll_client.get("/api/v1/payroll/reports?year=2026", headers=admin)
+    assert report.status_code == 200
+    payload = report.json()
+    assert payload["independent_accounting"] is True
+    assert payload["totals"]["headcount"] == 1
+    assert payload["totals"]["gross"] == 5700
+    assert payload["totals"]["deductions"] == 100
+    assert payload["totals"]["net"] == 5600
+    assert payload["totals"]["paid_amount"] == 5600
+    assert next(row for row in payload["monthly"] if row["month"] == "2026-08")["net"] == 5600
+    assert payload["departments"][0]["department"] == "运营部"
+    assert payload["employees"][0]["employee_name"] == "张三"
+    assert payload["employees"][0]["latest_payment_status"] == "paid"
+    assert (await payroll_client.get("/api/v1/payroll/reports?year=2026", headers=sales)).status_code == 403

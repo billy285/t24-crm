@@ -1,5 +1,6 @@
 import json
 import re
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -20,7 +21,8 @@ router = APIRouter(prefix="/api/v1/payroll", tags=["payroll"])
 PAYROLL_ROLES = {"admin", "super_admin", "finance"}
 ADMIN_ROLES = {"admin", "super_admin"}
 PAYMENT_METHODS = {"alipay", "bank_card", "wechat", "cash", "other"}
-PAYMENT_STATUSES = {"pending", "partial", "paid", "failed", "returned", "supplemental"}
+PAYMENT_STATUS_ORDER = ("pending", "partial", "supplemental", "failed", "returned", "paid")
+PAYMENT_STATUSES = set(PAYMENT_STATUS_ORDER)
 
 
 class PayrollItemInput(BaseModel):
@@ -189,6 +191,180 @@ async def get_payroll_employees(current_user: UserResponse = Depends(get_current
     _ensure_role(current_user)
     rows = (await db.execute(select(Employees).where(Employees.status.in_(["active", "probation"])).order_by(Employees.name))).scalars().all()
     return [{"id": row.id, "name": row.name, "employee_code": row.employee_code, "department": row.department, "hire_date": row.hire_date} for row in rows]
+
+
+@router.get("/reports")
+async def get_payroll_reports(
+    year: int = Query(..., ge=2020, le=2100),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return read-only payroll analysis without posting anything to Finance."""
+    _ensure_role(current_user)
+    sheets = (
+        await db.execute(
+            select(PayrollSheets)
+            .where(PayrollSheets.month.like(f"{year}-%"))
+            .order_by(PayrollSheets.month)
+        )
+    ).scalars().all()
+    sheet_by_id = {row.id: row for row in sheets}
+    items = []
+    if sheet_by_id:
+        items = (
+            await db.execute(
+                select(PayrollItems)
+                .where(PayrollItems.sheet_id.in_(sheet_by_id))
+                .order_by(PayrollItems.sheet_id, PayrollItems.employee_name)
+            )
+        ).scalars().all()
+
+    def empty_bucket() -> dict:
+        return {
+            "gross": 0.0,
+            "fixed": 0.0,
+            "variable": 0.0,
+            "deductions": 0.0,
+            "net": 0.0,
+            "paid_amount": 0.0,
+            "pending_amount": 0.0,
+            "employee_keys": set(),
+        }
+
+    monthly = {
+        f"{year}-{number:02d}": {
+            "month": f"{year}-{number:02d}",
+            "status": "none",
+            **empty_bucket(),
+        }
+        for number in range(1, 13)
+    }
+    for sheet in sheets:
+        monthly[sheet.month]["status"] = sheet.status
+
+    departments = defaultdict(empty_bucket)
+    employees: dict[str, dict] = {}
+    payment_statuses = {
+        status: {"status": status, "count": 0, "amount": 0.0}
+        for status in PAYMENT_STATUS_ORDER
+    }
+    total = empty_bucket()
+
+    for item in items:
+        sheet = sheet_by_id[item.sheet_id]
+        employee_key = f"id:{item.employee_id}" if item.employee_id else f"legacy:{item.employee_code or ''}:{item.employee_name}"
+        department = item.department or "未设置部门"
+        gross, deductions, net = _amounts(item)
+        fixed = float(item.base_salary or 0) + float(item.fixed_performance or 0)
+        variable = sum(float(getattr(item, name) or 0) for name in ("commission", "bonus", "allowance", "reimbursement"))
+        paid_amount = net if item.payment_status == "paid" else 0.0
+        pending_amount = 0.0 if item.payment_status == "paid" else net
+
+        for bucket in (monthly[sheet.month], departments[department], total):
+            bucket["gross"] += gross
+            bucket["fixed"] += fixed
+            bucket["variable"] += variable
+            bucket["deductions"] += deductions
+            bucket["net"] += net
+            bucket["paid_amount"] += paid_amount
+            bucket["pending_amount"] += pending_amount
+            bucket["employee_keys"].add(employee_key)
+
+        payment_bucket = payment_statuses[item.payment_status]
+        payment_bucket["count"] += 1
+        payment_bucket["amount"] += net
+
+        employee = employees.setdefault(
+            employee_key,
+            {
+                "employee_id": item.employee_id,
+                "employee_code": item.employee_code,
+                "employee_name": item.employee_name,
+                "department": department,
+                "months": set(),
+                "base_salary": 0.0,
+                "fixed_performance": 0.0,
+                "commission": 0.0,
+                "bonus": 0.0,
+                "allowance": 0.0,
+                "reimbursement": 0.0,
+                "gross": 0.0,
+                "deductions": 0.0,
+                "net": 0.0,
+                "paid_amount": 0.0,
+                "pending_amount": 0.0,
+                "latest_month": "",
+                "latest_payment_status": "pending",
+            },
+        )
+        employee["months"].add(sheet.month)
+        for field in ("base_salary", "fixed_performance", "commission", "bonus", "allowance", "reimbursement"):
+            employee[field] += float(getattr(item, field) or 0)
+        employee["gross"] += gross
+        employee["deductions"] += deductions
+        employee["net"] += net
+        employee["paid_amount"] += paid_amount
+        employee["pending_amount"] += pending_amount
+        if sheet.month >= employee["latest_month"]:
+            employee["latest_month"] = sheet.month
+            employee["latest_payment_status"] = item.payment_status
+
+    def finish_bucket(bucket: dict) -> dict:
+        result = {
+            key: round(float(bucket[key]), 2)
+            for key in ("gross", "fixed", "variable", "deductions", "net", "paid_amount", "pending_amount")
+        }
+        result["headcount"] = len(bucket["employee_keys"])
+        return result
+
+    monthly_rows = []
+    for month_key in sorted(monthly):
+        bucket = monthly[month_key]
+        monthly_rows.append({"month": month_key, "status": bucket["status"], **finish_bucket(bucket)})
+
+    department_rows = [
+        {"department": name, **finish_bucket(bucket)}
+        for name, bucket in departments.items()
+    ]
+    department_rows.sort(key=lambda row: (-row["net"], row["department"]))
+
+    employee_rows = []
+    for employee in employees.values():
+        employee_rows.append({
+            **{key: employee[key] for key in ("employee_id", "employee_code", "employee_name", "department", "latest_month", "latest_payment_status")},
+            "months": len(employee["months"]),
+            **{
+                key: round(float(employee[key]), 2)
+                for key in ("base_salary", "fixed_performance", "commission", "bonus", "allowance", "reimbursement", "gross", "deductions", "net", "paid_amount", "pending_amount")
+            },
+        })
+    employee_rows.sort(key=lambda row: (row["employee_name"], row["employee_code"] or ""))
+
+    total_result = finish_bucket(total)
+    active_months = sum(row["headcount"] > 0 for row in monthly_rows)
+    total_result.update({
+        "active_months": active_months,
+        "average_monthly": round(total_result["net"] / active_months, 2) if active_months else 0,
+        "average_per_employee": round(total_result["net"] / total_result["headcount"], 2) if total_result["headcount"] else 0,
+        "variable_ratio": round(total_result["variable"] / total_result["gross"] * 100, 1) if total_result["gross"] else 0,
+    })
+
+    return {
+        "year": year,
+        "currency": "CNY",
+        "independent_accounting": True,
+        "generated_at": datetime.now(timezone.utc),
+        "has_data": bool(items),
+        "totals": total_result,
+        "monthly": monthly_rows,
+        "departments": department_rows,
+        "employees": employee_rows,
+        "payment_statuses": [
+            {**row, "amount": round(float(row["amount"]), 2)}
+            for row in payment_statuses.values()
+            if row["count"]
+        ],
+    }
 
 
 @router.post("/{month}/items")
