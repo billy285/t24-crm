@@ -1,4 +1,6 @@
+import calendar
 from datetime import date, datetime, time, timezone
+import json
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,6 +21,7 @@ from models.management_decisions import (
     ProductCatalog,
 )
 from models.finance_exchange_rates import MonthlyExchangeRate
+from models.finance_profit_closes import MonthlyProfitClose
 from schemas.auth import UserResponse
 from services.management_decision_preview import build_classification_preview
 from services.management_decision_workflow import (
@@ -90,6 +93,16 @@ class MonthlyExchangeRateRequest(BaseModel):
     @classmethod
     def normalize_source(cls, value: str) -> str:
         return value.strip()
+
+
+class MonthlyProfitCloseRequest(BaseModel):
+    action: Literal["close", "reopen"]
+    reason: Optional[str] = Field(None, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip() or None if value else None
 
 
 def _business_line_payload(row: BusinessLine) -> dict:
@@ -285,6 +298,12 @@ async def save_monthly_exchange_rate(
         datetime.strptime(year_month, "%Y-%m")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="月份格式必须为 YYYY-MM") from exc
+    closed_month = (await db.execute(select(MonthlyProfitClose).where(
+        MonthlyProfitClose.year_month == year_month,
+        MonthlyProfitClose.status == "locked",
+    ))).scalar_one_or_none()
+    if closed_month:
+        raise HTTPException(status_code=409, detail="该月份已完成月结；如需调整汇率，请先重新打开月结")
     row = (await db.execute(select(MonthlyExchangeRate).where(
         MonthlyExchangeRate.year_month == year_month,
         MonthlyExchangeRate.base_currency == "USD",
@@ -313,6 +332,65 @@ async def save_monthly_exchange_rate(
         "source": row.source, "status": row.status, "notes": row.notes,
         "recorded_by": row.recorded_by, "updated_at": row.updated_at,
     }
+
+
+@router.put("/profit-closes/{year_month}")
+async def update_monthly_profit_close(
+    year_month: str,
+    payload: MonthlyProfitCloseRequest,
+    current_user: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        month_start = datetime.strptime(year_month, "%Y-%m").date().replace(day=1)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="月份格式必须为 YYYY-MM") from exc
+    month_end = month_start.replace(day=calendar.monthrange(month_start.year, month_start.month)[1])
+    row = (await db.execute(select(MonthlyProfitClose).where(
+        MonthlyProfitClose.year_month == year_month,
+    ))).scalar_one_or_none()
+    actor = current_user.name or current_user.email
+    now = datetime.now(timezone.utc)
+
+    if payload.action == "reopen":
+        if not payload.reason or len(payload.reason) < 3:
+            raise HTTPException(status_code=400, detail="重新打开月结必须填写原因")
+        if not row or row.status != "locked":
+            raise HTTPException(status_code=400, detail="该月份尚未锁定")
+        row.status = "reopened"
+        row.reopened_by = actor
+        row.reopened_at = now
+        row.reopen_reason = payload.reason
+        row.updated_at = now
+        await db.commit()
+        return {"year_month": year_month, "status": row.status, "reopened_by": actor, "reopened_at": now}
+
+    if month_start >= date.today().replace(day=1):
+        raise HTTPException(status_code=400, detail="只能关账已经结束的月份")
+    if row and row.status == "locked":
+        return {"year_month": year_month, "status": "locked", "locked_by": row.locked_by, "locked_at": row.locked_at}
+    dashboard = await build_growth_dashboard(db, start_date=month_start, end_date=month_end)
+    month_payload = dashboard["formal_monthly_profit"]["rows"][0]
+    if month_payload["status"] == "missing_rate":
+        raise HTTPException(status_code=400, detail="请先锁定该月 USD/CNY 平均汇率")
+    snapshot_json = json.dumps(month_payload, ensure_ascii=False, default=str)
+    if not row:
+        row = MonthlyProfitClose(
+            year_month=year_month,
+            status="locked",
+            snapshot_json=snapshot_json,
+            locked_by=actor,
+            locked_at=now,
+        )
+        db.add(row)
+    else:
+        row.status = "locked"
+        row.snapshot_json = snapshot_json
+        row.locked_by = actor
+        row.locked_at = now
+        row.updated_at = now
+    await db.commit()
+    return {"year_month": year_month, "status": "locked", "locked_by": actor, "locked_at": now}
 
 
 @router.post("/automation/scan")

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 import calendar
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+import json
 from typing import Any, Optional
 
 from sqlalchemy import select
@@ -17,6 +18,7 @@ from models.employees import Employees
 from models.expenses import Expenses
 from models.finance_refunds import FinanceRefund
 from models.finance_exchange_rates import MonthlyExchangeRate
+from models.finance_profit_closes import MonthlyProfitClose
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from models.payments import Payments
 from models.payroll import PayrollItems, PayrollSheets
@@ -85,6 +87,24 @@ def _month_ranges(start_date: date, end_date: date) -> list[tuple[str, date, dat
     return rows
 
 
+def _month_after(value: date) -> date:
+    return date(value.year + (value.month == 12), 1 if value.month == 12 else value.month + 1, 1)
+
+
+def _payment_recognition_amount(payment: Payments, month_start: date, month_end: date) -> tuple[float, bool]:
+    """Allocate service revenue over [coverage_start, coverage_end); fall back to the receipt month."""
+    service_amount = _service_amount(payment)
+    coverage_start = _day(payment.coverage_start)
+    coverage_end = _day(payment.coverage_end)
+    if coverage_start and coverage_end and coverage_end > coverage_start:
+        overlap_start = max(coverage_start, month_start)
+        overlap_end = min(coverage_end, month_end + timedelta(days=1))
+        overlap_days = max(0, (overlap_end - overlap_start).days)
+        total_days = (coverage_end - coverage_start).days
+        return round(service_amount * overlap_days / total_days, 2) if overlap_days else 0.0, True
+    return (service_amount if _in_period(payment.payment_date, month_start, month_end) else 0.0), False
+
+
 def _service_amount(payment: Payments) -> float:
     paid = max(_money(payment.amount_paid), 0)
     if payment.management_amount is not None:
@@ -135,6 +155,7 @@ async def _base_rows(db: AsyncSession) -> dict[str, Any]:
     callbacks = (await db.execute(select(Customer_callbacks))).scalars().all()
     company_expenses = (await db.execute(select(Company_expenses))).scalars().all()
     exchange_rates = (await db.execute(select(MonthlyExchangeRate))).scalars().all()
+    profit_closes = (await db.execute(select(MonthlyProfitClose))).scalars().all()
     payroll_sheets = (await db.execute(select(PayrollSheets))).scalars().all()
     payroll_items = (await db.execute(select(PayrollItems))).scalars().all()
     return {
@@ -149,6 +170,7 @@ async def _base_rows(db: AsyncSession) -> dict[str, Any]:
         "commissions": commissions, "subscriptions": subscriptions, "tasks": tasks,
         "service_tasks": service_tasks, "progresses": progresses, "callbacks": callbacks,
         "company_expenses": company_expenses, "exchange_rates": exchange_rates,
+        "profit_closes": profit_closes,
         "payroll_sheets": payroll_sheets, "payroll_items": payroll_items,
     }
 
@@ -420,6 +442,39 @@ async def build_customer_health(
     return {"summary": dict(counts), "items": items, "auto_stop_enabled": False, "updated_through": today.isoformat()}
 
 
+def _converted(usd_value: float, cny_value: float, rate: Optional[float]) -> Optional[float]:
+    if abs(usd_value) > 0.005 and rate is None:
+        return None
+    return round(usd_value * (rate or 0) + cny_value, 2)
+
+
+def _profit_rollup(rows: list[dict[str, Any]], label: str) -> dict[str, Any]:
+    operating_ready = all(row["formal_profit_cny"] is not None for row in rows)
+    cash_ready = all(row["cash_profit_cny"] is not None for row in rows)
+    revenue_ready = all(row["recognized_revenue_cny_equivalent"] is not None for row in rows)
+    cash_revenue_ready = all(row["cash_revenue_cny_equivalent"] is not None for row in rows)
+    operating_profit = round(sum(row["formal_profit_cny"] or 0 for row in rows), 2) if operating_ready else None
+    cash_profit = round(sum(row["cash_profit_cny"] or 0 for row in rows), 2) if cash_ready else None
+    revenue = round(sum(row["recognized_revenue_cny_equivalent"] or 0 for row in rows), 2) if revenue_ready else None
+    cash_revenue = round(sum(row["cash_revenue_cny_equivalent"] or 0 for row in rows), 2) if cash_revenue_ready else None
+    cost = round(sum(row["total_cost_cny_equivalent"] or 0 for row in rows), 2) if operating_ready else None
+    return {
+        "label": label,
+        "start_month": rows[0]["year_month"],
+        "end_month": rows[-1]["year_month"],
+        "month_count": len(rows),
+        "ready_month_count": sum(row["formal_profit_cny"] is not None for row in rows),
+        "locked_month_count": sum(row.get("close_status") == "locked" for row in rows),
+        "recognized_revenue_cny": revenue,
+        "cash_revenue_cny": cash_revenue,
+        "total_cost_cny": cost,
+        "operating_profit_cny": operating_profit,
+        "cash_profit_cny": cash_profit,
+        "operating_margin": round(operating_profit / revenue, 4) if operating_profit is not None and revenue else None,
+        "status": "ready" if operating_ready else "missing_rate",
+    }
+
+
 async def build_formal_monthly_profit(
     db: AsyncSession,
     *,
@@ -427,18 +482,59 @@ async def build_formal_monthly_profit(
     end_date: date,
     base: dict[str, Any],
 ) -> dict[str, Any]:
+    """Build company-wide RMB operating profit without requiring project attribution."""
     rates = [row for row in base["exchange_rates"] if row.base_currency == "USD" and row.quote_currency == "CNY"]
     rate_by_month = {row.year_month: row for row in rates}
-    company_expenses = base["company_expenses"]
+    closes_by_month = {row.year_month: row for row in base.get("profit_closes", [])}
     payroll_sheet_by_id = {int(row.id): row for row in base["payroll_sheets"]}
-    rows = []
+    payment_by_id = {int(row.id): row for row in base["payments"]}
+    rows: list[dict[str, Any]] = []
+    fallback_payment_ids: set[int] = set()
+    covered_payment_ids: set[int] = set()
+
     for month, month_start, month_end in _month_ranges(start_date, end_date):
-        economics = await build_unit_economics(db, start_date=month_start, end_date=month_end, base=base)
-        usd_contribution = _money(economics["totals"].get("USD", {}).get("contribution_profit"))
-        cny_contribution = _money(economics["totals"].get("CNY", {}).get("contribution_profit"))
-        expense_by_currency = Counter()
-        manual_payroll_by_currency = Counter()
-        for expense in company_expenses:
+        recognized_service, cash_service = Counter(), Counter()
+        ad_spread, service_refunds, stripe_fees = Counter(), Counter(), Counter()
+        customer_cost, channel_commission = Counter(), Counter()
+        expense_by_currency, manual_payroll_by_currency = Counter(), Counter()
+
+        for payment in base["payments"]:
+            currency = _currency(payment.currency)
+            cash_amount = _service_amount(payment) if _in_period(payment.payment_date, month_start, month_end) else 0.0
+            cash_service[currency] += cash_amount
+            recognized_amount, used_coverage = _payment_recognition_amount(payment, month_start, month_end)
+            recognized_service[currency] += recognized_amount
+            if used_coverage:
+                if recognized_amount:
+                    covered_payment_ids.add(int(payment.id))
+            elif cash_amount:
+                fallback_payment_ids.add(int(payment.id))
+            if cash_amount:
+                stripe_fees[currency] += max(_money(payment.stripe_fee_amount), 0)
+
+        for refund in base["refunds"]:
+            if not _in_period(refund.refund_date, month_start, month_end):
+                continue
+            payment = payment_by_id.get(int(refund.payment_id))
+            paid = max(_money(payment.amount_paid) if payment else 0, 0)
+            service_ratio = min(1.0, _service_amount(payment) / paid) if payment and paid else 1.0
+            currency = _currency(refund.currency)
+            service_refunds[currency] += _money(refund.refund_amount) * service_ratio
+            stripe_fees[currency] -= max(_money(refund.stripe_fee_refunded_amount), 0)
+
+        for settlement in base["settlements"]:
+            if str(settlement.year_month or "")[:7] == month:
+                ad_spread[_currency(settlement.currency)] += _money(settlement.recognized_spread_amount)
+
+        for expense in base["expenses"]:
+            if _in_period(expense.expense_date or expense.payment_date, month_start, month_end) and not _is_pass_through_expense(expense):
+                customer_cost[_currency(expense.currency)] += _money(expense.amount)
+
+        for commission in base["commissions"]:
+            if _in_period(commission.occurred_at, month_start, month_end):
+                channel_commission[_currency(commission.currency)] += _money(commission.commission_amount)
+
+        for expense in base["company_expenses"]:
             expense_month = str(expense.expense_month or "")[:7]
             if not expense_month:
                 expense_day = _day(expense.expense_date or expense.created_at)
@@ -446,6 +542,7 @@ async def build_formal_monthly_profit(
             if expense_month == month:
                 target = manual_payroll_by_currency if _is_payroll_company_expense(expense) else expense_by_currency
                 target[_currency(expense.currency or "CNY")] += _money(expense.amount)
+
         paid_payroll_cny = round(sum(
             _payroll_net(item)
             for item in base["payroll_items"]
@@ -457,16 +554,60 @@ async def build_formal_monthly_profit(
         payroll_cost_cny = paid_payroll_cny if paid_payroll_cny else round(manual_payroll_by_currency["CNY"], 2)
         payroll_source = "paid_payroll" if paid_payroll_cny else "company_expense" if payroll_cost_cny else "none"
         expense_by_currency["USD"] += manual_payroll_by_currency["USD"]
+
         rate = rate_by_month.get(month)
         locked_rate = _money(rate.average_rate) if rate and rate.status == "locked" else None
-        usd_net = round(usd_contribution - expense_by_currency["USD"], 2)
-        cny_net = round(cny_contribution - expense_by_currency["CNY"] - payroll_cost_cny, 2)
-        needs_rate = abs(usd_net) > 0.005
-        formal_profit = round(usd_net * locked_rate + cny_net, 2) if locked_rate is not None else (cny_net if not needs_rate else None)
-        rows.append({
+        project_contribution = Counter()
+        cash_project_contribution = Counter()
+        for currency in {"USD", "CNY"}:
+            common_cost = service_refunds[currency] + stripe_fees[currency] + customer_cost[currency] + channel_commission[currency]
+            project_contribution[currency] = recognized_service[currency] + ad_spread[currency] - common_cost
+            cash_project_contribution[currency] = cash_service[currency] + ad_spread[currency] - common_cost
+
+        operating_usd_net = round(project_contribution["USD"] - expense_by_currency["USD"], 2)
+        operating_cny_net = round(project_contribution["CNY"] - expense_by_currency["CNY"] - payroll_cost_cny, 2)
+        cash_usd_net = round(cash_project_contribution["USD"] - expense_by_currency["USD"], 2)
+        cash_cny_net = round(cash_project_contribution["CNY"] - expense_by_currency["CNY"] - payroll_cost_cny, 2)
+        formal_profit = _converted(operating_usd_net, operating_cny_net, locked_rate)
+        cash_profit = _converted(cash_usd_net, cash_cny_net, locked_rate)
+        recognized_revenue = _converted(
+            recognized_service["USD"] + ad_spread["USD"],
+            recognized_service["CNY"] + ad_spread["CNY"],
+            locked_rate,
+        )
+        cash_revenue = _converted(
+            cash_service["USD"] + ad_spread["USD"],
+            cash_service["CNY"] + ad_spread["CNY"],
+            locked_rate,
+        )
+        total_cost = _converted(
+            service_refunds["USD"] + stripe_fees["USD"] + customer_cost["USD"] + channel_commission["USD"] + expense_by_currency["USD"],
+            service_refunds["CNY"] + stripe_fees["CNY"] + customer_cost["CNY"] + channel_commission["CNY"] + expense_by_currency["CNY"] + payroll_cost_cny,
+            locked_rate,
+        )
+        needs_rate = any(abs(value) > 0.005 for value in (
+            operating_usd_net, cash_usd_net, recognized_service["USD"], cash_service["USD"], ad_spread["USD"],
+        ))
+        live_row = {
             "year_month": month,
-            "project_contribution_usd": usd_contribution,
-            "project_contribution_cny": cny_contribution,
+            "recognized_service_revenue_usd": round(recognized_service["USD"], 2),
+            "recognized_service_revenue_cny": round(recognized_service["CNY"], 2),
+            "cash_service_revenue_usd": round(cash_service["USD"], 2),
+            "cash_service_revenue_cny": round(cash_service["CNY"], 2),
+            "ad_spread_usd": round(ad_spread["USD"], 2),
+            "ad_spread_cny": round(ad_spread["CNY"], 2),
+            "refunds_usd": round(service_refunds["USD"], 2),
+            "refunds_cny": round(service_refunds["CNY"], 2),
+            "stripe_fee_usd": round(stripe_fees["USD"], 2),
+            "stripe_fee_cny": round(stripe_fees["CNY"], 2),
+            "customer_cost_usd": round(customer_cost["USD"], 2),
+            "customer_cost_cny": round(customer_cost["CNY"], 2),
+            "channel_commission_usd": round(channel_commission["USD"], 2),
+            "channel_commission_cny": round(channel_commission["CNY"], 2),
+            "project_contribution_usd": round(project_contribution["USD"], 2),
+            "project_contribution_cny": round(project_contribution["CNY"], 2),
+            "cash_project_contribution_usd": round(cash_project_contribution["USD"], 2),
+            "cash_project_contribution_cny": round(cash_project_contribution["CNY"], 2),
             "company_expense_usd": round(expense_by_currency["USD"], 2),
             "company_expense_cny": round(expense_by_currency["CNY"], 2),
             "payroll_cost_cny": payroll_cost_cny,
@@ -474,14 +615,54 @@ async def build_formal_monthly_profit(
             "exchange_rate": locked_rate,
             "exchange_rate_source": rate.source if rate else None,
             "exchange_rate_status": rate.status if rate else "missing",
+            "recognized_revenue_cny_equivalent": recognized_revenue,
+            "cash_revenue_cny_equivalent": cash_revenue,
+            "total_cost_cny_equivalent": total_cost,
             "formal_profit_cny": formal_profit,
+            "cash_profit_cny": cash_profit,
             "status": "ready" if locked_rate is not None else "cny_only" if not needs_rate else "missing_rate",
-        })
+            "close_status": "open",
+        }
+        close = closes_by_month.get(month)
+        if close and close.status == "locked":
+            try:
+                snapshot = json.loads(close.snapshot_json)
+                if isinstance(snapshot, dict) and snapshot.get("year_month") == month:
+                    live_row = snapshot
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+            live_row.update({
+                "close_status": "locked",
+                "closed_by": close.locked_by,
+                "closed_at": close.locked_at,
+            })
+        rows.append(live_row)
+
+    quarter_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    year_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        year, month_number = row["year_month"].split("-")
+        quarter_groups[f"{year}-Q{(int(month_number) - 1) // 3 + 1}"].append(row)
+        year_groups[year].append(row)
+
     return {
-        "definition": "管理口径人民币利润 =（USD项目贡献 - USD公司支出）× 当月锁定平均汇率 + CNY项目贡献 - CNY运营支出 - 已发放工资",
-        "accounting_note": "工资表仍独立，不写入财务；这里只读已发放净工资用于老板决策，并避免与财务中的手工工资重复扣除。报税与法定账仍以会计师确认的记账汇率和凭证为准。",
+        "definition": "人民币经营净利润 =（按服务期确认的 USD 服务收入 + 已关账投流差价 - 退款 - Stripe 手续费 - 客户成本 - 已确认分润 - USD 公司支出）× 当月锁定平均汇率 + CNY 项目贡献 - CNY 运营支出 - 已发放工资",
+        "cash_definition": "人民币现金口径经营结果使用实际收款月份；投流代充值本金仍不计收入。",
+        "accounting_note": "公司总利润纳入全部有效收支，不依赖项目归属；项目归属仅用于客户和业务线下钻。季付、年付按 coverage_start/coverage_end 服务期逐日分摊，缺服务期时暂按收款月并提示核对。工资只读已发放工资表，避免与财务手工工资重复扣除。",
         "rows": rows,
+        "summary": _profit_rollup(rows, f"{start_date.isoformat()} 至 {end_date.isoformat()}"),
+        "quarterly": [_profit_rollup(group, label) for label, group in sorted(quarter_groups.items())],
+        "yearly": [_profit_rollup(group, label) for label, group in sorted(year_groups.items())],
         "missing_rate_months": [row["year_month"] for row in rows if row["status"] == "missing_rate"],
+        "data_quality": {
+            "payments_with_service_period": len(covered_payment_ids),
+            "payments_using_receipt_month": len(fallback_payment_ids),
+            "unlinked_payment_count": sum(
+                1 for payment in base["payments"]
+                if _in_period(payment.payment_date, start_date, end_date) and not payment.engagement_id and _service_amount(payment) > 0
+            ),
+            "locked_month_count": sum(row.get("close_status") == "locked" for row in rows),
+        },
     }
 
 

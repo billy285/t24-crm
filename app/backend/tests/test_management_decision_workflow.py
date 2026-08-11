@@ -293,13 +293,80 @@ async def test_growth_dashboard_separates_ad_funds_and_drives_owner_decisions(wo
     assert february["exchange_rate"] == 7.2
     assert february["payroll_cost_cny"] == 1000
     assert february["payroll_source"] == "paid_payroll"
-    assert february["formal_profit_cny"] == 425.6
+    assert february["recognized_service_revenue_usd"] == 396
+    assert february["formal_profit_cny"] == 1851.2
+    assert refreshed.json()["formal_monthly_profit"]["data_quality"]["unlinked_payment_count"] == 1
+
+    close_response = await client.put(
+        "/api/v1/management-decisions/profit-closes/2026-02",
+        headers=auth_headers("admin", 1),
+        json={"action": "close"},
+    )
+    assert close_response.status_code == 200
+    assert close_response.json()["status"] == "locked"
+    locked_rate_change = await client.put(
+        "/api/v1/management-decisions/exchange-rates/2026-02",
+        headers=auth_headers("admin", 1),
+        json={"average_rate": 7.3, "source": "不应写入", "status": "locked"},
+    )
+    assert locked_rate_change.status_code == 409
+    async with sessions() as session:
+        unlinked_payment = await session.get(Payments, 201)
+        unlinked_payment.amount_paid = 998
+        unlinked_payment.amount_due = 998
+        await session.commit()
+    locked_refresh = await client.get(
+        "/api/v1/management-decisions/growth-dashboard?start_date=2026-02-01&end_date=2026-02-28",
+        headers=auth_headers("admin", 1),
+    )
+    locked_february = locked_refresh.json()["formal_monthly_profit"]["rows"][0]
+    assert locked_february["close_status"] == "locked"
+    assert locked_february["formal_profit_cny"] == 1851.2
+    reopen_response = await client.put(
+        "/api/v1/management-decisions/profit-closes/2026-02",
+        headers=auth_headers("admin", 1),
+        json={"action": "reopen", "reason": "补录测试收款"},
+    )
+    assert reopen_response.status_code == 200
+    reopened_refresh = await client.get(
+        "/api/v1/management-decisions/growth-dashboard?start_date=2026-02-01&end_date=2026-02-28",
+        headers=auth_headers("admin", 1),
+    )
+    reopened_february = reopened_refresh.json()["formal_monthly_profit"]["rows"][0]
+    assert reopened_february["close_status"] == "open"
+    assert reopened_february["formal_profit_cny"] == 7611.2
 
     denied = await client.get(
         "/api/v1/management-decisions/growth-dashboard",
         headers=auth_headers("finance", 2),
     )
     assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_company_profit_allocates_prepaid_service_revenue_by_coverage(workflow_context):
+    client, sessions = workflow_context
+    async with sessions() as session:
+        prepaid = await session.get(Payments, 201)
+        prepaid.amount_due = 300
+        prepaid.amount_paid = 300
+        prepaid.management_amount = 300
+        prepaid.coverage_start = datetime(2026, 2, 1, tzinfo=timezone.utc)
+        prepaid.coverage_end = datetime(2026, 5, 1, tzinfo=timezone.utc)
+        await session.commit()
+
+    response = await client.get(
+        "/api/v1/management-decisions/growth-dashboard?start_date=2026-02-01&end_date=2026-04-30",
+        headers=auth_headers("admin", 1),
+    )
+    assert response.status_code == 200
+    profit = response.json()["formal_monthly_profit"]
+    rows = profit["rows"]
+    assert rows[0]["cash_service_revenue_usd"] == 498
+    assert sum(row["recognized_service_revenue_usd"] for row in rows) == pytest.approx(498, abs=0.02)
+    assert 100 < rows[1]["recognized_service_revenue_usd"] < 105
+    assert profit["data_quality"]["payments_with_service_period"] == 1
+    assert profit["data_quality"]["payments_using_receipt_month"] == 1
 
 
 @pytest.mark.asyncio

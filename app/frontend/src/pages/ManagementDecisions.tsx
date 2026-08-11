@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Activity, AlertTriangle, ArrowLeft, BarChart3, BriefcaseBusiness, CheckCircle2, Clock3,
-  Database, Gauge, Layers3, ListChecks, PlayCircle, RefreshCw, Search, ShieldCheck, TrendingUp, Users, WalletCards,
+  CalendarRange, Database, Gauge, Layers3, ListChecks, LockKeyhole, PlayCircle, RefreshCw, Search,
+  ShieldCheck, TrendingUp, UnlockKeyhole, Users, WalletCards,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -12,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { client } from '@/lib/api';
 import { useRole } from '@/lib/role-context';
@@ -146,12 +148,28 @@ type AutomationData = {
 type GrowthData = {
   period: { start_date: string; end_date: string };
   formal_monthly_profit: {
-    definition: string; accounting_note: string; missing_rate_months: string[];
+    definition: string; cash_definition: string; accounting_note: string; missing_rate_months: string[];
+    summary: {
+      label: string; start_month: string; end_month: string; month_count: number; ready_month_count: number; locked_month_count: number;
+      recognized_revenue_cny: number | null; cash_revenue_cny: number | null; total_cost_cny: number | null;
+      operating_profit_cny: number | null; cash_profit_cny: number | null; operating_margin: number | null; status: string;
+    };
+    quarterly: Array<{ label: string; recognized_revenue_cny: number | null; total_cost_cny: number | null; operating_profit_cny: number | null; cash_profit_cny: number | null; operating_margin: number | null; status: string }>;
+    yearly: Array<{ label: string; recognized_revenue_cny: number | null; total_cost_cny: number | null; operating_profit_cny: number | null; cash_profit_cny: number | null; operating_margin: number | null; status: string }>;
+    data_quality: { payments_with_service_period: number; payments_using_receipt_month: number; unlinked_payment_count: number; locked_month_count: number };
     rows: Array<{
       year_month: string; project_contribution_usd: number; project_contribution_cny: number;
       company_expense_usd: number; company_expense_cny: number; exchange_rate: number | null;
       payroll_cost_cny: number; payroll_source: string;
+      recognized_service_revenue_usd: number; recognized_service_revenue_cny: number;
+      cash_service_revenue_usd: number; cash_service_revenue_cny: number;
+      ad_spread_usd: number; ad_spread_cny: number; refunds_usd: number; refunds_cny: number;
+      stripe_fee_usd: number; stripe_fee_cny: number; customer_cost_usd: number; customer_cost_cny: number;
+      channel_commission_usd: number; channel_commission_cny: number;
+      recognized_revenue_cny_equivalent: number | null; cash_revenue_cny_equivalent: number | null;
+      total_cost_cny_equivalent: number | null; cash_profit_cny: number | null;
       exchange_rate_source?: string; exchange_rate_status: string; formal_profit_cny: number | null; status: 'ready' | 'cny_only' | 'missing_rate';
+      close_status: 'open' | 'locked'; closed_by?: string; closed_at?: string;
     }>;
   };
   unit_economics: {
@@ -285,6 +303,34 @@ function money(value: number | null | undefined, currency: string) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(Number(value || 0));
 }
 
+function localDateString(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function profitRangeForPreset(preset: string, todayValue: string) {
+  const current = new Date(`${todayValue}T12:00:00`);
+  const year = current.getFullYear();
+  const month = current.getMonth();
+  if (preset === 'month') return { start: localDateString(new Date(year, month, 1)), end: todayValue };
+  if (preset === 'last_month') {
+    return { start: localDateString(new Date(year, month - 1, 1)), end: localDateString(new Date(year, month, 0)) };
+  }
+  if (preset === 'quarter') {
+    const quarterMonth = Math.floor(month / 3) * 3;
+    return { start: localDateString(new Date(year, quarterMonth, 1)), end: todayValue };
+  }
+  if (preset === 'last_quarter') {
+    const quarterMonth = Math.floor(month / 3) * 3;
+    return { start: localDateString(new Date(year, quarterMonth - 3, 1)), end: localDateString(new Date(year, quarterMonth, 0)) };
+  }
+  if (preset === 'year') return { start: `${year}-01-01`, end: todayValue };
+  if (preset === 'all') return { start: '2026-01-01', end: todayValue };
+  return null;
+}
+
 const healthLabels: Record<string, string> = { healthy: '健康', watch: '需关注', risk: '有风险', critical: '高风险' };
 const healthClasses: Record<string, string> = {
   healthy: 'bg-emerald-100 text-emerald-700', watch: 'bg-amber-100 text-amber-700',
@@ -332,12 +378,19 @@ export default function ManagementDecisions() {
   const [searchParams, setSearchParams] = useSearchParams();
   const today = new Date().toISOString().slice(0, 10);
   const [startDate, setStartDate] = useState('2026-01-01');
+  const [profitPreset, setProfitPreset] = useState('year');
+  const [profitStartDate, setProfitStartDate] = useState(`${new Date().getFullYear()}-01-01`);
+  const [profitEndDate, setProfitEndDate] = useState(today);
   const [data, setData] = useState<ReviewData | null>(null);
   const [automation, setAutomation] = useState<AutomationData | null>(null);
   const [growth, setGrowth] = useState<GrowthData | null>(null);
   const [projectCapacityTarget, setProjectCapacityTarget] = useState(12);
   const [rateDrafts, setRateDrafts] = useState<Record<string, { rate: string; source: string }>>({});
   const [rateSavingMonth, setRateSavingMonth] = useState('');
+  const [growthLoading, setGrowthLoading] = useState(false);
+  const [profitCloseLoading, setProfitCloseLoading] = useState('');
+  const [reopenProfitMonth, setReopenProfitMonth] = useState('');
+  const [reopenReason, setReopenReason] = useState('');
   const [loading, setLoading] = useState(true);
   const [scanLoading, setScanLoading] = useState(false);
   const [bulkTaskLoading, setBulkTaskLoading] = useState(false);
@@ -372,7 +425,7 @@ export default function ManagementDecisions() {
           method: 'GET', options: authOptions(),
         }),
         isAdmin ? client.apiCall.invoke({
-          url: `/api/v1/management-decisions/growth-dashboard?start_date=${startDate}&end_date=${today}&project_capacity_target=${projectCapacityTarget}`,
+          url: `/api/v1/management-decisions/growth-dashboard?start_date=${profitStartDate}&end_date=${profitEndDate}&project_capacity_target=${projectCapacityTarget}`,
           method: 'GET', options: authOptions(),
         }) : Promise.resolve({ data: null }),
       ]);
@@ -389,6 +442,32 @@ export default function ManagementDecisions() {
       toast.error(errorMessage(error, '经营分类数据加载失败'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadGrowth = async (rangeStart = profitStartDate, rangeEnd = profitEndDate) => {
+    if (!isAdmin) return;
+    if (!rangeStart || !rangeEnd || rangeEnd < rangeStart) {
+      toast.error('利润开始日期不能晚于结束日期');
+      return;
+    }
+    setGrowthLoading(true);
+    try {
+      const response = await client.apiCall.invoke({
+        url: `/api/v1/management-decisions/growth-dashboard?start_date=${rangeStart}&end_date=${rangeEnd}&project_capacity_target=${projectCapacityTarget}`,
+        method: 'GET', options: authOptions(),
+      });
+      setGrowth(response.data);
+      if (response.data?.formal_monthly_profit?.rows) {
+        setRateDrafts(Object.fromEntries(response.data.formal_monthly_profit.rows.map((row: any) => [row.year_month, {
+          rate: row.exchange_rate == null ? '' : String(row.exchange_rate),
+          source: row.exchange_rate_source || '当月平均汇率（手动核对）',
+        }])));
+      }
+    } catch (error: any) {
+      toast.error(errorMessage(error, '人民币利润数据加载失败'));
+    } finally {
+      setGrowthLoading(false);
     }
   };
 
@@ -435,11 +514,38 @@ export default function ManagementDecisions() {
         method: 'PUT', data: { average_rate: rate, source: draft.source.trim(), status: 'locked' }, options: authOptions(),
       });
       toast.success(`${yearMonth} 汇率已锁定，人民币利润已重新核算`);
-      await loadData();
+      await loadGrowth();
     } catch (error: any) {
       toast.error(errorMessage(error, '月度汇率保存失败'));
     } finally {
       setRateSavingMonth('');
+    }
+  };
+
+  const changeProfitPreset = (value: string) => {
+    setProfitPreset(value);
+    const range = profitRangeForPreset(value, today);
+    if (range) {
+      setProfitStartDate(range.start);
+      setProfitEndDate(range.end);
+    }
+  };
+
+  const updateProfitClose = async (yearMonth: string, action: 'close' | 'reopen', reason?: string) => {
+    setProfitCloseLoading(yearMonth);
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/management-decisions/profit-closes/${yearMonth}`,
+        method: 'PUT', data: { action, reason }, options: authOptions(),
+      });
+      toast.success(action === 'close' ? `${yearMonth} 已完成月结，历史利润已锁定` : `${yearMonth} 已重新打开`);
+      setReopenProfitMonth('');
+      setReopenReason('');
+      await loadGrowth();
+    } catch (error: any) {
+      toast.error(errorMessage(error, action === 'close' ? '月结失败' : '重新打开失败'));
+    } finally {
+      setProfitCloseLoading('');
     }
   };
 
@@ -645,6 +751,9 @@ export default function ManagementDecisions() {
   const riskyHealth = (growth?.customer_health.items || []).filter(row => row.level !== 'healthy');
   const salesCapacitySummary = growth?.team_capacity.sales_lead_capacity || {};
   const isFinancialInsights = section === 'insights';
+  const profitCenter = growth?.formal_monthly_profit;
+  const profitSummary = profitCenter?.summary;
+  const currentMonth = today.slice(0, 7);
 
   return (
     <div className="app-page space-y-5">
@@ -697,9 +806,43 @@ export default function ManagementDecisions() {
       {section === 'insights' && <div className="space-y-5">
         {!growth && !loading && <Card className="border-amber-200 bg-amber-50"><CardContent className="p-6 text-sm text-amber-800">当前账号没有老板经营分析权限，或数据尚未加载。</CardContent></Card>}
         {growth && <>
+          <Card className="border-blue-200 bg-blue-50/40">
+            <CardContent className="flex flex-col gap-4 p-4 xl:flex-row xl:items-end xl:justify-between">
+              <div><p className="flex items-center gap-2 font-semibold text-slate-900"><CalendarRange className="h-4 w-4 text-blue-600" />人民币利润查看期间</p><p className="mt-1 text-xs text-slate-500">季度、年度和自定义区间均逐月使用已锁定汇率，不用当前汇率重算历史。</p></div>
+              <div className="flex flex-wrap items-end gap-2">
+                <div><Label className="text-xs">快捷范围</Label><NativeSelect value={profitPreset} onChange={changeProfitPreset} className="mt-1 w-36 bg-white" options={[{ value: 'month', label: '本月' }, { value: 'last_month', label: '上月' }, { value: 'quarter', label: '本季度' }, { value: 'last_quarter', label: '上季度' }, { value: 'year', label: '本年度' }, { value: 'all', label: '全部历史' }, { value: 'custom', label: '自定义时间' }]} /></div>
+                <div><Label className="text-xs">开始日期</Label><Input type="date" value={profitStartDate} onChange={event => { setProfitPreset('custom'); setProfitStartDate(event.target.value); }} className="mt-1 w-40 bg-white" /></div>
+                <div><Label className="text-xs">结束日期</Label><Input type="date" value={profitEndDate} max={today} onChange={event => { setProfitPreset('custom'); setProfitEndDate(event.target.value); }} className="mt-1 w-40 bg-white" /></div>
+                <Button onClick={() => void loadGrowth()} disabled={growthLoading}>{growthLoading ? '计算中…' : '查看利润'}</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ['折算后营业收入', profitSummary?.recognized_revenue_cny, '按服务期确认，含已关账投流差价'],
+              ['总成本与支出', profitSummary?.total_cost_cny, '退款、手续费、成本、分润、运营和工资'],
+              ['人民币经营净利润', profitSummary?.operating_profit_cny, profitSummary?.operating_margin == null ? '待补齐汇率' : `净利润率 ${(profitSummary.operating_margin * 100).toFixed(1)}%`],
+              ['现金口径经营结果', profitSummary?.cash_profit_cny, '按实际收款月，用于观察现金节奏'],
+            ].map(([label, value, hint]) => <Card key={String(label)} className="border-slate-200"><CardContent className="p-4"><p className="text-xs font-medium text-slate-500">{label}</p>{value == null ? <Badge className="mt-3 bg-amber-100 text-amber-700">待补汇率</Badge> : <p className={`mt-2 text-2xl font-bold ${Number(value) >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(Number(value), 'CNY')}</p>}<p className="mt-2 text-[11px] leading-4 text-slate-400">{hint}</p></CardContent></Card>)}
+          </div>
+
           <Card className="border-emerald-200 bg-emerald-50/30">
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-5 w-5 text-emerald-600" />管理口径月度人民币利润</CardTitle><p className="mt-1 text-xs text-slate-600">{growth.formal_monthly_profit.definition}</p><p className="text-[11px] leading-5 text-slate-500">{growth.formal_monthly_profit.accounting_note}</p></CardHeader>
-              <CardContent className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead><tr className="border-b bg-white/70 text-left text-xs text-slate-500"><th className="px-3 py-3">月份</th><th className="px-3 py-3">项目贡献</th><th className="px-3 py-3">公司支出</th><th className="px-3 py-3">USD/CNY 月均汇率</th><th className="px-3 py-3">汇率来源</th><th className="px-3 py-3">人民币利润</th><th className="px-3 py-3 text-right">操作</th></tr></thead><tbody>{growth.formal_monthly_profit.rows.map(row => { const draft = rateDrafts[row.year_month] || { rate: '', source: '当月平均汇率（手动核对）' }; return <tr key={row.year_month} className="border-b border-emerald-100"><td className="px-3 py-3 font-semibold">{row.year_month}</td><td className="px-3 py-3"><p>{money(row.project_contribution_usd, 'USD')}</p><p className="text-xs text-slate-400">{money(row.project_contribution_cny, 'CNY')}</p></td><td className="px-3 py-3"><p>运营 {money(row.company_expense_cny, 'CNY')}</p><p className="text-xs text-slate-400">工资 {money(row.payroll_cost_cny, 'CNY')}{row.payroll_source === 'paid_payroll' ? ' · 工资表' : row.payroll_source === 'company_expense' ? ' · 财务手工' : ''}</p>{row.company_expense_usd !== 0 && <p className="text-xs text-slate-400">另 {money(row.company_expense_usd, 'USD')}</p>}</td><td className="px-3 py-3"><Input type="number" min="0.1" max="20" step="0.0001" value={draft.rate} onChange={event => setRateDrafts(current => ({ ...current, [row.year_month]: { ...draft, rate: event.target.value } }))} className="w-24 bg-white" /></td><td className="px-3 py-3"><Input value={draft.source} onChange={event => setRateDrafts(current => ({ ...current, [row.year_month]: { ...draft, source: event.target.value } }))} className="w-44 bg-white" /></td><td className="px-3 py-3">{row.formal_profit_cny == null ? <Badge className="bg-amber-100 text-amber-700">待锁定汇率</Badge> : <><p className={`font-bold ${row.formal_profit_cny >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(row.formal_profit_cny, 'CNY')}</p><p className="text-[11px] text-slate-400">{row.status === 'cny_only' ? '本月无 USD 净额，无需汇率' : '汇率已锁定'}</p></>}</td><td className="px-3 py-3 text-right">{row.status === 'cny_only' && !draft.rate ? <span className="text-xs text-slate-400">无需操作</span> : <Button size="sm" variant={row.exchange_rate_status === 'locked' ? 'outline' : 'default'} disabled={rateSavingMonth === row.year_month} onClick={() => void saveExchangeRate(row.year_month)}>{rateSavingMonth === row.year_month ? '保存中…' : row.exchange_rate_status === 'locked' ? '更新并锁定' : '锁定汇率'}</Button>}</td></tr>; })}</tbody></table></CardContent>
+            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-5 w-5 text-emerald-600" />公司人民币经营净利润</CardTitle><p className="mt-1 text-xs text-slate-600">{growth.formal_monthly_profit.definition}</p><p className="text-xs text-blue-700">{growth.formal_monthly_profit.cash_definition}</p><p className="text-[11px] leading-5 text-slate-500">{growth.formal_monthly_profit.accounting_note}</p></CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border border-emerald-200 bg-white p-4"><p className="text-xs text-slate-500">服务期完整收款</p><p className="mt-2 text-2xl font-bold">{growth.formal_monthly_profit.data_quality.payments_with_service_period}</p><p className="text-[11px] text-slate-400">季付、年付可自动分摊</p></div>
+                <div className="rounded-xl border border-amber-200 bg-white p-4"><p className="text-xs text-slate-500">暂按收款月</p><p className="mt-2 text-2xl font-bold text-amber-700">{growth.formal_monthly_profit.data_quality.payments_using_receipt_month}</p><p className="text-[11px] text-slate-400">建议补充服务开始与结束日期</p></div>
+                <div className="rounded-xl border border-blue-200 bg-white p-4"><p className="text-xs text-slate-500">未关联项目收款</p><p className="mt-2 text-2xl font-bold text-blue-700">{growth.formal_monthly_profit.data_quality.unlinked_payment_count}</p><p className="text-[11px] text-slate-400">公司利润照常计入，项目利润待归属</p></div>
+                <div className="rounded-xl border border-violet-200 bg-white p-4"><p className="text-xs text-slate-500">已锁定月份</p><p className="mt-2 text-2xl font-bold text-violet-700">{growth.formal_monthly_profit.data_quality.locked_month_count}</p><p className="text-[11px] text-slate-400">历史数据不会随以后修改变化</p></div>
+              </div>
+
+              <div className="overflow-x-auto"><table className="w-full min-w-[1420px] text-sm"><thead><tr className="border-b bg-white/70 text-left text-xs text-slate-500"><th className="px-3 py-3">月份</th><th className="px-3 py-3">服务期收入</th><th className="px-3 py-3">实际收款</th><th className="px-3 py-3">投流差价</th><th className="px-3 py-3">退款/手续费</th><th className="px-3 py-3">客户成本/分润</th><th className="px-3 py-3">公司支出</th><th className="px-3 py-3">月均汇率</th><th className="px-3 py-3">经营利润</th><th className="px-3 py-3">现金口径</th><th className="px-3 py-3 text-right">月结</th></tr></thead><tbody>{growth.formal_monthly_profit.rows.map(row => { const draft = rateDrafts[row.year_month] || { rate: '', source: '当月平均汇率（手动核对）' }; const locked = row.close_status === 'locked'; return <tr key={row.year_month} className="border-b border-emerald-100 align-top"><td className="px-3 py-3 font-semibold">{row.year_month}<div className="mt-1">{locked ? <Badge className="bg-violet-100 text-violet-700"><LockKeyhole className="mr-1 h-3 w-3" />已月结</Badge> : <Badge variant="outline">未月结</Badge>}</div></td><td className="px-3 py-3"><p>{money(row.recognized_service_revenue_usd, 'USD')}</p><p className="text-xs text-slate-400">{money(row.recognized_service_revenue_cny, 'CNY')}</p></td><td className="px-3 py-3"><p>{money(row.cash_service_revenue_usd, 'USD')}</p><p className="text-xs text-slate-400">{money(row.cash_service_revenue_cny, 'CNY')}</p></td><td className="px-3 py-3"><p>{money(row.ad_spread_usd, 'USD')}</p><p className="text-xs text-slate-400">{money(row.ad_spread_cny, 'CNY')}</p></td><td className="px-3 py-3"><p>{money(row.refunds_usd + row.stripe_fee_usd, 'USD')}</p><p className="text-xs text-slate-400">{money(row.refunds_cny + row.stripe_fee_cny, 'CNY')}</p></td><td className="px-3 py-3"><p>{money(row.customer_cost_usd + row.channel_commission_usd, 'USD')}</p><p className="text-xs text-slate-400">{money(row.customer_cost_cny + row.channel_commission_cny, 'CNY')}</p></td><td className="px-3 py-3"><p>运营 {money(row.company_expense_cny, 'CNY')}</p><p className="text-xs text-slate-400">工资 {money(row.payroll_cost_cny, 'CNY')}</p>{row.company_expense_usd !== 0 && <p className="text-xs text-slate-400">另 {money(row.company_expense_usd, 'USD')}</p>}</td><td className="px-3 py-3"><div className="flex gap-1"><Input type="number" min="0.1" max="20" step="0.0001" value={draft.rate} disabled={locked} onChange={event => setRateDrafts(current => ({ ...current, [row.year_month]: { ...draft, rate: event.target.value } }))} className="w-24 bg-white" /><Button size="sm" variant="outline" disabled={locked || rateSavingMonth === row.year_month} onClick={() => void saveExchangeRate(row.year_month)}>{rateSavingMonth === row.year_month ? '保存中' : '锁定'}</Button></div><Input value={draft.source} disabled={locked} onChange={event => setRateDrafts(current => ({ ...current, [row.year_month]: { ...draft, source: event.target.value } }))} className="mt-1 w-48 bg-white text-xs" /></td><td className="px-3 py-3">{row.formal_profit_cny == null ? <Badge className="bg-amber-100 text-amber-700">待锁定汇率</Badge> : <p className={`font-bold ${row.formal_profit_cny >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(row.formal_profit_cny, 'CNY')}</p>}</td><td className="px-3 py-3">{row.cash_profit_cny == null ? '-' : <p className={`font-semibold ${row.cash_profit_cny >= 0 ? 'text-blue-700' : 'text-red-700'}`}>{money(row.cash_profit_cny, 'CNY')}</p>}</td><td className="px-3 py-3 text-right">{locked ? <Button size="sm" variant="outline" disabled={profitCloseLoading === row.year_month} onClick={() => { setReopenProfitMonth(row.year_month); setReopenReason(''); }}><UnlockKeyhole className="mr-1 h-3 w-3" />重新打开</Button> : row.year_month < currentMonth ? <Button size="sm" disabled={row.formal_profit_cny == null || profitCloseLoading === row.year_month} onClick={() => void updateProfitClose(row.year_month, 'close')}><LockKeyhole className="mr-1 h-3 w-3" />确认月结</Button> : <span className="text-xs text-slate-400">月份结束后关账</span>}</td></tr>; })}</tbody></table></div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                {[['季度汇总', growth.formal_monthly_profit.quarterly], ['年度汇总', growth.formal_monthly_profit.yearly]].map(([title, rows]: any) => <div key={title} className="rounded-xl border border-slate-200 bg-white"><p className="border-b px-4 py-3 text-sm font-semibold">{title}</p><div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr className="border-b text-left text-slate-400"><th className="px-4 py-2">期间</th><th className="px-4 py-2">收入</th><th className="px-4 py-2">经营利润</th><th className="px-4 py-2">利润率</th></tr></thead><tbody>{rows.map((row: any) => <tr key={row.label} className="border-b last:border-0"><td className="px-4 py-3 font-medium">{row.label}</td><td className="px-4 py-3">{row.recognized_revenue_cny == null ? '待补汇率' : money(row.recognized_revenue_cny, 'CNY')}</td><td className={`px-4 py-3 font-semibold ${Number(row.operating_profit_cny || 0) >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{row.operating_profit_cny == null ? '待补汇率' : money(row.operating_profit_cny, 'CNY')}</td><td className="px-4 py-3">{row.operating_margin == null ? '-' : `${(row.operating_margin * 100).toFixed(1)}%`}</td></tr>)}</tbody></table></div></div>)}
+              </div>
+            </CardContent>
           </Card>
           <Card className="border-slate-200">
             <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><WalletCards className="h-5 w-5 text-blue-600" />项目级真实利润与单位经济</CardTitle><p className="mt-1 text-xs text-slate-500">{growth.unit_economics.definition}</p></div><Badge variant="outline">{growth.period.start_date} 至 {growth.period.end_date}</Badge></CardHeader>
@@ -807,6 +950,10 @@ export default function ManagementDecisions() {
 
       <Dialog open={!!statusProject} onOpenChange={open => !open && setStatusProject(null)}>
         <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>更改项目状态</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl bg-slate-50 p-3 text-sm"><p className="font-semibold">{statusProject?.customer_name}</p><p className="mt-1 text-xs text-slate-500">{statusProject?.business_line.name} · 只更改项目，不更改客户整体合作状态</p></div><div><Label>项目状态</Label><select value={nextStatus} onChange={event => setNextStatus(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>生效日期</Label><Input type="date" value={statusDate} max={today} onChange={event => setStatusDate(event.target.value)} className="mt-1" /></div><div><Label>原因与备注</Label><Textarea value={statusReason} onChange={event => setStatusReason(event.target.value)} rows={3} className="mt-1" /></div></div><DialogFooter><Button variant="outline" onClick={() => setStatusProject(null)}>取消</Button><Button onClick={() => void saveStatus()} disabled={saving}>{saving ? '保存中…' : '确认更新'}</Button></DialogFooter></DialogContent>
+      </Dialog>
+
+      <Dialog open={!!reopenProfitMonth} onOpenChange={open => !open && setReopenProfitMonth('')}>
+        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>重新打开 {reopenProfitMonth} 月结</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">重新打开后，该月利润会恢复实时计算。修正数据并重新核对后，需要再次确认月结。</div><div><Label>重新打开原因 *</Label><Textarea value={reopenReason} onChange={event => setReopenReason(event.target.value)} rows={3} className="mt-1" placeholder="例如：补录一笔人民币运营支出" /></div></div><DialogFooter><Button variant="outline" onClick={() => setReopenProfitMonth('')}>取消</Button><Button variant="destructive" disabled={reopenReason.trim().length < 3 || profitCloseLoading === reopenProfitMonth} onClick={() => void updateProfitClose(reopenProfitMonth, 'reopen', reopenReason.trim())}>{profitCloseLoading === reopenProfitMonth ? '处理中…' : '确认重新打开'}</Button></DialogFooter></DialogContent>
       </Dialog>
     </div>
   );
