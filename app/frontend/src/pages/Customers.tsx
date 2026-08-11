@@ -557,7 +557,10 @@ const subscriptionStatusView: Record<string, { label: string; cardClass: string;
   renewed: { label: '已续费', cardClass: 'border-emerald-200 bg-emerald-50', badgeClass: 'bg-emerald-100 text-emerald-700' },
   paused: { label: '暂停', cardClass: 'border-slate-200 bg-slate-50', badgeClass: 'bg-slate-100 text-slate-600' },
   lost: { label: '流失', cardClass: 'border-red-200 bg-red-50', badgeClass: 'bg-red-100 text-red-700' },
+  upgraded: { label: '已升级结束', cardClass: 'border-violet-200 bg-violet-50', badgeClass: 'bg-violet-100 text-violet-700' },
+  stopped: { label: '停止续费', cardClass: 'border-slate-200 bg-slate-50', badgeClass: 'bg-slate-200 text-slate-700' },
 };
+const archivedSubscriptionStatuses = new Set(['stopped', 'lost', 'paused', 'upgraded']);
 
 export default function Customers() {
   const navigate = useNavigate();
@@ -2097,14 +2100,6 @@ export default function Customers() {
     const customerFinanceRecordCount = payments.length + customerExpenses.length;
     const latestPaymentDate = payments[0]?.payment_date?.slice(0, 10) || '-';
     const latestDealDate = deals[0]?.deal_date?.slice(0, 10) || '-';
-    const serviceRecordCount = serviceProgresses.length > 0 ? serviceProgresses.length : subscriptions.length;
-    const activeSubscriptionCount = subscriptions.filter(item => computeSubscriptionState(item) === 'active').length;
-    const activeCustomerProjectCount = customerProjects.filter(item => activeCustomerProjectStatuses.has(item.status)).length;
-    const currentLifecycleStatus = lifecycleDetail?.cycles?.[0]?.status;
-    const hasClosureMismatch = currentLifecycleStatus === 'stopped' && (activeSubscriptionCount > 0 || activeCustomerProjectCount > 0);
-    const pendingServiceTasks = serviceTasks.filter(item => !['completed', 'cancelled'].includes(item.status || '')).length;
-    const overdueServiceTasks = serviceTasks.filter(item => item.due_date && item.due_date < new Date().toISOString().slice(0, 10) && !['completed', 'cancelled'].includes(item.status || '')).length;
-    const openServiceIssues = serviceProgresses.filter(item => item.issue_status && item.issue_status !== 'none' && !item.issue_resolved).length;
     const renewalRows = subscriptions
       .map(item => {
         const status = computeSubscriptionState(item);
@@ -2116,12 +2111,22 @@ export default function Customers() {
         const bTime = b.end_date ? new Date(b.end_date).getTime() : Number.MAX_SAFE_INTEGER;
         return aTime - bTime;
       });
+    const currentServiceRows = renewalRows.filter(item => !archivedSubscriptionStatuses.has(item.computed_status));
+    const historicalServiceRows = renewalRows.filter(item => archivedSubscriptionStatuses.has(item.computed_status));
+    const serviceRecordCount = serviceProgresses.length > 0 ? serviceProgresses.length : currentServiceRows.length;
+    const activeSubscriptionCount = currentServiceRows.length;
+    const activeCustomerProjectCount = customerProjects.filter(item => activeCustomerProjectStatuses.has(item.status)).length;
+    const currentLifecycleStatus = lifecycleDetail?.cycles?.[0]?.status;
+    const hasClosureMismatch = currentLifecycleStatus === 'stopped' && (activeSubscriptionCount > 0 || activeCustomerProjectCount > 0);
+    const pendingServiceTasks = serviceTasks.filter(item => !['completed', 'cancelled'].includes(item.status || '')).length;
+    const overdueServiceTasks = serviceTasks.filter(item => item.due_date && item.due_date < new Date().toISOString().slice(0, 10) && !['completed', 'cancelled'].includes(item.status || '')).length;
+    const openServiceIssues = serviceProgresses.filter(item => item.issue_status && item.issue_status !== 'none' && !item.issue_resolved).length;
     const detailBusinessLineMap = Object.fromEntries((productCatalog.business_lines || []).map((item: any) => [item.id, item]));
     const detailProductMap = Object.fromEntries((productCatalog.products || []).map((item: any) => [item.id, item]));
     const detailPlanMap = Object.fromEntries((productCatalog.plans || []).map((item: any) => [item.id, item]));
     const paginatedFollowUps = paginateList(followUps, followUpPage, followUpPageSize);
     const paginatedDeals = paginateList(deals, dealPage, dealPageSize);
-    const paginatedServiceInfo = paginateList(subscriptions, serviceInfoPage, serviceInfoPageSize);
+    const paginatedServiceInfo = paginateList(currentServiceRows, serviceInfoPage, serviceInfoPageSize);
     const paginatedFinanceMonthlyRows = paginateList(customerFinanceSummary.monthlyRows, financeMonthlyPage, financeMonthlyPageSize);
     const paginatedFinancePaymentLines = paginateList(customerFinanceSummary.paymentLines, financePaymentPage, financePaymentPageSize);
     const paginatedFinanceExpenses = paginateList(customerExpenses, financeExpensePage, financeExpensePageSize);
@@ -2192,7 +2197,7 @@ export default function Customers() {
             <TabsTrigger value="opportunities" className="shrink-0 text-xs">客户商机</TabsTrigger>
             <TabsTrigger value="followups" className="shrink-0 text-xs">跟进记录 ({detailLoading ? '…' : followUps.length})</TabsTrigger>
             <TabsTrigger value="deals" className="shrink-0 text-xs">成交记录 ({detailLoading ? '…' : deals.length})</TabsTrigger>
-            <TabsTrigger value="subscriptions" className="shrink-0 text-xs">服务信息 ({detailLoading ? '…' : serviceRecordCount})</TabsTrigger>
+            <TabsTrigger value="subscriptions" className="shrink-0 text-xs">服务信息 ({detailLoading ? '…' : currentServiceRows.length})</TabsTrigger>
             {canViewFinance && <TabsTrigger value="payments" className="shrink-0 text-xs">财务信息 ({detailLoading ? '…' : customerFinanceRecordCount})</TabsTrigger>}
             <TabsTrigger value="renewals" className="shrink-0 text-xs">续费信息 ({detailLoading ? '…' : renewalRows.length})</TabsTrigger>
             <TabsTrigger value="materials" className="shrink-0 text-xs">素材管理</TabsTrigger>
@@ -2401,17 +2406,32 @@ export default function Customers() {
             <Card className="border-slate-200"><CardContent className="p-5">
               {subscriptions.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无套餐</p> : (
                 <>
-                  <div className="space-y-3">{paginatedServiceInfo.items.map((s: any) => (
-                    <div key={s.id} className="p-3 bg-slate-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(s.package_name).currentLabel}</span><Badge className={subStatusColors[s.status]}>{subStatusLabels[s.status] || s.status}</Badge></div>
-                      {getPackageClassification(s.package_name).changed && <p className="mb-2 text-xs text-slate-400">历史服务原名：{getPackageClassification(s.package_name).historicalLabel}</p>}
-                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
-                        <span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span>
-                        <span>开始: {s.start_date?.slice(0, 10)}</span><span>到期: {s.end_date?.slice(0, 10)}</span>
-                      </div>
-                    </div>
-                  ))}</div>
-                  <DetailPaginationFooter pagination={paginatedServiceInfo} pageSize={serviceInfoPageSize} onPageChange={setServiceInfoPage} onPageSizeChange={setServiceInfoPageSize} label="服务记录" />
+                  {currentServiceRows.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无当前服务套餐</p> : <>
+                    <div className="mb-3"><p className="text-sm font-semibold text-slate-700">当前服务</p><p className="mt-1 text-xs text-slate-400">这里只显示仍需运营、续费或收款的套餐。</p></div>
+                    <div className="space-y-3">{paginatedServiceInfo.items.map((s: any) => {
+                      const statusView = subscriptionStatusView[s.computed_status] || subscriptionStatusView.active;
+                      return <div key={s.id} className={`rounded-lg border p-3 ${statusView.cardClass}`}>
+                        <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(s.package_name).currentLabel}</span><Badge className={statusView.badgeClass}>{subStatusLabels[s.computed_status] || statusView.label}</Badge></div>
+                        {getPackageClassification(s.package_name).changed && <p className="mb-2 text-xs text-slate-400">历史服务原名：{getPackageClassification(s.package_name).historicalLabel}</p>}
+                        <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
+                          <span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span><span>收款方式: {s.auto_renew ? 'Stripe 自动扣款' : '手动收款'}</span>
+                          <span>开始: {s.start_date?.slice(0, 10)}</span><span>到期: {s.end_date?.slice(0, 10)}</span>
+                        </div>
+                      </div>;
+                    })}</div>
+                    <DetailPaginationFooter pagination={paginatedServiceInfo} pageSize={serviceInfoPageSize} onPageChange={setServiceInfoPage} onPageSizeChange={setServiceInfoPageSize} label="当前服务" />
+                  </>}
+                  {historicalServiceRows.length > 0 && <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50/70">
+                    <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-600">历史套餐（{historicalServiceRows.length}）</summary>
+                    <div className="space-y-3 border-t border-slate-200 p-3">{historicalServiceRows.map((s: any) => {
+                      const statusView = subscriptionStatusView[s.computed_status] || subscriptionStatusView.stopped;
+                      return <div key={s.id} className={`rounded-lg border p-3 ${statusView.cardClass}`}>
+                        <div className="flex items-center justify-between gap-2"><span className="font-medium text-sm">{getPackageClassification(s.package_name).currentLabel}</span><Badge className={statusView.badgeClass}>{subStatusLabels[s.computed_status] || statusView.label}</Badge></div>
+                        <p className="mt-1 text-xs text-slate-400">历史套餐，不再参与当前服务与续费提醒；历史收款仍保留。</p>
+                        <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-slate-500"><span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span><span>期间: {s.start_date?.slice(0, 10) || '-'} 至 {s.end_date?.slice(0, 10) || '-'}</span></div>
+                      </div>;
+                    })}</div>
+                  </details>}
                 </>
               )}
             </CardContent></Card>

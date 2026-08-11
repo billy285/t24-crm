@@ -3150,9 +3150,7 @@ export default function Finance() {
     if (!subscription?.id) return;
 
     const now = new Date().toISOString();
-    const nextPaymentDate = enabled
-      ? toISODatetime(toDateOnly(subscription.next_payment_date) || toDateOnly(subscription.end_date))
-      : null;
+    const nextPaymentDate = toISODatetime(toDateOnly(subscription.next_payment_date) || toDateOnly(subscription.end_date));
     const payload = enabled
       ? {
           auto_renew: true,
@@ -3168,9 +3166,14 @@ export default function Finance() {
         }
       : {
           auto_renew: false,
-          next_payment_date: null,
-          status: 'stopped',
-          renewal_result: 'auto_renew_disabled',
+          next_payment_date: nextPaymentDate,
+          status: computeSubscriptionStatus({
+            ...subscription,
+            auto_renew: false,
+            next_payment_date: nextPaymentDate,
+            status: 'active',
+          }),
+          renewal_result: 'manual_collection_enabled',
           updated_at: now,
         };
 
@@ -3184,20 +3187,61 @@ export default function Finance() {
 
       void logOperation({
         customerId: Number(subscription.customer_id),
-        actionType: enabled ? 'enable_subscription_auto_renew' : 'stop_subscription_renewal',
-        actionDetail: `${enabled ? '开启订阅续费' : '停止此套餐续费'}：${subscription.customer_name || customerMap[subscription.customer_id]?.business_name || ''} ${subscription.package_name || ''}`,
+        actionType: enabled ? 'enable_subscription_auto_renew' : 'switch_subscription_to_manual_collection',
+        actionDetail: `${enabled ? '开启 Stripe 自动扣款' : '切换为手动收款'}：${subscription.customer_name || customerMap[subscription.customer_id]?.business_name || ''} ${subscription.package_name || ''}`,
         operatorName,
       });
 
       setSubscriptions(prev => decorateEffectiveSubscriptions(prev.map(item => (
         String(item.id) === String(subscription.id) ? { ...item, ...payload } : item
       ))));
-      toast.success(enabled ? '已开启续费开关，到期后会进入待确认续费' : '已停止未来续费，历史收款和利润不受影响');
+      toast.success(enabled ? '已开启 Stripe 自动扣款，到期后会进入待确认' : '已切换为手动收款；到期后会进入风险队列，不会停止套餐');
       await loadData();
     } catch (err: any) {
       const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '更新续费开关失败';
       toast.error(`更新续费开关失败: ${detail}`);
       console.error('Toggle subscription auto renew failed:', err);
+    } finally {
+      setUpdatingSubscriptionId(null);
+    }
+  };
+
+  const handleStopSubscriptionRenewal = async (subscription: any) => {
+    if (!subscription?.id) return;
+
+    const now = new Date().toISOString();
+    const payload = {
+      auto_renew: false,
+      next_payment_date: null,
+      status: 'stopped',
+      renewal_result: 'subscription_stopped',
+      updated_at: now,
+    };
+
+    setUpdatingSubscriptionId(Number(subscription.id));
+    try {
+      await invokeWithAuth({
+        url: `/api/v1/entities/subscriptions/${subscription.id}`,
+        method: 'PUT',
+        data: payload,
+      });
+
+      void logOperation({
+        customerId: Number(subscription.customer_id),
+        actionType: 'stop_subscription_renewal',
+        actionDetail: `停止此套餐：${subscription.customer_name || customerMap[subscription.customer_id]?.business_name || ''} ${subscription.package_name || ''}`,
+        operatorName,
+      });
+
+      setSubscriptions(prev => decorateEffectiveSubscriptions(prev.map(item => (
+        String(item.id) === String(subscription.id) ? { ...item, ...payload } : item
+      ))));
+      toast.success('已停止此套餐的未来续费，历史收款和利润不受影响');
+      await loadData();
+    } catch (err: any) {
+      const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '停止套餐失败';
+      toast.error(`停止套餐失败: ${detail}`);
+      console.error('Stop subscription failed:', err);
     } finally {
       setUpdatingSubscriptionId(null);
     }
@@ -4815,7 +4859,7 @@ export default function Finance() {
                                         onCheckedChange={checked => handleToggleSubscriptionAutoRenew(s, checked)}
                                         disabled={updatingSubscriptionId === Number(s.id) || ['stopped', 'lost', 'upgraded', 'paused'].includes(status)}
                                       />
-                                      <span className="text-xs font-medium text-slate-600">{s.auto_renew ? 'Stripe 订阅' : '手动收款 / 停止自动'}</span>
+                                      <span className="text-xs font-medium text-slate-600">{s.auto_renew ? 'Stripe 自动扣款' : '手动收款'}</span>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
                                       {s.auto_renew && status === 'renewal_pending' && (
@@ -4856,7 +4900,7 @@ export default function Finance() {
                                           size="sm"
                                           variant="outline"
                                           className="h-8 px-3 text-xs text-red-600 hover:text-red-700"
-                                          onClick={() => handleToggleSubscriptionAutoRenew(s, false)}
+                                          onClick={() => handleStopSubscriptionRenewal(s)}
                                           disabled={updatingSubscriptionId === Number(s.id)}
                                         >
                                           停止此套餐
