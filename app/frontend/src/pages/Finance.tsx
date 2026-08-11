@@ -3789,19 +3789,37 @@ export default function Finance() {
 
       {/* Main Tabs */}
       <Tabs value={activeFinanceTab} onValueChange={handleFinanceTabChange} className="w-full">
-        <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto bg-slate-100 p-1">
-          <TabsTrigger value="overview" className="shrink-0 text-xs sm:text-sm"><Wallet className="w-3.5 h-3.5 mr-1 hidden sm:inline" />老板总览</TabsTrigger>
-          <TabsTrigger value="customer_profit" className="shrink-0 text-xs sm:text-sm"><TrendingUp className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户利润 ({customerProfitRows.length})</TabsTrigger>
-          <TabsTrigger value="receivables" className="shrink-0 text-xs sm:text-sm"><AlertTriangle className="w-3.5 h-3.5 mr-1 hidden sm:inline" />应收欠款 ({receivableRows.length})</TabsTrigger>
-          <TabsTrigger value="income" className="shrink-0 text-xs sm:text-sm"><DollarSign className="w-3.5 h-3.5 mr-1 hidden sm:inline" />收入管理 ({filteredPayments.length})</TabsTrigger>
-          <TabsTrigger value="refunds" className="shrink-0 text-xs sm:text-sm"><ArrowDownRight className="w-3.5 h-3.5 mr-1 hidden sm:inline" />退款 ({filteredRefunds.length})</TabsTrigger>
-          <TabsTrigger value="ad_funds" className="shrink-0 text-xs sm:text-sm"><ArrowRightLeft className="w-3.5 h-3.5 mr-1 hidden sm:inline" />投流月结 ({filteredAdFundSettlements.length})</TabsTrigger>
-          <TabsTrigger value="customer_expense" className="shrink-0 text-xs sm:text-sm"><Users className="w-3.5 h-3.5 mr-1 hidden sm:inline" />客户支出 ({filteredExpenses.length})</TabsTrigger>
-          <TabsTrigger value="company_expense" className="shrink-0 text-xs sm:text-sm"><Building2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />运营支出 ({filteredCompanyExpenses.length})</TabsTrigger>
-          <TabsTrigger value="subscriptions" className="shrink-0 text-xs sm:text-sm"><Receipt className="w-3.5 h-3.5 mr-1 hidden sm:inline" />套餐续费 ({filteredSubscriptions.length})</TabsTrigger>
-          <TabsTrigger value="charts" className="shrink-0 text-xs sm:text-sm"><PieChartIcon className="w-3.5 h-3.5 mr-1 hidden sm:inline" />数据分析</TabsTrigger>
-          <TabsTrigger value="monthly_detail" className="shrink-0 text-xs sm:text-sm">按月明细</TabsTrigger>
-        </TabsList>
+        <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="px-1 text-xs font-semibold text-slate-700">常用财务流程</p>
+              <p className="px-1 text-[11px] text-slate-400">先看总览，再处理收款、续费和月结；低频账本统一收进“更多财务明细”。</p>
+            </div>
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+              <TabsList className="h-auto min-w-0 flex-nowrap justify-start gap-1 overflow-x-auto bg-slate-100 p-1">
+                <TabsTrigger value="overview" className="shrink-0 text-xs sm:text-sm"><Wallet className="mr-1 hidden h-3.5 w-3.5 sm:inline" />老板总览</TabsTrigger>
+                <TabsTrigger value="income" className="shrink-0 text-xs sm:text-sm"><DollarSign className="mr-1 hidden h-3.5 w-3.5 sm:inline" />收入管理 ({filteredPayments.length})</TabsTrigger>
+                <TabsTrigger value="subscriptions" className="shrink-0 text-xs sm:text-sm"><Receipt className="mr-1 hidden h-3.5 w-3.5 sm:inline" />套餐续费 ({filteredSubscriptions.length})</TabsTrigger>
+                <TabsTrigger value="monthly_detail" className="shrink-0 text-xs sm:text-sm"><CalendarDays className="mr-1 hidden h-3.5 w-3.5 sm:inline" />按月明细</TabsTrigger>
+              </TabsList>
+              <select
+                aria-label="更多财务明细"
+                value={['customer_profit', 'receivables', 'refunds', 'ad_funds', 'customer_expense', 'company_expense', 'charts'].includes(activeFinanceTab) ? activeFinanceTab : ''}
+                onChange={(event) => event.target.value && handleFinanceTabChange(event.target.value)}
+                className={`h-9 min-w-[172px] rounded-md border px-3 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 sm:text-sm ${['customer_profit', 'receivables', 'refunds', 'ad_funds', 'customer_expense', 'company_expense', 'charts'].includes(activeFinanceTab) ? 'border-blue-300 bg-blue-50 font-medium text-blue-700' : 'border-slate-200 bg-white text-slate-600'}`}
+              >
+                <option value="">更多财务明细</option>
+                <option value="customer_profit">客户利润 ({customerProfitRows.length})</option>
+                <option value="receivables">应收欠款 ({receivableRows.length})</option>
+                <option value="refunds">退款 ({filteredRefunds.length})</option>
+                <option value="ad_funds">投流月结 ({filteredAdFundSettlements.length})</option>
+                <option value="customer_expense">客户支出 ({filteredExpenses.length})</option>
+                <option value="company_expense">运营支出 ({filteredCompanyExpenses.length})</option>
+                <option value="charts">数据分析</option>
+              </select>
+            </div>
+          </div>
+        </div>
 
         {financeIssueFilter && (
           <div className="mt-3 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">

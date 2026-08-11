@@ -348,33 +348,48 @@ export default function Layout({ children }: LayoutProps) {
               <p className="text-sm font-semibold text-slate-800">{currentPageLabel}</p>
             </div>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 ring-1 ring-blue-100">
-                  <User className="w-4 h-4 text-blue-600" />
-                </div>
-                <ChevronDown className="w-3 h-3 text-slate-400" />
+          <div className="flex items-center gap-2">
+            {currentPath !== homePath && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-2 border-slate-200 bg-white px-2.5 text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 sm:px-3"
+                onClick={() => navigate(homePath)}
+                aria-label="返回今日工作台"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline">今日工作台</span>
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {employee && (
-                <div className="px-2 py-1.5 text-xs text-slate-500">
-                  {employee.name} · {displayRole}
-                </div>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setShowChangePwd(true)}>
-                <KeyRound className="w-4 h-4 mr-2" />
-                修改密码
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout}>
-                <LogOut className="w-4 h-4 mr-2" />
-                退出登录
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 ring-1 ring-blue-100">
+                    <User className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {employee && (
+                  <div className="px-2 py-1.5 text-xs text-slate-500">
+                    {employee.name} · {displayRole}
+                  </div>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowChangePwd(true)}>
+                  <KeyRound className="w-4 h-4 mr-2" />
+                  修改密码
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  退出登录
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </header>
 
         {/* Page content */}

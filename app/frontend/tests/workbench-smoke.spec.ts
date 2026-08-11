@@ -45,7 +45,7 @@ async function mockAuthenticatedApi(page: Page) {
       remaining_count: 1, is_target_complete: false,
       categories: { unfinished: 1, callback: 0, interested: 0, appointment: 0, new: 1, retry: 0, recycled: 0, follow_up: 0 },
       performance: { attempted: 0, connected: 0, interested: 0, appointments: 0, callbacks_due: 0, connection_rate: 0 },
-      items: [{ task_id: 1, task_status: 'pending', priority: 'high', next_action_label: '完成本次联系并记录结果', lead: { id: 1, business_name: '测试商家线索', phone: '555-0200', status: 'new', do_not_contact: false, is_blacklisted: false } }],
+      items: [{ task_id: 1, task_status: 'pending', priority: 'high', next_action_label: '完成本次联系并记录结果', lead: { id: 1, business_name: '测试商家线索', phone: '555-0200', status: 'new', next_follow_up_at: '2026-07-01T09:00:00Z', do_not_contact: false, is_blacklisted: false } }],
     };
     else if (path.includes('/sales-leads/automation/overview')) data = {
       counts: { eligible: 10, assigned: 1, protected: 0, cooling: 0, blocked: 0, closed: 0 }, total: 11, reusable: 10,
@@ -77,12 +77,23 @@ test('老板、销售、运营工作台保持角色化入口', async ({ page }) 
   await page.goto(`${baseUrl}/sales-workbench`);
   await expect(page.getByRole('heading', { name: '销售今日工作台' })).toBeVisible();
   await expect(page.getByText('测试商家线索')).toBeVisible();
+  await expect(page.getByRole('button', { name: '逾期跟进 (1)' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '返回今日工作台' })).toBeVisible();
   await expect(page.getByText('拨号辅助、线索循环与个人复盘')).toBeVisible();
 
   await page.goto(`${baseUrl}/operations-workbench`);
   await expect(page.getByRole('heading', { name: '运营今日工作台' })).toBeVisible();
   await expect(page.getByText('确认本周服务进度')).toBeVisible();
   await expect(page.getByRole('button', { name: '完成任务' })).toBeVisible();
+});
+
+test('财务入口突出常用流程并收起低频明细', async ({ page }) => {
+  await page.goto(`${baseUrl}/finance`);
+  await expect(page.getByText('常用财务流程')).toBeVisible();
+  await expect(page.getByRole('tab', { name: /老板总览/ })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /收入管理/ })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /套餐续费/ })).toBeVisible();
+  await expect(page.getByLabel('更多财务明细')).toBeVisible();
 });
 
 test('客户详情默认进入客户 360 并提供直接动作', async ({ page }) => {
@@ -92,4 +103,20 @@ test('客户详情默认进入客户 360 并提供直接动作', async ({ page }
   await expect(page.getByText('下一步动作')).toBeVisible();
   await expect(page.getByRole('button', { name: '新增跟进' }).first()).toBeVisible();
   await expect(page.locator('select').filter({ hasText: '更多资料与工具' })).toBeVisible();
+});
+
+test('关键角色页面在手机宽度保持可操作且无横向溢出', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const path of ['/sales-workbench', '/operations-workbench', '/finance', '/customers?detail=1']) {
+    await page.goto(`${baseUrl}${path}`);
+    await expect(page.locator('main')).toBeVisible();
+    const widths = await page.evaluate(() => ({
+      viewport: window.innerWidth,
+      document: document.documentElement.scrollWidth,
+      body: document.body.scrollWidth,
+    }));
+    expect(widths.document).toBeLessThanOrEqual(widths.viewport);
+    expect(widths.body).toBeLessThanOrEqual(widths.viewport);
+  }
+  await expect(page.getByRole('tab', { name: '客户 360' })).toBeVisible();
 });

@@ -97,6 +97,7 @@ export default function OperationsWorkbench() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [filter, setFilter] = useState<ActionFilter>('all');
+  const [visibleCount, setVisibleCount] = useState(30);
   const [completeTarget, setCompleteTarget] = useState<ActionItem | null>(null);
   const [completionNote, setCompletionNote] = useState('');
   const [saving, setSaving] = useState(false);
@@ -214,6 +215,9 @@ export default function OperationsWorkbench() {
     : filter === 'issue'
       ? actions.filter(action => action.kind === 'issue')
       : actions.filter(action => action.urgency === filter);
+  const visibleActions = filteredActions.slice(0, visibleCount);
+
+  useEffect(() => { setVisibleCount(30); }, [filter]);
 
   const currentReturnPath = `${location.pathname}${location.search}`;
   const openCustomer = (action: ActionItem) => {
@@ -323,7 +327,7 @@ export default function OperationsWorkbench() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h3 className="text-base font-semibold text-slate-900">下一步动作</h3><p className="text-xs text-slate-500">按逾期、今日、等待客户排序，避免跨页面查找。</p></div>
+        <div><h3 className="text-base font-semibold text-slate-900">下一步动作</h3><p className="text-xs text-slate-500">按逾期、今日、等待客户排序，共 {filteredActions.length} 项；先展示最需要处理的事项。</p></div>
         {filter !== 'all' && <Button size="sm" variant="ghost" onClick={() => setFilter('all')}>查看全部 {actions.length} 项</Button>}
       </div>
 
@@ -331,7 +335,7 @@ export default function OperationsWorkbench() {
         <Card className="border-dashed border-emerald-200 bg-emerald-50/40"><CardContent className="flex flex-col items-center py-12 text-center"><CheckCircle2 className="h-8 w-8 text-emerald-600" /><p className="mt-3 font-medium text-emerald-900">当前分类没有待处理事项</p><p className="mt-1 text-sm text-emerald-700">系统每 30 秒刷新一次；新任务和提醒会自动进入这里。</p></CardContent></Card>
       ) : (
         <div className="grid gap-3">
-          {filteredActions.slice(0, 30).map(action => {
+          {visibleActions.map(action => {
             const style = urgencyStyles[action.urgency];
             return (
               <Card key={action.id} className={style.card}>
@@ -356,6 +360,14 @@ export default function OperationsWorkbench() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {visibleActions.length < filteredActions.length && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={() => setVisibleCount(count => count + 30)}>
+            继续显示（剩余 {filteredActions.length - visibleActions.length} 项）
+          </Button>
         </div>
       )}
 
