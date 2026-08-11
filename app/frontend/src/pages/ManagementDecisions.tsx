@@ -644,24 +644,25 @@ export default function ManagementDecisions() {
   const economicsTotals = Object.entries(growth?.unit_economics.totals || {});
   const riskyHealth = (growth?.customer_health.items || []).filter(row => row.level !== 'healthy');
   const salesCapacitySummary = growth?.team_capacity.sales_lead_capacity || {};
+  const isFinancialInsights = section === 'insights';
 
   return (
     <div className="app-page space-y-5">
       <div className="app-page-title gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Management Decisions</p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">经营分类与项目</h1>
-          <p className="mt-1 text-sm text-slate-500">逐位确认真实业务线；客户合作状态与代运营、OS、一次性项目分别管理。</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">{isFinancialInsights ? 'T24 Marketing · Finance Decisions' : 'T24 Marketing · Management Decisions'}</p>
+          <h1 className="mt-1 text-2xl font-bold text-slate-900">{isFinancialInsights ? '经营利润与决策' : '经营分类与项目'}</h1>
+          <p className="mt-1 text-sm text-slate-500">{isFinancialInsights ? '统一查看人民币管理利润、项目单位经济、客户风险与团队产能。' : '逐位确认真实业务线；客户合作状态与代运营、OS、一次性项目分别管理。'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline"><Link to="/customer-lifecycle"><ArrowLeft className="mr-2 h-4 w-4" />客户生命周期</Link></Button>
+          <Button asChild variant="outline"><Link to={isFinancialInsights ? '/finance' : '/customer-lifecycle'}><ArrowLeft className="mr-2 h-4 w-4" />{isFinancialInsights ? '财务管理' : '客户生命周期'}</Link></Button>
           <Button onClick={() => void loadData()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新数据</Button>
         </div>
       </div>
 
       <Card className="border-blue-200 bg-blue-50/50">
         <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-blue-600" /><div><p className="text-sm font-semibold text-slate-800">安全审核模式</p><p className="text-xs text-slate-500">确认项目不会改变客户“合作中/已停止”状态；原收款、订阅和生命周期记录保持不变。</p></div></div>
+          <div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-blue-600" /><div><p className="text-sm font-semibold text-slate-800">{isFinancialInsights ? '老板管理口径' : '安全审核模式'}</p><p className="text-xs text-slate-500">{isFinancialInsights ? '财务数据保持原账不变；本页按锁定月均汇率汇总，并只读已发放工资用于经营判断。' : '确认项目不会改变客户“合作中/已停止”状态；原收款、订阅和生命周期记录保持不变。'}</p></div></div>
           <div className="flex flex-wrap items-end gap-2"><div><Label className="text-xs">统计开始</Label><Input type="date" min="2026-01-01" value={startDate} onChange={event => setStartDate(event.target.value)} className="mt-1 w-40 bg-white" /></div>{isAdmin && <div><Label className="text-xs">单人项目容量</Label><Input type="number" min={1} max={100} value={projectCapacityTarget} onChange={event => setProjectCapacityTarget(Math.max(1, Number(event.target.value) || 1))} className="mt-1 w-28 bg-white" /></div>}<Button variant="outline" onClick={() => void loadData()}>应用</Button></div>
         </CardContent>
       </Card>

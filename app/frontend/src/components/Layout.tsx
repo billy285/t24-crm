@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, PhoneCall, Handshake, DollarSign,
   ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
   ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen,
-  PanelLeftClose, PanelLeftOpen, Activity, BriefcaseBusiness, BadgeDollarSign, ChevronRight,
+  PanelLeftClose, PanelLeftOpen, Activity, BadgeDollarSign, ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,7 +32,7 @@ const allNavItems = [
   { path: '/sales', label: '成交客户', icon: Handshake },
   { path: '/deals', label: '成交管理', icon: Handshake },
   { path: '/customer-lifecycle', label: '客户生命周期', icon: Activity },
-  { path: '/management-decisions', label: '经营分类与项目', icon: BriefcaseBusiness },
+  { path: '/management-decisions', label: '经营利润与决策', icon: BadgeDollarSign },
   { path: '/finance', label: '财务管理', icon: DollarSign },
   { path: '/commissions', label: '渠道与分润', icon: BadgeDollarSign },
   { path: '/partner-portal', label: '我的客户与分润', icon: BadgeDollarSign },
@@ -52,9 +52,9 @@ const navSections = [
     paths: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],
     icon: Headphones,
   },
-  { label: '客户中心', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions'], icon: Users },
+  { label: '客户中心', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle'], icon: Users },
   { label: '任务与交付', paths: ['/tasks', '/service-board', '/callbacks'], icon: ListTodo },
-  { label: '财务与结算', paths: ['/finance', '/commissions', '/payroll'], icon: DollarSign },
+  { label: '财务与结算', paths: ['/finance', '/management-decisions', '/commissions', '/payroll'], icon: DollarSign },
   { label: '我的客户与分润', paths: ['/partner-portal'], icon: BadgeDollarSign },
   { label: '组织与设置', paths: ['/employees', '/settings', '/permissions'], icon: Settings },
 ];
@@ -192,6 +192,10 @@ export default function Layout({ children }: LayoutProps) {
     ? (roleLabels[employee.role] || employee.role)
     : '管理员模式';
   const homePath = role === 'sales_partner' ? '/partner-portal' : '/';
+  const currentPageLabel = currentPath === '/management-decisions'
+    && new URLSearchParams(location.search).get('section') === 'insights'
+    ? '经营利润与决策'
+    : pageLabels[currentPath] || allNavItems.find(n => n.path === currentPath)?.label || '';
 
   return (
     <div className="app-shell flex h-screen overflow-hidden">
@@ -333,7 +337,7 @@ export default function Layout({ children }: LayoutProps) {
             <span className="h-6 w-1 rounded-full bg-blue-600" />
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">T24 Marketing</p>
-              <p className="text-sm font-semibold text-slate-800">{pageLabels[currentPath] || allNavItems.find(n => n.path === currentPath)?.label || ''}</p>
+              <p className="text-sm font-semibold text-slate-800">{currentPageLabel}</p>
             </div>
           </div>
           <DropdownMenu>
