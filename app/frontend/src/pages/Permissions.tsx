@@ -276,8 +276,8 @@ export default function Permissions() {
                 <Switch checked={currentPerms.sensitiveFields.copyPassword} onCheckedChange={() => toggleSensitive('copyPassword')} />
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                <div><p className="text-sm font-medium">查看财务信息</p><p className="text-xs text-slate-500">允许查看客户的财务和收款信息</p></div>
-                <Switch checked={currentPerms.sensitiveFields.viewFinance} onCheckedChange={() => toggleSensitive('viewFinance')} />
+                <div><p className="text-sm font-medium">查看财务信息</p><p className="text-xs text-slate-500">仅老板、管理员和财务可查看；销售、运营、设计与合伙人固定隔离</p></div>
+                <Switch checked={currentPerms.sensitiveFields.viewFinance} disabled={['sales', 'sales_manager', 'sales_partner', 'ops', 'design'].includes(selectedRole)} onCheckedChange={() => toggleSensitive('viewFinance')} />
               </div>
               <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <p className="text-xs text-amber-700">

@@ -1,10 +1,11 @@
 import logging
 from typing import Optional, Dict, Any, List
 
-from sqlalchemy import false, or_, select, func
+from sqlalchemy import false, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customers import Customers
+from models.customer_access_grants import CustomerAccessGrant
 
 logger = logging.getLogger(__name__)
 
@@ -16,27 +17,28 @@ class CustomersService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    def _scope_filter(self, scope_user: Optional[Any] = None):
+    @staticmethod
+    def _scope_filter_for_user(scope_user: Optional[Any] = None):
         """Return a customer ownership filter for non-all-data roles."""
         if not scope_user:
             return None
 
         role = str(getattr(scope_user, "role", "") or "").lower()
-        if role in {"admin", "super_admin", "finance", "ops", "operations"}:
+        if role in {"admin", "super_admin", "finance"}:
             return None
 
-        conditions = []
         raw_user_id = getattr(scope_user, "id", None)
         try:
-            conditions.append(Customers.sales_employee_id == int(raw_user_id))
+            return Customers.id.in_(
+                select(CustomerAccessGrant.customer_id).where(
+                    CustomerAccessGrant.employee_id == int(raw_user_id)
+                )
+            )
         except (TypeError, ValueError):
-            pass
+            return false()
 
-        user_name = (getattr(scope_user, "name", None) or "").strip()
-        if user_name:
-            conditions.append(Customers.sales_person == user_name)
-
-        return or_(*conditions) if conditions else false()
+    def _scope_filter(self, scope_user: Optional[Any] = None):
+        return self._scope_filter_for_user(scope_user)
 
     async def create(self, data: Dict[str, Any], *, commit: bool = True) -> Optional[Customers]:
         """Create a new customers"""

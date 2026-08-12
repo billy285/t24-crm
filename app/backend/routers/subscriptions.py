@@ -9,7 +9,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_current_user
+from dependencies.auth import get_current_user, get_finance_user
+from schemas.auth import UserResponse
 from services.subscriptions import SubscriptionsService
 
 # Set up logging
@@ -139,6 +140,22 @@ class SubscriptionsBatchDeleteRequest(BaseModel):
     ids: List[int]
 
 
+FINANCE_DETAIL_ROLES = {"admin", "super_admin", "finance"}
+
+
+def _subscription_for_user(item, user: UserResponse) -> SubscriptionsResponse:
+    response = SubscriptionsResponse.model_validate(item)
+    if str(user.role or "").lower() in FINANCE_DETAIL_ROLES:
+        return response
+    return response.model_copy(update={
+        "package_price": None,
+        "list_price_snapshot": None,
+        "pricing_source": None,
+        "last_payment_date": None,
+        "renewal_result": None,
+    })
+
+
 class SubscriptionPackageChangeRequest(BaseModel):
     """Archive an old package and link it to existing replacement packages."""
     replacement_subscription_ids: List[int]
@@ -159,6 +176,7 @@ async def query_subscriptionss(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Query subscriptionss with filtering, sorting, and pagination"""
@@ -179,7 +197,9 @@ async def query_subscriptionss(
             limit=limit,
             query_dict=query_dict,
             sort=sort,
+            scope_user=current_user,
         )
+        result["items"] = [_subscription_for_user(item, current_user) for item in result["items"]]
         logger.debug(f"Found {result['total']} subscriptionss")
         return result
     except HTTPException:
@@ -196,6 +216,7 @@ async def query_subscriptionss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Query subscriptionss with filtering, sorting, and pagination without user limitation
@@ -215,8 +236,10 @@ async def query_subscriptionss_all(
             skip=skip,
             limit=limit,
             query_dict=query_dict,
-            sort=sort
+            sort=sort,
+            scope_user=current_user,
         )
+        result["items"] = [_subscription_for_user(item, current_user) for item in result["items"]]
         logger.debug(f"Found {result['total']} subscriptionss")
         return result
     except HTTPException:
@@ -230,6 +253,7 @@ async def query_subscriptionss_all(
 async def get_subscriptions(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single subscriptions by ID"""
@@ -237,12 +261,12 @@ async def get_subscriptions(
     
     service = SubscriptionsService(db)
     try:
-        result = await service.get_by_id(id)
+        result = await service.get_by_id(id, scope_user=current_user)
         if not result:
             logger.warning(f"Subscriptions with id {id} not found")
             raise HTTPException(status_code=404, detail="Subscriptions not found")
         
-        return result
+        return _subscription_for_user(result, current_user)
     except HTTPException:
         raise
     except Exception as e:
@@ -253,6 +277,7 @@ async def get_subscriptions(
 @router.post("", response_model=SubscriptionsResponse, status_code=201)
 async def create_subscriptions(
     data: SubscriptionsData,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new subscriptions"""
@@ -277,6 +302,7 @@ async def create_subscriptions(
 @router.post("/batch", response_model=List[SubscriptionsResponse], status_code=201)
 async def create_subscriptionss_batch(
     request: SubscriptionsBatchCreateRequest,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple subscriptionss in a single request"""
@@ -302,6 +328,7 @@ async def create_subscriptionss_batch(
 @router.put("/batch", response_model=List[SubscriptionsResponse])
 async def update_subscriptionss_batch(
     request: SubscriptionsBatchUpdateRequest,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple subscriptionss in a single request"""
@@ -330,6 +357,7 @@ async def update_subscriptionss_batch(
 async def change_subscription_package(
     id: int,
     request: SubscriptionPackageChangeRequest,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Archive an old package while preserving history and linking replacement packages."""
@@ -363,6 +391,7 @@ async def change_subscription_package(
 async def update_subscriptions(
     id: int,
     data: SubscriptionsUpdateData,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing subscriptions"""
@@ -392,6 +421,7 @@ async def update_subscriptions(
 @router.delete("/batch")
 async def delete_subscriptionss_batch(
     request: SubscriptionsBatchDeleteRequest,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple subscriptionss by their IDs"""
@@ -417,6 +447,7 @@ async def delete_subscriptionss_batch(
 @router.delete("/{id}")
 async def delete_subscriptions(
     id: int,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single subscriptions by ID"""

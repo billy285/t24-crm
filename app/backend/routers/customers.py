@@ -6,7 +6,7 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -14,6 +14,8 @@ from dependencies.auth import get_admin_user, get_current_user
 from schemas.auth import UserResponse
 from services.customers import CustomersService
 from models.customers import Customers
+from models.customer_access_grants import CustomerAccessGrant
+from models.employees import Employees
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from services.commissions import auto_assign_new_customer
 from services.management_decision_workflow import save_customer_classification_review
@@ -205,6 +207,23 @@ class CustomersBatchDeleteRequest(BaseModel):
     ids: List[int]
 
 
+class CustomerAccessMember(BaseModel):
+    employee_id: int
+    name: str
+    role: str
+    department: Optional[str] = None
+    employee_code: Optional[str] = None
+
+
+class CustomerAccessResponse(BaseModel):
+    customer_id: int
+    members: List[CustomerAccessMember]
+
+
+class CustomerAccessUpdateRequest(BaseModel):
+    employee_ids: List[int] = Field(default_factory=list)
+
+
 class CustomerProjectInput(BaseModel):
     engagement_id: Optional[int] = None
     business_line_code: str
@@ -251,6 +270,33 @@ async def _ensure_no_active_projects_before_direct_loss(db: AsyncSession, custom
     )).scalar_one_or_none()
     if active_project:
         raise ValueError("该客户仍有合作项目，请使用“客户生命周期—停止合作”完成状态闭环；成交和收款历史无需删除")
+
+
+async def _ensure_owner_visibility_grant(db: AsyncSession, customer: Customers, actor: UserResponse) -> None:
+    """Give a selected owner initial access while keeping later revocation independent."""
+    employee_id = customer.sales_employee_id
+    if not employee_id and customer.sales_person:
+        employee_id = (await db.execute(
+            select(Employees.id).where(Employees.name == customer.sales_person).limit(1)
+        )).scalar_one_or_none()
+    if not employee_id:
+        return
+    employee = await db.get(Employees, int(employee_id))
+    if not employee or employee.status not in {"active", "probation"} or employee.role not in {"sales", "sales_manager", "ops", "operations", "design"}:
+        return
+    existing = (await db.execute(
+        select(CustomerAccessGrant.id).where(
+            CustomerAccessGrant.customer_id == customer.id,
+            CustomerAccessGrant.employee_id == int(employee_id),
+        )
+    )).scalar_one_or_none()
+    if existing is None:
+        db.add(CustomerAccessGrant(
+            customer_id=customer.id,
+            employee_id=int(employee_id),
+            granted_by_id=str(actor.id),
+            granted_by_name=actor.name or actor.email,
+        ))
 
 
 def _actor_name(user: UserResponse) -> str:
@@ -436,6 +482,86 @@ async def get_customer_projects(
     }
 
 
+@router.get("/{id}/access", response_model=CustomerAccessResponse)
+async def get_customer_access(
+    id: int,
+    _admin: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List employees explicitly invited to view a customer."""
+    if not await db.get(Customers, id):
+        raise HTTPException(status_code=404, detail="Customer not found")
+    rows = (await db.execute(
+        select(CustomerAccessGrant, Employees)
+        .join(Employees, Employees.id == CustomerAccessGrant.employee_id)
+        .where(CustomerAccessGrant.customer_id == id)
+        .order_by(Employees.name.asc())
+    )).all()
+    return CustomerAccessResponse(
+        customer_id=id,
+        members=[
+            CustomerAccessMember(
+                employee_id=employee.id,
+                name=employee.name,
+                role=employee.role,
+                department=employee.department,
+                employee_code=employee.employee_code,
+            )
+            for _grant, employee in rows
+        ],
+    )
+
+
+@router.put("/{id}/access", response_model=CustomerAccessResponse)
+async def replace_customer_access(
+    id: int,
+    data: CustomerAccessUpdateRequest,
+    admin: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace visibility without changing sales, project, or commission ownership."""
+    if not await db.get(Customers, id):
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    requested_ids = sorted(set(data.employee_ids))
+    employees = list((await db.execute(
+        select(Employees).where(
+            Employees.id.in_(requested_ids),
+            Employees.status.in_(("active", "probation")),
+            Employees.role.in_(("sales", "sales_manager", "ops", "operations", "design")),
+        )
+    )).scalars().all()) if requested_ids else []
+    actual_ids = {employee.id for employee in employees}
+    if actual_ids != set(requested_ids):
+        raise HTTPException(status_code=400, detail="Only active internal sales, operations, or design employees can be invited")
+
+    await db.execute(delete(CustomerAccessGrant).where(CustomerAccessGrant.customer_id == id))
+    await db.flush()
+    for employee_id in requested_ids:
+        db.add(CustomerAccessGrant(
+            customer_id=id,
+            employee_id=employee_id,
+            granted_by_id=str(admin.id),
+            granted_by_name=admin.name or admin.email,
+        ))
+    await db.commit()
+
+    employee_by_id = {employee.id: employee for employee in employees}
+    return CustomerAccessResponse(
+        customer_id=id,
+        members=[
+            CustomerAccessMember(
+                employee_id=employee_by_id[employee_id].id,
+                name=employee_by_id[employee_id].name,
+                role=employee_by_id[employee_id].role,
+                department=employee_by_id[employee_id].department,
+                employee_code=employee_by_id[employee_id].employee_code,
+            )
+            for employee_id in requested_ids
+        ],
+    )
+
+
 @router.post("", response_model=CustomersResponse, status_code=201)
 async def create_customers(
     data: CustomersData,
@@ -451,6 +577,7 @@ async def create_customers(
         result = await service.create(_assigned_to_current_user(data.model_dump(), current_user), commit=False)
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create customers")
+        await _ensure_owner_visibility_grant(db, result, current_user)
         await _auto_assign_created_customer(db, result, current_user)
         await db.commit()
         await db.refresh(result)
@@ -483,6 +610,7 @@ async def create_customer_with_projects(
             _assigned_to_current_user(request.customer.model_dump(), current_user),
             commit=False,
         )
+        await _ensure_owner_visibility_grant(db, customer, current_user)
         if request.projects:
             await save_customer_classification_review(
                 db,
@@ -530,6 +658,7 @@ async def create_customerss_batch(
         for item_data in request.items:
             result = await service.create(_assigned_to_current_user(item_data.model_dump(), current_user), commit=False)
             if result:
+                await _ensure_owner_visibility_grant(db, result, current_user)
                 await _auto_assign_created_customer(db, result, current_user)
                 results.append(result)
         await db.commit()
@@ -566,10 +695,15 @@ async def update_customerss_batch(
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
             update_dict = _strip_owner_fields_for_non_admin(update_dict, current_user)
-            result = await service.update(item.id, update_dict, scope_user=current_user)
+            result = await service.update(item.id, update_dict, scope_user=current_user, commit=False)
             if result:
+                if _is_admin_role(current_user) and CUSTOMER_OWNER_FIELDS.intersection(update_dict):
+                    await _ensure_owner_visibility_grant(db, result, current_user)
                 results.append(result)
-        
+        await db.commit()
+        for result in results:
+            await db.refresh(result)
+
         logger.info(f"Batch updated {len(results)} customerss successfully")
         return results
     except HTTPException:
@@ -598,11 +732,16 @@ async def update_customers(
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
         update_dict = _strip_owner_fields_for_non_admin(update_dict, current_user)
-        result = await service.update(id, update_dict, scope_user=current_user)
+        owner_changed = _is_admin_role(current_user) and bool(CUSTOMER_OWNER_FIELDS.intersection(update_dict))
+        result = await service.update(id, update_dict, scope_user=current_user, commit=not owner_changed)
         if not result:
             logger.warning(f"Customers with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Customers not found")
         
+        if owner_changed:
+            await _ensure_owner_visibility_grant(db, result, current_user)
+            await db.commit()
+            await db.refresh(result)
         logger.info(f"Customers {id} updated successfully")
         return result
     except HTTPException:
@@ -633,6 +772,8 @@ async def update_customer_with_projects(
         customer = await service.update(id, update_dict, scope_user=current_user, commit=False)
         if not customer:
             raise HTTPException(status_code=404, detail="Customers not found")
+        if _is_admin_role(current_user) and CUSTOMER_OWNER_FIELDS.intersection(update_dict):
+            await _ensure_owner_visibility_grant(db, customer, current_user)
         if request.projects:
             await save_customer_classification_review(
                 db,

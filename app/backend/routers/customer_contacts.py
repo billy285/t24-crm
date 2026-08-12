@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from dependencies.auth import get_current_user
 from services.customer_contacts import Customer_contactsService
+from services.customer_scope import ensure_customer_access
+from schemas.auth import UserResponse
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -90,6 +92,7 @@ async def query_customer_contactss(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Query customer_contactss with filtering, sorting, and pagination"""
@@ -110,6 +113,7 @@ async def query_customer_contactss(
             limit=limit,
             query_dict=query_dict,
             sort=sort,
+            scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} customer_contactss")
         return result
@@ -127,6 +131,7 @@ async def query_customer_contactss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Query customer_contactss with filtering, sorting, and pagination without user limitation
@@ -146,7 +151,8 @@ async def query_customer_contactss_all(
             skip=skip,
             limit=limit,
             query_dict=query_dict,
-            sort=sort
+            sort=sort,
+            scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} customer_contactss")
         return result
@@ -161,6 +167,7 @@ async def query_customer_contactss_all(
 async def get_customer_contacts(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single customer_contacts by ID"""
@@ -168,7 +175,7 @@ async def get_customer_contacts(
     
     service = Customer_contactsService(db)
     try:
-        result = await service.get_by_id(id)
+        result = await service.get_by_id(id, scope_user=current_user)
         if not result:
             logger.warning(f"Customer_contacts with id {id} not found")
             raise HTTPException(status_code=404, detail="Customer_contacts not found")
@@ -184,6 +191,7 @@ async def get_customer_contacts(
 @router.post("", response_model=Customer_contactsResponse, status_code=201)
 async def create_customer_contacts(
     data: Customer_contactsData,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new customer_contacts"""
@@ -191,6 +199,7 @@ async def create_customer_contacts(
     
     service = Customer_contactsService(db)
     try:
+        await ensure_customer_access(db, current_user, data.customer_id)
         result = await service.create(data.model_dump())
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create customer_contacts")
@@ -208,6 +217,7 @@ async def create_customer_contacts(
 @router.post("/batch", response_model=List[Customer_contactsResponse], status_code=201)
 async def create_customer_contactss_batch(
     request: Customer_contactsBatchCreateRequest,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple customer_contactss in a single request"""
@@ -218,6 +228,7 @@ async def create_customer_contactss_batch(
     
     try:
         for item_data in request.items:
+            await ensure_customer_access(db, current_user, item_data.customer_id)
             result = await service.create(item_data.model_dump())
             if result:
                 results.append(result)
@@ -233,6 +244,7 @@ async def create_customer_contactss_batch(
 @router.put("/batch", response_model=List[Customer_contactsResponse])
 async def update_customer_contactss_batch(
     request: Customer_contactsBatchUpdateRequest,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple customer_contactss in a single request"""
@@ -245,7 +257,9 @@ async def update_customer_contactss_batch(
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            result = await service.update(item.id, update_dict)
+            if update_dict.get("customer_id") is not None:
+                await ensure_customer_access(db, current_user, update_dict["customer_id"])
+            result = await service.update(item.id, update_dict, scope_user=current_user)
             if result:
                 results.append(result)
         
@@ -261,6 +275,7 @@ async def update_customer_contactss_batch(
 async def update_customer_contacts(
     id: int,
     data: Customer_contactsUpdateData,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing customer_contacts"""
@@ -270,7 +285,9 @@ async def update_customer_contacts(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        result = await service.update(id, update_dict)
+        if update_dict.get("customer_id") is not None:
+            await ensure_customer_access(db, current_user, update_dict["customer_id"])
+        result = await service.update(id, update_dict, scope_user=current_user)
         if not result:
             logger.warning(f"Customer_contacts with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Customer_contacts not found")
@@ -290,6 +307,7 @@ async def update_customer_contacts(
 @router.delete("/batch")
 async def delete_customer_contactss_batch(
     request: Customer_contactsBatchDeleteRequest,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple customer_contactss by their IDs"""
@@ -300,7 +318,7 @@ async def delete_customer_contactss_batch(
     
     try:
         for item_id in request.ids:
-            success = await service.delete(item_id)
+            success = await service.delete(item_id, scope_user=current_user)
             if success:
                 deleted_count += 1
         
@@ -315,6 +333,7 @@ async def delete_customer_contactss_batch(
 @router.delete("/{id}")
 async def delete_customer_contacts(
     id: int,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single customer_contacts by ID"""
@@ -322,7 +341,7 @@ async def delete_customer_contacts(
     
     service = Customer_contactsService(db)
     try:
-        success = await service.delete(id)
+        success = await service.delete(id, scope_user=current_user)
         if not success:
             logger.warning(f"Customer_contacts with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Customer_contacts not found")

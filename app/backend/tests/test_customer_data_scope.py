@@ -5,12 +5,25 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
+from sqlalchemy import select
 
 from backend.main import app
 from backend.routers.customers import CustomersData
 from backend.services.emp_auth import create_access_token
 from core.database import Base
+from models.customer_access_grants import CustomerAccessGrant
+from models.employees import Employees
+from models.deals import Deals
+from models.follow_ups import Follow_ups
+from models.customer_contacts import Customer_contacts
+from models.service_progresses import Service_progresses
+from models.service_tasks import Service_tasks
+from models.subscriptions import Subscriptions
+from services.customer_contacts import Customer_contactsService
 from services.customers import CustomersService
+from services.follow_ups import Follow_upsService
+from services.service_progresses import Service_progressesService
+from services.service_tasks import Service_tasksService
 
 
 def _auth_headers(role: str, emp_id: int = 6001, name: str | None = None) -> dict[str, str]:
@@ -55,7 +68,7 @@ async def db_session():
 
 
 @pytest.mark.asyncio
-async def test_customer_service_scopes_sales_to_assigned_customers(db_session):
+async def test_customer_service_scopes_sales_to_explicitly_visible_customers(db_session):
     service = CustomersService(db_session)
     own_by_id = await service.create({
         "business_name": "Alice Cafe",
@@ -77,6 +90,11 @@ async def test_customer_service_scopes_sales_to_assigned_customers(db_session):
         "sales_employee_id": 202,
         "sales_person": "Bob",
     })
+    db_session.add_all([
+        CustomerAccessGrant(customer_id=own_by_id.id, employee_id=101, granted_by_name="Admin"),
+        CustomerAccessGrant(customer_id=own_by_name.id, employee_id=101, granted_by_name="Admin"),
+    ])
+    await db_session.commit()
 
     alice_user = SimpleNamespace(id="101", role="sales", name="Alice")
     scoped = await service.get_list(limit=10, scope_user=alice_user)
@@ -88,12 +106,25 @@ async def test_customer_service_scopes_sales_to_assigned_customers(db_session):
     assert await service.get_by_id(own_by_name.id, scope_user=alice_user) is not None
     assert await service.get_by_id(other.id, scope_user=alice_user) is None
 
+    grant = (await db_session.execute(
+        select(CustomerAccessGrant).where(
+            CustomerAccessGrant.customer_id == own_by_id.id,
+            CustomerAccessGrant.employee_id == 101,
+        )
+    )).scalar_one()
+    await db_session.delete(grant)
+    await db_session.commit()
+    assert await service.get_by_id(own_by_id.id, scope_user=alice_user) is None
+    assert own_by_id.sales_employee_id == 101
+
 
 @pytest.mark.asyncio
-async def test_customer_service_all_scope_roles_can_view_all_customers(db_session):
+async def test_customer_service_finance_sees_all_but_operations_requires_invitation(db_session):
     service = CustomersService(db_session)
-    await service.create({"business_name": "A", "contact_name": "A", "phone": "111", "sales_employee_id": 101})
+    invited = await service.create({"business_name": "A", "contact_name": "A", "phone": "111", "sales_employee_id": 101})
     await service.create({"business_name": "B", "contact_name": "B", "phone": "222", "sales_employee_id": 202})
+    db_session.add(CustomerAccessGrant(customer_id=invited.id, employee_id=404, granted_by_name="Admin"))
+    await db_session.commit()
 
     finance_user = SimpleNamespace(id="303", role="finance", name="Finance")
     operations_user = SimpleNamespace(id="404", role="operations", name="Ops")
@@ -101,7 +132,118 @@ async def test_customer_service_all_scope_roles_can_view_all_customers(db_sessio
     operations_scoped = await service.get_list(limit=10, scope_user=operations_user)
 
     assert finance_scoped["total"] == 2
-    assert operations_scoped["total"] == 2
+    assert operations_scoped["total"] == 1
+    assert operations_scoped["items"][0].business_name == "A"
+
+
+@pytest.mark.asyncio
+async def test_customer_access_endpoint_replaces_invited_employees(db_session, monkeypatch):
+    customer = await CustomersService(db_session).create({"business_name": "Private Cafe", "contact_name": "Owner", "phone": "555"})
+    db_session.add_all([
+        Employees(id=801, user_id="801", name="Ops One", role="ops", status="active"),
+        Employees(id=802, user_id="802", name="Sales Two", role="sales", status="active"),
+    ])
+    await db_session.commit()
+
+    from backend.routers import customers as customers_router
+    async def override_db():
+        yield db_session
+    app.dependency_overrides[customers_router.get_db] = override_db
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            response = await ac.put(
+                f"/api/v1/entities/customers/{customer.id}/access",
+                json={"employee_ids": [801, 802]},
+                headers=_auth_headers("admin", emp_id=9001, name="Admin"),
+            )
+            assert response.status_code == 200
+            assert {row["employee_id"] for row in response.json()["members"]} == {801, 802}
+
+            replacement = await ac.put(
+                f"/api/v1/entities/customers/{customer.id}/access",
+                json={"employee_ids": [801]},
+                headers=_auth_headers("admin", emp_id=9001, name="Admin"),
+            )
+            assert replacement.status_code == 200
+            assert [row["employee_id"] for row in replacement.json()["members"]] == [801]
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_non_finance_customer_records_are_scoped_and_amounts_redacted(db_session):
+    visible = await CustomersService(db_session).create({"business_name": "Visible", "contact_name": "V", "phone": "111"})
+    hidden = await CustomersService(db_session).create({"business_name": "Hidden", "contact_name": "H", "phone": "222"})
+    db_session.add_all([
+        CustomerAccessGrant(customer_id=visible.id, employee_id=404, granted_by_name="Admin"),
+        Deals(customer_id=visible.id, product_type="service", deal_amount=999, is_paid=True),
+        Deals(customer_id=hidden.id, product_type="service", deal_amount=888, is_paid=True),
+        Subscriptions(customer_id=visible.id, package_name="Visible Plan", package_price=249, status="active"),
+        Subscriptions(customer_id=hidden.id, package_name="Hidden Plan", package_price=399, status="active"),
+    ])
+    await db_session.commit()
+
+    from backend.routers import deals as deals_router
+    from backend.routers import subscriptions as subscriptions_router
+    async def override_db():
+        yield db_session
+    app.dependency_overrides[deals_router.get_db] = override_db
+    app.dependency_overrides[subscriptions_router.get_db] = override_db
+    try:
+        transport = ASGITransport(app=app)
+        headers = _auth_headers("ops", emp_id=404, name="Ops")
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            deals_response = await ac.get("/api/v1/entities/deals?limit=20", headers=headers)
+            subscriptions_response = await ac.get("/api/v1/entities/subscriptions?limit=20", headers=headers)
+
+        assert deals_response.status_code == 200
+        assert [row["customer_id"] for row in deals_response.json()["items"]] == [visible.id]
+        assert deals_response.json()["items"][0]["deal_amount"] is None
+        assert deals_response.json()["items"][0]["is_paid"] is None
+        assert subscriptions_response.status_code == 200
+        assert [row["customer_id"] for row in subscriptions_response.json()["items"]] == [visible.id]
+        assert subscriptions_response.json()["items"][0]["package_price"] is None
+        assert subscriptions_response.json()["items"][0]["last_payment_date"] is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_customer_access_removal_hides_linked_operational_records(db_session):
+    visible = await CustomersService(db_session).create({"business_name": "Visible Ops", "contact_name": "V", "phone": "111"})
+    hidden = await CustomersService(db_session).create({"business_name": "Hidden Ops", "contact_name": "H", "phone": "222"})
+    db_session.add_all([
+        CustomerAccessGrant(customer_id=visible.id, employee_id=404, granted_by_name="Admin"),
+        Follow_ups(customer_id=visible.id, content="visible follow-up"),
+        Follow_ups(customer_id=hidden.id, content="hidden follow-up"),
+        Customer_contacts(customer_id=visible.id, contact_name="Visible Contact"),
+        Customer_contacts(customer_id=hidden.id, contact_name="Hidden Contact"),
+        Service_progresses(customer_id=visible.id, service_stage="active", user_id="admin"),
+        Service_progresses(customer_id=hidden.id, service_stage="active", user_id="admin"),
+        Service_tasks(customer_id=visible.id, task_name="Visible Task", status="pending", user_id="admin"),
+        Service_tasks(customer_id=hidden.id, task_name="Hidden Task", status="pending", user_id="admin"),
+    ])
+    await db_session.commit()
+
+    operations_user = SimpleNamespace(id="404", role="ops", name="Ops")
+    assert (await Follow_upsService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 1
+    assert (await Customer_contactsService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 1
+    assert (await Service_progressesService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 1
+    assert (await Service_tasksService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 1
+
+    grant = (await db_session.execute(
+        select(CustomerAccessGrant).where(
+            CustomerAccessGrant.customer_id == visible.id,
+            CustomerAccessGrant.employee_id == 404,
+        )
+    )).scalar_one()
+    await db_session.delete(grant)
+    await db_session.commit()
+    assert (await Follow_upsService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 0
+    assert (await Customer_contactsService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 0
+    assert (await Service_progressesService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 0
+    assert (await Service_tasksService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 0
 
 
 @pytest.mark.asyncio

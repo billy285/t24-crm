@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customer_contacts import Customer_contacts
+from services.customer_scope import apply_customer_scope
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,11 @@ class Customer_contactsService:
             logger.error(f"Error creating customer_contacts: {str(e)}")
             raise
 
-    async def get_by_id(self, obj_id: int) -> Optional[Customer_contacts]:
+    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None) -> Optional[Customer_contacts]:
         """Get customer_contacts by ID"""
         try:
             query = select(Customer_contacts).where(Customer_contacts.id == obj_id)
+            query = apply_customer_scope(query, Customer_contacts, scope_user)
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -46,11 +48,14 @@ class Customer_contactsService:
         limit: int = 20, 
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        scope_user: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of customer_contactss"""
         try:
             query = select(Customer_contacts)
             count_query = select(func.count(Customer_contacts.id))
+            query = apply_customer_scope(query, Customer_contacts, scope_user)
+            count_query = apply_customer_scope(count_query, Customer_contacts, scope_user)
             
             if query_dict:
                 for field, value in query_dict.items():
@@ -85,10 +90,10 @@ class Customer_contactsService:
             logger.error(f"Error fetching customer_contacts list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any]) -> Optional[Customer_contacts]:
+    async def update(self, obj_id: int, update_data: Dict[str, Any], scope_user: Optional[Any] = None) -> Optional[Customer_contacts]:
         """Update customer_contacts"""
         try:
-            obj = await self.get_by_id(obj_id)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 logger.warning(f"Customer_contacts {obj_id} not found for update")
                 return None
@@ -105,10 +110,10 @@ class Customer_contactsService:
             logger.error(f"Error updating customer_contacts {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int) -> bool:
+    async def delete(self, obj_id: int, scope_user: Optional[Any] = None) -> bool:
         """Delete customer_contacts"""
         try:
-            obj = await self.get_by_id(obj_id)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 logger.warning(f"Customer_contacts {obj_id} not found for deletion")
                 return False

@@ -178,6 +178,17 @@ PHONE_SALES_ALLOWED_API_PREFIXES = (
     "/api/v1/merchant-pool",
     "/api/v1/sales-knowledge",
 )
+PHONE_SALES_READONLY_CUSTOMER_API_PREFIXES = (
+    "/api/v1/entities/customers",
+    "/api/v1/entities/follow_ups",
+    "/api/v1/entities/customer_contacts",
+    "/api/v1/entities/deals",
+    "/api/v1/entities/subscriptions",
+    "/api/v1/entities/service_progresses",
+    "/api/v1/entities/service_tasks",
+    "/api/v1/entities/customer_materials",
+    "/api/v1/entities/customer_ai_copies",
+)
 
 
 def _request_role(request: Request) -> str:
@@ -201,8 +212,11 @@ async def isolate_phone_sales_access(request: Request, call_next):
     role = _request_role(request)
     if path.startswith("/api/") and role in PHONE_SALES_ROLES:
         is_allowed = any(path.startswith(prefix) for prefix in PHONE_SALES_ALLOWED_API_PREFIXES)
+        is_invited_customer_read = request.method == "GET" and any(
+            path.startswith(prefix) for prefix in PHONE_SALES_READONLY_CUSTOMER_API_PREFIXES
+        )
         is_readonly_app_config = request.method == "GET" and path.startswith("/api/v1/app-config")
-        if not is_allowed and not is_readonly_app_config:
+        if not is_allowed and not is_invited_customer_read and not is_readonly_app_config:
             return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
                 content={"detail": "电话销售账号只能访问电话销售中心"},

@@ -9,7 +9,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_current_user
+from dependencies.auth import get_current_user, get_finance_user
+from schemas.auth import UserResponse
 from services.deals import DealsService
 from services.deal_payment_sync import sync_payment_from_deal, unlink_synced_payment_for_deal
 
@@ -81,7 +82,7 @@ class DealsResponse(BaseModel):
     package_name: Optional[str] = None
     package_platforms: Optional[str] = None
     billing_cycle: Optional[str] = None
-    deal_amount: float
+    deal_amount: Optional[float] = None
     is_paid: Optional[bool] = None
     service_start_date: Optional[datetime] = None
     service_end_date: Optional[datetime] = None
@@ -125,6 +126,20 @@ class DealsBatchDeleteRequest(BaseModel):
     ids: List[int]
 
 
+FINANCE_DETAIL_ROLES = {"admin", "super_admin", "finance"}
+
+
+def _deal_for_user(item, user: UserResponse) -> DealsResponse:
+    response = DealsResponse.model_validate(item)
+    if str(user.role or "").lower() in FINANCE_DETAIL_ROLES:
+        return response
+    return response.model_copy(update={
+        "source_payment_id": None,
+        "deal_amount": None,
+        "is_paid": None,
+    })
+
+
 # ---------- Routes ----------
 @router.get("", response_model=DealsListResponse)
 async def query_dealss(
@@ -133,6 +148,7 @@ async def query_dealss(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Query dealss with filtering, sorting, and pagination"""
@@ -153,7 +169,9 @@ async def query_dealss(
             limit=limit,
             query_dict=query_dict,
             sort=sort,
+            scope_user=current_user,
         )
+        result["items"] = [_deal_for_user(item, current_user) for item in result["items"]]
         logger.debug(f"Found {result['total']} dealss")
         return result
     except HTTPException:
@@ -170,6 +188,7 @@ async def query_dealss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Query dealss with filtering, sorting, and pagination without user limitation
@@ -189,8 +208,10 @@ async def query_dealss_all(
             skip=skip,
             limit=limit,
             query_dict=query_dict,
-            sort=sort
+            sort=sort,
+            scope_user=current_user,
         )
+        result["items"] = [_deal_for_user(item, current_user) for item in result["items"]]
         logger.debug(f"Found {result['total']} dealss")
         return result
     except HTTPException:
@@ -204,6 +225,7 @@ async def query_dealss_all(
 async def get_deals(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single deals by ID"""
@@ -211,12 +233,12 @@ async def get_deals(
     
     service = DealsService(db)
     try:
-        result = await service.get_by_id(id)
+        result = await service.get_by_id(id, scope_user=current_user)
         if not result:
             logger.warning(f"Deals with id {id} not found")
             raise HTTPException(status_code=404, detail="Deals not found")
         
-        return result
+        return _deal_for_user(result, current_user)
     except HTTPException:
         raise
     except Exception as e:
@@ -227,6 +249,7 @@ async def get_deals(
 @router.post("", response_model=DealsResponse, status_code=201)
 async def create_deals(
     data: DealsData,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new deals"""
@@ -257,6 +280,7 @@ async def create_deals(
 @router.post("/batch", response_model=List[DealsResponse], status_code=201)
 async def create_dealss_batch(
     request: DealsBatchCreateRequest,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple dealss in a single request"""
@@ -283,6 +307,7 @@ async def create_dealss_batch(
 @router.put("/batch", response_model=List[DealsResponse])
 async def update_dealss_batch(
     request: DealsBatchUpdateRequest,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple dealss in a single request"""
@@ -312,6 +337,7 @@ async def update_dealss_batch(
 async def update_deals(
     id: int,
     data: DealsUpdateData,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing deals"""
@@ -347,6 +373,7 @@ async def update_deals(
 @router.delete("/batch")
 async def delete_dealss_batch(
     request: DealsBatchDeleteRequest,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple dealss by their IDs"""
@@ -373,6 +400,7 @@ async def delete_dealss_batch(
 @router.delete("/{id}")
 async def delete_deals(
     id: int,
+    _finance_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single deals by ID"""

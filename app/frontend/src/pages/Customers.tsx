@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, ShieldCheck } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ImportCustomers from '@/components/ImportCustomers';
@@ -964,6 +964,12 @@ export default function Customers() {
   const [assignTarget, setAssignTarget] = useState<any>(null);
   const [assignEmployeeId, setAssignEmployeeId] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const [showAccessDialog, setShowAccessDialog] = useState(false);
+  const [accessTarget, setAccessTarget] = useState<any>(null);
+  const [accessEmployeeIds, setAccessEmployeeIds] = useState<number[]>([]);
+  const [accessSearch, setAccessSearch] = useState('');
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessSaving, setAccessSaving] = useState(false);
   const [inlineSavingKey, setInlineSavingKey] = useState('');
   const [cityDrafts, setCityDrafts] = useState<Record<number, string>>({});
   const salesPersonOptions = useMemo(() => {
@@ -1080,7 +1086,9 @@ export default function Customers() {
           ? invokeWithAuth({ url: `/api/v1/customer-lifecycle/customers/${customerId}`, method: 'GET' })
           : Promise.resolve({ data: null }),
         invokeWithAuth({ url: `/api/v1/entities/customers/${customerId}/projects`, method: 'GET' }),
-        invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }).catch(() => ({ data: { business_lines: [], products: [], plans: [] } })),
+        role === 'sales' || role === 'sales_manager'
+          ? Promise.resolve({ data: { business_lines: [], products: [], plans: [] } })
+          : invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }).catch(() => ({ data: { business_lines: [], products: [], plans: [] } })),
       ]);
 
       const latestCustomer = customerRes?.data?.items?.[0] || fallbackCustomer || null;
@@ -1486,6 +1494,68 @@ export default function Customers() {
     setShowAssignDialog(true);
   };
 
+  const eligibleAccessEmployees = useMemo(() => {
+    const keyword = accessSearch.trim().toLowerCase();
+    return employeesList
+      .filter(emp => ['sales', 'sales_manager', 'ops', 'operations', 'design'].includes(emp.role))
+      .filter(emp => !keyword || [emp.name, emp.employee_code, emp.department, emp.role].some(value => String(value || '').toLowerCase().includes(keyword)));
+  }, [employeesList, accessSearch]);
+
+  const openAccessManager = async (c: any) => {
+    setAccessTarget(c);
+    setAccessSearch('');
+    setAccessEmployeeIds([]);
+    setShowAccessDialog(true);
+    setAccessLoading(true);
+    try {
+      const employeePromise = employeesList.length > 0
+        ? Promise.resolve(null)
+        : client.entities.employees.queryAll({ query: { status: 'active' }, limit: 200 });
+      const [response, employeeResponse] = await Promise.all([
+        invokeWithAuth({ url: `/api/v1/entities/customers/${c.id}/access`, method: 'GET' }),
+        employeePromise,
+      ]);
+      if (employeeResponse) setEmployeesList(employeeResponse?.data?.items || []);
+      setAccessEmployeeIds((response?.data?.members || []).map((item: any) => Number(item.employee_id)));
+    } catch (error: any) {
+      toast.error(getErrorDetail(error, '客户可见人员加载失败'));
+      setShowAccessDialog(false);
+    } finally {
+      setAccessLoading(false);
+    }
+  };
+
+  const toggleAccessEmployee = (employeeId: number) => {
+    setAccessEmployeeIds(current => current.includes(employeeId)
+      ? current.filter(id => id !== employeeId)
+      : [...current, employeeId]);
+  };
+
+  const saveCustomerAccess = async () => {
+    if (!accessTarget) return;
+    setAccessSaving(true);
+    try {
+      await invokeWithAuth({
+        url: `/api/v1/entities/customers/${accessTarget.id}/access`,
+        method: 'PUT',
+        data: { employee_ids: accessEmployeeIds },
+      });
+      toast.success(`已更新「${accessTarget.business_name}」的可见人员`);
+      logOperation({
+        customerId: accessTarget.id,
+        actionType: 'other',
+        actionDetail: `更新客户可见人员：${accessEmployeeIds.length} 人`,
+        operatorName: employee?.name || '管理员',
+      });
+      setShowAccessDialog(false);
+      setAccessTarget(null);
+    } catch (error: any) {
+      toast.error(getErrorDetail(error, '保存客户可见人员失败'));
+    } finally {
+      setAccessSaving(false);
+    }
+  };
+
   const handleAssign = async () => {
     if (!assignTarget || !assignEmployeeId) { toast.error('请选择负责人'); return; }
     setAssigning(true);
@@ -1660,6 +1730,42 @@ export default function Customers() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAccessDialog} onOpenChange={open => { setShowAccessDialog(open); if (!open) setAccessTarget(null); }}>
+        <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
+          <DialogHeader><DialogTitle>管理客户可见人员</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+              <p className="text-sm font-semibold text-blue-900">{accessTarget?.business_name}</p>
+              <p className="mt-1 text-xs leading-5 text-blue-700">勾选的员工可以查看这位客户；移除后会立即失去列表、搜索、详情、任务与服务记录访问。这里不会改变负责人、业绩归属或分润。</p>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+              财务明细始终只对老板、管理员和财务开放。受邀销售或运营仍看不到扣点、手续费、客户成本、利润及收款拆分。
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <Input value={accessSearch} onChange={event => setAccessSearch(event.target.value)} className="pl-9" placeholder="搜索员工姓名、编号、部门或角色" />
+            </div>
+            {accessLoading ? <p className="py-8 text-center text-sm text-slate-400">正在加载人员…</p> : (
+              <div className="space-y-2">
+                {eligibleAccessEmployees.map(emp => {
+                  const selected = accessEmployeeIds.includes(emp.id);
+                  const isOwner = Number(accessTarget?.sales_employee_id) === Number(emp.id);
+                  return <button key={emp.id} type="button" onClick={() => toggleAccessEmployee(emp.id)} className={`flex w-full items-center justify-between rounded-xl border p-3 text-left transition ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                    <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{emp.name}</p><p className="mt-1 text-xs text-slate-500">{emp.employee_code || '无员工编号'} · {emp.department || emp.role || '未分组'}{isOwner ? ' · 当前负责人' : ''}</p></div>
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white'}`}>{selected ? '✓' : ''}</span>
+                  </button>;
+                })}
+                {eligibleAccessEmployees.length === 0 && <p className="py-8 text-center text-sm text-slate-400">没有找到可邀请的员工</p>}
+              </div>
+            )}
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-500">已选择 {accessEmployeeIds.length} 人</p>
+              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setShowAccessDialog(false)}>取消</Button><Button onClick={() => void saveCustomerAccess()} disabled={accessLoading || accessSaving}>{accessSaving ? '保存中…' : '保存可见人员'}</Button></div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -2178,7 +2284,7 @@ export default function Customers() {
     });
     if (upcomingRenewalCount > 0) customer360Actions.push({
       key: 'renewal', title: `${upcomingRenewalCount} 个套餐即将到期`,
-      description: '核对收款方式、服务区间与下一次付款时间。', button: '处理续费',
+      description: canViewFinance ? '核对收款方式、服务区间与下一次付款时间。' : '核对服务区间、续费方式与下一次续费时间。', button: '处理续费',
       tone: 'border-amber-200 bg-amber-50', onClick: () => handleDetailTabChange('renewals'),
     });
     if (overdueServiceTasks > 0) customer360Actions.push({
@@ -2212,9 +2318,12 @@ export default function Customers() {
           <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
           <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
           </div>
-          <Button variant="outline" size="sm" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
-            <RefreshCw className={`w-3.5 h-3.5 mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> 刷新数据
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && <Button variant="outline" size="sm" onClick={() => void openAccessManager(c)}><ShieldCheck className="mr-1 h-3.5 w-3.5" /> 管理可见人员</Button>}
+            <Button variant="outline" size="sm" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
+              <RefreshCw className={`w-3.5 h-3.5 mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> 刷新数据
+            </Button>
+          </div>
         </div>
         {activeReminderMessage && (
           <Card className="border-blue-200 bg-blue-50">
@@ -2282,7 +2391,7 @@ export default function Customers() {
 
                 <Card className="border-slate-200"><CardContent className="p-5">
                   <div className="flex items-center justify-between gap-3"><h3 className="text-base font-semibold text-slate-900">经营摘要</h3>{canViewFinance && <Button size="sm" variant="ghost" onClick={() => handleDetailTabChange('payments')}>财务明细</Button>}</div>
-                  <div className="mt-4 space-y-3"><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计成交</p><p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(totalDealAmount)}</p></div><span className="text-xs text-slate-400">最近 {latestDealDate}</span></div>{canViewFinance && <><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计实收</p><p className="mt-1 text-xl font-semibold text-emerald-700">{formatCurrency(totalAmountPaid)}</p></div><span className="text-xs text-slate-400">最近 {latestPaymentDate}</span></div><div className="flex items-end justify-between"><div><p className="text-xs text-slate-500">当前未结清</p><p className={`mt-1 text-xl font-semibold ${totalOutstanding > 0 ? 'text-rose-700' : 'text-slate-900'}`}>{formatCurrency(totalOutstanding)}</p></div><span className="text-xs text-slate-400">累计应收 {formatCurrency(totalAmountDue)}</span></div></>}{!canViewFinance && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">当前角色不显示财务敏感数据。</p>}</div>
+                  <div className="mt-4 space-y-3">{canViewFinance && <><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计成交</p><p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(totalDealAmount)}</p></div><span className="text-xs text-slate-400">最近 {latestDealDate}</span></div><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计实收</p><p className="mt-1 text-xl font-semibold text-emerald-700">{formatCurrency(totalAmountPaid)}</p></div><span className="text-xs text-slate-400">最近 {latestPaymentDate}</span></div><div className="flex items-end justify-between"><div><p className="text-xs text-slate-500">当前未结清</p><p className={`mt-1 text-xl font-semibold ${totalOutstanding > 0 ? 'text-rose-700' : 'text-slate-900'}`}>{formatCurrency(totalOutstanding)}</p></div><span className="text-xs text-slate-400">累计应收 {formatCurrency(totalAmountDue)}</span></div></>}{!canViewFinance && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">当前角色仅显示合作、服务和续费状态；成交金额、收款、手续费、扣点、成本与利润均不可见。</p>}</div>
                 </CardContent></Card>
 
                 <Card className="border-slate-200"><CardContent className="p-5"><h3 className="text-base font-semibold text-slate-900">续费摘要</h3><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-amber-50 p-3"><p className="text-xs text-amber-700">即将到期</p><p className="mt-1 text-xl font-semibold text-amber-900">{upcomingRenewalCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">自动续费</p><p className="mt-1 text-xl font-semibold text-slate-900">{autoRenewCount}</p></div></div><Button className="mt-4 w-full" variant="outline" onClick={() => handleDetailTabChange('renewals')}>查看续费与收款状态</Button></CardContent></Card>
@@ -2471,12 +2580,12 @@ export default function Customers() {
                 <>
                   <div className="space-y-3">{paginatedDeals.items.map((d: any) => (
                     <div key={d.id} className="p-3 bg-slate-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(d.package_name).currentLabel}</span><span className="text-green-600 font-bold">${d.deal_amount}</span></div>
+                  <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(d.package_name).currentLabel}</span>{canViewFinance && d.deal_amount != null && <span className="text-green-600 font-bold">${d.deal_amount}</span>}</div>
                       {getPackageClassification(d.package_name).changed && <p className="mb-2 text-xs text-slate-400">历史成交原名：{getPackageClassification(d.package_name).historicalLabel}</p>}
                       <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
                         <span>产品: {productLabels[d.product_type] || d.product_type}</span><span>周期: {cycleLabels[d.billing_cycle] || d.billing_cycle}</span>
                         <span>成交日: {d.deal_date?.slice(0, 10)}</span><span>销售: {d.sales_name}</span>
-                        <span>付款: {d.is_paid ? '✅ 已付' : '❌ 未付'}</span><span>交接: {d.is_handed_over ? '✅ 已交接' : '⏳ 待交接'}</span>
+                        {canViewFinance && <span>付款: {d.is_paid ? '✅ 已付' : '❌ 未付'}</span>}<span>交接: {d.is_handed_over ? '✅ 已交接' : '⏳ 待交接'}</span>
                       </div>
                     </div>
                   ))}</div>
@@ -2498,7 +2607,7 @@ export default function Customers() {
                         <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(s.package_name).currentLabel}</span><Badge className={statusView.badgeClass}>{subStatusLabels[s.computed_status] || statusView.label}</Badge></div>
                         {getPackageClassification(s.package_name).changed && <p className="mb-2 text-xs text-slate-400">历史服务原名：{getPackageClassification(s.package_name).historicalLabel}</p>}
                         <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
-                          <span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span><span>收款方式: {s.auto_renew ? 'Stripe 自动扣款' : '手动收款'}</span>
+                          {canViewFinance && <span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span>}<span>续费方式: {s.auto_renew ? '自动续费' : '手动续费'}</span>
                           <span>开始: {s.start_date?.slice(0, 10)}</span><span>到期: {s.end_date?.slice(0, 10)}</span>
                         </div>
                       </div>;
@@ -2512,7 +2621,7 @@ export default function Customers() {
                       return <div key={s.id} className={`rounded-lg border p-3 ${statusView.cardClass}`}>
                         <div className="flex items-center justify-between gap-2"><span className="font-medium text-sm">{getPackageClassification(s.package_name).currentLabel}</span><Badge className={statusView.badgeClass}>{subStatusLabels[s.computed_status] || statusView.label}</Badge></div>
                         <p className="mt-1 text-xs text-slate-400">历史套餐，不再参与当前服务与续费提醒；历史收款仍保留。</p>
-                        <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-slate-500"><span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span><span>期间: {s.start_date?.slice(0, 10) || '-'} 至 {s.end_date?.slice(0, 10) || '-'}</span></div>
+                        <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-slate-500">{canViewFinance && <span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span>}<span>期间: {s.start_date?.slice(0, 10) || '-'} 至 {s.end_date?.slice(0, 10) || '-'}</span></div>
                       </div>;
                     })}</div>
                   </details>}
@@ -2683,7 +2792,7 @@ export default function Customers() {
                       <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(s.package_name).currentLabel}</span><Badge className={statusView.badgeClass}>{subStatusLabels[computedStatus] || statusView.label}</Badge></div>
                       {getPackageClassification(s.package_name).changed && <p className="mb-2 text-xs text-slate-400">历史服务原名：{getPackageClassification(s.package_name).historicalLabel}</p>}
                       <div className="mb-2 flex flex-wrap gap-1"><Badge variant="outline" className={businessLine ? 'border-blue-200 bg-white text-blue-700' : 'border-amber-200 bg-white text-amber-700'}>{businessLine?.name || '业务待确认'}</Badge>{linkedProduct && <Badge variant="secondary">{linkedProduct.name}</Badge>}{linkedPlan && linkedPlan.name !== s.package_name && <Badge variant="secondary">{linkedPlan.name}</Badge>}</div>
-                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-500"><span>金额: {s.package_price == null ? '-' : `${s.package_price} ${linkedPlan?.default_currency || 'USD'}`}</span><span>周期: {customerProjectBillingCycles[s.billing_cycle] || s.billing_cycle || '-'}</span><span>到期: {s.end_date?.slice(0, 10) || '-'}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span><span>续费负责: {s.renewal_person || '-'}</span><span>下次付款: {s.next_payment_date?.slice(0, 10) || '-'}</span></div>
+                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">{canViewFinance && <span>金额: {s.package_price == null ? '-' : `${s.package_price} ${linkedPlan?.default_currency || 'USD'}`}</span>}<span>周期: {customerProjectBillingCycles[s.billing_cycle] || s.billing_cycle || '-'}</span><span>到期: {s.end_date?.slice(0, 10) || '-'}</span><span>自动续费: {s.auto_renew ? '是' : '否'}</span><span>续费负责: {s.renewal_person || '-'}</span><span>{canViewFinance ? '下次付款' : '下次续费'}: {s.next_payment_date?.slice(0, 10) || '-'}</span></div>
                       <p className={`mt-2 text-xs ${actualPlatforms.length > 0 ? 'text-slate-600' : 'text-amber-600'}`}>{actualPlatforms.length > 0 ? `实际服务：${formatSelectedPlatforms(actualPlatforms)}` : businessLine?.code === 'managed_service' ? '实际运营平台待确认' : businessLine ? '服务范围按项目确认' : '历史套餐待归类，不影响历史收款'}</p>
                       <div className={`text-xs mt-2 ${
                         remainDays == null
@@ -2870,6 +2979,7 @@ export default function Customers() {
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                   <Button size="sm" className="h-8 flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => openDetail(c)}>查看客户</Button>
+                  {isAdmin && <Button size="sm" variant="outline" className="h-8" onClick={() => void openAccessManager(c)}><ShieldCheck className="mr-1 h-3.5 w-3.5" />可见人员</Button>}
                   {hasPermission('customer_assign') && <Button size="sm" variant="outline" className="h-8" onClick={() => openAssign(c)}>分配</Button>}
                   {hasPermission('customer_edit') && <Button size="sm" variant="outline" className="h-8" onClick={() => openEdit(c)}>编辑</Button>}
                 </div>
@@ -3035,6 +3145,7 @@ export default function Customers() {
               {visibleCols.includes('wechat') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.wechat || '-'}</td>}
               {visibleCols.includes('source') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{sourceLabels[c.source] || c.source}</td>}
               <td className="px-4 py-3"><div className="flex gap-1">
+                {isAdmin && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" title="管理可见人员" aria-label={`管理 ${c.business_name} 的可见人员`} onClick={e => { e.stopPropagation(); void openAccessManager(c); }}><ShieldCheck className="w-3.5 h-3.5" /></Button>}
                 {hasPermission('customer_assign') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-indigo-600" title="分配负责人" aria-label={`分配 ${c.business_name} 的负责人`} onClick={e => { e.stopPropagation(); openAssign(c); }}><ArrowRightLeft className="w-3.5 h-3.5" /></Button>}
                 {hasPermission('customer_edit') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" title="编辑客户" aria-label={`编辑 ${c.business_name}`} onClick={e => { e.stopPropagation(); openEdit(c); }}><Edit className="w-3.5 h-3.5" /></Button>}
                 {hasPermission('customer_delete') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" title="删除客户" aria-label={`删除 ${c.business_name}`} onClick={e => { e.stopPropagation(); setDeleteTarget(c); }}><Trash2 className="w-3.5 h-3.5" /></Button>}

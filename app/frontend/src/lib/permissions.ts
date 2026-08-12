@@ -168,13 +168,13 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: true, copyPassword: true, viewFinance: true },
   },
   sales: {
-    pages: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge'],
+    pages: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers'],
     buttons: [],
     dataScope: 'self',
     sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
   },
   sales_manager: {
-    pages: ['/sales-leads', '/sales-workbench', '/sales-knowledge'],
+    pages: ['/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers'],
     buttons: [],
     dataScope: 'department',
     sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
@@ -220,7 +220,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
 const PERMISSIONS_STORAGE_KEY = 'crm_role_permissions';
 const PERMISSIONS_VERSION_KEY = 'crm_role_permissions_version';
 // Bump this version whenever default permissions change (e.g., new pages added)
-const CURRENT_PERMISSIONS_VERSION = 13;
+const CURRENT_PERMISSIONS_VERSION = 14;
 
 function uniq<T>(items: T[]): T[] {
   return Array.from(new Set(items));
@@ -261,6 +261,13 @@ export function normalizeRolePermissions(
       dataScope: merged.dataScope || defaultRolePermissions[role].dataScope,
       sensitiveFields: merged.sensitiveFields,
     };
+  }
+
+  // Finance visibility is a server-enforced company boundary, not a role
+  // customization. Sales, operations, design, and partners may see service
+  // status for invited customers but never internal finance details.
+  for (const role of ['sales', 'sales_manager', 'sales_partner', 'ops', 'design'] as SystemRole[]) {
+    normalized[role].sensitiveFields.viewFinance = false;
   }
 
   return normalized;

@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.follow_ups import Follow_ups
+from services.customer_scope import apply_customer_scope
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,11 @@ class Follow_upsService:
             logger.error(f"Error creating follow_ups: {str(e)}")
             raise
 
-    async def get_by_id(self, obj_id: int) -> Optional[Follow_ups]:
+    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None) -> Optional[Follow_ups]:
         """Get follow_ups by ID"""
         try:
             query = select(Follow_ups).where(Follow_ups.id == obj_id)
+            query = apply_customer_scope(query, Follow_ups, scope_user)
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -46,11 +48,14 @@ class Follow_upsService:
         limit: int = 20, 
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        scope_user: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of follow_upss"""
         try:
             query = select(Follow_ups)
             count_query = select(func.count(Follow_ups.id))
+            query = apply_customer_scope(query, Follow_ups, scope_user)
+            count_query = apply_customer_scope(count_query, Follow_ups, scope_user)
             
             if query_dict:
                 for field, value in query_dict.items():
@@ -85,10 +90,10 @@ class Follow_upsService:
             logger.error(f"Error fetching follow_ups list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any]) -> Optional[Follow_ups]:
+    async def update(self, obj_id: int, update_data: Dict[str, Any], scope_user: Optional[Any] = None) -> Optional[Follow_ups]:
         """Update follow_ups"""
         try:
-            obj = await self.get_by_id(obj_id)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 logger.warning(f"Follow_ups {obj_id} not found for update")
                 return None
@@ -105,10 +110,10 @@ class Follow_upsService:
             logger.error(f"Error updating follow_ups {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int) -> bool:
+    async def delete(self, obj_id: int, scope_user: Optional[Any] = None) -> bool:
         """Delete follow_ups"""
         try:
-            obj = await self.get_by_id(obj_id)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 logger.warning(f"Follow_ups {obj_id} not found for deletion")
                 return False

@@ -11,6 +11,7 @@ from core.database import get_db
 from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
 from services.service_progresses import Service_progressesService
+from services.customer_scope import ensure_customer_access
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -159,6 +160,7 @@ async def query_service_progressess(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Query service_progressess with filtering, sorting, and pagination"""
@@ -179,6 +181,7 @@ async def query_service_progressess(
             limit=limit,
             query_dict=query_dict,
             sort=sort,
+            scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} service_progressess")
         return result
@@ -196,6 +199,7 @@ async def query_service_progressess_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Query service_progressess with filtering, sorting, and pagination without user limitation
@@ -215,7 +219,8 @@ async def query_service_progressess_all(
             skip=skip,
             limit=limit,
             query_dict=query_dict,
-            sort=sort
+            sort=sort,
+            scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} service_progressess")
         return result
@@ -230,6 +235,7 @@ async def query_service_progressess_all(
 async def get_service_progresses(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single service_progresses by ID"""
@@ -237,7 +243,7 @@ async def get_service_progresses(
     
     service = Service_progressesService(db)
     try:
-        result = await service.get_by_id(id)
+        result = await service.get_by_id(id, scope_user=current_user)
         if not result:
             logger.warning(f"Service_progresses with id {id} not found")
             raise HTTPException(status_code=404, detail="Service_progresses not found")
@@ -261,6 +267,7 @@ async def create_service_progresses(
     
     service = Service_progressesService(db)
     try:
+        await ensure_customer_access(db, current_user, data.customer_id)
         result = await service.create(data.model_dump(), user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create service_progresses")
@@ -289,6 +296,7 @@ async def create_service_progressess_batch(
     
     try:
         for item_data in request.items:
+            await ensure_customer_access(db, current_user, item_data.customer_id)
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
                 results.append(result)
@@ -304,6 +312,7 @@ async def create_service_progressess_batch(
 @router.put("/batch", response_model=List[Service_progressesResponse])
 async def update_service_progressess_batch(
     request: Service_progressesBatchUpdateRequest,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple service_progressess in a single request"""
@@ -316,7 +325,9 @@ async def update_service_progressess_batch(
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            result = await service.update(item.id, update_dict)
+            if update_dict.get("customer_id") is not None:
+                await ensure_customer_access(db, current_user, update_dict["customer_id"])
+            result = await service.update(item.id, update_dict, scope_user=current_user)
             if result:
                 results.append(result)
         
@@ -332,6 +343,7 @@ async def update_service_progressess_batch(
 async def update_service_progresses(
     id: int,
     data: Service_progressesUpdateData,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing service_progresses"""
@@ -341,7 +353,9 @@ async def update_service_progresses(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        result = await service.update(id, update_dict)
+        if update_dict.get("customer_id") is not None:
+            await ensure_customer_access(db, current_user, update_dict["customer_id"])
+        result = await service.update(id, update_dict, scope_user=current_user)
         if not result:
             logger.warning(f"Service_progresses with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Service_progresses not found")
@@ -361,6 +375,7 @@ async def update_service_progresses(
 @router.delete("/batch")
 async def delete_service_progressess_batch(
     request: Service_progressesBatchDeleteRequest,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple service_progressess by their IDs"""
@@ -371,7 +386,7 @@ async def delete_service_progressess_batch(
     
     try:
         for item_id in request.ids:
-            success = await service.delete(item_id)
+            success = await service.delete(item_id, scope_user=current_user)
             if success:
                 deleted_count += 1
         
@@ -386,6 +401,7 @@ async def delete_service_progressess_batch(
 @router.delete("/{id}")
 async def delete_service_progresses(
     id: int,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single service_progresses by ID"""
@@ -393,7 +409,7 @@ async def delete_service_progresses(
     
     service = Service_progressesService(db)
     try:
-        success = await service.delete(id)
+        success = await service.delete(id, scope_user=current_user)
         if not success:
             logger.warning(f"Service_progresses with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Service_progresses not found")

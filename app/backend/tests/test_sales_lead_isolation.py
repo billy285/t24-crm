@@ -80,12 +80,12 @@ async def test_sales_only_sees_assigned_leads_and_not_customer_api(sales_app_cli
 
     own_list = await sales_app_client.get("/api/v1/sales-leads", headers=sales_a)
     other_list = await sales_app_client.get("/api/v1/sales-leads", headers=sales_b)
-    blocked_customers = await sales_app_client.get("/api/v1/entities/customers", headers=sales_a)
+    invited_customers = await sales_app_client.get("/api/v1/entities/customers", headers=sales_a)
 
     assert [item["business_name"] for item in own_list.json()["items"]] == ["Own Cafe"]
     assert [item["business_name"] for item in other_list.json()["items"]] == ["Other Cafe"]
-    assert blocked_customers.status_code == 403
-    assert blocked_customers.json()["detail"] == "电话销售账号只能访问电话销售中心"
+    assert invited_customers.status_code == 200
+    assert invited_customers.json()["items"] == []
 
 
 @pytest.mark.asyncio
@@ -320,9 +320,12 @@ async def test_merchant_pool_isolates_bad_records_before_sales_leads(sales_app_c
     sales_leads = await sales_app_client.get("/api/v1/sales-leads", headers=sales_a)
     assert [item["business_name"] for item in sales_leads.json()["items"]] == ["Clean Cafe"]
 
-    # A phone-sales account cannot read raw pool data or formal customers.
+    # A phone-sales account cannot read raw pool data and sees no formal
+    # customer unless an administrator explicitly invites them.
     assert (await sales_app_client.get("/api/v1/merchant-pool", headers=sales_a)).status_code == 403
-    assert (await sales_app_client.get("/api/v1/entities/customers", headers=sales_a)).status_code == 403
+    formal_customers = await sales_app_client.get("/api/v1/entities/customers", headers=sales_a)
+    assert formal_customers.status_code == 200
+    assert formal_customers.json()["items"] == []
 
 
 @pytest.mark.asyncio

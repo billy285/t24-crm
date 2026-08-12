@@ -16,6 +16,7 @@ from services.customer_materials import Customer_materialsService
 from services.operation_logs import Operation_logsService
 from services.service_progresses import Service_progressesService
 from services.service_tasks import Service_tasksService
+from services.customer_scope import ensure_customer_access
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -205,6 +206,7 @@ async def query_service_taskss(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Query service_taskss with filtering, sorting, and pagination"""
@@ -225,6 +227,7 @@ async def query_service_taskss(
             limit=limit,
             query_dict=query_dict,
             sort=sort,
+            scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} service_taskss")
         return result
@@ -242,6 +245,7 @@ async def query_service_taskss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Query service_taskss with filtering, sorting, and pagination without user limitation
@@ -261,7 +265,8 @@ async def query_service_taskss_all(
             skip=skip,
             limit=limit,
             query_dict=query_dict,
-            sort=sort
+            sort=sort,
+            scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} service_taskss")
         return result
@@ -276,6 +281,7 @@ async def query_service_taskss_all(
 async def get_service_tasks(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single service_tasks by ID"""
@@ -283,7 +289,7 @@ async def get_service_tasks(
     
     service = Service_tasksService(db)
     try:
-        result = await service.get_by_id(id)
+        result = await service.get_by_id(id, scope_user=current_user)
         if not result:
             logger.warning(f"Service_tasks with id {id} not found")
             raise HTTPException(status_code=404, detail="Service_tasks not found")
@@ -307,6 +313,7 @@ async def create_service_tasks(
     
     service = Service_tasksService(db)
     try:
+        await ensure_customer_access(db, current_user, data.customer_id)
         result = await service.create(data.model_dump(), user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create service_tasks")
@@ -335,6 +342,7 @@ async def create_service_taskss_batch(
     
     try:
         for item_data in request.items:
+            await ensure_customer_access(db, current_user, item_data.customer_id)
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
                 results.append(result)
@@ -350,6 +358,7 @@ async def create_service_taskss_batch(
 @router.put("/batch", response_model=List[Service_tasksResponse])
 async def update_service_taskss_batch(
     request: Service_tasksBatchUpdateRequest,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple service_taskss in a single request"""
@@ -362,7 +371,9 @@ async def update_service_taskss_batch(
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            result = await service.update(item.id, update_dict)
+            if update_dict.get("customer_id") is not None:
+                await ensure_customer_access(db, current_user, update_dict["customer_id"])
+            result = await service.update(item.id, update_dict, scope_user=current_user)
             if result:
                 results.append(result)
         
@@ -383,7 +394,7 @@ async def complete_service_task(
 ):
     """Complete a task and record lightweight operations-quality metadata."""
     service = Service_tasksService(db)
-    task = await service.get_by_id(id)
+    task = await service.get_by_id(id, scope_user=current_user)
     if not task:
         raise HTTPException(status_code=404, detail="Service_tasks not found")
 
@@ -427,7 +438,7 @@ async def complete_service_task(
     }
 
     try:
-        result = await service.update(id, update_dict)
+        result = await service.update(id, update_dict, scope_user=current_user)
     except Exception as e:
         logger.error(f"Error completing service_tasks {id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -443,7 +454,7 @@ async def complete_service_task(
             )
         if task.service_progress_id:
             progress_service = Service_progressesService(db)
-            progress = await progress_service.get_by_id(task.service_progress_id)
+            progress = await progress_service.get_by_id(task.service_progress_id, scope_user=current_user)
             next_stage = _infer_stage_from_completed_task(task)
             summary_parts = [f"完成任务：{task.task_name}"]
             if platform:
@@ -465,7 +476,7 @@ async def complete_service_task(
                     next_stage,
                     getattr(progress, "progress_percent", None) or 10,
                 )
-            await progress_service.update(task.service_progress_id, progress_update)
+            await progress_service.update(task.service_progress_id, progress_update, scope_user=current_user)
     except Exception:
         logger.warning("Completed task %s but failed to sync related usage/progress metadata", id, exc_info=True)
 
@@ -500,6 +511,7 @@ async def complete_service_task(
 async def update_service_tasks(
     id: int,
     data: Service_tasksUpdateData,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing service_tasks"""
@@ -509,7 +521,9 @@ async def update_service_tasks(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        result = await service.update(id, update_dict)
+        if update_dict.get("customer_id") is not None:
+            await ensure_customer_access(db, current_user, update_dict["customer_id"])
+        result = await service.update(id, update_dict, scope_user=current_user)
         if not result:
             logger.warning(f"Service_tasks with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Service_tasks not found")
@@ -529,6 +543,7 @@ async def update_service_tasks(
 @router.delete("/batch")
 async def delete_service_taskss_batch(
     request: Service_tasksBatchDeleteRequest,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple service_taskss by their IDs"""
@@ -539,7 +554,7 @@ async def delete_service_taskss_batch(
     
     try:
         for item_id in request.ids:
-            success = await service.delete(item_id)
+            success = await service.delete(item_id, scope_user=current_user)
             if success:
                 deleted_count += 1
         
@@ -554,6 +569,7 @@ async def delete_service_taskss_batch(
 @router.delete("/{id}")
 async def delete_service_tasks(
     id: int,
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single service_tasks by ID"""
@@ -561,7 +577,7 @@ async def delete_service_tasks(
     
     service = Service_tasksService(db)
     try:
-        success = await service.delete(id)
+        success = await service.delete(id, scope_user=current_user)
         if not success:
             logger.warning(f"Service_tasks with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Service_tasks not found")

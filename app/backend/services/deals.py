@@ -5,6 +5,8 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.deals import Deals
+from models.customers import Customers
+from services.customers import CustomersService
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +32,13 @@ class DealsService:
             logger.error(f"Error creating deals: {str(e)}")
             raise
 
-    async def get_by_id(self, obj_id: int) -> Optional[Deals]:
+    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None) -> Optional[Deals]:
         """Get deals by ID"""
         try:
             query = select(Deals).where(Deals.id == obj_id)
+            scope_filter = CustomersService(self.db)._scope_filter(scope_user)
+            if scope_filter is not None:
+                query = query.join(Customers, Customers.id == Deals.customer_id).where(scope_filter)
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -46,11 +51,16 @@ class DealsService:
         limit: int = 20, 
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        scope_user: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of dealss"""
         try:
             query = select(Deals)
             count_query = select(func.count(Deals.id))
+            scope_filter = CustomersService(self.db)._scope_filter(scope_user)
+            if scope_filter is not None:
+                query = query.join(Customers, Customers.id == Deals.customer_id).where(scope_filter)
+                count_query = count_query.join(Customers, Customers.id == Deals.customer_id).where(scope_filter)
             
             if query_dict:
                 for field, value in query_dict.items():
