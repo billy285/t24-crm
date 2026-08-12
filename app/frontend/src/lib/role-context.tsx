@@ -75,15 +75,15 @@ export const positionLabels: Record<string, string> = {
 
 // Legacy nav access (kept for backward compat)
 export const roleNavAccess: Record<string, string[]> = {
-  super_admin: ['/', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
-  admin: ['/', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
-  boss: ['/', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
+  super_admin: ['/', '/company-roadmap', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
+  admin: ['/', '/company-roadmap', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
+  boss: ['/', '/company-roadmap', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
   sales: ['/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers'],
   sales_manager: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers'],
   sales_partner: ['/partner-portal'],
   ops: ['/operations-workbench', '/customers', '/tasks', '/service-board', '/callbacks'],
   design: ['/', '/tasks'],
-  finance: ['/', '/finance', '/customers'],
+  finance: ['/', '/company-roadmap', '/finance', '/customers'],
 };
 
 const EMP_DATA_KEY = 'emp_auth_data';

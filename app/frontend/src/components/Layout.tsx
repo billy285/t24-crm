@@ -7,6 +7,7 @@ import {
   ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
   ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen,
   PanelLeftClose, PanelLeftOpen, Activity, BadgeDollarSign, ChevronRight, TrendingUp,
+  Target,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +25,7 @@ interface LayoutProps {
 
 const allNavItems = [
   { path: '/', label: '老板今日工作台', icon: LayoutDashboard },
+  { path: '/company-roadmap', label: '公司战略与里程碑', icon: Target },
   { path: '/merchant-pool', label: '待清洗商家池', icon: Database },
   { path: '/sales-leads', label: '电话销售中心', icon: Headphones },
   { path: '/sales-workbench', label: '销售今日工作台', icon: Headphones },
@@ -48,7 +50,7 @@ const allNavItems = [
 ];
 
 const navSections = [
-  { label: '老板今日工作台', paths: ['/'], icon: LayoutDashboard },
+  { label: '老板今日工作台', paths: ['/', '/company-roadmap'], icon: LayoutDashboard },
   {
     label: '销售中心',
     paths: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],

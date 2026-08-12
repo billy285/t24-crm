@@ -12,3 +12,4 @@ vite.config.ts.timestamp-*
 .env.*
 !.env.example
 !.env.*.example
+*.tsbuildinfo

@@ -33,6 +33,7 @@ const CustomerLifecycle = lazy(() => import('./pages/CustomerLifecycle'));
 const ManagementDecisions = lazy(() => import('./pages/ManagementDecisions'));
 const Commissions = lazy(() => import('./pages/Commissions'));
 const PartnerPortal = lazy(() => import('./pages/PartnerPortal'));
+const CompanyRoadmap = lazy(() => import('./pages/CompanyRoadmap'));
 
 const PageFallback = () => (
   <div className="flex min-h-[50vh] items-center justify-center">
@@ -67,6 +68,7 @@ const App = () => (
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/auth/error" element={<AuthError />} />
               <Route path="/" element={<Layout><Dashboard /></Layout>} />
+              <Route path="/company-roadmap" element={<Layout><CompanyRoadmap /></Layout>} />
               <Route path="/merchant-pool" element={<Layout><MerchantPool /></Layout>} />
               <Route path="/sales-leads" element={<Layout><SalesLeads /></Layout>} />
               <Route path="/sales-workbench" element={<Layout><SalesWorkbench /></Layout>} />

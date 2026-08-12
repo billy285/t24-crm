@@ -654,10 +654,10 @@ export default function Dashboard() {
       { label: '系统推动中的任务', value: ownerCockpit.execution.system_tasks, helper: `全部任务中 ${ownerCockpit.execution.overdue_tasks} 个已逾期`, icon: Workflow, tone: 'text-orange-700 bg-orange-50', link: '/tasks?source=system' },
     ];
     const ownerShortcuts = [
+      { label: '公司战略', helper: '现金安全、阶段目标与下一步', path: '/company-roadmap' },
       { label: '客户中心', helper: '客户、成交与生命周期', path: '/customers' },
       { label: '财务与结算', helper: '收款、成本、续费与分润', path: '/finance' },
       { label: '销售中心', helper: '拨打、商机与销售执行', path: '/sales-workbench' },
-      { label: '任务与交付', helper: '任务、服务进度与回访', path: '/tasks' },
     ];
 
     return (

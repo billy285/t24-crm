@@ -19,6 +19,7 @@ export const systemRoleLabels: Record<SystemRole, string> = {
 // 页面路径定义
 export const PAGE_PATHS = {
   dashboard: '/',
+  company_roadmap: '/company-roadmap',
   merchant_pool: '/merchant-pool',
   sales_leads: '/sales-leads',
   sales_workbench: '/sales-workbench',
@@ -44,6 +45,7 @@ export const PAGE_PATHS = {
 
 export const pageLabels: Record<string, string> = {
   '/': '老板今日工作台',
+  '/company-roadmap': '公司战略与里程碑',
   '/merchant-pool': '待清洗商家池',
   '/sales-leads': '电话销售中心',
   '/sales-workbench': '销售今日工作台',
@@ -134,7 +136,7 @@ export interface RolePermissionConfig {
 // 默认角色权限配置
 export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = {
   super_admin: {
-    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/operations-workbench', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/rmb-profit', '/commissions', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/company-roadmap', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/operations-workbench', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/rmb-profit', '/commissions', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -151,7 +153,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: true, copyPassword: true, viewFinance: true },
   },
   admin: {
-    pages: ['/', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/operations-workbench', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/rmb-profit', '/commissions', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
+    pages: ['/', '/company-roadmap', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/operations-workbench', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/rmb-profit', '/commissions', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -205,7 +207,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
   },
   finance: {
-    pages: ['/', '/finance', '/rmb-profit', '/commissions', '/payroll', '/customers', '/customer-lifecycle', '/management-decisions', '/service-board'],
+    pages: ['/', '/company-roadmap', '/finance', '/rmb-profit', '/commissions', '/payroll', '/customers', '/customer-lifecycle', '/management-decisions', '/service-board'],
     buttons: [
       'payment_create', 'payment_edit',
       'customer_export',
@@ -220,7 +222,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
 const PERMISSIONS_STORAGE_KEY = 'crm_role_permissions';
 const PERMISSIONS_VERSION_KEY = 'crm_role_permissions_version';
 // Bump this version whenever default permissions change (e.g., new pages added)
-const CURRENT_PERMISSIONS_VERSION = 14;
+const CURRENT_PERMISSIONS_VERSION = 15;
 
 function uniq<T>(items: T[]): T[] {
   return Array.from(new Set(items));
@@ -288,6 +290,7 @@ export function loadRolePermissions(): Record<SystemRole, RolePermissionConfig> 
       if (!normalized[role].pages.includes('/management-decisions')) normalized[role].pages.push('/management-decisions');
       if (!normalized[role].pages.includes('/commissions')) normalized[role].pages.push('/commissions');
       if (!normalized[role].pages.includes('/rmb-profit')) normalized[role].pages.push('/rmb-profit');
+      if (!normalized[role].pages.includes('/company-roadmap')) normalized[role].pages.push('/company-roadmap');
     }
     for (const role of ['super_admin', 'admin'] as SystemRole[]) {
       if (!normalized[role].pages.includes('/merchant-pool')) normalized[role].pages.push('/merchant-pool');
@@ -370,6 +373,7 @@ export function canAccessPage(role: string, path: string): boolean {
   if (path === '/management-decisions' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
   if (path === '/commissions' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
   if (path === '/rmb-profit' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
+  if (path === '/company-roadmap' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
   const perms = getPermissions(role);
   return perms.pages.includes(path);
 }
