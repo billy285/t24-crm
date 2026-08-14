@@ -74,8 +74,8 @@ try:
     assert revision == os.environ["EXPECTED_POST_MIGRATION"]
     assert "version" in period_columns
     assert {
-        "confirmed_zero", "account_name_snapshot", "account_type_snapshot",
-        "currency_snapshot", "masked_identifier_snapshot",
+        "confirmed_zero", "account_name", "account_type", "currency",
+        "masked_identifier",
     } <= balance_columns
     assert "uq_cash_accounts_active_name_currency" in account_indexes
 finally:
@@ -124,8 +124,8 @@ try:
     assert not missing
     assert "version" in period_columns
     assert {
-        "confirmed_zero", "account_name_snapshot", "account_type_snapshot",
-        "currency_snapshot", "masked_identifier_snapshot",
+        "confirmed_zero", "account_name", "account_type", "currency",
+        "masked_identifier",
     } <= balance_columns
     assert "uq_cash_accounts_active_name_currency" in account_indexes
 finally:
