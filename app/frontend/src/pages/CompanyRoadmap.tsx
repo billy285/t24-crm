@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -265,6 +265,7 @@ export default function CompanyRoadmap() {
   const [accountForm, setAccountForm] = useState<AccountForm>({
     name: '', account_type: 'bank', currency: 'CNY', masked_identifier: '', is_active: true, sort_order: '0', notes: '',
   });
+  const accountNameRef = useRef<HTMLInputElement | null>(null);
   const [restrictionOpen, setRestrictionOpen] = useState(false);
   const [restrictionDraft, setRestrictionDraft] = useState<Restriction>({
     category: 'tax_reserve', description: '', currency: 'CNY', amount: 0, notes: '',
@@ -378,6 +379,12 @@ export default function CompanyRoadmap() {
     setAccountForm({ name: '', account_type: 'bank', currency: 'CNY', masked_identifier: '', is_active: true, sort_order: '0', notes: '' });
     setAccountOpen(true);
   };
+
+  useEffect(() => {
+    if (!accountOpen) return;
+    const frame = window.requestAnimationFrame(() => accountNameRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [accountOpen]);
 
   const openEditAccount = (account: Account) => {
     setAccountForm({
@@ -671,6 +678,22 @@ export default function CompanyRoadmap() {
 
               <div>
                 <div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold text-slate-900">公司账户余额</h3><p className="mt-1 text-xs text-slate-500">只保存脱敏账户名称和末位，不保存完整银行卡号。</p></div><Button size="sm" variant="outline" onClick={openNewAccount} disabled={periodLocked || futureMonthSelected}><Plus className="mr-1 h-4 w-4" />新增账户</Button></div>
+                {accountOpen ? <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-sm sm:p-5">
+                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div><h4 className="font-semibold text-slate-900">{accountForm.id ? '编辑现金账户' : '新增现金账户'}</h4><p className="mt-1 text-xs leading-5 text-slate-500">账户建立后，再在下方填写本月核对余额。不要录完整银行卡号、登录信息或密码。</p></div>
+                    <Button size="sm" variant="ghost" onClick={() => setAccountOpen(false)}>取消</Button>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2"><Label htmlFor="cash-account-name">账户名称 *</Label><Input ref={accountNameRef} id="cash-account-name" className="mt-1 bg-white" value={accountForm.name} onChange={event => setAccountForm(current => ({ ...current, name: event.target.value }))} placeholder="例如：美国公司运营账户" /></div>
+                    <div><Label>账户类型</Label><NativeSelect className="mt-1" value={accountForm.account_type} onChange={value => setAccountForm(current => ({ ...current, account_type: value }))} options={[{ value: 'bank', label: '银行账户' }, { value: 'payment_platform', label: '支付平台' }, { value: 'cash', label: '现金' }, { value: 'other', label: '其他' }]} /></div>
+                    <div><Label>币种</Label><NativeSelect className="mt-1" value={accountForm.currency} onChange={value => setAccountForm(current => ({ ...current, currency: value as 'USD' | 'CNY' }))} options={[{ value: 'CNY', label: 'CNY' }, { value: 'USD', label: 'USD' }]} /></div>
+                    <div><Label htmlFor="cash-account-mask">脱敏末位/简称</Label><Input id="cash-account-mask" className="mt-1 bg-white" value={accountForm.masked_identifier} onChange={event => setAccountForm(current => ({ ...current, masked_identifier: event.target.value }))} placeholder="例如：•••• 2850" /></div>
+                    <div><Label htmlFor="cash-account-order">显示顺序</Label><Input id="cash-account-order" className="mt-1 bg-white" type="number" min="0" value={accountForm.sort_order} onChange={event => setAccountForm(current => ({ ...current, sort_order: event.target.value }))} /></div>
+                    <div className="sm:col-span-2"><Label htmlFor="cash-account-notes">备注</Label><Input id="cash-account-notes" className="mt-1 bg-white" value={accountForm.notes} onChange={event => setAccountForm(current => ({ ...current, notes: event.target.value }))} placeholder="可选，例如账户用途或核对负责人" /></div>
+                    {accountForm.id ? <label className="sm:col-span-2 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={accountForm.is_active} onChange={event => setAccountForm(current => ({ ...current, is_active: event.target.checked }))} />继续用于后续现金快照</label> : null}
+                  </div>
+                  <div className="mt-4 flex flex-col-reverse gap-2 border-t border-blue-100 pt-4 sm:flex-row sm:justify-end"><Button variant="outline" onClick={() => setAccountOpen(false)}>取消</Button><Button onClick={() => void saveAccount()} disabled={saving}>{saving ? '保存中…' : '保存账户'}</Button></div>
+                </div> : null}
                 {editorAccounts.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{editorAccounts.map(account => <div key={account.id} className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-start justify-between gap-3"><div><p className="font-medium text-slate-900">{account.name}</p><p className="mt-1 text-xs text-slate-400">{account.currency} · {account.masked_identifier || '未填写末位'}</p></div><button type="button" aria-label={`编辑 ${account.name}`} onClick={() => openEditAccount(account)} disabled={periodLocked} className="text-slate-400 hover:text-blue-600 disabled:opacity-40"><Pencil className="h-4 w-4" /></button></div>
                   <div className="mt-3 flex items-center gap-2"><span className="text-sm font-medium text-slate-500">{account.currency === 'USD' ? '$' : '¥'}</span><Input type="number" min="0" step="0.01" value={balances[account.id] || ''} onChange={event => setBalances(current => ({ ...current, [account.id]: event.target.value }))} disabled={periodLocked} placeholder="0.00" /></div>
@@ -726,19 +749,6 @@ export default function CompanyRoadmap() {
           <div className="sm:col-span-2"><Label>当前经营焦点</Label><Input className="mt-1" value={settingsForm.current_focus} onChange={event => setSettingsForm(current => current ? { ...current, current_focus: event.target.value } : current)} /></div>
           <p className="sm:col-span-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">月固定支出用于安全线和现金跑道，不会自动写入财务支出。正式利润仍沿用现有财务数据。</p>
         </div> : null}<DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>取消</Button><Button onClick={() => void saveSettings()} disabled={saving}>保存设置</Button></DialogFooter></DialogContent>
-      </Dialog>
-
-      <Dialog open={accountOpen} onOpenChange={setAccountOpen}>
-        <DialogContent><DialogHeader><DialogTitle>{accountForm.id ? '编辑现金账户' : '新增现金账户'}</DialogTitle></DialogHeader><div className="grid gap-4 py-2 sm:grid-cols-2">
-          <div className="sm:col-span-2"><Label>账户名称 *</Label><Input className="mt-1" value={accountForm.name} onChange={event => setAccountForm(current => ({ ...current, name: event.target.value }))} placeholder="例如：美国公司运营账户" /></div>
-          <div><Label>账户类型</Label><NativeSelect className="mt-1" value={accountForm.account_type} onChange={value => setAccountForm(current => ({ ...current, account_type: value }))} options={[{ value: 'bank', label: '银行账户' }, { value: 'payment_platform', label: '支付平台' }, { value: 'cash', label: '现金' }, { value: 'other', label: '其他' }]} /></div>
-          <div><Label>币种</Label><NativeSelect className="mt-1" value={accountForm.currency} onChange={value => setAccountForm(current => ({ ...current, currency: value as 'USD' | 'CNY' }))} options={[{ value: 'CNY', label: 'CNY' }, { value: 'USD', label: 'USD' }]} /></div>
-          <div><Label>脱敏末位/简称</Label><Input className="mt-1" value={accountForm.masked_identifier} onChange={event => setAccountForm(current => ({ ...current, masked_identifier: event.target.value }))} placeholder="例如：•••• 2850" /></div>
-          <div><Label>显示顺序</Label><Input className="mt-1" type="number" min="0" value={accountForm.sort_order} onChange={event => setAccountForm(current => ({ ...current, sort_order: event.target.value }))} /></div>
-          <div className="sm:col-span-2"><Label>备注</Label><Input className="mt-1" value={accountForm.notes} onChange={event => setAccountForm(current => ({ ...current, notes: event.target.value }))} /></div>
-          {accountForm.id ? <label className="sm:col-span-2 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={accountForm.is_active} onChange={event => setAccountForm(current => ({ ...current, is_active: event.target.checked }))} />继续用于后续现金快照</label> : null}
-          <p className="sm:col-span-2 text-xs text-slate-500">不要录完整银行卡号、登录信息或密码。</p>
-        </div><DialogFooter><Button variant="outline" onClick={() => setAccountOpen(false)}>取消</Button><Button onClick={() => void saveAccount()} disabled={saving}>保存账户</Button></DialogFooter></DialogContent>
       </Dialog>
 
       <Dialog open={restrictionOpen} onOpenChange={setRestrictionOpen}>
