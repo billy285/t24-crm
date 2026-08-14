@@ -67,12 +67,14 @@ type Balance = {
   masked_identifier?: string | null;
   currency?: 'USD' | 'CNY';
   balance: number;
+  confirmed_zero?: boolean;
   rate_to_cny?: number;
   balance_cny?: number;
 };
 
 type CashPeriod = {
   id: number;
+  version: number;
   year_month: string;
   snapshot_date: string;
   status: 'draft' | 'locked';
@@ -143,11 +145,24 @@ type Overview = {
   operating_signals: {
     three_month_average_profit_cny: number | null;
     profit_sample_months: number;
+    profit_stability?: {
+      is_stable?: boolean;
+      explanation?: string;
+    } | null;
     active_managed_service_projects: number;
     active_os_projects: number;
     paid_os_projects: number;
     paid_restaurant_os_projects: number;
     paid_beauty_os_projects: number;
+    paid_os_customers?: number;
+    paid_restaurant_os_customers?: number;
+    paid_beauty_os_customers?: number;
+    leading_os_paid_customers?: number;
+    os_payment_evidence?: {
+      counting_basis?: string;
+      data_sufficient?: boolean;
+      explanation?: string;
+    } | null;
     leading_os_code: 'restaurant_os' | 'beauty_os';
     leading_os_name: string;
     high_risk_project_count: number;
@@ -162,6 +177,10 @@ type Overview = {
       hiring_level: 'hire' | 'process' | 'stable' | string;
       hiring_title: string;
       hiring_message: string;
+      history_persisted?: boolean;
+      history_weeks?: number;
+      observation_required_weeks?: number;
+      hiring_gate_ready?: boolean;
     };
   };
   milestones: Array<{ key: string; label: string; status: 'completed' | 'current' | 'pending'; target: string }>;
@@ -176,6 +195,10 @@ type Overview = {
       decision_note?: string | null;
       next_review_date?: string | null;
       task_id?: number | null;
+      task_status?: string | null;
+      task_assignee_name?: string | null;
+      task_completion_result?: string | null;
+      task_completed_at?: string | null;
       decided_at?: string | null;
       decided_by_name?: string | null;
     } | null;
@@ -269,17 +292,29 @@ const decisionStatusLabels: Record<string, string> = {
   completed: '已完成',
 };
 
+const taskStatusLabels: Record<string, string> = {
+  pending: '待处理',
+  in_progress: '进行中',
+  completed: '已完成',
+  cancelled: '已取消',
+};
+
 export default function CompanyRoadmap() {
   const { isAdmin } = useRole();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [loadedMonth, setLoadedMonth] = useState<string | null>(null);
+  const [monthLoadError, setMonthLoadError] = useState('');
+  const [syncWarning, setSyncWarning] = useState('');
   const [snapshotDate, setSnapshotDate] = useState(localDate);
   const [rate, setRate] = useState('6.7');
   const [periodNotes, setPeriodNotes] = useState('');
   const [balances, setBalances] = useState<Record<number, string>>({});
+  const [confirmedZero, setConfirmedZero] = useState<Record<number, boolean>>({});
   const [restrictions, setRestrictions] = useState<Restriction[]>([]);
+  const [cashDirty, setCashDirty] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsForm, setSettingsForm] = useState<SettingsForm | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -303,27 +338,37 @@ export default function CompanyRoadmap() {
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditRows, setAuditRows] = useState<Array<{ id: number; action: string; actor_name: string; actor_role: string; reason?: string | null; created_at: string }>>([]);
 
-  const hydrateEditor = useCallback((data: Overview) => {
+  const hydrateEditor = useCallback((data: Overview, month: string) => {
     const period = data.cash_period;
     if (period) {
       setSnapshotDate(period.snapshot_date);
       setRate(String(period.usd_cny_rate));
       setPeriodNotes(period.notes || '');
       setBalances(Object.fromEntries(period.balances.map(row => [row.account_id, String(row.balance)])));
+      setConfirmedZero(Object.fromEntries(period.balances.map(row => [row.account_id, Boolean(row.confirmed_zero)])));
       setRestrictions(period.restrictions);
     } else {
-      const sameMonthDate = selectedMonth === currentMonth ? localDate : `${selectedMonth}-01`;
+      const sameMonthDate = month === currentMonth ? localDate : `${month}-01`;
       setSnapshotDate(sameMonthDate);
       setRate(String(data.settings.default_usd_cny_rate));
       setPeriodNotes('');
       setBalances({});
+      setConfirmedZero({});
       setRestrictions([]);
     }
-  }, [selectedMonth]);
+    setCashDirty(false);
+  }, []);
 
-  const loadOverview = useCallback(async (month = selectedMonth, showError = true) => {
+  const loadOverview = useCallback(async (
+    month = selectedMonth,
+    showError = true,
+    preserveOnFailure = false,
+    hydrateCash = true,
+  ) => {
     const requestId = ++overviewRequestRef.current;
     setLoading(true);
+    setSyncWarning('');
+    if (!preserveOnFailure) setMonthLoadError('');
     try {
       const response = await invokeWithAuth({
         url: `/api/v1/company-roadmap/overview?month=${encodeURIComponent(month)}`,
@@ -332,11 +377,17 @@ export default function CompanyRoadmap() {
       if (requestId !== overviewRequestRef.current) return false;
       const data = response.data as Overview;
       setOverview(data);
-      hydrateEditor(data);
+      setLoadedMonth(month);
+      setMonthLoadError('');
+      setSyncWarning('');
+      if (hydrateCash) hydrateEditor(data, month);
       return true;
     } catch (error) {
-      if (requestId === overviewRequestRef.current && showError) {
-        toast.error(errorMessage(error, '公司战略数据读取失败'));
+      if (requestId === overviewRequestRef.current) {
+        const message = errorMessage(error, '公司战略数据读取失败');
+        if (preserveOnFailure) setSyncWarning(`操作已经保存，但最新经营数据同步失败：${message}`);
+        else setMonthLoadError(message);
+        if (showError) toast.error(message);
       }
       return false;
     } finally {
@@ -348,11 +399,57 @@ export default function CompanyRoadmap() {
     void loadOverview();
   }, [loadOverview]);
 
+  useEffect(() => {
+    if (!cashDirty) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    const warnBeforeLinkNavigation = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
+      if (!target || target.target === '_blank' || target.hasAttribute('download')) return;
+      const href = target.getAttribute('href');
+      if (!href || href.startsWith('#')) return;
+      const destination = new URL(href, window.location.href);
+      if (destination.href === window.location.href) return;
+      if (!window.confirm('当前月份还有未保存的现金修改。离开页面会放弃这些修改，是否继续？')) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      setCashDirty(false);
+    };
+    window.addEventListener('beforeunload', warnBeforeLeaving);
+    document.addEventListener('click', warnBeforeLinkNavigation, true);
+    return () => {
+      window.removeEventListener('beforeunload', warnBeforeLeaving);
+      document.removeEventListener('click', warnBeforeLinkNavigation, true);
+    };
+  }, [cashDirty]);
+
   const editorAccounts = useMemo(() => {
     const periodAccountIds = new Set((overview?.cash_period?.balances || []).map(row => row.account_id));
+    if (overview?.cash_period?.status === 'locked') {
+      const currentById = new Map((overview.accounts || []).map(account => [account.id, account]));
+      return overview.cash_period.balances.map((balance, index): Account => {
+        const current = currentById.get(balance.account_id);
+        return {
+          id: balance.account_id,
+          name: balance.account_name || current?.name || `历史账户 #${balance.account_id}`,
+          account_type: balance.account_type || current?.account_type || 'other',
+          currency: balance.currency || current?.currency || 'CNY',
+          masked_identifier: balance.masked_identifier ?? current?.masked_identifier ?? null,
+          is_active: current?.is_active ?? false,
+          sort_order: current?.sort_order ?? index,
+          notes: current?.notes ?? null,
+        };
+      });
+    }
     return overview?.accounts.filter(row => row.is_active || periodAccountIds.has(row.id)) || [];
-  }, [overview?.accounts, overview?.cash_period?.balances]);
-  const periodLocked = overview?.cash_period?.status === 'locked';
+  }, [overview?.accounts, overview?.cash_period?.balances, overview?.cash_period?.status]);
+  const selectedMonthReady = loadedMonth === selectedMonth && !monthLoadError;
+  const periodLocked = selectedMonthReady && overview?.cash_period?.status === 'locked';
   const futureMonthSelected = selectedMonth > currentMonth;
   const numericRate = Number(rate) || 0;
   const draftAccountTotal = useMemo(() => editorAccounts.reduce((sum, account) => {
@@ -363,6 +460,40 @@ export default function CompanyRoadmap() {
     return sum + Number(row.amount || 0) * (row.currency === 'USD' ? numericRate : 1);
   }, 0), [numericRate, restrictions]);
   const draftFreeCash = draftAccountTotal - draftRestrictedTotal;
+  const incompleteBalanceAccounts = editorAccounts.filter(account => {
+    const rawValue = balances[account.id]?.trim() || '';
+    if (!rawValue) return true;
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value < 0) return true;
+    return value === 0 && !confirmedZero[account.id];
+  });
+  const cashBalancesComplete = editorAccounts.length > 0 && incompleteBalanceAccounts.length === 0;
+  const cashSummaryReady = Boolean(
+    selectedMonthReady
+    && overview?.cash_health.has_baseline
+    && periodLocked
+    && cashBalancesComplete,
+  );
+
+  const markCashDirty = () => {
+    setCashDirty(true);
+    setSyncWarning('');
+  };
+
+  const changeSelectedMonth = (month: string) => {
+    if (!month || month === selectedMonth) return;
+    if (cashDirty && !window.confirm('当前月份还有未保存的现金修改。切换月份会放弃这些修改，是否继续？')) return;
+    setCashDirty(false);
+    setMonthLoadError('');
+    setSyncWarning('');
+    setSelectedMonth(month);
+  };
+
+  const refreshCurrentMonth = () => {
+    if (cashDirty && !window.confirm('刷新会放弃当前未保存的现金修改，是否继续？')) return;
+    setCashDirty(false);
+    void loadOverview(selectedMonth, true, false, true);
+  };
 
   const openSettings = () => {
     if (!overview) return;
@@ -394,9 +525,24 @@ export default function CompanyRoadmap() {
           default_usd_cny_rate: Number(settingsForm.default_usd_cny_rate),
         },
       });
+      setOverview(current => current ? {
+        ...current,
+        settings: {
+          ...current.settings,
+          configured: true,
+          target_start_date: settingsForm.target_start_date,
+          target_end_date: settingsForm.target_end_date,
+          five_year_profit_target_cny: Number(settingsForm.five_year_profit_target_cny),
+          monthly_fixed_expense_cny: Number(settingsForm.monthly_fixed_expense_cny),
+          cash_reserve_months: Number(settingsForm.cash_reserve_months),
+          cash_safety_target_cny: Number(settingsForm.monthly_fixed_expense_cny) * Number(settingsForm.cash_reserve_months),
+          default_usd_cny_rate: Number(settingsForm.default_usd_cny_rate),
+          current_focus: settingsForm.current_focus,
+        },
+      } : current);
       toast.success('公司目标与现金安全参数已保存');
       setSettingsOpen(false);
-      await loadOverview();
+      await loadOverview(selectedMonth, false, true, !cashDirty);
     } catch (error) {
       toast.error(errorMessage(error, '目标设置保存失败'));
     } finally {
@@ -432,6 +578,10 @@ export default function CompanyRoadmap() {
   };
 
   const saveAccount = async () => {
+    if (!selectedMonthReady || loading) {
+      setAccountFormError('所选月份仍在读取，请读取完成后再保存账户。');
+      return;
+    }
     const name = accountForm.name.trim();
     const maskedIdentifier = accountForm.masked_identifier.trim();
     const notes = accountForm.notes.trim();
@@ -483,9 +633,10 @@ export default function CompanyRoadmap() {
           .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id);
         return { ...current, accounts };
       });
+      markCashDirty();
       toast.success(accountForm.id ? '账户已更新' : '账户已新增');
       setAccountOpen(false);
-      const refreshed = await loadOverview(selectedMonth, false);
+      const refreshed = await loadOverview(selectedMonth, false, true, false);
       if (!refreshed) toast.warning('账户已经保存并显示；其他经营数据暂时没有同步，请稍后点“刷新”。');
     } catch (error) {
       const message = errorMessage(error, '账户保存失败');
@@ -502,13 +653,17 @@ export default function CompanyRoadmap() {
       return;
     }
     setRestrictions(current => [...current, { ...suggestion }]);
+    markCashDirty();
   };
 
   const addAllSuggestions = () => {
     const currentRefs = new Set(restrictions.map(row => row.source_ref).filter(Boolean));
     const additions = (overview?.restriction_suggestions || []).filter(row => !row.source_ref || !currentRefs.has(row.source_ref));
     setRestrictions(current => [...current, ...additions]);
-    if (additions.length) toast.success(`已加入 ${additions.length} 项，保存前仍可核对或移除`);
+    if (additions.length) {
+      markCashDirty();
+      toast.success(`已加入 ${additions.length} 项，保存前仍可核对或移除`);
+    }
   };
 
   const saveRestriction = () => {
@@ -517,11 +672,16 @@ export default function CompanyRoadmap() {
       return;
     }
     setRestrictions(current => [...current, { ...restrictionDraft, description: restrictionDraft.description.trim() }]);
+    markCashDirty();
     setRestrictionOpen(false);
     setRestrictionDraft({ category: 'tax_reserve', description: '', currency: 'CNY', amount: 0, notes: '' });
   };
 
   const saveCashPeriod = async () => {
+    if (!selectedMonthReady || loading) {
+      toast.error('所选月份尚未读取完成，不能保存现金快照');
+      return;
+    }
     if (!editorAccounts.length) {
       toast.error('请先新增至少一个公司现金账户');
       return;
@@ -534,16 +694,26 @@ export default function CompanyRoadmap() {
       toast.error('请输入正确的 USD/CNY 汇率');
       return;
     }
+    if (!cashBalancesComplete) {
+      const names = incompleteBalanceAccounts.slice(0, 3).map(account => account.name).join('、');
+      toast.error(`还有 ${incompleteBalanceAccounts.length} 个账户未完成核对：${names}${incompleteBalanceAccounts.length > 3 ? '等' : ''}。余额为 0 时请勾选“本期确实为 0”。`);
+      return;
+    }
     setSaving(true);
     try {
-      await invokeWithAuth({
+      const response = await invokeWithAuth({
         url: `/api/v1/company-roadmap/cash-periods/${selectedMonth}`,
         method: 'PUT',
         data: {
+          version: overview?.cash_period?.version ?? 0,
           snapshot_date: snapshotDate,
           usd_cny_rate: numericRate,
           notes: periodNotes || null,
-          balances: editorAccounts.map(account => ({ account_id: account.id, balance: Number(balances[account.id] || 0) })),
+          balances: editorAccounts.map(account => ({
+            account_id: account.id,
+            balance: Number(balances[account.id]),
+            confirmed_zero: Number(balances[account.id]) === 0 && Boolean(confirmedZero[account.id]),
+          })),
           restrictions: restrictions.map(row => ({
             category: row.category,
             description: row.description,
@@ -554,8 +724,12 @@ export default function CompanyRoadmap() {
           })),
         },
       });
+      if (response.data?.id) {
+        setOverview(current => current ? { ...current, cash_period: response.data as CashPeriod } : current);
+      }
+      setCashDirty(false);
       toast.success('现金快照草稿已保存；锁定后才会进入经营决策');
-      await loadOverview();
+      await loadOverview(selectedMonth, false, true, true);
     } catch (error) {
       toast.error(errorMessage(error, '现金快照保存失败'));
     } finally {
@@ -564,17 +738,29 @@ export default function CompanyRoadmap() {
   };
 
   const transitionCashPeriod = async (action: 'lock' | 'reopen', reason?: string) => {
+    if (!selectedMonthReady || loading || !overview?.cash_period) {
+      toast.error('所选月份尚未读取完成，请刷新后再操作');
+      return;
+    }
+    if (action === 'lock' && cashDirty) {
+      toast.error('当前还有未保存修改，请先保存草稿再确认锁定');
+      return;
+    }
     setSaving(true);
     try {
-      await invokeWithAuth({
+      const response = await invokeWithAuth({
         url: `/api/v1/company-roadmap/cash-periods/${selectedMonth}/transition`,
         method: 'POST',
-        data: { action, reason: reason || null },
+        data: { action, reason: reason || null, version: overview.cash_period.version },
       });
+      if (response.data?.id) {
+        setOverview(current => current ? { ...current, cash_period: response.data as CashPeriod } : current);
+      }
+      setCashDirty(false);
       toast.success(action === 'lock' ? '现金快照已确认并锁定' : '现金快照已重新打开');
       setReopenOpen(false);
       setReopenReason('');
-      await loadOverview();
+      await loadOverview(selectedMonth, false, true, true);
     } catch (error) {
       toast.error(errorMessage(error, '现金快照状态更新失败'));
     } finally {
@@ -583,7 +769,7 @@ export default function CompanyRoadmap() {
   };
 
   const openAudit = async () => {
-    if (!overview?.cash_period) return;
+    if (!overview?.cash_period || !selectedMonthReady || loading) return;
     try {
       const response = await invokeWithAuth({
         url: `/api/v1/company-roadmap/cash-periods/${selectedMonth}/audit`,
@@ -600,7 +786,7 @@ export default function CompanyRoadmap() {
     if (!overview) return;
     setSaving(true);
     try {
-      await invokeWithAuth({
+      const response = await invokeWithAuth({
         url: `/api/v1/company-roadmap/recommendations/${overview.recommendation.key}/decision`,
         method: 'POST',
         data: {
@@ -611,8 +797,22 @@ export default function CompanyRoadmap() {
         },
       });
       toast.success('经营决策已记录');
+      setOverview(current => current ? {
+        ...current,
+        recommendation: {
+          ...current.recommendation,
+          decision: {
+            ...current.recommendation.decision,
+            status: decisionStatus,
+            decision_note: decisionNote || null,
+            next_review_date: nextReviewDate || null,
+            task_id: response.data?.task_id ?? current.recommendation.decision?.task_id ?? null,
+            decided_by_name: current.recommendation.decision?.decided_by_name || '当前管理员',
+          },
+        },
+      } : current);
       setDecisionOpen(false);
-      await loadOverview();
+      await loadOverview(selectedMonth, false, true, false);
     } catch (error) {
       toast.error(errorMessage(error, '经营决策保存失败'));
     } finally {
@@ -640,6 +840,15 @@ export default function CompanyRoadmap() {
     hiring_title: '团队产能数据正在更新',
     hiring_message: '刷新后仍未出现时，请检查后端是否已同步到最新版本。',
   };
+  const paidOsCustomers = overview.operating_signals.paid_os_customers
+    ?? overview.operating_signals.paid_os_projects
+    ?? 0;
+  const paidRestaurantOsCustomers = overview.operating_signals.paid_restaurant_os_customers
+    ?? overview.operating_signals.paid_restaurant_os_projects
+    ?? 0;
+  const paidBeautyOsCustomers = overview.operating_signals.paid_beauty_os_customers
+    ?? overview.operating_signals.paid_beauty_os_projects
+    ?? 0;
 
   return (
     <div className="app-page space-y-5">
@@ -651,11 +860,12 @@ export default function CompanyRoadmap() {
         </div>
         <div className="flex flex-wrap gap-2">
           {isAdmin ? <Button variant="outline" onClick={openSettings}><Settings2 className="mr-2 h-4 w-4" />目标设置</Button> : null}
-          <Button variant="outline" onClick={() => void loadOverview()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新</Button>
+          <Button variant="outline" onClick={refreshCurrentMonth} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新</Button>
         </div>
       </div>
 
       {!overview.settings.configured ? <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">当前显示的是系统默认规划参数，尚未由老板正式确认</p><p className="mt-1 text-xs leading-5 text-amber-700">默认目标为 2026–2030 年累计净利润 2,000 万元、现金安全线为 6 个月固定支出。确认前只用于规划提示。</p></div>{isAdmin ? <Button size="sm" variant="outline" onClick={openSettings}>现在确认目标</Button> : null}</div> : null}
+      {syncWarning ? <div role="status" className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">数据已保存，但页面同步尚未完成</p><p className="mt-1 text-xs leading-5 text-amber-700">{syncWarning}</p></div><Button size="sm" variant="outline" onClick={refreshCurrentMonth} disabled={loading}>重新同步</Button></div> : null}
 
       <Card className="overflow-hidden border-slate-800 bg-[#0f1b34] text-white">
         <CardContent className="p-5 lg:p-6">
@@ -673,7 +883,6 @@ export default function CompanyRoadmap() {
                 <div className="rounded-xl border border-white/10 bg-white/[0.05] p-3"><p className="text-xs text-slate-400">所需月均净利润</p><p className="mt-1 text-lg font-semibold">{cny(overview.goal.required_average_monthly_profit_cny)}</p></div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300"><Badge className={overview.goal.pace_status === 'ahead' ? 'bg-emerald-200 text-emerald-900' : overview.goal.pace_status === 'behind' ? 'bg-rose-200 text-rose-900' : overview.goal.pace_status === 'data_incomplete' ? 'bg-amber-200 text-amber-900' : 'bg-blue-200 text-blue-900'}>{paceLabels[overview.goal.pace_status]}</Badge><span>按时间计划应累计 {cny(overview.goal.expected_profit_to_date_cny)} · 当前差额 {overview.goal.pace_gap_cny >= 0 ? '+' : ''}{cny(overview.goal.pace_gap_cny)}</span></div>
-              {overview.settings.current_focus ? <p className="mt-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs leading-5 text-slate-300">老板设定的经营焦点：{overview.settings.current_focus}</p> : null}
             </div>
             <div className={`rounded-2xl border p-4 ${cashLevel === 'safe' ? 'border-emerald-400/30 bg-emerald-400/10' : cashLevel === 'unknown' ? 'border-slate-400/30 bg-white/[0.04]' : 'border-amber-300/30 bg-amber-300/10'}`}>
               <div className="flex items-center justify-between"><span className="text-sm font-medium text-slate-200">公司可用现金</span><Badge className={cashLevel === 'safe' ? 'bg-emerald-200 text-emerald-900' : cashLevel === 'unknown' ? 'bg-slate-200 text-slate-800' : 'bg-amber-200 text-amber-900'}>{cashHealthLabels[cashLevel]}</Badge></div>
@@ -691,19 +900,20 @@ export default function CompanyRoadmap() {
         <CardContent className="p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-4xl">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"><Rocket className="h-4 w-4" />当前唯一经营重点</div>
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"><Rocket className="h-4 w-4" />本阶段统一经营焦点</div>
               <h2 className="mt-2 text-xl font-bold text-slate-900">{recommendation.title}</h2>
               <p className="mt-2 text-sm leading-6 text-slate-700">判断：{recommendation.why}</p>
               <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-sm font-medium text-slate-800">下一步：{recommendation.action}</p>
-              {recommendation.decision ? <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500"><span>老板决定：{decisionStatusLabels[recommendation.decision.status] || recommendation.decision.status} · {recommendation.decision.decision_note || '未填写说明'}</span>{recommendation.decision.task_id ? <Button asChild size="sm" variant="link" className="h-auto p-0 text-xs"><Link to={`/tasks?task_id=${recommendation.decision.task_id}`}>打开执行任务 #{recommendation.decision.task_id}<ArrowRight className="ml-1 h-3 w-3" /></Link></Button> : null}</div> : null}
+              {overview.settings.current_focus ? <p className="mt-2 rounded-lg border border-slate-200 bg-white/60 px-3 py-2 text-xs leading-5 text-slate-600">老板补充边界：{overview.settings.current_focus}</p> : null}
+              {recommendation.decision ? <div className="mt-3 rounded-lg border border-slate-200/80 bg-white/60 px-3 py-2.5 text-xs text-slate-600"><div className="flex flex-wrap gap-x-4 gap-y-1"><span>决定：{decisionStatusLabels[recommendation.decision.status] || recommendation.decision.status}</span><span>确认人：{recommendation.decision.decided_by_name || '待确认'}</span><span>复盘日：{recommendation.decision.next_review_date || '待安排'}</span>{recommendation.decision.task_id ? <span>执行负责人：{recommendation.decision.task_assignee_name || '待分配'}</span> : null}{recommendation.decision.task_id ? <span>任务状态：{taskStatusLabels[recommendation.decision.task_status || ''] || '打开任务核对'}</span> : null}</div>{recommendation.decision.decision_note ? <p className="mt-1.5 leading-5">说明：{recommendation.decision.decision_note}</p> : null}{recommendation.decision.task_completion_result ? <p className="mt-1.5 rounded-md bg-emerald-50 px-2 py-1.5 leading-5 text-emerald-700">完成结果：{recommendation.decision.task_completion_result}</p> : null}{recommendation.decision.task_id ? <Button asChild size="sm" variant="link" className="mt-1 h-auto p-0 text-xs"><Link to={`/tasks?task_id=${recommendation.decision.task_id}`}>打开执行任务 #{recommendation.decision.task_id}<ArrowRight className="ml-1 h-3 w-3" /></Link></Button> : null}</div> : null}
             </div>
             {isAdmin ? <Button onClick={() => {
-              setDecisionStatus('accepted');
+              setDecisionStatus((recommendation.decision?.status as typeof decisionStatus) || 'accepted');
               setDecisionNote(recommendation.decision?.decision_note || '');
               setNextReviewDate(recommendation.decision?.next_review_date || '');
               setCreateTask(true);
               setDecisionOpen(true);
-            }}>处理这项建议<ArrowRight className="ml-2 h-4 w-4" /></Button> : null}
+            }}>{recommendation.decision ? '查看 / 更新决定' : '处理这项建议'}<ArrowRight className="ml-2 h-4 w-4" /></Button> : null}
           </div>
         </CardContent>
       </Card>
@@ -725,10 +935,10 @@ export default function CompanyRoadmap() {
         <TabsList className="grid h-auto w-full grid-cols-2 sm:w-[420px]"><TabsTrigger value="cash">现金底账</TabsTrigger><TabsTrigger value="signals">经营信号</TabsTrigger></TabsList>
         <TabsContent value="cash" className="mt-4 space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Card><CardContent className="p-4"><p className="text-sm text-slate-500">账户总余额</p><p className="mt-2 text-2xl font-bold text-slate-900">{cny(periodLocked ? overview.cash_period?.totals.account_balance_cny : draftAccountTotal)}</p><p className="mt-1 text-xs text-slate-400">所有账户按本期汇率折算</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-slate-500">受限资金</p><p className="mt-2 text-2xl font-bold text-amber-700">{cny(periodLocked ? overview.cash_period?.totals.restricted_cny : draftRestrictedTotal)}</p><p className="mt-1 text-xs text-slate-400">客户资金与已确认待付款</p></CardContent></Card>
-            <Card className="border-emerald-200 bg-emerald-50/40"><CardContent className="p-4"><p className="text-sm text-slate-500">真正可用现金</p><p className={`mt-2 text-2xl font-bold ${(periodLocked ? overview.cash_period?.totals.free_cash_cny || 0 : draftFreeCash) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{cny(periodLocked ? overview.cash_period?.totals.free_cash_cny : draftFreeCash)}</p><p className="mt-1 text-xs text-slate-500">余额减去受限资金</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-slate-500">安全线差额</p><p className="mt-2 text-2xl font-bold text-blue-700">{cny(Math.max(overview.cash_health.safety_target_cny - (periodLocked ? overview.cash_period?.totals.free_cash_cny || 0 : draftFreeCash), 0))}</p><p className="mt-1 text-xs text-slate-400">目标 {overview.settings.cash_reserve_months} 个月固定支出</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm text-slate-500">账户总余额</p><p className="mt-2 text-2xl font-bold text-slate-900">{cashSummaryReady ? cny(periodLocked ? overview.cash_period?.totals.account_balance_cny : draftAccountTotal) : '待确认'}</p><p className="mt-1 text-xs text-slate-400">{cashSummaryReady ? '所有账户按本期汇率折算' : '完成全部账户核对并确认快照后显示'}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm text-slate-500">受限资金</p><p className="mt-2 text-2xl font-bold text-amber-700">{cashSummaryReady ? cny(periodLocked ? overview.cash_period?.totals.restricted_cny : draftRestrictedTotal) : '待确认'}</p><p className="mt-1 text-xs text-slate-400">{cashSummaryReady ? '客户资金与已确认待付款' : '缺失现金数据不会按 0 元处理'}</p></CardContent></Card>
+            <Card className="border-emerald-200 bg-emerald-50/40"><CardContent className="p-4"><p className="text-sm text-slate-500">真正可用现金</p><p className={`mt-2 text-2xl font-bold ${cashSummaryReady && (periodLocked ? overview.cash_period?.totals.free_cash_cny || 0 : draftFreeCash) < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>{cashSummaryReady ? cny(periodLocked ? overview.cash_period?.totals.free_cash_cny : draftFreeCash) : '待确认'}</p><p className="mt-1 text-xs text-slate-500">{cashSummaryReady ? '余额减去受限资金' : '尚未形成可信现金底账'}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm text-slate-500">安全线差额</p><p className="mt-2 text-2xl font-bold text-blue-700">{cashSummaryReady ? cny(Math.max(overview.cash_health.safety_target_cny - (periodLocked ? overview.cash_period?.totals.free_cash_cny || 0 : draftFreeCash), 0)) : '待确认'}</p><p className="mt-1 text-xs text-slate-400">目标 {overview.settings.cash_reserve_months} 个月固定支出</p></CardContent></Card>
           </div>
 
           <Card>
@@ -736,22 +946,28 @@ export default function CompanyRoadmap() {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div><CardTitle className="flex items-center gap-2 text-base"><Landmark className="h-5 w-5 text-blue-600" />月度现金快照</CardTitle><p className="mt-1 text-xs text-slate-500">只录账户余额和受限资金，不重复录收入或支出。</p></div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Input type="month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)} className="w-[160px]" />
-                  {overview.cash_period ? <Badge className={periodLocked ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}>{periodLocked ? '已确认锁定' : '草稿待确认'}</Badge> : <Badge variant="outline">尚未建立</Badge>}
-                  {overview.cash_period ? <Button size="sm" variant="outline" onClick={() => void openAudit()}><History className="mr-1 h-4 w-4" />记录</Button> : null}
+                  <Input aria-label="现金快照月份" type="month" value={selectedMonth} onChange={event => changeSelectedMonth(event.target.value)} className="w-[160px]" disabled={saving} />
+                  {!selectedMonthReady ? <Badge className={monthLoadError ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}>{monthLoadError ? '读取失败' : '读取中'}</Badge> : overview.cash_period ? <Badge className={periodLocked ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}>{periodLocked ? '已确认锁定' : '草稿待确认'}</Badge> : <Badge variant="outline">尚未建立</Badge>}
+                  {overview.cash_period && selectedMonthReady ? <Button size="sm" variant="outline" onClick={() => void openAudit()} disabled={loading}><History className="mr-1 h-4 w-4" />记录</Button> : null}
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-5">
+              {!selectedMonthReady ? <div className={`rounded-xl border p-6 text-center ${monthLoadError ? 'border-rose-200 bg-rose-50' : 'border-blue-200 bg-blue-50'}`}>
+                {loading && !monthLoadError ? <RefreshCw className="mx-auto h-6 w-6 animate-spin text-blue-600" /> : <AlertTriangle className="mx-auto h-6 w-6 text-rose-600" />}
+                <p className={`mt-3 font-semibold ${monthLoadError ? 'text-rose-900' : 'text-blue-900'}`}>{monthLoadError ? `${selectedMonth} 现金数据读取失败` : `正在读取 ${selectedMonth} 现金数据`}</p>
+                <p className={`mt-1 text-xs leading-5 ${monthLoadError ? 'text-rose-700' : 'text-blue-700'}`}>{monthLoadError || '读取完成前不会展示或保存其他月份的数据。'}</p>
+                {monthLoadError ? <Button className="mt-3" size="sm" variant="outline" onClick={() => void loadOverview(selectedMonth, true, false, true)} disabled={loading}><RefreshCw className="mr-2 h-4 w-4" />重新读取本月</Button> : null}
+              </div> : <>
               <div className="grid gap-3 lg:grid-cols-3">
-                <div><Label htmlFor="cash-snapshot-date">余额核对日期</Label><Input id="cash-snapshot-date" className="mt-1" type="date" value={snapshotDate} onChange={event => setSnapshotDate(event.target.value)} disabled={periodLocked} /></div>
-                <div><Label htmlFor="cash-rate">USD/CNY 核对汇率</Label><Input id="cash-rate" className="mt-1" type="number" min="0.1" max="20" step="0.0001" value={rate} onChange={event => setRate(event.target.value)} disabled={periodLocked} /></div>
-                <div><Label htmlFor="cash-notes">本期说明</Label><Input id="cash-notes" className="mt-1" value={periodNotes} onChange={event => setPeriodNotes(event.target.value)} disabled={periodLocked} placeholder="例如：银行余额已与 8 月 12 日对账" /></div>
+                <div><Label htmlFor="cash-snapshot-date">余额核对日期</Label><Input id="cash-snapshot-date" className="mt-1" type="date" value={snapshotDate} onChange={event => { setSnapshotDate(event.target.value); markCashDirty(); }} disabled={periodLocked || loading} /></div>
+                <div><Label htmlFor="cash-rate">USD/CNY 核对汇率</Label><Input id="cash-rate" className="mt-1" type="number" min="0.1" max="20" step="0.0001" value={rate} onChange={event => { setRate(event.target.value); markCashDirty(); }} disabled={periodLocked || loading} /></div>
+                <div><Label htmlFor="cash-notes">本期说明</Label><Input id="cash-notes" className="mt-1" value={periodNotes} onChange={event => { setPeriodNotes(event.target.value); markCashDirty(); }} disabled={periodLocked || loading} placeholder="例如：银行余额已与 8 月 12 日对账" /></div>
               </div>
               {futureMonthSelected ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">未来月份只可查看，不允许提前建立现金快照。请切换到本月或历史月份。</div> : null}
 
               <div>
-                <div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold text-slate-900">公司账户余额</h3><p className="mt-1 text-xs text-slate-500">只保存脱敏账户名称和末位，不保存完整银行卡号。</p></div><Button size="sm" variant="outline" onClick={openNewAccount} disabled={periodLocked || futureMonthSelected}><Plus className="mr-1 h-4 w-4" />新增账户</Button></div>
+                <div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold text-slate-900">公司账户余额</h3><p className="mt-1 text-xs text-slate-500">只保存脱敏账户名称和末位，不保存完整银行卡号。</p></div><Button size="sm" variant="outline" onClick={openNewAccount} disabled={periodLocked || futureMonthSelected || loading}><Plus className="mr-1 h-4 w-4" />新增账户</Button></div>
                 {accountOpen ? <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-sm sm:p-5">
                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div><h4 className="font-semibold text-slate-900">{accountForm.id ? '编辑现金账户' : '新增现金账户'}</h4><p className="mt-1 text-xs leading-5 text-slate-500">账户建立后，再在下方填写本月核对余额。不要录完整银行卡号、登录信息或密码。</p></div>
@@ -769,45 +985,69 @@ export default function CompanyRoadmap() {
                   </div>
                   <div className="mt-4 flex flex-col-reverse gap-2 border-t border-blue-100 pt-4 sm:flex-row sm:justify-end"><Button variant="outline" onClick={() => { setAccountFormError(''); setAccountOpen(false); }}>取消</Button><Button onClick={() => void saveAccount()} disabled={saving}>{saving ? '保存中…' : '保存账户'}</Button></div>
                 </div> : null}
-                {editorAccounts.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{editorAccounts.map(account => <div key={account.id} className="rounded-xl border border-slate-200 p-4">
-                  <div className="flex items-start justify-between gap-3"><div><p className="font-medium text-slate-900">{account.name}</p><p className="mt-1 text-xs text-slate-400">{account.currency} · {account.masked_identifier || '未填写末位'}</p></div><button type="button" aria-label={`编辑 ${account.name}`} onClick={() => openEditAccount(account)} disabled={periodLocked} className="text-slate-400 hover:text-blue-600 disabled:opacity-40"><Pencil className="h-4 w-4" /></button></div>
-                  <div className="mt-3 flex items-center gap-2"><span className="text-sm font-medium text-slate-500">{account.currency === 'USD' ? '$' : '¥'}</span><Input type="number" min="0" step="0.01" value={balances[account.id] || ''} onChange={event => setBalances(current => ({ ...current, [account.id]: event.target.value }))} disabled={periodLocked} placeholder="0.00" /></div>
+                {editorAccounts.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{editorAccounts.map(account => {
+                  const rawBalance = balances[account.id]?.trim() || '';
+                  const zeroNeedsConfirmation = rawBalance !== '' && Number(rawBalance) === 0 && !confirmedZero[account.id];
+                  return <div key={account.id} className={`rounded-xl border p-4 ${!periodLocked && (!rawBalance || zeroNeedsConfirmation) ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200'}`}>
+                  <div className="flex items-start justify-between gap-3"><div><p className="font-medium text-slate-900">{account.name}</p><p className="mt-1 text-xs text-slate-400">{account.currency} · {account.masked_identifier || '未填写末位'}</p></div><button type="button" aria-label={`编辑 ${account.name}`} onClick={() => openEditAccount(account)} disabled={periodLocked || loading} className="text-slate-400 hover:text-blue-600 disabled:opacity-40"><Pencil className="h-4 w-4" /></button></div>
+                  <div className="mt-3 flex items-center gap-2"><span className="text-sm font-medium text-slate-500">{account.currency === 'USD' ? '$' : '¥'}</span><Input aria-label={`${account.name} 本期余额`} type="number" min="0" step="0.01" value={confirmedZero[account.id] ? '0' : balances[account.id] || ''} onChange={event => { const value = event.target.value; setBalances(current => ({ ...current, [account.id]: value })); if (value !== '0') setConfirmedZero(current => ({ ...current, [account.id]: false })); markCashDirty(); }} disabled={periodLocked || loading || confirmedZero[account.id]} placeholder="请填写实际余额" /></div>
+                  {!periodLocked ? <label className="mt-2 flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={Boolean(confirmedZero[account.id])} disabled={loading} onChange={event => { const checked = event.target.checked; setConfirmedZero(current => ({ ...current, [account.id]: checked })); setBalances(current => ({ ...current, [account.id]: checked ? '0' : '' })); markCashDirty(); }} />本期已核对，余额确实为 0</label> : confirmedZero[account.id] ? <p className="mt-2 text-xs text-emerald-600">本期已明确确认为 0</p> : Number(rawBalance) === 0 ? <p className="mt-2 text-xs text-amber-700">历史 0 余额尚未人工确认；如需用于决策，请重新打开并核对。</p> : null}
+                  {!periodLocked && !rawBalance ? <p className="mt-2 text-xs text-amber-700">尚未填写本期余额</p> : null}
+                  {!periodLocked && zeroNeedsConfirmation ? <p className="mt-2 text-xs text-amber-700">0 元必须勾选确认，不能把空白当作 0</p> : null}
                   {account.currency === 'USD' ? <p className="mt-2 text-xs text-slate-400">折合 {cny(Number(balances[account.id] || 0) * numericRate)}</p> : null}
-                </div>)}</div> : <div className="rounded-xl border border-dashed p-8 text-center"><Landmark className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm text-slate-500">先新增公司人民币或美元账户，再录入真实余额。</p><Button className="mt-3" size="sm" onClick={openNewAccount} disabled={periodLocked || futureMonthSelected}><Plus className="mr-1 h-4 w-4" />新增第一个账户</Button></div>}
+                </div>; })}</div> : <div className="rounded-xl border border-dashed p-8 text-center"><Landmark className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm text-slate-500">先新增公司人民币或美元账户，再录入真实余额。</p><Button className="mt-3" size="sm" onClick={openNewAccount} disabled={periodLocked || futureMonthSelected || loading}><Plus className="mr-1 h-4 w-4" />新增第一个账户</Button></div>}
               </div>
 
               <div>
-                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-semibold text-slate-900">受限资金</h3><p className="mt-1 text-xs text-slate-500">这些钱在账户里，但不能当作公司可自由使用的钱。</p></div><Button size="sm" variant="outline" onClick={() => setRestrictionOpen(true)} disabled={periodLocked || futureMonthSelected}><Plus className="mr-1 h-4 w-4" />手动新增</Button></div>
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-semibold text-slate-900">受限资金</h3><p className="mt-1 text-xs text-slate-500">这些钱在账户里，但不能当作公司可自由使用的钱。</p></div><Button size="sm" variant="outline" onClick={() => setRestrictionOpen(true)} disabled={periodLocked || futureMonthSelected || loading}><Plus className="mr-1 h-4 w-4" />手动新增</Button></div>
                 {!periodLocked && overview.restriction_suggestions.length ? <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-blue-900">系统找到 {overview.restriction_suggestions.length} 项可核对的受限资金</p><p className="mt-1 text-xs text-blue-700">合计约 {cny(overview.unrecorded_suggestion_cny)}。系统不会自动记账，加入后仍需你核对。</p></div><Button size="sm" onClick={addAllSuggestions}>全部加入待核对</Button></div>
-                  <div className="mt-3 grid gap-2 md:grid-cols-2">{overview.restriction_suggestions.map(row => <button type="button" key={row.source_ref || row.description} onClick={() => addSuggestion(row)} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-blue-800 hover:bg-blue-100"><span>{row.category_label}</span><span className="font-semibold">{money(row.amount, row.currency)} <Plus className="ml-1 inline h-3.5 w-3.5" /></span></button>)}</div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-blue-900">系统找到 {overview.restriction_suggestions.length} 项可核对的受限资金</p><p className="mt-1 text-xs text-blue-700">合计约 {cny(overview.unrecorded_suggestion_cny)}。系统不会自动记账，加入后仍需你核对。</p></div><Button size="sm" onClick={addAllSuggestions} disabled={loading}>全部加入待核对</Button></div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">{overview.restriction_suggestions.map(row => <button type="button" key={row.source_ref || row.description} onClick={() => addSuggestion(row)} disabled={loading} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-sm text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"><span>{row.category_label}</span><span className="font-semibold">{money(row.amount, row.currency)} <Plus className="ml-1 inline h-3.5 w-3.5" /></span></button>)}</div>
                 </div> : null}
-                {restrictions.length ? <div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">类别</th><th className="px-4 py-3">说明</th><th className="px-4 py-3">原币金额</th><th className="px-4 py-3">折合人民币</th><th className="px-4 py-3 text-right">操作</th></tr></thead><tbody>{restrictions.map((row, index) => <tr key={`${row.source_ref || row.description}-${index}`} className="border-t border-slate-100"><td className="px-4 py-3">{row.category_label || overview.restriction_categories.find(item => item.value === row.category)?.label || row.category}</td><td className="px-4 py-3"><p className="font-medium text-slate-800">{row.description}</p>{row.source_ref?.startsWith('system:') ? <p className="mt-1 text-xs text-blue-500">系统建议，已加入待核对</p> : null}</td><td className="px-4 py-3">{money(row.amount, row.currency)}</td><td className="px-4 py-3">{cny(Number(row.amount || 0) * (row.currency === 'USD' ? numericRate : 1))}</td><td className="px-4 py-3 text-right"><Button size="sm" variant="ghost" disabled={periodLocked} onClick={() => setRestrictions(current => current.filter((_, itemIndex) => itemIndex !== index))}>移除</Button></td></tr>)}</tbody></table></div> : <div className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-400">当前没有受限资金。请确认客户投流款、待退款、待发工资、待付分润和税务预留是否确实为 0。</div>}
+                {restrictions.length ? <>
+                  <div className="grid gap-3 md:hidden">{restrictions.map((row, index) => <div key={`${row.source_ref || row.description}-mobile-${index}`} className="rounded-xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><Badge variant="outline">{row.category_label || overview.restriction_categories.find(item => item.value === row.category)?.label || row.category}</Badge><p className="mt-2 text-sm font-medium text-slate-800">{row.description}</p>{row.source_ref?.startsWith('system:') ? <p className="mt-1 text-xs text-blue-500">系统建议，已加入待核对</p> : null}</div><Button size="sm" variant="ghost" disabled={periodLocked || loading} onClick={() => { setRestrictions(current => current.filter((_, itemIndex) => itemIndex !== index)); markCashDirty(); }}>移除</Button></div><div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-3 text-xs"><div><p className="text-slate-400">原币金额</p><p className="mt-1 font-semibold text-slate-800">{money(row.amount, row.currency)}</p></div><div><p className="text-slate-400">折合人民币</p><p className="mt-1 font-semibold text-slate-800">{cny(Number(row.amount || 0) * (row.currency === 'USD' ? numericRate : 1))}</p></div></div></div>)}</div>
+                  <div className="hidden overflow-x-auto rounded-xl border md:block"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">类别</th><th className="px-4 py-3">说明</th><th className="px-4 py-3">原币金额</th><th className="px-4 py-3">折合人民币</th><th className="px-4 py-3 text-right">操作</th></tr></thead><tbody>{restrictions.map((row, index) => <tr key={`${row.source_ref || row.description}-${index}`} className="border-t border-slate-100"><td className="px-4 py-3">{row.category_label || overview.restriction_categories.find(item => item.value === row.category)?.label || row.category}</td><td className="px-4 py-3"><p className="font-medium text-slate-800">{row.description}</p>{row.source_ref?.startsWith('system:') ? <p className="mt-1 text-xs text-blue-500">系统建议，已加入待核对</p> : null}</td><td className="px-4 py-3">{money(row.amount, row.currency)}</td><td className="px-4 py-3">{cny(Number(row.amount || 0) * (row.currency === 'USD' ? numericRate : 1))}</td><td className="px-4 py-3 text-right"><Button size="sm" variant="ghost" disabled={periodLocked || loading} onClick={() => { setRestrictions(current => current.filter((_, itemIndex) => itemIndex !== index)); markCashDirty(); }}>移除</Button></td></tr>)}</tbody></table></div>
+                </> : <div className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-400">当前没有受限资金。请确认客户投流款、待退款、待发工资、待付分润和税务预留是否确实为 0。</div>}
               </div>
 
-              <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs leading-5 text-slate-500">{overview.definitions.data_boundary}</p>
-                <div className="flex gap-2">
-                  {periodLocked ? isAdmin ? <Button variant="outline" onClick={() => setReopenOpen(true)}><UnlockKeyhole className="mr-2 h-4 w-4" />重新打开</Button> : null : <>
-                    <Button variant="outline" onClick={() => void saveCashPeriod()} disabled={saving || futureMonthSelected}>保存草稿</Button>
-                    {overview.cash_period ? <Button onClick={() => void transitionCashPeriod('lock')} disabled={saving || futureMonthSelected || overview.restriction_suggestions.length > 0}><LockKeyhole className="mr-2 h-4 w-4" />确认并锁定</Button> : null}
+              <div className="sticky bottom-3 z-20 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+                <div><div className="flex flex-wrap items-center gap-2"><p className="text-xs leading-5 text-slate-500">{overview.definitions.data_boundary}</p>{cashDirty ? <Badge className="bg-amber-100 text-amber-700">有未保存修改</Badge> : <Badge variant="outline">已同步</Badge>}</div>{!periodLocked && incompleteBalanceAccounts.length ? <p className="mt-1 text-xs text-amber-700">还有 {incompleteBalanceAccounts.length} 个账户未完成余额核对。</p> : null}</div>
+                <div className="flex flex-wrap gap-2">
+                  {periodLocked ? isAdmin ? <Button variant="outline" onClick={() => setReopenOpen(true)} disabled={saving || loading}><UnlockKeyhole className="mr-2 h-4 w-4" />重新打开</Button> : null : <>
+                    <Button variant="outline" onClick={() => void saveCashPeriod()} disabled={saving || loading || futureMonthSelected || !cashDirty}>保存草稿</Button>
+                    {overview.cash_period ? <Button onClick={() => void transitionCashPeriod('lock')} disabled={saving || loading || cashDirty || !cashBalancesComplete || futureMonthSelected || overview.restriction_suggestions.length > 0}><LockKeyhole className="mr-2 h-4 w-4" />确认并锁定</Button> : null}
                   </>}
                 </div>
               </div>
               {!periodLocked && overview.cash_period && overview.restriction_suggestions.length > 0 ? <p className="text-right text-xs text-amber-700">还有系统建议未加入，完成核对后才能锁定。</p> : null}
+              </>}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="signals" className="mt-4 space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Card><CardContent className="p-4"><p className="text-sm text-slate-500">近 3 月平均净利润</p><p className="mt-2 text-2xl font-bold text-emerald-700">{cny(overview.operating_signals.three_month_average_profit_cny)}</p><p className="mt-1 text-xs text-slate-400">有效样本 {overview.operating_signals.profit_sample_months} 个月</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-slate-500">在合作代运营项目</p><p className="mt-2 text-2xl font-bold text-blue-700">{overview.operating_signals.active_managed_service_projects}</p><p className="mt-1 text-xs text-slate-400">当前主要现金引擎</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-slate-500">付费 OS 项目</p><p className="mt-2 text-2xl font-bold text-violet-700">{overview.operating_signals.paid_os_projects}</p><p className="mt-1 text-xs text-slate-400">餐饮 {overview.operating_signals.paid_restaurant_os_projects ?? 0} · 美业 {overview.operating_signals.paid_beauty_os_projects ?? 0}</p><p className="mt-1 text-xs font-medium text-violet-600">阶段门槛按单一产品最高值判断，不合并凑数</p></CardContent></Card>
-            <Card><CardContent className="p-4"><p className="text-sm text-slate-500">高风险项目占比</p><p className={`mt-2 text-2xl font-bold ${overview.operating_signals.high_risk_ratio >= 0.2 ? 'text-rose-700' : 'text-emerald-700'}`}>{(overview.operating_signals.high_risk_ratio * 100).toFixed(1)}%</p><p className="mt-1 text-xs text-slate-400">{overview.operating_signals.high_risk_project_count}/{overview.operating_signals.health_project_count} 个项目</p></CardContent></Card>
+            <Link to="/rmb-profit" className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+              <Card className="h-full transition group-hover:-translate-y-0.5 group-hover:border-emerald-300 group-hover:shadow-md"><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><p className="text-sm text-slate-500">近 3 月平均净利润</p><ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-emerald-600" /></div><p className="mt-2 text-2xl font-bold text-emerald-700">{cny(overview.operating_signals.three_month_average_profit_cny)}</p><p className="mt-1 text-xs text-slate-400">有效样本 {overview.operating_signals.profit_sample_months} 个月 · 查看利润明细</p></CardContent></Card>
+            </Link>
+            <Link to="/management-decisions?section=projects" className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+              <Card className="h-full transition group-hover:-translate-y-0.5 group-hover:border-blue-300 group-hover:shadow-md"><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><p className="text-sm text-slate-500">在合作代运营项目</p><ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600" /></div><p className="mt-2 text-2xl font-bold text-blue-700">{overview.operating_signals.active_managed_service_projects}</p><p className="mt-1 text-xs text-slate-400">当前主要现金引擎 · 查看项目分类</p></CardContent></Card>
+            </Link>
+            <Link to="/management-decisions?section=projects" className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+              <Card className="h-full transition group-hover:-translate-y-0.5 group-hover:border-violet-300 group-hover:shadow-md"><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><p className="text-sm text-slate-500">付费 OS 客户</p><ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-violet-600" /></div><p className="mt-2 text-2xl font-bold text-violet-700">{paidOsCustomers}</p><p className="mt-1 text-xs text-slate-400">餐饮 {paidRestaurantOsCustomers} · 美业 {paidBeautyOsCustomers}</p><p className="mt-1 text-xs font-medium text-violet-600">只按真实实收关联后的去重客户计算</p></CardContent></Card>
+            </Link>
+            <Link to="/management-decisions?section=projects" className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+              <Card className="h-full transition group-hover:-translate-y-0.5 group-hover:border-rose-300 group-hover:shadow-md"><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><p className="text-sm text-slate-500">高风险项目占比</p><ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-rose-600" /></div><p className={`mt-2 text-2xl font-bold ${overview.operating_signals.high_risk_ratio >= 0.2 ? 'text-rose-700' : 'text-emerald-700'}`}>{(overview.operating_signals.high_risk_ratio * 100).toFixed(1)}%</p><p className="mt-1 text-xs text-slate-400">{overview.operating_signals.high_risk_project_count}/{overview.operating_signals.health_project_count} 个项目 · 查看风险客户</p></CardContent></Card>
+            </Link>
           </div>
-          <Card><CardHeader className="pb-3"><CardTitle className="text-base">团队产能与招聘门</CardTitle><p className="mt-1 text-xs text-slate-500">系统只提出招聘验证，不会因为客户数量增加就自动建议扩编。</p></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">在职/试用员工</p><p className="mt-2 text-xl font-bold text-slate-900">{overview.operating_signals.active_employee_count ?? 0}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">合作中项目</p><p className="mt-2 text-xl font-bold text-slate-900">{teamCapacity.active_projects}</p><p className="mt-1 text-xs text-slate-400">未分配 {teamCapacity.unassigned_projects}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">达到产能预警线</p><p className={`mt-2 text-xl font-bold ${teamCapacity.near_or_over_capacity ? 'text-amber-700' : 'text-emerald-700'}`}>{teamCapacity.near_or_over_capacity} 人</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">任务逾期率</p><p className={`mt-2 text-xl font-bold ${teamCapacity.overdue_rate >= 0.15 ? 'text-rose-700' : 'text-emerald-700'}`}>{(teamCapacity.overdue_rate * 100).toFixed(1)}%</p></div></div><div className={`mt-3 rounded-xl p-4 ${teamCapacity.hiring_level === 'hire' ? 'bg-rose-50 text-rose-800' : teamCapacity.hiring_level === 'process' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800'}`}><p className="font-semibold">{teamCapacity.hiring_title}</p><p className="mt-1 text-xs leading-5">{teamCapacity.hiring_message}</p></div></CardContent></Card>
-          {overview.cash_history.length ? <Card><CardHeader className="pb-3"><CardTitle className="text-base">现金快照趋势</CardTitle><p className="mt-1 text-xs text-slate-500">最多保留最近 24 个月，草稿与已确认分开显示。</p></CardHeader><CardContent><div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[680px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">月份</th><th className="px-4 py-3">状态</th><th className="px-4 py-3 text-right">账户余额</th><th className="px-4 py-3 text-right">受限资金</th><th className="px-4 py-3 text-right">可用现金</th></tr></thead><tbody>{overview.cash_history.map(row => <tr key={row.year_month} className="border-t border-slate-100"><td className="px-4 py-3 font-medium text-slate-800">{row.year_month}</td><td className="px-4 py-3"><Badge className={row.status === 'locked' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}>{row.status === 'locked' ? '已确认' : '草稿'}</Badge></td><td className="px-4 py-3 text-right">{cny(row.account_balance_cny)}</td><td className="px-4 py-3 text-right text-amber-700">{cny(row.restricted_cny)}</td><td className={`px-4 py-3 text-right font-semibold ${row.free_cash_cny >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{cny(row.free_cash_cny)}</td></tr>)}</tbody></table></div></CardContent></Card> : null}
+          <Card>
+            <CardHeader className="gap-3 pb-3 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="text-base">团队产能与招聘门</CardTitle><p className="mt-1 text-xs text-slate-500">系统只提出招聘验证，不会因为客户数量增加就自动建议扩编。</p></div><Button asChild size="sm" variant="outline"><Link to="/management-decisions?section=insights">查看产能依据<ArrowRight className="ml-1 h-4 w-4" /></Link></Button></CardHeader>
+            <CardContent><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">在职/试用员工</p><p className="mt-2 text-xl font-bold text-slate-900">{overview.operating_signals.active_employee_count ?? 0}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">合作中项目</p><p className="mt-2 text-xl font-bold text-slate-900">{teamCapacity.active_projects}</p><p className="mt-1 text-xs text-slate-400">未分配 {teamCapacity.unassigned_projects}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">达到产能预警线</p><p className={`mt-2 text-xl font-bold ${teamCapacity.near_or_over_capacity ? 'text-amber-700' : 'text-emerald-700'}`}>{teamCapacity.near_or_over_capacity} 人</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">任务逾期率</p><p className={`mt-2 text-xl font-bold ${teamCapacity.overdue_rate >= 0.15 ? 'text-rose-700' : 'text-emerald-700'}`}>{(teamCapacity.overdue_rate * 100).toFixed(1)}%</p></div></div><div className={`mt-3 rounded-xl p-4 ${teamCapacity.hiring_level === 'hire' ? 'bg-rose-50 text-rose-800' : teamCapacity.hiring_level === 'process' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800'}`}><p className="font-semibold">{teamCapacity.hiring_title}</p><p className="mt-1 text-xs leading-5">{teamCapacity.hiring_message}</p>{teamCapacity.hiring_gate_ready === false ? <p className="mt-2 text-xs font-medium">观察数据 {teamCapacity.history_weeks ?? 0}/{teamCapacity.observation_required_weeks ?? 4} 周；未达到门槛前不据此招聘。</p> : null}</div></CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-base">现金快照趋势</CardTitle><p className="mt-1 text-xs text-slate-500">最多保留最近 24 个月，草稿与已确认分开显示。</p></CardHeader>
+            <CardContent>{overview.cash_history.length ? <div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[680px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">月份</th><th className="px-4 py-3">状态</th><th className="px-4 py-3 text-right">账户余额</th><th className="px-4 py-3 text-right">受限资金</th><th className="px-4 py-3 text-right">可用现金</th></tr></thead><tbody>{overview.cash_history.map(row => <tr key={row.year_month} className="border-t border-slate-100"><td className="px-4 py-3 font-medium text-slate-800">{row.year_month}</td><td className="px-4 py-3"><Badge className={row.status === 'locked' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}>{row.status === 'locked' ? '已确认' : '草稿'}</Badge></td><td className="px-4 py-3 text-right">{cny(row.account_balance_cny)}</td><td className="px-4 py-3 text-right text-amber-700">{cny(row.restricted_cny)}</td><td className={`px-4 py-3 text-right font-semibold ${row.free_cash_cny >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{cny(row.free_cash_cny)}</td></tr>)}</tbody></table></div> : <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center"><History className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-medium text-slate-600">还没有可比较的现金快照</p><p className="mt-1 text-xs leading-5 text-slate-400">完成并锁定第一个月度快照后，趋势会从下一个月份开始形成；系统不会用空白月份补 0。</p><Button className="mt-3" size="sm" variant="outline" onClick={() => document.getElementById('cash-ledger')?.scrollIntoView({ behavior: 'smooth' })}>去核对本月现金</Button></div>}</CardContent>
+          </Card>
           <Card><CardHeader className="pb-3"><CardTitle className="text-base">30 / 60 / 90 天现金推演</CardTitle><p className="mt-1 text-xs text-slate-500">只用于经营预估，不是银行余额承诺。</p></CardHeader><CardContent>{overview.cash_health.projections.length ? <div className="grid gap-3 md:grid-cols-3">{overview.cash_health.projections.map(row => <div key={row.days} className="rounded-xl border p-4"><p className="text-xs text-slate-500">{row.days} 天后</p><p className={`mt-2 text-xl font-bold ${row.free_cash_cny >= overview.cash_health.safety_target_cny ? 'text-emerald-700' : row.free_cash_cny >= 0 ? 'text-amber-700' : 'text-rose-700'}`}>{cny(row.free_cash_cny)}</p><p className="mt-2 text-xs leading-5 text-slate-400">{row.based_on}</p></div>)}</div> : <div className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-400">暂不生成，避免用不完整数据误导决策。{overview.cash_health.projection_reason ? <span className="mt-2 block">{overview.cash_health.projection_reason}</span> : null}</div>}</CardContent></Card>
           <Card><CardContent className="p-5"><div className="grid gap-4 lg:grid-cols-3"><div className="rounded-xl bg-blue-50 p-4"><ShieldCheck className="h-5 w-5 text-blue-600" /><p className="mt-3 font-semibold text-blue-900">可用现金口径</p><p className="mt-2 text-xs leading-5 text-blue-700">{overview.definitions.free_cash}</p></div><div className="rounded-xl bg-emerald-50 p-4"><TrendingUp className="h-5 w-5 text-emerald-600" /><p className="mt-3 font-semibold text-emerald-900">利润与现金不混用</p><p className="mt-2 text-xs leading-5 text-emerald-700">{overview.definitions.profit_vs_cash}</p></div><div className="rounded-xl bg-amber-50 p-4"><AlertTriangle className="h-5 w-5 text-amber-600" /><p className="mt-3 font-semibold text-amber-900">老板确认边界</p><p className="mt-2 text-xs leading-5 text-amber-700">{overview.definitions.data_boundary}</p></div></div></CardContent></Card>
         </TabsContent>
@@ -821,7 +1061,7 @@ export default function CompanyRoadmap() {
           <div><Label>月固定支出基线（CNY）</Label><Input className="mt-1" type="number" min="1" value={settingsForm.monthly_fixed_expense_cny} onChange={event => setSettingsForm(current => current ? { ...current, monthly_fixed_expense_cny: event.target.value } : current)} /></div>
           <div><Label>现金安全月数</Label><Input className="mt-1" type="number" min="1" max="36" value={settingsForm.cash_reserve_months} onChange={event => setSettingsForm(current => current ? { ...current, cash_reserve_months: event.target.value } : current)} /></div>
           <div><Label>缺失月份默认预估汇率</Label><Input className="mt-1" type="number" min="0.1" max="20" step="0.0001" value={settingsForm.default_usd_cny_rate} onChange={event => setSettingsForm(current => current ? { ...current, default_usd_cny_rate: event.target.value } : current)} /></div>
-          <div className="sm:col-span-2"><Label>当前经营焦点</Label><Input className="mt-1" value={settingsForm.current_focus} onChange={event => setSettingsForm(current => current ? { ...current, current_focus: event.target.value } : current)} /></div>
+          <div className="sm:col-span-2"><Label>老板补充边界（可选）</Label><Input className="mt-1" value={settingsForm.current_focus} onChange={event => setSettingsForm(current => current ? { ...current, current_focus: event.target.value } : current)} placeholder="例如：现金安全线达标前，不新增固定人力" /><p className="mt-1 text-xs text-slate-500">系统建议仍是唯一经营焦点；这里只记录老板确认的约束条件。</p></div>
           <p className="sm:col-span-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">月固定支出用于安全线和现金跑道，不会自动写入财务支出。正式利润仍沿用现有财务数据。</p>
         </div> : null}<DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>取消</Button><Button onClick={() => void saveSettings()} disabled={saving}>保存设置</Button></DialogFooter></DialogContent>
       </Dialog>
@@ -838,7 +1078,7 @@ export default function CompanyRoadmap() {
       </Dialog>
 
       <Dialog open={reopenOpen} onOpenChange={setReopenOpen}>
-        <DialogContent><DialogHeader><DialogTitle>重新打开已确认快照</DialogTitle></DialogHeader><div className="py-2"><Label>修改原因 *</Label><Textarea className="mt-1" value={reopenReason} onChange={event => setReopenReason(event.target.value)} placeholder="说明为什么需要修改已确认的账户余额或受限资金" /></div><DialogFooter><Button variant="outline" onClick={() => setReopenOpen(false)}>取消</Button><Button onClick={() => void transitionCashPeriod('reopen', reopenReason)} disabled={saving || !reopenReason.trim()}>确认重新打开</Button></DialogFooter></DialogContent>
+        <DialogContent><DialogHeader><DialogTitle>重新打开已确认快照</DialogTitle></DialogHeader><div className="py-2"><Label>修改原因 *</Label><Textarea className="mt-1" value={reopenReason} onChange={event => setReopenReason(event.target.value)} placeholder="说明为什么需要修改已确认的账户余额或受限资金" /></div><DialogFooter><Button variant="outline" onClick={() => setReopenOpen(false)}>取消</Button><Button onClick={() => void transitionCashPeriod('reopen', reopenReason)} disabled={saving || loading || !reopenReason.trim()}>确认重新打开</Button></DialogFooter></DialogContent>
       </Dialog>
 
       <Dialog open={decisionOpen} onOpenChange={setDecisionOpen}>

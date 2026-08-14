@@ -5,6 +5,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -34,7 +35,6 @@ class CompanyStrategySettings(Base):
 
 class CashAccount(Base):
     __tablename__ = "cash_accounts"
-    __table_args__ = {"extend_existing": True}
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(160), nullable=False)
@@ -47,6 +47,17 @@ class CashAccount(Base):
     created_by = Column(String(160), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (
+        Index(
+            "uq_cash_accounts_active_name_currency",
+            func.lower(func.trim(name)),
+            currency,
+            unique=True,
+            sqlite_where=is_active.is_(True),
+            postgresql_where=is_active.is_(True),
+        ),
+        {"extend_existing": True},
+    )
 
 
 class CashPeriod(Base):
@@ -55,6 +66,7 @@ class CashPeriod(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     year_month = Column(String(7), nullable=False, index=True)
+    version = Column(Integer, nullable=False, default=1)
     snapshot_date = Column(Date, nullable=False)
     status = Column(String(24), nullable=False, default="draft", index=True)
     usd_cny_rate = Column(Numeric(12, 4), nullable=False)
@@ -76,8 +88,12 @@ class CashAccountBalance(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     period_id = Column(Integer, ForeignKey("cash_periods.id", ondelete="CASCADE"), nullable=False, index=True)
     account_id = Column(Integer, ForeignKey("cash_accounts.id", ondelete="RESTRICT"), nullable=False, index=True)
+    account_name = Column(String(160), nullable=True)
+    account_type = Column(String(32), nullable=True)
+    masked_identifier = Column(String(80), nullable=True)
     currency = Column(String(3), nullable=False)
     balance = Column(Numeric(18, 2), nullable=False, default=0)
+    confirmed_zero = Column(Boolean, nullable=False, default=False)
     rate_to_cny = Column(Numeric(12, 4), nullable=False, default=1)
     balance_cny = Column(Numeric(18, 2), nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

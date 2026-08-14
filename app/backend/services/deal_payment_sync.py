@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Tuple
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,7 @@ from models.customers import Customers
 from models.deals import Deals
 from models.payments import Payments
 from models.subscriptions import Subscriptions
+from services.finance_period_lock import ensure_payment_writes_open
 
 logger = logging.getLogger(__name__)
 MANAGEMENT_FEE_KEY = "management_fee"
@@ -217,6 +219,13 @@ async def sync_payment_from_deal(
         "user_id": user_id,
     }
 
+    await ensure_payment_writes_open(
+        db,
+        [payment, payload],
+        payment_ids=[payment.id] if payment and payment.id else [],
+        action="同步成交收款",
+    )
+
     if payment is None:
         payment = Payments(**payload)
         db.add(payment)
@@ -237,6 +246,13 @@ async def delete_synced_payment_for_deal(db: AsyncSession, deal_id: int, commit:
     payment = await _load_synced_payment(db, deal_id)
     if payment is None:
         return False
+
+    await ensure_payment_writes_open(
+        db,
+        [payment],
+        payment_ids=[payment.id],
+        action="删除成交同步收款",
+    )
 
     await db.delete(payment)
     if commit:
@@ -269,7 +285,13 @@ async def backfill_missing_payments_from_deals(db: AsyncSession) -> int:
         existing = await _load_synced_payment(db, deal.id)
         if existing is not None:
             continue
-        await sync_payment_from_deal(db, deal, commit=False)
+        try:
+            await sync_payment_from_deal(db, deal, commit=False)
+        except HTTPException as exc:
+            if exc.status_code != 409:
+                raise
+            logger.warning("Skipped locked historical payment backfill for deal %s: %s", deal.id, exc.detail)
+            continue
         synced_count += 1
 
     await db.commit()

@@ -232,6 +232,8 @@ async def create_tasks(
         
         logger.info(f"Tasks created successfully with id: {result.id}")
         return result
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"Validation error creating tasks: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -341,6 +343,8 @@ async def delete_taskss_batch(
         
         logger.info(f"Batch deleted {deleted_count} taskss successfully")
         return {"message": f"Successfully deleted {deleted_count} taskss", "deleted_count": deleted_count}
+    except HTTPException:
+        raise
     except ValueError as e:
         await db.rollback()
         logger.error(f"Validation error batch deleting tasks: {str(e)}")

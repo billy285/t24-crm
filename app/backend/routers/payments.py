@@ -13,6 +13,7 @@ from services.payments import PaymentsService
 from services.payment_deal_sync import sync_deal_from_payment, unlink_synced_deal_for_payment
 from services.customer_lifecycle import sync_lifecycle_from_payments
 from services.commissions import commission_ledger_available, sync_payment_commission
+from services.finance_period_lock import ensure_payment_writes_open
 from dependencies.auth import get_finance_user
 from schemas.auth import UserResponse
 
@@ -20,6 +21,13 @@ from schemas.auth import UserResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/entities/payments", tags=["payments"])
+
+
+def payment_after_update(existing, updates) -> dict:
+    return {
+        field: getattr(updates, field) if getattr(updates, field) is not None else getattr(existing, field)
+        for field in ("payment_date", "created_at", "coverage_start", "coverage_end")
+    }
 
 
 # ---------- Pydantic Schemas ----------
@@ -267,6 +275,11 @@ async def create_payments(
     """Create a new payments"""
     logger.debug(f"Creating new payments with data: {data}")
     
+    await ensure_payment_writes_open(
+        db,
+        [data],
+        action="新增收款",
+    )
     service = PaymentsService(db)
     try:
         create_data = data.model_dump()
@@ -315,6 +328,7 @@ async def create_paymentss_batch(
     results = []
     
     try:
+        await ensure_payment_writes_open(db, request.items, action="批量新增收款")
         for item_data in request.items:
             create_data = item_data.model_dump()
             sync_to_deal = bool(create_data.pop("sync_to_deal", False))
@@ -330,6 +344,8 @@ async def create_paymentss_batch(
         
         logger.info(f"Batch created {len(results)} paymentss successfully")
         return results
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch create: {str(e)}", exc_info=True)
@@ -349,12 +365,28 @@ async def update_paymentss_batch(
     results = []
     
     try:
+        existing_by_id = {
+            item.id: await service.get_by_id(item.id)
+            for item in request.items
+        }
+        affected_rows = []
+        for item in request.items:
+            existing = existing_by_id[item.id]
+            if existing:
+                affected_rows.extend([existing, payment_after_update(existing, item.updates)])
+        await ensure_payment_writes_open(
+            db,
+            affected_rows,
+            payment_ids=existing_by_id.keys(),
+            action="批量修改收款",
+        )
+
         for item in request.items:
             # Only include non-None values for partial updates
             raw_update = item.updates.model_dump()
             sync_to_deal = bool(raw_update.pop("sync_to_deal", False))
             update_dict = {k: v for k, v in raw_update.items() if v is not None}
-            existing = await service.get_by_id(item.id)
+            existing = existing_by_id[item.id]
             previous_customer_id = existing.customer_id if existing else None
             result = await service.update(item.id, update_dict)
             if result:
@@ -371,6 +403,8 @@ async def update_paymentss_batch(
         
         logger.info(f"Batch updated {len(results)} paymentss successfully")
         return results
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
@@ -394,6 +428,13 @@ async def update_payments(
         sync_to_deal = bool(raw_update.pop("sync_to_deal", False))
         update_dict = {k: v for k, v in raw_update.items() if v is not None}
         existing = await service.get_by_id(id)
+        if existing:
+            await ensure_payment_writes_open(
+                db,
+                [existing, payment_after_update(existing, data)],
+                payment_ids=[existing.id],
+                action="修改收款",
+            )
         previous_customer_id = existing.customer_id if existing else None
         result = await service.update(id, update_dict)
         if not result:
@@ -445,8 +486,18 @@ async def delete_paymentss_batch(
     deleted_count = 0
     
     try:
+        existing_by_id = {
+            item_id: await service.get_by_id(item_id)
+            for item_id in request.ids
+        }
+        await ensure_payment_writes_open(
+            db,
+            [row for row in existing_by_id.values() if row],
+            payment_ids=existing_by_id.keys(),
+            action="批量删除收款",
+        )
         for item_id in request.ids:
-            existing = await service.get_by_id(item_id)
+            existing = existing_by_id[item_id]
             customer_id = existing.customer_id if existing else None
             success = await service.delete(item_id)
             if success:
@@ -457,6 +508,8 @@ async def delete_paymentss_batch(
         
         logger.info(f"Batch deleted {deleted_count} paymentss successfully")
         return {"message": f"Successfully deleted {deleted_count} paymentss", "deleted_count": deleted_count}
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch delete: {str(e)}", exc_info=True)
@@ -475,6 +528,13 @@ async def delete_payments(
     service = PaymentsService(db)
     try:
         existing = await service.get_by_id(id)
+        if existing:
+            await ensure_payment_writes_open(
+                db,
+                [existing],
+                payment_ids=[existing.id],
+                action="删除收款",
+            )
         customer_id = existing.customer_id if existing else None
         success = await service.delete(id)
         if not success:

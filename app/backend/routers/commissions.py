@@ -34,6 +34,7 @@ from services.commissions import (
     utcnow,
 )
 from services.partner_portal import build_partner_customer_status_rows, partner_status_summary
+from services.finance_period_lock import ensure_profit_months_open
 
 
 router = APIRouter(prefix="/api/v1/commissions", tags=["commissions"])
@@ -44,6 +45,7 @@ ENTRY_TRANSITIONS = {
     "confirmed": {"payable", "reversed"},
     "payable": {"paid"},
 }
+PROFIT_COMMISSION_STATUSES = {"confirmed", "payable", "paid"}
 
 
 def actor_name(user: UserResponse) -> str:
@@ -546,6 +548,16 @@ async def transition_entry(
         raise HTTPException(status_code=404, detail="佣金记录不存在")
     if payload.to_status not in ENTRY_TRANSITIONS.get(entry.status, set()):
         raise HTTPException(status_code=409, detail=f"不允许从 {entry.status} 变更为 {payload.to_status}")
+    changes_profit_inclusion = (
+        (entry.status in PROFIT_COMMISSION_STATUSES)
+        != (payload.to_status in PROFIT_COMMISSION_STATUSES)
+    )
+    if changes_profit_inclusion:
+        await ensure_profit_months_open(
+            db,
+            [entry.occurred_at, entry.service_month],
+            action="变更佣金状态",
+        )
     if payload.to_status == "reversed" and not (payload.reason or "").strip():
         raise HTTPException(status_code=400, detail="作废必须填写原因")
     agreement = await db.get(CommissionAgreement, entry.agreement_id)

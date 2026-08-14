@@ -2,10 +2,12 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from models.ad_fund_settlements import AdFundSettlement
 from models.finance_refunds import FinanceRefund
+from models.finance_profit_closes import MonthlyProfitClose
 from models.payments import Payments
 from routers.finance_adjustments import (
     AdFundSettlementWrite,
@@ -27,6 +29,7 @@ async def _create_tables(engine) -> None:
         await connection.run_sync(Payments.__table__.create)
         await connection.run_sync(FinanceRefund.__table__.create)
         await connection.run_sync(AdFundSettlement.__table__.create)
+        await connection.run_sync(MonthlyProfitClose.__table__.create)
 
 
 @pytest.mark.asyncio
@@ -216,5 +219,128 @@ async def test_ad_fund_settlement_derives_net_topup_and_carries_remaining_balanc
                 )
             assert error.value.status_code == 400
             assert "不可修改" in error.value.detail
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_locked_profit_month_rejects_refund_and_ad_fund_changes():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        await _create_tables(engine)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with sessions() as db:
+            payment = Payments(
+                customer_id=3,
+                customer_name="Locked Cafe",
+                income_type="ads_fee",
+                amount_due=500,
+                amount_paid=500,
+                ads_recharge_amount=500,
+                currency="USD",
+                payment_date=datetime(2026, 7, 5, tzinfo=timezone.utc),
+                user_id="finance-user",
+            )
+            db.add_all([
+                payment,
+                MonthlyProfitClose(
+                    year_month="2026-07",
+                    status="locked",
+                    snapshot_json="{}",
+                    locked_by="Owner",
+                    locked_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
+                ),
+            ])
+            await db.commit()
+            await db.refresh(payment)
+
+            with pytest.raises(HTTPException) as refund_error:
+                await create_refund(
+                    RefundCreate(
+                        payment_id=payment.id,
+                        refund_amount=20,
+                        refund_date=datetime(2026, 7, 20, tzinfo=timezone.utc),
+                    ),
+                    _finance_user(),
+                    db,
+                )
+            assert refund_error.value.status_code == 409
+            assert "月结" in refund_error.value.detail
+
+            with pytest.raises(HTTPException) as settlement_error:
+                await create_ad_fund_settlement(
+                    AdFundSettlementWrite(
+                        customer_id=3,
+                        customer_name="Locked Cafe",
+                        year_month="2026-07",
+                        status="closed",
+                    ),
+                    _finance_user(),
+                    db,
+                )
+            assert settlement_error.value.status_code == 409
+            assert "月结" in settlement_error.value.detail
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_locked_future_ad_fund_month_is_preflighted_without_dirtying_current_rows():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        await _create_tables(engine)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with sessions() as db:
+            now = datetime(2026, 8, 1, tzinfo=timezone.utc)
+            july = AdFundSettlement(
+                customer_id=9, customer_name="Carry Cafe", year_month="2026-07", currency="USD",
+                opening_balance=0, funds_received=100, actual_ad_spend=20,
+                customer_refund_amount=0, recognized_spread_amount=0, adjustment_amount=0,
+                closing_balance=80, status="draft", created_at=now, updated_at=now, user_id="finance-user",
+            )
+            august = AdFundSettlement(
+                customer_id=9, customer_name="Carry Cafe", year_month="2026-08", currency="USD",
+                opening_balance=80, funds_received=0, actual_ad_spend=0,
+                customer_refund_amount=0, recognized_spread_amount=0, adjustment_amount=0,
+                closing_balance=80, status="draft", created_at=now, updated_at=now, user_id="finance-user",
+            )
+            db.add_all([
+                july,
+                august,
+                MonthlyProfitClose(
+                    year_month="2026-08", status="locked", snapshot_json="{}",
+                    locked_by="Owner", locked_at=now,
+                ),
+            ])
+            await db.commit()
+
+            with pytest.raises(HTTPException) as update_error:
+                await update_ad_fund_settlement(
+                    july.id,
+                    AdFundSettlementWrite(
+                        customer_id=9, customer_name="Carry Cafe", year_month="2026-07",
+                        actual_ad_spend=40, status="draft",
+                    ),
+                    _finance_user(),
+                    db,
+                )
+            assert update_error.value.status_code == 409
+            await db.refresh(july)
+            await db.refresh(august)
+            assert july.actual_ad_spend == 20
+            assert july.closing_balance == 80
+            assert august.opening_balance == 80
+
+            before = await db.scalar(select(func.count(AdFundSettlement.id)))
+            with pytest.raises(HTTPException) as create_error:
+                await create_ad_fund_settlement(
+                    AdFundSettlementWrite(
+                        customer_id=9, customer_name="Carry Cafe", year_month="2026-06", status="draft",
+                    ),
+                    _finance_user(),
+                    db,
+                )
+            assert create_error.value.status_code == 409
+            assert await db.scalar(select(func.count(AdFundSettlement.id))) == before
     finally:
         await engine.dispose()

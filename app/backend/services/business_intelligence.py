@@ -21,7 +21,6 @@ from models.finance_exchange_rates import MonthlyExchangeRate
 from models.finance_profit_closes import MonthlyProfitClose
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from models.payments import Payments
-from models.payroll import PayrollItems, PayrollSheets
 from models.service_progresses import Service_progresses
 from models.service_tasks import Service_tasks
 from models.subscriptions import Subscriptions
@@ -127,16 +126,6 @@ def _is_payroll_company_expense(expense: Company_expenses) -> bool:
     return any(marker in haystack for marker in PAYROLL_EXPENSE_MARKERS)
 
 
-def _payroll_net(item: PayrollItems) -> float:
-    additions = sum(_money(getattr(item, name, 0)) for name in (
-        "base_salary", "fixed_performance", "commission", "bonus", "allowance", "reimbursement",
-    ))
-    deductions = sum(_money(getattr(item, name, 0)) for name in (
-        "absence_deduction", "performance_deduction", "salary_advance_deduction", "other_deduction",
-    ))
-    return round(additions - deductions, 2)
-
-
 async def _base_rows(db: AsyncSession) -> dict[str, Any]:
     projects = (await db.execute(select(CustomerEngagement))).scalars().all()
     customers = (await db.execute(select(Customers))).scalars().all()
@@ -156,8 +145,6 @@ async def _base_rows(db: AsyncSession) -> dict[str, Any]:
     company_expenses = (await db.execute(select(Company_expenses))).scalars().all()
     exchange_rates = (await db.execute(select(MonthlyExchangeRate))).scalars().all()
     profit_closes = (await db.execute(select(MonthlyProfitClose))).scalars().all()
-    payroll_sheets = (await db.execute(select(PayrollSheets))).scalars().all()
-    payroll_items = (await db.execute(select(PayrollItems))).scalars().all()
     return {
         "projects": projects,
         "customers": customers,
@@ -171,7 +158,6 @@ async def _base_rows(db: AsyncSession) -> dict[str, Any]:
         "service_tasks": service_tasks, "progresses": progresses, "callbacks": callbacks,
         "company_expenses": company_expenses, "exchange_rates": exchange_rates,
         "profit_closes": profit_closes,
-        "payroll_sheets": payroll_sheets, "payroll_items": payroll_items,
     }
 
 
@@ -449,6 +435,22 @@ def _converted(usd_value: float, cny_value: float, rate: Optional[float]) -> Opt
 
 
 def _profit_rollup(rows: list[dict[str, Any]], label: str) -> dict[str, Any]:
+    if not rows:
+        return {
+            "label": label,
+            "start_month": None,
+            "end_month": None,
+            "month_count": 0,
+            "ready_month_count": 0,
+            "locked_month_count": 0,
+            "recognized_revenue_cny": None,
+            "cash_revenue_cny": None,
+            "total_cost_cny": None,
+            "operating_profit_cny": None,
+            "cash_profit_cny": None,
+            "operating_margin": None,
+            "status": "no_period",
+        }
     operating_ready = all(row["formal_profit_cny"] is not None for row in rows)
     cash_ready = all(row["cash_profit_cny"] is not None for row in rows)
     revenue_ready = all(row["recognized_revenue_cny_equivalent"] is not None for row in rows)
@@ -486,7 +488,6 @@ async def build_formal_monthly_profit(
     rates = [row for row in base["exchange_rates"] if row.base_currency == "USD" and row.quote_currency == "CNY"]
     rate_by_month = {row.year_month: row for row in rates}
     closes_by_month = {row.year_month: row for row in base.get("profit_closes", [])}
-    payroll_sheet_by_id = {int(row.id): row for row in base["payroll_sheets"]}
     payment_by_id = {int(row.id): row for row in base["payments"]}
     rows: list[dict[str, Any]] = []
     fallback_payment_ids: set[int] = set()
@@ -496,7 +497,7 @@ async def build_formal_monthly_profit(
         recognized_service, cash_service = Counter(), Counter()
         ad_spread, service_refunds, stripe_fees = Counter(), Counter(), Counter()
         customer_cost, channel_commission = Counter(), Counter()
-        expense_by_currency, manual_payroll_by_currency = Counter(), Counter()
+        expense_by_currency, finance_payroll_by_currency = Counter(), Counter()
 
         for payment in base["payments"]:
             currency = _currency(payment.currency)
@@ -540,20 +541,16 @@ async def build_formal_monthly_profit(
                 expense_day = _day(expense.expense_date or expense.created_at)
                 expense_month = expense_day.strftime("%Y-%m") if expense_day else ""
             if expense_month == month:
-                target = manual_payroll_by_currency if _is_payroll_company_expense(expense) else expense_by_currency
+                target = finance_payroll_by_currency if _is_payroll_company_expense(expense) else expense_by_currency
                 target[_currency(expense.currency or "CNY")] += _money(expense.amount)
 
-        paid_payroll_cny = round(sum(
-            _payroll_net(item)
-            for item in base["payroll_items"]
-            if item.payment_status == "paid"
-            and payroll_sheet_by_id.get(int(item.sheet_id))
-            and payroll_sheet_by_id[int(item.sheet_id)].month == month
-            and _currency(payroll_sheet_by_id[int(item.sheet_id)].currency) == "CNY"
-        ), 2)
-        payroll_cost_cny = paid_payroll_cny if paid_payroll_cny else round(manual_payroll_by_currency["CNY"], 2)
-        payroll_source = "paid_payroll" if paid_payroll_cny else "company_expense" if payroll_cost_cny else "none"
-        expense_by_currency["USD"] += manual_payroll_by_currency["USD"]
+        # Payroll is an independent ledger. It must never change formal company
+        # profit merely because a payroll sheet was marked paid. A wage becomes
+        # an operating cost only after Finance records it once as a wage-class
+        # company expense.
+        payroll_cost_cny = round(finance_payroll_by_currency["CNY"], 2)
+        payroll_cost_usd = round(finance_payroll_by_currency["USD"], 2)
+        payroll_source = "company_expense" if payroll_cost_cny or payroll_cost_usd else "none"
 
         rate = rate_by_month.get(month)
         locked_rate = _money(rate.average_rate) if rate and rate.status == "locked" else None
@@ -564,9 +561,9 @@ async def build_formal_monthly_profit(
             project_contribution[currency] = recognized_service[currency] + ad_spread[currency] - common_cost
             cash_project_contribution[currency] = cash_service[currency] + ad_spread[currency] - common_cost
 
-        operating_usd_net = round(project_contribution["USD"] - expense_by_currency["USD"], 2)
+        operating_usd_net = round(project_contribution["USD"] - expense_by_currency["USD"] - payroll_cost_usd, 2)
         operating_cny_net = round(project_contribution["CNY"] - expense_by_currency["CNY"] - payroll_cost_cny, 2)
-        cash_usd_net = round(cash_project_contribution["USD"] - expense_by_currency["USD"], 2)
+        cash_usd_net = round(cash_project_contribution["USD"] - expense_by_currency["USD"] - payroll_cost_usd, 2)
         cash_cny_net = round(cash_project_contribution["CNY"] - expense_by_currency["CNY"] - payroll_cost_cny, 2)
         formal_profit = _converted(operating_usd_net, operating_cny_net, locked_rate)
         cash_profit = _converted(cash_usd_net, cash_cny_net, locked_rate)
@@ -581,7 +578,7 @@ async def build_formal_monthly_profit(
             locked_rate,
         )
         total_cost = _converted(
-            service_refunds["USD"] + stripe_fees["USD"] + customer_cost["USD"] + channel_commission["USD"] + expense_by_currency["USD"],
+            service_refunds["USD"] + stripe_fees["USD"] + customer_cost["USD"] + channel_commission["USD"] + expense_by_currency["USD"] + payroll_cost_usd,
             service_refunds["CNY"] + stripe_fees["CNY"] + customer_cost["CNY"] + channel_commission["CNY"] + expense_by_currency["CNY"] + payroll_cost_cny,
             locked_rate,
         )
@@ -610,6 +607,7 @@ async def build_formal_monthly_profit(
             "cash_project_contribution_cny": round(cash_project_contribution["CNY"], 2),
             "company_expense_usd": round(expense_by_currency["USD"], 2),
             "company_expense_cny": round(expense_by_currency["CNY"], 2),
+            "payroll_cost_usd": payroll_cost_usd,
             "payroll_cost_cny": payroll_cost_cny,
             "payroll_source": payroll_source,
             "exchange_rate": locked_rate,
@@ -625,17 +623,33 @@ async def build_formal_monthly_profit(
         }
         close = closes_by_month.get(month)
         if close and close.status == "locked":
+            snapshot_applied = False
+            close_policy_issue = None
             try:
                 snapshot = json.loads(close.snapshot_json)
                 if isinstance(snapshot, dict) and snapshot.get("year_month") == month:
-                    live_row = snapshot
+                    if snapshot.get("payroll_source") == "paid_payroll":
+                        close_policy_issue = "该月结仍使用工资表自动扣利润的旧口径，请由管理员重新打开并按财务工资类公司支出重新关账。"
+                    else:
+                        live_row = snapshot
+                        snapshot_applied = True
             except (TypeError, ValueError, json.JSONDecodeError):
-                pass
-            live_row.update({
-                "close_status": "locked",
-                "closed_by": close.locked_by,
-                "closed_at": close.locked_at,
-            })
+                close_policy_issue = "该月结快照无法读取，请由管理员重新打开并重新关账。"
+            if snapshot_applied:
+                live_row.update({
+                    "close_status": "locked",
+                    "closed_by": close.locked_by,
+                    "closed_at": close.locked_at,
+                })
+            else:
+                live_row.update({
+                    "close_status": "locked",
+                    "closed_by": close.locked_by,
+                    "closed_at": close.locked_at,
+                    "profit_policy_valid": False,
+                    "reopen_required": True,
+                    "close_policy_issue": close_policy_issue or "该月结快照不完整，请由管理员重新打开并重新关账。",
+                })
         rows.append(live_row)
 
     quarter_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -646,9 +660,9 @@ async def build_formal_monthly_profit(
         year_groups[year].append(row)
 
     return {
-        "definition": "人民币经营净利润 =（按服务期确认的 USD 服务收入 + 已关账投流差价 - 退款 - Stripe 手续费 - 客户成本 - 已确认分润 - USD 公司支出）× 当月锁定平均汇率 + CNY 项目贡献 - CNY 运营支出 - 已发放工资",
+        "definition": "人民币经营净利润 =（按服务期确认的 USD 服务收入 + 已关账投流差价 - 退款 - Stripe 手续费 - 客户成本 - 已确认分润 - USD 公司支出）× 当月锁定平均汇率 + CNY 项目贡献 - CNY 运营支出 - 财务已录入的工资类公司支出",
         "cash_definition": "人民币现金口径经营结果使用实际收款月份；投流代充值本金仍不计收入。",
-        "accounting_note": "公司总利润纳入全部有效收支，不依赖项目归属；项目归属仅用于客户和业务线下钻。季付、年付按 coverage_start/coverage_end 服务期逐日分摊，缺服务期时暂按收款月并提示核对。工资只读已发放工资表，避免与财务手工工资重复扣除。",
+        "accounting_note": "公司总利润纳入全部有效收支，不依赖项目归属；项目归属仅用于客户和业务线下钻。季付、年付按 coverage_start/coverage_end 服务期逐日分摊，缺服务期时暂按收款月并提示核对。工资表保持独立且不参与利润计算；工资只有录入财务公司支出的工资类别后才扣除一次。",
         "rows": rows,
         "summary": _profit_rollup(rows, f"{start_date.isoformat()} 至 {end_date.isoformat()}"),
         "quarterly": [_profit_rollup(group, label) for label, group in sorted(quarter_groups.items())],
@@ -662,7 +676,108 @@ async def build_formal_monthly_profit(
                 if _in_period(payment.payment_date, start_date, end_date) and not payment.engagement_id and _service_amount(payment) > 0
             ),
             "locked_month_count": sum(row.get("close_status") == "locked" for row in rows),
+            "policy_mismatch_months": [row["year_month"] for row in rows if row.get("profit_policy_valid") is False],
+            "payroll_accounting_source": "company_expenses_only",
         },
+    }
+
+
+def build_os_paid_customer_evidence(base: dict[str, Any]) -> dict[str, Any]:
+    """Count conservative, receipt-backed OS customers by one business line.
+
+    A status such as ``active_paid`` is not payment evidence by itself. The
+    receipt must be positive, dated, directly linked to the engagement, and
+    consistent with both its customer and business line. Ambiguous records are
+    reported but never inferred into a milestone count.
+    """
+    os_codes = {"restaurant_os", "beauty_os"}
+    paid_statuses = {"active_paid", "reactivated"}
+    line_by_id = base.get("line_by_id") or {}
+    projects = [
+        project for project in (base.get("projects") or [])
+        if project.status in paid_statuses
+        and getattr(line_by_id.get(int(project.business_line_id)), "code", None) in os_codes
+    ]
+    project_by_id = {int(project.id): project for project in projects}
+    active_customers: dict[str, set[int]] = {code: set() for code in os_codes}
+    verified_customers: dict[str, set[int]] = {code: set() for code in os_codes}
+    for project in projects:
+        code = str(line_by_id[int(project.business_line_id)].code)
+        active_customers[code].add(int(project.customer_id))
+
+    refunds_by_payment = Counter()
+    for refund in base.get("refunds") or []:
+        refunds_by_payment[int(refund.payment_id)] += max(_money(refund.refund_amount), 0)
+    valid_receipt_count = 0
+    excluded_unlinked_receipts = 0
+    excluded_mismatched_receipts = 0
+    excluded_fully_refunded_receipts = 0
+    for payment in base.get("payments") or []:
+        paid = max(_money(getattr(payment, "amount_paid", 0)), 0)
+        management_amount = getattr(payment, "management_amount", None)
+        if management_amount is not None:
+            service_paid = min(max(_money(management_amount), 0), paid)
+        elif str(getattr(payment, "income_type", "") or "").lower() == "ads_fee":
+            service_paid = 0.0
+        else:
+            service_paid = max(paid - max(_money(getattr(payment, "ads_recharge_amount", 0)), 0), 0)
+        if service_paid <= 0.005 or not getattr(payment, "payment_date", None):
+            continue
+
+        declared_line = line_by_id.get(int(payment.business_line_id)) if getattr(payment, "business_line_id", None) else None
+        declared_code = getattr(declared_line, "code", None)
+        engagement_id = getattr(payment, "engagement_id", None)
+        project = project_by_id.get(int(engagement_id)) if engagement_id else None
+        refunded = refunds_by_payment[int(payment.id)]
+        service_refunded = min(service_paid, refunded * service_paid / paid) if paid else 0.0
+        if service_paid - service_refunded <= 0.005:
+            if project or declared_code in os_codes:
+                excluded_fully_refunded_receipts += 1
+            continue
+        if not project:
+            if declared_code in os_codes:
+                excluded_unlinked_receipts += 1
+            continue
+
+        project_code = str(line_by_id[int(project.business_line_id)].code)
+        customer_matches = int(payment.customer_id) == int(project.customer_id)
+        line_matches = not getattr(payment, "business_line_id", None) or int(payment.business_line_id) == int(project.business_line_id)
+        if not customer_matches or not line_matches:
+            excluded_mismatched_receipts += 1
+            continue
+        verified_customers[project_code].add(int(project.customer_id))
+        valid_receipt_count += 1
+
+    unverified_by_line = {
+        code: len(active_customers[code] - verified_customers[code])
+        for code in sorted(os_codes)
+    }
+    unverified_total = sum(unverified_by_line.values())
+    data_sufficient = not (unverified_total or excluded_unlinked_receipts or excluded_mismatched_receipts)
+    if data_sufficient:
+        explanation = "仅统计有正实收、实收日期及一致项目关联的不同客户；当前未发现待核对的 OS 付费关联。"
+    else:
+        explanation = (
+            "存在不能保守计入阶段门槛的 OS 记录："
+            f"{unverified_total} 个已付费状态客户缺少合格实收，"
+            f"{excluded_unlinked_receipts} 笔 OS 实收缺少项目关联，"
+            f"{excluded_mismatched_receipts} 笔实收与客户或业务线冲突，"
+            f"{excluded_fully_refunded_receipts} 笔实收已全额退款。"
+        )
+    return {
+        "counting_basis": "同一业务线内，正实收且直接关联项目，按不同客户去重",
+        "count_unit": "distinct_customer",
+        "requires_direct_engagement_link": True,
+        "by_business_line": {
+            code: len(verified_customers[code]) for code in sorted(os_codes)
+        },
+        "valid_receipt_count": valid_receipt_count,
+        "unverified_active_paid_customers": unverified_by_line,
+        "excluded_unlinked_receipts": excluded_unlinked_receipts,
+        "excluded_mismatched_receipts": excluded_mismatched_receipts,
+        "excluded_fully_refunded_receipts": excluded_fully_refunded_receipts,
+        "data_sufficient": data_sufficient,
+        "explanation": explanation,
     }
 
 
@@ -721,7 +836,11 @@ async def build_team_capacity(
     sales = await sales_automation_overview(db)
     recommendations = []
     if overloaded and overdue_rate >= 0.15:
-        recommendations.append({"level": "hire", "title": "准备补充运营产能", "message": f"{len(overloaded)} 位负责人达到预警线，任务逾期率 {overdue_rate:.0%}。先确认连续 4 周后再招聘。"})
+        recommendations.append({
+            "level": "observe",
+            "title": "开始 4 周产能观察",
+            "message": f"当前只是单次快照：{len(overloaded)} 位负责人达到预警线，任务逾期率 {overdue_rate:.0%}。请从本周起固定留存 4 周数据，现阶段不形成扩编结论。",
+        })
     elif overdue_rate >= 0.15:
         recommendations.append({"level": "process", "title": "先修流程，不急于招聘", "message": f"当前任务逾期率 {overdue_rate:.0%}，但项目负载未普遍达到预警线，优先处理分配、截止时间和阻塞。"})
     else:
@@ -733,7 +852,16 @@ async def build_team_capacity(
         recommendations.append({"level": "observe", "title": "销售招聘需结合转化率", "message": f"线索池约可支持 {pool_days:.1f} 天；连续观察人均有效沟通、商机与成交后再决定扩编。"})
     return {
         "settings": {"project_capacity_target": project_capacity_target, "capacity_warning_ratio": capacity_warning_ratio},
-        "summary": {"active_projects": len(projects), "unassigned_projects": sum(not row.owner_employee_id for row in projects), "overdue_rate": overdue_rate, "near_or_over_capacity": len(overloaded)},
+        "summary": {
+            "active_projects": len(projects),
+            "unassigned_projects": sum(not row.owner_employee_id for row in projects),
+            "overdue_rate": overdue_rate,
+            "near_or_over_capacity": len(overloaded),
+            "history_persisted": False,
+            "history_weeks": 0,
+            "observation_required_weeks": 4,
+            "hiring_gate_ready": False,
+        },
         "employees": sorted(operations, key=lambda row: (row["utilization"], row["overdue_tasks"] + row["overdue_delivery_tasks"]), reverse=True),
         "sales_lead_capacity": sales, "recommendations": recommendations,
     }
@@ -753,5 +881,6 @@ async def build_growth_dashboard(
         "unit_economics": await build_unit_economics(db, start_date=start_date, end_date=end_date, base=base),
         "formal_monthly_profit": await build_formal_monthly_profit(db, start_date=start_date, end_date=end_date, base=base),
         "customer_health": await build_customer_health(db, today=end_date, base=base),
+        "os_paid_customer_evidence": build_os_paid_customer_evidence(base),
         "team_capacity": await build_team_capacity(db, project_capacity_target=project_capacity_target, capacity_warning_ratio=capacity_warning_ratio, base=base),
     }

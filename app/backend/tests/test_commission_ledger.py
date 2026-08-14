@@ -16,6 +16,7 @@ from models.commissions import (
 from models.customers import Customers
 from models.employees import Employees
 from models.finance_refunds import FinanceRefund
+from models.finance_profit_closes import MonthlyProfitClose
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from models.payments import Payments
 from models.subscriptions import Subscriptions
@@ -40,6 +41,7 @@ async def _create_tables(engine) -> None:
         BusinessLine.__table__, ProductCatalog.__table__, CustomerEngagement.__table__,
         SalesPartner.__table__, CommissionAgreement.__table__, CustomerCommissionAttribution.__table__,
         CommissionEntry.__table__, CommissionStatusEvent.__table__,
+        MonthlyProfitClose.__table__,
     ]
     async with engine.begin() as connection:
         for table in tables:
@@ -135,6 +137,23 @@ async def test_confirmed_snapshot_is_locked_and_partner_stop_blocks_future_recei
             await transition_entry(entry.id, EntryTransitionInput(to_status="payable"), finance, db)
         assert suspended_error.value.status_code == 409
         partner.status = "active"
+        db.add(MonthlyProfitClose(
+            year_month="2026-01",
+            status="locked",
+            snapshot_json="{}",
+            locked_by="Owner",
+            locked_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        ))
+        await db.commit()
+        payable = await transition_entry(entry.id, EntryTransitionInput(to_status="payable"), finance, db)
+        assert payable["status"] == "payable"
+        paid = await transition_entry(
+            entry.id,
+            EntryTransitionInput(to_status="paid", payout_reference="PAY-2026-001"),
+            finance,
+            db,
+        )
+        assert paid["status"] == "paid"
 
         original_amount = entry.commission_amount
         payment = await db.get(Payments, 1)
@@ -147,6 +166,45 @@ async def test_confirmed_snapshot_is_locked_and_partner_stop_blocks_future_recei
         entries = (await db.scalars(select(CommissionEntry).order_by(CommissionEntry.id))).all()
         assert len(entries) == 1
         assert entries[0].commission_amount == original_amount
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_locked_month_blocks_commission_entering_profit_but_allows_non_profit_reversal():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    await _create_tables(engine)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    finance = UserResponse(id="1", email="finance@example.com", name="Finance", role="finance")
+
+    async with session_factory() as db:
+        db.add_all([
+            Customers(id=1, business_name="First", contact_name="Owner", phone="1"),
+            SalesPartner(id=1, partner_code="P001", name="Partner", partner_type="partner", status="active", joined_at=date(2026, 1, 1)),
+            CommissionAgreement(id=1, partner_id=1, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1}), refund_guard_days=0, effective_from=date(2026, 1, 1), status="active"),
+            CustomerCommissionAttribution(id=1, customer_id=1, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
+            _payment(1, 1, datetime(2026, 1, 5, tzinfo=timezone.utc)),
+            MonthlyProfitClose(
+                year_month="2026-01", status="locked", snapshot_json="{}",
+                locked_by="Owner", locked_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+            ),
+        ])
+        await db.commit()
+        await scan_commissions(db)
+        entry = await db.scalar(select(CommissionEntry))
+
+        with pytest.raises(HTTPException) as closed_month_error:
+            await transition_entry(entry.id, EntryTransitionInput(to_status="confirmed"), finance, db)
+        assert closed_month_error.value.status_code == 409
+        assert "月结" in closed_month_error.value.detail
+
+        reversed_result = await transition_entry(
+            entry.id,
+            EntryTransitionInput(to_status="reversed", reason="无需结算"),
+            finance,
+            db,
+        )
+        assert reversed_result["status"] == "reversed"
 
     await engine.dispose()
 

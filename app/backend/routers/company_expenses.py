@@ -1,22 +1,48 @@
 import json
 import logging
+import re
 from typing import List, Optional
 
 from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_finance_user
 from schemas.auth import UserResponse
 from services.company_expenses import Company_expensesService
+from services.finance_period_lock import ensure_profit_months_open
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/entities/company_expenses", tags=["company_expenses"])
+
+
+def company_expense_month_value(row) -> object:
+    def value(name: str):
+        return row.get(name) if isinstance(row, dict) else getattr(row, name, None)
+
+    return value("expense_month") or value("expense_date") or value("created_at") or datetime.now()
+
+
+def company_expense_after_update(existing, updates) -> dict:
+    return {
+        "expense_month": updates.expense_month if "expense_month" in updates.model_fields_set else existing.expense_month,
+        "expense_date": updates.expense_date if updates.expense_date is not None else existing.expense_date,
+        "created_at": updates.created_at if updates.created_at is not None else existing.created_at,
+    }
+
+
+def normalized_expense_month(value: Optional[str]) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", text):
+        raise ValueError("支出月份必须为 YYYY-MM")
+    return text
 
 
 # ---------- Pydantic Schemas ----------
@@ -32,6 +58,11 @@ class Company_expensesData(BaseModel):
     recorded_by: Optional[str] = None
     created_at: Optional[datetime] = None
 
+    @field_validator("expense_month", mode="before")
+    @classmethod
+    def validate_expense_month(cls, value):
+        return normalized_expense_month(value)
+
 
 class Company_expensesUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
@@ -45,6 +76,11 @@ class Company_expensesUpdateData(BaseModel):
     recorded_by: Optional[str] = None
     created_at: Optional[datetime] = None
     user_id: Optional[str] = None
+
+    @field_validator("expense_month", mode="before")
+    @classmethod
+    def validate_expense_month(cls, value):
+        return normalized_expense_month(value)
 
 
 class Company_expensesResponse(BaseModel):
@@ -204,6 +240,7 @@ async def create_company_expenses(
 ):
     """Create a new company_expenses"""
     logger.debug(f"Creating new company_expenses with data: {data}")
+    await ensure_profit_months_open(db, [company_expense_month_value(data)], action="新增运营支出")
     
     service = Company_expensesService(db)
     try:
@@ -234,6 +271,11 @@ async def create_company_expensess_batch(
     results = []
     
     try:
+        await ensure_profit_months_open(
+            db,
+            [company_expense_month_value(item) for item in request.items],
+            action="批量新增运营支出",
+        )
         for item_data in request.items:
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
@@ -241,6 +283,8 @@ async def create_company_expensess_batch(
         
         logger.info(f"Batch created {len(results)} company_expensess successfully")
         return results
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch create: {str(e)}", exc_info=True)
@@ -260,15 +304,33 @@ async def update_company_expensess_batch(
     results = []
     
     try:
+        existing_by_id = {
+            item.id: await service.get_by_id(item.id)
+            for item in request.items
+        }
+        affected_months = []
+        for item in request.items:
+            existing = existing_by_id[item.id]
+            if existing:
+                affected_months.extend([
+                    company_expense_month_value(existing),
+                    company_expense_month_value(company_expense_after_update(existing, item.updates)),
+                ])
+        await ensure_profit_months_open(db, affected_months, action="批量修改运营支出")
+
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
+            if "expense_month" in item.updates.model_fields_set:
+                update_dict["expense_month"] = item.updates.expense_month
             result = await service.update(item.id, update_dict)
             if result:
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} company_expensess successfully")
         return results
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
@@ -289,6 +351,18 @@ async def update_company_expenses(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
+        if "expense_month" in data.model_fields_set:
+            update_dict["expense_month"] = data.expense_month
+        existing = await service.get_by_id(id)
+        if existing:
+            await ensure_profit_months_open(
+                db,
+                [
+                    company_expense_month_value(existing),
+                    company_expense_month_value(company_expense_after_update(existing, data)),
+                ],
+                action="修改运营支出",
+            )
         result = await service.update(id, update_dict)
         if not result:
             logger.warning(f"Company_expenses with id {id} not found for update")
@@ -319,6 +393,15 @@ async def delete_company_expensess_batch(
     deleted_count = 0
     
     try:
+        existing_by_id = {
+            item_id: await service.get_by_id(item_id)
+            for item_id in request.ids
+        }
+        await ensure_profit_months_open(
+            db,
+            [company_expense_month_value(row) for row in existing_by_id.values() if row],
+            action="批量删除运营支出",
+        )
         for item_id in request.ids:
             success = await service.delete(item_id)
             if success:
@@ -326,6 +409,8 @@ async def delete_company_expensess_batch(
         
         logger.info(f"Batch deleted {deleted_count} company_expensess successfully")
         return {"message": f"Successfully deleted {deleted_count} company_expensess", "deleted_count": deleted_count}
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch delete: {str(e)}", exc_info=True)
@@ -343,6 +428,13 @@ async def delete_company_expenses(
     
     service = Company_expensesService(db)
     try:
+        existing = await service.get_by_id(id)
+        if existing:
+            await ensure_profit_months_open(
+                db,
+                [company_expense_month_value(existing)],
+                action="删除运营支出",
+            )
         success = await service.delete(id)
         if not success:
             logger.warning(f"Company_expenses with id {id} not found for deletion")

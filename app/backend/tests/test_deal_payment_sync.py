@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -9,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 from core.database import Base
 from models.customers import Customers
 from models.deals import Deals
+from models.finance_profit_closes import MonthlyProfitClose
 from models.payments import Payments
 from models.subscriptions import Subscriptions
 from services.deal_payment_sync import (
@@ -123,6 +125,36 @@ async def test_backfill_missing_payments_from_deals_creates_linked_income(db_ses
 
     synced_count_again = await backfill_missing_payments_from_deals(db_session)
     assert synced_count_again == 0
+
+
+@pytest.mark.asyncio
+async def test_deal_payment_sync_cannot_write_locked_receipt_or_coverage_month(db_session):
+    customer = await seed_customer(db_session, business_name="Locked Coverage")
+    deal = await seed_deal(
+        db_session,
+        customer,
+        deal_date=datetime(2026, 8, 5, 12, 0, 0),
+        service_start_date=datetime(2026, 7, 1, 0, 0, 0),
+        service_end_date=datetime(2026, 8, 1, 0, 0, 0),
+    )
+    db_session.add(MonthlyProfitClose(
+        year_month="2026-07",
+        status="locked",
+        snapshot_json="{}",
+        locked_by="Owner",
+        locked_at=datetime(2026, 8, 1, 0, 0, 0),
+    ))
+    await db_session.commit()
+
+    with pytest.raises(HTTPException) as locked_error:
+        await sync_payment_from_deal(db_session, deal)
+    assert locked_error.value.status_code == 409
+    assert (await db_session.scalars(select(Payments))).all() == []
+
+    # Startup backfill skips the historical locked candidate instead of making
+    # the application unavailable or silently changing the closed ledger.
+    assert await backfill_missing_payments_from_deals(db_session) == 0
+    assert (await db_session.scalars(select(Payments))).all() == []
 
 
 @pytest.mark.asyncio

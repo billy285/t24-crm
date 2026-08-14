@@ -2,11 +2,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
+from fastapi import HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.tasks import Tasks
 from models.automation import DataQualityIssue
+from models.company_roadmap import StrategyRecommendationDecision
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +110,7 @@ class TasksService:
                     raise ValueError("系统任务完成时必须填写处理结果")
                 obj.completion_result = completion_result or obj.completion_result
                 obj.completed_at = now
-            elif next_status and next_status not in {"completed", "cancelled"}:
+            elif next_status:
                 obj.completed_at = None
 
             if obj.automation_issue_id and next_status:
@@ -133,6 +135,24 @@ class TasksService:
                         issue.resolved_at = None
                         issue.resolution_note = None
 
+            if next_status:
+                decision = (
+                    await self.db.execute(
+                        select(StrategyRecommendationDecision).where(
+                            StrategyRecommendationDecision.task_id == obj.id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if decision:
+                    if next_status == "completed":
+                        if not str(obj.completion_result or "").strip():
+                            raise ValueError("公司里程碑任务完成时必须填写处理结果")
+                        decision.status = "completed"
+                    elif next_status == "cancelled":
+                        decision.status = "deferred"
+                    elif next_status in {"pending", "in_progress"} and decision.status != "accepted":
+                        decision.status = "accepted"
+
             await self.db.commit()
             await self.db.refresh(obj)
             logger.info(f"Updated tasks {obj_id}")
@@ -153,6 +173,18 @@ class TasksService:
                 raise ValueError("系统自动任务属于数据质量闭环，不能删除；可以完成并填写处理结果")
             if obj.opportunity_id:
                 raise ValueError("商机跟进任务属于商机闭环，不能单独删除；请在商机中成交或关闭")
+            roadmap_decision = (
+                await self.db.execute(
+                    select(StrategyRecommendationDecision.id).where(
+                        StrategyRecommendationDecision.task_id == obj.id
+                    )
+                )
+            ).scalar_one_or_none()
+            if roadmap_decision is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="公司里程碑任务属于经营决策闭环，不能直接删除；请先在公司战略与里程碑中解除或调整决策",
+                )
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted tasks {obj_id}")

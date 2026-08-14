@@ -291,10 +291,11 @@ async def test_growth_dashboard_separates_ad_funds_and_drives_owner_decisions(wo
     )
     february = next(row for row in refreshed.json()["formal_monthly_profit"]["rows"] if row["year_month"] == "2026-02")
     assert february["exchange_rate"] == 7.2
-    assert february["payroll_cost_cny"] == 1000
-    assert february["payroll_source"] == "paid_payroll"
+    # 工资表保持独立核算；只有财务公司支出中的工资类别才进入经营利润。
+    assert february["payroll_cost_cny"] == 0
+    assert february["payroll_source"] == "none"
     assert february["recognized_service_revenue_usd"] == 396
-    assert february["formal_profit_cny"] == 1851.2
+    assert february["formal_profit_cny"] == 2851.2
     assert refreshed.json()["formal_monthly_profit"]["data_quality"]["unlinked_payment_count"] == 1
 
     close_response = await client.put(
@@ -321,7 +322,7 @@ async def test_growth_dashboard_separates_ad_funds_and_drives_owner_decisions(wo
     )
     locked_february = locked_refresh.json()["formal_monthly_profit"]["rows"][0]
     assert locked_february["close_status"] == "locked"
-    assert locked_february["formal_profit_cny"] == 1851.2
+    assert locked_february["formal_profit_cny"] == 2851.2
     reopen_response = await client.put(
         "/api/v1/management-decisions/profit-closes/2026-02",
         headers=auth_headers("admin", 1),
@@ -334,7 +335,7 @@ async def test_growth_dashboard_separates_ad_funds_and_drives_owner_decisions(wo
     )
     reopened_february = reopened_refresh.json()["formal_monthly_profit"]["rows"][0]
     assert reopened_february["close_status"] == "open"
-    assert reopened_february["formal_profit_cny"] == 7611.2
+    assert reopened_february["formal_profit_cny"] == 8611.2
 
     denied = await client.get(
         "/api/v1/management-decisions/growth-dashboard",

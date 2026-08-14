@@ -15,6 +15,7 @@ from models.ad_fund_settlements import AdFundSettlement
 from models.finance_refunds import FinanceRefund
 from models.payments import Payments
 from services.commissions import commission_ledger_available, sync_refund_commission
+from services.finance_period_lock import ensure_profit_months_open
 from schemas.auth import UserResponse
 
 
@@ -103,6 +104,7 @@ async def create_refund(
     current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await ensure_profit_months_open(db, [data.refund_date], action="新增退款")
     payment = await db.get(Payments, data.payment_id)
     if not payment:
         raise HTTPException(status_code=404, detail="原收款记录不存在")
@@ -278,6 +280,28 @@ async def _automatic_opening_balance(
     return _money(previous.closing_balance) if previous else 0
 
 
+async def _ensure_future_ad_fund_months_open(
+    db: AsyncSession,
+    customer_id: int,
+    currency: str,
+    after_month: str,
+) -> None:
+    future_months = (
+        await db.scalars(
+            select(AdFundSettlement.year_month).where(
+                AdFundSettlement.customer_id == customer_id,
+                AdFundSettlement.currency == currency,
+                AdFundSettlement.year_month > after_month,
+            )
+        )
+    ).all()
+    await ensure_profit_months_open(
+        db,
+        future_months,
+        action="联动重算后续投流月结",
+    )
+
+
 async def _recalculate_future_ad_fund_settlements(
     db: AsyncSession,
     customer_id: int,
@@ -296,6 +320,11 @@ async def _recalculate_future_ad_fund_settlements(
             .order_by(AdFundSettlement.year_month, AdFundSettlement.id)
         )
     ).all()
+    await ensure_profit_months_open(
+        db,
+        [row.year_month for row in future_rows],
+        action="联动重算后续投流月结",
+    )
     opening_balance = _money(carried_balance)
     for row in future_rows:
         funds_received = await _net_ads_received(db, customer_id, row.year_month, currency)
@@ -344,6 +373,7 @@ async def create_ad_fund_settlement(
     current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await ensure_profit_months_open(db, [data.year_month], action="新增投流月结")
     existing = await db.scalar(
         select(AdFundSettlement).where(
             AdFundSettlement.customer_id == data.customer_id,
@@ -353,6 +383,7 @@ async def create_ad_fund_settlement(
     )
     if existing:
         raise HTTPException(status_code=409, detail="该客户该月份已有投流结算，请编辑原记录")
+    await _ensure_future_ad_fund_months_open(db, data.customer_id, data.currency, data.year_month)
     opening_balance = await _automatic_opening_balance(db, data.customer_id, data.year_month, data.currency)
     data = data.model_copy(update={"opening_balance": opening_balance})
     funds_received = await _net_ads_received(db, data.customer_id, data.year_month, data.currency)
@@ -370,17 +401,21 @@ async def create_ad_fund_settlement(
         updated_at=now,
         user_id=str(current_user.id),
     )
-    db.add(settlement)
-    await db.flush()
-    await _recalculate_future_ad_fund_settlements(
-        db,
-        settlement.customer_id,
-        settlement.currency,
-        settlement.year_month,
-        settlement.closing_balance,
-    )
-    await db.commit()
-    await db.refresh(settlement)
+    try:
+        db.add(settlement)
+        await db.flush()
+        await _recalculate_future_ad_fund_settlements(
+            db,
+            settlement.customer_id,
+            settlement.currency,
+            settlement.year_month,
+            settlement.closing_balance,
+        )
+        await db.commit()
+        await db.refresh(settlement)
+    except Exception:
+        await db.rollback()
+        raise
     return settlement
 
 
@@ -394,29 +429,39 @@ async def update_ad_fund_settlement(
     settlement = await db.get(AdFundSettlement, settlement_id)
     if not settlement:
         raise HTTPException(status_code=404, detail="投流结算记录不存在")
+    await ensure_profit_months_open(
+        db,
+        [settlement.year_month, data.year_month],
+        action="修改投流月结",
+    )
     if (
         settlement.customer_id != data.customer_id
         or settlement.year_month != data.year_month
         or settlement.currency != data.currency
     ):
         raise HTTPException(status_code=400, detail="客户、结算月份和币种不可修改；如需调整请新建正确月份的月结")
+    await _ensure_future_ad_fund_months_open(db, data.customer_id, data.currency, data.year_month)
     opening_balance = await _automatic_opening_balance(db, data.customer_id, data.year_month, data.currency)
     data = data.model_copy(update={"opening_balance": opening_balance})
     funds_received = await _net_ads_received(db, data.customer_id, data.year_month, data.currency)
     _available, closing = _settlement_values(data, funds_received)
-    for key, value in data.model_dump().items():
-        setattr(settlement, key, value)
-    settlement.funds_received = funds_received
-    settlement.closing_balance = closing
-    settlement.updated_at = _utcnow()
-    await db.flush()
-    await _recalculate_future_ad_fund_settlements(
-        db,
-        settlement.customer_id,
-        settlement.currency,
-        settlement.year_month,
-        settlement.closing_balance,
-    )
-    await db.commit()
-    await db.refresh(settlement)
+    try:
+        for key, value in data.model_dump().items():
+            setattr(settlement, key, value)
+        settlement.funds_received = funds_received
+        settlement.closing_balance = closing
+        settlement.updated_at = _utcnow()
+        await db.flush()
+        await _recalculate_future_ad_fund_settlements(
+            db,
+            settlement.customer_id,
+            settlement.currency,
+            settlement.year_month,
+            settlement.closing_balance,
+        )
+        await db.commit()
+        await db.refresh(settlement)
+    except Exception:
+        await db.rollback()
+        raise
     return settlement
