@@ -171,6 +171,16 @@ async def test_cash_snapshot_calculates_free_cash_and_locks_with_audit(roadmap_c
     )
     assert cny_account.status_code == 201
     assert usd_account.status_code == 201
+    assert cny_account.json()["account"] == {
+        "id": cny_account.json()["id"],
+        "name": "公司人民币账户",
+        "account_type": "bank",
+        "currency": "CNY",
+        "masked_identifier": None,
+        "is_active": True,
+        "sort_order": 0,
+        "notes": None,
+    }
     unsafe_account = await roadmap_client.post(
         "/api/v1/company-roadmap/cash-accounts",
         headers=headers,
@@ -184,6 +194,11 @@ async def test_cash_snapshot_calculates_free_cash_and_locks_with_audit(roadmap_c
     assert unsafe_account.status_code == 422
 
     overview = (await roadmap_client.get("/api/v1/company-roadmap/overview", headers=headers)).json()
+    assert overview["cash_period"] is None
+    assert [(row["name"], row["currency"], row["is_active"]) for row in overview["accounts"]] == [
+        ("公司人民币账户", "CNY", True),
+        ("公司美元账户", "USD", True),
+    ]
     suggestions = overview["restriction_suggestions"]
     assert {(row["category"], row["amount"]) for row in suggestions} == {
         ("client_ad_funds", 3000.0),

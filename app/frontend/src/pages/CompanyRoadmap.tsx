@@ -216,9 +216,30 @@ const money = (value: number, currency: string) => currency === 'USD'
   ? `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   : cny(value);
 
-const errorMessage = (error: any, fallback: string) => (
-  error?.data?.detail || error?.response?.data?.detail || error?.message || fallback
-);
+const errorMessage = (error: any, fallback: string) => {
+  const detail = error?.data?.detail ?? error?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const fieldLabels: Record<string, string> = {
+      name: '账户名称',
+      account_type: '账户类型',
+      currency: '币种',
+      masked_identifier: '脱敏末位/简称',
+      sort_order: '显示顺序',
+      notes: '备注',
+    };
+    const messages = detail.map(item => {
+      const field = Array.isArray(item?.loc) ? String(item.loc[item.loc.length - 1] || '') : '';
+      const message = typeof item?.msg === 'string'
+        ? item.msg.replace(/^Value error,\s*/i, '')
+        : '';
+      if (!message) return '';
+      return fieldLabels[field] ? `${fieldLabels[field]}：${message}` : message;
+    }).filter(Boolean);
+    if (messages.length) return messages.join('；');
+  }
+  return typeof error?.message === 'string' && error.message.trim() ? error.message : fallback;
+};
 
 const recommendationTone = {
   critical: 'border-rose-200 bg-rose-50',
@@ -265,7 +286,9 @@ export default function CompanyRoadmap() {
   const [accountForm, setAccountForm] = useState<AccountForm>({
     name: '', account_type: 'bank', currency: 'CNY', masked_identifier: '', is_active: true, sort_order: '0', notes: '',
   });
+  const [accountFormError, setAccountFormError] = useState('');
   const accountNameRef = useRef<HTMLInputElement | null>(null);
+  const overviewRequestRef = useRef(0);
   const [restrictionOpen, setRestrictionOpen] = useState(false);
   const [restrictionDraft, setRestrictionDraft] = useState<Restriction>({
     category: 'tax_reserve', description: '', currency: 'CNY', amount: 0, notes: '',
@@ -298,20 +321,26 @@ export default function CompanyRoadmap() {
     }
   }, [selectedMonth]);
 
-  const loadOverview = useCallback(async (month = selectedMonth) => {
+  const loadOverview = useCallback(async (month = selectedMonth, showError = true) => {
+    const requestId = ++overviewRequestRef.current;
     setLoading(true);
     try {
       const response = await invokeWithAuth({
         url: `/api/v1/company-roadmap/overview?month=${encodeURIComponent(month)}`,
         method: 'GET',
       });
+      if (requestId !== overviewRequestRef.current) return false;
       const data = response.data as Overview;
       setOverview(data);
       hydrateEditor(data);
+      return true;
     } catch (error) {
-      toast.error(errorMessage(error, '公司战略数据读取失败'));
+      if (requestId === overviewRequestRef.current && showError) {
+        toast.error(errorMessage(error, '公司战略数据读取失败'));
+      }
+      return false;
     } finally {
-      setLoading(false);
+      if (requestId === overviewRequestRef.current) setLoading(false);
     }
   }, [hydrateEditor, selectedMonth]);
 
@@ -377,6 +406,7 @@ export default function CompanyRoadmap() {
 
   const openNewAccount = () => {
     setAccountForm({ name: '', account_type: 'bank', currency: 'CNY', masked_identifier: '', is_active: true, sort_order: '0', notes: '' });
+    setAccountFormError('');
     setAccountOpen(true);
   };
 
@@ -387,6 +417,7 @@ export default function CompanyRoadmap() {
   }, [accountOpen]);
 
   const openEditAccount = (account: Account) => {
+    setAccountFormError('');
     setAccountForm({
       id: account.id,
       name: account.name,
@@ -401,22 +432,65 @@ export default function CompanyRoadmap() {
   };
 
   const saveAccount = async () => {
-    if (!accountForm.name.trim()) {
-      toast.error('请输入账户名称');
+    const name = accountForm.name.trim();
+    const maskedIdentifier = accountForm.masked_identifier.trim();
+    const notes = accountForm.notes.trim();
+    const sortOrder = Number(accountForm.sort_order || 0);
+    const digitCount = (maskedIdentifier.match(/\d/g) || []).length;
+    let validationError = '';
+    if (!name) validationError = '请输入账户名称。';
+    else if (name.length > 160) validationError = '账户名称不能超过 160 个字符。';
+    else if (maskedIdentifier.length > 80) validationError = '脱敏末位/简称不能超过 80 个字符。';
+    else if (digitCount > 6) validationError = '这里只能填写账户简称或最多 6 位末号，请勿输入完整银行卡号。';
+    else if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 999) validationError = '显示顺序必须是 0–999 的整数。';
+    else if (notes.length > 1000) validationError = '备注不能超过 1000 个字符。';
+    if (validationError) {
+      setAccountFormError(validationError);
+      toast.error(validationError);
       return;
     }
+    setAccountFormError('');
     setSaving(true);
     try {
-      await invokeWithAuth({
+      const response = await invokeWithAuth({
         url: accountForm.id ? `/api/v1/company-roadmap/cash-accounts/${accountForm.id}` : '/api/v1/company-roadmap/cash-accounts',
         method: accountForm.id ? 'PUT' : 'POST',
-        data: { ...accountForm, name: accountForm.name.trim(), sort_order: Number(accountForm.sort_order || 0) },
+        data: {
+          name,
+          account_type: accountForm.account_type,
+          currency: accountForm.currency,
+          masked_identifier: maskedIdentifier || null,
+          is_active: accountForm.is_active,
+          sort_order: sortOrder,
+          notes: notes || null,
+        },
+      });
+      const savedAccount = (response.data?.account || {
+        id: Number(response.data?.id || accountForm.id),
+        name,
+        account_type: accountForm.account_type,
+        currency: accountForm.currency,
+        masked_identifier: maskedIdentifier || null,
+        is_active: accountForm.is_active,
+        sort_order: sortOrder,
+        notes: notes || null,
+      }) as Account;
+      setOverview(current => {
+        if (!current || !savedAccount.id) return current;
+        const accounts = current.accounts
+          .filter(account => account.id !== savedAccount.id)
+          .concat(savedAccount)
+          .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id);
+        return { ...current, accounts };
       });
       toast.success(accountForm.id ? '账户已更新' : '账户已新增');
       setAccountOpen(false);
-      await loadOverview();
+      const refreshed = await loadOverview(selectedMonth, false);
+      if (!refreshed) toast.warning('账户已经保存并显示；其他经营数据暂时没有同步，请稍后点“刷新”。');
     } catch (error) {
-      toast.error(errorMessage(error, '账户保存失败'));
+      const message = errorMessage(error, '账户保存失败');
+      setAccountFormError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -681,24 +755,25 @@ export default function CompanyRoadmap() {
                 {accountOpen ? <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-sm sm:p-5">
                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div><h4 className="font-semibold text-slate-900">{accountForm.id ? '编辑现金账户' : '新增现金账户'}</h4><p className="mt-1 text-xs leading-5 text-slate-500">账户建立后，再在下方填写本月核对余额。不要录完整银行卡号、登录信息或密码。</p></div>
-                    <Button size="sm" variant="ghost" onClick={() => setAccountOpen(false)}>取消</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setAccountFormError(''); setAccountOpen(false); }}>取消</Button>
                   </div>
+                  {accountFormError ? <div role="alert" className="mb-4 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{accountFormError}</span></div> : null}
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="sm:col-span-2"><Label htmlFor="cash-account-name">账户名称 *</Label><Input ref={accountNameRef} id="cash-account-name" className="mt-1 bg-white" value={accountForm.name} onChange={event => setAccountForm(current => ({ ...current, name: event.target.value }))} placeholder="例如：美国公司运营账户" /></div>
+                    <div className="sm:col-span-2"><Label htmlFor="cash-account-name">账户名称 *</Label><Input ref={accountNameRef} id="cash-account-name" className="mt-1 bg-white" value={accountForm.name} onChange={event => { setAccountFormError(''); setAccountForm(current => ({ ...current, name: event.target.value })); }} placeholder="例如：美国公司运营账户" /></div>
                     <div><Label>账户类型</Label><NativeSelect className="mt-1" value={accountForm.account_type} onChange={value => setAccountForm(current => ({ ...current, account_type: value }))} options={[{ value: 'bank', label: '银行账户' }, { value: 'payment_platform', label: '支付平台' }, { value: 'cash', label: '现金' }, { value: 'other', label: '其他' }]} /></div>
                     <div><Label>币种</Label><NativeSelect className="mt-1" value={accountForm.currency} onChange={value => setAccountForm(current => ({ ...current, currency: value as 'USD' | 'CNY' }))} options={[{ value: 'CNY', label: 'CNY' }, { value: 'USD', label: 'USD' }]} /></div>
-                    <div><Label htmlFor="cash-account-mask">脱敏末位/简称</Label><Input id="cash-account-mask" className="mt-1 bg-white" value={accountForm.masked_identifier} onChange={event => setAccountForm(current => ({ ...current, masked_identifier: event.target.value }))} placeholder="例如：•••• 2850" /></div>
+                    <div><Label htmlFor="cash-account-mask">脱敏末位/简称</Label><Input id="cash-account-mask" className="mt-1 bg-white" value={accountForm.masked_identifier} onChange={event => { setAccountFormError(''); setAccountForm(current => ({ ...current, masked_identifier: event.target.value })); }} placeholder="例如：Mercury •••• 2850" /><p className="mt-1 text-xs text-slate-500">可留空；如填写数字，最多只填末 6 位。</p></div>
                     <div><Label htmlFor="cash-account-order">显示顺序</Label><Input id="cash-account-order" className="mt-1 bg-white" type="number" min="0" value={accountForm.sort_order} onChange={event => setAccountForm(current => ({ ...current, sort_order: event.target.value }))} /></div>
                     <div className="sm:col-span-2"><Label htmlFor="cash-account-notes">备注</Label><Input id="cash-account-notes" className="mt-1 bg-white" value={accountForm.notes} onChange={event => setAccountForm(current => ({ ...current, notes: event.target.value }))} placeholder="可选，例如账户用途或核对负责人" /></div>
                     {accountForm.id ? <label className="sm:col-span-2 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={accountForm.is_active} onChange={event => setAccountForm(current => ({ ...current, is_active: event.target.checked }))} />继续用于后续现金快照</label> : null}
                   </div>
-                  <div className="mt-4 flex flex-col-reverse gap-2 border-t border-blue-100 pt-4 sm:flex-row sm:justify-end"><Button variant="outline" onClick={() => setAccountOpen(false)}>取消</Button><Button onClick={() => void saveAccount()} disabled={saving}>{saving ? '保存中…' : '保存账户'}</Button></div>
+                  <div className="mt-4 flex flex-col-reverse gap-2 border-t border-blue-100 pt-4 sm:flex-row sm:justify-end"><Button variant="outline" onClick={() => { setAccountFormError(''); setAccountOpen(false); }}>取消</Button><Button onClick={() => void saveAccount()} disabled={saving}>{saving ? '保存中…' : '保存账户'}</Button></div>
                 </div> : null}
                 {editorAccounts.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{editorAccounts.map(account => <div key={account.id} className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-start justify-between gap-3"><div><p className="font-medium text-slate-900">{account.name}</p><p className="mt-1 text-xs text-slate-400">{account.currency} · {account.masked_identifier || '未填写末位'}</p></div><button type="button" aria-label={`编辑 ${account.name}`} onClick={() => openEditAccount(account)} disabled={periodLocked} className="text-slate-400 hover:text-blue-600 disabled:opacity-40"><Pencil className="h-4 w-4" /></button></div>
                   <div className="mt-3 flex items-center gap-2"><span className="text-sm font-medium text-slate-500">{account.currency === 'USD' ? '$' : '¥'}</span><Input type="number" min="0" step="0.01" value={balances[account.id] || ''} onChange={event => setBalances(current => ({ ...current, [account.id]: event.target.value }))} disabled={periodLocked} placeholder="0.00" /></div>
                   {account.currency === 'USD' ? <p className="mt-2 text-xs text-slate-400">折合 {cny(Number(balances[account.id] || 0) * numericRate)}</p> : null}
-                </div>)}</div> : <div className="rounded-xl border border-dashed p-8 text-center"><Landmark className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm text-slate-500">先新增公司人民币或美元账户，再录入真实余额。</p><Button className="mt-3" size="sm" onClick={openNewAccount}><Plus className="mr-1 h-4 w-4" />新增第一个账户</Button></div>}
+                </div>)}</div> : <div className="rounded-xl border border-dashed p-8 text-center"><Landmark className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm text-slate-500">先新增公司人民币或美元账户，再录入真实余额。</p><Button className="mt-3" size="sm" onClick={openNewAccount} disabled={periodLocked || futureMonthSelected}><Plus className="mr-1 h-4 w-4" />新增第一个账户</Button></div>}
               </div>
 
               <div>

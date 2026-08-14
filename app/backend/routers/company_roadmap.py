@@ -37,6 +37,19 @@ ALLOWED_ROLES = {"admin", "super_admin", "finance"}
 ACCOUNT_TYPES = {"bank", "payment_platform", "cash", "other"}
 
 
+def cash_account_payload(row: CashAccount) -> dict:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "account_type": row.account_type,
+        "currency": row.currency,
+        "masked_identifier": row.masked_identifier,
+        "is_active": bool(row.is_active),
+        "sort_order": row.sort_order,
+        "notes": row.notes,
+    }
+
+
 def ensure_finance_role(user: UserResponse) -> str:
     role = str(user.role or "").lower()
     if role not in ALLOWED_ROLES:
@@ -172,7 +185,7 @@ async def create_cash_account(
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return {"id": row.id, "message": "现金账户已新增"}
+    return {"id": row.id, "account": cash_account_payload(row), "message": "现金账户已新增"}
 
 
 @router.put("/cash-accounts/{account_id}")
@@ -189,7 +202,8 @@ async def update_cash_account(
     for key, value in payload.model_dump().items():
         setattr(row, key, value)
     await db.commit()
-    return {"id": row.id, "message": "现金账户已更新"}
+    await db.refresh(row)
+    return {"id": row.id, "account": cash_account_payload(row), "message": "现金账户已更新"}
 
 
 @router.put("/cash-periods/{year_month}")
