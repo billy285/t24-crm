@@ -2,11 +2,30 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Login from './Login';
 import { useRole } from '@/lib/role-context';
 import { requestBusinessDataRefresh } from '@/lib/data-refresh';
+import { getDesktopLoginPath } from '@/lib/app-navigation';
+import { getSafeInternalPath } from '@/lib/navigation-state';
 
 type LoginLocationState = {
   from?: {
     pathname?: string;
+    search?: string;
+    hash?: string;
   };
+};
+
+const isMobileViewport = () => typeof window !== 'undefined'
+  && window.matchMedia('(max-width: 767px)').matches;
+
+const requestedPathFromState = (state: LoginLocationState | null) => {
+  const from = state?.from;
+  if (!from?.pathname || from.pathname === '/login') return '';
+  return getSafeInternalPath(`${from.pathname}${from.search || ''}${from.hash || ''}`);
+};
+
+const resolvePostLoginPath = (role: string | undefined, requestedPath: string) => {
+  if (requestedPath) return requestedPath;
+  if (isMobileViewport()) return '/apps';
+  return getDesktopLoginPath(role);
 };
 
 export default function LoginPage() {
@@ -15,10 +34,8 @@ export default function LoginPage() {
   const { loading, isLoggedIn, isDisabled, login, role } = useRole();
 
   const state = location.state as LoginLocationState | null;
-  const requestedRedirect = state?.from?.pathname || '/';
-  const redirectTo = role === 'sales_partner'
-    ? '/partner-portal'
-    : role === 'sales' || role === 'sales_manager' ? '/sales-leads' : requestedRedirect;
+  const requestedRedirect = requestedPathFromState(state);
+  const redirectTo = resolvePostLoginPath(role, requestedRedirect);
 
   if (loading) {
     return (
@@ -40,9 +57,7 @@ export default function LoginPage() {
     <Login
       onLoginSuccess={async (token, employee) => {
         await login(token, employee);
-        const nextPath = employee?.role === 'sales_partner'
-          ? '/partner-portal'
-          : employee?.role === 'sales' || employee?.role === 'sales_manager' ? '/sales-leads' : requestedRedirect;
+        const nextPath = resolvePostLoginPath(employee?.role, requestedRedirect);
         navigate(nextPath, { replace: true });
         window.setTimeout(() => requestBusinessDataRefresh('login'), 300);
       }}

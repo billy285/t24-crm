@@ -18,6 +18,7 @@ export const systemRoleLabels: Record<SystemRole, string> = {
 
 // 页面路径定义
 export const PAGE_PATHS = {
+  apps: '/apps',
   dashboard: '/',
   company_roadmap: '/company-roadmap',
   merchant_pool: '/merchant-pool',
@@ -44,6 +45,7 @@ export const PAGE_PATHS = {
 } as const;
 
 export const pageLabels: Record<string, string> = {
+  '/apps': '应用中心',
   '/': '老板今日工作台',
   '/company-roadmap': '公司战略与里程碑',
   '/merchant-pool': '待清洗商家池',
@@ -366,6 +368,9 @@ export function getPermissions(role: string): RolePermissionConfig {
 
 export function canAccessPage(role: string, path: string): boolean {
   if (!role) return true; // No role = treat as super_admin
+  // /apps is an authenticated navigation shell. It never grants access to a
+  // business page; every visible app and destination is filtered separately.
+  if (path === '/apps') return true;
   // Payroll is an independent finance worksheet. Keep its access available for
   // finance administrators even when an older cached permission config exists.
   if (path === '/payroll' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;

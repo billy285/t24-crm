@@ -829,7 +829,7 @@ export default function Tasks() {
                 allowClear
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label>负责人</Label>
                 <Combobox
@@ -854,7 +854,7 @@ export default function Tasks() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label>任务类型</Label>
                 <NativeSelect
@@ -872,7 +872,7 @@ export default function Tasks() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label>任务状态</Label>
                 <NativeSelect

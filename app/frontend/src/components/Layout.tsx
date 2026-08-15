@@ -3,11 +3,8 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
 import { pageLabels } from '../lib/permissions';
 import {
-  LayoutDashboard, Users, PhoneCall, Handshake, DollarSign,
-  ListTodo, LogOut, Menu, X, ChevronDown, User, UserCog, Settings,
-  ShieldCheck, Lock, KeyRound, ClipboardList, Headphones, Database, BookOpen,
-  PanelLeftClose, PanelLeftOpen, Activity, BadgeDollarSign, ChevronRight, TrendingUp,
-  Target,
+  ArrowLeft, LayoutDashboard, LogOut, Menu, X, ChevronDown, User,
+  Lock, KeyRound, PanelLeftClose, PanelLeftOpen, ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,50 +15,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { client } from '@/lib/api';
+import {
+  appNavigationItems,
+  appNavigationSections,
+  getRoleTodayPath,
+} from '@/lib/app-navigation';
+import MobileAppHome, { T24AppMark } from '@/components/MobileAppHome';
+import MobileBottomNav from '@/components/MobileBottomNav';
+import MobileModuleMenu from '@/components/MobileModuleMenu';
+import { getSafeInternalPath } from '@/lib/navigation-state';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
-
-const allNavItems = [
-  { path: '/', label: '老板今日工作台', icon: LayoutDashboard },
-  { path: '/company-roadmap', label: '公司战略与里程碑', icon: Target },
-  { path: '/merchant-pool', label: '待清洗商家池', icon: Database },
-  { path: '/sales-leads', label: '电话销售中心', icon: Headphones },
-  { path: '/sales-workbench', label: '销售今日工作台', icon: Headphones },
-  { path: '/operations-workbench', label: '运营今日工作台', icon: ListTodo },
-  { path: '/sales-knowledge', label: '销售知识库', icon: BookOpen },
-  { path: '/customers', label: '客户管理', icon: Users },
-  { path: '/sales', label: '成交客户', icon: Handshake },
-  { path: '/deals', label: '成交管理', icon: Handshake },
-  { path: '/customer-lifecycle', label: '客户生命周期', icon: Activity },
-  { path: '/management-decisions', label: '经营健康与决策', icon: BadgeDollarSign },
-  { path: '/finance', label: '财务管理', icon: DollarSign },
-  { path: '/rmb-profit', label: '人民币利润预估', icon: TrendingUp },
-  { path: '/commissions', label: '渠道与分润', icon: BadgeDollarSign },
-  { path: '/partner-portal', label: '我的客户与分润', icon: BadgeDollarSign },
-  { path: '/payroll', label: '工资表', icon: ClipboardList },
-  { path: '/tasks', label: '任务协作', icon: ListTodo },
-  { path: '/service-board', label: '服务进度看板', icon: ClipboardList },
-  { path: '/callbacks', label: '电话回访', icon: PhoneCall },
-  { path: '/employees', label: '员工管理', icon: UserCog },
-  { path: '/settings', label: '系统设置', icon: Settings },
-  { path: '/permissions', label: '权限设置', icon: ShieldCheck },
-];
-
-const navSections = [
-  { label: '老板今日工作台', paths: ['/', '/company-roadmap'], icon: LayoutDashboard },
-  {
-    label: '销售中心',
-    paths: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],
-    icon: Headphones,
-  },
-  { label: '客户中心', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle'], icon: Users },
-  { label: '任务与交付', paths: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'], icon: ListTodo },
-  { label: '财务与结算', paths: ['/finance', '/rmb-profit', '/management-decisions', '/commissions', '/payroll'], icon: DollarSign },
-  { label: '我的客户与分润', paths: ['/partner-portal'], icon: BadgeDollarSign },
-  { label: '组织与设置', paths: ['/employees', '/settings', '/permissions'], icon: Settings },
-];
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
@@ -72,7 +38,7 @@ export default function Layout({ children }: LayoutProps) {
     () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
   );
   const [expandedSection, setExpandedSection] = useState<string | null>(
-    () => navSections.find(section => section.paths.includes(location.pathname))?.label || '老板今日工作台',
+    () => appNavigationSections.find(section => section.paths.includes(location.pathname))?.label || '老板今日工作台',
   );
   const { employee, role, loading, isLoggedIn, isDisabled, logout, canAccess } = useRole();
 
@@ -81,10 +47,11 @@ export default function Layout({ children }: LayoutProps) {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
-    const activeSection = navSections.find(section => section.paths.includes(currentPath));
+    const activeSection = appNavigationSections.find(section => section.paths.includes(currentPath));
     if (activeSection) setExpandedSection(activeSection.label);
   }, [currentPath]);
   const [showChangePwd, setShowChangePwd] = useState(false);
+  const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: '', newPwd: '', confirm: '' });
   const [changingPwd, setChangingPwd] = useState(false);
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
@@ -183,39 +150,61 @@ export default function Layout({ children }: LayoutProps) {
   const hasPageAccess = canAccess(currentPath);
 
   // Keep the business grouping stable while hiding pages the current role cannot access.
-  const visibleNavSections = navSections
+  const visibleNavSections = appNavigationSections
     .map(section => ({
       ...section,
       items: section.paths
-        .map(path => allNavItems.find(item => item.path === path))
-        .filter((item): item is (typeof allNavItems)[number] => !!item && canAccess(item.path)),
+        .map(path => appNavigationItems.find(item => item.path === path))
+        .filter((item): item is (typeof appNavigationItems)[number] => !!item && canAccess(item.path)),
     }))
     .filter(section => section.items.length > 0);
 
   const displayRole = employee
     ? (roleLabels[employee.role] || employee.role)
     : '管理员模式';
-  const homePath = role === 'sales_partner'
-    ? '/partner-portal'
-    : role === 'sales' || role === 'sales_manager'
-      ? '/sales-workbench'
-      : role === 'ops'
-        ? '/operations-workbench'
-        : '/';
+  const homePath = getRoleTodayPath(role);
+  const isAppLauncher = currentPath === '/apps';
+  const currentSearch = new URLSearchParams(location.search);
+  const isMobileDetailContext = (
+    currentPath === '/customers' && currentSearch.has('detail')
+  ) || (
+    currentPath === '/tasks' && currentSearch.has('task_id')
+  );
+  const requestedReturnTo = getSafeInternalPath(currentSearch.get('returnTo'));
+  let mobileContextReturnPath = '';
+  if (currentPath === '/customers' && currentSearch.has('detail')) {
+    if (requestedReturnTo) {
+      mobileContextReturnPath = requestedReturnTo;
+    } else if (currentSearch.get('from') === 'finance') {
+      mobileContextReturnPath = `/finance?tab=${encodeURIComponent(currentSearch.get('financeTab') || 'subscriptions')}`;
+    } else {
+      const nextSearch = new URLSearchParams(currentSearch);
+      ['detail', 'tab', 'reminder', 'from', 'financeTab', 'returnTo'].forEach(key => nextSearch.delete(key));
+      mobileContextReturnPath = `/customers${nextSearch.size ? `?${nextSearch.toString()}` : ''}`;
+    }
+  } else if (currentPath === '/tasks' && currentSearch.has('task_id')) {
+    if (requestedReturnTo) {
+      mobileContextReturnPath = requestedReturnTo;
+    } else {
+      const nextSearch = new URLSearchParams(currentSearch);
+      ['task_id', 'reminder', 'returnTo'].forEach(key => nextSearch.delete(key));
+      mobileContextReturnPath = `/tasks${nextSearch.size ? `?${nextSearch.toString()}` : ''}`;
+    }
+  }
   const currentPageLabel = currentPath === '/management-decisions'
     && new URLSearchParams(location.search).get('section') === 'insights'
     ? '经营健康与决策'
-    : pageLabels[currentPath] || allNavItems.find(n => n.path === currentPath)?.label || '';
+    : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div className="app-shell flex h-screen overflow-hidden">
+    <div className="app-shell mobile-app-layout flex h-screen overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 z-40 hidden bg-black/50 md:block lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
-      <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 flex w-[248px] transform flex-col text-white transition-[width,transform] duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-[248px]'}`}>
+      <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 hidden w-[248px] transform flex-col text-white transition-[width,transform] duration-200 md:flex ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-[248px]'}`}>
         <div className={`border-b border-white/10 px-4 py-5 ${sidebarCollapsed ? 'lg:px-3' : ''}`}>
           <div className="flex items-center justify-between">
             <Link to={homePath} className={`flex min-w-0 items-center gap-3 ${sidebarCollapsed ? 'lg:w-full lg:justify-center' : ''}`} onClick={() => setSidebarOpen(false)}>
@@ -339,8 +328,24 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         )}
         {/* Top bar */}
-        <header className="app-topbar sticky top-0 z-30 flex min-h-16 items-center justify-between px-4 py-3 lg:px-6">
-          <button className="lg:hidden text-slate-600 hover:text-slate-800" onClick={() => setSidebarOpen(true)}>
+        <header className={`app-topbar sticky top-0 z-30 min-h-16 items-center justify-between px-3 py-2.5 md:px-4 md:py-3 lg:px-6 ${isAppLauncher ? 'hidden md:flex' : 'flex'}`}>
+          <div className="flex min-w-0 flex-1 items-center gap-3 md:hidden">
+            <button
+              type="button"
+              onClick={() => navigate(mobileContextReturnPath || '/apps')}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+              aria-label={mobileContextReturnPath ? '返回上一工作位置' : '返回应用中心'}
+            >
+              {mobileContextReturnPath
+                ? <ArrowLeft className="h-5 w-5 text-slate-700" />
+                : <T24AppMark decorative className="h-10 w-10 rounded-[14px]" />}
+            </button>
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-blue-500">T24 OS</p>
+              <p className="truncate text-[15px] font-bold tracking-tight text-slate-900">{currentPageLabel}</p>
+            </div>
+          </div>
+          <button className="hidden text-slate-600 hover:text-slate-800 md:block lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="打开业务导航">
             <Menu className="w-5 h-5" />
           </button>
           <div className="hidden items-center gap-3 lg:flex">
@@ -351,12 +356,21 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <MobileModuleMenu currentPath={currentPath} />
+            <button
+              type="button"
+              onClick={() => setMobileProfileOpen(true)}
+              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-blue-600 shadow-sm md:hidden"
+              aria-label="打开我的账户"
+            >
+              <User className="h-4 w-4" />
+            </button>
             {currentPath !== homePath && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-9 gap-2 border-slate-200 bg-white px-2.5 text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 sm:px-3"
+                className="hidden h-9 gap-2 border-slate-200 bg-white px-2.5 text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 md:inline-flex md:px-3"
                 onClick={() => navigate(homePath)}
                 aria-label="返回今日工作台"
               >
@@ -364,6 +378,7 @@ export default function Layout({ children }: LayoutProps) {
                 <span className="hidden sm:inline">今日工作台</span>
               </Button>
             )}
+            <div className="hidden md:block">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2">
@@ -391,12 +406,17 @@ export default function Layout({ children }: LayoutProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </div>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
-          {hasPageAccess ? children : (
+        <main className={`app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isAppLauncher ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>
+          {hasPageAccess ? (
+            isAppLauncher
+              ? <MobileAppHome onOpenProfile={() => setMobileProfileOpen(true)} />
+              : children
+          ) : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
                 <Lock className="w-8 h-8 text-red-400" />
@@ -407,7 +427,49 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           )}
         </main>
+        <MobileBottomNav onOpenProfile={() => setMobileProfileOpen(true)} hidden={isMobileDetailContext} profileOpen={mobileProfileOpen} />
       </div>
+
+      <Dialog open={mobileProfileOpen} onOpenChange={setMobileProfileOpen}>
+        <DialogContent className="bottom-0 top-auto w-full max-w-lg translate-y-0 rounded-b-none rounded-t-[28px] border-x-0 border-b-0 px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-6 md:hidden">
+          <DialogHeader className="text-left">
+            <DialogTitle>我的账户</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-4">
+            <T24AppMark decorative className="h-12 w-12 shrink-0" />
+            <div className="min-w-0">
+              <p className="truncate font-bold text-slate-900">{employee?.name || 'T24 员工'}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{displayRole}</p>
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-12 justify-start rounded-2xl"
+              onClick={() => { setMobileProfileOpen(false); navigate('/apps'); }}
+            >
+              <LayoutDashboard className="mr-2 h-4 w-4" />应用中心
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-12 justify-start rounded-2xl"
+              onClick={() => { setMobileProfileOpen(false); setShowChangePwd(true); }}
+            >
+              <KeyRound className="mr-2 h-4 w-4" />修改密码
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-12 justify-start rounded-2xl border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+              onClick={handleLogout}
+            >
+              <LogOut className="mr-2 h-4 w-4" />退出登录
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Change Password Dialog */}
       <Dialog open={showChangePwd} onOpenChange={setShowChangePwd}>
