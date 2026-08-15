@@ -1,10 +1,11 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { RoleProvider } from './lib/role-context';
 import Layout from './components/Layout';
+import PageLoadState from './components/PageLoadState';
 
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const AuthError = lazy(() => import('./pages/AuthError'));
@@ -36,13 +37,31 @@ const PartnerPortal = lazy(() => import('./pages/PartnerPortal'));
 const CompanyRoadmap = lazy(() => import('./pages/CompanyRoadmap'));
 
 const PageFallback = () => (
-  <div className="flex min-h-[50vh] items-center justify-center">
+  <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6" role="status" aria-live="polite">
     <div className="text-center">
-      <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
-      <p className="mt-3 text-sm text-slate-500">正在加载页面…</p>
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-sm font-bold tracking-wide text-white shadow-lg shadow-blue-200">
+        T24
+      </div>
+      <p className="mt-4 text-sm font-semibold text-slate-800">T24 Marketing 客户管理系统</p>
+      <div className="mx-auto mt-4 h-6 w-6 animate-spin rounded-full border-2 border-blue-100 border-b-blue-600" aria-hidden="true" />
+      <p className="mt-3 text-xs text-slate-500">正在安全加载页面…</p>
     </div>
   </div>
 );
+
+function PublicPage({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<PageFallback />}>{children}</Suspense>;
+}
+
+function ProtectedPage({ children }: { children: ReactNode }) {
+  return (
+    <Layout>
+      <Suspense fallback={<PageLoadState loading message="正在加载当前页面…" />}>
+        {children}
+      </Suspense>
+    </Layout>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -62,39 +81,37 @@ const App = () => (
       <Toaster />
       <RoleProvider>
         <BrowserRouter>
-          <Suspense fallback={<PageFallback />}>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              <Route path="/auth/error" element={<AuthError />} />
-              <Route path="/apps" element={<Layout><div /></Layout>} />
-              <Route path="/" element={<Layout><Dashboard /></Layout>} />
-              <Route path="/company-roadmap" element={<Layout><CompanyRoadmap /></Layout>} />
-              <Route path="/merchant-pool" element={<Layout><MerchantPool /></Layout>} />
-              <Route path="/sales-leads" element={<Layout><SalesLeads /></Layout>} />
-              <Route path="/sales-workbench" element={<Layout><SalesWorkbench /></Layout>} />
-              <Route path="/operations-workbench" element={<Layout><OperationsWorkbench /></Layout>} />
-              <Route path="/sales-knowledge" element={<Layout><SalesKnowledge /></Layout>} />
-              <Route path="/customers" element={<Layout><Customers /></Layout>} />
-              <Route path="/sales" element={<Layout><Sales /></Layout>} />
-              <Route path="/deals" element={<Layout><Deals /></Layout>} />
-              <Route path="/customer-lifecycle" element={<Layout><CustomerLifecycle /></Layout>} />
-              <Route path="/management-decisions" element={<Layout><ManagementDecisions /></Layout>} />
-              <Route path="/finance" element={<Layout><Finance /></Layout>} />
-              <Route path="/rmb-profit" element={<Layout><RmbProfitEstimate /></Layout>} />
-              <Route path="/commissions" element={<Layout><Commissions /></Layout>} />
-              <Route path="/partner-portal" element={<Layout><PartnerPortal /></Layout>} />
-              <Route path="/payroll" element={<Layout><Payroll /></Layout>} />
-              <Route path="/tasks" element={<Layout><Tasks /></Layout>} />
-              <Route path="/employees" element={<Layout><Employees /></Layout>} />
-              <Route path="/settings" element={<Layout><Settings /></Layout>} />
-              <Route path="/permissions" element={<Layout><Permissions /></Layout>} />
-              <Route path="/service-board" element={<Layout><ServiceBoard /></Layout>} />
-              <Route path="/callbacks" element={<Layout><Callbacks /></Layout>} />
-              <Route path="/settings/deduction" element={<Layout><MonthlyDeduction /></Layout>} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
+          <Routes>
+            <Route path="/login" element={<PublicPage><LoginPage /></PublicPage>} />
+            <Route path="/auth/callback" element={<PublicPage><AuthCallback /></PublicPage>} />
+            <Route path="/auth/error" element={<PublicPage><AuthError /></PublicPage>} />
+            <Route path="/apps" element={<Layout><div /></Layout>} />
+            <Route path="/" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
+            <Route path="/company-roadmap" element={<ProtectedPage><CompanyRoadmap /></ProtectedPage>} />
+            <Route path="/merchant-pool" element={<ProtectedPage><MerchantPool /></ProtectedPage>} />
+            <Route path="/sales-leads" element={<ProtectedPage><SalesLeads /></ProtectedPage>} />
+            <Route path="/sales-workbench" element={<ProtectedPage><SalesWorkbench /></ProtectedPage>} />
+            <Route path="/operations-workbench" element={<ProtectedPage><OperationsWorkbench /></ProtectedPage>} />
+            <Route path="/sales-knowledge" element={<ProtectedPage><SalesKnowledge /></ProtectedPage>} />
+            <Route path="/customers" element={<ProtectedPage><Customers /></ProtectedPage>} />
+            <Route path="/sales" element={<ProtectedPage><Sales /></ProtectedPage>} />
+            <Route path="/deals" element={<ProtectedPage><Deals /></ProtectedPage>} />
+            <Route path="/customer-lifecycle" element={<ProtectedPage><CustomerLifecycle /></ProtectedPage>} />
+            <Route path="/management-decisions" element={<ProtectedPage><ManagementDecisions /></ProtectedPage>} />
+            <Route path="/finance" element={<ProtectedPage><Finance /></ProtectedPage>} />
+            <Route path="/rmb-profit" element={<ProtectedPage><RmbProfitEstimate /></ProtectedPage>} />
+            <Route path="/commissions" element={<ProtectedPage><Commissions /></ProtectedPage>} />
+            <Route path="/partner-portal" element={<ProtectedPage><PartnerPortal /></ProtectedPage>} />
+            <Route path="/payroll" element={<ProtectedPage><Payroll /></ProtectedPage>} />
+            <Route path="/tasks" element={<ProtectedPage><Tasks /></ProtectedPage>} />
+            <Route path="/employees" element={<ProtectedPage><Employees /></ProtectedPage>} />
+            <Route path="/settings" element={<ProtectedPage><Settings /></ProtectedPage>} />
+            <Route path="/permissions" element={<ProtectedPage><Permissions /></ProtectedPage>} />
+            <Route path="/service-board" element={<ProtectedPage><ServiceBoard /></ProtectedPage>} />
+            <Route path="/callbacks" element={<ProtectedPage><Callbacks /></ProtectedPage>} />
+            <Route path="/settings/deduction" element={<ProtectedPage><MonthlyDeduction /></ProtectedPage>} />
+            <Route path="*" element={<PublicPage><NotFound /></PublicPage>} />
+          </Routes>
         </BrowserRouter>
       </RoleProvider>
     </TooltipProvider>

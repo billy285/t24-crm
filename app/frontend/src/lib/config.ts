@@ -6,6 +6,8 @@ let runtimeConfig: {
 // Configuration loading state
 let configLoading = true;
 
+const RUNTIME_CONFIG_TIMEOUT_MS = 4000;
+
 const fallbackOrigin =
   typeof window !== 'undefined' &&
   typeof window.location?.origin === 'string' &&
@@ -20,10 +22,13 @@ const defaultConfig = {
 
 // Function to load runtime configuration
 export async function loadRuntimeConfig(): Promise<void> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), RUNTIME_CONFIG_TIMEOUT_MS);
+
   try {
     console.log('🔧 DEBUG: Starting to load runtime config...');
     // Try to load configuration from a config endpoint
-    const response = await fetch('/api/config');
+    const response = await fetch('/api/config', { signal: controller.signal });
     if (response.ok) {
       const contentType = response.headers.get('content-type');
       // Only parse as JSON if the response is actually JSON
@@ -42,8 +47,15 @@ export async function loadRuntimeConfig(): Promise<void> {
       );
     }
   } catch (error) {
-    console.log('Failed to load runtime config, using defaults:', error);
+    const timedOut = error instanceof DOMException && error.name === 'AbortError';
+    console.warn(
+      timedOut
+        ? `Runtime config request exceeded ${RUNTIME_CONFIG_TIMEOUT_MS}ms; using safe defaults.`
+        : 'Failed to load runtime config, using defaults:',
+      error,
+    );
   } finally {
+    window.clearTimeout(timeoutId);
     configLoading = false;
     console.log(
       '🔧 DEBUG: Config loading finished, configLoading set to false'

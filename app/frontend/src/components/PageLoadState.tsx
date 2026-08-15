@@ -35,7 +35,7 @@ export default function PageLoadState({
   if (!loading) return null;
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4 animate-pulse" aria-live="polite" aria-busy="true">
+    <div className="mx-auto w-full max-w-[1600px] space-y-4 animate-pulse" role="status" aria-live="polite" aria-busy="true">
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-2">
           <div className="h-3 w-28 rounded bg-slate-200" />
