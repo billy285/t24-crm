@@ -701,6 +701,7 @@ export default function Finance() {
   const [commissionEntries, setCommissionEntries] = useState<any[]>([]);
   const [auditedFinanceRows, setAuditedFinanceRows] = useState<any[] | null>(null);
   const [auditedFinanceLoading, setAuditedFinanceLoading] = useState(false);
+  const [auditedFinanceFailed, setAuditedFinanceFailed] = useState(false);
   const [deductionRates, setDeductionRates] = useState<Record<string, number>>({});
   const [exportConfig, setExportConfig] = useState<Record<string, any>>({});
   const [closingMonth, setClosingMonth] = useState(() => getTodayDateInput().slice(0, 7));
@@ -835,9 +836,13 @@ export default function Finance() {
     let cancelled = false;
     if (!activeDateRange?.start || !activeDateRange?.end) {
       setAuditedFinanceRows(null);
+      setAuditedFinanceLoading(false);
+      setAuditedFinanceFailed(false);
       return () => { cancelled = true; };
     }
+    setAuditedFinanceRows(null);
     setAuditedFinanceLoading(true);
+    setAuditedFinanceFailed(false);
     const params = new URLSearchParams({
       start: activeDateRange.start,
       end: activeDateRange.end,
@@ -845,11 +850,20 @@ export default function Finance() {
     });
     void invokeWithAuth({ url: `/api/v1/reports/profit-monthly.json?${params.toString()}`, method: 'GET' })
       .then(response => {
-        if (!cancelled) setAuditedFinanceRows(Array.isArray(response.data) ? response.data : []);
+        if (!Array.isArray(response.data)) {
+          throw new Error('audited finance report returned no rows');
+        }
+        if (!cancelled) {
+          setAuditedFinanceRows(response.data);
+          setAuditedFinanceFailed(false);
+        }
       })
       .catch(error => {
         console.warn('load audited finance summary failed; using detailed local records', error);
-        if (!cancelled) setAuditedFinanceRows(null);
+        if (!cancelled) {
+          setAuditedFinanceRows(null);
+          setAuditedFinanceFailed(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setAuditedFinanceLoading(false);
@@ -1514,17 +1528,38 @@ export default function Finance() {
       refunds: roundMoney(acc.refunds + toMoneyNumber(row.refund_amount)),
       netReceipts: roundMoney(acc.netReceipts + toMoneyNumber(row.net_receipts)),
       adsRevenue: roundMoney(acc.adsRevenue + toMoneyNumber(row.ads_client_funds)),
+      deductionAmount: roundMoney(acc.deductionAmount + toMoneyNumber(row.deduction_amount)),
       stripePlatformFee: roundMoney(acc.stripePlatformFee + toMoneyNumber(row.stripe_platform_fee)),
       channelCommissionUsd: roundMoney(acc.channelCommissionUsd + toMoneyNumber(row.channel_commission)),
       cost: roundMoney(acc.cost + toMoneyNumber(row.cost)),
       profit: roundMoney(acc.profit + toMoneyNumber(row.profit)),
-    }), { revenue: 0, grossReceipts: 0, refunds: 0, netReceipts: 0, adsRevenue: 0, stripePlatformFee: 0, channelCommissionUsd: 0, cost: 0, profit: 0 });
+    }), { revenue: 0, grossReceipts: 0, refunds: 0, netReceipts: 0, adsRevenue: 0, deductionAmount: 0, stripePlatformFee: 0, channelCommissionUsd: 0, cost: 0, profit: 0 });
   }, [auditedFinanceRows]);
-  const summaryProfitUsd = useMemo(() => auditedSummary?.profit ?? roundMoney(
-    Object.entries(summaryFinanceBuckets).reduce((sum, [monthKey, bucket]) => (
-      sum + calculateMonthlyProfit(bucket, getDeductionRate(deductionRates, monthKey)).profit
-    ), 0),
-  ), [auditedSummary, deductionRates, summaryFinanceBuckets]);
+  const localSummaryProfitTotals = useMemo(() => Object.entries(summaryFinanceBuckets).reduce((totals, [monthKey, bucket]) => {
+    const result = calculateMonthlyProfit(bucket, getDeductionRate(deductionRates, monthKey));
+    totals.profit = roundMoney(totals.profit + result.profit);
+    totals.deductionAmount = roundMoney(totals.deductionAmount + result.deductionAmount);
+    return totals;
+  }, { profit: 0, deductionAmount: 0 }), [deductionRates, summaryFinanceBuckets]);
+  const summaryProfitUsd = auditedSummary?.profit ?? localSummaryProfitTotals.profit;
+  const summaryProfitRevenueUsd = auditedSummary?.revenue ?? summaryFinance.revenue;
+  const summaryProfitRate = summaryProfitUsd / Math.max(summaryProfitRevenueUsd, 1);
+  const summaryGrossReceiptsUsd = auditedSummary?.grossReceipts ?? summaryFinance.grossReceipts;
+  const summaryRefundsUsd = auditedSummary?.refunds ?? summaryFinance.refunds;
+  const summaryNetReceiptsUsd = auditedSummary?.netReceipts ?? summaryFinance.netReceipts;
+  const summaryAdsRevenueUsd = auditedSummary?.adsRevenue ?? summaryFinance.adsRevenue;
+  const summaryDeductionUsd = auditedSummary?.deductionAmount ?? localSummaryProfitTotals.deductionAmount;
+  const summaryStripePlatformFeeUsd = auditedSummary?.stripePlatformFee ?? summaryFinance.stripePlatformFee;
+  const summaryChannelCommissionUsd = auditedSummary?.channelCommissionUsd ?? summaryFinance.channelCommissionUsd;
+  const summaryCostUsd = auditedSummary?.cost ?? summaryFinance.cost;
+  const summaryOtherCostUsd = roundMoney(Math.max(0, summaryCostUsd - summaryStripePlatformFeeUsd - summaryChannelCommissionUsd));
+  const summaryProfitBasisLabel = auditedFinanceLoading
+    ? '审计口径核对中 · 当前显示本地临时汇总'
+    : auditedSummary
+      ? '月度审计统一口径'
+      : auditedFinanceFailed
+        ? '审计接口暂不可用 · 本地临时汇总待核对'
+        : '本地临时汇总 · 待核对';
   const summaryCompanyExpenseCny = useMemo(() => roundMoney(
     summaryCompanyExpenses
       .filter(e => getCompanyExpenseCurrency(e) === 'CNY')
@@ -3709,6 +3744,9 @@ export default function Finance() {
             <p className="mt-0.5 text-xs text-slate-500">先判断利润与现金风险，再进入明细处理。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className={auditedSummary ? 'rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700' : 'rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'}>
+              {summaryProfitBasisLabel}
+            </span>
             <span className={closedFinanceMonths.has(currentMonthKey) ? 'rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700' : 'rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'}>
               {currentMonthKey} · {closedFinanceMonths.has(currentMonthKey) ? '已关账' : '未关账'}
             </span>
@@ -3725,8 +3763,8 @@ export default function Finance() {
                 <p className="text-xs font-medium text-slate-500">{summaryPeriodLabel}服务收入</p>
                 <ArrowUpRight className="h-4 w-4 text-emerald-600" />
               </div>
-              <p className="mt-2 text-xl font-bold text-emerald-700">{fmt(auditedSummary?.revenue ?? summaryFinance.revenue)}</p>
-              <p className="mt-1 text-[11px] text-slate-400">净收款 {fmt(auditedSummary?.netReceipts ?? summaryFinance.netReceipts)} · 投流资金 {fmt(auditedSummary?.adsRevenue ?? summaryFinance.adsRevenue)}</p>
+              <p className="mt-2 text-xl font-bold text-emerald-700">{fmt(summaryProfitRevenueUsd)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">净实收 {fmt(summaryNetReceiptsUsd)} · 投流资金 {fmt(summaryAdsRevenueUsd)}</p>
             </CardContent>
           </Card>
 
@@ -3737,29 +3775,29 @@ export default function Finance() {
                 <Wallet className={summaryProfitUsd >= 0 ? 'h-4 w-4 text-blue-600' : 'h-4 w-4 text-red-600'} />
               </div>
               <p className={summaryProfitUsd >= 0 ? 'mt-2 text-xl font-bold text-blue-700' : 'mt-2 text-xl font-bold text-red-700'}>{fmt(summaryProfitUsd)}</p>
-              <p className="mt-1 text-[11px] text-slate-400">{auditedFinanceLoading ? '正在核对月度审计口径…' : `利润率 ${((summaryProfitUsd / Math.max(auditedSummary?.revenue ?? summaryFinance.revenue, 1)) * 100).toFixed(1)}% · 月度统一口径`}</p>
+              <p className="mt-1 text-[11px] text-slate-400">利润率 {(summaryProfitRate * 100).toFixed(1)}% · {summaryProfitBasisLabel}</p>
             </CardContent>
           </Card>
 
           <Card className="border-slate-200 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-medium text-slate-500">运营及渠道成本</p>
+                <p className="text-xs font-medium text-slate-500">审计总成本 USD</p>
                 <ArrowDownRight className="h-4 w-4 text-red-500" />
               </div>
-              <p className="mt-2 text-xl font-bold text-red-600">{fmt(summaryFinance.operatingCostUsd + summaryFinance.channelCommissionUsd)}</p>
-              <p className="mt-1 text-[11px] text-slate-400">运营 {fmt(summaryFinance.operatingCostUsd)} · 渠道佣金 {fmt(summaryFinance.channelCommissionUsd)}</p>
+              <p className="mt-2 text-xl font-bold text-red-600">{fmt(summaryCostUsd)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">其他成本 {fmt(summaryOtherCostUsd)} · 渠道佣金 {fmt(summaryChannelCommissionUsd)}</p>
             </CardContent>
           </Card>
 
           <Card className="border-slate-200 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-medium text-slate-500">客户成本</p>
+                <p className="text-xs font-medium text-slate-500">扣点与 Stripe</p>
                 <ArrowDownRight className="h-4 w-4 text-amber-500" />
               </div>
-              <p className="mt-2 text-xl font-bold text-amber-600">{fmt(summaryFinance.customerCost)}</p>
-              <p className="mt-1 text-[11px] text-slate-400">Stripe 净手续费 {fmt(auditedSummary?.stripePlatformFee ?? summaryFinance.stripePlatformFee)}{(auditedSummary?.stripePlatformFee ?? summaryFinance.stripePlatformFee) < 0 ? '（含手续费返还）' : ''}</p>
+              <p className="mt-2 text-xl font-bold text-amber-600">{fmt(summaryDeductionUsd + summaryStripePlatformFeeUsd)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">扣点 {fmt(summaryDeductionUsd)} · Stripe {fmt(summaryStripePlatformFeeUsd)}{summaryStripePlatformFeeUsd < 0 ? '（含手续费返还）' : ''}</p>
             </CardContent>
           </Card>
 
@@ -3849,20 +3887,20 @@ export default function Finance() {
                       <p className="text-xs font-medium uppercase tracking-[0.2em] text-blue-200">老板驾驶舱</p>
                       <h3 className="mt-2 text-2xl font-bold">{summaryPeriodLabel}经营结果</h3>
                       <p className="mt-2 max-w-xl text-sm text-blue-100">
-                        先看利润和现金风险，再处理扣款、欠款、数据异常。所有数字按当前时间筛选口径计算。
+                        先看利润和现金风险，再处理扣款、欠款、数据异常。利润、收入、扣点和成本统一按当前口径显示：{summaryProfitBasisLabel}。
                       </p>
                     </div>
                     <div className="rounded-2xl bg-white/10 px-4 py-3 text-right backdrop-blur">
                       <p className="text-xs text-blue-100">经营利润 USD</p>
-                      <p className={`mt-1 text-3xl font-bold ${ownerOverview.profitUsd >= 0 ? 'text-emerald-200' : 'text-red-200'}`}>{fmt(ownerOverview.profitUsd)}</p>
-                      <p className="mt-1 text-xs text-blue-100">利润率 {(ownerOverview.profitRate * 100).toFixed(1)}%</p>
+                      <p className={`mt-1 text-3xl font-bold ${summaryProfitUsd >= 0 ? 'text-emerald-200' : 'text-red-200'}`}>{fmt(summaryProfitUsd)}</p>
+                      <p className="mt-1 text-xs text-blue-100">利润率 {(summaryProfitRate * 100).toFixed(1)}% · {summaryProfitBasisLabel}</p>
                     </div>
                   </div>
                   <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <div className="rounded-2xl bg-white/10 p-4">
-                      <p className="text-xs text-blue-100">实收收入</p>
-                      <p className="mt-2 text-2xl font-bold text-emerald-200">{fmt(ownerOverview.revenue)}</p>
-                      <p className="mt-1 text-xs text-blue-100">服务收入 {fmt(ownerOverview.revenue)} · 客户投流资金 {fmt(ownerOverview.adsRevenue)}</p>
+                      <p className="text-xs text-blue-100">净实收现金 USD</p>
+                      <p className="mt-2 text-2xl font-bold text-emerald-200">{fmt(summaryNetReceiptsUsd)}</p>
+                      <p className="mt-1 text-xs text-blue-100">总收款 {fmt(summaryGrossReceiptsUsd)} · 退款 {fmt(summaryRefundsUsd)}</p>
                     </div>
                     <div className="rounded-2xl bg-white/10 p-4">
                       <p className="text-xs text-blue-100">应收未收</p>
@@ -3871,8 +3909,8 @@ export default function Finance() {
                     </div>
                     <div className="rounded-2xl bg-white/10 p-4">
                       <p className="text-xs text-blue-100">扣点 / Stripe</p>
-                      <p className="mt-2 text-2xl font-bold text-violet-200">{fmt(ownerOverview.deduction + ownerOverview.stripeFee)}</p>
-                      <p className="mt-1 text-xs text-blue-100">扣点 {fmt(ownerOverview.deduction)} · Stripe {fmt(ownerOverview.stripeFee)}</p>
+                      <p className="mt-2 text-2xl font-bold text-violet-200">{fmt(summaryDeductionUsd + summaryStripePlatformFeeUsd)}</p>
+                      <p className="mt-1 text-xs text-blue-100">扣点 {fmt(summaryDeductionUsd)} · Stripe {fmt(summaryStripePlatformFeeUsd)}</p>
                     </div>
                     <div className="rounded-2xl bg-white/10 p-4">
                       <p className="text-xs text-blue-100">30天续费预测</p>
@@ -3979,14 +4017,14 @@ export default function Finance() {
 
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <Card className="border-slate-200"><CardContent className="p-4">
-                <p className="text-xs text-slate-500">客户成本 USD</p>
-                <p className="mt-1 text-xl font-bold text-amber-600">{fmt(ownerOverview.customerCostUsd)}</p>
-                <p className="mt-1 text-xs text-slate-400">直接影响单客利润</p>
+                <p className="text-xs text-slate-500">Stripe 净手续费 USD</p>
+                <p className="mt-1 text-xl font-bold text-amber-600">{fmt(summaryStripePlatformFeeUsd)}</p>
+                <p className="mt-1 text-xs text-slate-400">已包含明确记录的手续费返还</p>
               </CardContent></Card>
               <Card className="border-slate-200"><CardContent className="p-4">
-                <p className="text-xs text-slate-500">运营及渠道成本 USD</p>
-                <p className="mt-1 text-xl font-bold text-red-600">{fmt(ownerOverview.companyCostUsd + ownerOverview.channelCommissionUsd)}</p>
-                <p className="mt-1 text-xs text-slate-400">运营 {fmt(ownerOverview.companyCostUsd)} · 渠道 {fmt(ownerOverview.channelCommissionUsd)}</p>
+                <p className="text-xs text-slate-500">渠道佣金 USD</p>
+                <p className="mt-1 text-xl font-bold text-red-600">{fmt(summaryChannelCommissionUsd)}</p>
+                <p className="mt-1 text-xs text-slate-400">已确认、待支付和已支付只计一次成本</p>
               </CardContent></Card>
               <Card className="border-slate-200"><CardContent className="p-4">
                 <p className="text-xs text-slate-500">活跃订阅</p>
@@ -4013,18 +4051,18 @@ export default function Finance() {
                 <CardContent className="grid gap-3 md:grid-cols-3">
                   <button type="button" onClick={() => handleFinanceTabChange('income')} className="rounded-xl border border-green-100 bg-green-50 p-4 text-left hover:bg-green-100/70">
                     <p className="text-sm font-semibold text-green-800">收入结构</p>
-                    <p className="mt-2 text-lg font-bold text-green-700">{fmt(ownerOverview.revenue)}</p>
-                    <p className="mt-1 text-xs text-green-700">投流充值 {fmt(ownerOverview.adsRevenue)} 作为客户资金单独核算</p>
+                    <p className="mt-2 text-lg font-bold text-green-700">{fmt(summaryProfitRevenueUsd)}</p>
+                    <p className="mt-1 text-xs text-green-700">投流充值 {fmt(summaryAdsRevenueUsd)} 作为客户资金单独核算</p>
                   </button>
                   <button type="button" onClick={() => handleFinanceTabChange('customer_profit')} className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-left hover:bg-emerald-100/70">
-                    <p className="text-sm font-semibold text-emerald-800">客户利润</p>
-                    <p className="mt-2 text-lg font-bold text-emerald-700">{fmt(ownerOverview.profitUsd)}</p>
-                    <p className="mt-1 text-xs text-emerald-700">找出赚钱客户和亏损客户</p>
+                    <p className="text-sm font-semibold text-emerald-800">客户利润分析</p>
+                    <p className="mt-2 text-lg font-bold text-emerald-700">{customerProfitRows.length} 个客户</p>
+                    <p className="mt-1 text-xs text-emerald-700">客户级分摊用于排查，不冒充公司审计总利润</p>
                   </button>
                   <button type="button" onClick={() => navigate('/commissions')} className="rounded-xl border border-red-100 bg-red-50 p-4 text-left hover:bg-red-100/70">
-                    <p className="text-sm font-semibold text-red-800">运营及渠道成本</p>
-                    <p className="mt-2 text-lg font-bold text-red-700">{fmt(ownerOverview.companyCostUsd + ownerOverview.channelCommissionUsd)}</p>
-                    <p className="mt-1 text-xs text-red-700">渠道佣金 {fmt(ownerOverview.channelCommissionUsd)} · 点击查看分润台账</p>
+                    <p className="text-sm font-semibold text-red-800">审计总成本</p>
+                    <p className="mt-2 text-lg font-bold text-red-700">{fmt(summaryCostUsd)}</p>
+                    <p className="mt-1 text-xs text-red-700">渠道佣金 {fmt(summaryChannelCommissionUsd)} · 点击查看分润台账</p>
                   </button>
                 </CardContent>
               </Card>
