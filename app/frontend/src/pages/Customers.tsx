@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '@/lib/tokenStore';
@@ -23,10 +23,9 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, ShieldCheck, MoreHorizontal, Settings2 } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, ShieldCheck, MoreHorizontal } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
-import ImportCustomers from '@/components/ImportCustomers';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import MediaAccountsTab from '@/components/MediaAccountsTab';
 import OperationLogsTab from '@/components/OperationLogsTab';
@@ -46,6 +45,7 @@ import {
   useDictConfig,
 } from '../lib/dict-config';
 import { getPaymentMethodLabel, getPaymentModeLabel, inferPaymentModeKey, normalizePaymentMethodKey } from '../lib/payment-utils';
+import { businessDateKey } from '../lib/business-date';
 import {
   computeSubscriptionStatus,
   decorateEffectiveSubscriptions,
@@ -55,6 +55,9 @@ import { useAutoRefresh } from '../lib/use-auto-refresh';
 import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { getReturnLabel, getSafeInternalPath } from '../lib/navigation-state';
+import { useIsMobile } from '@/hooks/use-mobile';
+
+const ImportCustomers = lazy(() => import('@/components/ImportCustomers'));
 
 const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', following: 'bg-amber-100 text-amber-700', closed: 'bg-green-100 text-green-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
 const levelColors: Record<string, string> = { high: 'bg-orange-100 text-orange-700', normal: 'bg-slate-100 text-slate-600', low: 'bg-gray-100 text-gray-500', vip: 'bg-purple-100 text-purple-700' };
@@ -69,9 +72,6 @@ const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
 const STRIPE_PLATFORM_FEE_RATE = 0.029;
 const STRIPE_PLATFORM_FEE_FIXED = 0.3;
 const CUSTOMER_PAGE_SIZE_OPTIONS = [20, 50, 100];
-const todayShanghai = () => new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-}).format(new Date());
 const lifecycleEventLabels: Record<string, string> = {
   started: '第一笔有效记账', pause: '暂停合作', pending_stop: '进入待确认停止',
   resume: '恢复合作', stop: '停止合作', reactivate: '重新合作', adjust_start: '修正合作开始日期',
@@ -573,6 +573,8 @@ const archivedSubscriptionStatuses = new Set(['stopped', 'lost', 'paused', 'upgr
 export default function Customers() {
   const navigate = useNavigate();
   const { role, employee, hasPermission, isAdmin, dataScope, canViewFinance } = useRole();
+  const isMobile = useIsMobile();
+  const businessToday = businessDateKey();
   const dictConfig = useDictConfig();
   const businessDicts = useBusinessDicts();
   const industryLabels = businessDicts.industries;
@@ -590,6 +592,11 @@ export default function Customers() {
   const subStatusLabels = businessDicts.subscriptionStatuses;
   const methodLabels = businessDicts.followUpMethods;
   const canManageDict = isAdmin || hasPermission('settings_edit');
+  const canCreateFollowUp = isAdmin || hasPermission('follow_up_create');
+  const canEditFollowUp = isAdmin || hasPermission('follow_up_edit');
+  const canDeleteFollowUp = isAdmin || hasPermission('follow_up_delete');
+  const canManageContacts = hasPermission('customer_edit');
+  const canDeleteContacts = isAdmin || hasPermission('customer_delete');
   const [searchParams, setSearchParams] = useSearchParams();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -606,7 +613,6 @@ export default function Customers() {
   const advFilterCount = Object.values(advFilters).filter(v => v.trim()).length;
   const primaryFilterCount = [filterStatus, filterIndustry, filterLevel, filterSource].filter(value => value !== 'all').length;
   const activeFilterCount = primaryFilterCount + advFilterCount;
-  const [mobileManageOpen, setMobileManageOpen] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -615,7 +621,7 @@ export default function Customers() {
   const [customerProjectsLoading, setCustomerProjectsLoading] = useState(false);
   const [commissionPartners, setCommissionPartners] = useState<Array<{ id: number; partner_code: string; name: string; partner_type: string }>>([]);
   const [commissionPartnerId, setCommissionPartnerId] = useState('auto');
-  const [commissionEffectiveFrom, setCommissionEffectiveFrom] = useState(todayShanghai());
+  const [commissionEffectiveFrom, setCommissionEffectiveFrom] = useState(businessToday);
   const [manualCityInput, setManualCityInput] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [selectedCustomerTab, setSelectedCustomerTab] = useState('overview');
@@ -647,6 +653,8 @@ export default function Customers() {
   const [renewalPageSize, setRenewalPageSize] = useState(20);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailLoadError, setDetailLoadError] = useState<string | null>(null);
+  const detailRequestSeqRef = useRef(0);
+  const activeDetailCustomerIdRef = useRef<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
@@ -1009,6 +1017,34 @@ export default function Customers() {
     return tab && customerDetailTabValues.has(tab) ? tab : 'overview';
   };
 
+  const clearCustomerDetailAssociations = () => {
+    setFollowUps([]);
+    setDeals([]);
+    setPayments([]);
+    setCustomerExpenses([]);
+    setCustomerDeductionRates({});
+    setSubscriptions([]);
+    setCustomerProjects([]);
+    setServiceProgresses([]);
+    setServiceTasks([]);
+    setContacts([]);
+    setLifecycleDetail(null);
+    setProductCatalog({ business_lines: [], products: [], plans: [] });
+    setDetailLoadError(null);
+    setDetailLoading(false);
+    setShowFollowForm(false);
+    setEditingFollowId(null);
+    setDeleteFollowTarget(null);
+    setShowContactForm(false);
+    setEditingContactId(null);
+    setDeleteContactTarget(null);
+  };
+
+  const invalidateCustomerDetailRequests = () => {
+    detailRequestSeqRef.current += 1;
+    activeDetailCustomerIdRef.current = null;
+  };
+
   useEffect(() => {
     const sp = searchParams.get('status');
     if (sp && statusLabels[sp]) setFilterStatus(sp);
@@ -1035,53 +1071,65 @@ export default function Customers() {
   const reloadFollowUps = async (cid: number) => {
     const r = await client.entities.follow_ups.query({ query: { customer_id: cid }, sort: '-created_at', limit: 1000 });
     const items = r?.data?.items || [];
-    setFollowUps(items);
+    if (activeDetailCustomerIdRef.current === cid) setFollowUps(items);
     return items;
   };
 
   const reloadContacts = async (cid: number) => {
     try {
       const r = await client.entities.customer_contacts.queryAll({ query: { customer_id: cid }, sort: '-created_at', limit: 50 });
-      setContacts(r?.data?.items || []);
-    } catch (err) { console.error('Load contacts error:', err); setContacts([]); }
+      if (activeDetailCustomerIdRef.current === cid) setContacts(r?.data?.items || []);
+    } catch (err) {
+      console.error('Load contacts error:', err);
+      if (activeDetailCustomerIdRef.current === cid) setContacts([]);
+    }
   };
 
-  const loadCustomerDeductionRates = async (paymentItems: any[]) => {
-    if (!canViewFinance) {
-      setCustomerDeductionRates({});
-      return;
-    }
+  const fetchCustomerDeductionRates = async (paymentItems: any[]) => {
+    if (!canViewFinance) return {} as Record<string, number>;
     const months = Array.from(new Set(
       paymentItems
         .map(item => getPaymentYearMonth(item))
         .filter(Boolean)
-    ));
-    if (months.length === 0) {
-      setCustomerDeductionRates({});
-      return;
-    }
+    )).sort();
+    if (months.length === 0) return {} as Record<string, number>;
     try {
-      const res = await invokeWithAuth({
-        url: '/api/v1/deductions-monthly/ensure',
-        method: 'POST',
-        data: { months },
-      });
+      const res = isMobile
+        ? await invokeWithAuth({
+          url: '/api/v1/deductions-monthly',
+          method: 'GET',
+          data: { start: months[0], end: months[months.length - 1] },
+        })
+        : await invokeWithAuth({
+          url: '/api/v1/deductions-monthly/ensure',
+          method: 'POST',
+          data: { months },
+        });
       const rates: Record<string, number> = {};
+      const requestedMonths = new Set(months);
       (res.data || []).forEach((row: any) => {
-        if (row?.year_month && typeof row.rate === 'number') rates[row.year_month] = row.rate;
+        if (row?.year_month && requestedMonths.has(row.year_month) && typeof row.rate === 'number') {
+          rates[row.year_month] = row.rate;
+        }
       });
-      setCustomerDeductionRates(rates);
+      return rates;
     } catch (err) {
       console.warn('Load customer deduction rates failed:', err);
-      setCustomerDeductionRates({});
+      return {} as Record<string, number>;
     }
   };
 
   const loadCustomerDetail = async (customerId: number, fallbackCustomer?: any) => {
+    const requestSeq = ++detailRequestSeqRef.current;
+    activeDetailCustomerIdRef.current = customerId;
+    const isCurrentRequest = () => (
+      detailRequestSeqRef.current === requestSeq
+      && activeDetailCustomerIdRef.current === customerId
+    );
     setDetailLoading(true);
     setDetailLoadError(null);
     try {
-      const [customerRes, fuRes, dRes, pRes, expenseRes, sRes, progressRes, taskRes, lifecycleRes, projectRes, catalogRes] = await Promise.all([
+      const settledResults = await Promise.allSettled([
         client.entities.customers.query({ query: { id: customerId }, limit: 1 }),
         client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
         client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 1000 }),
@@ -1101,41 +1149,74 @@ export default function Customers() {
         role === 'sales' || role === 'sales_manager'
           ? Promise.resolve({ data: { business_lines: [], products: [], plans: [] } })
           : invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }).catch(() => ({ data: { business_lines: [], products: [], plans: [] } })),
+        client.entities.customer_contacts.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 })
+          .catch(() => ({ data: { items: [] } })),
       ]);
 
+      if (!isCurrentRequest()) return;
+      const readSettled = (result: PromiseSettledResult<any>, fallback: any, label: string) => {
+        if (result.status === 'fulfilled') return result.value;
+        console.warn(`Load customer detail section failed: ${label}`, result.reason);
+        return fallback;
+      };
+      const [customerResult, fuResult, dealResult, paymentResult, expenseResult, subscriptionResult, progressResult, taskResult, lifecycleResult, projectResult, catalogResult, contactResult] = settledResults;
+      const emptyItems = { data: { items: [] } };
+      const customerRes = readSettled(customerResult, emptyItems, 'customer');
+      const fuRes = readSettled(fuResult, emptyItems, 'follow_ups');
+      const dRes = readSettled(dealResult, emptyItems, 'deals');
+      const pRes = readSettled(paymentResult, emptyItems, 'payments');
+      const expenseRes = readSettled(expenseResult, emptyItems, 'expenses');
+      const sRes = readSettled(subscriptionResult, emptyItems, 'subscriptions');
+      const progressRes = readSettled(progressResult, emptyItems, 'service_progresses');
+      const taskRes = readSettled(taskResult, emptyItems, 'service_tasks');
+      const lifecycleRes = readSettled(lifecycleResult, { data: null }, 'lifecycle');
+      const projectRes = readSettled(projectResult, emptyItems, 'projects');
+      const catalogRes = readSettled(catalogResult, { data: { business_lines: [], products: [], plans: [] } }, 'catalog');
+      const contactRes = readSettled(contactResult, emptyItems, 'contacts');
       const latestCustomer = customerRes?.data?.items?.[0] || fallbackCustomer || null;
+      if (!latestCustomer && customerResult.status === 'rejected') {
+        setDetailLoadError(getLoadErrorMessage(customerResult.reason));
+      }
+      const paymentItems = pRes?.data?.items || [];
+      const deductionRates = await fetchCustomerDeductionRates(paymentItems);
+      if (!isCurrentRequest()) return;
+
       if (latestCustomer) {
         setSelectedCustomer(latestCustomer);
         setCustomers(prev => prev.map(item => (item.id === latestCustomer.id ? { ...item, ...latestCustomer } : item)));
       }
       setFollowUps(fuRes?.data?.items || []);
       setDeals(dRes?.data?.items || []);
-      const paymentItems = pRes?.data?.items || [];
       setPayments(paymentItems);
       setCustomerExpenses(expenseRes?.data?.items || []);
-      await loadCustomerDeductionRates(paymentItems);
+      setCustomerDeductionRates(deductionRates);
       setSubscriptions(decorateEffectiveSubscriptions(sRes?.data?.items || []));
       setServiceProgresses(progressRes?.data?.items || []);
       setServiceTasks(taskRes?.data?.items || []);
       setLifecycleDetail(lifecycleRes?.data || null);
       setCustomerProjects(projectRes?.data?.items || []);
       setProductCatalog(catalogRes?.data || { business_lines: [], products: [], plans: [] });
-      await reloadContacts(customerId);
+      setContacts(contactRes?.data?.items || []);
     } catch (err) {
       console.error(err);
-      setDetailLoadError(getLoadErrorMessage(err));
+      if (isCurrentRequest()) setDetailLoadError(getLoadErrorMessage(err));
     } finally {
-      setDetailLoading(false);
+      if (isCurrentRequest()) setDetailLoading(false);
     }
   };
 
   const openEditFollow = (f: any) => {
+    if (!canEditFollowUp) return;
     setFollowForm({ contact_method: f.contact_method || 'phone', content: f.content || '', customer_needs: f.customer_needs || '', customer_pain_points: f.customer_pain_points || '', has_quoted: f.has_quoted || false, quote_plan: f.quote_plan || '', close_probability: f.close_probability ?? 30, stage: f.stage || 'communicating', next_follow_date: f.next_follow_date ? f.next_follow_date.slice(0, 10) : '' });
     setEditingFollowId(f.id);
     setShowFollowForm(true);
   };
 
   const handleSaveFollow = async () => {
+    if (editingFollowId ? !canEditFollowUp : !canCreateFollowUp) {
+      toast.error('当前账号没有保存跟进记录的权限');
+      return;
+    }
     if (!followForm.content.trim()) { toast.error('请填写跟进内容'); return; }
     if (!selectedCustomer) return;
     setSavingFollow(true);
@@ -1161,7 +1242,7 @@ export default function Customers() {
         if (!shouldClearReminder) {
           const latestFollowUp = nextFollowUps[0];
           const latestNextDate = latestFollowUp?.next_follow_date?.slice(0, 10) || '';
-          const todayStr = new Date().toISOString().slice(0, 10);
+          const todayStr = businessToday;
           if (followReminderType === 'follow_up_today') {
             shouldClearReminder = latestNextDate !== todayStr;
           } else if (followReminderType === 'follow_up_overdue') {
@@ -1178,7 +1259,7 @@ export default function Customers() {
   };
 
   const handleDeleteFollow = async () => {
-    if (!deleteFollowTarget || !selectedCustomer) return;
+    if (!deleteFollowTarget || !selectedCustomer || !canDeleteFollowUp) return;
     setDeletingFollow(true);
     try {
       await client.entities.follow_ups.delete({ id: String(deleteFollowTarget.id) });
@@ -1191,6 +1272,10 @@ export default function Customers() {
 
   // Contact CRUD
   const handleSaveContact = async () => {
+    if (!canManageContacts) {
+      toast.error('当前账号没有修改联系人的权限');
+      return;
+    }
     if (!contactForm.contact_name.trim()) { toast.error('请填写联系人姓名'); return; }
     if (!selectedCustomer) return;
     setSavingContact(true);
@@ -1208,7 +1293,7 @@ export default function Customers() {
   };
 
   const handleDeleteContact = async () => {
-    if (!deleteContactTarget || !selectedCustomer) return;
+    if (!deleteContactTarget || !selectedCustomer || !canDeleteContacts) return;
     setDeletingContact(true);
     try {
       await client.entities.customer_contacts.delete({ id: String(deleteContactTarget.id) });
@@ -1229,7 +1314,11 @@ export default function Customers() {
 
   const loadEmployees = async () => {
     try {
-      const res = await client.entities.employees.queryAll({ query: { status: 'active' }, limit: 100 });
+      const res = await invokeWithAuth({
+        url: '/api/v1/entities/employees/directory',
+        method: 'GET',
+        data: { query: JSON.stringify({ status: 'active' }), limit: 100 },
+      });
       setEmployeesList(res?.data?.items || []);
     } catch (err) { console.error('Load employees error:', err); }
   };
@@ -1260,8 +1349,10 @@ export default function Customers() {
   useAutoRefresh(async () => {
     await loadCustomers();
     await loadEmployees();
-    if (selectedCustomer?.id) {
-      await loadCustomerDetail(selectedCustomer.id, selectedCustomer);
+    const detailCustomerId = activeDetailCustomerIdRef.current;
+    if (detailCustomerId) {
+      const fallbackCustomer = selectedCustomer?.id === detailCustomerId ? selectedCustomer : undefined;
+      await loadCustomerDetail(detailCustomerId, fallbackCustomer);
     }
   }, {
     intervalMs: 30000,
@@ -1361,7 +1452,7 @@ export default function Customers() {
     renewalPageSize,
   ]);
 
-  const openCreate = () => { setForm({ ...emptyForm, selected_platforms: [], interested_packages: [], interested_packages_snapshot: {} }); setCustomerProjectForms([]); setCommissionPartnerId('auto'); setCommissionEffectiveFrom(todayShanghai()); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
+  const openCreate = () => { setForm({ ...emptyForm, selected_platforms: [], interested_packages: [], interested_packages_snapshot: {} }); setCustomerProjectForms([]); setCommissionPartnerId('auto'); setCommissionEffectiveFrom(businessToday); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
   const openEdit = async (c: any) => {
     const interestedPackages = parseMultiValue(c.interested_packages);
     const snapshot = parsePackageSnapshot(c.interested_packages_snapshot);
@@ -1493,9 +1584,12 @@ export default function Customers() {
     try {
       await client.entities.customers.delete({ id: String(deleteTarget.id) });
       toast.success('客户已删除');
-      logOperation({ customerId: deleteTarget.id, actionType: 'delete_customer', actionDetail: `删除客户: ${deleteTarget.business_name}`, operatorName: employee?.name || '管理员' });
       setDeleteTarget(null);
-      if (selectedCustomer?.id === deleteTarget.id) setSelectedCustomer(null);
+      if (selectedCustomer?.id === deleteTarget.id) {
+        invalidateCustomerDetailRequests();
+        clearCustomerDetailAssociations();
+        setSelectedCustomer(null);
+      }
       loadCustomers();
     } catch { toast.error('删除失败'); } finally { setDeleting(false); }
   };
@@ -1522,7 +1616,11 @@ export default function Customers() {
     try {
       const employeePromise = employeesList.length > 0
         ? Promise.resolve(null)
-        : client.entities.employees.queryAll({ query: { status: 'active' }, limit: 200 });
+        : invokeWithAuth({
+          url: '/api/v1/entities/employees/directory',
+          method: 'GET',
+          data: { query: JSON.stringify({ status: 'active' }), limit: 200 },
+        });
       const [response, employeeResponse] = await Promise.all([
         invokeWithAuth({ url: `/api/v1/entities/customers/${c.id}/access`, method: 'GET' }),
         employeePromise,
@@ -1659,22 +1757,19 @@ export default function Customers() {
   };
 
   const openDetail = async (c: any, nextTab = 'overview') => {
+    detailRequestSeqRef.current += 1;
+    activeDetailCustomerIdRef.current = c.id;
     setSelectedCustomerTab(normalizeCustomerDetailTab(nextTab));
-    setFollowUps([]);
-    setDeals([]);
-    setPayments([]);
-    setCustomerExpenses([]);
-    setCustomerDeductionRates({});
-    setSubscriptions([]);
-    setCustomerProjects([]);
-    setServiceProgresses([]);
-    setServiceTasks([]);
-    setContacts([]);
+    clearCustomerDetailAssociations();
     setSelectedCustomer(c);
     await loadCustomerDetail(c.id, c);
   };
 
   const closeDetail = () => {
+    invalidateCustomerDetailRequests();
+    clearCustomerDetailAssociations();
+    setSelectedCustomer(null);
+    setSelectedCustomerTab('overview');
     if (detailReturnTo) {
       navigate(detailReturnTo);
       return;
@@ -1684,8 +1779,6 @@ export default function Customers() {
       navigate(`/finance${financeTab ? `?tab=${encodeURIComponent(financeTab)}` : ''}`);
       return;
     }
-    setSelectedCustomer(null);
-    setSelectedCustomerTab('overview');
     if (searchParams.get('detail') || searchParams.get('tab') || searchParams.get('reminder') || searchParams.get('from') || searchParams.get('financeTab') || searchParams.get('returnTo')) {
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('detail');
@@ -1716,8 +1809,8 @@ export default function Customers() {
   const sharedCustomerDialogs = (
     <>
       <ConfirmDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }} title="确认删除客户" description={`确定要删除「${deleteTarget?.business_name}」吗？`} onConfirm={handleDelete} loading={deleting} />
-      <ConfirmDialog open={!!deleteFollowTarget} onOpenChange={v => { if (!v) setDeleteFollowTarget(null); }} title="确认删除跟进记录" description="确定要删除这条跟进记录吗？" onConfirm={handleDeleteFollow} loading={deletingFollow} />
-      <ConfirmDialog open={!!deleteContactTarget} onOpenChange={v => { if (!v) setDeleteContactTarget(null); }} title="确认删除联系人" description={`确定要删除联系人「${deleteContactTarget?.contact_name}」吗？`} onConfirm={handleDeleteContact} loading={deletingContact} />
+      {canDeleteFollowUp && <ConfirmDialog open={!!deleteFollowTarget} onOpenChange={v => { if (!v) setDeleteFollowTarget(null); }} title="确认删除跟进记录" description="确定要删除这条跟进记录吗？" onConfirm={handleDeleteFollow} loading={deletingFollow} />}
+      {canDeleteContacts && <ConfirmDialog open={!!deleteContactTarget} onOpenChange={v => { if (!v) setDeleteContactTarget(null); }} title="确认删除联系人" description={`确定要删除联系人「${deleteContactTarget?.contact_name}」吗？`} onConfirm={handleDeleteContact} loading={deletingContact} />}
 
       <Dialog open={showAssignDialog} onOpenChange={v => { if (!v) { setShowAssignDialog(false); setAssignTarget(null); } }}>
         <DialogContent className="max-w-md">
@@ -1782,11 +1875,15 @@ export default function Customers() {
       </Dialog>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle></DialogHeader>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl overflow-y-auto sm:max-h-[90vh]">
+          <DialogHeader className="sticky top-0 z-20 -mx-6 -mt-6 border-b border-slate-200 bg-white px-6 py-4 sm:static sm:m-0 sm:border-0 sm:bg-transparent sm:p-0"><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle></DialogHeader>
           {duplicateWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><AlertCircle className="w-4 h-4 flex-shrink-0" />{duplicateWarning}</div>}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
+          <div data-testid="customer-form-grid" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-2">
+              <p className="text-sm font-semibold text-slate-800">基本与联系信息</p>
+              <p className="mt-1 text-xs text-slate-500">先填写客户识别和日常联系所需信息。</p>
+            </div>
+            <div className="sm:col-span-2">
               <Label>客户编号</Label>
               <div className="flex gap-2 items-center">
                 <Input value={form.customer_code} onChange={e => setForm({ ...form, customer_code: e.target.value })} placeholder={editingId ? '修改编号' : `留空自动生成`} className="font-mono" />
@@ -1798,19 +1895,23 @@ export default function Customers() {
             <div><Label>电话 *</Label><Input value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
             <div><Label>微信/WhatsApp</Label><Input value={form.wechat} onChange={e => setForm({ ...form, wechat: e.target.value })} /></div>
             <div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+            <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-2">
+              <p className="text-sm font-semibold text-slate-800">地区与客户归类</p>
+              <p className="mt-1 text-xs text-slate-500">补充客户所在地区、来源、等级和当前状态。</p>
+            </div>
             <div>
               <Label>行业</Label>
               <div className="flex gap-1.5">
                 <NativeSelect value={form.industry} onChange={v => setForm({ ...form, industry: v })} options={Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))} className="flex-1" />
-                <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={() => setShowAddIndustry(true)}><Plus className="w-3.5 h-3.5" /></Button>
+                <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0 px-3 text-xs text-blue-600 hover:text-blue-700 sm:h-10 sm:min-h-0 sm:px-2" aria-label="添加行业分类" onClick={() => setShowAddIndustry(true)}><Plus className="w-3.5 h-3.5" /></Button>
               </div>
               {showAddIndustry && (
                 <div className="mt-2 p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-2">
                   <Label className="text-xs text-blue-700">添加新行业分类</Label>
                   <div className="flex gap-2">
                     <Input value={newIndustryName} onChange={e => setNewIndustryName(e.target.value)} placeholder="输入行业名称，如：教育" className="h-8 text-sm flex-1" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddIndustry(); } }} />
-                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleAddIndustry}>添加</Button>
-                    <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setShowAddIndustry(false); setNewIndustryName(''); }}>取消</Button>
+                    <Button type="button" size="sm" className="min-h-11 bg-blue-600 text-xs hover:bg-blue-700 sm:h-8 sm:min-h-0" onClick={handleAddIndustry}>添加</Button>
+                    <Button type="button" size="sm" variant="ghost" className="min-h-11 text-xs sm:h-8 sm:min-h-0" onClick={() => { setShowAddIndustry(false); setNewIndustryName(''); }}>取消</Button>
                   </div>
                 </div>
               )}
@@ -1852,13 +1953,13 @@ export default function Customers() {
               <Label>等级</Label>
               <div className="flex gap-1.5">
                 <NativeSelect value={form.level} onChange={v => setForm({ ...form, level: v })} options={Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))} className="flex-1" />
-                <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={openLevelManager}><Plus className="w-3.5 h-3.5" /></Button>
+                <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0 px-3 text-xs text-blue-600 hover:text-blue-700 sm:h-10 sm:min-h-0 sm:px-2" aria-label="管理客户等级" onClick={openLevelManager}><Plus className="w-3.5 h-3.5" /></Button>
               </div>
               {showLevelManager && (
                 <div className="mt-2 p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <Label className="text-xs text-blue-700">管理客户等级</Label>
-                    <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setShowLevelManager(false); setNewLevelName(''); }}>
+                    <Button type="button" size="sm" variant="ghost" className="min-h-11 px-3 text-xs sm:h-7 sm:min-h-0 sm:px-2" aria-label="关闭客户等级管理" onClick={() => { setShowLevelManager(false); setNewLevelName(''); }}>
                       <X className="w-3.5 h-3.5" />
                     </Button>
                   </div>
@@ -1875,7 +1976,8 @@ export default function Customers() {
                           type="button"
                           size="sm"
                           variant="ghost"
-                          className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
+                          className="h-11 w-11 p-0 text-slate-500 hover:text-red-600 sm:h-8 sm:w-8"
+                          aria-label={`删除客户等级：${item.label}`}
                           onClick={() => handleRemoveLevelDraft(item.key)}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1896,17 +1998,21 @@ export default function Customers() {
                         }
                       }}
                     />
-                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleAddLevelDraft}>添加</Button>
+                    <Button type="button" size="sm" className="min-h-11 bg-blue-600 text-xs hover:bg-blue-700 sm:h-8 sm:min-h-0" onClick={handleAddLevelDraft}>添加</Button>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setShowLevelManager(false); setNewLevelName(''); }}>取消</Button>
-                    <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleSaveLevels} disabled={savingLevels}>{savingLevels ? '保存中...' : '保存等级'}</Button>
+                    <Button type="button" size="sm" variant="outline" className="min-h-11 text-xs sm:h-8 sm:min-h-0" onClick={() => { setShowLevelManager(false); setNewLevelName(''); }}>取消</Button>
+                    <Button type="button" size="sm" className="min-h-11 bg-blue-600 text-xs hover:bg-blue-700 sm:h-8 sm:min-h-0" onClick={handleSaveLevels} disabled={savingLevels}>{savingLevels ? '保存中...' : '保存等级'}</Button>
                   </div>
                 </div>
               )}
             </div>
             <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            {!editingId && <div className="col-span-2 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+            <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-2">
+              <p className="text-sm font-semibold text-slate-800">合作项目与归属</p>
+              <p className="mt-1 text-xs text-slate-500">记录负责人、分润归属和当前合作项目；历史记录仍按原规则保留。</p>
+            </div>
+            {!editingId && <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 sm:col-span-2">
               <div>
                 <Label className="text-sm font-semibold text-slate-800">客户来源与分润归属</Label>
                 <p className="mt-1 text-xs leading-5 text-slate-500">首次保存时建立归属。自动模式会优先匹配“负责销售”对应的内部销售渠道，未匹配时归为公司直营；以后变更请到“渠道与分润中心”保留历史。</p>
@@ -1916,7 +2022,7 @@ export default function Customers() {
                 <div><Label className="text-xs">归属生效日期</Label><Input type="date" value={commissionEffectiveFrom} onChange={event => setCommissionEffectiveFrom(event.target.value)} /></div>
               </div>
             </div>}
-            <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+            <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 sm:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <Label className="text-sm font-semibold text-slate-800">合作项目（可多选）</Label>
@@ -1948,16 +2054,16 @@ export default function Customers() {
                         <div><Label className="text-xs">套餐/项目名称 *</Label><Input value={project.package_name} onChange={event => updateCustomerProject(index, { package_name: event.target.value })} placeholder="如：基础代运营、餐饮 OS 专业版" /></div>
                         <div><Label className="text-xs">项目状态 *</Label><NativeSelect value={project.status} onChange={value => updateCustomerProject(index, {
                           status: value,
-                          stopped_at: ['stopped', 'completed'].includes(value) ? (project.stopped_at || todayShanghai()) : '',
+                          stopped_at: ['stopped', 'completed'].includes(value) ? (project.stopped_at || businessToday) : '',
                           stop_reason_code: value === 'stopped' ? project.stop_reason_code : '',
                           stop_note: ['stopped', 'completed'].includes(value) ? project.stop_note : '',
                         })} options={Object.entries(customerProjectStatuses).map(([value, label]) => ({ value, label }))} /></div>
-                        <div><Label className="text-xs">第一笔有效收款日期</Label><Input type="date" value={project.paid_started_at} max={new Date().toISOString().slice(0, 10)} onChange={event => updateCustomerProject(index, { paid_started_at: event.target.value })} /></div>
+                        <div><Label className="text-xs">第一笔有效收款日期</Label><Input type="date" value={project.paid_started_at} max={businessToday} onChange={event => updateCustomerProject(index, { paid_started_at: event.target.value })} /></div>
                         <div><Label className="text-xs">收费周期</Label><NativeSelect value={project.billing_cycle} onChange={value => updateCustomerProject(index, { billing_cycle: value })} options={[{ value: '', label: '待确认' }, ...Object.entries(customerProjectBillingCycles).map(([value, label]) => ({ value, label }))]} /></div>
                         <div><Label className="text-xs">收款方式</Label><NativeSelect value={project.collection_method} onChange={value => updateCustomerProject(index, { collection_method: value })} options={Object.entries(customerProjectCollectionMethods).map(([value, label]) => ({ value, label }))} /></div>
                         <div><Label className="text-xs">币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateCustomerProject(index, { currency: event.target.value.toUpperCase() })} /></div>
                         <div><Label className="text-xs">项目负责人</Label><NativeSelect value={project.owner_employee_id} onChange={value => updateCustomerProject(index, { owner_employee_id: value })} options={[{ value: '', label: '待分配' }, ...employeesList.map(employeeRow => ({ value: String(employeeRow.id), label: employeeRow.name }))]} /></div>
-                        {['stopped', 'completed'].includes(project.status) && <div><Label className="text-xs">结束日期 *</Label><Input type="date" value={project.stopped_at} max={todayShanghai()} onChange={event => updateCustomerProject(index, { stopped_at: event.target.value })} /></div>}
+                        {['stopped', 'completed'].includes(project.status) && <div><Label className="text-xs">结束日期 *</Label><Input type="date" value={project.stopped_at} max={businessToday} onChange={event => updateCustomerProject(index, { stopped_at: event.target.value })} /></div>}
                         {project.status === 'stopped' && <div><Label className="text-xs">停止原因</Label><NativeSelect value={project.stop_reason_code} onChange={value => updateCustomerProject(index, { stop_reason_code: value })} options={[{ value: '', label: '待补充' }, ...Object.entries(customerProjectStopReasons).map(([value, label]) => ({ value, label }))]} /></div>}
                         {['stopped', 'completed'].includes(project.status) && <div className="sm:col-span-2"><Label className="text-xs">结束备注</Label><Input value={project.stop_note} onChange={event => updateCustomerProject(index, { stop_note: event.target.value })} placeholder="记录停止或完成背景，方便以后复盘" /></div>}
                       </div>
@@ -1967,7 +2073,7 @@ export default function Customers() {
                 </div>
               )}
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Label>历史意向套餐（兼容旧资料）</Label>
               <div className="mt-1 space-y-2">
                 <div className="flex items-start gap-1.5">
@@ -1998,13 +2104,13 @@ export default function Customers() {
                     </p>
                     <p className="mt-1 text-xs text-blue-600">新需求请保存客户后在“客户商机”中选择业务线、正式套餐和实际服务范围；这里仅保留历史资料。</p>
                   </div>
-                  <Button type="button" size="sm" variant="outline" className="shrink-0 h-10 px-2 text-xs text-blue-600 hover:text-blue-700" onClick={openPackageManager}><Plus className="w-3.5 h-3.5" /></Button>
+                  <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0 px-3 text-xs text-blue-600 hover:text-blue-700 sm:h-10 sm:min-h-0 sm:px-2" aria-label="管理合作套餐" onClick={openPackageManager}><Plus className="w-3.5 h-3.5" /></Button>
                 </div>
                 {showPackageManager && (
                   <div className="p-3 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
                     <div className="flex items-center justify-between gap-2">
                       <Label className="text-xs text-blue-700">管理客户意向套餐</Label>
-                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setShowPackageManager(false); setNewPackageName(''); }}>
+                      <Button type="button" size="sm" variant="ghost" className="min-h-11 px-3 text-xs sm:h-7 sm:min-h-0 sm:px-2" aria-label="关闭合作套餐管理" onClick={() => { setShowPackageManager(false); setNewPackageName(''); }}>
                         <X className="w-3.5 h-3.5" />
                       </Button>
                     </div>
@@ -2022,7 +2128,8 @@ export default function Customers() {
                               type="button"
                               size="sm"
                               variant="ghost"
-                              className="h-8 w-8 p-0 text-slate-500 hover:text-red-600"
+                              className="h-11 w-11 p-0 text-slate-500 hover:text-red-600 sm:h-8 sm:w-8"
+                              aria-label={`删除合作套餐：${item.label}`}
                               onClick={() => handleRemovePackageDraft(item.key)}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -2044,17 +2151,21 @@ export default function Customers() {
                           }
                         }}
                       />
-                      <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={() => void handleAddPackageDraft()} disabled={savingPackages}>{savingPackages ? '保存中...' : '添加'}</Button>
+                      <Button type="button" size="sm" className="min-h-11 bg-blue-600 text-xs hover:bg-blue-700 sm:h-8 sm:min-h-0" onClick={() => void handleAddPackageDraft()} disabled={savingPackages}>{savingPackages ? '保存中...' : '添加'}</Button>
                     </div>
                     <div className="flex justify-end gap-2">
-                      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setShowPackageManager(false); setNewPackageName(''); }}>取消</Button>
-                      <Button type="button" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-xs" onClick={handleSavePackages} disabled={savingPackages}>{savingPackages ? '保存中...' : '保存套餐'}</Button>
+                      <Button type="button" size="sm" variant="outline" className="min-h-11 text-xs sm:h-8 sm:min-h-0" onClick={() => { setShowPackageManager(false); setNewPackageName(''); }}>取消</Button>
+                      <Button type="button" size="sm" className="min-h-11 bg-blue-600 text-xs hover:bg-blue-700 sm:h-8 sm:min-h-0" onClick={handleSavePackages} disabled={savingPackages}>{savingPackages ? '保存中...' : '保存套餐'}</Button>
                     </div>
                   </div>
                 )}
               </div>
             </div>
-            <div className="col-span-2">
+            <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+              <div className="mb-3">
+                <p className="text-sm font-semibold text-slate-800">平台与补充资料</p>
+                <p className="mt-1 text-xs text-slate-500">记录客户现有平台、负责人和可选链接。</p>
+              </div>
               <Label>客户现有平台（基础资料）</Label>
               <div className="mt-1 rounded-md border border-slate-200 bg-slate-50 p-3">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -2082,9 +2193,9 @@ export default function Customers() {
             <div><Label>负责销售</Label><NativeSelect value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
             <div><Label>官网</Label><Input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
             <div><Label>客户平台现状备注</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} placeholder="如：客户自营 Facebook，Google 暂未维护" /></div>
-            <div className="col-span-2 border-t border-slate-200 pt-3 mt-1">
+            <div className="mt-1 border-t border-slate-200 pt-3 sm:col-span-2">
               <h4 className="text-sm font-medium text-slate-600 mb-3">社交媒体链接</h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div><Label className="text-xs">Facebook</Label><Input value={form.facebook_link} onChange={e => setForm({ ...form, facebook_link: e.target.value })} placeholder="https://facebook.com/..." /></div>
                 <div><Label className="text-xs">Instagram</Label><Input value={form.instagram_link} onChange={e => setForm({ ...form, instagram_link: e.target.value })} placeholder="https://instagram.com/..." /></div>
                 <div><Label className="text-xs">Google Business</Label><Input value={form.google_business_link} onChange={e => setForm({ ...form, google_business_link: e.target.value })} placeholder="https://business.google.com/..." /></div>
@@ -2092,11 +2203,11 @@ export default function Customers() {
                 <div><Label className="text-xs">TikTok</Label><Input value={form.tiktok_link} onChange={e => setForm({ ...form, tiktok_link: e.target.value })} placeholder="https://tiktok.com/@..." /></div>
               </div>
             </div>
-            <div className="col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
+            <div className="sm:col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowForm(false)}>取消</Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
+          <div data-testid="customer-form-actions" className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-5 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
+            <Button variant="outline" onClick={() => setShowForm(false)} className="min-h-11 flex-1 sm:flex-none">取消</Button>
+            <Button onClick={handleSave} disabled={saving} className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none">{saving ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -2117,21 +2228,21 @@ export default function Customers() {
             value={String(customerPageSize)}
             onChange={value => setCustomerPageSize(Number(value))}
             options={CUSTOMER_PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
-            className="h-8 w-24 text-xs"
+            className="min-h-11 w-24 text-xs md:h-8 md:min-h-0"
           />
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setCustomerPage(1)} disabled={paginatedCustomers.page <= 1}>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setCustomerPage(1)} disabled={paginatedCustomers.page <= 1}>
             首页
           </Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setCustomerPage(paginatedCustomers.page - 1)} disabled={paginatedCustomers.page <= 1}>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setCustomerPage(paginatedCustomers.page - 1)} disabled={paginatedCustomers.page <= 1}>
             上一页
           </Button>
           <span className="min-w-20 text-center text-xs text-slate-500">
             {paginatedCustomers.page} / {paginatedCustomers.totalPages} 页
           </span>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setCustomerPage(paginatedCustomers.page + 1)} disabled={paginatedCustomers.page >= paginatedCustomers.totalPages}>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setCustomerPage(paginatedCustomers.page + 1)} disabled={paginatedCustomers.page >= paginatedCustomers.totalPages}>
             下一页
           </Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setCustomerPage(paginatedCustomers.totalPages)} disabled={paginatedCustomers.page >= paginatedCustomers.totalPages}>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setCustomerPage(paginatedCustomers.totalPages)} disabled={paginatedCustomers.page >= paginatedCustomers.totalPages}>
             末页
           </Button>
         </div>
@@ -2164,21 +2275,21 @@ export default function Customers() {
             value={String(pageSize)}
             onChange={value => onPageSizeChange(Number(value))}
             options={CUSTOMER_PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
-            className="h-8 w-24 text-xs"
+            className="min-h-11 w-24 text-xs md:h-8 md:min-h-0"
           />
-          <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => onPageChange(1)} disabled={pagination.page <= 1}>
+          <Button size="sm" variant="outline" className="min-h-11 bg-white md:h-8 md:min-h-0" onClick={() => onPageChange(1)} disabled={pagination.page <= 1}>
             首页
           </Button>
-          <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => onPageChange(pagination.page - 1)} disabled={pagination.page <= 1}>
+          <Button size="sm" variant="outline" className="min-h-11 bg-white md:h-8 md:min-h-0" onClick={() => onPageChange(pagination.page - 1)} disabled={pagination.page <= 1}>
             上一页
           </Button>
           <span className="min-w-20 text-center text-xs text-slate-500">
             {pagination.page} / {pagination.totalPages} 页
           </span>
-          <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => onPageChange(pagination.page + 1)} disabled={pagination.page >= pagination.totalPages}>
+          <Button size="sm" variant="outline" className="min-h-11 bg-white md:h-8 md:min-h-0" onClick={() => onPageChange(pagination.page + 1)} disabled={pagination.page >= pagination.totalPages}>
             下一页
           </Button>
-          <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => onPageChange(pagination.totalPages)} disabled={pagination.page >= pagination.totalPages}>
+          <Button size="sm" variant="outline" className="min-h-11 bg-white md:h-8 md:min-h-0" onClick={() => onPageChange(pagination.totalPages)} disabled={pagination.page >= pagination.totalPages}>
             末页
           </Button>
         </div>
@@ -2236,7 +2347,7 @@ export default function Customers() {
     const currentLifecycleStatus = lifecycleDetail?.cycles?.[0]?.status;
     const hasClosureMismatch = currentLifecycleStatus === 'stopped' && (activeSubscriptionCount > 0 || activeCustomerProjectCount > 0);
     const pendingServiceTasks = serviceTasks.filter(item => !['completed', 'cancelled'].includes(item.status || '')).length;
-    const overdueServiceTasks = serviceTasks.filter(item => item.due_date && item.due_date < new Date().toISOString().slice(0, 10) && !['completed', 'cancelled'].includes(item.status || '')).length;
+    const overdueServiceTasks = serviceTasks.filter(item => item.due_date && item.due_date.slice(0, 10) < businessToday && !['completed', 'cancelled'].includes(item.status || '')).length;
     const openServiceIssues = serviceProgresses.filter(item => item.issue_status && item.issue_status !== 'none' && !item.issue_resolved).length;
     const detailBusinessLineMap = Object.fromEntries((productCatalog.business_lines || []).map((item: any) => [item.id, item]));
     const detailProductMap = Object.fromEntries((productCatalog.products || []).map((item: any) => [item.id, item]));
@@ -2281,6 +2392,14 @@ export default function Customers() {
       { value: 'logs', label: '操作日志' },
     ];
     const secondaryDetailTabValues = new Set(secondaryDetailTabs.map(item => item.value));
+    const mobileMoreDetailTabs = [
+      { value: 'timeline', label: `时间线 (${detailLoading ? '…' : timelineEvents.length})` },
+      { value: 'opportunities', label: '客户商机' },
+      ...(canViewFinance ? [{ value: 'payments', label: `财务信息 (${detailLoading ? '…' : customerFinanceRecordCount})` }] : []),
+      { value: 'renewals', label: `续费信息 (${detailLoading ? '…' : renewalRows.length})` },
+      ...secondaryDetailTabs.filter(item => item.value !== 'followups'),
+    ];
+    const mobileMoreDetailTabValues = new Set(mobileMoreDetailTabs.map(item => item.value));
     const customer360Actions: Array<{
       key: string;
       title: string;
@@ -2309,11 +2428,11 @@ export default function Customers() {
       description: '进入服务信息核对问题描述、处理人和结果。', button: '解决问题',
       tone: 'border-violet-200 bg-violet-50', onClick: () => handleDetailTabChange('subscriptions'),
     });
-    if (contacts.length === 0) customer360Actions.push({
+    if (canManageContacts && contacts.length === 0) customer360Actions.push({
       key: 'contact', title: '补充关键联系人', description: '至少记录老板或主要对接人，避免后续交付找不到人。', button: '添加联系人',
       tone: 'border-slate-200 bg-slate-50', onClick: () => { handleDetailTabChange('contacts'); setContactForm(emptyContactForm); setEditingContactId(null); setShowContactForm(true); },
     });
-    if (followUps.length === 0) customer360Actions.push({
+    if (canCreateFollowUp && followUps.length === 0) customer360Actions.push({
       key: 'followup', title: '补充首次跟进记录', description: '记录客户当前情况和下一步安排，让团队接手时不丢上下文。', button: '新增跟进',
       tone: 'border-slate-200 bg-slate-50', onClick: () => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); },
     });
@@ -2359,7 +2478,21 @@ export default function Customers() {
         )}
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
           <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
-          <TabsList className="h-auto max-w-full flex-nowrap justify-start gap-1 overflow-x-auto bg-slate-100 p-1 sm:flex-wrap sm:overflow-visible">
+          <TabsList aria-label="客户手机主导航" className="grid h-12 w-full grid-cols-3 gap-1 bg-slate-100 p-1 md:hidden">
+            <TabsTrigger value="overview" className="min-h-11 px-2 text-sm">概览</TabsTrigger>
+            <TabsTrigger value="followups" className="min-h-11 px-2 text-sm">跟进</TabsTrigger>
+            <TabsTrigger value="subscriptions" className="min-h-11 px-2 text-sm">服务</TabsTrigger>
+          </TabsList>
+          <label className="md:hidden">
+            <span className="sr-only">更多客户资料</span>
+            <NativeSelect
+              value={mobileMoreDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
+              onChange={value => { if (value) handleDetailTabChange(value); }}
+              options={[{ value: '', label: '更多客户资料' }, ...mobileMoreDetailTabs]}
+              className="w-full"
+            />
+          </label>
+          <TabsList className="hidden h-auto max-w-full flex-wrap justify-start gap-1 bg-slate-100 p-1 md:flex">
             <TabsTrigger value="overview" className="shrink-0 text-xs">客户 360</TabsTrigger>
             <TabsTrigger value="timeline" className="shrink-0 text-xs">时间线 ({detailLoading ? '…' : timelineEvents.length})</TabsTrigger>
             <TabsTrigger value="opportunities" className="shrink-0 text-xs">客户商机</TabsTrigger>
@@ -2371,7 +2504,7 @@ export default function Customers() {
             value={secondaryDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
             onChange={value => { if (value) handleDetailTabChange(value); }}
             options={[{ value: '', label: '更多资料与工具' }, ...secondaryDetailTabs]}
-            className="h-9 w-full lg:w-48"
+            className="hidden h-9 w-full md:block lg:w-48"
           />
           </div>
 
@@ -2398,7 +2531,7 @@ export default function Customers() {
                 <Card className="border-slate-200"><CardContent className="p-5">
                   <h3 className="text-base font-semibold text-slate-900">客户摘要</h3>
                   <div className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{c.phone || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
-                  <div className="mt-4 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button><Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button><Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>管理新商机</Button></div>
+                  <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}<Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>管理新商机</Button></div>
                 </CardContent></Card>
 
                 <Card className="border-slate-200"><CardContent className="p-5">
@@ -2482,12 +2615,12 @@ export default function Customers() {
             <Card className="border-slate-200"><CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium text-slate-600 flex items-center gap-2"><Users className="w-4 h-4" /> 联系人信息</span>
-                <Button size="sm" onClick={() => { setContactForm(emptyContactForm); setEditingContactId(null); setShowContactForm(true); }} className="bg-blue-600 hover:bg-blue-700"><UserPlus className="w-3.5 h-3.5 mr-1" /> 添加联系人</Button>
+                {canManageContacts && <Button size="sm" onClick={() => { setContactForm(emptyContactForm); setEditingContactId(null); setShowContactForm(true); }} className="bg-blue-600 hover:bg-blue-700"><UserPlus className="w-3.5 h-3.5 mr-1" /> 添加联系人</Button>}
               </div>
-              {showContactForm && (
+              {canManageContacts && showContactForm && (
                 <div className="mb-4 p-4 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
                   <span className="text-sm font-medium text-blue-700">{editingContactId ? '编辑联系人' : '添加联系人'}</span>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div><Label className="text-xs">姓名 *</Label><Input value={contactForm.contact_name} onChange={e => setContactForm({ ...contactForm, contact_name: e.target.value })} placeholder="联系人姓名" /></div>
                     <div><Label className="text-xs">手机号</Label><Input value={contactForm.contact_phone} onChange={e => setContactForm({ ...contactForm, contact_phone: e.target.value })} placeholder="手机号码" /></div>
                     <div><Label className="text-xs">角色</Label><NativeSelect value={contactForm.contact_role} onChange={v => setContactForm({ ...contactForm, contact_role: v })} options={Object.entries(contactRoleLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
@@ -2499,7 +2632,7 @@ export default function Customers() {
                   </div>
                 </div>
               )}
-              {contacts.length === 0 && !showContactForm ? <p className="text-sm text-slate-400 text-center py-8">暂无联系人信息，点击"添加联系人"开始添加</p> : (
+              {contacts.length === 0 && !showContactForm ? <p className="text-sm text-slate-400 text-center py-8">{canManageContacts ? '暂无联系人信息，点击“添加联系人”开始添加' : '暂无联系人信息'}</p> : (
                 <div className="space-y-3">{contacts.map((ct: any) => (
                   <div key={ct.id} className="p-3 bg-slate-50 rounded-lg group">
                     <div className="flex items-center justify-between">
@@ -2516,10 +2649,10 @@ export default function Customers() {
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600" onClick={() => { setContactForm({ contact_name: ct.contact_name || '', contact_phone: ct.contact_phone || '', contact_role: ct.contact_role || 'boss', notes: ct.notes || '' }); setEditingContactId(ct.id); setShowContactForm(true); }}><Edit className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteContactTarget(ct)}><Trash2 className="w-3 h-3" /></Button>
-                      </div>
+                      {(canManageContacts || canDeleteContacts) && <div className="flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
+                        {canManageContacts && <Button aria-label={`编辑联系人：${ct.contact_name}`} size="sm" variant="ghost" className="h-11 w-11 p-0 text-slate-500 hover:text-blue-600 md:h-7 md:w-7" onClick={() => { setContactForm({ contact_name: ct.contact_name || '', contact_phone: ct.contact_phone || '', contact_role: ct.contact_role || 'boss', notes: ct.notes || '' }); setEditingContactId(ct.id); setShowContactForm(true); }}><Edit className="w-3.5 h-3.5" /></Button>}
+                        {canDeleteContacts && <Button aria-label={`删除联系人：${ct.contact_name}`} size="sm" variant="ghost" className="h-11 w-11 p-0 text-slate-500 hover:text-red-600 md:h-7 md:w-7" onClick={() => setDeleteContactTarget(ct)}><Trash2 className="w-3.5 h-3.5" /></Button>}
+                      </div>}
                     </div>
                   </div>
                 ))}</div>
@@ -2531,21 +2664,21 @@ export default function Customers() {
             <Card className="border-slate-200"><CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium text-slate-600">跟进记录</span>
-                <Button size="sm" onClick={() => { setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }} className="bg-blue-600 hover:bg-blue-700"><MessageSquarePlus className="w-3.5 h-3.5 mr-1" /> 新增跟进</Button>
+                {canCreateFollowUp && <Button size="sm" onClick={() => { setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }} className="bg-blue-600 hover:bg-blue-700"><MessageSquarePlus className="w-3.5 h-3.5 mr-1" /> 新增跟进</Button>}
               </div>
-              {showFollowForm && (
+              {showFollowForm && (editingFollowId ? canEditFollowUp : canCreateFollowUp) && (
                 <div className="mb-4 p-4 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
                   <span className="text-sm font-medium text-blue-700">{editingFollowId ? '编辑跟进' : '新增跟进'}</span>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div><Label className="text-xs">方式</Label><NativeSelect value={followForm.contact_method} onChange={v => setFollowForm({ ...followForm, contact_method: v })} options={Object.entries(methodLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
                     <div><Label className="text-xs">阶段</Label><NativeSelect value={followForm.stage} onChange={v => setFollowForm({ ...followForm, stage: v })} options={Object.entries(stageLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
                   </div>
                   <div><Label className="text-xs">内容 *</Label><Textarea value={followForm.content} onChange={e => setFollowForm({ ...followForm, content: e.target.value })} rows={3} placeholder="跟进详情..." /></div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div><Label className="text-xs">需求</Label><Input value={followForm.customer_needs} onChange={e => setFollowForm({ ...followForm, customer_needs: e.target.value })} /></div>
                     <div><Label className="text-xs">痛点</Label><Input value={followForm.customer_pain_points} onChange={e => setFollowForm({ ...followForm, customer_pain_points: e.target.value })} /></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div><Label className="text-xs">成交概率 ({followForm.close_probability}%)</Label><Input type="range" min={0} max={100} step={10} value={followForm.close_probability} onChange={e => setFollowForm({ ...followForm, close_probability: Number(e.target.value) })} /></div>
                     <div><Label className="text-xs">下次跟进</Label><Input type="date" value={followForm.next_follow_date} onChange={e => setFollowForm({ ...followForm, next_follow_date: e.target.value })} /></div>
                   </div>
@@ -2567,10 +2700,10 @@ export default function Customers() {
                         <span className="text-xs text-slate-500">{f.created_at?.slice(0, 16)}</span>
                         <Badge variant="secondary" className="text-xs">{stageLabels[f.stage] || f.stage}</Badge>
                         <span className="text-xs text-slate-400">{f.employee_name} · {methodLabels[f.contact_method] || f.contact_method}</span>
-                        <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEditFollow(f)}><Edit className="w-3 h-3" /></Button>
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteFollowTarget(f)}><Trash2 className="w-3 h-3" /></Button>
-                        </div>
+                        {(canEditFollowUp || canDeleteFollowUp) && <div className="ml-auto flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
+                          {canEditFollowUp && <Button aria-label="编辑跟进记录" size="sm" variant="ghost" className="h-11 w-11 p-0 text-slate-500 hover:text-blue-600 md:h-6 md:w-6" onClick={() => openEditFollow(f)}><Edit className="w-3.5 h-3.5" /></Button>}
+                          {canDeleteFollowUp && <Button aria-label="删除跟进记录" size="sm" variant="ghost" className="h-11 w-11 p-0 text-slate-500 hover:text-red-600 md:h-6 md:w-6" onClick={() => setDeleteFollowTarget(f)}><Trash2 className="w-3.5 h-3.5" /></Button>}
+                        </div>}
                       </div>
                       <p className="text-sm text-slate-700">{f.content}</p>
                       {f.customer_needs && <p className="text-xs text-slate-500 mt-1">需求: {f.customer_needs}</p>}
@@ -2830,11 +2963,11 @@ export default function Customers() {
           </TabsContent>
 
           <TabsContent value="ai_copy">
-            <CustomerAiCopyTab customer={c} />
+            <CustomerAiCopyTab key={`ai-copy-${c.id}`} customer={c} />
           </TabsContent>
 
           <TabsContent value="materials">
-            <CustomerMaterialsTab customerId={c.id} customerName={c.business_name} />
+            <CustomerMaterialsTab key={`materials-${c.id}`} customerId={c.id} customerName={c.business_name} />
           </TabsContent>
 
           <TabsContent value="media">
@@ -2860,11 +2993,15 @@ export default function Customers() {
           <p className="app-page-description">从线索、成交到服务和续费，统一管理客户全生命周期</p>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <div className="hidden flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm md:flex">
-            {hasPermission('customer_create') && <ImportCustomers existingCustomers={customers} onImportComplete={loadCustomers} />}
+          {!isMobile && <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+            {hasPermission('customer_create') && (
+              <Suspense fallback={null}>
+                <ImportCustomers existingCustomers={customers} onImportComplete={loadCustomers} />
+              </Suspense>
+            )}
             {hasPermission('customer_export') && <ExportButton data={filtered.map(c => ({ ...c, industry_label: industryLabels[c.industry] || c.industry, status_label: statusLabels[c.status] || c.status, level_label: levelLabels[c.level] || c.level, source_label: sourceLabels[c.source] || c.source, country_label: c.country ? getCountryLabel(c.country) : '' }))}
             columns={[{ key: 'customer_code', label: '编号' }, { key: 'business_name', label: '商家名称' }, { key: 'contact_name', label: '联系人' }, { key: 'phone', label: '电话' }, { key: 'email', label: '邮箱' }, { key: 'industry_label', label: '行业' }, { key: 'city', label: '城市' }, { key: 'state', label: '州' }, { key: 'country_label', label: '国家' }, { key: 'status_label', label: '状态' }, { key: 'level_label', label: '等级' }, { key: 'source_label', label: '来源' }, { key: 'sales_person', label: '负责销售' }, { key: 'facebook_link', label: 'Facebook' }, { key: 'instagram_link', label: 'Instagram' }, { key: 'google_business_link', label: 'Google Business' }, { key: 'yelp_link', label: 'Yelp' }, { key: 'tiktok_link', label: 'TikTok' }, { key: 'notes', label: '备注' }]}
-            filename={`客户列表_${new Date().toISOString().slice(0, 10)}`} sheetName="客户列表" />}
+            filename={`客户列表_${businessToday}`} sheetName="客户列表" />}
             <Button variant="ghost" size="sm" className="h-9 gap-1.5" onClick={() => setShowColPicker(!showColPicker)}><Columns3 className="w-4 h-4" /> 列设置</Button>
             {hasPermission('customer_edit') && (
               <Button
@@ -2876,26 +3013,11 @@ export default function Customers() {
                 <Edit className="w-4 h-4" /> {inlineEditMode ? '退出快捷编辑' : '快捷编辑'}
               </Button>
             )}
-          </div>
-          <Button variant="outline" className="md:hidden" onClick={() => setMobileManageOpen(true)}><Settings2 className="mr-1.5 h-4 w-4" />管理</Button>
+          </div>}
           {hasPermission('customer_create') && <Button onClick={openCreate} className="flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none"><Plus className="w-4 h-4 mr-1" /> 新增客户</Button>}
         </div>
+        {isMobile && <p className="text-xs text-slate-500">批量导入、敏感数据导出、列设置和快捷编辑请在电脑端处理。</p>}
       </div>
-
-      <Sheet open={mobileManageOpen} onOpenChange={setMobileManageOpen}>
-        <SheetContent side="bottom" className="max-h-[82vh] overflow-y-auto rounded-t-2xl px-5 pb-8 md:hidden">
-          <SheetHeader className="text-left">
-            <SheetTitle>客户管理工具</SheetTitle>
-            <SheetDescription>手机端保留导入和导出；列设置与快捷编辑仅适用于桌面表格。</SheetDescription>
-          </SheetHeader>
-          <div className="mt-5 grid gap-2">
-            {hasPermission('customer_create') && <ImportCustomers existingCustomers={customers} onImportComplete={loadCustomers} />}
-            {hasPermission('customer_export') && <ExportButton data={filtered.map(c => ({ ...c, industry_label: industryLabels[c.industry] || c.industry, status_label: statusLabels[c.status] || c.status, level_label: levelLabels[c.level] || c.level, source_label: sourceLabels[c.source] || c.source, country_label: c.country ? getCountryLabel(c.country) : '' }))}
-            columns={[{ key: 'customer_code', label: '编号' }, { key: 'business_name', label: '商家名称' }, { key: 'contact_name', label: '联系人' }, { key: 'phone', label: '电话' }, { key: 'email', label: '邮箱' }, { key: 'industry_label', label: '行业' }, { key: 'city', label: '城市' }, { key: 'state', label: '州' }, { key: 'country_label', label: '国家' }, { key: 'status_label', label: '状态' }, { key: 'level_label', label: '等级' }, { key: 'source_label', label: '来源' }, { key: 'sales_person', label: '负责销售' }, { key: 'facebook_link', label: 'Facebook' }, { key: 'instagram_link', label: 'Instagram' }, { key: 'google_business_link', label: 'Google Business' }, { key: 'yelp_link', label: 'Yelp' }, { key: 'tiktok_link', label: 'TikTok' }, { key: 'notes', label: '备注' }]}
-            filename={`客户列表_${new Date().toISOString().slice(0, 10)}`} sheetName="客户列表" />}
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {showColPicker && (
         <Card className="border-slate-200"><CardContent className="p-3">
@@ -2905,9 +3027,9 @@ export default function Customers() {
       )}
 
       <div className="app-toolbar -mx-1 flex flex-nowrap gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-        <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`h-8 shrink-0 text-xs ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
+        <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
         {Object.entries(statusLabels).map(([k, v]) => (
-          <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`h-8 shrink-0 text-xs ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
+          <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
         ))}
       </div>
 
@@ -2920,7 +3042,7 @@ export default function Customers() {
       <div className="app-toolbar space-y-3">
         <div className="flex gap-2 md:gap-3">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索编号、名称、联系人、电话..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
-          <Button variant="outline" size="sm" className="h-10 shrink-0 gap-1.5 md:hidden" onClick={() => setMobileFiltersOpen(true)}>
+          <Button variant="outline" size="sm" className="h-11 shrink-0 gap-1.5 md:hidden" onClick={() => setMobileFiltersOpen(true)}>
             <SlidersHorizontal className="h-4 w-4" />筛选{activeFilterCount > 0 && <Badge className="ml-0.5 h-5 min-w-[20px] bg-blue-600 px-1.5 text-xs text-white">{activeFilterCount}</Badge>}
           </Button>
           <NativeSelect value={filterStatus} onChange={setFilterStatus} className="hidden w-[120px] md:block" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
@@ -3029,11 +3151,11 @@ export default function Customers() {
                   <div><p className="text-xs text-slate-400">电话</p>{c.phone ? <a className="mt-1 block text-blue-600" href={`tel:${c.phone}`}>{c.phone}</a> : <p className="mt-1 text-slate-400">-</p>}</div>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-                  <Button size="sm" className="h-8 flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => openDetail(c)}>查看客户</Button>
+                  <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0" onClick={() => openDetail(c)}>查看客户</Button>
                   {(isAdmin || hasPermission('customer_assign') || hasPermission('customer_edit') || hasPermission('customer_delete')) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="outline" className="h-8 px-2.5" aria-label={`更多客户操作：${c.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" className="h-11 min-w-11 px-2.5 md:h-8 md:min-w-0" aria-label={`更多客户操作：${c.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
                         {isAdmin && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><ShieldCheck className="mr-2 h-4 w-4" />管理可见人员</DropdownMenuItem>}

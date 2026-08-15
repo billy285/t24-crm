@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">T24 OS</title>
+  <defs>
+    <linearGradient id="background" x1="70" y1="40" x2="442" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#background)"/>
+  <circle cx="410" cy="92" r="112" fill="#ffffff" opacity=".09"/>
+  <circle cx="82" cy="448" r="148" fill="#0f3ea8" opacity=".18"/>
+  <text x="256" y="300" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="144" font-style="italic" font-weight="900" letter-spacing="-13" text-anchor="middle">T24</text>
+  <path d="M136 352H376" stroke="#bfdbfe" stroke-width="16" stroke-linecap="round"/>
+  <path d="M340 111h58v58" fill="none" stroke="#dbeafe" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M392 118l-76 76" fill="none" stroke="#dbeafe" stroke-width="18" stroke-linecap="round"/>
+</svg>

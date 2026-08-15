@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { useRole } from '../lib/role-context';
@@ -31,6 +31,7 @@ import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { loadRemoteAppConfig, saveRemoteAppConfig } from '../lib/app-config';
 import { buildOptionKey, platformLabels, sanitizeDictLabel, serializeDictEntries, useBusinessDicts, useDictConfig } from '../lib/dict-config';
 import { logOperation } from '../lib/operation-log-helper';
+import { useIsMobile } from '@/hooks/use-mobile';
 import {
   AUTO_PAYMENT_METHOD_KEYS,
   getPaymentMethodLabel,
@@ -592,6 +593,7 @@ const safeQuery = async (queryFn: () => Promise<any>): Promise<any[]> => {
 
 export default function Finance() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin, hasPermission, employee } = useRole();
   const dictConfig = useDictConfig();
@@ -639,9 +641,17 @@ export default function Finance() {
   );
   const defaultCompanyExpenseType = companyExpenseTypeOptions[0]?.value || 'salary';
   const normalizeFinanceTab = (tab?: string | null) => (tab && financeTabValues.has(tab) ? tab : 'overview');
-  const [activeFinanceTab, setActiveFinanceTab] = useState(() => normalizeFinanceTab(searchParams.get('tab')));
+  const [activeFinanceTab, setActiveFinanceTab] = useState(() => (
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 'overview' : normalizeFinanceTab(searchParams.get('tab'))
+  ));
   const [exporting, setExporting] = useState(false);
+  const blockMobileFinanceMutation = () => {
+    if (!isMobile) return false;
+    toast.info('手机版仅提供经营摘要；财务变更请在电脑端处理');
+    return true;
+  };
   const doExport = async (fmt: 'csv'|'xlsx') => {
+    if (blockMobileFinanceMutation()) return;
     try {
       setExporting(true);
       const today = new Date();
@@ -709,6 +719,8 @@ export default function Finance() {
   const [profitDetailTarget, setProfitDetailTarget] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastSuccessfulLoadAt, setLastSuccessfulLoadAt] = useState<Date | null>(null);
+  const loadRequestSeqRef = useRef(0);
 
   // Payment form
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -903,6 +915,8 @@ export default function Finance() {
   }, []);
 
   const loadData = async () => {
+    const requestSeq = ++loadRequestSeqRef.current;
+    const isLatestRequest = () => loadRequestSeqRef.current === requestSeq;
     try {
       // Keep the previous snapshot unless every required finance source succeeds.
       const [pItems, sItems, cItems, dItems, eItems, ceItems, refundItems, settlementItems, commissionData] = await Promise.all([
@@ -919,6 +933,7 @@ export default function Finance() {
         loadWithRetry(() => invokeWithAuth({ url: '/api/v1/commissions/dashboard', method: 'GET' }))
           .then(res => res?.data || { entries: [] }),
       ]);
+      if (!isLatestRequest()) return;
       setPayments(pItems);
       setSubscriptions(decorateEffectiveSubscriptions(sItems));
       setCustomers(cItems);
@@ -929,9 +944,12 @@ export default function Finance() {
       setAdFundSettlements(settlementItems);
       setCommissionEntries(commissionData.entries || []);
       setLoadError(null);
+      setLastSuccessfulLoadAt(new Date());
       try {
         const catalogRes = await loadWithRetry(() => invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }));
-        setProductCatalog(catalogRes?.data || { business_lines: [], products: [], plans: [] });
+        if (isLatestRequest()) {
+          setProductCatalog(catalogRes?.data || { business_lines: [], products: [], plans: [] });
+        }
       } catch (catalogError) {
         console.warn('load product catalog failed; keeping finance records available', catalogError);
       }
@@ -946,22 +964,28 @@ export default function Finance() {
           const start = arr[0];
           const end = arr[arr.length - 1];
           let res;
-          try {
-            res = await invokeWithAuth({ url: '/api/v1/deductions-monthly/ensure', method: 'POST', data: { months: arr } });
-          } catch (ensureErr) {
-            console.warn('ensure rates failed, fallback to list', ensureErr);
+          if (isMobile) {
+            // The phone finance experience is intentionally read-only: never create
+            // missing monthly deduction rows as a side effect of opening the summary.
             res = await invokeWithAuth({ url: '/api/v1/deductions-monthly', method: 'GET', data: { start, end } });
+          } else {
+            try {
+              res = await invokeWithAuth({ url: '/api/v1/deductions-monthly/ensure', method: 'POST', data: { months: arr } });
+            } catch (ensureErr) {
+              console.warn('ensure rates failed, fallback to list', ensureErr);
+              res = await invokeWithAuth({ url: '/api/v1/deductions-monthly', method: 'GET', data: { start, end } });
+            }
           }
           const map: Record<string, number> = {};
           (res.data || []).forEach((r: any) => { map[r.year_month] = r.rate; });
-          setDeductionRates(map);
+          if (isLatestRequest()) setDeductionRates(map);
         }
       } catch (e) { console.warn('load rates failed', e); }
     } catch (err) {
       console.error('loadData error:', err);
-      setLoadError(getLoadErrorMessage(err));
+      if (isLatestRequest()) setLoadError(getLoadErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
   };
 
@@ -982,6 +1006,7 @@ export default function Finance() {
   }, [payForm.management_amount, payForm.ads_recharge_amount, payForm.income_type]);
 
   const openIncomeTypeManager = () => {
+    if (blockMobileFinanceMutation()) return;
     setIncomeTypeDrafts(Object.entries(incomeTypeLabels).map(([key, label]) => ({ key, label })));
     setNewIncomeTypeName('');
     setShowIncomeTypeManager(true);
@@ -1022,6 +1047,7 @@ export default function Finance() {
   };
 
   const handleSaveIncomeTypes = async () => {
+    if (blockMobileFinanceMutation()) return;
     const normalizedEntries = incomeTypeDrafts.reduce<Record<string, string>>((acc, item) => {
       const label = sanitizeDictLabel(item.label).replace(/\s+/g, ' ').trim();
       if (label) {
@@ -1071,6 +1097,7 @@ export default function Finance() {
   }, [defaultCustomerExpenseType, expenseForm.expense_type, customerExpenseTypeLabels]);
 
   const openCustomerExpenseTypeManager = () => {
+    if (blockMobileFinanceMutation()) return;
     setCustomerExpenseTypeDrafts(Object.entries(customerExpenseTypeLabels).map(([key, label]) => ({ key, label })));
     setNewCustomerExpenseTypeName('');
     setShowCustomerExpenseTypeManager(true);
@@ -1115,6 +1142,7 @@ export default function Finance() {
   };
 
   const handleSaveCustomerExpenseTypes = async () => {
+    if (blockMobileFinanceMutation()) return;
     const normalizedEntries = customerExpenseTypeDrafts.reduce<Record<string, string>>((acc, item) => {
       const label = item.label.trim();
       if (label) {
@@ -1161,6 +1189,7 @@ export default function Finance() {
   }, [companyExpenseForm.category, companyExpenseTypeLabels, defaultCompanyExpenseType]);
 
   const openCompanyExpenseTypeManager = () => {
+    if (blockMobileFinanceMutation()) return;
     setCompanyExpenseTypeDrafts(Object.entries(companyExpenseTypeLabels).map(([key, label]) => ({ key, label })));
     setNewCompanyExpenseTypeName('');
     setShowCompanyExpenseTypeManager(true);
@@ -1201,6 +1230,7 @@ export default function Finance() {
   };
 
   const handleSaveCompanyExpenseTypes = async () => {
+    if (blockMobileFinanceMutation()) return;
     const normalizedEntries = companyExpenseTypeDrafts.reduce<Record<string, string>>((acc, item) => {
       const label = item.label.trim();
       if (label) {
@@ -1241,6 +1271,7 @@ export default function Finance() {
   };
 
   const openPaymentPackageManager = () => {
+    if (blockMobileFinanceMutation()) return;
     setPaymentPackageDrafts(Object.entries(customerPackageLabels).map(([key, label]) => ({ key, label })));
     setNewPaymentPackageName('');
     setShowPaymentPackageManager(true);
@@ -1288,6 +1319,7 @@ export default function Finance() {
   };
 
   const handleSavePaymentPackages = async () => {
+    if (blockMobileFinanceMutation()) return;
     const normalizedEntries = paymentPackageDrafts.reduce<Record<string, string>>((acc, item) => {
       const label = item.label.trim();
       if (label) {
@@ -2274,7 +2306,7 @@ export default function Finance() {
         label: '支出缺月份',
         count: missingExpenseMonth,
         help: '会导致成本没有进入月度利润。',
-        tab: (missingCustomerExpenseMonth > 0 ? 'customer_expense' : 'company_expense') as const,
+        tab: missingCustomerExpenseMonth > 0 ? ('customer_expense' as const) : ('company_expense' as const),
       },
       {
         key: 'missingCustomerLink',
@@ -2555,11 +2587,66 @@ export default function Finance() {
   );
 
   useEffect(() => {
-    setActiveFinanceTab(normalizeFinanceTab(searchParams.get('tab')));
-  }, [searchParams]);
+    setActiveFinanceTab(isMobile ? 'overview' : normalizeFinanceTab(searchParams.get('tab')));
+  }, [isMobile, searchParams]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+
+    // A desktop dialog can still be open when the viewport is narrowed. Clear
+    // every mutation target and draft so the mobile read-only contract remains
+    // true after a live desktop-to-phone transition, not only on first load.
+    setShowPaymentForm(false);
+    setEditingPayId(null);
+    setPayForm(emptyPayForm);
+    setShowPaymentPackageManager(false);
+    setPaymentPackageDrafts([]);
+    setNewPaymentPackageName('');
+    setShowIncomeTypeManager(false);
+    setIncomeTypeDrafts([]);
+    setNewIncomeTypeName('');
+    setRefundTarget(null);
+    setRefundForm({
+      refund_amount: '', refund_date: getTodayDateInput(), provider_refund_id: '',
+      stripe_fee_refunded_amount: '0', reason: '重复扣款', notes: '',
+    });
+    setShowAdSettlementForm(false);
+    setEditingAdSettlementId(null);
+    setAdSettlementForm({
+      customer_id: '', year_month: getTodayDateInput().slice(0, 7), currency: 'USD',
+      opening_balance: '0', actual_ad_spend: '', customer_refund_amount: '0',
+      recognized_spread_amount: '0', adjustment_amount: '0', status: 'draft', notes: '',
+    });
+    setShowExpenseForm(false);
+    setEditingExpenseId(null);
+    setExpenseForm(emptyExpenseForm);
+    setShowCustomerExpenseTypeManager(false);
+    setCustomerExpenseTypeDrafts([]);
+    setNewCustomerExpenseTypeName('');
+    setShowCompanyExpenseForm(false);
+    setEditingCompanyExpenseId(null);
+    setCompanyExpenseForm(emptyCompanyExpenseForm);
+    setShowCompanyExpenseTypeManager(false);
+    setCompanyExpenseTypeDrafts([]);
+    setNewCompanyExpenseTypeName('');
+    setSubscriptionRenewalTarget(null);
+    setRenewalPaymentDate('');
+    setRenewalTransactionReference('');
+    setSubscriptionChangeTarget(null);
+    setSubscriptionChangeReplacementIds([]);
+    setSubscriptionChangeReason('');
+    setDeleteTarget(null);
+    setDeleteExpenseTarget(null);
+    setDeleteCompanyExpenseTarget(null);
+    setFinanceIssueFilter(null);
+  }, [isMobile]);
 
   const handleFinanceTabChange = (nextTab: string) => {
     const safeTab = normalizeFinanceTab(nextTab);
+    if (isMobile && safeTab !== 'overview') {
+      toast.info('手机版仅提供经营摘要；收款、续费、账本与月结请在电脑端处理');
+      return;
+    }
     setActiveFinanceTab(safeTab);
     const nextParams = new URLSearchParams(searchParams);
     if (safeTab === 'overview') {
@@ -2616,6 +2703,7 @@ export default function Finance() {
   };
 
   const handleToggleMonthClose = async (monthValue = closingMonth, shouldClose?: boolean) => {
+    if (blockMobileFinanceMutation()) return;
     const month = normalizeMonthKey(monthValue);
     if (!month) {
       toast.error('请选择要关账的月份');
@@ -2713,6 +2801,7 @@ export default function Finance() {
 
   // ─── Payment CRUD ────────────────────────────────────────────────
   const openEditPayment = (p: any) => {
+    if (blockMobileFinanceMutation()) return;
     const names = p.product_name ? p.product_name.split('、').map((s: string) => s.trim()).filter(Boolean) : [];
     const displayIncomeType = getPaymentDisplayIncomeType(p);
     setPayForm({
@@ -2734,6 +2823,7 @@ export default function Finance() {
   };
 
   const handleSavePayment = async () => {
+    if (blockMobileFinanceMutation()) return;
     if (!payForm.customer_id || !payForm.amount_due || !payForm.amount_paid) { toast.error('请填写必填字段'); return; }
     if (payForm.product_names.length === 0) { toast.error('请至少选择一个产品'); return; }
     const originalPayment = editingPayId ? payments.find((payment: any) => Number(payment.id) === Number(editingPayId)) : null;
@@ -2901,6 +2991,7 @@ export default function Finance() {
   };
 
   const openRefundPayment = (payment: any) => {
+    if (blockMobileFinanceMutation()) return;
     const alreadyRefunded = refunds
       .filter((item: any) => Number(item.payment_id) === Number(payment.id) && ['completed', 'pending'].includes(item.status))
       .reduce((sum: number, item: any) => sum + toMoneyNumber(item.refund_amount), 0);
@@ -2917,6 +3008,7 @@ export default function Finance() {
   };
 
   const handleSaveRefund = async () => {
+    if (blockMobileFinanceMutation()) return;
     if (!refundTarget) return;
     const refundAmount = toMoneyNumber(refundForm.refund_amount);
     if (refundAmount <= 0 || !refundForm.refund_date) {
@@ -2956,6 +3048,7 @@ export default function Finance() {
   };
 
   const openAdSettlement = (settlement?: any) => {
+    if (blockMobileFinanceMutation()) return;
     if (settlement) {
       setEditingAdSettlementId(Number(settlement.id));
       setAdSettlementForm({
@@ -2976,6 +3069,7 @@ export default function Finance() {
   };
 
   const handleSaveAdSettlement = async () => {
+    if (blockMobileFinanceMutation()) return;
     if (!adSettlementForm.customer_id || !adSettlementForm.year_month) {
       toast.error('请选择客户和结算月份');
       return;
@@ -3018,6 +3112,7 @@ export default function Finance() {
   };
 
   const openConfirmSubscriptionRenewal = (subscription: any) => {
+    if (blockMobileFinanceMutation()) return;
     if (!subscription?.id) return;
     const plannedPaymentDate = getSubscriptionPlannedPaymentDate(subscription);
     setSubscriptionRenewalTarget(subscription);
@@ -3032,6 +3127,7 @@ export default function Finance() {
     selectedPaymentMethod?: string,
     transactionReference?: string,
   ) => {
+    if (blockMobileFinanceMutation()) return;
     if (!subscription?.id) return;
     const amount = Number(subscription.package_price || 0);
     if (amount <= 0) {
@@ -3182,6 +3278,7 @@ export default function Finance() {
   };
 
   const handleToggleSubscriptionAutoRenew = async (subscription: any, enabled: boolean) => {
+    if (blockMobileFinanceMutation()) return;
     if (!subscription?.id) return;
 
     const now = new Date().toISOString();
@@ -3242,6 +3339,7 @@ export default function Finance() {
   };
 
   const handleStopSubscriptionRenewal = async (subscription: any) => {
+    if (blockMobileFinanceMutation()) return;
     if (!subscription?.id) return;
 
     const now = new Date().toISOString();
@@ -3283,6 +3381,7 @@ export default function Finance() {
   };
 
   const openSubscriptionPackageChange = (subscription: any) => {
+    if (blockMobileFinanceMutation()) return;
     setSubscriptionChangeTarget(subscription);
     setSubscriptionChangeReplacementIds([]);
     setSubscriptionChangeEffectiveDate(getTodayDateInput());
@@ -3290,6 +3389,7 @@ export default function Finance() {
   };
 
   const handleSubscriptionPackageChange = async () => {
+    if (blockMobileFinanceMutation()) return;
     if (!subscriptionChangeTarget?.id) return;
     if (subscriptionChangeReplacementIds.length === 0) {
       toast.error('请至少选择一个替代套餐');
@@ -3339,6 +3439,7 @@ export default function Finance() {
 
   // ─── Customer Expense CRUD ───────────────────────────────────────
   const openEditExpense = (e: any) => {
+    if (blockMobileFinanceMutation()) return;
     setExpenseForm({
       customer_id: String(e.customer_id || ''), expense_type: e.expense_type || 'management_fee',
       currency: getCustomerExpenseCurrency(e),
@@ -3349,6 +3450,7 @@ export default function Finance() {
   };
 
   const handleSaveExpense = async () => {
+    if (blockMobileFinanceMutation()) return;
     if (!expenseForm.customer_id || !expenseForm.amount) { toast.error('请填写必填字段'); return; }
     if (expenseForm.expense_type === ADS_FEE_KEY) {
       toast.error('投流成本请在投流月结中录入');
@@ -3410,6 +3512,7 @@ export default function Finance() {
   };
 
   const handleDeleteExpense = async () => {
+    if (blockMobileFinanceMutation()) return;
     if (!deleteExpenseTarget) return;
     const expenseClosedMonth = normalizeMonthKey(deleteExpenseTarget.expense_month);
     if (isFinanceMonthClosed(expenseClosedMonth)) {
@@ -3435,6 +3538,7 @@ export default function Finance() {
 
   // ─── Company Expense CRUD ────────────────────────────────────────
   const openEditCompanyExpense = (e: any) => {
+    if (blockMobileFinanceMutation()) return;
     setCompanyExpenseForm({
       category: e.category || defaultCompanyExpenseType, amount: String(e.amount || ''),
       currency: getCompanyExpenseCurrency(e),
@@ -3446,6 +3550,7 @@ export default function Finance() {
   };
 
   const handleSaveCompanyExpense = async () => {
+    if (blockMobileFinanceMutation()) return;
     if (!companyExpenseForm.amount) { toast.error('请填写金额'); return; }
     const originalCompanyExpense = editingCompanyExpenseId ? companyExpenses.find((expense: any) => Number(expense.id) === Number(editingCompanyExpenseId)) : null;
     const targetCompanyExpenseMonth = normalizeMonthKey(companyExpenseForm.expense_month);
@@ -3502,6 +3607,7 @@ export default function Finance() {
   };
 
   const handleDeleteCompanyExpense = async () => {
+    if (blockMobileFinanceMutation()) return;
     if (!deleteCompanyExpenseTarget) return;
     const companyExpenseClosedMonth = normalizeMonthKey(deleteCompanyExpenseTarget.expense_month);
     if (isFinanceMonthClosed(companyExpenseClosedMonth)) {
@@ -3527,6 +3633,7 @@ export default function Finance() {
 
   // ─── Delete payment/subscription ─────────────────────────────────
   const handleDeleteRecord = async () => {
+    if (blockMobileFinanceMutation()) return;
     if (!deleteTarget) return;
     if (deleteTarget.type === 'payment') {
       const paymentClosedMonth = normalizeMonthKey(deleteTarget.item.payment_date || deleteTarget.item.expense_month);
@@ -3701,10 +3808,26 @@ export default function Finance() {
             </div>
           </div>
         </div>
-        <div className="ml-auto flex flex-wrap gap-2">
+        {!isMobile && <div className="ml-auto flex flex-wrap gap-2">
           <Button size="sm" variant="outline" className="whitespace-nowrap shadow-sm" onClick={() => doExport('csv')} disabled={exporting}>导出 CSV</Button>
           <Button size="sm" onClick={() => doExport('xlsx')} disabled={exporting} className="whitespace-nowrap bg-blue-600 shadow-sm hover:bg-blue-700">导出 Excel</Button>
-        </div>
+        </div>}
+        {loadError && hasFinanceData && (
+          <div role="alert" className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">本次刷新未完成，当前显示上一次核对成功的财务快照。</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  {loadError}
+                  {lastSuccessfulLoadAt ? ` · 上次核对：${lastSuccessfulLoadAt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}` : ''}
+                </p>
+              </div>
+              <Button type="button" size="sm" variant="outline" className="shrink-0 border-amber-400 bg-white" onClick={() => void loadData()}>
+                重新核对
+              </Button>
+            </div>
+          </div>
+        )}
 
 
 
@@ -3750,7 +3873,7 @@ export default function Finance() {
             <span className={closedFinanceMonths.has(currentMonthKey) ? 'rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700' : 'rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'}>
               {currentMonthKey} · {closedFinanceMonths.has(currentMonthKey) ? '已关账' : '未关账'}
             </span>
-            <button type="button" onClick={() => handleFinanceTabChange('monthly_detail')} className="font-medium text-blue-600 hover:underline">
+            <button type="button" onClick={() => handleFinanceTabChange('monthly_detail')} className="hidden font-medium text-blue-600 hover:underline md:inline">
               查看月度明细
             </button>
           </div>
@@ -3826,8 +3949,12 @@ export default function Finance() {
       </section>
 
       {/* Main Tabs */}
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900 md:hidden">
+        <p className="font-semibold">手机版为经营摘要视图</p>
+        <p className="mt-1 text-xs leading-5 text-blue-700">可随时查看利润、成本、应收和续费风险；收款、退款、支出、导出及月结操作请在电脑端完成。</p>
+      </div>
       <Tabs value={activeFinanceTab} onValueChange={handleFinanceTabChange} className="w-full">
-        <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+        <div className="hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm md:block">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <p className="px-1 text-xs font-semibold text-slate-700">常用财务流程</p>
@@ -5566,6 +5693,7 @@ export default function Finance() {
 
       {/* ── Dialogs ── */}
 
+      {!isMobile && <>
       {/* Subscription Renewal Confirm */}
       <Dialog
         open={!!subscriptionRenewalTarget}
@@ -5803,6 +5931,8 @@ export default function Finance() {
         </DialogContent>
       </Dialog>
 
+      </>}
+
       {/* Customer Profit Detail */}
       <Dialog open={!!profitDetailTarget} onOpenChange={(v) => { if (!v) setProfitDetailTarget(null); }}>
         <DialogContent className="max-w-6xl max-h-[85vh] overflow-y-auto">
@@ -5991,6 +6121,7 @@ export default function Finance() {
         </DialogContent>
       </Dialog>
 
+      {!isMobile && <>
       {/* Payment Form */}
       <Dialog open={showPaymentForm} onOpenChange={(v) => { setShowPaymentForm(v); if (!v) { setEditingPayId(null); setPayForm(emptyPayForm); } }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
@@ -6605,6 +6736,7 @@ export default function Finance() {
         title="确认删除运营支出记录"
         description={`确定要删除「${companyExpenseTypeLabels[deleteCompanyExpenseTarget?.category] || deleteCompanyExpenseTarget?.category_name || deleteCompanyExpenseTarget?.category || ''}」的运营支出记录吗？`}
         onConfirm={handleDeleteCompanyExpense} loading={deletingCompanyExpense} />
+      </>}
     </div>
   );
 }

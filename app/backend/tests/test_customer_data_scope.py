@@ -90,6 +90,13 @@ async def test_customer_service_scopes_sales_to_explicitly_visible_customers(db_
         "sales_employee_id": 202,
         "sales_person": "Bob",
     })
+    same_name_other_owner = await service.create({
+        "business_name": "Other Alice Owner",
+        "contact_name": "Other Alice",
+        "phone": "444",
+        "sales_employee_id": 202,
+        "sales_person": "Alice",
+    })
     db_session.add_all([
         CustomerAccessGrant(customer_id=own_by_id.id, employee_id=101, granted_by_name="Admin"),
         CustomerAccessGrant(customer_id=own_by_name.id, employee_id=101, granted_by_name="Admin"),
@@ -105,6 +112,8 @@ async def test_customer_service_scopes_sales_to_explicitly_visible_customers(db_
     assert await service.get_by_id(own_by_id.id, scope_user=alice_user) is not None
     assert await service.get_by_id(own_by_name.id, scope_user=alice_user) is not None
     assert await service.get_by_id(other.id, scope_user=alice_user) is None
+    # A populated owner id takes precedence over the legacy, non-unique name.
+    assert await service.get_by_id(same_name_other_owner.id, scope_user=alice_user) is None
 
     grant = (await db_session.execute(
         select(CustomerAccessGrant).where(
@@ -114,7 +123,9 @@ async def test_customer_service_scopes_sales_to_explicitly_visible_customers(db_
     )).scalar_one()
     await db_session.delete(grant)
     await db_session.commit()
-    assert await service.get_by_id(own_by_id.id, scope_user=alice_user) is None
+    # Removing an explicit grant must not hide a customer that is still owned
+    # by the same sales employee.
+    assert await service.get_by_id(own_by_id.id, scope_user=alice_user) is not None
     assert own_by_id.sales_employee_id == 101
 
 
@@ -268,3 +279,86 @@ async def test_customer_write_permissions_reject_finance_and_sales_delete():
 
     assert finance_create.status_code == 403
     assert sales_delete.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_customer_routes_enforce_page_and_button_contracts(db_session):
+    """A customer grant never bypasses the page contract or write buttons."""
+    service = CustomersService(db_session)
+    design_customer = await service.create({
+        "business_name": "Design Hidden Profile",
+        "contact_name": "Private Owner",
+        "phone": "555-1000",
+    })
+    sales_customer = await service.create({
+        "business_name": "Sales Owned Profile",
+        "contact_name": "Sales Owner",
+        "phone": "555-2000",
+        "sales_employee_id": 9102,
+        "sales_person": "Sales User",
+    })
+    ops_customer = await service.create({
+        "business_name": "Operations Profile",
+        "contact_name": "Ops Owner",
+        "phone": "555-3000",
+    })
+    db_session.add_all([
+        CustomerAccessGrant(customer_id=design_customer.id, employee_id=9101, granted_by_name="Admin"),
+        CustomerAccessGrant(customer_id=ops_customer.id, employee_id=9103, granted_by_name="Admin"),
+    ])
+    await db_session.commit()
+    design_customer_id = design_customer.id
+    sales_customer_id = sales_customer.id
+    ops_customer_id = ops_customer.id
+
+    from backend.routers import customers as customers_router
+
+    async def override_db():
+        yield db_session
+
+    app.dependency_overrides[customers_router.get_db] = override_db
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            design_headers = _auth_headers("design", emp_id=9101, name="Designer")
+            for path in (
+                "/api/v1/entities/customers?limit=20",
+                "/api/v1/entities/customers/all?limit=20",
+                f"/api/v1/entities/customers/{design_customer_id}",
+                f"/api/v1/entities/customers/{design_customer_id}/projects",
+            ):
+                response = await ac.get(path, headers=design_headers)
+                assert response.status_code == 403
+
+            payload = {
+                "business_name": "Direct Write Attempt",
+                "contact_name": "Owner",
+                "phone": "555-4000",
+            }
+            sales_headers = _auth_headers("sales", emp_id=9102, name="Sales User")
+            assert (await ac.post(
+                "/api/v1/entities/customers",
+                json=payload,
+                headers=sales_headers,
+            )).status_code == 403
+            assert (await ac.put(
+                f"/api/v1/entities/customers/{sales_customer_id}",
+                json={"business_name": "Sales Direct Edit"},
+                headers=sales_headers,
+            )).status_code == 403
+
+            ops_headers = _auth_headers("ops", emp_id=9103, name="Ops User")
+            assert (await ac.post(
+                "/api/v1/entities/customers",
+                json=payload,
+                headers=ops_headers,
+            )).status_code == 403
+            ops_update = await ac.put(
+                f"/api/v1/entities/customers/{ops_customer_id}",
+                json={"business_name": "Operations Updated Profile"},
+                headers=ops_headers,
+            )
+            assert ops_update.status_code == 200
+            assert ops_update.json()["business_name"] == "Operations Updated Profile"
+    finally:
+        app.dependency_overrides.clear()

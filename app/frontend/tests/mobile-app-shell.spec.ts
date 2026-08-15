@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const baseUrl = 'http://127.0.0.1:5173';
+const baseUrl = process.env.T24_WORKBENCH_BASE_URL || 'http://127.0.0.1:5173';
 
 type TestRole = 'admin' | 'sales' | 'sales_manager' | 'sales_partner' | 'ops' | 'design' | 'finance';
 
@@ -23,11 +23,11 @@ const allApps = [...standardApps, partnerApp];
 
 const roleVisibleApps: Record<TestRole, readonly string[]> = {
   admin: standardApps.map(app => app.label),
-  sales: ['销售中心'],
-  sales_manager: ['销售中心'],
+  sales: ['销售中心', '客户中心'],
+  sales_manager: ['销售中心', '客户中心'],
   ops: ['客户中心', '任务交付'],
-  design: ['经营中心', '任务交付'],
-  finance: ['经营中心', '客户中心', '任务交付', '财务结算'],
+  design: ['任务交付'],
+  finance: ['经营中心', '客户中心', '财务结算'],
   sales_partner: ['我的客户与分润'],
 };
 
@@ -50,6 +50,8 @@ async function mockAuthenticatedApi(page: Page, role: TestRole) {
     let data: unknown = {};
 
     if (path.endsWith('/emp-auth/me')) data = employee;
+    else if (path.endsWith('/deductions-monthly/default')) data = { rate: 0.15 };
+    else if (path.endsWith('/deductions-monthly')) data = [];
     else if (path.includes('/app-config')) data = { items: {} };
     else if (path.includes('/entities/')) data = { items: [], total: 0 };
 
@@ -102,12 +104,13 @@ async function expectNoDocumentOverflow(page: Page) {
   expect(widths.body).toBeLessThanOrEqual(widths.viewport);
 }
 
-test('管理员在 360px 与 390px 均看到六个应用且页面无横向溢出', async ({ page }) => {
+test('管理员在 360px、390px 与 430px 看到六个核心应用且页面无横向溢出', async ({ page }) => {
   await mockAuthenticatedApi(page, 'admin');
 
   for (const viewport of [
     { width: 360, height: 800 },
     { width: 390, height: 844 },
+    { width: 430, height: 932 },
   ]) {
     await page.setViewportSize(viewport);
     await page.goto(`${baseUrl}/apps`);
@@ -162,6 +165,20 @@ test('销售手机底栏的今日与待办进入不同工作位置', async ({ pa
   await expect.poll(() => new URL(page.url()).pathname).toBe('/sales-leads');
 });
 
+test('财务手机底栏的今日与待办进入两个真实可用页面', async ({ page }) => {
+  await mockAuthenticatedApi(page, 'finance');
+  await page.setViewportSize({ width: 430, height: 932 });
+  await page.goto(`${baseUrl}/apps`);
+
+  const bottomNav = page.getByRole('navigation', { name: '手机主导航' });
+  await bottomNav.getByRole('button', { name: '今日' }).click();
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+  await page.goto(`${baseUrl}/apps`);
+  await bottomNav.getByRole('button', { name: '待办' }).click();
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/finance');
+  await expect(page.getByText('手机版为经营摘要视图')).toBeVisible();
+});
+
 test('管理员应用卡进入各自已有业务路径', async ({ page }) => {
   await mockAuthenticatedApi(page, 'admin');
   await page.setViewportSize({ width: 390, height: 844 });
@@ -182,9 +199,10 @@ test('手机内页可从当前 App 功能菜单进入二级页面', async ({ pag
   await expect(page.getByRole('heading', { name: /财务结算/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /财务管理/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /人民币利润预估/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /渠道与分润/ })).toBeVisible();
-  await page.getByRole('button', { name: /工资表/ }).click();
-  await expect.poll(() => new URL(page.url()).pathname).toBe('/payroll');
+  await expect(page.getByRole('button', { name: /渠道与分润/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /工资表/ })).toHaveCount(0);
+  await page.getByRole('button', { name: /人民币利润预估/ }).click();
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/rmb-profit');
 });
 
 test('1440px 桌面保留侧栏并隐藏手机底栏', async ({ page }) => {
@@ -198,6 +216,20 @@ test('1440px 桌面保留侧栏并隐藏手机底栏', async ({ page }) => {
   await expect(mobileBottomNav).toHaveCount(1);
   await expect(mobileBottomNav).toBeHidden();
   await expect(page.locator('.mobile-app-home')).toHaveCSS('max-width', '512px');
+});
+
+test('财务角色在桌面侧栏可以发现月度扣点比例入口', async ({ page }) => {
+  await mockAuthenticatedApi(page, 'finance');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${baseUrl}/apps`);
+
+  const sidebar = page.locator('nav.app-sidebar-nav');
+  await sidebar.getByRole('button', { name: '展开财务与结算' }).click();
+  const link = sidebar.getByRole('link', { name: '月度扣点比例' });
+  await expect(link).toBeVisible();
+  await link.click();
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/settings/deduction');
+  await expect(page.getByRole('heading', { name: '月度扣点比例' })).toBeVisible();
 });
 
 test('无 returnTo 的任务详情始终有固定返回入口', async ({ page }) => {

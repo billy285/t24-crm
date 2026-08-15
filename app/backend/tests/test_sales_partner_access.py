@@ -23,6 +23,12 @@ async def test_sales_partner_api_allowlist_blocks_internal_business_entities():
         deals = await ac.get("/api/v1/entities/deals", headers=_partner_headers())
         finance = await ac.get("/api/v1/entities/payments", headers=_partner_headers())
         config = await ac.get("/api/v1/app-config", headers=_partner_headers())
+        concrete_configs = [
+            await ac.get(f"/api/v1/app-config/{key}", headers=_partner_headers())
+            for key in ("role_permissions", "company_info", "security_config", "notification_config", "payroll_sheets_v1")
+        ]
 
     assert [customers.status_code, deals.status_code, finance.status_code] == [403, 403, 403]
     assert config.status_code == 200
+    assert config.json() == {"items": {}}
+    assert [response.status_code for response in concrete_configs] == [403, 403, 403, 403, 403]

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from fastapi import HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import false, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.tasks import Tasks
@@ -34,10 +34,69 @@ class TasksService:
             logger.error(f"Error creating tasks: {str(e)}")
             raise
 
-    async def get_by_id(self, obj_id: int) -> Optional[Tasks]:
+    @staticmethod
+    def _visibility_conditions(
+        employee_ids: Optional[List[int]],
+        employee_names: Optional[List[str]],
+    ) -> List[Any]:
+        """Build the assignee/collaborator visibility predicate used by every read path."""
+        conditions: List[Any] = []
+        safe_ids = sorted({int(item) for item in (employee_ids or []) if item is not None})
+        safe_names = sorted({str(item).strip() for item in (employee_names or []) if str(item).strip()})
+
+        if safe_ids:
+            conditions.append(Tasks.assignee_id.in_(safe_ids))
+        if safe_names:
+            conditions.append(Tasks.assignee_name.in_(safe_names))
+
+            # Frontend values are stored as comma-delimited names. Normalize the
+            # Chinese comma and the standard ", " separator before matching a
+            # complete token so "Ann" cannot see tasks assigned to "Anna".
+            normalized_collaborators = func.replace(
+                func.replace(func.coalesce(Tasks.collaborator_names, ""), "，", ","),
+                ", ",
+                ",",
+            )
+            wrapped_collaborators = literal(",") + normalized_collaborators + literal(",")
+            for name in safe_names:
+                escaped_name = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                conditions.append(
+                    wrapped_collaborators.like(f"%,{escaped_name},%", escape="\\")
+                )
+
+        return conditions
+
+    @classmethod
+    def _apply_visibility_scope(
+        cls,
+        query,
+        *,
+        unrestricted: bool,
+        employee_ids: Optional[List[int]],
+        employee_names: Optional[List[str]],
+    ):
+        if unrestricted:
+            return query
+        conditions = cls._visibility_conditions(employee_ids, employee_names)
+        return query.where(or_(*conditions)) if conditions else query.where(false())
+
+    async def get_by_id(
+        self,
+        obj_id: int,
+        *,
+        unrestricted: bool = True,
+        employee_ids: Optional[List[int]] = None,
+        employee_names: Optional[List[str]] = None,
+    ) -> Optional[Tasks]:
         """Get tasks by ID"""
         try:
             query = select(Tasks).where(Tasks.id == obj_id)
+            query = self._apply_visibility_scope(
+                query,
+                unrestricted=unrestricted,
+                employee_ids=employee_ids,
+                employee_names=employee_names,
+            )
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -50,11 +109,27 @@ class TasksService:
         limit: int = 20, 
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        unrestricted: bool = True,
+        employee_ids: Optional[List[int]] = None,
+        employee_names: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of taskss"""
         try:
             query = select(Tasks)
             count_query = select(func.count(Tasks.id))
+
+            query = self._apply_visibility_scope(
+                query,
+                unrestricted=unrestricted,
+                employee_ids=employee_ids,
+                employee_names=employee_names,
+            )
+            count_query = self._apply_visibility_scope(
+                count_query,
+                unrestricted=unrestricted,
+                employee_ids=employee_ids,
+                employee_names=employee_names,
+            )
             
             if query_dict:
                 for field, value in query_dict.items():
@@ -89,10 +164,23 @@ class TasksService:
             logger.error(f"Error fetching tasks list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any]) -> Optional[Tasks]:
+    async def update(
+        self,
+        obj_id: int,
+        update_data: Dict[str, Any],
+        *,
+        unrestricted: bool = True,
+        employee_ids: Optional[List[int]] = None,
+        employee_names: Optional[List[str]] = None,
+    ) -> Optional[Tasks]:
         """Update tasks"""
         try:
-            obj = await self.get_by_id(obj_id)
+            obj = await self.get_by_id(
+                obj_id,
+                unrestricted=unrestricted,
+                employee_ids=employee_ids,
+                employee_names=employee_names,
+            )
             if not obj:
                 logger.warning(f"Tasks {obj_id} not found for update")
                 return None
@@ -162,10 +250,22 @@ class TasksService:
             logger.error(f"Error updating tasks {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int) -> bool:
+    async def delete(
+        self,
+        obj_id: int,
+        *,
+        unrestricted: bool = True,
+        employee_ids: Optional[List[int]] = None,
+        employee_names: Optional[List[str]] = None,
+    ) -> bool:
         """Delete tasks"""
         try:
-            obj = await self.get_by_id(obj_id)
+            obj = await self.get_by_id(
+                obj_id,
+                unrestricted=unrestricted,
+                employee_ids=employee_ids,
+                employee_names=employee_names,
+            )
             if not obj:
                 logger.warning(f"Tasks {obj_id} not found for deletion")
                 return False

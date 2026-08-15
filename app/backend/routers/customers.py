@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from datetime import datetime, date
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,13 +19,14 @@ from models.employees import Employees
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from services.commissions import auto_assign_new_customer
 from services.management_decision_workflow import save_customer_classification_review
+from services.operation_logs import Operation_logsService, build_server_operation_log_data
+from services.role_permissions import require_any_page_permission, require_button_permission
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/entities/customers", tags=["customers"], dependencies=[Depends(get_current_user)])
 
-CUSTOMER_WRITE_ROLES = {"admin", "super_admin", "sales", "ops", "operations"}
 CUSTOMER_OWNER_FIELDS = {"sales_person", "sales_employee_id"}
 ACTIVE_PROJECT_STATUSES = {"pending_setup", "trial", "active_paid", "at_risk", "paused", "pending_stop", "reactivated"}
 
@@ -43,9 +44,14 @@ def _is_admin_role(user: UserResponse) -> bool:
     return str(user.role or "").lower() in {"admin", "super_admin"}
 
 
-def _ensure_customer_write_allowed(user: UserResponse) -> None:
-    if str(user.role or "").lower() not in CUSTOMER_WRITE_ROLES:
-        raise HTTPException(status_code=403, detail="Customer write access required")
+async def _require_customer_page(db: AsyncSession, user: UserResponse) -> None:
+    """Full customer profiles are only available to the customer workspace."""
+    await require_any_page_permission(db, user, {"/customers"})
+
+
+async def _require_customer_write(db: AsyncSession, user: UserResponse, permission: str) -> None:
+    await _require_customer_page(db, user)
+    await require_button_permission(db, user, permission, admin_override=True)
 
 
 def _assigned_to_current_user(data: dict, user: UserResponse) -> dict:
@@ -350,6 +356,7 @@ async def query_customerss(
     db: AsyncSession = Depends(get_db),
 ):
     """Query customerss with filtering, sorting, and pagination"""
+    await _require_customer_page(db, current_user)
     logger.debug(f"Querying customerss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
     
     service = CustomersService(db)
@@ -389,6 +396,7 @@ async def query_customerss_all(
     db: AsyncSession = Depends(get_db),
 ):
     # Query customerss with role-based data limitation
+    await _require_customer_page(db, current_user)
     logger.debug(f"Querying customerss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
 
     service = CustomersService(db)
@@ -425,6 +433,7 @@ async def get_customers(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single customers by ID"""
+    await _require_customer_page(db, current_user)
     logger.debug(f"Fetching customers with id: {id}, fields={fields}")
     
     service = CustomersService(db)
@@ -448,6 +457,7 @@ async def get_customer_projects(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_customer_page(db, current_user)
     service = CustomersService(db)
     customer = await service.get_by_id(id, scope_user=current_user)
     if not customer:
@@ -573,7 +583,7 @@ async def create_customers(
     
     service = CustomersService(db)
     try:
-        _ensure_customer_write_allowed(current_user)
+        await _require_customer_write(db, current_user, "customer_create")
         result = await service.create(_assigned_to_current_user(data.model_dump(), current_user), commit=False)
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create customers")
@@ -600,7 +610,7 @@ async def create_customer_with_projects(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_customer_write_allowed(current_user)
+    await _require_customer_write(db, current_user, "customer_create")
     if len(request.projects) > 12:
         raise HTTPException(status_code=400, detail="单个客户最多维护12个合作项目")
     service = CustomersService(db)
@@ -654,7 +664,7 @@ async def create_customerss_batch(
     results = []
     
     try:
-        _ensure_customer_write_allowed(current_user)
+        await _require_customer_write(db, current_user, "customer_create")
         for item_data in request.items:
             result = await service.create(_assigned_to_current_user(item_data.model_dump(), current_user), commit=False)
             if result:
@@ -688,7 +698,7 @@ async def update_customerss_batch(
     results = []
     
     try:
-        _ensure_customer_write_allowed(current_user)
+        await _require_customer_write(db, current_user, "customer_edit")
         for item in request.items:
             if item.updates.status == "lost":
                 await _ensure_no_active_projects_before_direct_loss(db, item.id)
@@ -726,7 +736,7 @@ async def update_customers(
 
     service = CustomersService(db)
     try:
-        _ensure_customer_write_allowed(current_user)
+        await _require_customer_write(db, current_user, "customer_edit")
         if data.status == "lost":
             await _ensure_no_active_projects_before_direct_loss(db, id)
         # Only include non-None values for partial updates
@@ -761,7 +771,7 @@ async def update_customer_with_projects(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_customer_write_allowed(current_user)
+    await _require_customer_write(db, current_user, "customer_edit")
     if len(request.projects) > 12:
         raise HTTPException(status_code=400, detail="单个客户最多维护12个合作项目")
     service = CustomersService(db)
@@ -802,7 +812,8 @@ async def update_customer_with_projects(
 @router.delete("/batch")
 async def delete_customerss_batch(
     request: CustomersBatchDeleteRequest,
-    _admin: UserResponse = Depends(get_admin_user),
+    http_request: Request,
+    current_user: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple customerss by their IDs"""
@@ -812,13 +823,37 @@ async def delete_customerss_batch(
     deleted_count = 0
     
     try:
+        customers = []
         for item_id in request.ids:
-            success = await service.delete(item_id)
+            customer = await service.get_by_id(item_id, scope_user=current_user)
+            if not customer:
+                raise HTTPException(status_code=404, detail="Customers not found")
+            customers.append(customer)
+
+        audit_service = Operation_logsService(db)
+        for customer in customers:
+            await audit_service.create(
+                build_server_operation_log_data(
+                    current_user=current_user,
+                    request=http_request,
+                    customer_id=customer.id,
+                    action_type="delete_customer",
+                    action_detail=f"删除客户: {customer.business_name}"[:2000],
+                ),
+                user_id=str(current_user.id),
+                commit=False,
+            )
+        for item_id in request.ids:
+            success = await service.delete(item_id, scope_user=current_user, commit=False)
             if success:
                 deleted_count += 1
+        await db.commit()
         
         logger.info(f"Batch deleted {deleted_count} customerss successfully")
         return {"message": f"Successfully deleted {deleted_count} customerss", "deleted_count": deleted_count}
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch delete: {str(e)}", exc_info=True)
@@ -828,7 +863,8 @@ async def delete_customerss_batch(
 @router.delete("/{id}")
 async def delete_customers(
     id: int,
-    _admin: UserResponse = Depends(get_admin_user),
+    request: Request,
+    current_user: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single customers by ID"""
@@ -836,15 +872,33 @@ async def delete_customers(
     
     service = CustomersService(db)
     try:
-        success = await service.delete(id)
-        if not success:
+        customer = await service.get_by_id(id, scope_user=current_user)
+        if not customer:
             logger.warning(f"Customers with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Customers not found")
-        
+
+        await Operation_logsService(db).create(
+            build_server_operation_log_data(
+                current_user=current_user,
+                request=request,
+                customer_id=customer.id,
+                action_type="delete_customer",
+                action_detail=f"删除客户: {customer.business_name}"[:2000],
+            ),
+            user_id=str(current_user.id),
+            commit=False,
+        )
+        success = await service.delete(id, scope_user=current_user, commit=False)
+        if not success:  # Defensive: the preflight lookup above already found it.
+            raise HTTPException(status_code=404, detail="Customers not found")
+        await db.commit()
+
         logger.info(f"Customers {id} deleted successfully")
         return {"message": "Customers deleted successfully", "id": id}
     except HTTPException:
+        await db.rollback()
         raise
     except Exception as e:
+        await db.rollback()
         logger.error(f"Error deleting customers {id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { client } from '@/lib/api';
 
 interface LoginProps {
-  onLoginSuccess: (token: string, employee: any) => void | Promise<void>;
+  onLoginSuccess: (token: string, employee: any, rememberMe: boolean) => void | Promise<void>;
 }
 
 export default function Login({ onLoginSuccess }: LoginProps) {
@@ -38,6 +38,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
       const data = response.data;
       if (data?.token && data?.employee) {
+        let persistentLoginReady = rememberMe;
         // 设置 HttpOnly Refresh Token Cookie（根据 rememberMe 设置持久期或会话期）
         try {
           await client.apiCall.invoke({
@@ -50,10 +51,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             },
           });
         } catch {
-          // 忽略 Cookie 设置失败，仍然允许本次登录
+          // A remembered login is only safe when the HttpOnly refresh cookie was
+          // established. Downgrade to this browser session if that step fails.
+          persistentLoginReady = false;
+          if (rememberMe) toast.warning('长期登录暂不可用，本次仅保持到当前浏览器会话结束。');
         }
         toast.success(`欢迎回来，${data.employee.name}！`);
-        await onLoginSuccess(data.token, data.employee);
+        await onLoginSuccess(data.token, data.employee, persistentLoginReady);
       } else {
         toast.error('登录失败，请重试');
       }
@@ -121,26 +125,27 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                   placeholder="请输入密码"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 pr-10 bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20"
+                  className="pl-10 pr-12 bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20"
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300 transition-colors"
+                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                  className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
             </div>
 
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-slate-300 text-xs">
+              <label className="flex min-h-11 items-center gap-2 text-slate-300 text-xs">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded border-white/20 bg-white/10"
+                  className="h-5 w-5 rounded border-white/20 bg-white/10"
                 />
                 保持登录
               </label>

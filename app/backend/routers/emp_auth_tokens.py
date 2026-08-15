@@ -16,6 +16,7 @@ from services.security_tokens import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.emp_auth import (
+    ACCESS_TOKEN_EXPIRE_HOURS,
     EmpAuthService,
     decode_access_token as decode_emp_token,
     create_access_token as create_emp_access_token,
@@ -29,10 +30,27 @@ class SetRefreshRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    expires_in: int = 1800  # 30 min default
+    expires_in: int = ACCESS_TOKEN_EXPIRE_HOURS * 60 * 60
 
-SECURE_COOKIE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
-SAMESITE = os.environ.get("COOKIE_SAMESITE", "lax").capitalize()  # Lax|None|Strict
+def _is_production() -> bool:
+    environment = (os.environ.get("APP_ENV") or os.environ.get("ENVIRONMENT") or os.environ.get("ENV") or "").strip().lower()
+    return environment in {"prod", "production"}
+
+
+def _secure_cookie_enabled() -> bool:
+    configured = os.environ.get("COOKIE_SECURE")
+    if configured is not None:
+        return configured.strip().lower() in {"1", "true", "yes", "on"}
+    return _is_production()
+
+
+SECURE_COOKIE = _secure_cookie_enabled()
+SAMESITE = (os.environ.get("COOKIE_SAMESITE") or "lax").strip().lower()
+if SAMESITE not in {"lax", "strict", "none"}:
+    SAMESITE = "lax"
+if SAMESITE == "none" and not SECURE_COOKIE:
+    # Modern browsers reject SameSite=None cookies that are not Secure.
+    SAMESITE = "lax"
 COOKIE_PATH = os.environ.get("COOKIE_PATH", "/")
 COOKIE_NAME = os.environ.get("EMP_REFRESH_COOKIE", "emp_refresh_token")
 ACTIVE_EMPLOYEE_STATUSES = {"active", "probation"}
@@ -61,6 +79,9 @@ async def set_refresh_cookie(
         payload = decode_emp_token(emp_token)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid employee token")
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=401, detail="Invalid or expired employee token")
 
     emp_id = payload.get("emp_id")
     if not emp_id:
@@ -121,5 +142,11 @@ async def refresh_access_token(request: Request, db: AsyncSession = Depends(get_
 @router.post("/logout")
 async def logout(response: Response):
     """Clear the refresh token cookie."""
-    response.delete_cookie(key=COOKIE_NAME, path=COOKIE_PATH)
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        path=COOKIE_PATH,
+        secure=SECURE_COOKIE,
+        httponly=True,
+        samesite=SAMESITE,
+    )
     return {"success": True}

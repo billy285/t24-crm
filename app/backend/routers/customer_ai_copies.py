@@ -20,10 +20,27 @@ from services.customer_menu_items import Customer_menu_itemsService
 from services.customers import CustomersService
 from services.service_progresses import Service_progressesService
 from services.service_tasks import Service_tasksService
+from services.role_permissions import normalized_role, require_any_page_permission, require_button_permission
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/entities/customer_ai_copies", tags=["customer_ai_copies"], dependencies=[Depends(get_current_user)])
+CUSTOMER_WORKSPACE_PAGES = {"/customers", "/service-board"}
+
+
+async def _require_copy_read(current_user: UserResponse, db: AsyncSession) -> None:
+    await require_any_page_permission(db, current_user, CUSTOMER_WORKSPACE_PAGES)
+
+
+async def _require_copy_write(
+    current_user: UserResponse,
+    db: AsyncSession,
+    permission: str,
+    *,
+    admin_override: bool = False,
+) -> None:
+    await _require_copy_read(current_user, db)
+    await require_button_permission(db, current_user, permission, admin_override=admin_override)
 
 
 PLATFORM_LABELS = {
@@ -443,12 +460,13 @@ async def query_customer_ai_copies(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_copy_read(current_user, db)
     query_dict = _parse_query(query) or {}
     customer_id = query_dict.get("customer_id")
     if customer_id:
         await _ensure_customer_access(int(customer_id), current_user, db)
-    elif current_user.role not in {"admin", "super_admin"}:
-        query_dict["user_id"] = str(current_user.id)
+    elif normalized_role(current_user) not in {"admin", "super_admin"}:
+        raise HTTPException(status_code=400, detail="customer_id query is required")
     return await Customer_ai_copiesService(db).get_list(
         skip=skip,
         limit=limit,
@@ -464,6 +482,7 @@ async def create_customer_ai_copy(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_copy_write(current_user, db, "task_create")
     customer = await _ensure_customer_access(data.customer_id, current_user, db)
     payload = data.model_dump()
     now = datetime.utcnow()
@@ -481,6 +500,7 @@ async def update_customer_ai_copy(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_copy_write(current_user, db, "task_edit")
     service = Customer_ai_copiesService(db)
     obj = await service.get_by_id(copy_id)
     if not obj:
@@ -500,6 +520,7 @@ async def delete_customer_ai_copy(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_copy_write(current_user, db, "task_delete", admin_override=True)
     service = Customer_ai_copiesService(db)
     obj = await service.get_by_id(copy_id)
     if not obj:
@@ -516,6 +537,7 @@ async def generate_customer_ai_copy(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_copy_write(current_user, db, "task_create")
     customer = await _ensure_customer_access(request.customer_id, current_user, db)
     variants, ai_used, warning, prompt, model = await _generate_variants(customer, request, db)
     service = Customer_ai_copiesService(db)

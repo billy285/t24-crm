@@ -179,7 +179,7 @@ export default function RmbProfitEstimate() {
 
       <Card className="border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50">
         <CardContent className="p-5">
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col items-stretch gap-3 md:flex-row md:flex-wrap md:items-end">
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => applyPreset('month')}>本月</Button>
               <Button size="sm" variant="outline" onClick={() => applyPreset('quarter')}>本季度</Button>
@@ -194,7 +194,7 @@ export default function RmbProfitEstimate() {
               <Label htmlFor="rmb-profit-end" className="text-xs">结束日期</Label>
               <Input id="rmb-profit-end" type="date" value={endDate} onChange={event => setEndDate(event.target.value)} className="mt-1 bg-white" />
             </div>
-            <div className="w-[170px]">
+            <div className="w-full md:w-[170px]">
               <Label htmlFor="rmb-profit-rate" className="text-xs">缺失月份预估汇率</Label>
               <Input id="rmb-profit-rate" type="number" min="0.1" max="20" step="0.0001" value={fallbackRate} onChange={event => setFallbackRate(event.target.value)} className="mt-1 bg-white" />
             </div>
@@ -218,7 +218,7 @@ export default function RmbProfitEstimate() {
           </div>
 
           <Card>
-            <CardHeader className="pb-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="text-base">利润趋势</CardTitle><p className="mt-1 text-xs text-slate-500">绿色为盈利，红色为亏损。</p></div><div className="flex rounded-lg border bg-slate-50 p-1">{([['month', '按月'], ['quarter', '按季度'], ['year', '按年']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => setViewMode(key)} className={`rounded-md px-3 py-1.5 text-sm ${viewMode === key ? 'bg-white font-medium text-blue-700 shadow-sm' : 'text-slate-500'}`}>{label}</button>)}</div></div></CardHeader>
+            <CardHeader className="pb-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="text-base">利润趋势</CardTitle><p className="mt-1 text-xs text-slate-500">绿色为盈利，红色为亏损。</p></div><div className="flex rounded-lg border bg-slate-50 p-1">{([['month', '按月'], ['quarter', '按季度'], ['year', '按年']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => setViewMode(key)} className={`min-h-11 rounded-md px-3 text-sm md:min-h-9 ${viewMode === key ? 'bg-white font-medium text-blue-700 shadow-sm' : 'text-slate-500'}`}>{label}</button>)}</div></div></CardHeader>
             <CardContent>
               <div className="h-[270px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -237,7 +237,7 @@ export default function RmbProfitEstimate() {
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base">{viewMode === 'month' ? '每月计算明细' : viewMode === 'quarter' ? '季度汇总' : '年度汇总'}</CardTitle></CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[980px] text-sm">
                   <thead><tr className="border-y bg-slate-50 text-left text-xs text-slate-500"><th className="px-4 py-3">期间</th><th className="px-4 py-3">美元经营结余</th><th className="px-4 py-3">月均汇率</th><th className="px-4 py-3">折合人民币</th><th className="px-4 py-3">人民币收入</th><th className="px-4 py-3">人民币实际支出</th><th className="px-4 py-3">预估人民币净利润</th><th className="px-4 py-3">结果</th></tr></thead>
                   <tbody>{tableRows.map((item: any) => {
@@ -256,6 +256,19 @@ export default function RmbProfitEstimate() {
                     </tr>;
                   })}</tbody>
                 </table>
+              </div>
+              <div className="space-y-3 p-3 md:hidden">
+                {tableRows.map((item: any) => {
+                  const monthly = viewMode === 'month';
+                  const period = monthly ? item.year_month : item.period;
+                  const profit = Number(item.estimated_profit_cny || 0);
+                  return <article key={period} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-slate-950">{period}</h3><p className="mt-1 text-xs text-slate-500">{monthly ? `月均汇率 ${Number(item.exchange_rate).toFixed(4)}` : '各月分别换算后汇总'}</p></div><Badge className={profit > 0 ? 'bg-emerald-100 text-emerald-700' : profit < 0 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}>{profit > 0 ? '盈利' : profit < 0 ? '亏损' : '持平'}</Badge></div>
+                    <p className={`mt-3 text-xl font-bold ${profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{cny(profit)}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-xs"><div><p className="text-slate-400">美元经营结余</p><p className="mt-1 font-semibold text-blue-700">{usd(item.usd_operating_balance)}</p></div><div><p className="text-slate-400">折合人民币</p><p className="mt-1 font-semibold text-indigo-700">{cny(item.usd_converted_cny)}</p></div><div><p className="text-slate-400">人民币收入</p><p className="mt-1 font-semibold text-emerald-700">{cny(item.cny_operating_income)}</p></div><div><p className="text-slate-400">人民币实际支出</p><p className="mt-1 font-semibold text-amber-700">{cny(item.cny_actual_expense)}</p></div></div>
+                    {monthly ? <details className="mt-3 text-xs text-slate-500"><summary className="min-h-11 cursor-pointer py-3 font-medium text-blue-700">查看美元结余公式</summary><p className="leading-5">收入 {usd(item.usd_revenue)} − 管理扣点 {usd(item.usd_management_deduction)} − 美元成本 {usd(item.usd_cost)} = {usd(item.usd_operating_balance)}</p></details> : null}
+                  </article>;
+                })}
               </div>
             </CardContent>
           </Card>

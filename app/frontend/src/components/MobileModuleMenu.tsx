@@ -4,8 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   appNavigationItems,
-  mobileBusinessApps,
-  partnerBusinessApp,
+  getMobileBusinessApps,
 } from '@/lib/app-navigation';
 import { useRole } from '@/lib/role-context';
 import { cn } from '@/lib/utils';
@@ -24,7 +23,7 @@ export default function MobileModuleMenu({ currentPath }: { currentPath: string 
   const navigate = useNavigate();
   const { role, canAccess } = useRole();
   const [open, setOpen] = useState(false);
-  const definitions = role === 'sales_partner' ? [partnerBusinessApp] : mobileBusinessApps;
+  const definitions = getMobileBusinessApps(role);
   const currentApp = definitions.find(app => app.paths.includes(currentPath));
   const pages = currentApp?.paths
     .map(path => appNavigationItems.find(item => item.path === path))

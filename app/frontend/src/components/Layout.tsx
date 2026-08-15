@@ -24,6 +24,8 @@ import MobileAppHome, { T24AppMark } from '@/components/MobileAppHome';
 import MobileBottomNav from '@/components/MobileBottomNav';
 import MobileModuleMenu from '@/components/MobileModuleMenu';
 import { getSafeInternalPath } from '@/lib/navigation-state';
+import { getToken } from '@/lib/tokenStore';
+import PwaInstallAction from '@/components/PwaInstallAction';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -77,8 +79,8 @@ export default function Layout({ children }: LayoutProps) {
       toast.error('请输入当前密码');
       return;
     }
-    if (!pwdForm.newPwd || pwdForm.newPwd.length < 6) {
-      toast.error('新密码至少6个字符');
+    if (!pwdForm.newPwd || pwdForm.newPwd.length < 8) {
+      toast.error('新密码至少8个字符');
       return;
     }
     if (pwdForm.newPwd !== pwdForm.confirm) {
@@ -88,7 +90,7 @@ export default function Layout({ children }: LayoutProps) {
 
     setChangingPwd(true);
     try {
-      const token = localStorage.getItem('emp_auth_token');
+      const token = getToken();
       await client.apiCall.invoke({
         url: '/api/v1/emp-auth/change-password',
         method: 'POST',
@@ -459,6 +461,7 @@ export default function Layout({ children }: LayoutProps) {
             >
               <KeyRound className="mr-2 h-4 w-4" />修改密码
             </Button>
+            <PwaInstallAction />
             <Button
               type="button"
               variant="outline"
@@ -482,7 +485,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
             <div>
               <Label>新密码</Label>
-              <Input type="password" value={pwdForm.newPwd} onChange={e => setPwdForm({ ...pwdForm, newPwd: e.target.value })} placeholder="至少6个字符" />
+              <Input type="password" value={pwdForm.newPwd} onChange={e => setPwdForm({ ...pwdForm, newPwd: e.target.value })} placeholder="至少8个字符" minLength={8} />
             </div>
             <div>
               <Label>确认新密码</Label>

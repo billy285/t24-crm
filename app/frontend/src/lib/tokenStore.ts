@@ -1,33 +1,38 @@
 import { client, refreshClientAuth } from './api';
+import {
+  type AuthPersistence,
+  clearStoredToken,
+  getAuthPersistence,
+  getStoredToken,
+  storeToken,
+  wasExplicitlyLoggedOut,
+} from './auth-storage';
 
-const EMP_TOKEN_KEY = 'emp_auth_token';
-const SDK_TOKEN_KEY = 'token';
-
-export const getToken = (): string => localStorage.getItem(EMP_TOKEN_KEY) || localStorage.getItem(SDK_TOKEN_KEY) || '';
-export const setToken = (t: string): void => {
+export const getToken = (): string => getStoredToken();
+export const setToken = (token: string, persistence: AuthPersistence | boolean = getAuthPersistence()): void => {
+  const resolvedPersistence = typeof persistence === 'boolean'
+    ? (persistence ? 'persistent' : 'session')
+    : persistence;
   try {
-    localStorage.setItem(EMP_TOKEN_KEY, t);
-    // Keep the SDK-default token key in sync so client.entities.* calls also carry auth.
-    localStorage.setItem(SDK_TOKEN_KEY, t);
+    storeToken(token, resolvedPersistence);
     refreshClientAuth();
   } catch (e) {
-    // Fallback: ignore storage quota errors
     // eslint-disable-next-line no-console
-    console.warn('Failed to persist token to localStorage:', e);
+    console.warn('Failed to persist the access token:', e);
   }
 };
 export const clearToken = (): void => {
   try {
-    localStorage.removeItem(EMP_TOKEN_KEY);
-    localStorage.removeItem(SDK_TOKEN_KEY);
+    clearStoredToken();
     refreshClientAuth();
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn('Failed to remove token from localStorage:', e);
+    console.warn('Failed to remove the access token:', e);
   }
 };
 
 export async function refreshToken(): Promise<string | null> {
+  if (wasExplicitlyLoggedOut()) return null;
   try {
     const res = await client.apiCall.invoke({
       url: '/api/v1/emp-auth/refresh',

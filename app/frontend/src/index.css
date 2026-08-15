@@ -379,5 +379,10 @@
     .mobile-bottom-nav button {
       touch-action: manipulation;
     }
+
+    .management-decisions-page table,
+    .partner-portal-page table {
+      display: none;
+    }
   }
 }

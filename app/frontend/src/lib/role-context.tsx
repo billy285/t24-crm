@@ -6,8 +6,15 @@ import {
   getDataScope, canViewSensitive, isAdminRole, mapToSystemRole,
   type RolePermissionConfig,
 } from './permissions';
-import { APP_CONFIG_UPDATED_EVENT, readCachedAppConfig, syncAppConfigCache } from './app-config';
+import { APP_CONFIG_UPDATED_EVENT, clearCachedAppConfig, readCachedAppConfig, syncAppConfigCache } from './app-config';
 import { getToken, setToken as setAccessToken, clearToken as clearTokenStore, refreshToken, invokeWithAuth } from './tokenStore';
+import {
+  clearStoredEmployee,
+  getAuthPersistence,
+  getStoredEmployee,
+  markExplicitLogout,
+  storeEmployee,
+} from './auth-storage';
 
 export type RoleType = 'super_admin' | 'admin' | 'sales' | 'sales_manager' | 'sales_partner' | 'ops' | 'design' | 'finance' | '';
 
@@ -20,7 +27,7 @@ interface RoleContextType {
   isLoggedIn: boolean;
   isAdmin: boolean;
   isDisabled: boolean;
-  login: (token: string, emp: any) => Promise<void>;
+  login: (token: string, emp: any, rememberMe?: boolean) => Promise<void>;
   logout: () => void;
   refreshEmployee: () => Promise<void>;
   // Permission helpers
@@ -75,18 +82,16 @@ export const positionLabels: Record<string, string> = {
 
 // Legacy nav access (kept for backward compat)
 export const roleNavAccess: Record<string, string[]> = {
-  super_admin: ['/', '/company-roadmap', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
-  admin: ['/', '/company-roadmap', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
-  boss: ['/', '/company-roadmap', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/permissions'],
+  super_admin: ['/', '/company-roadmap', '/customers', '/sales', '/deals', '/finance', '/partner-portal', '/tasks', '/employees', '/settings', '/settings/deduction', '/permissions'],
+  admin: ['/', '/company-roadmap', '/customers', '/sales', '/deals', '/finance', '/tasks', '/employees', '/settings', '/settings/deduction', '/permissions'],
+  boss: ['/', '/company-roadmap', '/customers', '/sales', '/deals', '/finance', '/partner-portal', '/tasks', '/employees', '/settings', '/settings/deduction', '/permissions'],
   sales: ['/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers'],
   sales_manager: ['/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/customers'],
   sales_partner: ['/partner-portal'],
   ops: ['/operations-workbench', '/customers', '/tasks', '/service-board', '/callbacks'],
   design: ['/', '/tasks'],
-  finance: ['/', '/company-roadmap', '/finance', '/customers'],
+  finance: ['/', '/company-roadmap', '/finance', '/customers', '/settings/deduction'],
 };
-
-const EMP_DATA_KEY = 'emp_auth_data';
 
 export function RoleProvider({ children }: { children: ReactNode }) {
   const [employee, setEmployee] = useState<any>(null);
@@ -109,7 +114,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const checkAuth = async () => {
     try {
       let token = getToken();
-      const savedEmp = localStorage.getItem(EMP_DATA_KEY);
+      const savedEmp = getStoredEmployee();
 
       // If no access token, try to refresh from HttpOnly cookie
       if (!token) {
@@ -139,7 +144,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           const respEmp = await invokeWithAuth({ url: '/api/v1/emp-auth/me', method: 'GET' });
           const emp = respEmp.data;
           if (emp && emp.id) {
-            localStorage.setItem(EMP_DATA_KEY, JSON.stringify(emp));
+            storeEmployee(emp, getAuthPersistence());
             applyEmployee(emp);
             await syncAppConfigCache();
           } else {
@@ -161,25 +166,19 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           });
           const emp = response.data;
           if (emp && emp.id) {
+            storeEmployee(emp, getAuthPersistence());
             applyEmployee(emp);
             await syncAppConfigCache();
           } else {
             clearAuth();
           }
         } catch {
-          // Try to use saved data as fallback
-          try {
-            const emp = JSON.parse(savedEmp);
-            if (emp && emp.id) {
-              applyEmployee(emp);
-              await syncAppConfigCache();
-            } else {
-              clearAuth();
-            }
-          } catch {
-            clearAuth();
-          }
+          // Cached profile data never proves that an account is still active.
+          // Fail closed so disabled/logged-out users cannot reopen an installed app.
+          clearAuth();
         }
+      } else if (savedEmp) {
+        clearAuth();
       }
     } catch {
       clearAuth();
@@ -198,14 +197,16 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     setEmployee(emp);
     setIsDisabled(false);
     const mappedRole = mapToSystemRole(emp.role || 'sales');
+    if (mappedRole === 'sales_partner') clearCachedAppConfig();
     setRole(mappedRole as RoleType);
   };
 
-  const handleLogin = async (token: string, emp: any) => {
+  const handleLogin = async (token: string, emp: any, rememberMe = false) => {
     setLoading(true);
     try {
-      setAccessToken(token);
-      localStorage.setItem(EMP_DATA_KEY, JSON.stringify(emp));
+      const persistence = rememberMe ? 'persistent' : 'session';
+      setAccessToken(token, persistence);
+      storeEmployee(emp, persistence);
       applyEmployee(emp);
       await syncAppConfigCache();
     } catch (err) {
@@ -218,41 +219,45 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   const clearAuth = () => {
     clearTokenStore();
-    localStorage.removeItem(EMP_DATA_KEY);
+    clearStoredEmployee();
     setEmployee(null);
     setRole('');
     setIsDisabled(false);
   };
 
   const handleLogout = async () => {
-    // Log the logout
-    if (employee) {
-      try {
-        await invokeWithAuth({
-          url: '/api/v1/entities/operation_logs',
-          method: 'POST',
-          data: {
-            action_type: 'other',
-            action_detail: `员工退出登录: ${employee.name}`,
-            operator_name: employee.name,
-            ip_address: '',
-            created_at: new Date().toISOString(),
-          },
-        });
-      } catch {
-        // ignore
-      }
-    }
-    try {
-      await client.apiCall.invoke({
+    const employeeAtLogout = employee;
+    const tokenAtLogout = getToken();
+
+    // Clear browser-readable credentials before any network request. The marker
+    // also prevents a stale HttpOnly cookie from silently restoring a session
+    // if the device goes offline during logout.
+    markExplicitLogout();
+    clearAuth();
+
+    const requests: Promise<unknown>[] = [
+      client.apiCall.invoke({
         url: '/api/v1/emp-auth/logout',
         method: 'POST',
         options: { withCredentials: true },
-      });
-    } catch {
-      // ignore
+      }),
+    ];
+
+    if (employeeAtLogout && tokenAtLogout) {
+      requests.push(
+        client.apiCall.invoke({
+          url: '/api/v1/entities/operation_logs',
+          method: 'POST',
+          data: {
+            action_type: 'user_note',
+            action_detail: `用户备注（非系统审计）｜关联操作：退出登录｜员工退出登录: ${employeeAtLogout.name}`,
+          },
+          options: { headers: { Authorization: `Bearer ${tokenAtLogout}` } },
+        }),
+      );
     }
-    clearAuth();
+
+    await Promise.allSettled(requests);
   };
 
   const refreshEmployee = async () => {
@@ -263,7 +268,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       });
       const emp = response.data;
       if (emp && emp.id) {
-        localStorage.setItem(EMP_DATA_KEY, JSON.stringify(emp));
+        storeEmployee(emp, getAuthPersistence());
         applyEmployee(emp);
         await syncAppConfigCache();
       }
@@ -287,10 +292,29 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   }, [role]);
 
   const ds = role ? getDataScope(role) : 'all' as DataScope;
-  const securityConfig = readCachedAppConfig('security_config', { passwordViewRoles: ['super_admin', 'admin'] as string[] });
-  const cvp = role
-    ? canViewSensitive(role, 'viewPassword') || (securityConfig.passwordViewRoles || []).includes(role)
-    : true;
+  const rawRolePermissions = readCachedAppConfig<Record<string, {
+    buttons?: string[];
+    sensitiveFields?: { viewPassword?: boolean };
+  }>>('role_permissions', {});
+  const rawRoleConfig = sysRole ? rawRolePermissions[sysRole] : undefined;
+  const configuredSensitiveFields = rawRoleConfig?.sensitiveFields;
+  const hasExplicitPasswordDecision = Boolean(
+    configuredSensitiveFields
+    && Object.prototype.hasOwnProperty.call(configuredSensitiveFields, 'viewPassword'),
+  );
+  const securityConfig = readCachedAppConfig<{ passwordViewRoles?: string[] }>('security_config', {});
+  // Keep this precedence identical to the backend reveal endpoint: the modern
+  // sensitive field is authoritative (including false), followed only by the
+  // legacy button/security settings and finally checked-in role defaults.
+  const cvp = !role
+    ? true
+    : hasExplicitPasswordDecision
+      ? configuredSensitiveFields?.viewPassword === true
+      : rawRoleConfig?.buttons?.includes('view_password')
+        ? true
+        : Array.isArray(securityConfig.passwordViewRoles)
+          ? securityConfig.passwordViewRoles.includes(sysRole || role)
+          : canViewSensitive(role, 'viewPassword');
   const ccp = role ? canViewSensitive(role, 'copyPassword') : true;
   const cvf = role ? canViewSensitive(role, 'viewFinance') : true;
 

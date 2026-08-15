@@ -2,14 +2,21 @@ import json
 import logging
 from typing import List, Optional
 
-from datetime import datetime, date
+from datetime import datetime
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from services.operation_logs import Operation_logsService
+from services.customer_scope import ensure_customer_access
+from services.operation_logs import (
+    CLIENT_OPERATION_ACTION_TYPES,
+    MAX_OPERATION_BATCH_SIZE,
+    MAX_OPERATION_DETAIL_LENGTH,
+    Operation_logsService,
+    build_server_operation_log_data,
+)
 from dependencies.auth import get_admin_user, get_current_user
 from schemas.auth import UserResponse
 
@@ -21,23 +28,23 @@ router = APIRouter(prefix="/api/v1/entities/operation_logs", tags=["operation_lo
 
 # ---------- Pydantic Schemas ----------
 class Operation_logsData(BaseModel):
-    """Entity data schema (for create/update)"""
-    customer_id: Optional[int] = None
+    """Append-only, explicitly non-audit user note."""
+    customer_id: Optional[int] = Field(default=None, gt=0)
     action_type: str
-    action_detail: Optional[str] = None
+    action_detail: Optional[str] = Field(default=None, max_length=MAX_OPERATION_DETAIL_LENGTH)
+    # Accepted only for compatibility with already-loaded browser bundles.
+    # The route always discards and replaces these server-owned fields.
+    user_id: Optional[str] = None
     operator_name: Optional[str] = None
     ip_address: Optional[str] = None
     created_at: Optional[datetime] = None
 
-
-class Operation_logsUpdateData(BaseModel):
-    """Update entity data (partial updates allowed)"""
-    customer_id: Optional[int] = None
-    action_type: Optional[str] = None
-    action_detail: Optional[str] = None
-    operator_name: Optional[str] = None
-    ip_address: Optional[str] = None
-    created_at: Optional[datetime] = None
+    @field_validator("action_type")
+    @classmethod
+    def validate_action_type(cls, value: str) -> str:
+        if value not in CLIENT_OPERATION_ACTION_TYPES:
+            raise ValueError("Unsupported operation action type")
+        return value
 
 
 class Operation_logsResponse(BaseModel):
@@ -65,23 +72,7 @@ class Operation_logsListResponse(BaseModel):
 
 class Operation_logsBatchCreateRequest(BaseModel):
     """Batch create request"""
-    items: List[Operation_logsData]
-
-
-class Operation_logsBatchUpdateItem(BaseModel):
-    """Batch update item"""
-    id: int
-    updates: Operation_logsUpdateData
-
-
-class Operation_logsBatchUpdateRequest(BaseModel):
-    """Batch update request"""
-    items: List[Operation_logsBatchUpdateItem]
-
-
-class Operation_logsBatchDeleteRequest(BaseModel):
-    """Batch delete request"""
-    ids: List[int]
+    items: List[Operation_logsData] = Field(min_length=1, max_length=MAX_OPERATION_BATCH_SIZE)
 
 
 # ---------- Routes ----------
@@ -190,20 +181,36 @@ async def get_operation_logs(
 @router.post("", response_model=Operation_logsResponse, status_code=201)
 async def create_operation_logs(
     data: Operation_logsData,
+    request: Request,
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new operation_logs"""
-    logger.debug(f"Creating new operation_logs with data: {data}")
+    """Append a user note; this endpoint never creates a trusted audit event."""
+    logger.debug(
+        "Creating operation log customer_id=%s action_type=%s",
+        data.customer_id,
+        data.action_type,
+    )
     
     service = Operation_logsService(db)
     try:
-        result = await service.create(data.model_dump(), user_id=str(current_user.id))
+        if data.customer_id is not None:
+            await ensure_customer_access(db, current_user, data.customer_id)
+        trusted_data = build_server_operation_log_data(
+            current_user=current_user,
+            request=request,
+            customer_id=data.customer_id,
+            action_type=data.action_type,
+            action_detail=data.action_detail,
+        )
+        result = await service.create(trusted_data, user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create operation_logs")
         
         logger.info(f"Operation_logs created successfully with id: {result.id}")
         return result
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"Validation error creating operation_logs: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -215,10 +222,11 @@ async def create_operation_logs(
 @router.post("/batch", response_model=List[Operation_logsResponse], status_code=201)
 async def create_operation_logss_batch(
     request: Operation_logsBatchCreateRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    http_request: Request,
+    current_user: UserResponse = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create multiple operation_logss in a single request"""
+    """Append a bounded batch of non-audit user notes (admin only)."""
     logger.debug(f"Batch creating {len(request.items)} operation_logss")
     
     service = Operation_logsService(db)
@@ -226,123 +234,36 @@ async def create_operation_logss_batch(
     
     try:
         for item_data in request.items:
-            result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
+            if item_data.customer_id is not None:
+                await ensure_customer_access(db, current_user, item_data.customer_id)
+        for item_data in request.items:
+            trusted_data = build_server_operation_log_data(
+                current_user=current_user,
+                request=http_request,
+                customer_id=item_data.customer_id,
+                action_type=item_data.action_type,
+                action_detail=item_data.action_detail,
+            )
+            result = await service.create(
+                trusted_data,
+                user_id=str(current_user.id),
+                commit=False,
+            )
             if result:
                 results.append(result)
+        await db.commit()
+        for result in results:
+            await db.refresh(result)
         
         logger.info(f"Batch created {len(results)} operation_logss successfully")
         return results
+    except HTTPException:
+        await db.rollback()
+        raise
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch create: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Batch create failed: {str(e)}")
-
-
-@router.put("/batch", response_model=List[Operation_logsResponse])
-async def update_operation_logss_batch(
-    request: Operation_logsBatchUpdateRequest,
-    _admin: UserResponse = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Update multiple operation_logss in a single request (admin only)"""
-    logger.debug(f"Batch updating {len(request.items)} operation_logss")
-    
-    service = Operation_logsService(db)
-    results = []
-    
-    try:
-        for item in request.items:
-            # Only include non-None values for partial updates
-            update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            result = await service.update(item.id, update_dict)
-            if result:
-                results.append(result)
-        
-        logger.info(f"Batch updated {len(results)} operation_logss successfully")
-        return results
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Error in batch update: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Batch update failed: {str(e)}")
-
-
-@router.put("/{id}", response_model=Operation_logsResponse)
-async def update_operation_logs(
-    id: int,
-    data: Operation_logsUpdateData,
-    _admin: UserResponse = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Update an existing operation_logs (admin only)"""
-    logger.debug(f"Updating operation_logs {id} with data: {data}")
-
-    service = Operation_logsService(db)
-    try:
-        # Only include non-None values for partial updates
-        update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        result = await service.update(id, update_dict)
-        if not result:
-            logger.warning(f"Operation_logs with id {id} not found for update")
-            raise HTTPException(status_code=404, detail="Operation_logs not found")
-        
-        logger.info(f"Operation_logs {id} updated successfully")
-        return result
-    except HTTPException:
-        raise
-    except ValueError as e:
-        logger.error(f"Validation error updating operation_logs {id}: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error updating operation_logs {id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-
-@router.delete("/batch")
-async def delete_operation_logss_batch(
-    request: Operation_logsBatchDeleteRequest,
-    _admin: UserResponse = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Delete multiple operation_logss by their IDs (admin only)"""
-    logger.debug(f"Batch deleting {len(request.ids)} operation_logss")
-    
-    service = Operation_logsService(db)
-    deleted_count = 0
-    
-    try:
-        for item_id in request.ids:
-            success = await service.delete(item_id)
-            if success:
-                deleted_count += 1
-        
-        logger.info(f"Batch deleted {deleted_count} operation_logss successfully")
-        return {"message": f"Successfully deleted {deleted_count} operation_logss", "deleted_count": deleted_count}
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Error in batch delete: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Batch delete failed: {str(e)}")
-
-
-@router.delete("/{id}")
-async def delete_operation_logs(
-    id: int,
-    _admin: UserResponse = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Delete a single operation_logs by ID (admin only)"""
-    logger.debug(f"Deleting operation_logs with id: {id}")
-    
-    service = Operation_logsService(db)
-    try:
-        success = await service.delete(id)
-        if not success:
-            logger.warning(f"Operation_logs with id {id} not found for deletion")
-            raise HTTPException(status_code=404, detail="Operation_logs not found")
-        
-        logger.info(f"Operation_logs {id} deleted successfully")
-        return {"message": "Operation_logs deleted successfully", "id": id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting operation_logs {id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

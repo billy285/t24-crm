@@ -1,11 +1,12 @@
 import logging
 from typing import Optional, Dict, Any, List
 
-from sqlalchemy import false, select, func
+from sqlalchemy import and_, false, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customers import Customers
 from models.customer_access_grants import CustomerAccessGrant
+from models.employees import Employees
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +30,53 @@ class CustomersService:
 
         raw_user_id = getattr(scope_user, "id", None)
         try:
-            return Customers.id.in_(
+            employee_id = int(raw_user_id)
+            granted = Customers.id.in_(
                 select(CustomerAccessGrant.customer_id).where(
-                    CustomerAccessGrant.employee_id == int(raw_user_id)
+                    CustomerAccessGrant.employee_id == employee_id
                 )
             )
+            if role in {"sales", "sales_manager"}:
+                owner_filters = [Customers.sales_employee_id == employee_id]
+                employee_name = str(getattr(scope_user, "name", "") or "").strip()
+                if employee_name:
+                    # ``sales_person`` is a legacy, non-unique display name. It
+                    # may only be used when the durable owner id has never been
+                    # assigned; a populated id always wins over a same-name
+                    # employee and prevents cross-sales visibility.
+                    owner_filters.append(and_(
+                        Customers.sales_employee_id.is_(None),
+                        Customers.sales_person == employee_name,
+                    ))
+                if role == "sales_manager":
+                    manager_department = (
+                        select(Employees.department)
+                        .where(Employees.id == employee_id)
+                        .scalar_subquery()
+                    )
+                    eligible_department_members = (
+                        Employees.department.is_not(None),
+                        Employees.department == manager_department,
+                        Employees.status.in_(("active", "probation")),
+                        Employees.role.in_(("sales", "sales_manager")),
+                    )
+                    department_employee_ids = select(Employees.id).where(
+                        *eligible_department_members
+                    )
+                    owner_filters.append(
+                        Customers.sales_employee_id.in_(department_employee_ids)
+                    )
+                    # Legacy name-only ownership follows the same department
+                    # boundary, but only where no durable owner id exists.
+                    department_employee_names = select(Employees.name).where(
+                        *eligible_department_members
+                    )
+                    owner_filters.append(and_(
+                        Customers.sales_employee_id.is_(None),
+                        Customers.sales_person.in_(department_employee_names),
+                    ))
+                return or_(granted, *owner_filters)
+            return granted
         except (TypeError, ValueError):
             return false()
 
@@ -145,7 +188,13 @@ class CustomersService:
             logger.error(f"Error updating customers {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int, scope_user: Optional[Any] = None) -> bool:
+    async def delete(
+        self,
+        obj_id: int,
+        scope_user: Optional[Any] = None,
+        *,
+        commit: bool = True,
+    ) -> bool:
         """Delete customers"""
         try:
             obj = await self.get_by_id(obj_id, scope_user=scope_user)
@@ -153,7 +202,10 @@ class CustomersService:
                 logger.warning(f"Customers {obj_id} not found for deletion")
                 return False
             await self.db.delete(obj)
-            await self.db.commit()
+            if commit:
+                await self.db.commit()
+            else:
+                await self.db.flush()
             logger.info(f"Deleted customers {obj_id}")
             return True
         except Exception as e:

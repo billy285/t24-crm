@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Copy, RefreshCw, RotateCcw, Search, Sparkles, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import { invokeWithAuth } from '../lib/tokenStore';
 import { getCountryLabel, getStateLabel } from '../lib/country-state-data';
 import { useBusinessDicts } from '../lib/dict-config';
+import { useRole } from '../lib/role-context';
 
 const platformOptions = [
   { value: 'internal', label: '内部运营' },
@@ -133,6 +134,15 @@ const statusColors: Record<string, string> = {
   archived: 'bg-amber-100 text-amber-700',
 };
 
+const emptyCopyForm = {
+  platform: 'google_business',
+  content_type: 'weekly_update',
+  language: 'zh_en',
+  tone: 'friendly',
+  variants: '3',
+  extra_requirements: '',
+};
+
 const labelOf = (options: Array<{ value: string; label: string }>, value?: string) => (
   options.find(item => item.value === value)?.label || value || '-'
 );
@@ -147,7 +157,18 @@ interface Props {
 
 export default function CustomerAiCopyTab({ customer }: Props) {
   const businessDicts = useBusinessDicts();
+  const { canAccess, hasPermission, isAdmin } = useRole();
+  const canRead = canAccess('/customers') || canAccess('/service-board');
+  const canCreate = canRead && hasPermission('task_create');
+  const canEdit = canRead && hasPermission('task_edit');
+  const canDelete = canRead && (isAdmin || hasPermission('task_delete'));
+  const customerId = Number(customer?.id || 0);
+  const activeCustomerIdRef = useRef(customerId);
+  const copiesRequestSeqRef = useRef(0);
+  activeCustomerIdRef.current = customerId;
+
   const [copies, setCopies] = useState<any[]>([]);
+  const [copiesCustomerId, setCopiesCustomerId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
@@ -160,14 +181,10 @@ export default function CustomerAiCopyTab({ customer }: Props) {
   const [copyFilterPlatform, setCopyFilterPlatform] = useState('all');
   const [copyFilterType, setCopyFilterType] = useState('all');
   const [copyFilterStatus, setCopyFilterStatus] = useState('all');
-  const [form, setForm] = useState({
-    platform: 'google_business',
-    content_type: 'weekly_update',
-    language: 'zh_en',
-    tone: 'friendly',
-    variants: '3',
-    extra_requirements: '',
-  });
+  const [form, setForm] = useState(emptyCopyForm);
+
+  const visibleCopies = copiesCustomerId === customerId ? copies : [];
+  const activeDeleteTarget = canDelete && Number(deleteTarget?.customer_id) === customerId ? deleteTarget : null;
 
   const packageLabels = useMemo(() => (
     parseMultiValue(customer?.interested_packages)
@@ -175,42 +192,98 @@ export default function CustomerAiCopyTab({ customer }: Props) {
       .join('、')
   ), [businessDicts.customerPackages, customer?.interested_packages]);
 
-  useEffect(() => {
-    loadCopies();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customer?.id, copyPage, copyPageSize, copySearch, copyFilterPlatform, copyFilterType, copyFilterStatus]);
-
   const totalPages = Math.max(1, Math.ceil(copyTotal / Number(copyPageSize || 10)));
 
-  const loadCopies = async () => {
-    if (!customer?.id) return;
-    setLoading(true);
+  const loadCopies = async (
+    requestedCustomerId: number,
+    queryState: {
+      page: number;
+      pageSize: string;
+      search: string;
+      platform: string;
+      contentType: string;
+      status: string;
+    },
+  ) => {
+    if (!canRead || !requestedCustomerId) return;
+    const requestSeq = ++copiesRequestSeqRef.current;
+    if (activeCustomerIdRef.current === requestedCustomerId) {
+      setLoading(true);
+      setCopies([]);
+      setCopiesCustomerId(null);
+      setCopyTotal(0);
+      setDrafts({});
+    }
     try {
-      const query: Record<string, any> = { customer_id: customer.id };
-      if (copyFilterPlatform !== 'all') query.platform = copyFilterPlatform;
-      if (copyFilterType !== 'all') query.content_type = copyFilterType;
-      if (copyFilterStatus !== 'all') query.status = copyFilterStatus;
+      const query: Record<string, any> = { customer_id: requestedCustomerId };
+      if (queryState.platform !== 'all') query.platform = queryState.platform;
+      if (queryState.contentType !== 'all') query.content_type = queryState.contentType;
+      if (queryState.status !== 'all') query.status = queryState.status;
       const res = await invokeWithAuth({
         url: '/api/v1/entities/customer_ai_copies',
         method: 'GET',
         data: {
           query: JSON.stringify(query),
-          search: copySearch.trim() || undefined,
+          search: queryState.search.trim() || undefined,
           sort: '-created_at',
-          skip: (copyPage - 1) * Number(copyPageSize || 10),
-          limit: Number(copyPageSize || 10),
+          skip: (queryState.page - 1) * Number(queryState.pageSize || 10),
+          limit: Number(queryState.pageSize || 10),
         },
       });
-      setCopies(res?.data?.items || []);
-      setCopyTotal(res?.data?.total || 0);
+      if (requestSeq !== copiesRequestSeqRef.current || activeCustomerIdRef.current !== requestedCustomerId) return;
+      const items = res?.data?.items || [];
+      setCopies(items);
+      setCopiesCustomerId(requestedCustomerId);
+      setCopyTotal(Number(res?.data?.total ?? items.length));
       setDrafts({});
     } catch (err: any) {
+      if (requestSeq !== copiesRequestSeqRef.current || activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(err?.data?.detail || '加载AI文案失败');
     } finally {
-      setLoading(false);
+      if (requestSeq === copiesRequestSeqRef.current && activeCustomerIdRef.current === requestedCustomerId) {
+        setLoading(false);
+      }
     }
   };
+
+  const currentQueryState = () => ({
+    page: copyPage,
+    pageSize: copyPageSize,
+    search: copySearch,
+    platform: copyFilterPlatform,
+    contentType: copyFilterType,
+    status: copyFilterStatus,
+  });
+
+  const refreshCopies = () => {
+    const requestedCustomerId = activeCustomerIdRef.current;
+    if (!canRead || requestedCustomerId !== customerId) return;
+    void loadCopies(requestedCustomerId, currentQueryState());
+  };
+
+  useEffect(() => {
+    copiesRequestSeqRef.current += 1;
+    setCopies([]);
+    setCopiesCustomerId(null);
+    setCopyTotal(0);
+    setDrafts({});
+    setDeleteTarget(null);
+    setSavingId(null);
+    setGenerating(false);
+    setForm(emptyCopyForm);
+    if (!canRead || !customerId) setLoading(false);
+  }, [canRead, customerId]);
+
+  useEffect(() => {
+    if (!canRead || !customerId) return;
+    void loadCopies(customerId, currentQueryState());
+    return () => {
+      copiesRequestSeqRef.current += 1;
+    };
+    // Request functions intentionally capture this render's permission/filter snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canRead, customerId, copyPage, copyPageSize, copySearch, copyFilterPlatform, copyFilterType, copyFilterStatus]);
 
   const updateSearch = (value: string) => {
     setCopySearch(value);
@@ -234,6 +307,7 @@ export default function CustomerAiCopyTab({ customer }: Props) {
   });
 
   const applyPreset = (preset: typeof operationPresets[number]) => {
+    if (!canCreate || activeCustomerIdRef.current !== customerId) return;
     setForm(prev => ({
       ...prev,
       platform: preset.platform,
@@ -257,30 +331,38 @@ export default function CustomerAiCopyTab({ customer }: Props) {
   }, [form.content_type]);
 
   const handleGenerate = async () => {
-    if (!customer?.id) return;
+    const requestedCustomerId = activeCustomerIdRef.current;
+    if (!canCreate || !requestedCustomerId || requestedCustomerId !== customerId) return;
+    const requestForm = { ...form };
+    const customerContext = buildCustomerContext();
     setGenerating(true);
     try {
       const res = await invokeWithAuth({
         url: '/api/v1/entities/customer_ai_copies/generate',
         method: 'POST',
         data: {
-          customer_id: customer.id,
-          platform: form.platform,
-          content_type: form.content_type,
-          language: form.language,
-          tone: form.tone,
-          variants: Number(form.variants || 3),
-          extra_requirements: form.extra_requirements,
-          customer_context: buildCustomerContext(),
+          customer_id: requestedCustomerId,
+          platform: requestForm.platform,
+          content_type: requestForm.content_type,
+          language: requestForm.language,
+          tone: requestForm.tone,
+          variants: Number(requestForm.variants || 3),
+          extra_requirements: requestForm.extra_requirements,
+          customer_context: customerContext,
         },
       });
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       const items = res?.data?.items || [];
       setCopySearch('');
       setCopyFilterPlatform('all');
       setCopyFilterType('all');
       setCopyFilterStatus('all');
       setCopyPage(1);
-      setCopies(items.concat(copies).slice(0, Number(copyPageSize || 10)));
+      setCopies(prev => [
+        ...items,
+        ...prev.filter(copy => Number(copy?.customer_id) === requestedCustomerId),
+      ].slice(0, Number(copyPageSize || 10)));
+      setCopiesCustomerId(requestedCustomerId);
       setCopyTotal(prev => prev + items.length);
       setDrafts({});
       if (res?.data?.warning) {
@@ -289,14 +371,16 @@ export default function CustomerAiCopyTab({ customer }: Props) {
         toast.success('AI文案已生成并保存为草稿');
       }
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(err?.data?.detail || '生成失败，请检查AI配置');
     } finally {
-      setGenerating(false);
+      if (activeCustomerIdRef.current === requestedCustomerId) setGenerating(false);
     }
   };
 
   const updateDraft = (item: any, patch: Partial<{ title: string; content: string; status: string }>) => {
+    if (!canEdit || Number(item?.customer_id) !== activeCustomerIdRef.current) return;
     setDrafts(prev => ({
       ...prev,
       [item.id]: {
@@ -309,6 +393,8 @@ export default function CustomerAiCopyTab({ customer }: Props) {
   };
 
   const handleSave = async (item: any, patch?: Partial<{ status: string }>) => {
+    const requestedCustomerId = activeCustomerIdRef.current;
+    if (!canEdit || Number(item?.customer_id) !== requestedCustomerId) return;
     const draft = {
       title: drafts[item.id]?.title ?? item.title ?? '',
       content: drafts[item.id]?.content ?? item.content ?? '',
@@ -325,6 +411,7 @@ export default function CustomerAiCopyTab({ customer }: Props) {
         method: 'PUT',
         data: draft,
       });
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       setCopies(prev => prev.map(copy => (copy.id === item.id ? res.data : copy)));
       setDrafts(prev => {
         const next = { ...prev };
@@ -333,21 +420,27 @@ export default function CustomerAiCopyTab({ customer }: Props) {
       });
       toast.success(patch?.status === 'used' ? '已标记为已使用' : '文案已保存');
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(err?.data?.detail || '保存失败');
     } finally {
-      setSavingId(null);
+      if (activeCustomerIdRef.current === requestedCustomerId) setSavingId(null);
     }
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    const requestedCustomerId = activeCustomerIdRef.current;
+    const target = deleteTarget;
+    if (!canDelete || !target || Number(target.customer_id) !== requestedCustomerId) return;
     try {
-      await invokeWithAuth({ url: `/api/v1/entities/customer_ai_copies/${deleteTarget.id}`, method: 'DELETE' });
-      setCopies(prev => prev.filter(item => item.id !== deleteTarget.id));
+      await invokeWithAuth({ url: `/api/v1/entities/customer_ai_copies/${target.id}`, method: 'DELETE' });
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
+      setCopies(prev => prev.filter(item => item.id !== target.id));
       setDeleteTarget(null);
+      setCopyTotal(prev => Math.max(0, prev - 1));
       toast.success('文案已删除');
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(err?.data?.detail || '删除失败');
     }
@@ -363,6 +456,7 @@ export default function CustomerAiCopyTab({ customer }: Props) {
   };
 
   const reuseCopySettings = (item: any) => {
+    if (!canCreate || Number(item?.customer_id) !== activeCustomerIdRef.current) return;
     setForm({
       platform: item.platform || 'google_business',
       content_type: item.content_type || 'weekly_update',
@@ -375,9 +469,19 @@ export default function CustomerAiCopyTab({ customer }: Props) {
     toast.success('已复用这条文案的生成条件，可直接再次生成');
   };
 
+  if (!canRead) {
+    return (
+      <Card className="border-slate-200">
+        <CardContent className="py-10 text-center text-sm text-slate-500" role="alert">
+          当前账号无权查看客户 AI 文案。
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <Card className="border-blue-100 bg-blue-50/40">
+      {canCreate && <Card className="border-blue-100 bg-blue-50/40">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2 text-blue-700">
             <Sparkles className="w-4 h-4" /> AI文案生成
@@ -428,7 +532,7 @@ export default function CustomerAiCopyTab({ customer }: Props) {
             </Button>
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <Card className="border-slate-200">
         <CardHeader className="pb-3">
@@ -439,7 +543,7 @@ export default function CustomerAiCopyTab({ customer }: Props) {
                 生成后的草稿都会保存在这里，可搜索、翻页、复制，也可以复用生成条件再次生成。
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={loadCopies} disabled={loading}>
+            <Button variant="outline" size="sm" onClick={refreshCopies} disabled={loading}>
               <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
               刷新
             </Button>
@@ -485,16 +589,16 @@ export default function CustomerAiCopyTab({ customer }: Props) {
           {loading ? (
             <p className="text-sm text-slate-400 text-center py-8">加载中...</p>
           ) : copyTotal === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-8">暂无匹配文案，可以先生成一组草稿</p>
+            <p className="text-sm text-slate-400 text-center py-8">{canCreate ? '暂无匹配文案，可以先生成一组草稿' : '暂无匹配文案'}</p>
           ) : (
             <div className="space-y-4">
-              {copies.map(item => {
-                const draft = drafts[item.id] || {};
-                const content = draft.content ?? item.content ?? '';
-                const title = draft.title ?? item.title ?? '';
-                const itemStatus = draft.status ?? item.status ?? 'draft';
+              {visibleCopies.map(item => {
+                const draft = drafts[item.id];
+                const content = draft?.content ?? item.content ?? '';
+                const title = draft?.title ?? item.title ?? '';
+                const itemStatus = draft?.status ?? item.status ?? 'draft';
                 return (
-                  <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                  <div key={item.id} data-testid={`customer-ai-copy-${item.id}`} className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="secondary">{labelOf(platformOptions, item.platform)}</Badge>
@@ -504,16 +608,16 @@ export default function CustomerAiCopyTab({ customer }: Props) {
                       </div>
                       <span className="text-xs text-slate-400">{item.generated_by || '-'} · {item.created_at?.slice(0, 10) || '-'}</span>
                     </div>
-                    <Input value={title} onChange={e => updateDraft(item, { title: e.target.value })} />
-                    <Textarea value={content} onChange={e => updateDraft(item, { content: e.target.value })} rows={8} className="leading-relaxed" />
+                    <Input value={title} readOnly={!canEdit} onChange={e => updateDraft(item, { title: e.target.value })} />
+                    <Textarea value={content} readOnly={!canEdit} onChange={e => updateDraft(item, { content: e.target.value })} rows={8} className="leading-relaxed" />
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <NativeSelect value={itemStatus} onChange={v => updateDraft(item, { status: v })} options={statusOptions} className="w-[130px]" />
+                      <NativeSelect value={itemStatus} onChange={v => updateDraft(item, { status: v })} options={statusOptions} className="w-[130px]" disabled={!canEdit} />
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={() => copyText(content)}><Copy className="w-3.5 h-3.5 mr-1" />复制</Button>
-                        <Button variant="outline" size="sm" onClick={() => reuseCopySettings(item)}><RotateCcw className="w-3.5 h-3.5 mr-1" />复用要求</Button>
-                        <Button variant="outline" size="sm" onClick={() => handleSave(item)} disabled={savingId === item.id}>{savingId === item.id ? '保存中...' : '保存'}</Button>
-                        <Button variant="outline" size="sm" className="text-green-600 hover:text-green-700" onClick={() => handleSave(item, { status: 'used' })} disabled={savingId === item.id}>标记已使用</Button>
-                        <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setDeleteTarget(item)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        {canCreate && <Button variant="outline" size="sm" onClick={() => reuseCopySettings(item)}><RotateCcw className="w-3.5 h-3.5 mr-1" />复用要求</Button>}
+                        {canEdit && <Button variant="outline" size="sm" onClick={() => handleSave(item)} disabled={savingId === item.id}>{savingId === item.id ? '保存中...' : '保存'}</Button>}
+                        {canEdit && <Button variant="outline" size="sm" className="text-green-600 hover:text-green-700" onClick={() => handleSave(item, { status: 'used' })} disabled={savingId === item.id}>标记已使用</Button>}
+                        {canDelete && <Button aria-label={`删除AI文案：${item.title || item.id}`} variant="ghost" size="sm" className="min-h-11 min-w-11 text-red-600 hover:text-red-700 md:min-h-0 md:min-w-0" onClick={() => setDeleteTarget(item)}><Trash2 className="w-3.5 h-3.5" /></Button>}
                       </div>
                     </div>
                   </div>
@@ -535,13 +639,13 @@ export default function CustomerAiCopyTab({ customer }: Props) {
         </CardContent>
       </Card>
 
-      <ConfirmDialog
-        open={!!deleteTarget}
+      {canDelete && <ConfirmDialog
+        open={!!activeDeleteTarget}
         onOpenChange={open => !open && setDeleteTarget(null)}
         title="确认删除AI文案"
-        description={`确定要删除「${deleteTarget?.title || '这条文案'}」吗？`}
+        description={`确定要删除「${activeDeleteTarget?.title || '这条文案'}」吗？`}
         onConfirm={handleDelete}
-      />
+      />}
     </div>
   );
 }

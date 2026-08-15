@@ -118,5 +118,5 @@ test('关键角色页面在手机宽度保持可操作且无横向溢出', async
     expect(widths.document).toBeLessThanOrEqual(widths.viewport);
     expect(widths.body).toBeLessThanOrEqual(widths.viewport);
   }
-  await expect(page.getByRole('tab', { name: '客户 360' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '概览' })).toBeVisible();
 });

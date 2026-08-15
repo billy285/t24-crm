@@ -59,7 +59,7 @@ test('销售任务加载完成前不显示假零值，并使用北京时间业�
   expect(requestedDate).toBe('2026-08-16');
 });
 
-test('390px 客户页首屏保留搜索、新增和客户卡片，低频操作收进面板', async ({ page }) => {
+test('390px 客户页首屏保留搜索、新增和客户卡片，批量工具仅在电脑端', async ({ page }) => {
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.route(/^https?:\/\/[^/]+\/api\//, async route => {
@@ -73,17 +73,16 @@ test('390px 客户页首屏保留搜索、新增和客户卡片，低频操作�
 
   await page.goto(`${baseUrl}/customers`);
   await expect(page.getByPlaceholder('搜索编号、名称、联系人、电话...')).toBeVisible();
-  await expect(page.getByRole('button', { name: '管理' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '管理' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /筛选/ })).toBeVisible();
   await expect(page.getByRole('button', { name: '新增客户' })).toBeVisible();
+  await expect(page.getByText('批量导入、敏感数据导出、列设置和快捷编辑请在电脑端处理。')).toBeVisible();
   const customerCardTitle = page.getByRole('button', { name: /首屏测试客户/ }).first();
   await expect(customerCardTitle).toBeVisible();
   const cardBox = await customerCardTitle.boundingBox();
   expect(cardBox?.y || 9999).toBeLessThan(844);
 
-  await page.getByRole('button', { name: '管理' }).click();
-  await expect(page.getByRole('heading', { name: '客户管理工具' })).toBeVisible();
-  await expect(page.getByText('列设置与快捷编辑仅适用于桌面表格')).toBeVisible();
+  await expect(page.getByText('客户管理工具')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '列设置' })).toHaveCount(0);
 });
 

@@ -17,6 +17,7 @@ from services.operation_logs import Operation_logsService
 from services.service_progresses import Service_progressesService
 from services.service_tasks import Service_tasksService
 from services.customer_scope import ensure_customer_access
+from services.service_board_access import require_service_board_access
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -170,6 +171,72 @@ SERVICE_STAGE_ORDER = {
 
 CONTENT_REFERENCE_REQUIRED_TYPES = {"publish_content", "reply_comments", "submit_report"}
 
+# A task may only become completed through the dedicated completion endpoint.
+# Those fields are derived from the authenticated operator and the referenced
+# customer content, so accepting them from a generic create/update request
+# would make the completion history forgeable.
+SERVER_MANAGED_TASK_FIELDS = {
+    "completed_date",
+    "completed_at",
+    "completed_by",
+    "selected_copy_id",
+    "selected_copy_title",
+    "selected_material_id",
+    "selected_material_title",
+    "completion_quality",
+    "completion_note",
+    "user_id",
+    "created_at",
+}
+
+GENERIC_TASK_STATUSES = {
+    "pending",
+    "in_progress",
+    "delayed",
+    "waiting_client",
+    "cancelled",
+}
+
+
+def _generic_task_payload(data: BaseModel) -> dict:
+    payload = data.model_dump(exclude_unset=True)
+    for field_name in SERVER_MANAGED_TASK_FIELDS:
+        payload.pop(field_name, None)
+
+    status = payload.get("status")
+    if status == "completed":
+        raise HTTPException(status_code=400, detail="请使用完成任务接口标记任务完成")
+    if status is not None and status not in GENERIC_TASK_STATUSES:
+        raise HTTPException(status_code=400, detail="无效的任务状态")
+    if "customer_id" in payload and payload["customer_id"] is None:
+        raise HTTPException(status_code=400, detail="任务必须关联客户")
+    return payload
+
+
+async def _validate_task_linkage(
+    db: AsyncSession,
+    current_user: UserResponse,
+    customer_id: int,
+    service_progress_id: Optional[int],
+):
+    customer = await ensure_customer_access(db, current_user, customer_id)
+    if service_progress_id is None:
+        return customer, None
+
+    progress = await Service_progressesService(db).get_by_id(
+        service_progress_id,
+        scope_user=current_user,
+    )
+    if not progress:
+        raise HTTPException(status_code=404, detail="Service progress not found")
+    if int(progress.customer_id) != int(customer_id):
+        raise HTTPException(status_code=400, detail="任务与服务进度必须属于同一客户")
+    return customer, progress
+
+
+def _trusted_customer_name(customer) -> str:
+    return str(getattr(customer, "business_name", None) or getattr(customer, "name", None) or "")
+
 
 def _infer_stage_from_completed_task(task) -> Optional[str]:
     task_type = (getattr(task, "task_type", "") or "").strip()
@@ -210,6 +277,7 @@ async def query_service_taskss(
     db: AsyncSession = Depends(get_db),
 ):
     """Query service_taskss with filtering, sorting, and pagination"""
+    await require_service_board_access(db, current_user)
     logger.debug(f"Querying service_taskss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
     
     service = Service_tasksService(db)
@@ -249,6 +317,7 @@ async def query_service_taskss_all(
     db: AsyncSession = Depends(get_db),
 ):
     # Query service_taskss with filtering, sorting, and pagination without user limitation
+    await require_service_board_access(db, current_user)
     logger.debug(f"Querying service_taskss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
 
     service = Service_tasksService(db)
@@ -285,6 +354,7 @@ async def get_service_tasks(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single service_tasks by ID"""
+    await require_service_board_access(db, current_user)
     logger.debug(f"Fetching service_tasks with id: {id}, fields={fields}")
     
     service = Service_tasksService(db)
@@ -309,12 +379,21 @@ async def create_service_tasks(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new service_tasks"""
-    logger.debug(f"Creating new service_tasks with data: {data}")
-    
+    await require_service_board_access(db, current_user, "task_create")
+    create_dict = _generic_task_payload(data)
+    customer, _ = await _validate_task_linkage(
+        db,
+        current_user,
+        data.customer_id,
+        create_dict.get("service_progress_id"),
+    )
+    create_dict["customer_name"] = _trusted_customer_name(customer)
+    create_dict["created_at"] = datetime.utcnow().isoformat()
+    logger.debug("Creating service task for customer_id=%s", data.customer_id)
+
     service = Service_tasksService(db)
     try:
-        await ensure_customer_access(db, current_user, data.customer_id)
-        result = await service.create(data.model_dump(), user_id=str(current_user.id))
+        result = await service.create(create_dict, user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create service_tasks")
         
@@ -335,15 +414,27 @@ async def create_service_taskss_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple service_taskss in a single request"""
+    await require_service_board_access(db, current_user, "task_create")
+    prepared_items = []
+    for item_data in request.items:
+        create_dict = _generic_task_payload(item_data)
+        customer, _ = await _validate_task_linkage(
+            db,
+            current_user,
+            item_data.customer_id,
+            create_dict.get("service_progress_id"),
+        )
+        create_dict["customer_name"] = _trusted_customer_name(customer)
+        create_dict["created_at"] = datetime.utcnow().isoformat()
+        prepared_items.append(create_dict)
     logger.debug(f"Batch creating {len(request.items)} service_taskss")
     
     service = Service_tasksService(db)
     results = []
     
     try:
-        for item_data in request.items:
-            await ensure_customer_access(db, current_user, item_data.customer_id)
-            result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
+        for create_dict in prepared_items:
+            result = await service.create(create_dict, user_id=str(current_user.id))
             if result:
                 results.append(result)
         
@@ -362,18 +453,39 @@ async def update_service_taskss_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple service_taskss in a single request"""
+    await require_service_board_access(db, current_user, "task_edit")
     logger.debug(f"Batch updating {len(request.items)} service_taskss")
     
     service = Service_tasksService(db)
     results = []
+    prepared_items = []
+
+    item_ids = [item.id for item in request.items]
+    if len(item_ids) != len(set(item_ids)):
+        raise HTTPException(status_code=400, detail="批量更新不能包含重复任务")
+
+    for item in request.items:
+        task = await service.get_by_id(item.id, scope_user=current_user)
+        if not task:
+            raise HTTPException(status_code=404, detail="Service_tasks not found")
+        if task.status == "completed":
+            raise HTTPException(status_code=409, detail="已完成任务不能通过通用编辑接口修改")
+
+        update_dict = _generic_task_payload(item.updates)
+        final_customer_id = update_dict.get("customer_id", task.customer_id)
+        final_progress_id = update_dict.get("service_progress_id", task.service_progress_id)
+        customer, _ = await _validate_task_linkage(
+            db,
+            current_user,
+            final_customer_id,
+            final_progress_id,
+        )
+        update_dict["customer_name"] = _trusted_customer_name(customer)
+        prepared_items.append((item.id, update_dict))
     
     try:
-        for item in request.items:
-            # Only include non-None values for partial updates
-            update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            if update_dict.get("customer_id") is not None:
-                await ensure_customer_access(db, current_user, update_dict["customer_id"])
-            result = await service.update(item.id, update_dict, scope_user=current_user)
+        for item_id, update_dict in prepared_items:
+            result = await service.update(item_id, update_dict, scope_user=current_user)
             if result:
                 results.append(result)
         
@@ -393,10 +505,25 @@ async def complete_service_task(
     db: AsyncSession = Depends(get_db),
 ):
     """Complete a task and record lightweight operations-quality metadata."""
+    await require_service_board_access(db, current_user, "task_edit")
     service = Service_tasksService(db)
     task = await service.get_by_id(id, scope_user=current_user)
     if not task:
         raise HTTPException(status_code=404, detail="Service_tasks not found")
+    if task.status == "completed":
+        raise HTTPException(status_code=409, detail="任务已经完成")
+
+    progress_service = Service_progressesService(db)
+    linked_progress = None
+    if task.service_progress_id:
+        linked_progress = await progress_service.get_by_id(
+            task.service_progress_id,
+            scope_user=current_user,
+        )
+        if not linked_progress:
+            raise HTTPException(status_code=404, detail="Service progress not found")
+        if int(linked_progress.customer_id) != int(task.customer_id):
+            raise HTTPException(status_code=400, detail="任务与服务进度必须属于同一客户")
 
     copy_title = None
     material_title = None
@@ -452,9 +579,7 @@ async def complete_service_task(
                 selected_material.id,
                 {"usage_status": "used", "used_at": now, "updated_at": now},
             )
-        if task.service_progress_id:
-            progress_service = Service_progressesService(db)
-            progress = await progress_service.get_by_id(task.service_progress_id, scope_user=current_user)
+        if task.service_progress_id and linked_progress:
             next_stage = _infer_stage_from_completed_task(task)
             summary_parts = [f"完成任务：{task.task_name}"]
             if platform:
@@ -470,11 +595,11 @@ async def complete_service_task(
                 "last_update_person": operator,
                 "last_work_summary": "；".join(summary_parts),
             }
-            if progress and _should_advance_stage(getattr(progress, "service_stage", None), next_stage):
+            if _should_advance_stage(getattr(linked_progress, "service_stage", None), next_stage):
                 progress_update["service_stage"] = next_stage
                 progress_update["progress_percent"] = SERVICE_STAGE_PROGRESS.get(
                     next_stage,
-                    getattr(progress, "progress_percent", None) or 10,
+                    getattr(linked_progress, "progress_percent", None) or 10,
                 )
             await progress_service.update(task.service_progress_id, progress_update, scope_user=current_user)
     except Exception:
@@ -515,14 +640,27 @@ async def update_service_tasks(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing service_tasks"""
-    logger.debug(f"Updating service_tasks {id} with data: {data}")
-
+    await require_service_board_access(db, current_user, "task_edit")
     service = Service_tasksService(db)
     try:
-        # Only include non-None values for partial updates
-        update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        if update_dict.get("customer_id") is not None:
-            await ensure_customer_access(db, current_user, update_dict["customer_id"])
+        task = await service.get_by_id(id, scope_user=current_user)
+        if not task:
+            raise HTTPException(status_code=404, detail="Service_tasks not found")
+        if task.status == "completed":
+            raise HTTPException(status_code=409, detail="已完成任务不能通过通用编辑接口修改")
+
+        update_dict = _generic_task_payload(data)
+        final_customer_id = update_dict.get("customer_id", task.customer_id)
+        final_progress_id = update_dict.get("service_progress_id", task.service_progress_id)
+        customer, _ = await _validate_task_linkage(
+            db,
+            current_user,
+            final_customer_id,
+            final_progress_id,
+        )
+        update_dict["customer_name"] = _trusted_customer_name(customer)
+        logger.debug("Updating service task id=%s customer_id=%s", id, final_customer_id)
+
         result = await service.update(id, update_dict, scope_user=current_user)
         if not result:
             logger.warning(f"Service_tasks with id {id} not found for update")
@@ -547,10 +685,15 @@ async def delete_service_taskss_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple service_taskss by their IDs"""
+    await require_service_board_access(db, current_user, "task_delete")
     logger.debug(f"Batch deleting {len(request.ids)} service_taskss")
     
     service = Service_tasksService(db)
     deleted_count = 0
+
+    for item_id in request.ids:
+        if not await service.get_by_id(item_id, scope_user=current_user):
+            raise HTTPException(status_code=404, detail="Service_tasks not found")
     
     try:
         for item_id in request.ids:
@@ -573,6 +716,7 @@ async def delete_service_tasks(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single service_tasks by ID"""
+    await require_service_board_access(db, current_user, "task_delete")
     logger.debug(f"Deleting service_tasks with id: {id}")
     
     service = Service_tasksService(db)

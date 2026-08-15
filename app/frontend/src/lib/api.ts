@@ -1,15 +1,21 @@
 import { createClient } from '@metagptx/web-sdk';
 import { getAPIBaseURL } from './config';
+import { getStoredToken } from './auth-storage';
 
 type SdkClient = ReturnType<typeof createClient>;
 
-const createSdkClient = (): SdkClient => createClient({
-  baseURL: getAPIBaseURL(),
-  timeout: 15000,
-} as any);
+const createSdkClient = (): SdkClient => {
+  const token = getStoredToken();
+  return createClient({
+    baseURL: getAPIBaseURL(),
+    timeout: 15000,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  } as any);
+};
 
-// The SDK reads localStorage.token only when createClient() runs. Keep a stable
-// exported proxy while allowing authentication changes to replace its backing client.
+// Keep a stable exported proxy while allowing authentication changes to replace
+// the SDK client. The explicit header also supports session-only logins without
+// copying their access token into localStorage.
 let activeClient = createSdkClient();
 
 export const client = new Proxy({} as SdkClient, {
@@ -23,9 +29,38 @@ export function refreshClientAuth(): void {
   activeClient = createSdkClient();
 }
 
+export type DealFinalizeRequest = {
+  ensure_subscription: boolean;
+  auto_renew: boolean;
+  create_service_board: boolean;
+};
+
+export type DealFinalizeStep = {
+  status: 'completed' | 'skipped' | 'failed';
+  message: string;
+  resource_id?: number | null;
+  created_count?: number;
+  retryable?: boolean;
+};
+
+export type DealFinalizeResponse = {
+  deal_id: number;
+  complete: boolean;
+  retryable: boolean;
+  steps: Record<'subscription' | 'customer' | 'service_board', DealFinalizeStep>;
+};
+
+export async function finalizeDeal(dealId: number, data: DealFinalizeRequest) {
+  return client.apiCall.invoke({
+    url: `/api/v1/entities/deals/${dealId}/finalize`,
+    method: 'POST',
+    data,
+  });
+}
+
 function getStoredAuthHeaders() {
   if (typeof window === 'undefined') return {};
-  const token = window.localStorage.getItem('emp_auth_token') || window.localStorage.getItem('token');
+  const token = getStoredToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

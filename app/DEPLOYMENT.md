@@ -43,8 +43,14 @@ openssl rand -hex 32
 Edit `.env.production`:
 
 - Set `JWT_SECRET_KEY` to the generated value.
+- Optionally set a different 32+ character `REFRESH_TOKEN_SECRET`; when blank,
+  the app derives an isolated refresh-cookie key from `JWT_SECRET_KEY`.
 - Set `FRONTEND_ORIGINS` and `PYTHON_BACKEND_URL` to your HTTPS domain.
 - Set `MASK_KEY` to another long random value.
+- Keep `MASK_KEY` stable and backed up securely. Never rotate it without first
+  re-encrypting existing protected fields and taking a verified database backup.
+- Keep `ENABLE_LEGACY_AUTH=false` (or unset); production refuses to start when
+  the legacy placeholder login route is enabled.
 - Do not keep `admin123` in production.
 
 For a clean database only, temporarily enable first admin seeding:
@@ -133,7 +139,12 @@ docker compose --env-file .env.production up -d --build
 ## Production Checklist
 
 - HTTPS domain works.
-- `JWT_SECRET_KEY` is not default.
+- `JWT_SECRET_KEY` is a non-placeholder secret of at least 32 characters; this
+  is validated independently even when `REFRESH_TOKEN_SECRET` is configured.
+- Refresh-cookie signing has no bundled/default key; production refuses to start
+  unless its dedicated key or the key derived from a strong `JWT_SECRET_KEY` is available.
+- `MASK_KEY` is a stable, non-placeholder secret of at least 32 characters.
+- `ENABLE_LEGACY_AUTH` is unset or false.
 - Admin password is strong.
 - `ENABLE_DEFAULT_EMPLOYEE_ADMIN=false` after initial setup.
 - Database backup runs daily.

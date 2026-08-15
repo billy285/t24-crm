@@ -2,7 +2,10 @@ import { appConfigApi, type AppConfigKey } from '@/api/app-config';
 
 export const APP_CONFIG_UPDATED_EVENT = 'crm:app-config-updated';
 
-export const APP_CONFIG_STORAGE_KEYS: Record<AppConfigKey, string> = {
+// Sensitive server-only configuration (for example payroll_sheets_v1) must
+// never be mirrored into browser storage. Only explicitly listed keys are
+// eligible for the local compatibility cache.
+export const APP_CONFIG_STORAGE_KEYS: Partial<Record<AppConfigKey, string>> = {
   role_permissions: 'crm_role_permissions',
   customer_code_settings: 'crm_customer_code_settings',
   company_info: 'crm_company_info',
@@ -25,8 +28,10 @@ export function emitAppConfigUpdated(keys: AppConfigKey[] = []) {
 
 export function readCachedAppConfig<T>(key: AppConfigKey, fallback: T): T {
   if (!hasStorage()) return fallback;
+  const storageKey = APP_CONFIG_STORAGE_KEYS[key];
+  if (!storageKey) return fallback;
   try {
-    const stored = window.localStorage.getItem(APP_CONFIG_STORAGE_KEYS[key]);
+    const stored = window.localStorage.getItem(storageKey);
     return stored ? JSON.parse(stored) as T : fallback;
   } catch {
     return fallback;
@@ -35,10 +40,21 @@ export function readCachedAppConfig<T>(key: AppConfigKey, fallback: T): T {
 
 export function writeCachedAppConfig<T>(key: AppConfigKey, value: T, options?: { emit?: boolean }) {
   if (!hasStorage()) return;
-  window.localStorage.setItem(APP_CONFIG_STORAGE_KEYS[key], JSON.stringify(value));
+  const storageKey = APP_CONFIG_STORAGE_KEYS[key];
+  if (!storageKey) return;
+  window.localStorage.setItem(storageKey, JSON.stringify(value));
   if (options?.emit !== false) {
     emitAppConfigUpdated([key]);
   }
+}
+
+export function clearCachedAppConfig() {
+  if (!hasStorage()) return;
+  (Object.keys(APP_CONFIG_STORAGE_KEYS) as AppConfigKey[]).forEach((key) => {
+    const storageKey = APP_CONFIG_STORAGE_KEYS[key];
+    if (storageKey) window.localStorage.removeItem(storageKey);
+  });
+  emitAppConfigUpdated(Object.keys(APP_CONFIG_STORAGE_KEYS) as AppConfigKey[]);
 }
 
 export async function loadRemoteAppConfig<T>(key: AppConfigKey, fallback: T): Promise<T> {

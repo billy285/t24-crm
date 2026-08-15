@@ -18,6 +18,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { client } from '@/lib/api';
 import { useRole } from '@/lib/role-context';
 import { buildReturnLink } from '@/lib/navigation-state';
+import { getToken } from '@/lib/tokenStore';
+import MobileDesktopOnlyNotice from '@/components/mobile/MobileDesktopOnlyNotice';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { businessDateKey } from '@/lib/business-date';
 
 type Project = {
   id: number;
@@ -287,7 +291,7 @@ const querySectionValues: Record<string, Section> = {
 };
 
 function authOptions() {
-  const token = localStorage.getItem('emp_auth_token') || localStorage.getItem('token');
+  const token = getToken();
   return token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
 }
 
@@ -374,9 +378,10 @@ function projectToForm(project: Project): ProjectForm {
 
 export default function ManagementDecisions() {
   const { isAdmin } = useRole();
+  const isMobile = useIsMobile();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDateKey();
   const [startDate, setStartDate] = useState('2026-01-01');
   const [profitPreset, setProfitPreset] = useState('year');
   const [profitStartDate, setProfitStartDate] = useState(`${new Date().getFullYear()}-01-01`);
@@ -396,7 +401,12 @@ export default function ManagementDecisions() {
   const [bulkTaskLoading, setBulkTaskLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [reviewFilter, setReviewFilter] = useState('pending');
-  const [section, setSection] = useState<Section>(() => querySectionValues[searchParams.get('section') || ''] || 'overview');
+  const [section, setSection] = useState<Section>(() => {
+    const requested = querySectionValues[searchParams.get('section') || ''] || 'overview';
+    return typeof window !== 'undefined' && window.innerWidth < 768 && !['overview', 'insights'].includes(requested)
+      ? 'overview'
+      : requested;
+  });
   const [projectSearch, setProjectSearch] = useState('');
   const [projectLineFilter, setProjectLineFilter] = useState('all');
   const [projectStatusFilter, setProjectStatusFilter] = useState('all');
@@ -474,13 +484,22 @@ export default function ManagementDecisions() {
   useEffect(() => { void loadData(); }, []);
 
   useEffect(() => {
-    const nextSection = querySectionValues[searchParams.get('section') || ''];
+    const requestedSection = querySectionValues[searchParams.get('section') || ''];
+    const nextSection = isMobile && requestedSection && !['overview', 'insights'].includes(requestedSection) ? 'overview' : requestedSection;
     if (nextSection && nextSection !== section) setSection(nextSection);
     const nextStatus = searchParams.get('qualityStatus');
     if (nextStatus && nextStatus !== qualityStatusFilter) setQualityStatusFilter(nextStatus);
     const nextCategory = searchParams.get('qualityCategory');
     if (nextCategory && nextCategory !== qualityCategoryFilter) setQualityCategoryFilter(nextCategory);
-  }, [qualityCategoryFilter, qualityStatusFilter, searchParams, section]);
+  }, [isMobile, qualityCategoryFilter, qualityStatusFilter, searchParams, section]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    setReviewing(null);
+    setStatusProject(null);
+    setReopenProfitMonth('');
+    setReopenReason('');
+  }, [isMobile]);
 
   const changeSection = (nextSection: Section) => {
     setSection(nextSection);
@@ -756,7 +775,7 @@ export default function ManagementDecisions() {
   const currentMonth = today.slice(0, 7);
 
   return (
-    <div className="app-page space-y-5">
+    <div className="management-decisions-page app-page space-y-5">
       <div className="app-page-title gap-4">
         <div>
           <p className="app-page-kicker">{isFinancialInsights ? 'T24 Marketing · Operating Decisions' : 'T24 Marketing · Management Decisions'}</p>
@@ -772,7 +791,7 @@ export default function ManagementDecisions() {
       <Card className="border-blue-200 bg-blue-50/50">
         <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
           <div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-blue-600" /><div><p className="text-sm font-semibold text-slate-800">{isFinancialInsights ? '老板管理口径' : '安全审核模式'}</p><p className="text-xs text-slate-500">{isFinancialInsights ? '财务数据保持原账不变；本页按锁定月均汇率汇总，并只读已发放工资用于经营判断。' : '确认项目不会改变客户“合作中/已停止”状态；原收款、订阅和生命周期记录保持不变。'}</p></div></div>
-          <div className="flex flex-wrap items-end gap-2"><div><Label className="text-xs">统计开始</Label><Input type="date" min="2026-01-01" value={startDate} onChange={event => setStartDate(event.target.value)} className="mt-1 w-40 bg-white" /></div>{isAdmin && <div><Label className="text-xs">单人项目容量</Label><Input type="number" min={1} max={100} value={projectCapacityTarget} onChange={event => setProjectCapacityTarget(Math.max(1, Number(event.target.value) || 1))} className="mt-1 w-28 bg-white" /></div>}<Button variant="outline" onClick={() => void loadData()}>应用</Button></div>
+          <div className="flex w-full flex-col items-stretch gap-2 md:w-auto md:flex-row md:flex-wrap md:items-end"><div><Label className="text-xs">统计开始</Label><Input type="date" min="2026-01-01" value={startDate} onChange={event => setStartDate(event.target.value)} className="mt-1 w-full bg-white md:w-40" /></div>{isAdmin && <div className="hidden md:block"><Label className="text-xs">单人项目容量</Label><Input type="number" min={1} max={100} value={projectCapacityTarget} onChange={event => setProjectCapacityTarget(Math.max(1, Number(event.target.value) || 1))} className="mt-1 w-28 bg-white" /></div>}<Button variant="outline" onClick={() => void loadData()}>应用</Button></div>
         </CardContent>
       </Card>
 
@@ -781,12 +800,14 @@ export default function ManagementDecisions() {
           {[
             ['overview', '经营总览', BarChart3], ...(isAdmin ? [['insights', '项目效益·健康·产能', Gauge]] : []), ['projects', '项目客户明细', BriefcaseBusiness],
             ['exceptions', `数据质量中心 ${activeQualityCount || summary?.anomaly_count || 0}`, Database], ['history', `历史补录 ${pendingCount}`, Clock3],
-          ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" variant={section === value ? 'default' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
+          ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" className={!['overview', 'insights'].includes(value) ? 'hidden md:inline-flex' : ''} variant={section === value ? 'default' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
         </CardContent>
       </Card>
 
+      {!['overview', 'insights'].includes(section) && <MobileDesktopOnlyNotice title="该管理流程请在电脑端处理" description="手机版保留经营总览和老板决策摘要；项目状态、数据质量批处理和历史补录需要完整影响预览，因此仅在电脑端开放。" />}
+
       {section === 'overview' && <>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-7">
           {[
             ['待补录客户', pendingCount, '仅限历史数据', Clock3, 'text-orange-600', 'bg-orange-50'],
             ['高优先异常', summary?.high_anomaly_count || 0, '需要老板确认', AlertTriangle, 'text-red-600', 'bg-red-50'],
@@ -816,7 +837,7 @@ export default function ManagementDecisions() {
             </CardContent>
           </Card>
 
-          <details className="rounded-xl border border-slate-200 bg-white">
+          {!isMobile && <details className="rounded-xl border border-slate-200 bg-white">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">高级财务月结与历史口径</summary>
             <div className="space-y-4 border-t border-slate-200 p-4">
           <Card className="border-blue-200 bg-blue-50/40">
@@ -858,7 +879,7 @@ export default function ManagementDecisions() {
             </CardContent>
           </Card>
             </div>
-          </details>
+          </details>}
           <Card className="border-slate-200">
             <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><WalletCards className="h-5 w-5 text-blue-600" />项目级真实利润与单位经济</CardTitle><p className="mt-1 text-xs text-slate-500">{growth.unit_economics.definition}</p></div><Badge variant="outline">{growth.period.start_date} 至 {growth.period.end_date}</Badge></CardHeader>
             <CardContent className="space-y-4">
@@ -894,12 +915,12 @@ export default function ManagementDecisions() {
         </>}
       </div>}
 
-      {section === 'projects' && <Card className="border-slate-200">
+      {section === 'projects' && <Card className="hidden border-slate-200 md:block">
         <CardHeader className="gap-3"><div><CardTitle className="text-base">项目客户明细</CardTitle><p className="mt-1 text-xs text-slate-500">日常项目维护从客户管理进入；本页用于筛选、观察和调整状态。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="客户、编号、套餐或负责人" className="w-64 pl-9" /></div><select value={projectLineFilter} onChange={event => setProjectLineFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部业务</option>{Object.entries(lineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectStatusFilter} onChange={event => setProjectStatusFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部状态</option>{Object.entries(projectStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectIndustryFilter} onChange={event => setProjectIndustryFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部行业</option>{industries.map(value => <option key={value} value={value}>{value}</option>)}</select></div></CardHeader>
         <CardContent className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户</th><th className="px-3 py-3">业务项目</th><th className="px-3 py-3">套餐/项目名称</th><th className="px-3 py-3">行业/负责人</th><th className="px-3 py-3">首次有效收款</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">收费</th><th className="px-3 py-3 text-right">操作</th></tr></thead><tbody>{visibleProjects.map(project => <tr key={project.id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium"><Link className="text-blue-700 hover:underline" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="text-xs font-normal text-slate-400">{project.customer_code || '-'}</p></td><td className="px-3 py-3">{project.business_line.name}</td><td className="px-3 py-3">{project.package_name || project.product.name}</td><td className="px-3 py-3">{project.industry || '-'}<p className="text-xs text-slate-400">{project.sales_person || '销售待分配'}</p></td><td className="px-3 py-3">{dateValue(project.paid_started_at) || '待首笔收款'}</td><td className="px-3 py-3"><Badge className={projectStatusClasses[project.status] || 'bg-slate-100 text-slate-700'}>{projectStatusLabels[project.status] || project.status}</Badge></td><td className="px-3 py-3">{project.billing_cycle || '-'} · {project.currency}</td><td className="px-3 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openStatus(project)} disabled={!isAdmin}>更改状态</Button></td></tr>)}</tbody></table>{!loading && visibleProjects.length === 0 && <div className="py-12 text-center text-sm text-slate-400">当前筛选下没有项目</div>}</CardContent>
       </Card>}
 
-      {section === 'exceptions' && <div className="space-y-4">
+      {section === 'exceptions' && <div className="hidden space-y-4 md:block">
         <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-3">
@@ -959,17 +980,17 @@ export default function ManagementDecisions() {
 
       {section === 'history' && <Card className="border-slate-200"><CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle className="text-base">历史客户一次性补录</CardTitle><p className="mt-1 text-xs text-slate-500">新客户已改为在客户管理首次录入；这里只处理历史资料。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索客户名称或编号" className="w-64 pl-9" /></div><select value={reviewFilter} onChange={event => setReviewFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="pending">待审核</option><option value="needs_follow_up">稍后核对</option><option value="confirmed">已确认</option><option value="all">全部</option></select></div></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{visibleItems.map(item => <div key={item.customer_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.customer_name}</p><p className="mt-1 text-xs text-slate-400">{item.customer_code || `客户 #${item.customer_id}`} · {item.industry || '行业待补充'}</p></div><Badge className={item.review_status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : item.review_status === 'needs_follow_up' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'}>{reviewLabels[item.review_status]}</Badge></div><div className="mt-3 flex flex-wrap gap-1.5">{item.suggestions.map(suggestion => <Badge key={suggestion.business_line} variant="outline">建议：{lineLabels[suggestion.business_line]}</Badge>)}{item.projects.map(project => <Badge key={project.id} className="bg-blue-100 text-blue-700">已建：{project.business_line.name}</Badge>)}</div>{item.warnings.length > 0 && <div className="mt-3 rounded-xl bg-orange-50 p-3 text-xs text-orange-700"><p className="font-semibold">{item.warnings.length} 项需要确认</p><p className="mt-1 line-clamp-2">{item.warnings.slice(0, 2).map(row => row.message).join('；')}</p></div>}<div className="mt-4 flex items-center justify-between"><p className="text-xs text-slate-400">客户状态：{item.customer_lifecycle?.status === 'active' ? '合作中' : item.customer_lifecycle?.status || '待确认'}</p><Button size="sm" variant={item.review_status === 'confirmed' ? 'outline' : 'default'} onClick={() => openReview(item)} disabled={!isAdmin}>{item.review_status === 'confirmed' ? '重新核对' : '开始审核'}</Button></div></div>)}{!loading && visibleItems.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">当前筛选下没有历史客户</div>}</CardContent></Card>}
 
-      <Dialog open={!!reviewing} onOpenChange={open => !open && setReviewing(null)}>
+      {!isMobile && <Dialog open={!!reviewing} onOpenChange={open => !open && setReviewing(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>{reviewing?.customer_name} · 分类与项目确认</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"><strong>客户整体状态保持不变：</strong>当前为 {reviewing?.customer_lifecycle?.status === 'active' ? '合作中' : reviewing?.customer_lifecycle?.status || '待确认'}。这里只确认该客户购买了哪些项目。</div>{reviewing?.warnings.map((warning, index) => <div key={`${warning.code}-${warning.source_id || index}`} className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">{warning.message}{warning.source_id ? `（${warning.scope} #${warning.source_id}）` : ''}</div>)}<div className="space-y-3">{projectForms.map((project, index) => <div key={`${project.engagement_id || 'new'}-${index}`} className="rounded-2xl border border-slate-200 p-4"><div className="mb-3 flex items-center justify-between"><p className="font-semibold">项目 {index + 1}</p><Button size="sm" variant="ghost" className="text-red-600" onClick={() => setProjectForms(rows => rows.filter((_row, rowIndex) => rowIndex !== index))} disabled={projectForms.length <= 1}>移除</Button></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div><Label>业务板块 *</Label><select value={project.business_line_code} onChange={event => updateProjectForm(index, { business_line_code: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(lineLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>项目状态 *</Label><select value={project.status} onChange={event => updateProjectForm(index, { status: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>开始日期 *</Label><Input type="date" value={project.paid_started_at} max={today} onChange={event => updateProjectForm(index, { paid_started_at: event.target.value })} className="mt-1" /></div><div><Label>结束日期</Label><Input type="date" value={project.stopped_at} max={today} onChange={event => updateProjectForm(index, { stopped_at: event.target.value })} className="mt-1" /></div><div><Label>收费周期</Label><select value={project.billing_cycle} onChange={event => updateProjectForm(index, { billing_cycle: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"><option value="">待确认</option><option value="monthly">月付</option><option value="quarterly">季付</option><option value="annual">年付</option><option value="one_time">一次性</option></select></div><div><Label>收款方式</Label><select value={project.collection_method} onChange={event => updateProjectForm(index, { collection_method: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(collectionLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateProjectForm(index, { currency: event.target.value.toUpperCase() })} className="mt-1" /></div><div><Label>产品名称</Label><Input value={project.product_name} onChange={event => updateProjectForm(index, { product_name: event.target.value })} className="mt-1" /></div></div><p className="mt-3 text-xs text-slate-400">关联收款 {project.source_payment_ids.length} 笔 · 关联订阅 {project.source_subscription_ids.length} 条</p></div>)}</div><Button variant="outline" onClick={() => setProjectForms(rows => [...rows, suggestionToForm({ business_line: 'managed_service', product_code: 'managed_service_legacy', product_name: '代运营历史套餐', currency: 'USD', source_payment_ids: [], source_subscription_ids: [], basis: [] })])}><Layers3 className="mr-2 h-4 w-4" />增加一个项目</Button><div><Label>审核备注</Label><Textarea value={reviewNote} onChange={event => setReviewNote(event.target.value)} rows={3} className="mt-1" placeholder="记录为什么这样分类，方便以后复盘" /></div></div><DialogFooter className="gap-2"><Button variant="outline" onClick={() => void saveReview('needs_follow_up')} disabled={saving}>资料不足，稍后核对</Button><Button onClick={() => void saveReview('confirmed')} disabled={saving}>{saving ? '保存中…' : '确认分类并建立项目'}</Button></DialogFooter></DialogContent>
-      </Dialog>
+      </Dialog>}
 
-      <Dialog open={!!statusProject} onOpenChange={open => !open && setStatusProject(null)}>
+      {!isMobile && <Dialog open={!!statusProject} onOpenChange={open => !open && setStatusProject(null)}>
         <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>更改项目状态</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl bg-slate-50 p-3 text-sm"><p className="font-semibold">{statusProject?.customer_name}</p><p className="mt-1 text-xs text-slate-500">{statusProject?.business_line.name} · 只更改项目，不更改客户整体合作状态</p></div><div><Label>项目状态</Label><select value={nextStatus} onChange={event => setNextStatus(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>生效日期</Label><Input type="date" value={statusDate} max={today} onChange={event => setStatusDate(event.target.value)} className="mt-1" /></div><div><Label>原因与备注</Label><Textarea value={statusReason} onChange={event => setStatusReason(event.target.value)} rows={3} className="mt-1" /></div></div><DialogFooter><Button variant="outline" onClick={() => setStatusProject(null)}>取消</Button><Button onClick={() => void saveStatus()} disabled={saving}>{saving ? '保存中…' : '确认更新'}</Button></DialogFooter></DialogContent>
-      </Dialog>
+      </Dialog>}
 
-      <Dialog open={!!reopenProfitMonth} onOpenChange={open => !open && setReopenProfitMonth('')}>
+      {!isMobile && <Dialog open={!!reopenProfitMonth} onOpenChange={open => !open && setReopenProfitMonth('')}>
         <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>重新打开 {reopenProfitMonth} 月结</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">重新打开后，该月利润会恢复实时计算。修正数据并重新核对后，需要再次确认月结。</div><div><Label>重新打开原因 *</Label><Textarea value={reopenReason} onChange={event => setReopenReason(event.target.value)} rows={3} className="mt-1" placeholder="例如：补录一笔人民币运营支出" /></div></div><DialogFooter><Button variant="outline" onClick={() => setReopenProfitMonth('')}>取消</Button><Button variant="destructive" disabled={reopenReason.trim().length < 3 || profitCloseLoading === reopenProfitMonth} onClick={() => void updateProfitClose(reopenProfitMonth, 'reopen', reopenReason.trim())}>{profitCloseLoading === reopenProfitMonth ? '处理中…' : '确认重新打开'}</Button></DialogFooter></DialogContent>
-      </Dialog>
+      </Dialog>}
     </div>
   );
 }

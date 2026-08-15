@@ -108,6 +108,21 @@ async def _load_synced_payment(db: AsyncSession, deal_id: int) -> Optional[Payme
     return result.scalar_one_or_none()
 
 
+async def _load_source_payment_for_deal(db: AsyncSession, deal: Deals) -> Optional[Payments]:
+    """Reuse the payment that originally generated a deal instead of duplicating it."""
+    if not deal.source_payment_id:
+        return None
+    payment = await db.get(Payments, deal.source_payment_id)
+    if payment is None:
+        return None
+    if payment.source_deal_id not in (None, deal.id):
+        raise HTTPException(
+            status_code=409,
+            detail="成交关联的原收款记录已绑定到其他成交，请先核对关联关系",
+        )
+    return payment
+
+
 async def _load_matching_payment(db: AsyncSession, deal: Deals) -> Optional[Payments]:
     query = (
         select(Payments)
@@ -151,6 +166,8 @@ async def sync_payment_from_deal(
     customer = await _load_customer(db, deal.customer_id)
     subscription = await _load_subscription_for_deal(db, deal)
     payment = await _load_synced_payment(db, deal.id)
+    if payment is None:
+        payment = await _load_source_payment_for_deal(db, deal)
     if payment is None:
         payment = await _load_matching_payment(db, deal)
 

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowRightLeft, Ban, BarChart3, Building2, CheckCircle2, ClipboardCheck, Clock3, Edit3, FileText, Headphones, History, MessageSquarePlus, Phone, Plus, Search, ShieldAlert, UserCheck, Users,
+  ArrowRightLeft, Ban, BarChart3, Building2, CheckCircle2, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, Headphones, History, MessageSquarePlus, MoreHorizontal, Phone, Plus, Search, ShieldAlert, UserCheck, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -8,10 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
+import { businessDateKey } from '@/lib/business-date';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useRole } from '@/lib/role-context';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { useAutoRefresh } from '@/lib/use-auto-refresh';
@@ -99,15 +102,28 @@ const emptyForm = {
 
 const emptyQuoteForm = { business_line_id: '', product_id: '', product_plan_id: '', package_name: '', selected_platforms: '', billing_mode: 'manual', billing_cycle: 'monthly', payment_method: 'stripe', currency: 'USD', list_amount: '', discount_amount: '0', service_start_date: '', service_end_date: '', special_terms: '' };
 const emptyHandoffForm = { quote_id: '', customer_goal: '', key_contacts: '', service_start_date: '', service_end_date: '', special_commitments: '', operations_owner: '', operations_owner_employee_id: '', collaborator_employee_ids: [] as number[], operations_group_created: false, generate_service_board: false, handoff_notes: '' };
-const emptyPaymentForm = { payment_status: 'pending', amount_received: '', payment_date: new Date().toISOString().slice(0, 10), payment_reference: '' };
+const createEmptyPaymentForm = () => ({ payment_status: 'pending', amount_received: '', payment_date: businessDateKey(), payment_reference: '' });
 
 function formatDate(value?: string) {
   if (!value) return '-';
   return value.slice(0, 16).replace('T', ' ');
 }
 
+function nextLeadAction(lead: SalesLead) {
+  if (lead.converted_customer_id) return '查看已转入的正式客户';
+  if (lead.do_not_contact || lead.is_blacklisted) return '已停止联系，等待主管复核';
+  if (lead.status === 'new') return '完成首次联系并记录结果';
+  if (lead.next_follow_up_at) return `按计划跟进 · ${formatDate(lead.next_follow_up_at)}`;
+  return '补充下一步跟进时间';
+}
+
+function phoneHref(phone: string) {
+  return `tel:${phone.replace(/[^+\d]/g, '')}`;
+}
+
 export default function SalesLeads() {
   const { role, isAdmin, employee } = useRole();
+  const isMobile = useIsMobile();
   const canManage = isAdmin || role === 'sales_manager';
   const [items, setItems] = useState<SalesLead[]>([]);
   const [assignees, setAssignees] = useState<Assignee[]>([]);
@@ -131,7 +147,7 @@ export default function SalesLeads() {
   const [dealSaving, setDealSaving] = useState(false);
   const [quoteForm, setQuoteForm] = useState(emptyQuoteForm);
   const [handoffForm, setHandoffForm] = useState(emptyHandoffForm);
-  const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
+  const [paymentForm, setPaymentForm] = useState(createEmptyPaymentForm);
   const [recoveryOverview, setRecoveryOverview] = useState<RecoveryOverview | null>(null);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [recoveryBusy, setRecoveryBusy] = useState<number | null>(null);
@@ -148,6 +164,7 @@ export default function SalesLeads() {
   const [selectedRecoveryIds, setSelectedRecoveryIds] = useState<number[]>([]);
   const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>([]);
   const [bulkAssigneeId, setBulkAssigneeId] = useState('');
+  const loadRequestSeqRef = useRef(0);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const quoteProducts = useMemo(() => products.filter(item => String(item.business_line_id) === quoteForm.business_line_id), [products, quoteForm.business_line_id]);
@@ -155,34 +172,60 @@ export default function SalesLeads() {
   const selectedQuotePlan = useMemo(() => productPlans.find(item => String(item.id) === quoteForm.product_plan_id), [productPlans, quoteForm.product_plan_id]);
   const selectedPlatforms = useMemo(() => quoteForm.selected_platforms.split(/[，,\n]/).map(item => item.trim()).filter(Boolean), [quoteForm.selected_platforms]);
 
-  const loadData = async () => {
-    const params = new URLSearchParams({ skip: String((page - 1) * pageSize), limit: String(pageSize) });
+  const loadData = async (options?: { page?: number }) => {
+    const requestId = ++loadRequestSeqRef.current;
+    const requestPage = options?.page ?? page;
+    setLoading(true);
+    const params = new URLSearchParams({ skip: String((requestPage - 1) * pageSize), limit: String(pageSize) });
     if (search.trim()) params.set('search', search.trim());
     if (statusFilter) params.set('status', statusFilter);
     if (contactFilter) params.set('contact_rule', contactFilter);
     try {
-      const requests = [
+      const coreRequests = [
         invokeWithAuth({ url: `/api/v1/sales-leads?${params.toString()}`, method: 'GET' }),
         invokeWithAuth({ url: '/api/v1/sales-leads/stats', method: 'GET' }),
       ];
-      if (canManage) requests.push(invokeWithAuth({ url: '/api/v1/sales-leads/assignees', method: 'GET' }));
-      if (canManage) requests.push(invokeWithAuth({ url: '/api/v1/sales-leads/dashboard/management', method: 'GET' }));
-      if (canManage) requests.push(invokeWithAuth({ url: `/api/v1/sales-leads/dashboard/performance?days=${performanceDays}`, method: 'GET' }));
-      const [listResponse, statsResponse, assigneeResponse, dashboardResponse, performanceResponse] = await Promise.all(requests);
-      setItems(listResponse.data?.items || []);
-      setTotal(listResponse.data?.total || 0);
-      setStats(statsResponse.data || stats);
-      if (assigneeResponse) setAssignees(assigneeResponse.data || []);
-      if (dashboardResponse) setDashboard(dashboardResponse.data || null);
-      if (performanceResponse) setPerformanceDashboard(performanceResponse.data || null);
-      if (canManage) {
-        const recoveryResponse = await invokeWithAuth({ url: '/api/v1/sales-leads/recovery/overview', method: 'GET' });
-        setRecoveryOverview(recoveryResponse.data || null);
+      const managementRequests = canManage ? [
+        invokeWithAuth({ url: '/api/v1/sales-leads/assignees', method: 'GET' }),
+        invokeWithAuth({ url: '/api/v1/sales-leads/dashboard/management', method: 'GET' }),
+        invokeWithAuth({ url: `/api/v1/sales-leads/dashboard/performance?days=${performanceDays}`, method: 'GET' }),
+        invokeWithAuth({ url: '/api/v1/sales-leads/recovery/overview', method: 'GET' }),
+      ] : [];
+      const [coreResults, managementResults] = await Promise.all([
+        Promise.allSettled(coreRequests),
+        Promise.allSettled(managementRequests),
+      ]);
+      if (requestId !== loadRequestSeqRef.current) return;
+
+      const [listResult, statsResult] = coreResults;
+      const failedSections: string[] = [];
+      if (listResult.status === 'fulfilled') {
+        const nextItems = listResult.value.data?.items || [];
+        setItems(nextItems);
+        setTotal(listResult.value.data?.total || 0);
+        setSelectedLeadIds(current => current.filter(id => nextItems.some((item: SalesLead) => item.id === id)));
+      } else {
+        failedSections.push('线索列表');
       }
+      if (statsResult.status === 'fulfilled') setStats(statsResult.value.data || stats);
+      else failedSections.push('统计');
+
+      if (canManage) {
+        const [assigneeResult, dashboardResult, performanceResult, recoveryResult] = managementResults;
+        if (assigneeResult?.status === 'fulfilled') setAssignees(assigneeResult.value.data || []);
+        else failedSections.push('负责人');
+        if (dashboardResult?.status === 'fulfilled') setDashboard(dashboardResult.value.data || null);
+        else failedSections.push('管理看板');
+        if (performanceResult?.status === 'fulfilled') setPerformanceDashboard(performanceResult.value.data || null);
+        else failedSections.push('绩效');
+        if (recoveryResult?.status === 'fulfilled') setRecoveryOverview(recoveryResult.value.data || null);
+        else failedSections.push('保护提醒');
+      }
+      if (failedSections.length) toast.error(`${failedSections.join('、')}加载失败，已保留其他可用数据`);
     } catch (error: any) {
-      toast.error(error?.data?.detail || error?.message || '线索数据加载失败');
+      if (requestId === loadRequestSeqRef.current) toast.error(error?.data?.detail || error?.message || '线索数据加载失败');
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestSeqRef.current) setLoading(false);
     }
   };
 
@@ -193,7 +236,7 @@ export default function SalesLeads() {
 
   useEffect(() => {
     setPage(1);
-    const timer = window.setTimeout(() => void loadData(), 300);
+    const timer = window.setTimeout(() => void loadData({ page: 1 }), 300);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
@@ -223,6 +266,15 @@ export default function SalesLeads() {
     if (role === 'sales_manager') return '直属团队线索';
     return `${employee?.name || '当前销售'}的线索`;
   }, [employee?.name, isAdmin, role]);
+
+  const copyLeadPhone = async (lead: SalesLead) => {
+    try {
+      await navigator.clipboard.writeText(lead.phone);
+      toast.success(`已复制 ${lead.business_name} 的电话`);
+    } catch {
+      toast.error('电话号码复制失败，请长按号码复制');
+    }
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -377,7 +429,7 @@ export default function SalesLeads() {
       setPaymentForm({
         payment_status: handoff.payment_status || (handoff.finance_payment_confirmed ? 'paid' : 'pending'),
         amount_received: handoff.amount_received ? String(handoff.amount_received) : '',
-        payment_date: handoff.payment_date || new Date().toISOString().slice(0, 10), payment_reference: handoff.payment_reference || '',
+        payment_date: handoff.payment_date || businessDateKey(), payment_reference: handoff.payment_reference || '',
       });
     } catch (error: any) {
       toast.error(error?.data?.detail || error?.message || '成交审核信息加载失败');
@@ -389,7 +441,7 @@ export default function SalesLeads() {
     setDealReadiness(null);
     setQuoteForm(emptyQuoteForm);
     setHandoffForm(emptyHandoffForm);
-    setPaymentForm(emptyPaymentForm);
+    setPaymentForm(createEmptyPaymentForm());
     await loadDealReadiness(lead);
   };
 
@@ -540,7 +592,11 @@ export default function SalesLeads() {
           <h2 className="text-2xl font-bold text-slate-900">{canManage ? '电话销售中心' : '我的销售线索'}</h2>
           <p className="mt-1 text-sm text-slate-500">当前范围：{scopeText}。这里的陌生商家不会进入正式客户管理。</p>
         </div>
-        {canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新增线索</Button>}
+        {canManage && <Button className="h-11 w-full sm:w-auto" onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新增线索</Button>}
+      </div>
+
+      <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm leading-6 text-blue-900 md:hidden">
+        手机端优先完成拨号、复制号码和记录跟进。批量改派等管理操作请使用电脑；禁联、黑名单与成交审核收在单条线索的“更多”中。
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -564,9 +620,46 @@ export default function SalesLeads() {
         ['任务完成', `${dashboard.metrics.completed}/${dashboard.metrics.assigned}`, `${dashboard.metrics.completion_rate}%`], ['接通率', `${dashboard.metrics.connected}/${dashboard.metrics.calls}`, `${dashboard.metrics.connection_rate}%`], ['意向率', String(dashboard.metrics.interested), `${dashboard.metrics.interest_rate}%`], ['预约率', String(dashboard.metrics.appointments), `${dashboard.metrics.appointment_rate}%`], ['成交率', String(dashboard.metrics.converted), `${dashboard.metrics.conversion_rate}%`], ['来源质量', String(dashboard.source_quality.reduce((sum, item) => sum + item.usable, 0)), `${dashboard.source_quality.reduce((sum, item) => sum + item.total, 0)} 条可追溯`], ['销售人数', String(dashboard.salespeople.length), '今日有保存结果']
       ].map(([label, value, sub]) => <div key={label} className="rounded-xl border border-white bg-white/80 p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-xl font-bold text-slate-900">{value}</p><p className="mt-1 text-xs text-indigo-600">{sub}</p></div>)}</div></CardContent></Card>}
 
-      {canManage && performanceDashboard && <Card className="border-violet-100 bg-gradient-to-r from-violet-50 via-white to-fuchsia-50 shadow-sm"><CardContent className="p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-violet-600" /><p className="font-semibold text-slate-900">销售绩效参考评分</p></div><p className="mt-1 text-xs text-slate-500">执行25 + 跟进纪律20 + 商机质量20 + 销售结果25 + 记录合规10。仅统计员工保存的数据，不自动影响工资；少于10条只作参考。</p></div><div className="flex gap-2">{[7, 30].map(days => <Button key={days} size="sm" variant={performanceDays === days ? 'default' : 'outline'} onClick={() => setPerformanceDays(days)}>{days}天</Button>)}</div></div><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[980px] text-left text-sm"><thead className="border-b text-xs text-slate-500"><tr><th className="pb-2">排名 / 销售</th><th className="pb-2">总分</th><th className="pb-2">执行</th><th className="pb-2">纪律</th><th className="pb-2">商机质量</th><th className="pb-2">销售结果</th><th className="pb-2">记录合规</th><th className="pb-2">关键数据</th><th className="pb-2">系统建议</th></tr></thead><tbody className="divide-y divide-violet-100">{performanceDashboard.items.map(item => <tr key={item.sales_employee_id}><td className="py-3"><p className="font-semibold text-slate-900">#{item.rank} {item.salesperson}</p><p className="text-xs text-slate-500">{item.confidence}</p></td><td className="py-3"><p className="text-2xl font-bold text-violet-700">{item.score}</p><p className="text-xs text-slate-500">/100</p></td><td className="py-3">{item.score_breakdown.execution}/25</td><td className="py-3">{item.score_breakdown.discipline}/20</td><td className="py-3">{item.score_breakdown.opportunity}/20</td><td className="py-3">{item.score_breakdown.results}/25</td><td className="py-3">{item.score_breakdown.documentation}/10</td><td className="py-3 text-xs text-slate-600">完成 {item.metrics.completion_rate}% · 接通 {item.metrics.connection_rate}%<br />意向 {item.metrics.interest_rate}% · 逾期 {item.metrics.overdue_followups}</td><td className="max-w-xs py-3 text-xs text-slate-600">{item.suggestions[0]}</td></tr>)}{performanceDashboard.items.length === 0 && <tr><td colSpan={9} className="py-8 text-center text-sm text-slate-500">暂无可评分销售数据</td></tr>}</tbody></table></div></CardContent></Card>}
+      {canManage && performanceDashboard && (
+        <Card className="border-violet-100 bg-gradient-to-r from-violet-50 via-white to-fuchsia-50 shadow-sm">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-violet-600" /><p className="font-semibold text-slate-900">销售绩效参考评分</p></div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">执行25 + 跟进纪律20 + 商机质量20 + 销售结果25 + 记录合规10。仅统计员工保存的数据，不自动影响工资；少于10条只作参考。</p>
+              </div>
+              <div className="flex gap-2">{[7, 30].map(days => <Button className="h-11 min-w-16 sm:h-9" key={days} size="sm" variant={performanceDays === days ? 'default' : 'outline'} onClick={() => setPerformanceDays(days)}>{days}天</Button>)}</div>
+            </div>
+            <div data-testid="sales-performance-mobile-list" className="mt-4 space-y-3 md:hidden">
+              {performanceDashboard.items.map(item => (
+                <article key={item.sales_employee_id} className="rounded-xl border border-violet-100 bg-white/90 p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div><p className="font-semibold text-slate-950">#{item.rank} {item.salesperson}</p><p className="mt-0.5 text-xs text-slate-500">{item.confidence}</p></div>
+                    <div className="text-right"><p className="text-3xl font-bold tracking-tight text-violet-700">{item.score}</p><p className="text-xs text-slate-400">满分 100</p></div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="rounded-lg bg-violet-50 p-2"><p className="font-semibold text-violet-800">{item.metrics.completion_rate}%</p><p className="mt-0.5 text-slate-500">完成率</p></div>
+                    <div className="rounded-lg bg-blue-50 p-2"><p className="font-semibold text-blue-800">{item.metrics.connection_rate}%</p><p className="mt-0.5 text-slate-500">接通率</p></div>
+                    <div className="rounded-lg bg-amber-50 p-2"><p className="font-semibold text-amber-800">{item.metrics.overdue_followups}</p><p className="mt-0.5 text-slate-500">逾期</p></div>
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-600">
+                    <div className="flex justify-between gap-2"><dt>执行</dt><dd className="font-medium text-slate-800">{item.score_breakdown.execution}/25</dd></div>
+                    <div className="flex justify-between gap-2"><dt>纪律</dt><dd className="font-medium text-slate-800">{item.score_breakdown.discipline}/20</dd></div>
+                    <div className="flex justify-between gap-2"><dt>商机质量</dt><dd className="font-medium text-slate-800">{item.score_breakdown.opportunity}/20</dd></div>
+                    <div className="flex justify-between gap-2"><dt>销售结果</dt><dd className="font-medium text-slate-800">{item.score_breakdown.results}/25</dd></div>
+                    <div className="col-span-2 flex justify-between gap-2"><dt>记录合规</dt><dd className="font-medium text-slate-800">{item.score_breakdown.documentation}/10</dd></div>
+                  </dl>
+                  <p className="mt-3 break-words rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600">建议：{item.suggestions[0] || '暂无系统建议'}</p>
+                </article>
+              ))}
+              {performanceDashboard.items.length === 0 && <p className="py-8 text-center text-sm text-slate-500">暂无可评分销售数据</p>}
+            </div>
+            <div data-testid="sales-performance-desktop-table" className="mt-4 hidden overflow-x-auto md:block"><table className="w-full min-w-[980px] text-left text-sm"><thead className="border-b text-xs text-slate-500"><tr><th className="pb-2">排名 / 销售</th><th className="pb-2">总分</th><th className="pb-2">执行</th><th className="pb-2">纪律</th><th className="pb-2">商机质量</th><th className="pb-2">销售结果</th><th className="pb-2">记录合规</th><th className="pb-2">关键数据</th><th className="pb-2">系统建议</th></tr></thead><tbody className="divide-y divide-violet-100">{performanceDashboard.items.map(item => <tr key={item.sales_employee_id}><td className="py-3"><p className="font-semibold text-slate-900">#{item.rank} {item.salesperson}</p><p className="text-xs text-slate-500">{item.confidence}</p></td><td className="py-3"><p className="text-2xl font-bold text-violet-700">{item.score}</p><p className="text-xs text-slate-500">/100</p></td><td className="py-3">{item.score_breakdown.execution}/25</td><td className="py-3">{item.score_breakdown.discipline}/20</td><td className="py-3">{item.score_breakdown.opportunity}/20</td><td className="py-3">{item.score_breakdown.results}/25</td><td className="py-3">{item.score_breakdown.documentation}/10</td><td className="py-3 text-xs text-slate-600">完成 {item.metrics.completion_rate}% · 接通 {item.metrics.connection_rate}%<br />意向 {item.metrics.interest_rate}% · 逾期 {item.metrics.overdue_followups}</td><td className="max-w-xs py-3 text-xs text-slate-600">{item.suggestions[0]}</td></tr>)}{performanceDashboard.items.length === 0 && <tr><td colSpan={9} className="py-8 text-center text-sm text-slate-500">暂无可评分销售数据</td></tr>}</tbody></table></div>
+          </CardContent>
+        </Card>
+      )}
 
-      {canManage && recoveryOverview && <Card className="border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center"><ShieldAlert className="h-8 w-8 text-amber-600" /><div className="flex-1"><p className="font-semibold text-slate-900">线索保护与回收</p><p className="mt-1 text-sm text-slate-600">系统只提示，主管确认后才会回收。已联系、有意向和已预约的线索不会被系统自动转走。</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge className="bg-rose-100 text-rose-700">可回收 {recoveryOverview.summary.recoverable}</Badge><Badge className="bg-amber-100 text-amber-800">提醒跟进 {recoveryOverview.summary.watch}</Badge><Badge className="bg-emerald-100 text-emerald-700">受保护 {recoveryOverview.summary.protected}</Badge><Badge className="bg-blue-100 text-blue-700">延期保护 {recoveryOverview.summary.extended}</Badge>{recoveryOverview.summary.extension_requests > 0 && <Badge className="bg-violet-100 text-violet-700">待审批延期 {recoveryOverview.summary.extension_requests}</Badge>}</div></div><Button variant="outline" onClick={() => setRecoveryOpen(true)}>查看并处理</Button></CardContent></Card>}
+      {canManage && recoveryOverview && <Card className="border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center"><ShieldAlert className="h-8 w-8 text-amber-600" /><div className="flex-1"><p className="font-semibold text-slate-900">线索保护与回收</p><p className="mt-1 text-sm text-slate-600">系统只提示，主管确认后才会回收。已联系、有意向和已预约的线索不会被系统自动转走。</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge className="bg-rose-100 text-rose-700">可回收 {recoveryOverview.summary.recoverable}</Badge><Badge className="bg-amber-100 text-amber-800">提醒跟进 {recoveryOverview.summary.watch}</Badge><Badge className="bg-emerald-100 text-emerald-700">受保护 {recoveryOverview.summary.protected}</Badge><Badge className="bg-blue-100 text-blue-700">延期保护 {recoveryOverview.summary.extended}</Badge>{recoveryOverview.summary.extension_requests > 0 && <Badge className="bg-violet-100 text-violet-700">待审批延期 {recoveryOverview.summary.extension_requests}</Badge>}</div></div>{isMobile ? <p className="text-xs font-medium text-amber-800">批量回收与改派请在电脑端处理</p> : <Button variant="outline" onClick={() => setRecoveryOpen(true)}>查看并处理</Button>}</CardContent></Card>}
 
       <Card className="border-slate-200 shadow-sm">
         <CardContent className="p-4">
@@ -586,8 +679,46 @@ export default function SalesLeads() {
 
       <Card className="overflow-hidden border-slate-200 shadow-sm">
         <CardContent className="p-0">
-          {canManage && <div className="flex flex-col gap-3 border-b bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center"><p className="flex-1 text-sm font-medium text-slate-700">当前页已选 {selectedLeadIds.length} 条，可批量补齐待分配线索或调整负责人</p><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择目标销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button size="sm" variant="outline" disabled={!selectedLeadIds.length || !bulkAssigneeId || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign', selectedLeadIds)}>批量分配 / 改派</Button></div>}
-          <div className="overflow-x-auto">
+          {canManage && !isMobile && <div className="flex flex-col gap-3 border-b bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center"><p className="flex-1 text-sm font-medium text-slate-700">当前页已选 {selectedLeadIds.length} 条，可批量补齐待分配线索或调整负责人</p><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择目标销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button size="sm" variant="outline" disabled={!selectedLeadIds.length || !bulkAssigneeId || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign', selectedLeadIds)}>批量分配 / 改派</Button></div>}
+          <div data-testid="sales-leads-mobile-list" className="divide-y divide-slate-100 md:hidden">
+            {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载线索...</p>
+              : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">当前范围暂无销售线索</p>
+              : items.map(lead => {
+                const protectedLead = lead.is_blacklisted || lead.do_not_contact;
+                return (
+                  <article key={lead.id} data-testid="sales-lead-mobile-card" className={protectedLead ? 'bg-rose-50/40 p-4' : 'bg-white p-4'}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words font-semibold leading-6 text-slate-950">{lead.business_name}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{lead.contact_name || '未填写联系人'} · {lead.assigned_sales_name || '待分配'}</p>
+                      </div>
+                      <Badge className={`shrink-0 ${statusColors[lead.status] || statusColors.new}`}>{statusLabels[lead.status] || lead.status}</Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">{lead.do_not_contact && <Badge className="bg-rose-100 text-rose-700">禁止再联系</Badge>}{lead.is_blacklisted && <Badge className="bg-slate-800 text-white">黑名单</Badge>}{lead.converted_customer_id && <Badge className="bg-emerald-100 text-emerald-700">已转正式客户</Badge>}</div>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                      <div><dt className="text-xs text-slate-400">电话</dt><dd className={protectedLead ? 'mt-0.5 break-words text-slate-400 line-through' : 'mt-0.5 break-words font-medium text-blue-700'}>{lead.phone}</dd></div>
+                      <div><dt className="text-xs text-slate-400">地区 / 行业</dt><dd className="mt-0.5 break-words text-slate-700">{[lead.city, lead.state].filter(Boolean).join(', ') || '地区未采集'} · {lead.industry || '未分类'}</dd></div>
+                    </dl>
+                    <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm leading-5 text-slate-700"><span className="font-medium text-indigo-700">下一步：</span>{nextLeadAction(lead)}</div>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      {protectedLead ? <Button className="h-11 px-2" variant="outline" disabled><Phone className="h-4 w-4" />拨号</Button> : <Button className="h-11 px-2" variant="outline" asChild><a href={phoneHref(lead.phone)}><Phone className="h-4 w-4" />拨号</a></Button>}
+                      <Button className="h-11 px-2" variant="outline" disabled={protectedLead} onClick={() => { void copyLeadPhone(lead); }}><Clipboard className="h-4 w-4" />复制</Button>
+                      <Button className="h-11 px-2" onClick={() => openEdit(lead)}>{protectedLead ? <ShieldAlert className="h-4 w-4" /> : <MessageSquarePlus className="h-4 w-4" />}{protectedLead ? '查看保护' : '记录跟进'}</Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild><Button className="h-11 w-11 p-0" variant="outline" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal className="h-5 w-5" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          {canManage && <DropdownMenuItem className="min-h-11" onSelect={() => openEdit(lead)}><Edit3 className="mr-2 h-4 w-4" />编辑线索资料</DropdownMenuItem>}
+                          {!lead.converted_customer_id && !protectedLead && <DropdownMenuItem className="min-h-11" onSelect={() => { void openDealControl(lead); }}><ClipboardCheck className="mr-2 h-4 w-4" />成交审核</DropdownMenuItem>}
+                          {lead.converted_customer_id && <DropdownMenuItem className="min-h-11" onSelect={() => window.location.assign(`/customers?detail=${lead.converted_customer_id}&tab=info`)}><CheckCircle2 className="mr-2 h-4 w-4" />查看正式客户</DropdownMenuItem>}
+                          <DropdownMenuItem className="min-h-11" onSelect={() => openEdit(lead)}><ShieldAlert className="mr-2 h-4 w-4" />{canManage ? '保护与黑名单设置' : '禁止联系设置'}</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </article>
+                );
+              })}
+          </div>
+          {!isMobile && <div data-testid="sales-leads-desktop-table" className="overflow-x-auto">
             <table className="w-full min-w-[1080px] text-left text-sm">
               <thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>{canManage && <th className="w-12 px-4 py-3"><input type="checkbox" aria-label="选择当前页全部线索" checked={items.length > 0 && items.every(item => selectedLeadIds.includes(item.id))} onChange={event => setSelectedLeadIds(event.target.checked ? items.map(item => item.id) : [])} /></th>}<th className="px-4 py-3">商家</th><th className="px-4 py-3">电话</th><th className="px-4 py-3">地区/行业</th><th className="px-4 py-3">负责人</th><th className="px-4 py-3">状态</th><th className="px-4 py-3">下次跟进</th><th className="px-4 py-3 text-right">操作</th></tr>
@@ -612,7 +743,7 @@ export default function SalesLeads() {
                 })}
               </tbody>
             </table>
-          </div>
+          </div>}
           <div className="flex flex-col gap-3 border-t bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-slate-500">共 {total} 条，第 {page}/{totalPages} 页</p>
             <div className="flex items-center gap-2"><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>上一页</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>下一页</Button></div>
@@ -621,7 +752,7 @@ export default function SalesLeads() {
       </Card>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogContent className="!h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none rounded-none pb-0 sm:!h-auto sm:!max-h-[90vh] sm:!w-full sm:!max-w-4xl sm:rounded-lg sm:pb-6">
           <DialogHeader><DialogTitle>{editing ? (canManage ? '编辑销售线索' : '记录跟进结果') : '新增销售线索'}</DialogTitle></DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
             {canManage && <>
@@ -661,21 +792,21 @@ export default function SalesLeads() {
               {form.do_not_contact && <Input className="mt-3 bg-white" value={form.do_not_contact_reason} onChange={event => setForm({ ...form, do_not_contact_reason: event.target.value })} placeholder="必填：禁止再联系原因" />}
             </div>
           </div>
-          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setShowForm(false)}>取消</Button><Button disabled={saving} onClick={handleSave}>{saving ? '保存中...' : '保存'}</Button></div>
+          <div className="sticky bottom-0 -mx-4 mt-4 flex gap-2 border-t bg-white/95 px-4 py-3 pb-[calc(.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:justify-end sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:pb-0"><Button className="h-11 flex-1 sm:flex-none" variant="outline" onClick={() => setShowForm(false)}>取消</Button><Button className="h-11 flex-1 sm:flex-none" disabled={saving} onClick={handleSave}>{saving ? '保存中...' : '保存'}</Button></div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
+      {!isMobile && <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
         <DialogContent className="max-h-[82vh] max-w-3xl overflow-y-auto">
           <DialogHeader><DialogTitle>线索保护与回收</DialogTitle></DialogHeader>
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">未触达线索超过 48 小时，或下次跟进已逾期 3 天，会进入主管可回收名单。系统不会自动抢线索；有意向、已预约线索始终受保护。</div>
           <div className="sticky top-0 z-10 rounded-xl border border-blue-200 bg-white p-3 shadow-sm"><div className="flex flex-col gap-3 sm:flex-row sm:items-center"><div className="flex-1 text-sm font-medium text-slate-700">已选择 {selectedRecoveryIds.length} 条</div><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择重新分配的销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button variant="outline" disabled={!selectedRecoveryIds.length || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign')}>批量重新分配</Button><Button variant="outline" className="border-rose-200 text-rose-700" disabled={!selectedRecoveryIds.length || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reclaim')}>批量回收</Button></div><p className="mt-2 text-xs text-slate-500">批量回收只允许“可回收”线索；重新分配受保护线索时会再次确认并记录原因。</p></div>
           <div className="space-y-3">{(recoveryOverview?.items || []).filter(item => item.state !== 'active').map(item => <div key={item.lead_id} className="rounded-xl border border-slate-200 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="flex gap-3"><input className="mt-1 h-4 w-4" type="checkbox" checked={selectedRecoveryIds.includes(item.lead_id)} onChange={event => setSelectedRecoveryIds(current => event.target.checked ? [...current, item.lead_id] : current.filter(id => id !== item.lead_id))} /><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-slate-900">{item.business_name}</p><Badge className={item.state === 'recoverable' ? 'bg-rose-100 text-rose-700' : item.state === 'protected' ? 'bg-emerald-100 text-emerald-700' : item.state === 'extended' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}>{item.state === 'recoverable' ? '可回收' : item.state === 'protected' ? '受保护' : item.state === 'extended' ? '已延期保护' : '提醒跟进'}</Badge></div><p className="mt-1 text-sm text-slate-600">当前负责人：{item.assigned_sales_name || '待分配'} · {item.message}</p>{item.deadline && <p className="mt-1 text-xs text-slate-500">保护/提醒截止：{formatDate(item.deadline)}</p>}{item.extension_request && <p className="mt-1 text-xs text-violet-700">延期申请：{item.extension_request.requested_by || item.assigned_sales_name || '销售'} - {item.extension_request.reason || '未说明原因'}</p>}</div></div><div className="flex shrink-0 flex-wrap gap-2">{item.extension_request && <Button size="sm" variant="outline" disabled={recoveryBusy === item.lead_id} onClick={() => void handleRecoveryAction(item, 'approve-extension')}>{recoveryBusy === item.lead_id ? '处理中...' : '批准延期'}</Button>}{item.state === 'recoverable' && <Button size="sm" variant="outline" className="border-rose-200 text-rose-700" disabled={recoveryBusy === item.lead_id} onClick={() => void handleRecoveryAction(item, 'reclaim')}>{recoveryBusy === item.lead_id ? '处理中...' : '回收至待分配'}</Button>}</div></div></div>)}{!(recoveryOverview?.items || []).some(item => item.state !== 'active') && <p className="py-10 text-center text-sm text-slate-500">目前没有需要处理的线索保护提醒。</p>}</div>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       <Dialog open={!!dealLead} onOpenChange={open => { if (!open) { setDealLead(null); setDealReadiness(null); } }}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogContent className="!h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none rounded-none pb-0 sm:!h-auto sm:!max-h-[90vh] sm:!w-full sm:!max-w-4xl sm:rounded-lg sm:pb-6">
           <DialogHeader><DialogTitle>成交审核 · {dealLead?.business_name}</DialogTitle></DialogHeader>
           <p className="-mt-2 text-sm text-slate-500">报价审批、运营交接和收款确认完成前，线索不会进入正式客户管理、成交或财务数据。</p>
           {dealLoading ? <div className="py-16 text-center text-sm text-slate-500">正在加载成交审核资料...</div> : <div className="space-y-5">
@@ -701,7 +832,7 @@ export default function SalesLeads() {
 
             {canManage && <section className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-4"><div className="mb-4 flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-cyan-700" /><div><p className="font-semibold text-slate-900">3. 收款确认</p><p className="text-xs text-slate-500">订金不会被当成全额收入；只有“已全额支付”后才允许转入正式客户。</p></div></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div><Label>收款状态</Label><NativeSelect value={paymentForm.payment_status} onChange={value => setPaymentForm({ ...paymentForm, payment_status: value })} options={[{ value: 'pending', label: '待收款' }, { value: 'deposit_paid', label: '已收订金' }, { value: 'paid', label: '已全额支付' }, { value: 'failed', label: '支付失败' }, { value: 'refunded', label: '已退款' }]} /></div><div><Label>实收金额</Label><Input type="number" min="0" value={paymentForm.amount_received} onChange={event => setPaymentForm({ ...paymentForm, amount_received: event.target.value })} placeholder="全额支付可留空自动带入" /></div><div><Label>实际收款日期</Label><Input type="date" value={paymentForm.payment_date} onChange={event => setPaymentForm({ ...paymentForm, payment_date: event.target.value })} /></div><div><Label>交易号 / 支票号</Label><Input value={paymentForm.payment_reference} onChange={event => setPaymentForm({ ...paymentForm, payment_reference: event.target.value })} /></div></div><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">{dealReadiness?.handoff?.payment_confirmed_by_name ? `最近确认：${dealReadiness.handoff.payment_confirmed_by_name}` : '尚未由主管确认收款状态'}</div><Button disabled={dealSaving || !dealReadiness?.handoff} onClick={() => void savePaymentStatus()}>保存收款状态</Button></div></section>}
 
-            {canManage && <div className="flex justify-end border-t pt-4"><Button disabled={dealSaving || !!dealReadiness?.blockers?.length || convertingId === dealLead?.id} className="bg-emerald-600 hover:bg-emerald-700" onClick={() => void convertToCustomer()}><CheckCircle2 className="mr-2 h-4 w-4" />{convertingId === dealLead?.id ? '转入中...' : dealReadiness?.blockers?.length ? '请先完成审核项' : '确认合作并转入正式客户'}</Button></div>}
+            {canManage && <div className="sticky bottom-0 -mx-4 flex justify-end border-t bg-white/95 px-4 py-3 pb-[calc(.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-4"><Button disabled={dealSaving || !!dealReadiness?.blockers?.length || convertingId === dealLead?.id} className="h-11 w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto" onClick={() => void convertToCustomer()}><CheckCircle2 className="mr-2 h-4 w-4" />{convertingId === dealLead?.id ? '转入中...' : dealReadiness?.blockers?.length ? '请先完成审核项' : '确认合作并转入正式客户'}</Button></div>}
           </div>}
         </DialogContent>
       </Dialog>

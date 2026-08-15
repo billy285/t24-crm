@@ -1,7 +1,7 @@
 {
   "name": "shadcnui",
   "type": "module",
-  "packageManager": "pnpm@8.10.0",
+  "packageManager": "pnpm@11.16.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

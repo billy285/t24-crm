@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { RoleProvider } from './lib/role-context';
 import Layout from './components/Layout';
 import PageLoadState from './components/PageLoadState';
+import AppErrorBoundary from './components/AppErrorBoundary';
 
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const AuthError = lazy(() => import('./pages/AuthError'));
@@ -76,6 +77,7 @@ const queryClient = new QueryClient({
 });
 
 const App = () => (
+  <AppErrorBoundary>
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
@@ -116,6 +118,7 @@ const App = () => (
       </RoleProvider>
     </TooltipProvider>
   </QueryClientProvider>
+  </AppErrorBoundary>
 );
 
 export default App;

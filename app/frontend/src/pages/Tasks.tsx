@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -156,9 +156,27 @@ const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
 };
 
 export default function Tasks() {
-  const { employee, isAdmin } = useRole();
+  const { employee, hasPermission, dataScope, canAccess } = useRole();
   const location = useLocation();
   const navigate = useNavigate();
+  const taskScope = dataScope === 'all'
+    ? 'all'
+    : (dataScope === 'department' || String(dataScope) === 'team')
+      ? 'team'
+      : 'self';
+  const canViewAllTasks = taskScope === 'all';
+  const canViewTeamTasks = taskScope === 'all' || taskScope === 'team';
+  const canCreateTask = hasPermission('task_create');
+  const canEditTask = hasPermission('task_edit');
+  const canDeleteTask = hasPermission('task_delete');
+  const canOpenCustomers = canAccess('/customers');
+  const defaultPrimaryView = canViewAllTasks && !window.matchMedia('(max-width: 767px)').matches ? 'all' : 'mine';
+  const safePrimaryView = useCallback((value?: string | null) => {
+    if (!value || !primaryViewLabels[value]) return defaultPrimaryView;
+    if (value === 'all' && !canViewAllTasks) return 'mine';
+    if (value === 'team' && !canViewTeamTasks) return 'mine';
+    return value;
+  }, [canViewAllTasks, canViewTeamTasks, defaultPrimaryView]);
   const {
     taskTypes: taskTypeLabels,
     taskPriorities: priorityLabels,
@@ -174,6 +192,8 @@ export default function Tasks() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
+  const [formOptionsLoading, setFormOptionsLoading] = useState(false);
+  const [formOptionsLoaded, setFormOptionsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
@@ -196,7 +216,7 @@ export default function Tasks() {
   const [primaryView, setPrimaryView] = useState(() => (
     searchParams.get('source') === 'system'
       ? 'system'
-      : searchParams.get('view') || (isAdmin ? 'all' : 'mine')
+      : safePrimaryView(searchParams.get('view'))
   ));
   const [page, setPage] = useState(() => {
     const value = Number(searchParams.get('page') || 1);
@@ -214,24 +234,27 @@ export default function Tasks() {
   const [completeTarget, setCompleteTarget] = useState<any>(null);
   const [completionNote, setCompletionNote] = useState('');
   const [completing, setCompleting] = useState(false);
+  const loadRequestSeqRef = useRef(0);
   const [focusTaskId, setFocusTaskId] = useState<number | null>(() => {
     const value = Number(searchParams.get('task_id') || 0);
     return Number.isFinite(value) && value > 0 ? value : null;
   });
   const emptyTaskForm = {
-    title: '', customer_id: '', assignee_name: '', collaborator_names: '',
+    title: '', customer_id: '', customer_name: '', assignee_name: '', collaborator_names: '',
     task_type: 'other', priority: 'medium', status: 'pending',
     due_date: '', notes: '', attachment_link: '',
   };
   const [form, setForm] = useState(emptyTaskForm);
 
-  const activeEmployeeOptions = useMemo(() => employees
-    .filter((item: any) => !item.status || ['active', 'probation'].includes(item.status))
+  const scopedEmployees = useMemo(() => employees
+    .filter((item: any) => !item.status || ['active', 'probation'].includes(item.status)), [employees]);
+
+  const activeEmployeeOptions = useMemo(() => scopedEmployees
     .map((item: any) => ({
       value: String(item.name || item.full_name || item.username || item.email || '').trim(),
       label: [item.name || item.full_name || item.username || item.email, item.employee_code, item.department].filter(Boolean).join(' · '),
     }))
-    .filter((item: any) => item.value), [employees]);
+    .filter((item: any) => item.value), [scopedEmployees]);
 
   const assigneeOptions = useMemo(() => {
     if (!form.assignee_name || activeEmployeeOptions.some(item => item.value === form.assignee_name)) return activeEmployeeOptions;
@@ -243,7 +266,7 @@ export default function Tasks() {
   useEffect(() => {
     const nextView = searchParams.get('view');
     const nextSource = searchParams.get('source');
-    if (nextView && primaryViewLabels[nextView]) setPrimaryView(nextView);
+    if (nextView && primaryViewLabels[nextView]) setPrimaryView(safePrimaryView(nextView));
     else if (nextSource === 'system') setPrimaryView('system');
 
     const nextStatus = searchParams.get('status');
@@ -276,7 +299,7 @@ export default function Tasks() {
 
     const rawTaskId = Number(searchParams.get('task_id') || 0);
     setFocusTaskId(Number.isFinite(rawTaskId) && rawTaskId > 0 ? rawTaskId : null);
-  }, [extendedStatusLabels, priorityLabels, searchParams]);
+  }, [extendedStatusLabels, priorityLabels, safePrimaryView, searchParams]);
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
@@ -284,7 +307,7 @@ export default function Tasks() {
       if (!value || value === emptyValue) next.delete(key);
       else next.set(key, value);
     };
-    setOrDelete('view', primaryView, isAdmin ? 'all' : 'mine');
+    setOrDelete('view', primaryView, defaultPrimaryView);
     setOrDelete('status', filterStatus, 'all');
     setOrDelete('priority', filterPriority, 'all');
     setOrDelete('source', filterSource, 'all');
@@ -296,25 +319,55 @@ export default function Tasks() {
     if (pageSize !== 20) next.set('pageSize', String(pageSize));
     else next.delete('pageSize');
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-  }, [filterPriority, filterSource, filterStatus, isAdmin, page, pageSize, primaryView, quickFilter, search, searchParams, setSearchParams]);
+  }, [defaultPrimaryView, filterPriority, filterSource, filterStatus, page, pageSize, primaryView, quickFilter, search, searchParams, setSearchParams]);
 
   const loadData = async () => {
+    const requestSeq = ++loadRequestSeqRef.current;
     try {
-      const [tRes, cRes, eRes] = await loadWithRetry(() => Promise.all([
-        client.entities.tasks.query({ limit: 1000, sort: '-created_at' }),
-        client.entities.customers.query({ limit: 1000 }),
-        client.entities.employees.query({ limit: 50 }),
-      ]));
+      const tRes = await loadWithRetry(() => client.entities.tasks.query({ limit: 1000, sort: '-created_at' }));
+      if (requestSeq !== loadRequestSeqRef.current) return;
       setTasks(tRes?.data?.items || []);
-      setCustomers(cRes?.data?.items || []);
-      setEmployees(eRes?.data?.items || []);
       setLoadError(null);
     } catch (err) {
+      if (requestSeq !== loadRequestSeqRef.current) return;
       console.error(err);
       setLoadError(getLoadErrorMessage(err));
     }
-    finally { setLoading(false); }
+    finally {
+      if (requestSeq === loadRequestSeqRef.current) setLoading(false);
+    }
   };
+
+  useEffect(() => () => {
+    loadRequestSeqRef.current += 1;
+  }, []);
+
+  const loadTaskFormOptions = useCallback(async () => {
+    if (formOptionsLoaded || formOptionsLoading) return;
+    setFormOptionsLoading(true);
+    try {
+      const [assigneeResult, customerResult] = await Promise.allSettled([
+        taskScope === 'self'
+          ? Promise.resolve(null)
+          : client.apiCall.invoke({ url: '/api/v1/entities/tasks/assignee-options', method: 'GET' }),
+        canOpenCustomers
+          ? client.entities.customers.query({ limit: 1000 })
+          : Promise.resolve(null),
+      ]);
+      if (assigneeResult.status === 'fulfilled' && assigneeResult.value) {
+        setEmployees(assigneeResult.value?.data?.items || []);
+      }
+      if (customerResult.status === 'fulfilled' && customerResult.value) {
+        setCustomers(customerResult.value?.data?.items || []);
+      }
+      setFormOptionsLoaded(true);
+    } catch (err) {
+      console.error(err);
+      toast.error('任务表单选项加载失败，请稍后重试');
+    } finally {
+      setFormOptionsLoading(false);
+    }
+  }, [canOpenCustomers, formOptionsLoaded, formOptionsLoading, taskScope]);
 
   useAutoRefresh(loadData, {
     intervalMs: 30000,
@@ -390,8 +443,11 @@ export default function Tasks() {
       { key: 'system', label: '系统提醒', count: tasks.filter(task => (getTaskSource(task) === 'system' || task.automation_issue_id) && !isClosedTask(task)).length, hint: '自动扫描产生', icon: Bot },
       { key: 'team', label: '团队待办', count: tasks.filter(task => !isClosedTask(task)).length, hint: '全部未完成任务', icon: Users },
       { key: 'completed', label: '已完成', count: completedCount, hint: '查看处理结果', icon: CheckCircle2 },
-    ];
-  }, [completedCount, employee?.name, tasks]);
+    ].filter(view => (
+      (view.key !== 'all' || canViewAllTasks)
+      && (view.key !== 'team' || canViewTeamTasks)
+    ));
+  }, [canViewAllTasks, canViewTeamTasks, completedCount, employee?.name, tasks]);
   const workload = useMemo(() => {
     const counter = tasks.reduce<Record<string, number>>((acc, task) => {
       if (isClosedTask(task)) return acc;
@@ -421,6 +477,18 @@ export default function Tasks() {
     else if (filterSource === 'system') setFilterSource('all');
   };
 
+  const activateMobileFocus = (focus: 'mine' | 'today_due' | 'overdue') => {
+    setFocusTaskId(null);
+    setFilterSource('all');
+    if (focus === 'mine') {
+      setPrimaryView('mine');
+      setQuickFilter('all');
+      return;
+    }
+    setPrimaryView(canViewTeamTasks ? 'team' : 'mine');
+    setQuickFilter(focus);
+  };
+
   useEffect(() => {
     if (!focusTaskId) return;
     const timer = window.setTimeout(() => {
@@ -445,20 +513,22 @@ export default function Tasks() {
             options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
             className="h-8 w-24 text-xs"
           />
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
           <span className="min-w-20 text-center text-xs text-slate-500">{paginated.page} / {paginated.totalPages} 页</span>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
         </div>
       </div>
     );
   };
 
   const openEditTask = (t: any) => {
+    if (!canEditTask) return;
     setForm({
       title: t.title || '',
       customer_id: t.customer_id ? String(t.customer_id) : '',
+      customer_name: t.customer_name || '',
       assignee_name: t.assignee_name || '',
       collaborator_names: t.collaborator_names || '',
       task_type: t.task_type || 'other',
@@ -470,9 +540,14 @@ export default function Tasks() {
     });
     setEditingId(t.id);
     setShowForm(true);
+    void loadTaskFormOptions();
   };
 
   const handleSave = async () => {
+    if (editingId ? !canEditTask : !canCreateTask) {
+      toast.error('当前账号没有此任务操作权限');
+      return;
+    }
     if (!form.title) { toast.error('请填写任务名称'); return; }
     setSaving(true);
     try {
@@ -481,10 +556,12 @@ export default function Tasks() {
       const payload = {
         title: form.title,
         customer_id: form.customer_id ? Number(form.customer_id) : null,
-        customer_name: cust?.business_name || '',
-        assignee_id: employees.find((item: any) => String(item.name || '').trim() === form.assignee_name)?.id || null,
-        assignee_name: form.assignee_name,
-        collaborator_names: parseEmployeeNames(form.collaborator_names).filter(name => name !== form.assignee_name).join(', '),
+        customer_name: cust?.business_name || form.customer_name || '',
+        ...(taskScope === 'self' && editingId ? {} : {
+          assignee_id: employees.find((item: any) => String(item.name || '').trim() === form.assignee_name)?.id || employee?.id || null,
+          assignee_name: form.assignee_name || employee?.name || '',
+          collaborator_names: parseEmployeeNames(form.collaborator_names).filter(name => name !== form.assignee_name).join(', '),
+        }),
         task_type: form.task_type,
         priority: form.priority,
         status: form.status,
@@ -509,7 +586,7 @@ export default function Tasks() {
   };
 
   const handleDeleteTask = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !canDeleteTask) return;
     setDeleting(true);
     try {
       await client.entities.tasks.delete({ id: String(deleteTarget.id) });
@@ -521,6 +598,7 @@ export default function Tasks() {
   };
 
   const handleStatusChange = async (taskId: number, newStatus: string) => {
+    if (!canEditTask) return;
     try {
       await client.entities.tasks.update({ id: String(taskId), data: { status: newStatus, updated_at: new Date().toISOString() } });
       toast.success('状态已更新');
@@ -529,7 +607,7 @@ export default function Tasks() {
   };
 
   const handleCompleteTask = async () => {
-    if (!completeTarget) return;
+    if (!completeTarget || !canEditTask) return;
     if (!completionNote.trim()) {
       toast.error('请填写完成结果，方便后续追踪');
       return;
@@ -576,7 +654,7 @@ export default function Tasks() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           {returnTo && (
-            <Button variant="ghost" size="sm" className="-ml-3 mb-1 h-8 text-slate-600" onClick={() => navigate(returnTo)}>
+            <Button variant="ghost" size="sm" className="-ml-3 mb-1 min-h-11 text-slate-600 md:h-8 md:min-h-0" onClick={() => navigate(returnTo)}>
               <ArrowLeft className="mr-1 h-4 w-4" />{getReturnLabel(returnTo)}
             </Button>
           )}
@@ -584,9 +662,11 @@ export default function Tasks() {
           <h2 className="app-page-heading">任务协作</h2>
           <p className="app-page-description">选择工作视角后直接处理；完成任务必须填写结果，系统会继续追踪闭环。</p>
         </div>
-        <Button onClick={() => { setForm(emptyTaskForm); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
-          <Plus className="w-4 h-4 mr-1" /> 新建任务
-        </Button>
+        {canCreateTask && (
+          <Button onClick={() => { setForm(emptyTaskForm); setEditingId(null); setShowForm(true); void loadTaskFormOptions(); }} className="bg-blue-600 hover:bg-blue-700">
+            <Plus className="w-4 h-4 mr-1" /> 新建任务
+          </Button>
+        )}
       </div>
 
       {activeReminderMessage && (
@@ -598,7 +678,39 @@ export default function Tasks() {
         </Card>
       )}
 
-      <Card className="border-slate-200">
+      <Card className="border-slate-200 md:hidden">
+        <CardContent className="p-3">
+          <p className="mb-3 text-xs font-semibold text-slate-500">手机优先视角</p>
+          <div className="grid grid-cols-3 gap-2" role="group" aria-label="手机任务重点">
+            <button
+              type="button"
+              onClick={() => activateMobileFocus('mine')}
+              className={`min-h-16 rounded-xl border px-2 py-2 text-left ${primaryView === 'mine' && quickFilter === 'all' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700'}`}
+            >
+              <span className="block text-lg font-bold">{primaryViews.find(view => view.key === 'mine')?.count || 0}</span>
+              <span className="text-xs font-semibold">我的</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => activateMobileFocus('today_due')}
+              className={`min-h-16 rounded-xl border px-2 py-2 text-left ${quickFilter === 'today_due' ? 'border-blue-600 bg-blue-600 text-white' : 'border-blue-200 bg-blue-50 text-blue-700'}`}
+            >
+              <span className="block text-lg font-bold">{quickCards.find(card => card.key === 'today_due')?.value || 0}</span>
+              <span className="text-xs font-semibold">今日</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => activateMobileFocus('overdue')}
+              className={`min-h-16 rounded-xl border px-2 py-2 text-left ${quickFilter === 'overdue' ? 'border-red-600 bg-red-600 text-white' : 'border-red-200 bg-red-50 text-red-700'}`}
+            >
+              <span className="block text-lg font-bold">{quickCards.find(card => card.key === 'overdue')?.value || 0}</span>
+              <span className="text-xs font-semibold">逾期</span>
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="hidden border-slate-200 md:block">
         <CardContent className="p-2">
           <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
             {primaryViews.map(view => {
@@ -616,7 +728,7 @@ export default function Tasks() {
         </CardContent>
       </Card>
 
-      <Card className="border-slate-200/90 bg-white">
+      <Card className="hidden border-slate-200/90 bg-white md:block">
         <CardContent className="p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -660,30 +772,25 @@ export default function Tasks() {
 
       {/* Filters */}
       <div className="app-toolbar">
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col gap-3 md:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input placeholder="搜索任务名称、客户、负责人..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
             </div>
-            <NativeSelect
-              value={filterStatus}
-              onChange={setFilterStatus}
-              className="w-[140px]"
-              options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]}
-            />
-            <NativeSelect
-              value={filterPriority}
-              onChange={setFilterPriority}
-              className="w-[140px]"
-              options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]}
-            />
-            <NativeSelect
-              value={filterSource}
-              onChange={setFilterSource}
-              className="w-[140px]"
-              options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]}
-            />
+            <div className="hidden gap-3 md:flex">
+              <NativeSelect value={filterStatus} onChange={setFilterStatus} className="w-[140px]" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              <NativeSelect value={filterPriority} onChange={setFilterPriority} className="w-[140px]" options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              <NativeSelect value={filterSource} onChange={setFilterSource} className="w-[140px]" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+            </div>
           </div>
+          <details className="mt-3 rounded-xl border border-slate-200 bg-white md:hidden">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-slate-700">更多筛选<span className="text-xs font-normal text-slate-400">状态 · 优先级 · 来源</span></summary>
+            <div className="grid gap-3 border-t border-slate-100 p-3">
+              <NativeSelect value={filterStatus} onChange={setFilterStatus} options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              <NativeSelect value={filterPriority} onChange={setFilterPriority} options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              <NativeSelect value={filterSource} onChange={setFilterSource} options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+            </div>
+          </details>
       </div>
 
       {/* Task list */}
@@ -694,7 +801,7 @@ export default function Tasks() {
           ) : filtered.length === 0 ? (
             <div className="py-12 text-center"><p className="text-sm font-medium text-slate-500">当前视角下暂无任务</p><p className="mt-1 text-xs text-slate-400">可以切换任务分层或清除筛选条件。</p></div>
           ) : (
-            <div className="divide-y divide-slate-100">
+            <div className="grid gap-3 p-3 md:block md:divide-y md:divide-slate-100 md:p-0">
               {paginated.items.map(t => {
                 const source = getTaskSource(t);
                 const completed = isClosedTask(t);
@@ -707,7 +814,7 @@ export default function Tasks() {
                   <div
                     key={t.id}
                     id={`task-row-${t.id}`}
-                    className={`p-4 transition-colors ${t.id === focusTaskId ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'}`}
+                    className={`rounded-xl border p-4 transition-colors md:rounded-none md:border-0 ${t.id === focusTaskId ? 'border-blue-200 bg-blue-50 ring-1 ring-blue-200' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
                   >
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="flex-1">
@@ -737,34 +844,34 @@ export default function Tasks() {
                           <a className="mt-2 inline-block text-xs text-blue-600 hover:underline" href={t.attachment_link} target="_blank" rel="noreferrer">查看附件</a>
                         )}
                       </div>
-                      <div className="flex flex-wrap gap-1 shrink-0 lg:justify-end">
-                        {t.status === 'pending' && (
-                          <Button size="sm" className="h-8 bg-blue-600 px-3 text-xs hover:bg-blue-700" onClick={() => handleStatusChange(t.id, 'in_progress')}>
+                      <div className="grid shrink-0 grid-cols-2 gap-2 md:flex md:flex-wrap md:justify-end md:gap-1">
+                        {canEditTask && t.status === 'pending' && (
+                          <Button size="sm" className="min-h-11 w-full bg-blue-600 px-3 text-xs hover:bg-blue-700 md:h-8 md:min-h-0 md:w-auto" onClick={() => handleStatusChange(t.id, 'in_progress')}>
                             开始处理
                           </Button>
                         )}
-                        {!completed && t.status !== 'pending' && (
-                          <Button size="sm" className="h-8 bg-green-600 px-3 text-xs hover:bg-green-700" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
+                        {canEditTask && !completed && t.status !== 'pending' && (
+                          <Button size="sm" className="min-h-11 w-full bg-green-600 px-3 text-xs hover:bg-green-700 md:h-8 md:min-h-0 md:w-auto" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
                             <CheckCircle2 className="mr-1 h-4 w-4" />完成并记录
                           </Button>
                         )}
-                        {!completed && t.status !== 'waiting_client' && (
-                          <Button size="sm" variant="ghost" className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 h-8 px-2 text-xs" onClick={() => handleStatusChange(t.id, 'waiting_client')}>
+                        {canEditTask && !completed && t.status !== 'waiting_client' && (
+                          <Button size="sm" variant="ghost" className="min-h-11 w-full px-2 text-xs text-purple-600 hover:bg-purple-50 hover:text-purple-700 md:h-8 md:min-h-0 md:w-auto" onClick={() => handleStatusChange(t.id, 'waiting_client')}>
                             等客户
                           </Button>
                         )}
-                        {t.status === 'waiting_client' && (
-                          <Button size="sm" variant="ghost" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-8 px-2 text-xs" onClick={() => handleStatusChange(t.id, 'in_progress')}>
+                        {canEditTask && t.status === 'waiting_client' && (
+                          <Button size="sm" variant="ghost" className="min-h-11 w-full px-2 text-xs text-blue-600 hover:bg-blue-50 hover:text-blue-700 md:h-8 md:min-h-0 md:w-auto" onClick={() => handleStatusChange(t.id, 'in_progress')}>
                             继续
                           </Button>
                         )}
-                        {t.customer_id && (
-                          <Button size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={() => navigate(buildReturnLink(`/customers?detail=${t.customer_id}`, getCurrentTaskPath(t.id), 'tasks'))}>
+                        {canOpenCustomers && t.customer_id && (
+                          <Button size="sm" variant="outline" className="min-h-11 w-full px-2 text-xs md:h-8 md:min-h-0 md:w-auto" onClick={() => navigate(buildReturnLink(`/customers?detail=${t.customer_id}`, getCurrentTaskPath(t.id), 'tasks'))}>
                             <ExternalLink className="mr-1 h-3.5 w-3.5" />打开客户
                           </Button>
                         )}
-                        <Button aria-label="编辑任务" title="编辑任务" size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /></Button>
-                        {!t.automation_issue_id && <Button aria-label="删除任务" title="删除任务" size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /></Button>}
+                        {canEditTask && <Button aria-label="编辑任务" title="编辑任务" size="sm" variant="ghost" className="min-h-11 w-full p-0 text-slate-500 hover:text-blue-600 md:h-8 md:min-h-0 md:w-8" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /><span className="md:sr-only">编辑</span></Button>}
+                        {canDeleteTask && !t.automation_issue_id && <Button aria-label="删除任务" title="删除任务" size="sm" variant="ghost" className="min-h-11 w-full p-0 text-slate-500 hover:text-red-600 md:h-8 md:min-h-0 md:w-8" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /><span className="md:sr-only">删除</span></Button>}
                       </div>
                     </div>
                   </div>
@@ -776,16 +883,18 @@ export default function Tasks() {
         </CardContent>
       </Card>
 
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
-        title="确认删除任务"
-        description={`确定要删除任务「${deleteTarget?.title}」吗？此操作不可撤销。`}
-        onConfirm={handleDeleteTask}
-        loading={deleting}
-      />
+      {canDeleteTask && (
+        <ConfirmDialog
+          open={!!deleteTarget}
+          onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
+          title="确认删除任务"
+          description={`确定要删除任务「${deleteTarget?.title}」吗？此操作不可撤销。`}
+          onConfirm={handleDeleteTask}
+          loading={deleting}
+        />
+      )}
 
-      <Dialog open={!!completeTarget} onOpenChange={(v) => { if (!v) { setCompleteTarget(null); setCompletionNote(''); } }}>
+      {canEditTask && <Dialog open={!!completeTarget} onOpenChange={(v) => { if (!v) { setCompleteTarget(null); setCompletionNote(''); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>填写处理结果并完成</DialogTitle></DialogHeader>
           <div className="space-y-3">
@@ -804,56 +913,73 @@ export default function Tasks() {
               <p className="mt-1 text-xs text-slate-400">结果会写入任务记录；系统问题会据此继续追踪是否真正解决。</p>
             </div>
           </div>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => { setCompleteTarget(null); setCompletionNote(''); }}>取消</Button>
-            <Button onClick={handleCompleteTask} disabled={completing} className="bg-green-600 hover:bg-green-700">
+          <div className="mt-4 flex gap-2 sm:justify-end">
+            <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => { setCompleteTarget(null); setCompletionNote(''); }}>取消</Button>
+            <Button onClick={handleCompleteTask} disabled={completing} className="flex-1 bg-green-600 hover:bg-green-700 sm:flex-none">
               {completing ? '提交中...' : '确认完成'}
             </Button>
           </div>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       {/* Add/Edit task dialog */}
-      <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setEditingId(null); setForm(emptyTaskForm); } }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      {(canCreateTask || (canEditTask && editingId !== null)) && <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setEditingId(null); setForm(emptyTaskForm); } }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader><DialogTitle>{editingId ? '编辑任务' : '新建任务'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div><Label>任务名称 *</Label><Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></div>
             <div>
               <Label>所属客户</Label>
-              <CustomerCombobox
-                customers={customers}
-                value={form.customer_id}
-                onValueChange={v => setForm({ ...form, customer_id: v })}
-                placeholder="搜索客户编号、名称、联系人或电话（可选）"
-                allowClear
-              />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Label>负责人</Label>
-                <Combobox
-                  options={assigneeOptions}
-                  value={form.assignee_name}
-                  onValueChange={value => setForm({
-                    ...form,
-                    assignee_name: value,
-                    collaborator_names: parseEmployeeNames(form.collaborator_names).filter(name => name !== value).join(', '),
-                  })}
-                  placeholder="选择负责人"
-                  searchPlaceholder="搜索员工姓名、编号或部门…"
-                  emptyText="没有找到在职员工"
+              {canOpenCustomers ? (
+                <CustomerCombobox
+                  customers={customers}
+                  value={form.customer_id}
+                  onValueChange={v => setForm({ ...form, customer_id: v })}
+                  placeholder={formOptionsLoading ? '正在加载可选客户…' : '搜索客户编号、名称、联系人或电话（可选）'}
+                  allowClear
                 />
-              </div>
-              <div>
-                <Label>协作人</Label>
-                <EmployeeMultiSelect
-                  employees={employees.filter((item: any) => String(item.name || '').trim() !== form.assignee_name)}
-                  value={parseEmployeeNames(form.collaborator_names)}
-                  onValueChange={names => setForm({ ...form, collaborator_names: names.join(', ') })}
-                />
-              </div>
+              ) : (
+                <Input value={form.customer_name || '未关联客户'} disabled aria-label="当前关联客户" />
+              )}
             </div>
+            {taskScope === 'self' ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                负责人：{form.assignee_name || employee?.name || '当前账号'}
+                {form.collaborator_names && <span className="ml-3">协作：{form.collaborator_names}</span>}
+                <p className="mt-1 text-slate-400">仅自己范围的账号不能变更任务归属。</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label>负责人</Label>
+                  <Combobox
+                    options={assigneeOptions}
+                    value={form.assignee_name}
+                    onValueChange={value => setForm({
+                      ...form,
+                      assignee_name: value,
+                      collaborator_names: parseEmployeeNames(form.collaborator_names).filter(name => name !== value).join(', '),
+                    })}
+                    placeholder={formOptionsLoading ? '正在加载负责人…' : '选择负责人'}
+                    searchPlaceholder="搜索员工姓名或部门…"
+                    emptyText="没有找到范围内的在职员工"
+                    disabled={formOptionsLoading}
+                  />
+                </div>
+                <div>
+                  <Label>协作人</Label>
+                  {formOptionsLoading ? (
+                    <div className="flex min-h-11 items-center rounded-md border border-slate-200 px-3 text-sm text-slate-400">正在加载协作人…</div>
+                  ) : (
+                    <EmployeeMultiSelect
+                      employees={scopedEmployees.filter((item: any) => String(item.name || '').trim() !== form.assignee_name)}
+                      value={parseEmployeeNames(form.collaborator_names)}
+                      onValueChange={names => setForm({ ...form, collaborator_names: names.join(', ') })}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label>任务类型</Label>
@@ -887,12 +1013,12 @@ export default function Tasks() {
             <div><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
             <div><Label>附件链接</Label><Input value={form.attachment_link} onChange={e => setForm({ ...form, attachment_link: e.target.value })} placeholder="https://..." /></div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowForm(false)}>取消</Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
+          <div className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-4 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
+            <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setShowForm(false)}>取消</Button>
+            <Button onClick={handleSave} disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none">{saving ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
     </div>
   );
 }

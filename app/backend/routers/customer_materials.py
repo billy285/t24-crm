@@ -21,6 +21,7 @@ from services.customer_menu_items import Customer_menu_itemsService
 from services.customer_materials import Customer_materialsService
 from services.customers import CustomersService
 from services.operation_logs import Operation_logsService
+from services.role_permissions import normalized_role, require_any_page_permission, require_button_permission
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,22 @@ COPYRIGHT_STATUS_LABELS = {
     "ai_generated": "AI生成",
     "unknown": "待确认版权",
 }
+CUSTOMER_WORKSPACE_PAGES = {"/customers", "/service-board"}
+
+
+async def _require_material_read(current_user: UserResponse, db: AsyncSession) -> None:
+    await require_any_page_permission(db, current_user, CUSTOMER_WORKSPACE_PAGES)
+
+
+async def _require_material_write(
+    current_user: UserResponse,
+    db: AsyncSession,
+    permission: str,
+    *,
+    admin_override: bool = False,
+) -> None:
+    await _require_material_read(current_user, db)
+    await require_button_permission(db, current_user, permission, admin_override=admin_override)
 
 
 class CustomerMaterialData(BaseModel):
@@ -528,12 +545,13 @@ async def query_customer_materials(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_material_read(current_user, db)
     query_dict = _parse_query(query) or {}
     customer_id = query_dict.get("customer_id")
     if customer_id:
         await _ensure_customer_access(int(customer_id), current_user, db)
-    elif current_user.role not in {"admin", "super_admin"}:
-        query_dict["user_id"] = str(current_user.id)
+    elif normalized_role(current_user) not in {"admin", "super_admin"}:
+        raise HTTPException(status_code=400, detail="customer_id query is required")
 
     return await Customer_materialsService(db).get_list(
         skip=skip,
@@ -549,6 +567,7 @@ async def ai_match_customer_materials(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_material_write(current_user, db, "task_create")
     customer = await _ensure_customer_access(request.customer_id, current_user, db)
     result = await Customer_materialsService(db).get_list(
         skip=0,
@@ -606,6 +625,7 @@ async def create_customer_material(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_material_write(current_user, db, "task_create")
     await _ensure_customer_access(data.customer_id, current_user, db)
     payload = data.model_dump()
     now = datetime.utcnow()
@@ -648,6 +668,7 @@ async def upload_customer_material(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_material_write(current_user, db, "task_create")
     await _ensure_customer_access(customer_id, current_user, db)
     resolved_linked_item_id, linked_item_snapshot = await _resolve_linked_item(
         db,
@@ -723,6 +744,7 @@ async def update_customer_material(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_material_write(current_user, db, "task_edit")
     service = Customer_materialsService(db)
     obj = await service.get_by_id(material_id)
     if not obj:
@@ -757,6 +779,7 @@ async def delete_customer_material(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_material_write(current_user, db, "task_delete", admin_override=True)
     service = Customer_materialsService(db)
     obj = await service.get_by_id(material_id)
     if not obj:
@@ -785,6 +808,7 @@ async def download_customer_material(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_material_read(current_user, db)
     obj = await Customer_materialsService(db).get_by_id(material_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Material not found")
@@ -807,6 +831,7 @@ async def duplicate_customer_material(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_material_write(current_user, db, "task_create")
     service = Customer_materialsService(db)
     obj = await service.get_by_id(material_id)
     if not obj:

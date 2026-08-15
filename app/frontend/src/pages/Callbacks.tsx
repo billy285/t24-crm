@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
@@ -22,8 +22,10 @@ import ExportButton from '@/components/ExportButton';
 import PageLoadState from '@/components/PageLoadState';
 import { Combobox } from '@/components/ui/combobox';
 import { useBusinessDicts } from '../lib/dict-config';
+import { addBusinessDateDays, businessDateKey } from '../lib/business-date';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
+import { invokeWithAuth } from '../lib/tokenStore';
 
 const callbackStatusColors: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
@@ -51,12 +53,6 @@ const callbackReminderMessages: Record<string, { title: string; description: str
 };
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
-const addDays = (date: Date, days: number) => {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next.toISOString().slice(0, 10);
-};
-
 const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
   const total = items.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -73,7 +69,11 @@ const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
 };
 
 export default function Callbacks() {
-  const { role, employee, dataScope } = useRole();
+  const { employee, dataScope, hasPermission, isAdmin } = useRole();
+  const canCreateCallback = isAdmin || hasPermission('follow_up_create');
+  const canEditCallback = isAdmin || hasPermission('follow_up_edit');
+  const canDeleteCallback = isAdmin || hasPermission('follow_up_delete');
+  const businessToday = businessDateKey();
   const {
     callbackTypes: callbackTypeLabels,
     callbackStatuses: callbackStatusLabels,
@@ -100,11 +100,14 @@ export default function Callbacks() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
+  const loadRequestSeqRef = useRef(0);
+  const quickNoAnswerInFlightRef = useRef<Set<number>>(new Set());
+  const [quickNoAnswerBusyIds, setQuickNoAnswerBusyIds] = useState<Set<number>>(new Set());
 
   const emptyForm = {
     customer_id: '',
     employee_id: employee?.id ? String(employee.id) : '',
-    callback_date: new Date().toISOString().slice(0, 10),
+    callback_date: businessToday,
     callback_type: 'satisfaction',
     status: 'pending',
     content: '',
@@ -144,6 +147,7 @@ export default function Callbacks() {
   }, [callbackStatusLabels, callbackTypeLabels, searchParams]);
 
   const loadData = async () => {
+    const requestSeq = ++loadRequestSeqRef.current;
     try {
       const [cbRes, cRes, eRes, tRes] = await loadWithRetry(() => Promise.all([
         client.apiCall.invoke({
@@ -152,7 +156,11 @@ export default function Callbacks() {
           data: { limit: 1000, sort: '-callback_date' },
         }),
         client.entities.customers.query({ limit: 1000 }),
-        client.entities.employees.queryAll({ limit: 200 }),
+        invokeWithAuth({
+          url: '/api/v1/entities/employees/directory',
+          method: 'GET',
+          data: { limit: 200 },
+        }),
         client.entities.tasks.query({ limit: 1000, sort: '-created_at' }),
       ]));
       let cbs = cbRes?.data?.items || [];
@@ -164,18 +172,24 @@ export default function Callbacks() {
         cbs = cbs.filter((cb: any) => Number(cb.employee_id) === Number(employee.id) || cb.employee_name === employee.name);
       }
 
+      if (requestSeq !== loadRequestSeqRef.current) return;
       setCallbacks(cbs);
       setCustomers(custs);
       setEmployees(emps);
       setTasks(tRes?.data?.items || []);
       setLoadError(null);
     } catch (err) {
+      if (requestSeq !== loadRequestSeqRef.current) return;
       console.error('Failed to load callbacks:', err);
       setLoadError(getLoadErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (requestSeq === loadRequestSeqRef.current) setLoading(false);
     }
   };
+
+  useEffect(() => () => {
+    loadRequestSeqRef.current += 1;
+  }, []);
 
   useAutoRefresh(loadData, {
     intervalMs: 30000,
@@ -211,7 +225,6 @@ export default function Callbacks() {
 
   // Filtered list
   const filtered = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
     return callbacks.filter(cb => {
       const cust = customerMap[cb.customer_id];
       const keyword = search.trim().toLowerCase();
@@ -230,11 +243,11 @@ export default function Callbacks() {
       const matchEmployee = filterEmployeeId === 'all' || String(cb.employee_id) === filterEmployeeId;
       const callbackDate = cb.callback_date?.slice(0, 10) || '';
       const matchSchedule = filterSchedule === 'all'
-        || (filterSchedule === 'today' && cb.status === 'pending' && callbackDate === today)
-        || (filterSchedule === 'overdue' && cb.status === 'pending' && callbackDate < today);
+        || (filterSchedule === 'today' && cb.status === 'pending' && callbackDate === businessToday)
+        || (filterSchedule === 'overdue' && cb.status === 'pending' && callbackDate < businessToday);
       return matchSearch && matchStatus && matchType && matchCustomer && matchEmployee && matchSchedule;
     });
-  }, [callbacks, customerMap, search, filterStatus, filterType, filterCustomerId, filterEmployeeId, filterSchedule]);
+  }, [businessToday, callbacks, customerMap, search, filterStatus, filterType, filterCustomerId, filterEmployeeId, filterSchedule]);
   const paginated = useMemo(() => paginateList(filtered, page, pageSize), [filtered, page, pageSize]);
 
   useEffect(() => {
@@ -243,19 +256,18 @@ export default function Callbacks() {
 
   // Statistics
   const stats = useMemo(() => {
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const todayCallbacks = callbacks.filter(cb => cb.callback_date?.slice(0, 10) === today);
+    const todayCallbacks = callbacks.filter(cb => cb.callback_date?.slice(0, 10) === businessToday);
     const pendingCount = callbacks.filter(cb => cb.status === 'pending').length;
     const completedCount = callbacks.filter(cb => cb.status === 'completed').length;
     const overdueCount = callbacks.filter(cb =>
-      cb.status === 'pending' && cb.callback_date && cb.callback_date.slice(0, 10) < today
+      cb.status === 'pending' && cb.callback_date && cb.callback_date.slice(0, 10) < businessToday
     ).length;
     const todayPending = todayCallbacks.filter(cb => cb.status === 'pending').length;
     return { pendingCount, completedCount, overdueCount, todayPending, total: callbacks.length };
-  }, [callbacks]);
+  }, [businessToday, callbacks]);
 
   const openEdit = (cb: any) => {
+    if (!canEditCallback) return;
     setForm({
       customer_id: String(cb.customer_id || ''),
       employee_id: String(cb.employee_id || employee?.id || ''),
@@ -287,7 +299,7 @@ export default function Callbacks() {
         task_type: 'follow_up',
         priority: callbackRecord.result === 'unsatisfied' ? 'high' : 'medium',
         status: 'pending',
-        due_date: nextDate || addDays(new Date(), 1),
+        due_date: nextDate || addBusinessDateDays(businessToday, 1),
         notes: `${marker}\n回访结果：${resultLabels[callbackRecord.result] || callbackRecord.result}\n${callbackRecord.content || '需要继续跟进客户'}`,
         attachment_link: '',
         created_at: new Date().toISOString(),
@@ -323,6 +335,10 @@ export default function Callbacks() {
   };
 
   const handleSave = async () => {
+    if (editingId ? !canEditCallback : !canCreateCallback) {
+      toast.error('当前账号没有保存回访记录的权限');
+      return;
+    }
     if (!form.customer_id || !form.employee_id || !form.callback_date) {
       toast.error('请选择客户、回访负责人并填写回访日期');
       return;
@@ -343,7 +359,7 @@ export default function Callbacks() {
     try {
       const now = new Date().toISOString();
       const responsibleEmployee = employees.find((item: any) => Number(item.id) === Number(form.employee_id));
-      const nextCallbackDate = form.next_callback_date || (form.status === 'no_answer' ? addDays(new Date(), 1) : '');
+      const nextCallbackDate = form.next_callback_date || (form.status === 'no_answer' ? addBusinessDateDays(businessToday, 1) : '');
       const payload: any = {
         customer_id: Number(form.customer_id),
         employee_id: Number(form.employee_id),
@@ -386,7 +402,7 @@ export default function Callbacks() {
         await ensureFollowUpTask(savedCallback, nextCallbackDate);
         if (['no_answer', 'rescheduled'].includes(savedCallback.status)
           || ['unsatisfied', 'need_followup'].includes(savedCallback.result)) {
-          await ensureNextCallback(savedCallback, nextCallbackDate);
+        if (canCreateCallback) await ensureNextCallback(savedCallback, nextCallbackDate);
         }
       }
       setShowForm(false);
@@ -402,7 +418,7 @@ export default function Callbacks() {
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !canDeleteCallback) return;
     setDeleting(true);
     try {
       await client.apiCall.invoke({
@@ -431,10 +447,15 @@ export default function Callbacks() {
 
   // Quick no-answer action
   const handleQuickNoAnswer = async (cb: any) => {
+    if (!canEditCallback) return;
+    const callbackId = Number(cb.id);
+    if (!callbackId || quickNoAnswerInFlightRef.current.has(callbackId)) return;
+    quickNoAnswerInFlightRef.current.add(callbackId);
+    setQuickNoAnswerBusyIds(current => new Set(current).add(callbackId));
     try {
-      const nextDate = addDays(new Date(), 1);
+      const nextDate = addBusinessDateDays(businessToday, 1);
       const response = await client.apiCall.invoke({
-        url: `/api/v1/entities/customer_callbacks/${cb.id}`,
+        url: `/api/v1/entities/customer_callbacks/${callbackId}`,
         method: 'PUT',
         data: {
           status: 'no_answer',
@@ -442,11 +463,23 @@ export default function Callbacks() {
           updated_at: new Date().toISOString(),
         },
       });
-      await ensureNextCallback(response?.data || { ...cb, status: 'no_answer' }, nextDate);
+      if (canCreateCallback) {
+        await ensureNextCallback(response?.data || { ...cb, status: 'no_answer' }, nextDate);
+      }
       toast.success('已标记为未接通，并自动安排明日回访');
-      loadData();
+      await loadData();
+      setCallbacks(current => current.map(item => Number(item.id) === callbackId
+        ? { ...item, status: 'no_answer', next_callback_date: new Date(nextDate).toISOString() }
+        : item));
     } catch (err) {
       toast.error('操作失败');
+    } finally {
+      quickNoAnswerInFlightRef.current.delete(callbackId);
+      setQuickNoAnswerBusyIds(current => {
+        const next = new Set(current);
+        next.delete(callbackId);
+        return next;
+      });
     }
   };
 
@@ -488,11 +521,11 @@ export default function Callbacks() {
             options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
             className="h-8 w-24 text-xs"
           />
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
           <span className="min-w-20 text-center text-xs text-slate-500">{paginated.page} / {paginated.totalPages} 页</span>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
+          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
         </div>
       </div>
     );
@@ -513,10 +546,11 @@ export default function Callbacks() {
           <PhoneCall className="w-5 h-5 text-blue-600" />
           电话回访
         </h2>
-        <div className="flex gap-2">
-          <ExportButton
-            data={exportData}
-            columns={[
+        <div className="flex w-full gap-2 sm:w-auto">
+          <div className="hidden sm:block">
+            <ExportButton
+              data={exportData}
+              columns={[
               { key: 'customer_name', label: '客户名称' },
               { key: 'contact_name', label: '联系人' },
               { key: 'phone', label: '电话' },
@@ -531,19 +565,20 @@ export default function Callbacks() {
               { key: 'notes', label: '备注' },
               { key: 'created_at', label: '创建时间' },
             ]}
-            filename={`电话回访_${new Date().toISOString().slice(0, 10)}`}
-            sheetName="电话回访"
-          />
-          <Button
+              filename={`电话回访_${businessToday}`}
+              sheetName="电话回访"
+            />
+          </div>
+          {canCreateCallback && <Button
             onClick={() => {
               setForm({ ...emptyForm, employee_id: employee?.id ? String(employee.id) : '' });
               setEditingId(null);
               setShowForm(true);
             }}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none md:min-h-0"
           >
             <Plus className="w-4 h-4 mr-1" /> 新增回访
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -557,8 +592,8 @@ export default function Callbacks() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card className="border-slate-200">
+      <div className="grid grid-cols-3 gap-2 md:grid-cols-5 md:gap-3">
+        <Card className="hidden border-slate-200 md:block">
           <CardContent className="p-3 text-center">
             <p className="text-xs text-slate-500">总回访</p>
             <p className="text-2xl font-bold text-slate-800">{stats.total}</p>
@@ -573,16 +608,16 @@ export default function Callbacks() {
         <Card className="border-red-200 bg-red-50">
           <CardContent className="p-3 text-center">
             <p className="text-xs text-red-600">已逾期</p>
-            <p className="text-2xl font-bold text-red-700">{stats.overdueCount}</p>
+            <p className="text-2xl font-bold text-red-700" data-testid="callback-overdue-count">{stats.overdueCount}</p>
           </CardContent>
         </Card>
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="p-3 text-center">
             <p className="text-xs text-blue-600">今日待办</p>
-            <p className="text-2xl font-bold text-blue-700">{stats.todayPending}</p>
+            <p className="text-2xl font-bold text-blue-700" data-testid="callback-today-count">{stats.todayPending}</p>
           </CardContent>
         </Card>
-        <Card className="border-green-200 bg-green-50">
+        <Card className="hidden border-green-200 bg-green-50 md:block">
           <CardContent className="p-3 text-center">
             <p className="text-xs text-green-600">已完成</p>
             <p className="text-2xl font-bold text-green-700">{stats.completedCount}</p>
@@ -600,13 +635,13 @@ export default function Callbacks() {
             </div>
             <div className="space-y-1">
               {callbacks
-                .filter(cb => cb.status === 'pending' && cb.callback_date && cb.callback_date.slice(0, 10) < new Date().toISOString().slice(0, 10))
+                .filter(cb => cb.status === 'pending' && cb.callback_date && cb.callback_date.slice(0, 10) < businessToday)
                 .slice(0, 5)
                 .map(cb => {
                   const cust = customerMap[cb.customer_id];
                   return (
-                    <div key={cb.id} className="flex items-center justify-between text-xs text-red-600">
-                      <span>
+                    <div key={cb.id} className="flex flex-col gap-2 rounded-lg border border-red-100 bg-white/60 p-2 text-xs text-red-600 sm:flex-row sm:items-center sm:justify-between sm:border-0 sm:bg-transparent sm:p-0">
+                      <span className="min-w-0">
                         <button
                           className="text-red-700 font-medium hover:underline cursor-pointer"
                           onClick={() => goToCustomerDetail(cb.customer_id)}
@@ -616,14 +651,14 @@ export default function Callbacks() {
                         {' '}- 计划回访: {cb.callback_date?.slice(0, 10)}
                         {' '}({callbackTypeLabels[cb.callback_type] || cb.callback_type})
                       </span>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" className="h-5 px-1.5 text-xs text-green-700 hover:bg-green-100" onClick={() => handleQuickComplete(cb)}>
+                      {canEditCallback && <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-1">
+                        <Button size="sm" variant="ghost" className="min-h-11 px-3 text-xs text-green-700 hover:bg-green-100 md:h-7 md:min-h-0 md:px-2" onClick={() => handleQuickComplete(cb)}>
                           完成
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-5 px-1.5 text-xs text-red-700 hover:bg-red-100" onClick={() => handleQuickNoAnswer(cb)}>
-                          未接
+                        <Button size="sm" variant="ghost" className="min-h-11 px-3 text-xs text-red-700 hover:bg-red-100 md:h-7 md:min-h-0 md:px-2" disabled={quickNoAnswerBusyIds.has(Number(cb.id))} onClick={() => handleQuickNoAnswer(cb)}>
+                          {quickNoAnswerBusyIds.has(Number(cb.id)) ? '处理中' : '未接'}
                         </Button>
-                      </div>
+                      </div>}
                     </div>
                   );
                 })}
@@ -635,7 +670,7 @@ export default function Callbacks() {
       {/* Filters */}
       <Card className="border-slate-200">
         <CardContent className="p-3">
-          <div className="flex flex-col xl:flex-row xl:flex-wrap gap-3">
+          <div className="space-y-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -645,6 +680,7 @@ export default function Callbacks() {
                 className="pl-9"
               />
             </div>
+            <div className="hidden flex-wrap gap-3 md:flex">
             <NativeSelect
               value={filterStatus}
               onChange={setFilterStatus}
@@ -689,6 +725,17 @@ export default function Callbacks() {
               className="w-[170px]"
               options={[{ value: 'all', label: '全部负责人' }, ...employeeOptions]}
             />
+            </div>
+            <details className="rounded-xl border border-slate-200 bg-white md:hidden">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-slate-700">筛选回访<span className="text-xs font-normal text-slate-400">状态 · 时间 · 客户</span></summary>
+              <div className="grid gap-3 border-t border-slate-100 p-3">
+                <NativeSelect value={filterStatus} onChange={setFilterStatus} options={[{ value: 'all', label: '全部状态' }, ...Object.entries(callbackStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+                <NativeSelect value={filterType} onChange={setFilterType} options={[{ value: 'all', label: '全部类型' }, ...Object.entries(callbackTypeLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+                <NativeSelect value={filterSchedule} onChange={setFilterSchedule} options={[{ value: 'all', label: '全部时间' }, { value: 'today', label: '今日待办' }, { value: 'overdue', label: '已逾期' }]} />
+                <CustomerCombobox customers={selectableCustomers} value={filterCustomerId} onValueChange={setFilterCustomerId} placeholder="搜索客户" allowClear clearLabel="全部客户" />
+                <NativeSelect value={filterEmployeeId} onChange={setFilterEmployeeId} options={[{ value: 'all', label: '全部负责人' }, ...employeeOptions]} />
+              </div>
+            </details>
           </div>
         </CardContent>
       </Card>
@@ -703,22 +750,22 @@ export default function Callbacks() {
           ) : filtered.length === 0 ? (
             <p className="text-center text-slate-400 py-12">暂无回访记录</p>
           ) : (
-            <div className="divide-y divide-slate-100">
+            <div className="grid gap-3 p-3 md:block md:divide-y md:divide-slate-100 md:p-0">
               {paginated.items.map(cb => {
                 const cust = customerMap[cb.customer_id];
                 const isOverdue = cb.status === 'pending' && cb.callback_date &&
-                  cb.callback_date.slice(0, 10) < new Date().toISOString().slice(0, 10);
-                const isToday = cb.callback_date?.slice(0, 10) === new Date().toISOString().slice(0, 10);
+                  cb.callback_date.slice(0, 10) < businessToday;
+                const isToday = cb.callback_date?.slice(0, 10) === businessToday;
 
                 return (
                   <div
                     key={cb.id}
-                    className={`p-4 hover:bg-slate-50 transition-colors ${isOverdue ? 'bg-red-50/50' : isToday && cb.status === 'pending' ? 'bg-amber-50/30' : ''}`}
+                    className={`rounded-xl border p-4 transition-colors md:rounded-none md:border-0 ${isOverdue ? 'border-red-200 bg-red-50/50' : isToday && cb.status === 'pending' ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
                   >
-                    <div className="flex items-start justify-between mb-2">
+                    <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex items-center gap-2 flex-wrap">
                         <button
-                          className="font-medium text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-1"
+                          className="flex min-h-11 items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline md:min-h-0"
                           onClick={() => goToCustomerDetail(cb.customer_id)}
                           title="点击查看客户详情"
                         >
@@ -728,7 +775,7 @@ export default function Callbacks() {
                         {cust?.phone && (
                           <a
                             href={`tel:${cust.phone}`}
-                            className="text-xs text-slate-500 hover:text-blue-600 flex items-center gap-0.5"
+                            className="flex min-h-11 items-center gap-1 text-xs text-slate-500 hover:text-blue-600 md:min-h-0"
                             title="点击拨打电话"
                           >
                             <Phone className="w-3 h-3" />
@@ -745,7 +792,7 @@ export default function Callbacks() {
                           <Badge className="text-xs bg-amber-100 text-amber-700">今日</Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Badge className={`text-xs flex items-center gap-1 ${callbackStatusColors[cb.status]}`}>
                           {callbackStatusIcons[cb.status]}
                           {callbackStatusLabels[cb.status] || cb.status}
@@ -753,44 +800,49 @@ export default function Callbacks() {
                         <Badge variant="outline" className="text-xs">
                           {callbackTypeLabels[cb.callback_type] || cb.callback_type}
                         </Badge>
-                        {cb.status === 'pending' && (
+                        {canEditCallback && cb.status === 'pending' && (
                           <>
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-6 px-1.5 text-xs text-green-600 hover:text-green-800 hover:bg-green-50"
+                              className="h-11 min-w-11 px-2 text-xs text-green-600 hover:bg-green-50 hover:text-green-800 md:h-7 md:min-w-0 md:px-1.5"
                               onClick={() => handleQuickComplete(cb)}
                               title="标记完成"
+                              aria-label={`完成回访：${cust?.business_name || `客户${cb.customer_id}`}`}
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-6 px-1.5 text-xs text-orange-600 hover:text-orange-800 hover:bg-orange-50"
+                              className="h-11 min-w-11 px-2 text-xs text-orange-600 hover:bg-orange-50 hover:text-orange-800 md:h-7 md:min-w-0 md:px-1.5"
+                              disabled={quickNoAnswerBusyIds.has(Number(cb.id))}
                               onClick={() => handleQuickNoAnswer(cb)}
                               title="未接通"
+                              aria-label={`标记未接：${cust?.business_name || `客户${cb.customer_id}`}`}
                             >
                               <PhoneOff className="w-3.5 h-3.5" />
                             </Button>
                           </>
                         )}
-                        <Button
+                        {canEditCallback && <Button
                           size="sm"
                           variant="ghost"
-                          className="h-6 w-6 p-0 text-slate-400 hover:text-blue-600"
+                          className="h-11 w-11 p-0 text-slate-500 hover:text-blue-600 md:h-7 md:w-7"
                           onClick={() => openEdit(cb)}
+                          aria-label={`编辑回访：${cust?.business_name || `客户${cb.customer_id}`}`}
                         >
                           <Edit className="w-3 h-3" />
-                        </Button>
-                        <Button
+                        </Button>}
+                        {canDeleteCallback && <Button
                           size="sm"
                           variant="ghost"
-                          className="h-6 w-6 p-0 text-slate-400 hover:text-red-600"
+                          className="h-11 w-11 p-0 text-slate-500 hover:text-red-600 md:h-7 md:w-7"
                           onClick={() => setDeleteTarget(cb)}
+                          aria-label={`删除回访：${cust?.business_name || `客户${cb.customer_id}`}`}
                         >
                           <Trash2 className="w-3 h-3" />
-                        </Button>
+                        </Button>}
                       </div>
                     </div>
                     {cb.content && (
@@ -822,18 +874,18 @@ export default function Callbacks() {
       </Card>
 
       {/* Delete Confirm */}
-      <ConfirmDialog
+      {canDeleteCallback && <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
         title="确认删除回访记录"
         description="确定要删除此回访记录吗？此操作不可撤销。"
         onConfirm={handleDelete}
         loading={deleting}
-      />
+      />}
 
       {/* Add/Edit Dialog */}
-      <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setEditingId(null); setForm(emptyForm); } }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      {(canCreateCallback || canEditCallback) && <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setEditingId(null); setForm(emptyForm); } }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>{editingId ? '编辑回访记录' : '新增回访记录'}</DialogTitle>
           </DialogHeader>
@@ -869,6 +921,7 @@ export default function Callbacks() {
                 <Label>回访日期 *</Label>
                 <Input
                   type="date"
+                  data-testid="callback-date-input"
                   value={form.callback_date}
                   onChange={e => setForm({ ...form, callback_date: e.target.value })}
                 />
@@ -884,7 +937,7 @@ export default function Callbacks() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label>状态</Label>
                 <NativeSelect
@@ -937,18 +990,18 @@ export default function Callbacks() {
               />
             </div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowForm(false)}>取消</Button>
+          <div className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-4 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
+            <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setShowForm(false)}>取消</Button>
             <Button
               onClick={handleSave}
               disabled={saving}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none"
             >
               {saving ? '保存中...' : '保存'}
             </Button>
           </div>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
     </div>
   );
 }
