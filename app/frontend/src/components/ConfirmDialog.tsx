@@ -16,6 +16,9 @@ interface ConfirmDialogProps {
   description?: string;
   onConfirm: () => void;
   loading?: boolean;
+  confirmLabel?: string;
+  loadingLabel?: string;
+  destructive?: boolean;
 }
 
 export default function ConfirmDialog({
@@ -25,6 +28,9 @@ export default function ConfirmDialog({
   description = '此操作不可撤销，确定要删除吗？',
   onConfirm,
   loading = false,
+  confirmLabel = '确认删除',
+  loadingLabel = '删除中...',
+  destructive = true,
 }: ConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -38,9 +44,9 @@ export default function ConfirmDialog({
           <AlertDialogAction
             onClick={onConfirm}
             disabled={loading}
-            className="bg-red-600 hover:bg-red-700"
+            className={destructive ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}
           >
-            {loading ? '删除中...' : '确认删除'}
+            {loading ? loadingLabel : confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -11,13 +11,21 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Edit, Search, ArrowLeft, ShieldCheck, ShieldOff, UserX, ArrowRightLeft, Phone, Mail, KeyRound, Calendar, Trash2 } from 'lucide-react';
+import { Plus, Edit, Search, ArrowLeft, ShieldCheck, ShieldOff, UserX, ArrowRightLeft, Phone, Mail, KeyRound, Calendar, Trash2, MoreHorizontal, AlertTriangle, RefreshCw } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusinessDicts } from '../lib/dict-config';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
+import { getLoadErrorMessage } from '../lib/load-utils';
 
 const allRoleOptions = Object.entries(systemRoleLabels).map(([k, v]) => ({ value: k, label: v }));
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
@@ -48,6 +56,7 @@ export default function Employees() {
   const { statuses: statusLabels, taskStatuses: taskStatusLabels } = useBusinessDicts();
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRole, setFilterRole] = useState('all');
@@ -78,6 +87,8 @@ export default function Employees() {
 
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
+  const [disableTarget, setDisableTarget] = useState<any>(null);
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   useEffect(() => { loadEmployees(); }, []);
 
@@ -85,7 +96,11 @@ export default function Employees() {
     try {
       const res = await client.entities.employees.queryAll({ limit: 1000, sort: '-created_at' });
       setEmployees(res?.data?.items || []);
-    } catch (err) { console.error(err); }
+      setLoadError(null);
+    } catch (err) {
+      console.error(err);
+      setLoadError(getLoadErrorMessage(err));
+    }
     finally { setLoading(false); }
   };
 
@@ -199,7 +214,19 @@ export default function Employees() {
       logOperation({ actionType: 'other', actionDetail: `更改员工状态: ${emp.name} -> ${empStatusLabels[newStatus]}`, operatorName: op });
       loadEmployees();
       if (selectedEmp?.id === emp.id) setSelectedEmp({ ...selectedEmp, status: newStatus });
-    } catch { toast.error('操作失败'); }
+      return true;
+    } catch {
+      toast.error('操作失败');
+      return false;
+    }
+  };
+
+  const handleDisable = async () => {
+    if (!disableTarget) return;
+    setStatusUpdating(true);
+    const updated = await toggleStatus(disableTarget, 'disabled');
+    if (updated) setDisableTarget(null);
+    setStatusUpdating(false);
   };
 
   const handleResign = async () => {
@@ -496,10 +523,10 @@ export default function Employees() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: '总员工', value: employees.length, color: 'text-blue-600' },
-          { label: '在职', value: employees.filter(e => e.status === 'active').length, color: 'text-green-600' },
-          { label: '试用期', value: employees.filter(e => e.status === 'probation').length, color: 'text-blue-600' },
-          { label: '已离职', value: employees.filter(e => e.status === 'resigned').length, color: 'text-slate-500' },
+          { label: '总员工', value: loading || (loadError && employees.length === 0) ? '—' : employees.length, color: 'text-blue-600' },
+          { label: '在职', value: loading || (loadError && employees.length === 0) ? '—' : employees.filter(e => e.status === 'active').length, color: 'text-green-600' },
+          { label: '试用期', value: loading || (loadError && employees.length === 0) ? '—' : employees.filter(e => e.status === 'probation').length, color: 'text-blue-600' },
+          { label: '已离职', value: loading || (loadError && employees.length === 0) ? '—' : employees.filter(e => e.status === 'resigned').length, color: 'text-slate-500' },
         ].map(s => (
           <Card key={s.label} className="border-slate-200"><CardContent className="p-3 text-center">
             <p className="text-xs text-slate-500">{s.label}</p><p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
@@ -516,8 +543,29 @@ export default function Employees() {
         </div>
       </CardContent></Card>
 
+      {loadError && (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between" role="alert">
+          <div className="flex min-w-0 items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">员工资料暂时无法更新</p>
+              <p className="mt-0.5 text-xs text-amber-700">{employees.length > 0 ? '当前继续显示上一次成功读取的数据。' : loadError}</p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0 border-amber-200 bg-white text-amber-800 hover:bg-amber-100"
+            onClick={() => { setLoading(employees.length === 0); void loadEmployees(); }}
+          >
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />重试
+          </Button>
+        </div>
+      )}
+
       <Card className="border-slate-200"><CardContent className="p-0">
         {loading ? <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+        : loadError && employees.length === 0 ? <div className="py-12 text-center"><p className="text-sm font-medium text-slate-600">员工资料尚未加载</p><p className="mt-1 text-xs text-slate-400">请使用上方“重试”，当前不显示为零员工。</p></div>
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无员工</p>
         : (
           <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b bg-slate-50 text-left text-slate-500">
@@ -525,7 +573,7 @@ export default function Employees() {
             <th className="px-4 py-3 font-medium">角色</th><th className="px-4 py-3 font-medium">部门</th>
             <th className="px-4 py-3 font-medium hidden md:table-cell">用户名</th>
             <th className="px-4 py-3 font-medium hidden md:table-cell">电话</th>
-            <th className="px-4 py-3 font-medium">状态</th><th className="px-4 py-3 font-medium w-36">操作</th>
+            <th className="px-4 py-3 font-medium">状态</th><th className="px-4 py-3 text-right font-medium w-20">操作</th>
           </tr></thead>
           <tbody>{paginated.items.map(e => (
             <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
@@ -536,15 +584,29 @@ export default function Employees() {
               <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(e)}>{e.login_username || '-'}</td>
               <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(e)}>{e.phone || '-'}</td>
               <td className="px-4 py-3" onClick={() => openDetail(e)}><Badge className={`text-xs ${empStatusColors[e.status]}`}>{empStatusLabels[e.status] || e.status}</Badge></td>
-              <td className="px-4 py-3">
-                <div className="flex gap-1">
-                  {canEdit && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={ev => { ev.stopPropagation(); openEdit(e); }}><Edit className="w-3.5 h-3.5" /></Button>}
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={ev => { ev.stopPropagation(); setTransferFrom(e); setShowTransfer(true); }} title="客户交接"><ArrowRightLeft className="w-3.5 h-3.5" /></Button>
-                  {canResetPwd && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-amber-600" onClick={ev => { ev.stopPropagation(); setResetPwdTarget(e); }} title="重置密码"><KeyRound className="w-3.5 h-3.5" /></Button>}
-                  {e.status === 'active' && canDisable && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={ev => { ev.stopPropagation(); toggleStatus(e, 'disabled'); }} title="停用"><ShieldOff className="w-3.5 h-3.5" /></Button>}
-                  {e.status === 'disabled' && canDisable && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-green-600" onClick={ev => { ev.stopPropagation(); toggleStatus(e, 'active'); }} title="启用"><ShieldCheck className="w-3.5 h-3.5" /></Button>}
-                  {canDisable && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={ev => { ev.stopPropagation(); setDeleteTarget(e); }} title="删除"><Trash2 className="w-3.5 h-3.5" /></Button>}
-                </div>
+              <td className="px-4 py-3 text-right">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0 text-slate-500 hover:text-blue-600"
+                      aria-label={`更多员工操作：${e.name}`}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    {canEdit && <DropdownMenuItem onSelect={() => openEdit(e)}><Edit className="mr-2 h-4 w-4" />编辑资料</DropdownMenuItem>}
+                    <DropdownMenuItem onSelect={() => { setTransferFrom(e); setShowTransfer(true); }}><ArrowRightLeft className="mr-2 h-4 w-4" />客户交接</DropdownMenuItem>
+                    {canResetPwd && <DropdownMenuItem onSelect={() => setResetPwdTarget(e)}><KeyRound className="mr-2 h-4 w-4" />重置密码</DropdownMenuItem>}
+                    {canDisable && (e.status === 'active' || e.status === 'disabled') && <DropdownMenuSeparator />}
+                    {e.status === 'active' && canDisable && <DropdownMenuItem className="text-amber-700 focus:text-amber-800" onSelect={() => setDisableTarget(e)}><ShieldOff className="mr-2 h-4 w-4" />停用账号</DropdownMenuItem>}
+                    {e.status === 'disabled' && canDisable && <DropdownMenuItem className="text-emerald-700 focus:text-emerald-800" onSelect={() => { void toggleStatus(e, 'active'); }}><ShieldCheck className="mr-2 h-4 w-4" />启用账号</DropdownMenuItem>}
+                    {canDisable && <DropdownMenuSeparator />}
+                    {canDisable && <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-700" onSelect={() => setDeleteTarget(e)}><Trash2 className="mr-2 h-4 w-4" />删除员工</DropdownMenuItem>}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </td>
             </tr>
           ))}</tbody></table></div>
@@ -573,7 +635,11 @@ export default function Employees() {
       {/* Resign Confirm */}
       <ConfirmDialog open={!!resignTarget} onOpenChange={v => { if (!v) setResignTarget(null); }} title="确认办理离职"
         description={`确定要将「${resignTarget?.name}」标记为离职吗？离职后账号将被停用，但记录不会被删除。如果该员工名下仍有客户，需先完成客户交接。`}
-        onConfirm={handleResign} loading={resigning} />
+        onConfirm={handleResign} loading={resigning} confirmLabel="确认办理离职" loadingLabel="办理中..." />
+
+      <ConfirmDialog open={!!disableTarget} onOpenChange={v => { if (!v) setDisableTarget(null); }} title="确认停用账号"
+        description={`确定要停用「${disableTarget?.name}」的账号吗？停用后该员工将无法登录，但员工资料和历史记录会继续保留。`}
+        onConfirm={handleDisable} loading={statusUpdating} confirmLabel="确认停用" loadingLabel="停用中..." />
 
       {/* Reset Password Dialog */}
       <Dialog open={!!resetPwdTarget} onOpenChange={v => { if (!v) { setResetPwdTarget(null); setNewPassword(''); setResettingPassword(false); } }}>
@@ -599,7 +665,7 @@ export default function Employees() {
       {/* Delete Confirm */}
       <ConfirmDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }} title="确认删除员工"
         description={`确定要删除员工「${deleteTarget?.name}」吗？此操作不可恢复。如果该员工名下仍有客户，需先完成客户交接。`}
-        onConfirm={handleDelete} loading={deleting} />
+        onConfirm={handleDelete} loading={deleting} confirmLabel="确认删除员工" loadingLabel="删除中..." />
 
       {/* Add/Edit Dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>

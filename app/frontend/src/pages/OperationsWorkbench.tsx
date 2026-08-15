@@ -74,11 +74,16 @@ type ActionItem = {
 };
 
 const localDateKey = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+};
+
+const daysBetweenDateKeys = (from?: string, to?: string) => {
+  if (!from || !to) return 0;
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  return Math.max(0, Math.round((end - start) / 86400000));
 };
 
 const isClosedTask = (task: WorkbenchTask) => ['completed', 'cancelled'].includes(task.status || '');
@@ -337,13 +342,16 @@ export default function OperationsWorkbench() {
         <div className="grid gap-3">
           {visibleActions.map(action => {
             const style = urgencyStyles[action.urgency];
+            const overdueDays = action.urgency === 'overdue' ? daysBetweenDateKeys(action.date, today) : 0;
+            const missingOwner = /尚未分配|待安排|需要确认处理人/.test(action.description);
             return (
               <Card key={action.id} className={style.card}>
                 <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={style.badge}>{style.label}</Badge>
+                      <Badge className={style.badge}>{action.urgency === 'overdue' && overdueDays > 0 ? `逾期 ${overdueDays} 天` : style.label}</Badge>
                       <Badge variant="outline">{action.kind === 'task' ? '任务' : action.kind === 'callback' ? '回访' : '服务问题'}</Badge>
+                      {missingOwner && <Badge className="bg-orange-100 text-orange-800">缺少负责人</Badge>}
                       {action.date && <span className="text-xs text-slate-500">计划 {action.date}</span>}
                     </div>
                     <button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId} className="mt-2 flex items-center gap-1 text-left font-semibold text-slate-900 hover:text-blue-700 disabled:cursor-default disabled:hover:text-slate-900">

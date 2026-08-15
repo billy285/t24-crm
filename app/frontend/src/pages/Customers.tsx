@@ -13,9 +13,17 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, ShieldCheck, MoreHorizontal, Settings2 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ImportCustomers from '@/components/ImportCustomers';
@@ -596,6 +604,10 @@ export default function Customers() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advFilters, setAdvFilters] = useState(emptyAdvancedFilters);
   const advFilterCount = Object.values(advFilters).filter(v => v.trim()).length;
+  const primaryFilterCount = [filterStatus, filterIndustry, filterLevel, filterSource].filter(value => value !== 'all').length;
+  const activeFilterCount = primaryFilterCount + advFilterCount;
+  const [mobileManageOpen, setMobileManageOpen] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -2847,8 +2859,8 @@ export default function Customers() {
           <h2 className="app-page-heading">客户管理</h2>
           <p className="app-page-description">从线索、成交到服务和续费，统一管理客户全生命周期</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <div className="hidden flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm md:flex">
             {hasPermission('customer_create') && <ImportCustomers existingCustomers={customers} onImportComplete={loadCustomers} />}
             {hasPermission('customer_export') && <ExportButton data={filtered.map(c => ({ ...c, industry_label: industryLabels[c.industry] || c.industry, status_label: statusLabels[c.status] || c.status, level_label: levelLabels[c.level] || c.level, source_label: sourceLabels[c.source] || c.source, country_label: c.country ? getCountryLabel(c.country) : '' }))}
             columns={[{ key: 'customer_code', label: '编号' }, { key: 'business_name', label: '商家名称' }, { key: 'contact_name', label: '联系人' }, { key: 'phone', label: '电话' }, { key: 'email', label: '邮箱' }, { key: 'industry_label', label: '行业' }, { key: 'city', label: '城市' }, { key: 'state', label: '州' }, { key: 'country_label', label: '国家' }, { key: 'status_label', label: '状态' }, { key: 'level_label', label: '等级' }, { key: 'source_label', label: '来源' }, { key: 'sales_person', label: '负责销售' }, { key: 'facebook_link', label: 'Facebook' }, { key: 'instagram_link', label: 'Instagram' }, { key: 'google_business_link', label: 'Google Business' }, { key: 'yelp_link', label: 'Yelp' }, { key: 'tiktok_link', label: 'TikTok' }, { key: 'notes', label: '备注' }]}
@@ -2865,9 +2877,25 @@ export default function Customers() {
               </Button>
             )}
           </div>
-          {hasPermission('customer_create') && <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 新增客户</Button>}
+          <Button variant="outline" className="md:hidden" onClick={() => setMobileManageOpen(true)}><Settings2 className="mr-1.5 h-4 w-4" />管理</Button>
+          {hasPermission('customer_create') && <Button onClick={openCreate} className="flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none"><Plus className="w-4 h-4 mr-1" /> 新增客户</Button>}
         </div>
       </div>
+
+      <Sheet open={mobileManageOpen} onOpenChange={setMobileManageOpen}>
+        <SheetContent side="bottom" className="max-h-[82vh] overflow-y-auto rounded-t-2xl px-5 pb-8 md:hidden">
+          <SheetHeader className="text-left">
+            <SheetTitle>客户管理工具</SheetTitle>
+            <SheetDescription>手机端保留导入和导出；列设置与快捷编辑仅适用于桌面表格。</SheetDescription>
+          </SheetHeader>
+          <div className="mt-5 grid gap-2">
+            {hasPermission('customer_create') && <ImportCustomers existingCustomers={customers} onImportComplete={loadCustomers} />}
+            {hasPermission('customer_export') && <ExportButton data={filtered.map(c => ({ ...c, industry_label: industryLabels[c.industry] || c.industry, status_label: statusLabels[c.status] || c.status, level_label: levelLabels[c.level] || c.level, source_label: sourceLabels[c.source] || c.source, country_label: c.country ? getCountryLabel(c.country) : '' }))}
+            columns={[{ key: 'customer_code', label: '编号' }, { key: 'business_name', label: '商家名称' }, { key: 'contact_name', label: '联系人' }, { key: 'phone', label: '电话' }, { key: 'email', label: '邮箱' }, { key: 'industry_label', label: '行业' }, { key: 'city', label: '城市' }, { key: 'state', label: '州' }, { key: 'country_label', label: '国家' }, { key: 'status_label', label: '状态' }, { key: 'level_label', label: '等级' }, { key: 'source_label', label: '来源' }, { key: 'sales_person', label: '负责销售' }, { key: 'facebook_link', label: 'Facebook' }, { key: 'instagram_link', label: 'Instagram' }, { key: 'google_business_link', label: 'Google Business' }, { key: 'yelp_link', label: 'Yelp' }, { key: 'tiktok_link', label: 'TikTok' }, { key: 'notes', label: '备注' }]}
+            filename={`客户列表_${new Date().toISOString().slice(0, 10)}`} sheetName="客户列表" />}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {showColPicker && (
         <Card className="border-slate-200"><CardContent className="p-3">
@@ -2876,10 +2904,10 @@ export default function Customers() {
         </CardContent></Card>
       )}
 
-      <div className="app-toolbar flex flex-wrap gap-1.5">
-        <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`h-8 text-xs ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
+      <div className="app-toolbar -mx-1 flex flex-nowrap gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+        <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`h-8 shrink-0 text-xs ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
         {Object.entries(statusLabels).map(([k, v]) => (
-          <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`h-8 text-xs ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
+          <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`h-8 shrink-0 text-xs ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
         ))}
       </div>
 
@@ -2890,13 +2918,16 @@ export default function Customers() {
       )}
 
       <div className="app-toolbar space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex gap-2 md:gap-3">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索编号、名称、联系人、电话..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
-          <NativeSelect value={filterStatus} onChange={setFilterStatus} className="w-[120px]" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-          <NativeSelect value={filterIndustry} onChange={setFilterIndustry} className="w-[120px]" options={[{ value: 'all', label: '全部行业' }, ...Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-          <NativeSelect value={filterLevel} onChange={setFilterLevel} className="w-[120px]" options={[{ value: 'all', label: '全部等级' }, ...Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-          <NativeSelect value={filterSource} onChange={setFilterSource} className="w-[120px]" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-          <Button variant={showAdvanced ? 'default' : 'outline'} size="sm" className={`h-10 shrink-0 gap-1.5 ${showAdvanced ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setShowAdvanced(!showAdvanced)}>
+          <Button variant="outline" size="sm" className="h-10 shrink-0 gap-1.5 md:hidden" onClick={() => setMobileFiltersOpen(true)}>
+            <SlidersHorizontal className="h-4 w-4" />筛选{activeFilterCount > 0 && <Badge className="ml-0.5 h-5 min-w-[20px] bg-blue-600 px-1.5 text-xs text-white">{activeFilterCount}</Badge>}
+          </Button>
+          <NativeSelect value={filterStatus} onChange={setFilterStatus} className="hidden w-[120px] md:block" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+          <NativeSelect value={filterIndustry} onChange={setFilterIndustry} className="hidden w-[120px] md:block" options={[{ value: 'all', label: '全部行业' }, ...Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+          <NativeSelect value={filterLevel} onChange={setFilterLevel} className="hidden w-[120px] md:block" options={[{ value: 'all', label: '全部等级' }, ...Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+          <NativeSelect value={filterSource} onChange={setFilterSource} className="hidden w-[120px] md:block" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+          <Button variant={showAdvanced ? 'default' : 'outline'} size="sm" className={`hidden h-10 shrink-0 gap-1.5 md:inline-flex ${showAdvanced ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setShowAdvanced(!showAdvanced)}>
             <SlidersHorizontal className="w-4 h-4" /> 高级{advFilterCount > 0 && <Badge className="ml-1 bg-white text-blue-600 hover:bg-white h-5 min-w-[20px] px-1.5 text-xs">{advFilterCount}</Badge>}
           </Button>
         </div>
@@ -2951,6 +2982,26 @@ export default function Customers() {
         )}
       </div>
 
+      <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+        <SheetContent side="bottom" className="max-h-[86vh] overflow-y-auto rounded-t-2xl px-5 pb-8 md:hidden">
+          <SheetHeader className="text-left">
+            <SheetTitle>筛选客户</SheetTitle>
+            <SheetDescription>选择常用条件后即可返回客户列表。</SheetDescription>
+          </SheetHeader>
+          <div className="mt-5 grid gap-4">
+            <div><Label className="text-xs text-slate-500">状态</Label><NativeSelect value={filterStatus} onChange={setFilterStatus} className="mt-1 w-full" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
+            <div><Label className="text-xs text-slate-500">行业</Label><NativeSelect value={filterIndustry} onChange={setFilterIndustry} className="mt-1 w-full" options={[{ value: 'all', label: '全部行业' }, ...Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label className="text-xs text-slate-500">等级</Label><NativeSelect value={filterLevel} onChange={setFilterLevel} className="mt-1 w-full" options={[{ value: 'all', label: '全部等级' }, ...Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
+              <div><Label className="text-xs text-slate-500">来源</Label><NativeSelect value={filterSource} onChange={setFilterSource} className="mt-1 w-full" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
+            </div>
+            <Button variant="outline" onClick={() => { setShowAdvanced(true); setMobileFiltersOpen(false); }}><SlidersHorizontal className="mr-2 h-4 w-4" />打开精确筛选{advFilterCount > 0 ? `（${advFilterCount}）` : ''}</Button>
+            {activeFilterCount > 0 && <Button variant="ghost" className="text-slate-600" onClick={() => { setFilterStatus('all'); setFilterIndustry('all'); setFilterLevel('all'); setFilterSource('all'); setAdvFilters(emptyAdvancedFilters); }}>清除全部筛选</Button>}
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => setMobileFiltersOpen(false)}>查看 {filtered.length} 位客户</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <div className="text-xs text-slate-500">共 {filtered.length} 条{filtered.length !== customers.length ? ` (筛选自 ${customers.length} 条)` : ''}</div>
 
       <Card className="border-slate-200"><CardContent className="p-0">
@@ -2979,9 +3030,20 @@ export default function Customers() {
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                   <Button size="sm" className="h-8 flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => openDetail(c)}>查看客户</Button>
-                  {isAdmin && <Button size="sm" variant="outline" className="h-8" onClick={() => void openAccessManager(c)}><ShieldCheck className="mr-1 h-3.5 w-3.5" />可见人员</Button>}
-                  {hasPermission('customer_assign') && <Button size="sm" variant="outline" className="h-8" onClick={() => openAssign(c)}>分配</Button>}
-                  {hasPermission('customer_edit') && <Button size="sm" variant="outline" className="h-8" onClick={() => openEdit(c)}>编辑</Button>}
+                  {(isAdmin || hasPermission('customer_assign') || hasPermission('customer_edit') || hasPermission('customer_delete')) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="outline" className="h-8 px-2.5" aria-label={`更多客户操作：${c.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        {isAdmin && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><ShieldCheck className="mr-2 h-4 w-4" />管理可见人员</DropdownMenuItem>}
+                        {hasPermission('customer_assign') && <DropdownMenuItem onSelect={() => openAssign(c)}><ArrowRightLeft className="mr-2 h-4 w-4" />分配负责人</DropdownMenuItem>}
+                        {hasPermission('customer_edit') && <DropdownMenuItem onSelect={() => openEdit(c)}><Edit className="mr-2 h-4 w-4" />编辑客户</DropdownMenuItem>}
+                        {hasPermission('customer_delete') && <DropdownMenuSeparator />}
+                        {hasPermission('customer_delete') && <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-700" onSelect={() => setDeleteTarget(c)}><Trash2 className="mr-2 h-4 w-4" />删除客户</DropdownMenuItem>}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
             ))}
@@ -3001,7 +3063,7 @@ export default function Customers() {
             {visibleCols.includes('email') && <th className="px-4 py-3 font-medium hidden lg:table-cell">邮箱</th>}
             {visibleCols.includes('wechat') && <th className="px-4 py-3 font-medium hidden lg:table-cell">微信</th>}
             {visibleCols.includes('source') && <th className="px-4 py-3 font-medium hidden lg:table-cell">来源</th>}
-            <th className="px-4 py-3 font-medium w-24">操作</th>
+            <th className="w-28 px-4 py-3 text-right font-medium">操作</th>
           </tr></thead>
           <tbody>{paginatedCustomers.items.map(c => (
             <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
@@ -3144,12 +3206,25 @@ export default function Customers() {
               {visibleCols.includes('email') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.email || '-'}</td>}
               {visibleCols.includes('wechat') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.wechat || '-'}</td>}
               {visibleCols.includes('source') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{sourceLabels[c.source] || c.source}</td>}
-              <td className="px-4 py-3"><div className="flex gap-1">
-                {isAdmin && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" title="管理可见人员" aria-label={`管理 ${c.business_name} 的可见人员`} onClick={e => { e.stopPropagation(); void openAccessManager(c); }}><ShieldCheck className="w-3.5 h-3.5" /></Button>}
-                {hasPermission('customer_assign') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-indigo-600" title="分配负责人" aria-label={`分配 ${c.business_name} 的负责人`} onClick={e => { e.stopPropagation(); openAssign(c); }}><ArrowRightLeft className="w-3.5 h-3.5" /></Button>}
-                {hasPermission('customer_edit') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" title="编辑客户" aria-label={`编辑 ${c.business_name}`} onClick={e => { e.stopPropagation(); openEdit(c); }}><Edit className="w-3.5 h-3.5" /></Button>}
-                {hasPermission('customer_delete') && <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" title="删除客户" aria-label={`删除 ${c.business_name}`} onClick={e => { e.stopPropagation(); setDeleteTarget(c); }}><Trash2 className="w-3.5 h-3.5" /></Button>}
-              </div></td>
+              <td className="px-4 py-3">
+                <div className="flex items-center justify-end gap-1">
+                  <Button size="sm" variant="ghost" className="h-8 px-2 text-xs text-blue-600" onClick={() => openDetail(c)}>查看</Button>
+                  {(isAdmin || hasPermission('customer_assign') || hasPermission('customer_edit') || hasPermission('customer_delete')) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-blue-600" aria-label={`更多客户操作：${c.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        {isAdmin && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><ShieldCheck className="mr-2 h-4 w-4" />管理可见人员</DropdownMenuItem>}
+                        {hasPermission('customer_assign') && <DropdownMenuItem onSelect={() => openAssign(c)}><ArrowRightLeft className="mr-2 h-4 w-4" />分配负责人</DropdownMenuItem>}
+                        {hasPermission('customer_edit') && <DropdownMenuItem onSelect={() => openEdit(c)}><Edit className="mr-2 h-4 w-4" />编辑客户</DropdownMenuItem>}
+                        {hasPermission('customer_delete') && <DropdownMenuSeparator />}
+                        {hasPermission('customer_delete') && <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-700" onSelect={() => setDeleteTarget(c)}><Trash2 className="mr-2 h-4 w-4" />删除客户</DropdownMenuItem>}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              </td>
             </tr>
           ))}</tbody></table></div>
           </>
