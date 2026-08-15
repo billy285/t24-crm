@@ -1,12 +1,12 @@
 import json
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -23,6 +23,14 @@ ADMIN_ROLES = {"admin", "super_admin"}
 PAYMENT_METHODS = {"alipay", "bank_card", "wechat", "cash", "other"}
 PAYMENT_STATUS_ORDER = ("pending", "partial", "supplemental", "failed", "returned", "paid")
 PAYMENT_STATUSES = set(PAYMENT_STATUS_ORDER)
+PAYMENT_STATUS_LABELS = {
+    "pending": "待发放",
+    "partial": "部分发放",
+    "supplemental": "待补发",
+    "failed": "发放失败",
+    "returned": "已退回",
+    "paid": "已发放",
+}
 
 
 class PayrollItemInput(BaseModel):
@@ -67,6 +75,18 @@ class PayrollItemInput(BaseModel):
 class PayrollTransition(BaseModel):
     action: str
     reason: Optional[str] = Field(default=None, max_length=1000)
+    payment_date: Optional[str] = None
+    confirm_all_pending: bool = False
+
+    @field_validator("payment_date")
+    @classmethod
+    def validate_payment_date(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return date.fromisoformat(value).isoformat()
+        except ValueError as exc:
+            raise ValueError("发放日期格式应为 YYYY-MM-DD") from exc
 
 
 def _ensure_role(user: UserResponse) -> str:
@@ -428,6 +448,10 @@ async def transition_payroll(month: str, payload: PayrollTransition, current_use
     role = _ensure_role(current_user); month = _valid_month(month)
     sheet = (await db.execute(select(PayrollSheets).where(PayrollSheets.month == month))).scalar_one_or_none()
     if not sheet: raise HTTPException(status_code=404, detail="工资表不存在")
+    # Keep scalar identifiers outside the ORM object so the concurrency
+    # rollback path never touches an expired instance.
+    sheet_id = sheet.id
+    sheet_month = sheet.month
     now = datetime.now(timezone.utc); actor = _actor(current_user)
     if payload.action == "confirm":
         if role not in ADMIN_ROLES: raise HTTPException(status_code=403, detail="工资表必须由管理员确认")
@@ -436,9 +460,79 @@ async def transition_payroll(month: str, payload: PayrollTransition, current_use
         if not count: raise HTTPException(status_code=409, detail="工资表没有员工明细")
         sheet.status = "confirmed"; sheet.confirmed_at = now; sheet.confirmed_by = actor
     elif payload.action == "mark_paid":
+        # Replayed clicks are safe: the first successful request owns the audit
+        # entry and subsequent requests simply return the already-locked state.
+        if sheet.status == "paid":
+            return {"month": sheet_month, "status": sheet.status, "message": "工资表已发放并锁定", "updated_items": 0}
         if sheet.status != "confirmed": raise HTTPException(status_code=409, detail="工资表需要先由管理员确认")
-        pending = (await db.execute(select(func.count(PayrollItems.id)).where(PayrollItems.sheet_id == sheet.id, PayrollItems.payment_status != "paid"))).scalar_one()
-        if pending: raise HTTPException(status_code=409, detail=f"还有 {pending} 条工资明细未标记为已发放")
+        items = (
+            await db.execute(
+                select(PayrollItems)
+                .where(PayrollItems.sheet_id == sheet.id)
+                .order_by(PayrollItems.id)
+            )
+        ).scalars().all()
+        if not items:
+            raise HTTPException(status_code=409, detail="工资表没有员工明细")
+
+        blockers = [item for item in items if item.payment_status not in {"pending", "paid"}]
+        if blockers:
+            preview = "、".join(
+                f"{item.employee_name}（{PAYMENT_STATUS_LABELS.get(item.payment_status, item.payment_status)}）"
+                for item in blockers[:5]
+            )
+            suffix = "等" if len(blockers) > 5 else ""
+            raise HTTPException(
+                status_code=409,
+                detail=f"有 {len(blockers)} 条异常或未结清明细：{preview}{suffix}。请先逐条处理后再完成整表发放",
+            )
+
+        pending_items = [item for item in items if item.payment_status == "pending"]
+        if pending_items and not payload.confirm_all_pending:
+            raise HTTPException(status_code=409, detail=f"还有 {len(pending_items)} 条工资明细未标记为已发放")
+        # Keep the legacy all-paid flow compatible: historical rows were
+        # allowed to be paid without a payment_date. A date is mandatory only
+        # when this request is actually converting pending rows to paid.
+        if pending_items and not payload.payment_date:
+            raise HTTPException(status_code=400, detail="完成整表发放必须选择实际发放日期")
+
+        changed_items = []
+        for item in items:
+            changed = False
+            if item.payment_status == "pending":
+                item.payment_status = "paid"
+                changed = True
+            if not item.payment_date and payload.payment_date:
+                item.payment_date = payload.payment_date
+                changed = True
+            if changed:
+                changed_items.append(item)
+                await _audit(
+                    db,
+                    sheet,
+                    current_user,
+                    "bulk_mark_paid",
+                    item,
+                    reason=f"整表发放日期：{payload.payment_date}",
+                )
+
+        # The conditional update is the concurrency/idempotency gate. If
+        # another request locked this sheet first, roll back this request's
+        # item/audit changes and return the latest state without duplicating
+        # the sheet-level mark_paid audit.
+        result = await db.execute(
+            update(PayrollSheets)
+            .where(PayrollSheets.id == sheet_id, PayrollSheets.status == "confirmed")
+            .values(status="paid", paid_at=now, paid_by=actor)
+        )
+        if result.rowcount != 1:
+            await db.rollback()
+            latest = (
+                await db.execute(select(PayrollSheets).where(PayrollSheets.id == sheet_id))
+            ).scalar_one_or_none()
+            if latest and latest.status == "paid":
+                return {"month": sheet_month, "status": latest.status, "message": "工资表已发放并锁定", "updated_items": 0}
+            raise HTTPException(status_code=409, detail="工资表状态已变化，请刷新后重试")
         sheet.status = "paid"; sheet.paid_at = now; sheet.paid_by = actor
     elif payload.action == "reopen":
         if role not in ADMIN_ROLES: raise HTTPException(status_code=403, detail="只有管理员可以重新打开")
@@ -448,7 +542,13 @@ async def transition_payroll(month: str, payload: PayrollTransition, current_use
     else:
         raise HTTPException(status_code=400, detail="无效的流程操作")
     await _audit(db, sheet, current_user, payload.action, reason=payload.reason); await db.commit()
-    return {"month": sheet.month, "status": sheet.status, "message": "工资表状态已更新"}
+    message = "工资表已发放并锁定" if payload.action == "mark_paid" else "工资表状态已更新"
+    return {
+        "month": sheet.month,
+        "status": sheet.status,
+        "message": message,
+        "updated_items": len(changed_items) if payload.action == "mark_paid" else 0,
+    }
 
 
 @router.get("/{month}/audit")
