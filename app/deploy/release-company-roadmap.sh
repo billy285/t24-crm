@@ -5,11 +5,12 @@ set -euo pipefail
 cd /opt/t24-crm/app
 
 TARGET="${TARGET:?TARGET is required}"
-EXPECTED_PRE_MIGRATION="${EXPECTED_PRE_MIGRATION:-e2c6b8d4a105}"
-EXPECTED_POST_MIGRATION="${EXPECTED_POST_MIGRATION:-f3a7c9d2e611}"
+EXPECTED_PRE_MIGRATION="${EXPECTED_PRE_MIGRATION:-f3a7c9d2e611}"
+EXPECTED_POST_MIGRATION="${EXPECTED_POST_MIGRATION:-f5d8a2c7b901}"
 export EXPECTED_PRE_MIGRATION EXPECTED_POST_MIGRATION
 
 test "$(git rev-parse HEAD)" = "$TARGET"
+test -z "$(git status --porcelain=v1 --untracked-files=normal)"
 test "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' t24-crm)" = healthy
 
 python3 - <<'PY'

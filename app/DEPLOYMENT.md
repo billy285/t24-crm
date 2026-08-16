@@ -162,10 +162,13 @@ docker compose --env-file .env.production up -d --no-build crm
 Do not use `alembic downgrade` as a production rollback. Stop the candidate
 container and reactivate the previously verified image or checkout. If the
 release migration wrote to the database, restore the verified pre-release
-backup before reopening traffic. A structurally complete production database
-already stamped at `f3a7c9d2e611` remains at that revision; because the bridge
-was inserted earlier in the history, `upgrade head` is a true no-op for that
-database. It must still follow the same backup, rehearsal and rollback rules.
+backup before reopening traffic. A production database stamped at
+`f3a7c9d2e611` advances to `f5d8a2c7b901` by adding six explicitly validated
+lookup indexes. The migration performs no table rebuild and no business-data
+update. It must first pass on a restored production backup with unchanged table
+counts, business-data fingerprint and uniqueness checks. Rollback remains the
+previous verified image plus the verified pre-release backup; never use
+`alembic downgrade`.
 
 ## Production Checklist
 

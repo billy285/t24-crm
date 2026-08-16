@@ -135,28 +135,6 @@ def _ensure_nullable(table: str, column_name: str, column_type: sa.types.TypeEng
         batch_op.alter_column(column_name, existing_type=column_type, nullable=True)
 
 
-def _normalize_unique_index(table: str, column: str, legacy_constraint: str) -> None:
-    """Match ORM ``unique=True, index=True`` without weakening uniqueness."""
-
-    inspector = _inspector()
-    constraints = {
-        constraint.get("name") for constraint in inspector.get_unique_constraints(table)
-    }
-    index_name = f"ix_{table}_{column}"
-    indexes = {index["name"]: index for index in inspector.get_indexes(table)}
-    current_index = indexes.get(index_name)
-    needs_unique_index = not current_index or not bool(current_index.get("unique"))
-    if legacy_constraint not in constraints and not needs_unique_index:
-        return
-
-    with op.batch_alter_table(table) as batch_op:
-        if legacy_constraint in constraints:
-            batch_op.drop_constraint(legacy_constraint, type_="unique")
-        if current_index:
-            batch_op.drop_index(index_name)
-        batch_op.create_index(index_name, [column], unique=True)
-
-
 def _bridge_runtime_repair_columns() -> None:
     """Make a fresh migrated schema match columns previously supplied by repair."""
 
@@ -255,12 +233,18 @@ def _bridge_runtime_repair_columns() -> None:
     ):
         _ensure_index(table, ("id",))
 
-    _normalize_unique_index("deals", "opportunity_id", "uq_deals_opportunity_id")
-    _normalize_unique_index(
+    # The historical migrations and production database represent these keys
+    # as a named UNIQUE constraint plus a non-unique lookup index. Preserve
+    # that safe representation instead of rebuilding SQLite tables merely to
+    # move uniqueness onto the named index itself.
+    _require_unique("deals", ("opportunity_id",), "uq_deals_opportunity_id")
+    _ensure_index("deals", ("opportunity_id",))
+    _require_unique(
         "opportunities",
-        "opportunity_code",
+        ("opportunity_code",),
         "uq_opportunities_code",
     )
+    _ensure_index("opportunities", ("opportunity_code",))
 
 
 def upgrade() -> None:

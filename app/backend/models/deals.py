@@ -1,14 +1,17 @@
 from core.database import Base
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 
 
 class Deals(Base):
     __tablename__ = "deals"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        UniqueConstraint("opportunity_id", name="uq_deals_opportunity_id"),
+        {"extend_existing": True},
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
     source_payment_id = Column(Integer, nullable=True)
-    opportunity_id = Column(Integer, ForeignKey("opportunities.id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
+    opportunity_id = Column(Integer, ForeignKey("opportunities.id", ondelete="SET NULL"), nullable=True, index=True)
     engagement_id = Column(Integer, ForeignKey("customer_engagements.id", ondelete="SET NULL"), nullable=True, index=True)
     business_line_id = Column(Integer, ForeignKey("business_lines.id", ondelete="SET NULL"), nullable=True, index=True)
     product_id = Column(Integer, ForeignKey("product_catalog.id", ondelete="SET NULL"), nullable=True, index=True)

@@ -8,8 +8,18 @@ from pathlib import Path
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-HEAD_REVISION = "f3a7c9d2e611"
+HEAD_REVISION = "f5d8a2c7b901"
 BRIDGE_PARENT_REVISION = "e4c7a1b9d305"
+PRE_ALIGNMENT_HEAD_REVISION = "f3a7c9d2e611"
+
+PRODUCTION_ALIGNMENT_INDEXES = {
+    "ix_ad_fund_settlements_id": ("ad_fund_settlements", ("id",)),
+    "ix_customer_lifecycle_cycles_id": ("customer_lifecycle_cycles", ("id",)),
+    "ix_customer_lifecycle_events_id": ("customer_lifecycle_events", ("id",)),
+    "ix_customers_sales_lead_id": ("customers", ("sales_lead_id",)),
+    "ix_finance_refunds_id": ("finance_refunds", ("id",)),
+    "ix_opportunities_id": ("opportunities", ("id",)),
+}
 
 BRIDGE_ORM_TABLES = {
     "users",
@@ -274,25 +284,37 @@ def test_e4_runtime_bootstrap_reentry_preserves_existing_business_values(tmp_pat
     assert "No new upgrade operations detected" in check.stdout + check.stderr
 
 
-def test_existing_head_database_upgrade_is_a_true_noop(tmp_path: Path) -> None:
-    database = tmp_path / "already-at-head.sqlite"
+def test_existing_f3_database_adds_only_expected_indexes_and_preserves_data(tmp_path: Path) -> None:
+    database = tmp_path / "production-like-f3.sqlite"
+    _run_alembic(database, "upgrade", PRE_ALIGNMENT_HEAD_REVISION)
+
     connection = sqlite3.connect(database)
     try:
+        for index_name, (table_name, _) in PRODUCTION_ALIGNMENT_INDEXES.items():
+            existing = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ? AND tbl_name = ?",
+                (index_name, table_name),
+            ).fetchone()
+            if existing:
+                connection.execute(f'DROP INDEX "{index_name}"')
         connection.execute(
-            "CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
-        )
-        connection.execute(
-            "INSERT INTO alembic_version (version_num) VALUES (?)",
-            (HEAD_REVISION,),
-        )
-        connection.execute(
-            "CREATE TABLE production_sentinel (id INTEGER PRIMARY KEY, value TEXT NOT NULL)"
-        )
-        connection.execute(
-            "INSERT INTO production_sentinel (id, value) VALUES (1, 'unchanged')"
+            "INSERT INTO app_settings (config_key, value_json) VALUES (?, ?)",
+            ("phase0_alignment_sentinel", '{"preserved": true}'),
         )
         connection.commit()
-        signature_before = _schema_signature(connection)
+        schema_before = {
+            row
+            for row in connection.execute(
+                "SELECT type, name, tbl_name, sql FROM sqlite_master "
+                "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+            ).fetchall()
+            if row[1] not in PRODUCTION_ALIGNMENT_INDEXES
+        }
+        row_counts_before = {
+            table_name: connection.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+            for table_name in _database_table_names(connection)
+            if table_name != "alembic_version"
+        }
     finally:
         connection.close()
 
@@ -300,10 +322,81 @@ def test_existing_head_database_upgrade_is_a_true_noop(tmp_path: Path) -> None:
 
     connection = sqlite3.connect(database)
     try:
-        assert _schema_signature(connection) == signature_before
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            HEAD_REVISION,
+        )
         assert connection.execute(
-            "SELECT value FROM production_sentinel WHERE id = 1"
-        ).fetchone() == ("unchanged",)
+            "SELECT value_json FROM app_settings WHERE config_key = ?",
+            ("phase0_alignment_sentinel",),
+        ).fetchone() == ('{"preserved": true}',)
+
+        schema_after = {
+            row
+            for row in connection.execute(
+                "SELECT type, name, tbl_name, sql FROM sqlite_master "
+                "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+            ).fetchall()
+            if row[1] not in PRODUCTION_ALIGNMENT_INDEXES
+        }
+        assert schema_after == schema_before
+        assert {
+            table_name: connection.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+            for table_name in _database_table_names(connection)
+            if table_name != "alembic_version"
+        } == row_counts_before
+
+        for index_name, (table_name, expected_columns) in PRODUCTION_ALIGNMENT_INDEXES.items():
+            index_rows = connection.execute(f'PRAGMA index_list("{table_name}")').fetchall()
+            matched = [row for row in index_rows if row[1] == index_name]
+            assert len(matched) == 1
+            assert matched[0][2] == 0
+            actual_columns = tuple(
+                row[2]
+                for row in connection.execute(f'PRAGMA index_info("{index_name}")').fetchall()
+            )
+            assert actual_columns == expected_columns
+
+        for table_name, column_name in (
+            ("deals", "opportunity_id"),
+            ("opportunities", "opportunity_code"),
+        ):
+            assert any(
+                row[2] == 1
+                and tuple(
+                    item[2]
+                    for item in connection.execute(f'PRAGMA index_info("{row[1]}")').fetchall()
+                ) == (column_name,)
+                for row in connection.execute(f'PRAGMA index_list("{table_name}")').fetchall()
+            )
+
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    finally:
+        connection.close()
+
+    check = _run_alembic(database, "check")
+    assert "No new upgrade operations detected" in check.stdout + check.stderr
+
+
+def test_alignment_downgrade_is_rejected_before_any_schema_change(tmp_path: Path) -> None:
+    database = tmp_path / "alignment-downgrade.sqlite"
+    _run_alembic(database, "upgrade", "head")
+
+    connection = sqlite3.connect(database)
+    try:
+        signature_before = _schema_signature(connection)
+    finally:
+        connection.close()
+
+    failure = _run_alembic_expect_failure(
+        database,
+        "downgrade",
+        PRE_ALIGNMENT_HEAD_REVISION,
+    )
+    assert "intentionally irreversible" in failure.stdout + failure.stderr
+
+    connection = sqlite3.connect(database)
+    try:
+        assert _schema_signature(connection) == signature_before
     finally:
         connection.close()
 

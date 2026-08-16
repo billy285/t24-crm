@@ -1,10 +1,13 @@
 from core.database import Base
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 
 
 class Opportunities(Base):
     __tablename__ = "opportunities"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        UniqueConstraint("opportunity_code", name="uq_opportunities_code"),
+        {"extend_existing": True},
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -12,7 +15,7 @@ class Opportunities(Base):
     business_line_id = Column(Integer, ForeignKey("business_lines.id", ondelete="RESTRICT"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("product_catalog.id", ondelete="SET NULL"), nullable=True, index=True)
     product_plan_id = Column(Integer, ForeignKey("product_plans.id", ondelete="SET NULL"), nullable=True, index=True)
-    opportunity_code = Column(String(64), nullable=False, unique=True, index=True)
+    opportunity_code = Column(String(64), nullable=False, index=True)
     title = Column(String(200), nullable=False)
     stage = Column(String(32), nullable=False, default="initial", index=True)
     status = Column(String(24), nullable=False, default="open", index=True)
