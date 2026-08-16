@@ -242,60 +242,71 @@ def sanitize_save(source_raw: str, destination_raw: str) -> None:
     destination = Path(destination_raw).resolve(strict=False)
     if source_path == destination or destination.exists():
         fail("docker archive sanitization paths are unsafe")
-    seen: set[str] = set()
-    manifest_seen = False
-    with tarfile.open(source_path, "r:*") as source, tarfile.open(
-        destination, "w", format=tarfile.GNU_FORMAT
-    ) as output:
+    with tarfile.open(source_path, "r:*") as source:
+        members: dict[str, tarfile.TarInfo] = {}
         for member in source:
             raw = member.name[:-1] if member.isdir() and member.name.endswith("/") else member.name
             name = safe_tar_name(raw)
-            if name in seen:
+            if name in members:
                 fail("docker archive has duplicate members before sanitization")
-            seen.add(name)
             if not (member.isfile() or member.isdir()):
                 fail("docker archive has a linked or special member before sanitization")
             if member.uid != 0 or member.gid != 0:
                 fail("docker archive ownership differs before sanitization")
-            if name == "repositories":
-                continue
-            if name == "manifest.json":
-                handle = source.extractfile(member)
-                if handle is None:
-                    fail("docker manifest cannot be read before sanitization")
-                manifest = strict_json(handle)
-                if not isinstance(manifest, list) or len(manifest) != 1 or not isinstance(manifest[0], dict):
-                    fail("docker archive must contain exactly one image before sanitization")
-                required_fields = {"Config", "RepoTags", "Layers"}
-                if not required_fields.issubset(manifest[0]):
-                    fail("docker manifest is missing required fields before sanitization")
-                sanitized_manifest = [
-                    {
-                        "Config": manifest[0]["Config"],
-                        "RepoTags": None,
-                        "Layers": manifest[0]["Layers"],
-                    }
-                ]
-                payload = json.dumps(
-                    sanitized_manifest, separators=(",", ":"), sort_keys=False
-                ).encode("utf-8")
-                rewritten = tarfile.TarInfo("manifest.json")
-                rewritten.mode = 0o600
-                rewritten.uid = 0
-                rewritten.gid = 0
-                rewritten.mtime = int(member.mtime)
-                rewritten.size = len(payload)
-                with tempfile.SpooledTemporaryFile(max_size=1024 * 1024) as staged:
-                    staged.write(payload)
-                    staged.seek(0)
-                    output.addfile(rewritten, staged)
-                manifest_seen = True
-                continue
-            handle = source.extractfile(member) if member.isfile() else None
-            output.addfile(member, handle)
-    if not manifest_seen:
-        destination.unlink(missing_ok=True)
-        fail("docker manifest is missing before sanitization")
+            members[name] = member
+        manifest_member = members.get("manifest.json")
+        if manifest_member is None or not manifest_member.isfile():
+            fail("docker manifest is missing before sanitization")
+        handle = source.extractfile(manifest_member)
+        if handle is None:
+            fail("docker manifest cannot be read before sanitization")
+        manifest = strict_json(handle)
+        if not isinstance(manifest, list) or len(manifest) != 1 or not isinstance(manifest[0], dict):
+            fail("docker archive must contain exactly one image before sanitization")
+        required_fields = {"Config", "RepoTags", "Layers"}
+        if not required_fields.issubset(manifest[0]):
+            fail("docker manifest is missing required fields before sanitization")
+        config_name = safe_tar_name(manifest[0]["Config"])
+        layers = manifest[0]["Layers"]
+        if (
+            not isinstance(layers, list)
+            or not layers
+            or any(not isinstance(layer, str) for layer in layers)
+            or len(layers) != len(set(layers))
+        ):
+            fail("docker layer list differs before sanitization")
+        layer_names = [safe_tar_name(layer) for layer in layers]
+        required_names = [config_name, *layer_names]
+        if len(required_names) != len(set(required_names)):
+            fail("docker config and layer paths overlap before sanitization")
+        for name in required_names:
+            member = members.get(name)
+            if member is None or not member.isfile():
+                fail("docker archive referenced file is missing before sanitization")
+
+        sanitized_manifest = [
+            {"Config": config_name, "RepoTags": None, "Layers": layer_names}
+        ]
+        payload = json.dumps(
+            sanitized_manifest, separators=(",", ":"), sort_keys=False
+        ).encode("utf-8")
+        with tarfile.open(destination, "w", format=tarfile.GNU_FORMAT) as output:
+            rewritten = tarfile.TarInfo("manifest.json")
+            rewritten.mode = 0o600
+            rewritten.uid = 0
+            rewritten.gid = 0
+            rewritten.mtime = int(manifest_member.mtime)
+            rewritten.size = len(payload)
+            with tempfile.SpooledTemporaryFile(max_size=1024 * 1024) as staged:
+                staged.write(payload)
+                staged.seek(0)
+                output.addfile(rewritten, staged)
+            for name in required_names:
+                member = members[name]
+                source_handle = source.extractfile(member)
+                if source_handle is None:
+                    fail("docker archive referenced file cannot be read before sanitization")
+                output.addfile(member, source_handle)
     os.chmod(destination, 0o600)
 
 
