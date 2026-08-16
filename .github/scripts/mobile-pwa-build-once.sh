@@ -110,8 +110,6 @@ docker buildx version >"$artifact_dir/buildx-version.txt"
 candidate_container="$(docker create --platform "$BUILD_PLATFORM" "$image_id")"
 [[ "$candidate_container" =~ ^[0-9a-f]{64}$ ]] || die "candidate inspection container was not created"
 docker export "$candidate_container" >"$scratch_dir/candidate-rootfs.tar"
-docker rm "$candidate_container" >/dev/null
-candidate_container=''
 
 python3 -I control/.github/scripts/mobile_pwa_build_once.py inventory \
   "$scratch_dir/candidate-rootfs.tar" "$artifact_dir/candidate-image-files.sha256"
@@ -123,6 +121,9 @@ docker save "$image_id" --output "$artifact_dir/t24-mobile-pwa-candidate-75997c6
 
 python3 -I control/.github/scripts/mobile_pwa_build_once.py validate-save \
   "$artifact_dir/t24-mobile-pwa-candidate-75997c6.docker.tar" "$image_id" "$SOURCE_COMMIT"
+
+docker rm "$candidate_container" >/dev/null
+candidate_container=''
 
 build_log_sha="$(sha256sum "$artifact_dir/build.log" | awk '{print $1}')"
 base_evidence_sha="$(sha256sum "$artifact_dir/base-image-digests.env" | awk '{print $1}')"
