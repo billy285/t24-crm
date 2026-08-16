@@ -284,8 +284,15 @@ def sanitize_save(source_raw: str, destination_raw: str) -> None:
             if member is None or not member.isfile():
                 fail("docker archive referenced file is missing before sanitization")
 
+        config_member = members[config_name]
+        config_handle = source.extractfile(config_member)
+        if config_handle is None:
+            fail("docker config cannot be read before sanitization")
+        config_payload = config_handle.read()
+        config_output_name = f"{hashlib.sha256(config_payload).hexdigest()}.json"
+
         sanitized_manifest = [
-            {"Config": config_name, "RepoTags": None, "Layers": layer_names}
+            {"Config": config_output_name, "RepoTags": None, "Layers": layer_names}
         ]
         payload = json.dumps(
             sanitized_manifest, separators=(",", ":"), sort_keys=False
@@ -301,7 +308,17 @@ def sanitize_save(source_raw: str, destination_raw: str) -> None:
                 staged.write(payload)
                 staged.seek(0)
                 output.addfile(rewritten, staged)
-            for name in required_names:
+            rewritten_config = tarfile.TarInfo(config_output_name)
+            rewritten_config.mode = config_member.mode
+            rewritten_config.uid = 0
+            rewritten_config.gid = 0
+            rewritten_config.mtime = int(config_member.mtime)
+            rewritten_config.size = len(config_payload)
+            with tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024) as staged:
+                staged.write(config_payload)
+                staged.seek(0)
+                output.addfile(rewritten_config, staged)
+            for name in layer_names:
                 member = members[name]
                 source_handle = source.extractfile(member)
                 if source_handle is None:
@@ -344,7 +361,10 @@ def validate_save(archive_raw: str, image_id: str, revision: str) -> None:
         if config_source is None:
             fail("docker config cannot be read")
         config_bytes = config_source.read()
-        if hashlib.sha256(config_bytes).hexdigest() != expected:
+        if (
+            hashlib.sha256(config_bytes).hexdigest() != expected
+            or PurePosixPath(config_name).name != f"{expected}.json"
+        ):
             fail("docker config digest differs from full image ID")
         config = json.loads(config_bytes)
         labels = (config.get("config") or {}).get("Labels") or {}
