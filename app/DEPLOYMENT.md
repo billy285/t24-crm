@@ -148,6 +148,10 @@ not protect against disk loss, accidental server deletion or account compromise.
 
 ## 8. Update The App Later
 
+The legacy `deploy/release-company-roadmap.sh` script is retired and exits
+before doing any work. It predates the migration-only startup policy and must
+not be used for Phase 0 or later releases.
+
 ```bash
 cd /opt/t24-crm
 git pull
