@@ -1,5 +1,6 @@
 services:
   crm:
+    image: ${CRM_IMAGE:-t24-crm:local}
     build:
       context: .
       dockerfile: Dockerfile
@@ -14,6 +15,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       APP_ENV: ${APP_ENV:-production}
       ENVIRONMENT: ${ENVIRONMENT:-production}
+      DATABASE_SCHEMA_MODE: ${DATABASE_SCHEMA_MODE:-verify_only}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:

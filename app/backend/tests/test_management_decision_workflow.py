@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -50,6 +50,24 @@ async def workflow_context():
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        # These legacy non-ORM tables are migration-owned. The fixture creates
+        # them explicitly so request handlers can remain read-only.
+        await connection.execute(text("""
+            CREATE TABLE monthly_deduction_rates (
+              id INTEGER PRIMARY KEY,
+              year_month DATE UNIQUE NOT NULL,
+              rate NUMERIC(5,4) NOT NULL,
+              created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        await connection.execute(text("""
+            CREATE TABLE monthly_deduction_defaults (
+              id INTEGER PRIMARY KEY,
+              rate NUMERIC(5,4) NOT NULL DEFAULT 0.15,
+              updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
 
     now = datetime(2026, 8, 3, tzinfo=timezone.utc)
     async with sessions() as session:

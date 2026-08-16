@@ -6,6 +6,9 @@
 backend/logs
 backend/*.db
 backend/data
+data
+logs
+backups
 crm_dev.db
 frontend/node_modules
 frontend/dist

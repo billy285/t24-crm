@@ -12,7 +12,8 @@ from sqlalchemy import text
 from core.database import get_db
 from dependencies.auth import get_current_user, get_finance_user
 from schemas.auth import UserResponse
-from utils.monthly_deduction_sql import create_audit_sql, create_default_sql, create_rates_sql, current_timestamp_sql, is_sqlite
+from services.schema_readiness import MONTHLY_DEDUCTION_TABLES, SchemaUnavailableError, require_tables
+from utils.monthly_deduction_sql import current_timestamp_sql, is_sqlite
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -76,10 +77,14 @@ def ym_to_date(ym: str) -> str:
 def date_to_ym(d: date) -> str:
     return f"{d.year:04d}-{d.month:02d}"
 
-async def ensure_tables(session: AsyncSession):
-    await session.execute(text(create_rates_sql(session)))
-    await session.execute(text(create_default_sql(session)))
-    await session.execute(text(create_audit_sql(session)))
+async def require_monthly_deduction_tables(session: AsyncSession) -> None:
+    try:
+        await require_tables(session, MONTHLY_DEDUCTION_TABLES)
+    except SchemaUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="数据库结构尚未升级，月度扣除功能暂不可用，请联系管理员",
+        ) from exc
 
 def is_admin_user(u: UserResponse) -> bool:
     # Assume UserResponse has role or is_admin
@@ -113,7 +118,7 @@ async def list_deductions(
     end: Optional[str] = Query(None, description="YYYY-MM"),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_tables(db)
+    await require_monthly_deduction_tables(db)
     where = ""
     params = {}
     if start:
@@ -144,7 +149,7 @@ async def list_deductions(
 # ---- Default rate ----
 @router.get("/default", response_model=DefaultDeductionResponse)
 async def get_default_deduction(db: AsyncSession = Depends(get_db)):
-    await ensure_tables(db)
+    await require_monthly_deduction_tables(db)
     res = await db.execute(text("SELECT rate FROM monthly_deduction_defaults ORDER BY id DESC LIMIT 1"))
     row = res.fetchone()
     rate = float(row[0]) if row else 0.15
@@ -156,7 +161,7 @@ async def ensure_monthly_deductions(
     payload: MonthlyDeductionEnsureRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_tables(db)
+    await require_monthly_deduction_tables(db)
     months = sorted(set(payload.months))
     if not months:
         return []
@@ -207,9 +212,9 @@ async def update_default_deduction(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_tables(db)
     if not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Admin only")
+    await require_monthly_deduction_tables(db)
     if payload.rate < 0 or payload.rate > 1:
         raise HTTPException(status_code=400, detail="Rate must be in [0,1]")
     # before
@@ -232,7 +237,7 @@ async def get_deduction(
     ym: str = Path(..., pattern=r"^\d{4}-\d{2}$", description="YYYY-MM"),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_tables(db)
+    await require_monthly_deduction_tables(db)
     res = await db.execute(text("SELECT year_month, rate, created_at, updated_at FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
     r = res.mappings().first()
     if not r:
@@ -248,9 +253,9 @@ async def create_deduction(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_tables(db)
     if not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Admin only")
+    await require_monthly_deduction_tables(db)
     before = None
     try:
         now_sql = current_timestamp_sql(db)
@@ -283,9 +288,9 @@ async def update_deduction(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_tables(db)
     if not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Admin only")
+    await require_monthly_deduction_tables(db)
     # before
     res0 = await db.execute(text("SELECT year_month, rate FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
     before_row = res0.mappings().first()
@@ -317,9 +322,9 @@ async def delete_deduction(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_tables(db)
     if not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Admin only")
+    await require_monthly_deduction_tables(db)
     res0 = await db.execute(text("SELECT year_month, rate FROM monthly_deduction_rates WHERE year_month = :ym"), {"ym": ym_to_date(ym)})
     before_row = res0.mappings().first()
     before = {"year_month": ym, "rate": float(before_row["rate"])} if before_row else None
@@ -336,9 +341,9 @@ async def import_monthly_deductions(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_tables(db)
     if not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Admin only")
+    await require_monthly_deduction_tables(db)
 
     content = await file.read()
     text_stream = io.StringIO(content.decode("utf-8-sig"))

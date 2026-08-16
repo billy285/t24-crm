@@ -14,7 +14,8 @@ from sqlalchemy import text
 from core.database import get_db
 from dependencies.auth import get_finance_user
 from schemas.auth import UserResponse
-from utils.monthly_deduction_sql import create_default_sql, create_rates_sql, is_sqlite
+from services.schema_readiness import SchemaUnavailableError, require_tables
+from utils.monthly_deduction_sql import is_sqlite
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -55,7 +56,13 @@ def _coerce_date(value: object) -> Optional[date]:
 
 async def _get_default_deduction_rate(db: AsyncSession) -> float:
     # Default 0.15 if no override
-    await db.execute(text(create_default_sql(db)))
+    try:
+        await require_tables(db, {"monthly_deduction_defaults"})
+    except SchemaUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="数据库结构尚未升级，财务报表暂不可用，请联系管理员",
+        ) from exc
     res = await db.execute(text("SELECT rate FROM monthly_deduction_defaults ORDER BY id DESC LIMIT 1"))
     row = res.fetchone()
     if row and row[0] is not None:
@@ -77,8 +84,13 @@ async def _get_monthly_deduction_map(db: AsyncSession, start_ym: Optional[str], 
         y_e, m_e = map(int, end_ym.split("-"))
         params["e"] = date(y_e, m_e, 1)
 
-    # Ensure table exists in a separate statement (asyncpg disallows multi-statement prepared exec)
-    await db.execute(text(create_rates_sql(db)))
+    try:
+        await require_tables(db, {"monthly_deduction_rates"})
+    except SchemaUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="数据库结构尚未升级，财务报表暂不可用，请联系管理员",
+        ) from exc
 
     rows = await db.execute(text(f"SELECT year_month, rate FROM monthly_deduction_rates WHERE 1=1 {where}"), params)
     mapped: Dict[str, float] = {}
@@ -623,6 +635,8 @@ async def export_profit_monthly_csv(
         out = _build_csv(rows)
         filename = f"profit_monthly_{(start or 'start')}_{(end or 'end')}.csv"
         return StreamingResponse(out, media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"CSV export failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to export CSV")
@@ -648,6 +662,8 @@ async def export_profit_monthly_xlsx(
         out = _build_xlsx(rows)
         filename = f"profit_monthly_{(start or 'start')}_{(end or 'end')}.xlsx"
         return StreamingResponse(out, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"XLSX export failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to export XLSX")

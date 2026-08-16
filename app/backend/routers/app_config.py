@@ -6,6 +6,12 @@ from dependencies.auth import get_current_user
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from schemas.auth import UserResponse
+from services.schema_readiness import (
+    APP_SETTINGS_TABLE,
+    SchemaUnavailableError,
+    require_tables,
+    tables_available,
+)
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -252,21 +258,6 @@ class AppConfigUpdate(BaseModel):
     value: Any
 
 
-async def ensure_app_config_table(db: AsyncSession) -> None:
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS app_settings (
-              config_key TEXT PRIMARY KEY,
-              value_json TEXT NOT NULL,
-              updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-    )
-    await db.commit()
-
-
 def get_default_config(key: str) -> Any:
     if key not in DEFAULT_APP_CONFIGS:
         raise HTTPException(status_code=404, detail=f"Unknown config key: {key}")
@@ -290,8 +281,18 @@ def ensure_can_read_config(key: str, user: UserResponse) -> None:
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
-async def read_config_value(db: AsyncSession, key: str) -> AppConfigValue:
+async def read_config_value(
+    db: AsyncSession,
+    key: str,
+    *,
+    app_settings_available: bool | None = None,
+) -> AppConfigValue:
     default_value = get_default_config(key)
+    if app_settings_available is None:
+        app_settings_available = await tables_available(db, {APP_SETTINGS_TABLE})
+    if not app_settings_available:
+        return AppConfigValue(key=key, value=default_value, updated_at=None)
+
     result = await db.execute(
         text("SELECT value_json, updated_at FROM app_settings WHERE config_key = :key"),
         {"key": key},
@@ -313,12 +314,14 @@ async def get_all_app_configs(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_app_config_table(db)
+    app_settings_available = await tables_available(db, {APP_SETTINGS_TABLE})
     items = {}
     for key in DEFAULT_APP_CONFIGS:
         if key in SENSITIVE_CONFIG_KEYS and current_user.role not in ADMIN_CONFIG_ROLES:
             continue
-        items[key] = (await read_config_value(db, key)).model_dump()
+        items[key] = (
+            await read_config_value(db, key, app_settings_available=app_settings_available)
+        ).model_dump()
     return {"items": items}
 
 
@@ -330,7 +333,6 @@ async def get_app_config(
 ):
     get_default_config(key)
     ensure_can_read_config(key, current_user)
-    await ensure_app_config_table(db)
     return await read_config_value(db, key)
 
 
@@ -343,7 +345,13 @@ async def update_app_config(
 ):
     get_default_config(key)
     ensure_can_update_config(key, current_user)
-    await ensure_app_config_table(db)
+    try:
+        await require_tables(db, {APP_SETTINGS_TABLE})
+    except SchemaUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="数据库结构尚未升级，暂时无法保存系统配置，请联系管理员",
+        ) from exc
     value_json = json.dumps(payload.value, ensure_ascii=False)
     await db.execute(
         text(

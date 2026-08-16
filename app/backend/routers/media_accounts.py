@@ -17,6 +17,7 @@ from services.media_accounts import (
     decrypt_media_account_password,
     has_media_account_password,
 )
+from services.schema_readiness import APP_SETTINGS_TABLE, tables_available
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -114,18 +115,8 @@ DEFAULT_PASSWORD_VIEW_ROLES = {"super_admin", "admin"}
 
 
 async def read_app_setting(db: AsyncSession, key: str, default: object):
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS app_settings (
-              config_key TEXT PRIMARY KEY,
-              value_json TEXT NOT NULL,
-              updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-    )
-    await db.commit()
+    if not await tables_available(db, {APP_SETTINGS_TABLE}):
+        return default
 
     result = await db.execute(
         text("SELECT value_json FROM app_settings WHERE config_key = :key"),

@@ -21,6 +21,35 @@ from sqlalchemy.pool import NullPool
 
 logger = logging.getLogger(__name__)
 
+PRODUCTION_ENVIRONMENTS = {"prod", "production"}
+
+
+def _runtime_schema_mutation_forbidden() -> bool:
+    environment_values = {
+        (os.getenv("APP_ENV") or "").strip().lower(),
+        (os.getenv("ENVIRONMENT") or "").strip().lower(),
+        (os.getenv("ENV") or "").strip().lower(),
+    }
+    is_lambda = bool(
+        os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+        or (os.getenv("IS_LAMBDA") or "").strip().lower() in {"1", "true", "yes"}
+    )
+    configured_mode = (os.getenv("DATABASE_SCHEMA_MODE") or "").strip().lower()
+    legacy_skip_requested = "MGX_IGNORE_INIT_DB" in os.environ and not configured_mode
+    return (
+        bool(environment_values & PRODUCTION_ENVIRONMENTS)
+        or is_lambda
+        or legacy_skip_requested
+        or bool(configured_mode and configured_mode != "legacy_runtime")
+    )
+
+
+def _assert_runtime_schema_mutation_allowed(operation: str) -> None:
+    if _runtime_schema_mutation_forbidden():
+        raise RuntimeError(
+            f"Runtime database schema {operation} is disabled; apply Alembic migrations before startup"
+        )
+
 
 class Base(DeclarativeBase):
     pass
@@ -136,6 +165,10 @@ class DatabaseManager:
             if self.engine.dialect.name == "sqlite":
                 @event.listens_for(self.engine.sync_engine, "connect")
                 def _configure_sqlite_connection(dbapi_connection, _connection_record):
+                    # These are runtime durability/concurrency settings, not
+                    # schema management. ``verify_only`` forbids DDL/DML repair
+                    # but the production CRM database remains writable for
+                    # normal business operations after verification succeeds.
                     cursor = dbapi_connection.cursor()
                     try:
                         cursor.execute("PRAGMA foreign_keys=ON")
@@ -177,6 +210,7 @@ class DatabaseManager:
 
     async def create_tables(self):
         """Create all tables with thread safety"""
+        _assert_runtime_schema_mutation_allowed("creation")
         start_time = time.time()
         logger.debug("[DB_OP] Starting create_tables")
         await self._table_creation_lock.acquire()
@@ -218,6 +252,7 @@ class DatabaseManager:
 
     async def check_and_repair_existing_tables(self):
         """Check and fix the structure of existing tables, adding only the missing fields."""
+        _assert_runtime_schema_mutation_allowed("repair")
         repair_start = time.time()
 
         try:
@@ -520,7 +555,12 @@ class DatabaseManager:
         # 3. The double-checked locking pattern above ensures only one request proceeds to initialization
         try:
             await self.init_db()
-            await self.create_tables()
+            # Import lazily to avoid a module-level dependency cycle. Lambda
+            # lazy initialization must use the same verify-only startup policy
+            # as the normal application lifespan.
+            from services.database import prepare_runtime_schema
+
+            await prepare_runtime_schema()
             logger.info("Lazy database initialization completed successfully")
         except Exception as e:
             logger.error(f"Failed to lazy initialize database: {e}", exc_info=True)

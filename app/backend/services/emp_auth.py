@@ -94,18 +94,14 @@ class EmpAuthService:
         self.db = db
 
     async def ensure_password_column(self) -> None:
-        """Verify auth schema; only allow an explicit local repair."""
+        """Verify auth schema without attempting request-time repair."""
         try:
             await self.db.execute(text("SELECT password FROM employees LIMIT 1"))
         except Exception as exc:
             await self.db.rollback()
-            if _is_production_env() or not _is_truthy_env("ALLOW_RUNTIME_SCHEMA_REPAIR"):
-                raise RuntimeError(
-                    "employees.password column is missing; run the database migration before starting the service"
-                ) from exc
-            logger.warning("employees.password column missing, applying explicitly enabled local schema repair")
-            await self.db.execute(text("ALTER TABLE employees ADD COLUMN password VARCHAR"))
-            await self.db.commit()
+            raise RuntimeError(
+                "employees.password column is unavailable; run the database migration before starting the service"
+            ) from exc
 
     def _current_timestamp_sql(self) -> str:
         bind = self.db.get_bind()

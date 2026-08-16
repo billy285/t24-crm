@@ -18,6 +18,7 @@ from services.ai_config import (
     save_ai_config,
 )
 from services.aihub import AIHubService
+from services.schema_readiness import SchemaUnavailableError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -113,7 +114,13 @@ async def update_ai_settings(
     if next_config["enabled"] and not (next_config.get("api_key") or env_api_key):
         raise HTTPException(status_code=400, detail="开启 OpenAI 前，请先填写 API Key")
 
-    await save_ai_config(db, next_config)
+    try:
+        await save_ai_config(db, next_config)
+    except SchemaUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="数据库结构尚未升级，暂时无法保存 AI 配置，请联系管理员",
+        ) from exc
     saved_config, _has_saved_again, updated_at = await read_saved_ai_config(db)
     runtime = await resolve_ai_runtime_config(db)
     response_config = {

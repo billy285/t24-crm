@@ -6,6 +6,8 @@ from typing import Any, Dict, Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.schema_readiness import APP_SETTINGS_TABLE, require_tables, tables_available
+
 
 AI_CONFIG_KEY = "ai_config"
 DEFAULT_AI_BASE_URL = "https://api.openai.com/v1"
@@ -31,23 +33,10 @@ class AiRuntimeConfig:
     source: str
 
 
-async def ensure_ai_config_table(db: AsyncSession) -> None:
-    await db.execute(
-        text(
-            """
-            CREATE TABLE IF NOT EXISTS app_settings (
-              config_key TEXT PRIMARY KEY,
-              value_json TEXT NOT NULL,
-              updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-    )
-    await db.commit()
-
-
 async def read_saved_ai_config(db: AsyncSession) -> tuple[Dict[str, Any], bool, Optional[str]]:
-    await ensure_ai_config_table(db)
+    if not await tables_available(db, {APP_SETTINGS_TABLE}):
+        return dict(DEFAULT_AI_CONFIG), False, None
+
     result = await db.execute(
         text("SELECT value_json, updated_at FROM app_settings WHERE config_key = :key"),
         {"key": AI_CONFIG_KEY},
@@ -66,7 +55,7 @@ async def read_saved_ai_config(db: AsyncSession) -> tuple[Dict[str, Any], bool, 
 
 
 async def save_ai_config(db: AsyncSession, config: Dict[str, Any]) -> Dict[str, Any]:
-    await ensure_ai_config_table(db)
+    await require_tables(db, {APP_SETTINGS_TABLE})
     normalized = {**DEFAULT_AI_CONFIG, **config}
     value_json = json.dumps(normalized, ensure_ascii=False)
     await db.execute(
