@@ -116,7 +116,10 @@ python3 -I control/.github/scripts/mobile_pwa_build_once.py inventory \
 python3 -I control/.github/scripts/mobile_pwa_build_once.py verify-inventory \
   "$scratch_dir/candidate-rootfs.tar" "$artifact_dir/candidate-image-files.sha256"
 
-docker save "$image_id" --output "$artifact_dir/t24-mobile-pwa-candidate-75997c6.docker.tar"
+docker save "$image_id" --output "$scratch_dir/candidate-tagged.docker.tar"
+python3 -I control/.github/scripts/mobile_pwa_build_once.py sanitize-save \
+  "$scratch_dir/candidate-tagged.docker.tar" \
+  "$artifact_dir/t24-mobile-pwa-candidate-75997c6.docker.tar"
 
 python3 -I control/.github/scripts/mobile_pwa_build_once.py validate-save \
   "$artifact_dir/t24-mobile-pwa-candidate-75997c6.docker.tar" "$image_id" "$SOURCE_COMMIT"

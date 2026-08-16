@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 from pathlib import Path, PurePosixPath
 
 COMMIT = "75997c6f351eba1b35aaa6faf7fc801f42921c18"
@@ -236,6 +237,59 @@ def strict_json(handle):
     return json.load(handle, object_pairs_hook=pairs)
 
 
+def sanitize_save(source_raw: str, destination_raw: str) -> None:
+    source_path = Path(source_raw).resolve(strict=True)
+    destination = Path(destination_raw).resolve(strict=False)
+    if source_path == destination or destination.exists():
+        fail("docker archive sanitization paths are unsafe")
+    seen: set[str] = set()
+    manifest_seen = False
+    with tarfile.open(source_path, "r:*") as source, tarfile.open(
+        destination, "w", format=tarfile.GNU_FORMAT
+    ) as output:
+        for member in source:
+            raw = member.name[:-1] if member.isdir() and member.name.endswith("/") else member.name
+            name = safe_tar_name(raw)
+            if name in seen:
+                fail("docker archive has duplicate members before sanitization")
+            seen.add(name)
+            if not (member.isfile() or member.isdir()):
+                fail("docker archive has a linked or special member before sanitization")
+            if member.uid != 0 or member.gid != 0:
+                fail("docker archive ownership differs before sanitization")
+            if name == "repositories":
+                continue
+            if name == "manifest.json":
+                handle = source.extractfile(member)
+                if handle is None:
+                    fail("docker manifest cannot be read before sanitization")
+                manifest = strict_json(handle)
+                if not isinstance(manifest, list) or len(manifest) != 1 or not isinstance(manifest[0], dict):
+                    fail("docker archive must contain exactly one image before sanitization")
+                if set(manifest[0]) != {"Config", "RepoTags", "Layers"}:
+                    fail("docker manifest fields differ before sanitization")
+                manifest[0]["RepoTags"] = None
+                payload = json.dumps(manifest, separators=(",", ":"), sort_keys=False).encode("utf-8")
+                rewritten = tarfile.TarInfo("manifest.json")
+                rewritten.mode = 0o600
+                rewritten.uid = 0
+                rewritten.gid = 0
+                rewritten.mtime = int(member.mtime)
+                rewritten.size = len(payload)
+                with tempfile.SpooledTemporaryFile(max_size=1024 * 1024) as staged:
+                    staged.write(payload)
+                    staged.seek(0)
+                    output.addfile(rewritten, staged)
+                manifest_seen = True
+                continue
+            handle = source.extractfile(member) if member.isfile() else None
+            output.addfile(member, handle)
+    if not manifest_seen:
+        destination.unlink(missing_ok=True)
+        fail("docker manifest is missing before sanitization")
+    os.chmod(destination, 0o600)
+
+
 def validate_save(archive_raw: str, image_id: str, revision: str) -> None:
     if IMAGE_ID.fullmatch(image_id) is None or revision != COMMIT:
         fail("docker archive identity arguments are invalid")
@@ -390,6 +444,8 @@ def main() -> None:
         verify_inventory(*args)
     elif command == "validate-save" and len(args) == 3:
         validate_save(*args)
+    elif command == "sanitize-save" and len(args) == 2:
+        sanitize_save(*args)
     elif command == "write-base-evidence":
         write_base_evidence(args)
     elif command == "write-provenance":
