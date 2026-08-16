@@ -266,10 +266,19 @@ def sanitize_save(source_raw: str, destination_raw: str) -> None:
                 manifest = strict_json(handle)
                 if not isinstance(manifest, list) or len(manifest) != 1 or not isinstance(manifest[0], dict):
                     fail("docker archive must contain exactly one image before sanitization")
-                if set(manifest[0]) != {"Config", "RepoTags", "Layers"}:
-                    fail("docker manifest fields differ before sanitization")
-                manifest[0]["RepoTags"] = None
-                payload = json.dumps(manifest, separators=(",", ":"), sort_keys=False).encode("utf-8")
+                required_fields = {"Config", "RepoTags", "Layers"}
+                if not required_fields.issubset(manifest[0]):
+                    fail("docker manifest is missing required fields before sanitization")
+                sanitized_manifest = [
+                    {
+                        "Config": manifest[0]["Config"],
+                        "RepoTags": None,
+                        "Layers": manifest[0]["Layers"],
+                    }
+                ]
+                payload = json.dumps(
+                    sanitized_manifest, separators=(",", ":"), sort_keys=False
+                ).encode("utf-8")
                 rewritten = tarfile.TarInfo("manifest.json")
                 rewritten.mode = 0o600
                 rewritten.uid = 0
