@@ -48,6 +48,10 @@ Edit `.env.production`:
 - Set `REFRESH_TOKEN_SECRET` to the second, independently generated value.
 - Set `FRONTEND_ORIGINS` and `PYTHON_BACKEND_URL` to your HTTPS domain.
 - Set `MASK_KEY` to another long random value.
+- Keep `MASK_KEY` stable and backed up securely. Never rotate it without first
+  re-encrypting existing protected fields and taking a verified database backup.
+- Keep `ENABLE_LEGACY_AUTH=false` (or unset); production refuses to start when
+  the legacy placeholder login route is enabled.
 - Do not keep `admin123` in production.
 - Keep `DATABASE_SCHEMA_MODE=verify_only`. Production and Lambda startup never
   create or repair tables; a database that is not at the code's Alembic head,
@@ -179,6 +183,13 @@ previous verified image plus the verified pre-release backup; never use
 - HTTPS domain works.
 - `JWT_SECRET_KEY` is not default.
 - `REFRESH_TOKEN_SECRET` is present, strong and different from `JWT_SECRET_KEY`.
+- `JWT_SECRET_KEY` is a non-placeholder secret of at least 32 characters and is
+  validated independently from refresh-cookie signing.
+- Refresh-cookie signing has no bundled/default key; this production procedure
+  requires a separate strong `REFRESH_TOKEN_SECRET` even though the application
+  can derive an isolated fallback from a strong `JWT_SECRET_KEY`.
+- `MASK_KEY` is a stable, non-placeholder secret of at least 32 characters.
+- `ENABLE_LEGACY_AUTH` is unset or false.
 - Admin password is strong.
 - `ENABLE_DEFAULT_EMPLOYEE_ADMIN=false` after initial setup.
 - Database backup runs daily.

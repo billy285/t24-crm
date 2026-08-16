@@ -17,11 +17,24 @@ logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)
 FINANCE_ROLES = {"admin", "super_admin", "finance"}
 ACTIVE_EMPLOYEE_STATUSES = {"active", "probation"}
+LEGACY_ROLE_ALIASES = {
+    "boss": "super_admin",
+    "owner": "super_admin",
+    "superadmin": "super_admin",
+    "超级管理员": "super_admin",
+    "老板": "super_admin",
+}
+
+
+def normalize_system_role(role: str | None) -> str:
+    """Canonicalize only documented legacy aliases at the authentication boundary."""
+    normalized = str(role or "user").strip().lower()
+    return LEGACY_ROLE_ALIASES.get(normalized, normalized)
 
 
 def enforce_sales_partner_route(user: UserResponse, request: Request) -> UserResponse:
     """Keep external partner accounts on an explicit read-only API allowlist."""
-    if str(user.role or "").lower() != "sales_partner":
+    if normalize_system_role(user.role) != "sales_partner":
         return user
     path = request.url.path.rstrip("/") or "/"
     allowed = (
@@ -80,7 +93,7 @@ async def get_current_user(
                 id=str(employee["id"]),
                 email=employee.get("email") or "",
                 name=employee.get("name"),
-                role=employee.get("role") or "user",
+                role=normalize_system_role(employee.get("role")),
                 last_login=None,
             ), request)
 
@@ -88,7 +101,7 @@ async def get_current_user(
             id=str(employee_id),
             email=employee_payload.get("email", ""),
             name=employee_payload.get("name"),
-            role=employee_payload.get("role", "user"),
+            role=normalize_system_role(employee_payload.get("role")),
             last_login=None,
         ), request)
 
@@ -112,7 +125,7 @@ async def get_current_user(
             id=user_id,
             email=payload.get("email", ""),
             name=payload.get("name"),
-            role=payload.get("role", "user"),
+            role=normalize_system_role(payload.get("role")),
             last_login=last_login,
         ), request)
     except (AccessTokenError, AttributeError, ValueError) as exc:

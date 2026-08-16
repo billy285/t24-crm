@@ -109,7 +109,7 @@ const buildReminderLink = (path: string, params: Record<string, string | number 
 };
 
 export default function Dashboard() {
-  const { role, employee, isAdmin } = useRole();
+  const { role, employee, isAdmin, canAccess } = useRole();
   const { statuses: statusLabels } = useBusinessDicts();
   const navigate = useNavigate();
   const [data, setData] = useState<any>({});
@@ -143,8 +143,11 @@ export default function Dashboard() {
   const loadDashboard = async () => {
     try {
       const queries: Promise<any>[] = [];
-      // Always load tasks
-      queries.push(client.entities.tasks.query({ limit: 200 }));
+      // Keep the response slot stable without requesting task data for roles
+      // that cannot open the task module (for example Finance).
+      queries.push(canAccess('/tasks')
+        ? client.entities.tasks.query({ limit: 200 })
+        : Promise.resolve({ data: { items: [] } }));
 
       if (isAdm || isSales || isOps || isFinance) {
         queries.push(client.entities.customers.query({ limit: 200 }));

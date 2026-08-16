@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Copy,
@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { getToken, refreshToken, invokeWithAuth } from '../lib/tokenStore';
+import { useRole } from '../lib/role-context';
 
 const platformOptions = [
   { value: 'general', label: '通用' },
@@ -179,8 +180,20 @@ interface Props {
 }
 
 export default function CustomerMaterialsTab({ customerId, customerName }: Props) {
+  const { canAccess, hasPermission, isAdmin } = useRole();
+  const canRead = canAccess('/customers') || canAccess('/service-board');
+  const canCreate = canRead && hasPermission('task_create');
+  const canEdit = canRead && hasPermission('task_edit');
+  const canDelete = canRead && (isAdmin || hasPermission('task_delete'));
+  const activeCustomerIdRef = useRef(customerId);
+  const materialsRequestSeqRef = useRef(0);
+  const menuItemsRequestSeqRef = useRef(0);
+  activeCustomerIdRef.current = customerId;
+
   const [materials, setMaterials] = useState<any[]>([]);
+  const [materialsCustomerId, setMaterialsCustomerId] = useState<number | null>(null);
   const [menuItems, setMenuItems] = useState<any[]>([]);
+  const [menuItemsCustomerId, setMenuItemsCustomerId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -202,23 +215,22 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
   const [filterLinkedItem, setFilterLinkedItem] = useState('all');
   const [aiMatching, setAiMatching] = useState(false);
   const [aiMatchResult, setAiMatchResult] = useState<any>(null);
+  const [aiMatchCustomerId, setAiMatchCustomerId] = useState<number | null>(null);
 
-  useEffect(() => {
-    void loadMaterials();
-    void loadMenuItems();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerId]);
+  const visibleMaterials = materialsCustomerId === customerId ? materials : [];
+  const visibleMenuItems = menuItemsCustomerId === customerId ? menuItems : [];
+  const visibleAiMatchResult = aiMatchCustomerId === customerId ? aiMatchResult : null;
 
   const stats = useMemo(() => ({
-    total: materials.length,
-    approved: materials.filter(item => item.approval_status === 'approved').length,
-    unused: materials.filter(item => item.usage_status === 'unused').length,
-    used: materials.filter(item => item.usage_status === 'used').length,
-  }), [materials]);
+    total: visibleMaterials.length,
+    approved: visibleMaterials.filter(item => item.approval_status === 'approved').length,
+    unused: visibleMaterials.filter(item => item.usage_status === 'unused').length,
+    used: visibleMaterials.filter(item => item.usage_status === 'used').length,
+  }), [visibleMaterials]);
 
   const filteredMaterials = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    return materials.filter(item => {
+    return visibleMaterials.filter(item => {
       const text = [item.title, item.file_name, item.notes, item.file_url, item.linked_item_snapshot].filter(Boolean).join(' ').toLowerCase();
       if (keyword && !text.includes(keyword)) return false;
       if (filterPlatform !== 'all' && item.platform !== filterPlatform) return false;
@@ -228,68 +240,135 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
       if (!['all', 'unbound'].includes(filterLinkedItem) && String(item.linked_item_id || '') !== filterLinkedItem) return false;
       return true;
     });
-  }, [materials, search, filterPlatform, filterType, filterUsage, filterLinkedItem]);
+  }, [visibleMaterials, search, filterPlatform, filterType, filterUsage, filterLinkedItem]);
 
   const materialTitleMap = useMemo(() => (
-    Object.fromEntries(materials.map(item => [String(item.id), item.title || item.file_name || `素材 #${item.id}`]))
-  ), [materials]);
+    Object.fromEntries(visibleMaterials.map(item => [String(item.id), item.title || item.file_name || `素材 #${item.id}`]))
+  ), [visibleMaterials]);
 
   const menuItemMap = useMemo(() => (
-    Object.fromEntries(menuItems.map(item => [String(item.id), item]))
-  ), [menuItems]);
+    Object.fromEntries(visibleMenuItems.map(item => [String(item.id), item]))
+  ), [visibleMenuItems]);
 
   const linkedItemOptions = useMemo(() => [
     { value: '', label: '不绑定具体菜品/项目' },
-    ...menuItems.map(item => ({
+    ...visibleMenuItems.map(item => ({
       value: String(item.id),
       label: `${item.name}${item.category ? ` · ${item.category}` : ''}`,
     })),
-  ], [menuItems]);
+  ], [visibleMenuItems]);
 
   const activePlatformOptions = useMemo(() => (
     platformOptions.filter(item => !['general', 'other'].includes(item.value))
   ), []);
 
-  const loadMaterials = async () => {
-    setLoading(true);
+  const belongsToCustomer = (item: any, expectedCustomerId: number) => (
+    Number(item?.customer_id) === Number(expectedCustomerId)
+  );
+
+  const loadMaterials = async (requestedCustomerId: number) => {
+    if (!canRead || !requestedCustomerId) return;
+    const requestSeq = ++materialsRequestSeqRef.current;
+    if (activeCustomerIdRef.current === requestedCustomerId) setLoading(true);
     try {
       const res = await invokeWithAuth({
         url: '/api/v1/entities/customer_materials',
         method: 'GET',
-        data: { query: JSON.stringify({ customer_id: customerId }), sort: '-created_at', limit: 200 },
+        data: { query: JSON.stringify({ customer_id: requestedCustomerId }), sort: '-created_at', limit: 200 },
       });
+      if (requestSeq !== materialsRequestSeqRef.current || activeCustomerIdRef.current !== requestedCustomerId) return;
       setMaterials(res?.data?.items || []);
+      setMaterialsCustomerId(requestedCustomerId);
     } catch (err: any) {
+      if (requestSeq !== materialsRequestSeqRef.current || activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(getErrorDetail(err, '加载素材失败'));
     } finally {
-      setLoading(false);
+      if (requestSeq === materialsRequestSeqRef.current && activeCustomerIdRef.current === requestedCustomerId) {
+        setLoading(false);
+      }
     }
   };
 
-  const loadMenuItems = async () => {
-    setItemsLoading(true);
+  const loadMenuItems = async (requestedCustomerId: number) => {
+    if (!canRead || !requestedCustomerId) return;
+    const requestSeq = ++menuItemsRequestSeqRef.current;
+    if (activeCustomerIdRef.current === requestedCustomerId) setItemsLoading(true);
     try {
       const res = await invokeWithAuth({
         url: '/api/v1/entities/customer_menu_items',
         method: 'GET',
-        data: { query: JSON.stringify({ customer_id: customerId }), sort: '-updated_at', limit: 300 },
+        data: { query: JSON.stringify({ customer_id: requestedCustomerId }), sort: '-updated_at', limit: 300 },
       });
+      if (requestSeq !== menuItemsRequestSeqRef.current || activeCustomerIdRef.current !== requestedCustomerId) return;
       setMenuItems(res?.data?.items || []);
+      setMenuItemsCustomerId(requestedCustomerId);
     } catch (err: any) {
+      if (requestSeq !== menuItemsRequestSeqRef.current || activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(getErrorDetail(err, '加载菜单/服务项目失败'));
     } finally {
-      setItemsLoading(false);
+      if (requestSeq === menuItemsRequestSeqRef.current && activeCustomerIdRef.current === requestedCustomerId) {
+        setItemsLoading(false);
+      }
     }
   };
 
   const refreshAll = () => {
-    void loadMaterials();
-    void loadMenuItems();
+    const requestedCustomerId = activeCustomerIdRef.current;
+    if (!canRead || requestedCustomerId !== customerId) return;
+    void loadMaterials(requestedCustomerId);
+    void loadMenuItems(requestedCustomerId);
   };
 
+  useEffect(() => {
+    materialsRequestSeqRef.current += 1;
+    menuItemsRequestSeqRef.current += 1;
+    setMaterials([]);
+    setMaterialsCustomerId(null);
+    setMenuItems([]);
+    setMenuItemsCustomerId(null);
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    setSelectedFile(null);
+    setShowItemForm(false);
+    setEditingItemId(null);
+    setItemForm(emptyItemForm);
+    setDeleteTarget(null);
+    setDeleteItemTarget(null);
+    setAiMatchResult(null);
+    setAiMatchCustomerId(null);
+    setSaving(false);
+    setItemSaving(false);
+    setAiMatching(false);
+    setSearch('');
+    setFilterPlatform('all');
+    setFilterType('all');
+    setFilterUsage('all');
+    setFilterLinkedItem('all');
+
+    if (!canRead || !customerId) {
+      setLoading(false);
+      setItemsLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setItemsLoading(true);
+    void loadMaterials(customerId);
+    void loadMenuItems(customerId);
+
+    return () => {
+      materialsRequestSeqRef.current += 1;
+      menuItemsRequestSeqRef.current += 1;
+    };
+    // Request functions intentionally capture this render's permission snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canRead, customerId]);
+
   const openCreate = (mode: 'upload' | 'link' = 'link') => {
+    if (!canCreate || activeCustomerIdRef.current !== customerId) return;
     setForm(emptyForm);
     setSelectedFile(null);
     setFormMode(mode);
@@ -298,6 +377,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
   };
 
   const openEdit = (item: any) => {
+    if (!canEdit || !belongsToCustomer(item, activeCustomerIdRef.current)) return;
     setForm({
       title: item.title || '',
       material_type: item.material_type || 'image',
@@ -317,12 +397,14 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
   };
 
   const openCreateItem = () => {
+    if (!canCreate || activeCustomerIdRef.current !== customerId) return;
     setItemForm(emptyItemForm);
     setEditingItemId(null);
     setShowItemForm(true);
   };
 
   const openEditItem = (item: any) => {
+    if (!canEdit || !belongsToCustomer(item, activeCustomerIdRef.current)) return;
     setItemForm({
       name: item.name || '',
       item_type: item.item_type || 'dish',
@@ -351,6 +433,13 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
   };
 
   const saveMenuItem = async () => {
+    const requestedCustomerId = activeCustomerIdRef.current;
+    const targetItemId = editingItemId;
+    const targetItem = targetItemId ? visibleMenuItems.find(item => item.id === targetItemId) : null;
+    const permitted = targetItemId
+      ? canEdit && !!targetItem && belongsToCustomer(targetItem, requestedCustomerId)
+      : canCreate;
+    if (!permitted || requestedCustomerId !== customerId) return;
     if (!itemForm.name.trim()) {
       toast.error('请填写菜品/服务项目名称');
       return;
@@ -361,16 +450,17 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
         ...itemForm,
         name: itemForm.name.trim(),
         suitable_platforms: JSON.stringify(itemForm.suitable_platforms || []),
-        customer_id: customerId,
+        customer_id: requestedCustomerId,
         updated_at: new Date().toISOString(),
       };
-      if (editingItemId) {
+      if (targetItemId) {
         const res = await invokeWithAuth({
-          url: `/api/v1/entities/customer_menu_items/${editingItemId}`,
+          url: `/api/v1/entities/customer_menu_items/${targetItemId}`,
           method: 'PUT',
           data: payload,
         });
-        setMenuItems(prev => prev.map(item => (item.id === editingItemId ? res.data : item)));
+        if (activeCustomerIdRef.current !== requestedCustomerId) return;
+        setMenuItems(prev => prev.map(item => (item.id === targetItemId ? res.data : item)));
         toast.success('项目已更新');
       } else {
         const res = await invokeWithAuth({
@@ -378,6 +468,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
           method: 'POST',
           data: { ...payload, created_at: new Date().toISOString() },
         });
+        if (activeCustomerIdRef.current !== requestedCustomerId) return;
         setMenuItems(prev => [res.data, ...prev]);
         toast.success('项目已保存');
       }
@@ -385,26 +476,31 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
       setEditingItemId(null);
       setItemForm(emptyItemForm);
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(getErrorDetail(err, '保存菜单/服务项目失败'));
     } finally {
-      setItemSaving(false);
+      if (activeCustomerIdRef.current === requestedCustomerId) setItemSaving(false);
     }
   };
 
   const handleDeleteItem = async () => {
-    if (!deleteItemTarget) return;
+    const requestedCustomerId = activeCustomerIdRef.current;
+    const target = deleteItemTarget;
+    if (!canDelete || !target || !belongsToCustomer(target, requestedCustomerId)) return;
     try {
-      await invokeWithAuth({ url: `/api/v1/entities/customer_menu_items/${deleteItemTarget.id}`, method: 'DELETE' });
-      setMenuItems(prev => prev.filter(item => item.id !== deleteItemTarget.id));
+      await invokeWithAuth({ url: `/api/v1/entities/customer_menu_items/${target.id}`, method: 'DELETE' });
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
+      setMenuItems(prev => prev.filter(item => item.id !== target.id));
       setMaterials(prev => prev.map(item => (
-        item.linked_item_id === deleteItemTarget.id
-          ? { ...item, linked_item_id: null, linked_item_snapshot: deleteItemTarget.name }
+        item.linked_item_id === target.id
+          ? { ...item, linked_item_id: null, linked_item_snapshot: target.name }
           : item
       )));
       setDeleteItemTarget(null);
       toast.success('项目已删除，历史素材会保留原绑定名称');
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(getErrorDetail(err, '删除菜单/服务项目失败'));
     }
@@ -416,6 +512,13 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
   });
 
   const handleSave = async () => {
+    const requestedCustomerId = activeCustomerIdRef.current;
+    const targetEditingId = editingId;
+    const targetMaterial = targetEditingId ? visibleMaterials.find(item => item.id === targetEditingId) : null;
+    const permitted = targetEditingId
+      ? canEdit && !!targetMaterial && belongsToCustomer(targetMaterial, requestedCustomerId)
+      : canCreate;
+    if (!permitted || requestedCustomerId !== customerId) return;
     if (!form.title.trim()) {
       toast.error('请填写素材名称');
       return;
@@ -431,17 +534,18 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
 
     setSaving(true);
     try {
-      if (editingId) {
+      if (targetEditingId) {
         const res = await invokeWithAuth({
-          url: `/api/v1/entities/customer_materials/${editingId}`,
+          url: `/api/v1/entities/customer_materials/${targetEditingId}`,
           method: 'PUT',
           data: { ...materialPayload(), updated_at: new Date().toISOString() },
         });
-        setMaterials(prev => prev.map(item => (item.id === editingId ? res.data : item)));
+        if (activeCustomerIdRef.current !== requestedCustomerId) return;
+        setMaterials(prev => prev.map(item => (item.id === targetEditingId ? res.data : item)));
         toast.success('素材已更新');
       } else if (formMode === 'upload') {
         const data = new FormData();
-        data.append('customer_id', String(customerId));
+        data.append('customer_id', String(requestedCustomerId));
         data.append('title', form.title);
         data.append('material_type', form.material_type);
         data.append('platform', form.platform);
@@ -461,6 +565,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
         if (!response.ok) {
           throw new Error(body?.detail || '上传失败');
         }
+        if (activeCustomerIdRef.current !== requestedCustomerId) return;
         setMaterials(prev => [body, ...prev]);
         toast.success('素材已上传');
       } else {
@@ -469,12 +574,13 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
           method: 'POST',
           data: {
             ...materialPayload(),
-            customer_id: customerId,
+            customer_id: requestedCustomerId,
             source_type: 'external_link',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
         });
+        if (activeCustomerIdRef.current !== requestedCustomerId) return;
         setMaterials(prev => [res.data, ...prev]);
         toast.success('素材链接已保存');
       }
@@ -482,64 +588,80 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
       setEditingId(null);
       setSelectedFile(null);
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(getErrorDetail(err, err?.message || '保存素材失败'));
     } finally {
-      setSaving(false);
+      if (activeCustomerIdRef.current === requestedCustomerId) setSaving(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    const requestedCustomerId = activeCustomerIdRef.current;
+    const target = deleteTarget;
+    if (!canDelete || !target || !belongsToCustomer(target, requestedCustomerId)) return;
     try {
-      await invokeWithAuth({ url: `/api/v1/entities/customer_materials/${deleteTarget.id}`, method: 'DELETE' });
-      setMaterials(prev => prev.filter(item => item.id !== deleteTarget.id));
+      await invokeWithAuth({ url: `/api/v1/entities/customer_materials/${target.id}`, method: 'DELETE' });
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
+      setMaterials(prev => prev.filter(item => item.id !== target.id));
       setDeleteTarget(null);
       toast.success('素材已删除');
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(getErrorDetail(err, '删除素材失败'));
     }
   };
 
   const quickUpdate = async (item: any, patch: Record<string, any>, message: string) => {
+    const requestedCustomerId = activeCustomerIdRef.current;
+    if (!canEdit || !belongsToCustomer(item, requestedCustomerId)) return;
     try {
       const res = await invokeWithAuth({
         url: `/api/v1/entities/customer_materials/${item.id}`,
         method: 'PUT',
         data: { ...patch, updated_at: new Date().toISOString() },
       });
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       setMaterials(prev => prev.map(row => (row.id === item.id ? res.data : row)));
       toast.success(message);
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(getErrorDetail(err, '更新素材失败'));
     }
   };
 
   const duplicateMaterial = async (item: any) => {
+    const requestedCustomerId = activeCustomerIdRef.current;
+    if (!canCreate || !belongsToCustomer(item, requestedCustomerId)) return;
     try {
       const res = await invokeWithAuth({
         url: `/api/v1/entities/customer_materials/${item.id}/duplicate`,
         method: 'POST',
       });
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       setMaterials(prev => [res.data, ...prev]);
       toast.success('素材副本已创建');
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(getErrorDetail(err, '复制素材失败'));
     }
   };
 
   const generateAiMatch = async () => {
-    if (materials.length === 0) {
+    const requestedCustomerId = activeCustomerIdRef.current;
+    const scopedMaterials = visibleMaterials.filter(item => belongsToCustomer(item, requestedCustomerId));
+    if (!canCreate || requestedCustomerId !== customerId) return;
+    if (scopedMaterials.length === 0) {
       toast.error('请先上传或添加客户素材');
       return;
     }
     setAiMatching(true);
     try {
       const targetPlatforms = Array.from(new Set(
-        materials
+        scopedMaterials
           .map(item => item.platform)
           .filter(platform => platform && !['general', 'other'].includes(platform))
       ));
@@ -547,22 +669,25 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
         url: '/api/v1/entities/customer_materials/ai-match',
         method: 'POST',
         data: {
-          customer_id: customerId,
+          customer_id: requestedCustomerId,
           target_platforms: targetPlatforms,
           extra_requirements: '请优先根据素材绑定的菜品/服务项目匹配平台；不要让素材不相关，不要未经确认直接发布，重复素材需要换角度使用。',
         },
       });
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       setAiMatchResult(res.data);
+      setAiMatchCustomerId(requestedCustomerId);
       if (res.data?.ai_used) {
         toast.success('AI素材匹配已生成');
       } else {
         toast.warning(res.data?.warning || '已生成基础素材匹配建议');
       }
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(getErrorDetail(err, 'AI素材匹配失败'));
     } finally {
-      setAiMatching(false);
+      if (activeCustomerIdRef.current === requestedCustomerId) setAiMatching(false);
     }
   };
 
@@ -580,6 +705,8 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
   };
 
   const openMaterial = async (item: any) => {
+    const requestedCustomerId = activeCustomerIdRef.current;
+    if (!canRead || !belongsToCustomer(item, requestedCustomerId)) return;
     if (item.file_url) {
       window.open(item.file_url, '_blank', 'noopener,noreferrer');
       return;
@@ -595,16 +722,40 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
         throw new Error(body?.detail || '下载失败');
       }
       const blob = await response.blob();
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank', 'noopener,noreferrer');
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err: any) {
+      if (activeCustomerIdRef.current !== requestedCustomerId) return;
       console.error(err);
       toast.error(err?.message || '打开素材失败');
     }
   };
 
   const previewUrl = (item: any) => item.thumbnail_url || item.file_url || '';
+  const activeDeleteTarget = canDelete && belongsToCustomer(deleteTarget, customerId) ? deleteTarget : null;
+  const activeDeleteItemTarget = canDelete && belongsToCustomer(deleteItemTarget, customerId) ? deleteItemTarget : null;
+  const activeShowForm = showForm && (
+    editingId
+      ? canEdit && visibleMaterials.some(item => item.id === editingId)
+      : canCreate
+  );
+  const activeShowItemForm = showItemForm && (
+    editingItemId
+      ? canEdit && visibleMenuItems.some(item => item.id === editingItemId)
+      : canCreate
+  );
+
+  if (!canRead) {
+    return (
+      <Card className="border-slate-200">
+        <CardContent className="py-10 text-center text-sm text-slate-500" role="alert">
+          当前账号无权查看客户素材。
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -625,18 +776,18 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
                 <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
                 刷新
               </Button>
-              <Button variant="outline" size="sm" onClick={generateAiMatch} disabled={loading || aiMatching || materials.length === 0} className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+              {canCreate && <Button variant="outline" size="sm" onClick={generateAiMatch} disabled={loading || aiMatching || visibleMaterials.length === 0} className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
                 <Sparkles className={`w-3.5 h-3.5 mr-1 ${aiMatching ? 'animate-pulse' : ''}`} />
                 {aiMatching ? '匹配中...' : 'AI匹配素材'}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => openCreate('upload')}>
+              </Button>}
+              {canCreate && <Button variant="outline" size="sm" onClick={() => openCreate('upload')}>
                 <Upload className="w-3.5 h-3.5 mr-1" />
                 上传素材
-              </Button>
-              <Button size="sm" onClick={() => openCreate('link')} className="bg-blue-600 hover:bg-blue-700">
+              </Button>}
+              {canCreate && <Button size="sm" onClick={() => openCreate('link')} className="bg-blue-600 hover:bg-blue-700">
                 <Plus className="w-3.5 h-3.5 mr-1" />
                 添加链接
-              </Button>
+              </Button>}
             </div>
           </div>
         </CardHeader>
@@ -656,13 +807,13 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
                   餐饮录菜品，美业录项目。素材绑定后，运营不会把不相关图片乱用。
                 </p>
               </div>
-              <Button size="sm" variant="outline" onClick={openCreateItem} className="self-start">
+              {canCreate && <Button size="sm" variant="outline" onClick={openCreateItem} className="self-start">
                 <Plus className="w-3.5 h-3.5 mr-1" />
                 新增项目
-              </Button>
+              </Button>}
             </div>
 
-            {showItemForm && (
+            {activeShowItemForm && (
               <div className="rounded-lg border border-blue-200 bg-white p-3 space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div className="md:col-span-2">
@@ -736,13 +887,13 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
 
             {itemsLoading ? (
               <p className="text-xs text-slate-400">正在加载项目库...</p>
-            ) : menuItems.length === 0 ? (
+            ) : visibleMenuItems.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-200 bg-white py-6 text-center">
-                <p className="text-sm text-slate-500">还没有菜单/服务项目，建议先录入主推项目。</p>
+                <p className="text-sm text-slate-500">{canCreate ? '还没有菜单/服务项目，建议先录入主推项目。' : '暂无菜单/服务项目。'}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {menuItems.slice(0, 8).map(item => {
+                {visibleMenuItems.slice(0, 8).map(item => {
                   const platforms = parsePlatformList(item.suitable_platforms);
                   return (
                     <div key={item.id} className="rounded-lg bg-white border border-slate-200 p-3">
@@ -757,14 +908,14 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
                             {[item.category, item.price].filter(Boolean).join(' · ') || '未填写分类/价格'}
                           </p>
                         </div>
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50" onClick={() => openEditItem(item)}>
+                        {(canEdit || canDelete) && <div className="flex gap-1">
+                          {canEdit && <Button aria-label={`编辑项目：${item.name}`} size="sm" variant="ghost" className="h-11 w-11 p-0 text-blue-600 hover:bg-blue-50 md:h-7 md:w-7" onClick={() => openEditItem(item)}>
                             <Edit className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-600 hover:bg-red-50" onClick={() => setDeleteItemTarget(item)}>
+                          </Button>}
+                          {canDelete && <Button aria-label={`删除项目：${item.name}`} size="sm" variant="ghost" className="h-11 w-11 p-0 text-red-600 hover:bg-red-50 md:h-7 md:w-7" onClick={() => setDeleteItemTarget(item)}>
                             <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
+                          </Button>}
+                        </div>}
                       </div>
                       {item.selling_points && <p className="text-xs text-slate-600 mt-2 line-clamp-2">{item.selling_points}</p>}
                       {platforms.length > 0 && (
@@ -779,31 +930,31 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
                 })}
               </div>
             )}
-            {menuItems.length > 8 && <p className="text-xs text-slate-400">已显示前 8 个项目，素材绑定下拉中可选择全部项目。</p>}
+            {visibleMenuItems.length > 8 && <p className="text-xs text-slate-400">已显示前 8 个项目，素材绑定下拉中可选择全部项目。</p>}
           </div>
 
-          {aiMatchResult && (
+          {canCreate && visibleAiMatchResult && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-4">
               <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                 <div>
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-emerald-600" />
                     <h4 className="text-sm font-semibold text-emerald-800">AI素材智能匹配</h4>
-                    <Badge className={aiMatchResult.ai_used ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>
-                      {aiMatchResult.ai_used ? 'AI生成' : '规则建议'}
+                    <Badge className={visibleAiMatchResult.ai_used ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>
+                      {visibleAiMatchResult.ai_used ? 'AI生成' : '规则建议'}
                     </Badge>
                   </div>
-                  <p className="text-sm text-slate-700 mt-2">{aiMatchResult.summary}</p>
-                  {aiMatchResult.warning && <p className="text-xs text-amber-700 mt-1">{aiMatchResult.warning}</p>}
+                  <p className="text-sm text-slate-700 mt-2">{visibleAiMatchResult.summary}</p>
+                  {visibleAiMatchResult.warning && <p className="text-xs text-amber-700 mt-1">{visibleAiMatchResult.warning}</p>}
                 </div>
                 <Button variant="ghost" size="sm" className="self-start text-slate-500" onClick={() => setAiMatchResult(null)}>收起</Button>
               </div>
 
-              {Array.isArray(aiMatchResult.platform_matches) && aiMatchResult.platform_matches.length > 0 && (
+              {Array.isArray(visibleAiMatchResult.platform_matches) && visibleAiMatchResult.platform_matches.length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-slate-600 mb-2">平台匹配</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {aiMatchResult.platform_matches.slice(0, 6).map((item: any, idx: number) => (
+                    {visibleAiMatchResult.platform_matches.slice(0, 6).map((item: any, idx: number) => (
                       <div key={`${item.platform || idx}`} className="rounded-lg bg-white border border-emerald-100 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-sm font-medium text-slate-800">{item.platform_label || labelOf(platformOptions, item.platform)}</span>
@@ -821,11 +972,11 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
                 </div>
               )}
 
-              {Array.isArray(aiMatchResult.material_suggestions) && aiMatchResult.material_suggestions.length > 0 && (
+              {Array.isArray(visibleAiMatchResult.material_suggestions) && visibleAiMatchResult.material_suggestions.length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-slate-600 mb-2">素材使用建议</p>
                   <div className="space-y-2">
-                    {aiMatchResult.material_suggestions.slice(0, 8).map((item: any, idx: number) => (
+                    {visibleAiMatchResult.material_suggestions.slice(0, 8).map((item: any, idx: number) => (
                       <div key={`${item.material_id || idx}`} className="rounded-lg bg-white border border-slate-100 p-3">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium text-slate-800">{item.title || materialTitleMap[String(item.material_id)] || `素材 #${item.material_id}`}</span>
@@ -842,19 +993,19 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {Array.isArray(aiMatchResult.cautions) && aiMatchResult.cautions.length > 0 && (
+                {Array.isArray(visibleAiMatchResult.cautions) && visibleAiMatchResult.cautions.length > 0 && (
                   <div className="rounded-lg bg-amber-50 border border-amber-100 p-3">
                     <p className="text-xs font-medium text-amber-800 mb-1">风险提醒</p>
                     <ul className="space-y-1 text-xs text-amber-700">
-                      {aiMatchResult.cautions.slice(0, 6).map((item: string, idx: number) => <li key={idx}>- {item}</li>)}
+                      {visibleAiMatchResult.cautions.slice(0, 6).map((item: string, idx: number) => <li key={idx}>- {item}</li>)}
                     </ul>
                   </div>
                 )}
-                {Array.isArray(aiMatchResult.next_actions) && aiMatchResult.next_actions.length > 0 && (
+                {Array.isArray(visibleAiMatchResult.next_actions) && visibleAiMatchResult.next_actions.length > 0 && (
                   <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
                     <p className="text-xs font-medium text-blue-800 mb-1">下一步动作</p>
                     <ul className="space-y-1 text-xs text-blue-700">
-                      {aiMatchResult.next_actions.slice(0, 6).map((item: string, idx: number) => <li key={idx}>- {item}</li>)}
+                      {visibleAiMatchResult.next_actions.slice(0, 6).map((item: string, idx: number) => <li key={idx}>- {item}</li>)}
                     </ul>
                   </div>
                 )}
@@ -862,7 +1013,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
             </div>
           )}
 
-          {showForm && (
+          {activeShowForm && (
             <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-blue-700">
@@ -960,7 +1111,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
           ) : filteredMaterials.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-200 py-10 text-center">
               <FileText className="w-10 h-10 mx-auto text-slate-300" />
-              <p className="text-sm text-slate-400 mt-2">暂无素材，先上传文件或添加素材链接</p>
+              <p className="text-sm text-slate-400 mt-2">{canCreate ? '暂无素材，先上传文件或添加素材链接' : '暂无素材'}</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -971,7 +1122,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
                   ? (menuItemMap[String(item.linked_item_id)]?.name || item.linked_item_snapshot)
                   : item.linked_item_snapshot;
                 return (
-                  <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div key={item.id} data-testid={`customer-material-${item.id}`} className="rounded-xl border border-slate-200 bg-white p-3">
                     <div className="flex gap-3">
                       <div className="w-24 h-24 shrink-0 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center">
                         {isImagePreview ? (
@@ -988,14 +1139,15 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
                               {item.file_name || item.file_url || '内部素材'} · {formatFileSize(item.file_size)}
                             </p>
                           </div>
-                          <Button
+                          {canEdit && <Button
+                            aria-label={`${item.is_favorite ? '取消收藏' : '收藏'}素材：${item.title}`}
                             variant="ghost"
                             size="sm"
                             className={`h-7 w-7 p-0 ${item.is_favorite ? 'text-red-500' : 'text-slate-400'}`}
                             onClick={() => quickUpdate(item, { is_favorite: !item.is_favorite }, item.is_favorite ? '已取消收藏' : '已收藏')}
                           >
                             <Heart className={`w-4 h-4 ${item.is_favorite ? 'fill-current' : ''}`} />
-                          </Button>
+                          </Button>}
                         </div>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           <Badge variant="secondary" className="text-xs">{labelOf(platformOptions, item.platform)}</Badge>
@@ -1014,20 +1166,20 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
                           {item.file_url ? '打开' : '下载'}
                         </Button>
                         {item.file_url && <Button size="sm" variant="outline" className="h-8" onClick={() => copyText(item.file_url)}><Copy className="w-3.5 h-3.5 mr-1" />复制链接</Button>}
-                        <Button size="sm" variant="outline" className="h-8" onClick={() => duplicateMaterial(item)}><Link2 className="w-3.5 h-3.5 mr-1" />复制素材</Button>
+                        {canCreate && <Button size="sm" variant="outline" className="h-8" onClick={() => duplicateMaterial(item)}><Link2 className="w-3.5 h-3.5 mr-1" />复制素材</Button>}
                       </div>
-                      <div className="flex gap-1.5">
-                        <Button
+                      {(canEdit || canDelete) && <div className="flex gap-1.5">
+                        {canEdit && <Button
                           size="sm"
                           variant="ghost"
                           className="h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
                           onClick={() => quickUpdate(item, { usage_status: item.usage_status === 'used' ? 'unused' : 'used', used_at: item.usage_status === 'used' ? null : new Date().toISOString() }, item.usage_status === 'used' ? '已标记为未使用' : '已标记为已使用')}
                         >
                           {item.usage_status === 'used' ? '取消使用' : '标记使用'}
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-8 text-blue-600 hover:bg-blue-50" onClick={() => openEdit(item)}><Edit className="w-3.5 h-3.5" /></Button>
-                        <Button size="sm" variant="ghost" className="h-8 text-red-600 hover:bg-red-50" onClick={() => setDeleteTarget(item)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                      </div>
+                        </Button>}
+                        {canEdit && <Button aria-label={`编辑素材：${item.title}`} size="sm" variant="ghost" className="h-11 min-w-11 text-blue-600 hover:bg-blue-50 md:h-8 md:min-w-0" onClick={() => openEdit(item)}><Edit className="w-3.5 h-3.5" /></Button>}
+                        {canDelete && <Button aria-label={`删除素材：${item.title}`} size="sm" variant="ghost" className="h-11 min-w-11 text-red-600 hover:bg-red-50 md:h-8 md:min-w-0" onClick={() => setDeleteTarget(item)}><Trash2 className="w-3.5 h-3.5" /></Button>}
+                      </div>}
                     </div>
                   </div>
                 );
@@ -1037,24 +1189,24 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
         </CardContent>
       </Card>
 
-      <ConfirmDialog
-        open={!!deleteTarget}
+      {canDelete && <ConfirmDialog
+        open={!!activeDeleteTarget}
         onOpenChange={open => !open && setDeleteTarget(null)}
         title="确认删除素材"
-        description={deleteTarget ? `确定要删除「${deleteTarget.title}」吗？如果是上传文件，文件也会一并移除。` : ''}
-        confirmText="删除"
-        variant="destructive"
+        description={activeDeleteTarget ? `确定要删除「${activeDeleteTarget.title}」吗？如果是上传文件，文件也会一并移除。` : ''}
+        confirmLabel="删除"
+        destructive
         onConfirm={handleDelete}
-      />
-      <ConfirmDialog
-        open={!!deleteItemTarget}
+      />}
+      {canDelete && <ConfirmDialog
+        open={!!activeDeleteItemTarget}
         onOpenChange={open => !open && setDeleteItemTarget(null)}
         title="确认删除菜单/服务项目"
-        description={deleteItemTarget ? `确定要删除「${deleteItemTarget.name}」吗？已绑定素材会保留历史名称，但不再关联到当前项目。` : ''}
-        confirmText="删除"
-        variant="destructive"
+        description={activeDeleteItemTarget ? `确定要删除「${activeDeleteItemTarget.name}」吗？已绑定素材会保留历史名称，但不再关联到当前项目。` : ''}
+        confirmLabel="删除"
+        destructive
         onConfirm={handleDeleteItem}
-      />
+      />}
     </div>
   );
 }

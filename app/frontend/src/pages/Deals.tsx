@@ -1,6 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { client } from '../lib/api';
+import {
+  client,
+  finalizeDeal,
+  type DealFinalizeRequest,
+  type DealFinalizeResponse,
+} from '../lib/api';
 import { useRole } from '../lib/role-context';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,12 +35,72 @@ import {
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { businessDateKey } from '@/lib/business-date';
 
 function parseMultiValue(value?: string | null) {
   return (value || '').split(',').map(item => item.trim()).filter(Boolean);
 }
 
 type PackageDraft = { key: string; label: string; platforms: string[] };
+
+type PendingFinalizeStep = {
+  key: string;
+  label: string;
+  message: string;
+};
+
+type PendingDealFinalize = {
+  request: DealFinalizeRequest;
+  steps: PendingFinalizeStep[];
+  retryable: boolean;
+};
+
+const finalizeStepLabels: Record<string, string> = {
+  subscription: '订阅',
+  customer: '客户状态',
+  service_board: '服务看板',
+  request: '交接请求',
+};
+
+const pendingFinalizeStorageKey = (employeeId: string | number) => (
+  `t24:deal-finalize-pending:${employeeId}`
+);
+
+function parsePendingFinalizations(raw: string | null): Record<number, PendingDealFinalize> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const result: Record<number, PendingDealFinalize> = {};
+    Object.entries(parsed).slice(0, 100).forEach(([rawDealId, value]) => {
+      const dealId = Number(rawDealId);
+      const candidate = value as any;
+      if (!Number.isSafeInteger(dealId) || dealId <= 0 || !candidate?.request || !Array.isArray(candidate.steps)) return;
+      const steps = candidate.steps.slice(0, 4).flatMap((step: any) => {
+        if (!step || typeof step.key !== 'string' || typeof step.label !== 'string' || typeof step.message !== 'string') return [];
+        return [{
+          key: step.key.slice(0, 40),
+          label: step.label.slice(0, 40),
+          message: step.message.slice(0, 300),
+        }];
+      });
+      if (steps.length === 0) return;
+      result[dealId] = {
+        request: {
+          ensure_subscription: candidate.request.ensure_subscription === true,
+          auto_renew: candidate.request.auto_renew === true,
+          create_service_board: candidate.request.create_service_board === true,
+        },
+        steps,
+        retryable: candidate.retryable !== false,
+      };
+    });
+    return result;
+  } catch {
+    return {};
+  }
+}
 
 function normalizePackageLabel(label: string) {
   return sanitizeDictLabel(label).replace(/\s+/g, ' ').trim();
@@ -335,7 +400,7 @@ function buildOnboardingSteps(platforms: string[]) {
 }
 
 function getTodayDateInput() {
-  return new Date().toISOString().slice(0, 10);
+  return businessDateKey();
 }
 
 function buildEmptyDealForm() {
@@ -361,6 +426,7 @@ function buildEmptyDealForm() {
 
 export default function Deals() {
   const { employee, dataScope, hasPermission } = useRole();
+  const isMobile = useIsMobile();
   const dictConfig = useDictConfig();
   const {
     products: productLabels,
@@ -394,6 +460,12 @@ export default function Deals() {
   const [savingPackages, setSavingPackages] = useState(false);
   const [packageOverrideLabels, setPackageOverrideLabels] = useState<Record<string, string>>({});
   const [generatingBoardId, setGeneratingBoardId] = useState<number | null>(null);
+  const [pendingFinalizations, setPendingFinalizations] = useState<Record<number, PendingDealFinalize>>({});
+  const [finalizingDealIds, setFinalizingDealIds] = useState<Set<number>>(() => new Set());
+  const loadRequestSeqRef = useRef(0);
+  const pendingStorageOwnerRef = useRef<string | null>(null);
+  const pendingStorageSnapshotRef = useRef('{}');
+  const pendingStorageHydratingRef = useRef(false);
   const emptyDealForm = buildEmptyDealForm();
   const [form, setForm] = useState(emptyDealForm);
   const dealPackageLabels = { ...customerPackageLabels, ...packageOverrideLabels };
@@ -403,6 +475,7 @@ export default function Deals() {
   );
 
   const loadData = async () => {
+    const requestSeq = ++loadRequestSeqRef.current;
     try {
       const [dRes, cRes] = await loadWithRetry(() => Promise.all([
         client.entities.deals.query({ limit: 1000, sort: '-deal_date' }),
@@ -424,17 +497,63 @@ export default function Deals() {
         );
       }
 
+      if (requestSeq !== loadRequestSeqRef.current) return;
       setDeals(dealItems);
       setCustomers(custItems);
       setLoadError(null);
-    } catch (err) { console.error(err); setLoadError(getLoadErrorMessage(err)); }
-    finally { setLoading(false); }
+    } catch (err) {
+      if (requestSeq !== loadRequestSeqRef.current) return;
+      console.error(err);
+      setLoadError(getLoadErrorMessage(err));
+    } finally {
+      if (requestSeq === loadRequestSeqRef.current) setLoading(false);
+    }
   };
 
   useEffect(() => {
     setLoading(true);
     void loadData();
   }, [dataScope, employee?.id, employee?.name]);
+
+  useEffect(() => () => {
+    loadRequestSeqRef.current += 1;
+  }, []);
+
+  useEffect(() => {
+    const employeeId = employee?.id;
+    if (!employeeId || typeof window === 'undefined') {
+      pendingStorageOwnerRef.current = null;
+      pendingStorageHydratingRef.current = false;
+      setPendingFinalizations({});
+      return;
+    }
+    const ownerKey = String(employeeId);
+    const restored = parsePendingFinalizations(
+      window.sessionStorage.getItem(pendingFinalizeStorageKey(ownerKey)),
+    );
+    pendingStorageOwnerRef.current = ownerKey;
+    pendingStorageSnapshotRef.current = JSON.stringify(restored);
+    pendingStorageHydratingRef.current = true;
+    setPendingFinalizations(restored);
+  }, [employee?.id]);
+
+  useEffect(() => {
+    const employeeId = employee?.id ? String(employee.id) : null;
+    if (!employeeId || pendingStorageOwnerRef.current !== employeeId || typeof window === 'undefined') return;
+    const serialized = JSON.stringify(pendingFinalizations);
+    if (pendingStorageHydratingRef.current) {
+      if (serialized === pendingStorageSnapshotRef.current) {
+        pendingStorageHydratingRef.current = false;
+      }
+      return;
+    }
+    const storageKey = pendingFinalizeStorageKey(employeeId);
+    if (Object.keys(pendingFinalizations).length === 0) {
+      window.sessionStorage.removeItem(storageKey);
+    } else {
+      window.sessionStorage.setItem(storageKey, serialized);
+    }
+  }, [employee?.id, pendingFinalizations]);
 
   useAutoRefresh(loadData, {
     intervalMs: 30000,
@@ -454,6 +573,87 @@ export default function Deals() {
     deals.filter(deal => duplicateKeyCounts[getDealDuplicateKey(deal)] > 1).map(deal => deal.id)
   );
   const duplicateGroupCount = Object.values(duplicateKeyCounts).filter(count => count > 1).length;
+
+  const setDealFinalizeBusy = (dealId: number, busy: boolean) => {
+    setFinalizingDealIds(previous => {
+      const next = new Set(previous);
+      if (busy) next.add(dealId);
+      else next.delete(dealId);
+      return next;
+    });
+  };
+
+  const rememberFinalizeFailure = (
+    dealId: number,
+    request: DealFinalizeRequest,
+    steps: PendingFinalizeStep[],
+    retryable = true,
+  ) => {
+    setPendingFinalizations(previous => ({
+      ...previous,
+      [dealId]: { request, steps, retryable },
+    }));
+    const summary = steps.map(step => `${step.label}：${step.message}`).join('；');
+    toast.warning(`成交 #${dealId} 已保存，未完成：${summary}`);
+  };
+
+  const runDealFinalize = async (
+    dealId: number,
+    request: DealFinalizeRequest,
+    source: 'create' | 'retry' = 'create',
+  ) => {
+    setDealFinalizeBusy(dealId, true);
+    try {
+      const response = await finalizeDeal(dealId, request);
+      const result = ((response as any)?.data || response) as DealFinalizeResponse;
+      if (!result || typeof result.complete !== 'boolean' || !result.steps) {
+        throw new Error('服务器未返回完整的交接状态');
+      }
+      if (result.complete) {
+        setPendingFinalizations(previous => {
+          const next = { ...previous };
+          delete next[dealId];
+          return next;
+        });
+        toast.success(source === 'retry' ? `成交 #${dealId} 的交接已继续完成` : `成交 #${dealId} 已保存并完成交接`);
+        return true;
+      }
+
+      const failedSteps = Object.entries(result.steps)
+        .filter(([, step]) => step.status === 'failed')
+        .map(([key, step]) => ({
+          key,
+          label: finalizeStepLabels[key] || key,
+          message: step.message || '未完成，请重试',
+        }));
+      rememberFinalizeFailure(
+        dealId,
+        request,
+        failedSteps.length > 0
+          ? failedSteps
+          : [{ key: 'request', label: finalizeStepLabels.request, message: '未完成，请重试' }],
+        result.retryable !== false,
+      );
+      return false;
+    } catch (error: any) {
+      const message = error?.data?.detail || error?.response?.data?.detail || error?.message || '请求失败，请重试';
+      rememberFinalizeFailure(dealId, request, [{
+        key: 'request',
+        label: finalizeStepLabels.request,
+        message: String(message),
+      }], true);
+      return false;
+    } finally {
+      setDealFinalizeBusy(dealId, false);
+    }
+  };
+
+  const retryDealFinalize = async (dealId: number) => {
+    const pending = pendingFinalizations[dealId];
+    if (!pending || pending.retryable === false || finalizingDealIds.has(dealId)) return;
+    await runDealFinalize(dealId, pending.request, 'retry');
+    await loadData();
+  };
 
   const ensureOnboardingBoardForDeal = async (deal: any, cust: any, dealId?: number | null) => {
     const platforms = parseMultiValue(deal.package_platforms).length > 0
@@ -695,13 +895,13 @@ export default function Deals() {
             value={String(pageSize)}
             onChange={value => setPageSize(Number(value))}
             options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
-            className="h-8 w-24 text-xs"
+            className="w-24 text-xs md:h-8"
           />
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
+          <Button size="sm" variant="outline" className="md:h-8" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
+          <Button size="sm" variant="outline" className="md:h-8" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
           <span className="min-w-20 text-center text-xs text-slate-500">{paginated.page} / {paginated.totalPages} 页</span>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
+          <Button size="sm" variant="outline" className="md:h-8" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
+          <Button size="sm" variant="outline" className="md:h-8" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
         </div>
       </div>
     );
@@ -965,47 +1165,66 @@ export default function Deals() {
           toast.success('成交记录已更新');
         }
       } else {
-        const createdDealRes = await client.entities.deals.create({ data: { ...payload, created_at: now } });
-        const createdDeal = createdDealRes?.data;
-        if (createdDeal) {
-          setDeals(prev => [createdDeal, ...prev]);
-        }
-        if (form.service_start_date && form.service_end_date) {
-          await client.entities.subscriptions.create({
-            data: {
-              deal_id: createdDeal?.id || null,
-              customer_id: Number(form.customer_id), customer_name: cust?.business_name || '',
-              package_name: packageName, package_price: Number(form.deal_amount),
-              billing_cycle: form.billing_cycle, start_date: form.service_start_date,
-              end_date: form.service_end_date, auto_renew: form.auto_renew,
-              renewal_person: cust?.sales_person || '', status: 'active',
-              next_payment_date: form.auto_renew ? form.service_end_date : null,
-              renewal_result: form.auto_renew ? 'stripe_subscription_created' : 'manual_subscription_created',
-              created_at: now, updated_at: now,
-            },
+        const signature = getDealDuplicateKey(payload);
+        let matchingBefore: any[];
+        try {
+          const beforeRes = await client.entities.deals.query({
+            query: { customer_id: Number(form.customer_id) },
+            limit: 2000,
+            sort: '-deal_date',
           });
+          matchingBefore = (beforeRes?.data?.items || []).filter((deal: any) => getDealDuplicateKey(deal) === signature);
+        } catch (preflightError) {
+          console.error('Deal duplicate preflight failed:', preflightError);
+          toast.error('暂时无法核对服务器成交记录，请刷新后重试；本次没有提交新成交');
+          return;
         }
-        if (cust) {
-          await client.entities.customers.update({ id: String(cust.id), data: { status: 'closed', updated_at: now } });
-          setCustomers(prev => prev.map(item => (item.id === cust.id ? { ...item, status: 'closed', updated_at: now } : item)));
+        if (matchingBefore.length > 0) {
+          toast.error(`服务器已有相同成交记录（#${matchingBefore.map(item => item.id).join('、#')}），请核对已有记录`);
+          return;
         }
-        if (form.create_service_board && cust) {
+
+        const idsBefore = new Set(matchingBefore.map(item => Number(item.id)));
+        let createdDeal: any = null;
+        try {
+          const createdDealRes = await client.entities.deals.create({ data: { ...payload, created_at: now } });
+          createdDeal = createdDealRes?.data;
+        } catch (createError) {
+          console.error('Deal create response unavailable, reconciling:', createError);
           try {
-            const onboardingResult = await ensureOnboardingBoardForDeal({ ...payload, id: createdDeal?.id || null }, cust, createdDeal?.id || null);
-            if (onboardingResult.createdCount > 0) {
-              toast.success(`成交记录已创建，已生成 ${onboardingResult.createdCount} 个前期运营任务`);
-            } else if (onboardingResult.platforms.length > 0) {
-              toast.success('成交记录已创建，服务看板已存在');
+            const recoveryRes = await client.entities.deals.query({
+              query: { customer_id: Number(form.customer_id) },
+              limit: 2000,
+              sort: '-deal_date',
+            });
+            const newMatches = (recoveryRes?.data?.items || []).filter((deal: any) => (
+              getDealDuplicateKey(deal) === signature && !idsBefore.has(Number(deal.id))
+            ));
+            if (newMatches.length === 1) {
+              createdDeal = newMatches[0];
+              toast.info(`成交 #${createdDeal.id} 已在服务器保存，正在继续完成交接`);
+            } else if (newMatches.length === 0) {
+              toast.error('服务器未发现本次成交记录，本次未确认保存；请检查网络后明确重试');
+              return;
             } else {
-              toast.success('成交记录已创建，当前套餐暂无可生成的平台流程');
+              toast.error(`服务器发现 ${newMatches.length} 条新的相同成交，已停止自动处理；请人工核对后再操作`);
+              return;
             }
-          } catch (onboardingErr) {
-            console.error('Create onboarding board error:', onboardingErr);
-            toast.warning('成交记录已创建，但服务看板生成失败，请到列表手动生成');
+          } catch (recoveryError) {
+            console.error('Deal create reconciliation failed:', recoveryError);
+            toast.warning('成交提交结果暂时无法确认，请刷新列表核对；为避免重复，本页不会自动再次提交');
+            return;
           }
-        } else {
-          toast.success('成交记录已创建，未生成服务看板');
         }
+        if (!createdDeal?.id) {
+          throw new Error('成交已提交，但服务器未返回成交编号，请刷新后核对');
+        }
+        setDeals(prev => [createdDeal, ...prev]);
+        await runDealFinalize(Number(createdDeal.id), {
+          ensure_subscription: Boolean(form.service_start_date && form.service_end_date),
+          auto_renew: form.auto_renew,
+          create_service_board: form.create_service_board,
+        });
       }
       setPackageOverrideLabels({});
       setShowForm(false);
@@ -1042,7 +1261,7 @@ export default function Deals() {
           <h2 className="text-xl font-semibold text-slate-800">成交管理</h2>
           <p className="text-sm text-slate-500">共 {deals.length} 笔成交，总金额 ${totalAmount.toLocaleString()}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="hidden gap-2 md:flex">
           <ExportButton
             data={filtered.map(d => ({
               ...d,
@@ -1073,7 +1292,7 @@ export default function Deals() {
               { key: 'service_end_short', label: '服务到期' },
               { key: 'notes', label: '备注' },
             ]}
-            filename={`成交记录_${new Date().toISOString().slice(0, 10)}`}
+            filename={`成交记录_${businessDateKey()}`}
             sheetName="成交记录"
           />
           <Button onClick={() => { setPackageOverrideLabels({}); setForm(buildEmptyDealForm()); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
@@ -1116,19 +1335,19 @@ export default function Deals() {
             <NativeSelect
               value={filterProduct}
               onChange={setFilterProduct}
-              className="w-[150px]"
+              className="w-full sm:w-[150px]"
               options={[{ value: 'all', label: '全部产品' }, ...Object.entries(productLabels).map(([k, v]) => ({ value: k, label: v }))]}
             />
             <NativeSelect
               value={filterPaid}
               onChange={setFilterPaid}
-              className="w-[130px]"
+              className="w-full sm:w-[130px]"
               options={[{ value: 'all', label: '全部状态' }, { value: 'paid', label: '已付款' }, { value: 'unpaid', label: '未付款' }]}
             />
             <NativeSelect
               value={filterCycle}
               onChange={setFilterCycle}
-              className="w-[130px]"
+              className="w-full sm:w-[130px]"
               options={[{ value: 'all', label: '全部周期' }, ...Object.entries(cycleLabels).map(([k, v]) => ({ value: k, label: v }))]}
             />
             <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
@@ -1142,7 +1361,7 @@ export default function Deals() {
                   type="button"
                   key={preset.value}
                   onClick={() => applyDatePreset(preset.value)}
-                  className={`whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition ${
+                  className={`min-h-11 whitespace-nowrap rounded-md px-2.5 text-sm font-medium transition md:min-h-9 ${
                     filterDatePreset === preset.value
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-slate-600 hover:bg-white hover:text-blue-700'
@@ -1152,7 +1371,7 @@ export default function Deals() {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input
                 type="date"
                 value={filterDateFrom}
@@ -1160,7 +1379,7 @@ export default function Deals() {
                   setFilterDatePreset('custom');
                   setFilterDateFrom(e.target.value);
                 }}
-                className="w-[145px] text-sm"
+                className="w-full text-sm sm:w-[145px]"
                 placeholder="开始日期"
               />
               <span className="text-slate-400 text-sm">至</span>
@@ -1171,7 +1390,7 @@ export default function Deals() {
                   setFilterDatePreset('custom');
                   setFilterDateTo(e.target.value);
                 }}
-                className="w-[145px] text-sm"
+                className="w-full text-sm sm:w-[145px]"
                 placeholder="结束日期"
               />
             </div>
@@ -1188,6 +1407,55 @@ export default function Deals() {
           )}
         </CardContent>
       </Card>
+
+      {Object.keys(pendingFinalizations).length > 0 && (
+        <Card className="border-amber-300 bg-amber-50" data-testid="deal-finalize-pending-list">
+          <CardContent className="space-y-3 p-4">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+              <div>
+                <p className="font-semibold text-amber-900">成交已保存，部分交接仍需完成</p>
+                <p className="mt-1 text-xs text-amber-800">继续完成只会补齐缺少的记录，不会重复创建成交。</p>
+              </div>
+            </div>
+            {Object.entries(pendingFinalizations).map(([rawDealId, pending]) => {
+              const dealId = Number(rawDealId);
+              const busy = finalizingDealIds.has(dealId);
+              const canRetry = pending.retryable !== false;
+              return (
+                <div
+                  key={dealId}
+                  role="alert"
+                  data-testid={`deal-finalize-pending-${dealId}`}
+                  className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900">成交 #{dealId} 已保存，交接未完成</p>
+                    <ul className="mt-1 space-y-1 text-sm text-amber-800">
+                      {pending.steps.map(step => (
+                        <li key={`${step.key}-${step.message}`}>{step.label}：{step.message}</li>
+                      ))}
+                    </ul>
+                    {!canRetry && (
+                      <p className="mt-2 text-xs font-medium text-red-700">该问题无法靠重复点击解决，请联系老板/管理员在电脑端核对后处理。</p>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    className="min-h-11 shrink-0 bg-amber-700 text-white hover:bg-amber-800"
+                    disabled={busy || !canRetry}
+                    aria-label={canRetry ? `继续完成交接 #${dealId}` : `交接需要管理员处理 #${dealId}`}
+                    onClick={() => void retryDealFinalize(dealId)}
+                  >
+                    <ClipboardCheck className="mr-2 h-4 w-4" />
+                    {busy ? '正在继续...' : canRetry ? '继续完成交接' : '需要管理员处理'}
+                  </Button>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Deals list */}
       <Card className="border-slate-200">
@@ -1226,15 +1494,15 @@ export default function Deals() {
                     <div><p className="text-xs text-slate-400">运营</p><p className="mt-1 text-slate-700">{d.is_transferred_ops ? '已转运营' : '待转运营'}</p></div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-                    <Button size="sm" variant="outline" className="h-8 flex-1" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals`)}><ExternalLink className="mr-1 h-3.5 w-3.5" />客户详情</Button>
-                    <Button size="sm" variant="outline" className="h-8" disabled={generatingBoardId === d.id} onClick={() => void handleGenerateServiceBoardForDeal(d)}>{generatingBoardId === d.id ? '生成中' : '服务看板'}</Button>
-                    <Button size="sm" variant="outline" className="h-8" onClick={() => openEditDeal(d)}>编辑</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals`)}><ExternalLink className="mr-1 h-3.5 w-3.5" />客户详情</Button>
+                    {hasPermission('deal_edit') && <Button size="sm" variant="outline" className="h-11 flex-1 border-emerald-200 text-emerald-700" disabled={generatingBoardId === d.id} onClick={() => void handleGenerateServiceBoardForDeal(d)}><ClipboardCheck className="mr-1 h-4 w-4" />{generatingBoardId === d.id ? '生成中' : '生成看板'}</Button>}
+                    {hasPermission('deal_edit') && <Button size="sm" variant="outline" className="h-11 flex-1" onClick={() => openEditDeal(d)}><Edit className="mr-1 h-4 w-4" />编辑交接</Button>}
                   </div>
                 </div>
                 );
               })}
             </div>
-            <div className="hidden overflow-x-auto md:block">
+            {!isMobile && <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-slate-50 text-left text-slate-500">
@@ -1287,14 +1555,14 @@ export default function Deals() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div>}
             </>
           )}
           {filtered.length > 0 && <PaginationFooter />}
         </CardContent>
       </Card>
 
-      <Dialog open={showPackageManager} onOpenChange={(open) => { setShowPackageManager(open); if (!open) setNewPackageName(''); }}>
+      {!isMobile && <Dialog open={showPackageManager} onOpenChange={(open) => { setShowPackageManager(open); if (!open) setNewPackageName(''); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>管理套餐</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
@@ -1361,16 +1629,16 @@ export default function Deals() {
             </div>
           </div>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
-      <ConfirmDialog
+      {!isMobile && <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
         title="确认删除成交记录"
         description={`确定要删除「${deleteTarget?.customer_name} - ${deleteTarget?.package_name}」的成交记录吗？`}
         onConfirm={handleDeleteDeal}
         loading={deleting}
-      />
+      />}
 
       {/* Add/Edit deal dialog */}
       <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setPackageOverrideLabels({}); setEditingId(null); setForm(buildEmptyDealForm()); } }}>
@@ -1389,7 +1657,7 @@ export default function Deals() {
                 ).map(c => ({ value: String(c.id), label: c.business_name }))]}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label>产品类型</Label>
                 <NativeSelect
@@ -1410,9 +1678,9 @@ export default function Deals() {
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <Label>套餐名称 *</Label>
-                <Button type="button" variant="outline" size="sm" onClick={openPackageManager}>
+                {!isMobile && <Button type="button" variant="outline" size="sm" onClick={openPackageManager}>
                   管理套餐
-                </Button>
+                </Button>}
               </div>
               <div className="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-3">
                 {dealPackageOptions.length === 0 ? (
@@ -1439,11 +1707,11 @@ export default function Deals() {
                   : ' 暂未选择'}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div><Label>成交金额 *</Label><Input type="number" value={form.deal_amount} onChange={e => setForm({ ...form, deal_amount: e.target.value })} placeholder="0.00" /></div>
               <div><Label>成交日期</Label><Input type="date" value={form.deal_date} onChange={e => setForm({ ...form, deal_date: e.target.value })} /></div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div><Label>服务开始日期</Label><Input type="date" value={form.service_start_date} onChange={e => setForm({ ...form, service_start_date: e.target.value })} /></div>
               <div><Label>服务到期日期</Label><Input type="date" value={form.service_end_date} onChange={e => setForm({ ...form, service_end_date: e.target.value })} /></div>
             </div>

@@ -1,7 +1,7 @@
 import json
 import re
 from datetime import date, datetime, timedelta, timezone
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_current_user, get_finance_user
+from dependencies.auth import get_current_user, get_finance_user, normalize_system_role
 from models.commissions import (
     CommissionAgreement,
     CommissionEntry,
@@ -79,12 +79,51 @@ def _agreement_payload(row: CommissionAgreement) -> dict:
 
 
 def _require_sales_partner(user: UserResponse) -> int:
-    if str(user.role or "").lower() != "sales_partner":
+    if normalize_system_role(user.role) != "sales_partner":
         raise HTTPException(status_code=403, detail="Sales partner access required")
     try:
         return int(user.id)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=403, detail="Sales partner account is not linked to an employee") from exc
+
+
+async def _portal_partner_scope(
+    user: UserResponse,
+    db: AsyncSession,
+    requested_partner_id: int | None,
+) -> tuple[SalesPartner, list[SalesPartner], bool]:
+    """Resolve a read-only partner scope without granting any commission writes."""
+    role = normalize_system_role(user.role)
+    if role == "sales_partner":
+        if requested_partner_id is not None:
+            raise HTTPException(status_code=403, detail="Sales partners cannot switch partner scope")
+        employee_id = _require_sales_partner(user)
+        partners = (await db.scalars(select(SalesPartner).where(
+            SalesPartner.employee_id == employee_id,
+            SalesPartner.partner_type.in_(("agency", "partner")),
+        ).order_by(SalesPartner.id))).all()
+        if not partners:
+            raise HTTPException(status_code=409, detail="该登录账号尚未关联销售合伙人档案，请联系管理员完成关联")
+        if len(partners) > 1:
+            raise HTTPException(status_code=409, detail="该登录账号关联了多个销售合伙人档案，请联系管理员处理重复关联")
+        return partners[0], [], False
+
+    if role != "super_admin":
+        raise HTTPException(status_code=403, detail="Partner portal access required")
+
+    partners = list((await db.scalars(select(SalesPartner).where(
+        SalesPartner.partner_type.in_(("agency", "partner")),
+    ).order_by(SalesPartner.name, SalesPartner.id))).all())
+    if not partners:
+        raise HTTPException(status_code=409, detail="尚未建立销售合伙人档案")
+
+    if requested_partner_id is None:
+        selected = next((row for row in partners if row.status == "active"), partners[0])
+    else:
+        selected = next((row for row in partners if row.id == requested_partner_id), None)
+        if selected is None:
+            raise HTTPException(status_code=404, detail="销售合伙人不存在")
+    return selected, partners, True
 
 
 class PartnerInput(BaseModel):
@@ -245,19 +284,10 @@ async def assignment_options(
 async def my_partner_dashboard(
     user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    partner_id: Annotated[Optional[int], Query(gt=0)] = None,
 ):
     """Read-only, partner-scoped portal data. Never returns company-wide finance."""
-    employee_id = _require_sales_partner(user)
-    partners = (await db.scalars(select(SalesPartner).where(
-        SalesPartner.employee_id == employee_id,
-        SalesPartner.partner_type.in_(("agency", "partner")),
-    ).order_by(SalesPartner.id))).all()
-    if not partners:
-        raise HTTPException(status_code=409, detail="该登录账号尚未关联销售合伙人档案，请联系管理员完成关联")
-    if len(partners) > 1:
-        raise HTTPException(status_code=409, detail="该登录账号关联了多个销售合伙人档案，请联系管理员处理重复关联")
-
-    partner = partners[0]
+    partner, available_partners, owner_readonly = await _portal_partner_scope(user, db, partner_id)
     agreements = (await db.scalars(select(CommissionAgreement).where(
         CommissionAgreement.partner_id == partner.id,
     ).order_by(CommissionAgreement.version.desc()))).all()
@@ -307,6 +337,13 @@ async def my_partner_dashboard(
     status_summary = partner_status_summary(customer_status_rows)
 
     return {
+        "portal_mode": "owner_readonly" if owner_readonly else "partner",
+        "available_partners": [{
+            "id": row.id,
+            "partner_code": row.partner_code,
+            "name": row.name,
+            "status": row.status,
+        } for row in available_partners],
         "partner": _partner_payload(partner),
         "summary": {
             "active_customer_count": len({row.customer_id for row in attributions if row.is_active}),

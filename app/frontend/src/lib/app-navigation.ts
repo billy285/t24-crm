@@ -65,6 +65,7 @@ export const appNavigationItems: AppNavigationItem[] = [
   { path: '/finance', label: '财务管理', icon: DollarSign },
   { path: '/rmb-profit', label: '人民币利润预估', icon: TrendingUp },
   { path: '/commissions', label: '渠道与分润', icon: BadgeDollarSign },
+  { path: '/settings/deduction', label: '月度扣点比例', icon: Settings },
   { path: '/partner-portal', label: '我的客户与分润', icon: BadgeDollarSign },
   { path: '/payroll', label: '工资表', icon: ClipboardList },
   { path: '/tasks', label: '任务协作', icon: ListTodo },
@@ -84,7 +85,7 @@ export const appNavigationSections: AppNavigationSection[] = [
   },
   { label: '客户中心', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle'], icon: Users },
   { label: '任务与交付', paths: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'], icon: ListTodo },
-  { label: '财务与结算', paths: ['/finance', '/rmb-profit', '/management-decisions', '/commissions', '/payroll'], icon: DollarSign },
+  { label: '财务与结算', paths: ['/finance', '/rmb-profit', '/management-decisions', '/commissions', '/settings/deduction', '/payroll'], icon: DollarSign },
   { label: '我的客户与分润', paths: ['/partner-portal'], icon: BadgeDollarSign },
   { label: '组织与设置', paths: ['/employees', '/settings', '/permissions'], icon: Settings },
 ];
@@ -149,6 +150,65 @@ export const partnerBusinessApp: MobileBusinessAppDefinition = {
   tone: 'blue',
 };
 
+const mobileAppByKey = new Map(mobileBusinessApps.map(app => [app.key, app]));
+
+const mobileRoleAppPaths: Record<string, Partial<Record<MobileBusinessAppKey, string[]>>> = {
+  super_admin: {
+    strategy: ['/', '/company-roadmap', '/management-decisions'],
+    sales: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],
+    customers: ['/customers', '/deals', '/customer-lifecycle'],
+    delivery: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'],
+    finance: ['/finance', '/rmb-profit'],
+    organization: ['/employees'],
+  },
+  admin: {
+    strategy: ['/', '/company-roadmap', '/management-decisions'],
+    sales: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],
+    customers: ['/customers', '/deals', '/customer-lifecycle'],
+    delivery: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'],
+    finance: ['/finance', '/rmb-profit'],
+    organization: ['/employees'],
+  },
+  sales: {
+    sales: ['/sales-workbench', '/sales-leads', '/sales-knowledge'],
+    customers: ['/customers'],
+    delivery: ['/tasks'],
+  },
+  sales_manager: {
+    sales: ['/sales-workbench', '/sales-leads', '/merchant-pool', '/sales-knowledge'],
+    customers: ['/customers'],
+    delivery: ['/tasks'],
+  },
+  ops: {
+    delivery: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'],
+    customers: ['/customers'],
+  },
+  design: {
+    delivery: ['/tasks'],
+    customers: ['/customers'],
+  },
+  finance: {
+    finance: ['/finance', '/rmb-profit'],
+    customers: ['/customers'],
+    strategy: ['/'],
+  },
+};
+
+/**
+ * Mobile is a focused execution surface, not a miniature copy of desktop admin.
+ * Global settings, permissions, payroll and other high-impact bulk tools stay on desktop.
+ */
+export function getMobileBusinessApps(role?: string | null): MobileBusinessAppDefinition[] {
+  if (role === 'sales_partner') return [partnerBusinessApp];
+
+  const configured = mobileRoleAppPaths[role || ''] || mobileRoleAppPaths.super_admin;
+  return Object.entries(configured).flatMap(([key, paths]) => {
+    const definition = mobileAppByKey.get(key as MobileBusinessAppKey);
+    if (!definition || !paths?.length) return [];
+    return [{ ...definition, paths }];
+  });
+}
+
 export function getRoleTodayPath(role?: string | null): string {
   if (role === 'sales_partner') return '/partner-portal';
   if (role === 'sales' || role === 'sales_manager') return '/sales-workbench';
@@ -157,7 +217,7 @@ export function getRoleTodayPath(role?: string | null): string {
 }
 
 export function getRolePendingPath(role?: string | null): string {
-  if (role === 'finance') return '/finance?tab=subscriptions';
+  if (role === 'finance') return '/finance';
   if (role === 'sales_partner') return '/partner-portal';
   if (role === 'sales' || role === 'sales_manager') return '/sales-leads';
   if (role === 'ops' || role === 'design') return '/tasks?view=mine';

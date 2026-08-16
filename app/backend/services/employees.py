@@ -117,7 +117,7 @@ class EmployeesService:
             logger.error(f"Error updating employees {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int) -> bool:
+    async def delete(self, obj_id: int, *, commit: bool = True) -> bool:
         """Delete employees"""
         try:
             obj = await self.get_by_id(obj_id)
@@ -125,7 +125,10 @@ class EmployeesService:
                 logger.warning(f"Employees {obj_id} not found for deletion")
                 return False
             await self.db.delete(obj)
-            await self.db.commit()
+            if commit:
+                await self.db.commit()
+            else:
+                await self.db.flush()
             logger.info(f"Deleted employees {obj_id}")
             return True
         except Exception as e:

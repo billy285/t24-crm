@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '../lib/tokenStore';
 import { useRole } from '../lib/role-context';
@@ -20,6 +21,8 @@ import { type CustomerCodeSettings, defaultSettings, defaultIndustryPrefixes, lo
 import { type BusinessDictConfig, defaultBusinessDictConfig, normalizeDictConfig } from '../lib/dict-config';
 import { settingsApi, type AiSettings, type EnvConfig } from '../api/settings';
 import ProductPlanSettings from '@/components/ProductPlanSettings';
+import MobileDesktopOnlyNotice from '@/components/mobile/MobileDesktopOnlyNotice';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const industryLabels: Record<string, string> = { restaurant: '餐厅', nail: '美甲', massage: '按摩', beauty: '美容', supermarket: '超市', other: '其他' };
 type EnvScope = 'backend_vars' | 'frontend_vars';
@@ -42,12 +45,6 @@ const normalizeReminderConfig = (config: Partial<typeof defaultReminderConfig> |
   ...(config || {}),
   expiryDaysBefore: Number(config?.expiryDaysBefore) === 30 ? 7 : Number(config?.expiryDaysBefore ?? defaultReminderConfig.expiryDaysBefore),
 });
-const defaultSecurityConfig = {
-  passwordViewRoles: ['super_admin', 'admin'] as string[],
-  logPasswordViews: true,
-  requireConfirmDelete: true,
-  enableSoftDelete: false,
-};
 const defaultNotificationConfig = {
   enableBrowserNotif: false,
   enableEmailNotif: false,
@@ -72,6 +69,8 @@ const defaultAiSettings: AiSettings = {
 
 export default function Settings() {
   const { isAdmin, hasPermission } = useRole();
+  const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const canEditSettings = isAdmin || hasPermission('settings_edit');
 
   // Customer code settings
@@ -93,10 +92,6 @@ export default function Settings() {
   // Reminder config
   const [reminderConfig, setReminderConfig] = useState(defaultReminderConfig);
   const [reminderChanged, setReminderChanged] = useState(false);
-
-  // Security config
-  const [securityConfig, setSecurityConfig] = useState(defaultSecurityConfig);
-  const [securityChanged, setSecurityChanged] = useState(false);
 
   // Notification config
   const [notifConfig, setNotifConfig] = useState(defaultNotificationConfig);
@@ -153,6 +148,11 @@ export default function Settings() {
   };
 
   useEffect(() => {
+    if (isMobile) {
+      setSettingsLoading(false);
+      return;
+    }
+
     let active = true;
 
     const loadSettingsData = async () => {
@@ -164,7 +164,6 @@ export default function Settings() {
           remoteDict,
           remoteDashboard,
           remoteReminder,
-          remoteSecurity,
           remoteNotif,
           remoteExport,
         ] = await Promise.all([
@@ -173,7 +172,6 @@ export default function Settings() {
           loadRemoteAppConfig('dict_config', defaultBusinessDictConfig),
           loadRemoteAppConfig('dashboard_config', defaultDashboardConfig),
           loadRemoteAppConfig('reminder_config', defaultReminderConfig),
-          loadRemoteAppConfig('security_config', defaultSecurityConfig),
           loadRemoteAppConfig('notification_config', defaultNotificationConfig),
           loadRemoteAppConfig('export_config', defaultExportConfig),
         ]);
@@ -185,7 +183,6 @@ export default function Settings() {
         setDictConfig(normalizeDictConfig(remoteDict));
         setDashboardConfig(remoteDashboard);
         setReminderConfig(normalizeReminderConfig(remoteReminder));
-        setSecurityConfig(remoteSecurity);
         setNotifConfig(remoteNotif);
         setExportConfig(remoteExport);
       } catch {
@@ -195,7 +192,6 @@ export default function Settings() {
         setDictConfig(normalizeDictConfig(readCachedAppConfig('dict_config', defaultBusinessDictConfig)));
         setDashboardConfig(readCachedAppConfig('dashboard_config', defaultDashboardConfig));
         setReminderConfig(normalizeReminderConfig(readCachedAppConfig('reminder_config', defaultReminderConfig)));
-        setSecurityConfig(readCachedAppConfig('security_config', defaultSecurityConfig));
         setNotifConfig(readCachedAppConfig('notification_config', defaultNotificationConfig));
         setExportConfig(readCachedAppConfig('export_config', defaultExportConfig));
         toast.error('加载系统设置失败，已回退到缓存配置');
@@ -215,7 +211,7 @@ export default function Settings() {
     return () => {
       active = false;
     };
-  }, [canEditSettings]);
+  }, [canEditSettings, isMobile]);
 
   const loadLogs = async () => {
     setLogsLoading(true);
@@ -295,16 +291,6 @@ export default function Settings() {
       toast.success('提醒规则已保存');
     } catch {
       toast.error('保存提醒规则失败');
-    }
-  };
-  const saveSecurity = async () => {
-    try {
-      const saved = await saveRemoteAppConfig('security_config', securityConfig);
-      setSecurityConfig(saved);
-      setSecurityChanged(false);
-      toast.success('安全设置已保存');
-    } catch {
-      toast.error('保存安全设置失败');
     }
   };
   const saveNotif = async () => {
@@ -405,20 +391,32 @@ export default function Settings() {
     }
   };
 
+  if (isMobile) {
+    return (
+      <MobileDesktopOnlyNotice
+        title="全局设置请在电脑端处理"
+        description="环境、权限、安全和导出规则会影响整个系统。手机版仅保留个人账户与安装入口，避免误触全局配置。"
+      />
+    );
+  }
+
   if (!canEditSettings) {
     return <div className="flex items-center justify-center h-64"><p className="text-slate-400">仅管理员可访问系统设置</p></div>;
   }
 
   if (settingsLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
+      <>
+        <div className="hidden h-64 items-center justify-center md:flex">
+          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <>
+      <div className="hidden space-y-4 md:block">
       <div><h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2"><SettingsIcon className="w-5 h-5" /> 系统设置</h2><p className="text-sm text-slate-500 mt-1">配置系统参数、业务规则和权限</p></div>
 
       <Tabs defaultValue="company" className="w-full">
@@ -754,24 +752,46 @@ export default function Settings() {
 
         {/* Security */}
         <TabsContent value="security">
-          <Card className="border-slate-200"><CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Lock className="w-4 h-4 text-blue-600" /> 安全设置</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-3 bg-slate-50 rounded-lg space-y-2">
-              <Label>密码查看权限（可查看媒体账号密码的角色）</Label>
-              <div className="flex flex-wrap gap-2">{Object.entries(systemRoleLabels).map(([k, v]) => (
-                <label key={k} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                  <input type="checkbox" checked={securityConfig.passwordViewRoles.includes(k)} onChange={e => {
-                    const roles = e.target.checked ? [...securityConfig.passwordViewRoles, k] : securityConfig.passwordViewRoles.filter(r => r !== k);
-                    setSecurityConfig({ ...securityConfig, passwordViewRoles: roles }); setSecurityChanged(true);
-                  }} className="rounded" />{v}
-                </label>
-              ))}</div>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"><div><Label>记录密码查看日志</Label><p className="text-xs text-slate-500">每次查看密码自动记录操作日志</p></div><Switch checked={securityConfig.logPasswordViews} onCheckedChange={v => { setSecurityConfig({ ...securityConfig, logPasswordViews: v }); setSecurityChanged(true); }} /></div>
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"><div><Label>删除确认</Label><p className="text-xs text-slate-500">删除操作需二次确认</p></div><Switch checked={securityConfig.requireConfirmDelete} onCheckedChange={v => { setSecurityConfig({ ...securityConfig, requireConfirmDelete: v }); setSecurityChanged(true); }} /></div>
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"><div><Label>软删除模式</Label><p className="text-xs text-slate-500">删除数据仅标记为已删除，不真正移除</p></div><Switch checked={securityConfig.enableSoftDelete} onCheckedChange={v => { setSecurityConfig({ ...securityConfig, enableSoftDelete: v }); setSecurityChanged(true); }} /></div>
-            <div className="flex justify-end pt-2"><Button onClick={saveSecurity} disabled={!securityChanged} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" /> 保存</Button></div>
-          </CardContent></Card>
+          <Card className="border-slate-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2"><Lock className="w-4 h-4 text-blue-600" /> 安全边界与执行状态</CardTitle>
+              <CardDescription>这里只展示系统当前真正执行的规则，不提供未落地的全局开关。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-start justify-between gap-4 rounded-lg bg-slate-50 p-4">
+                <div>
+                  <Label>媒体账号密码权限</Label>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">以“权限管理 → 敏感信息权限”为唯一生效来源；关闭后前端入口和后端接口都会拒绝。</p>
+                </div>
+                {isAdmin ? (
+                  <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => navigate('/permissions')}>前往权限管理</Button>
+                ) : (
+                  <Badge variant="outline" className="shrink-0">由管理员配置</Badge>
+                )}
+              </div>
+              <div className="flex items-start justify-between gap-4 rounded-lg bg-slate-50 p-4">
+                <div>
+                  <Label>密码查看审计</Label>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">由服务器强制记录真实操作者、时间、来源地址、客户和账号；无法在此关闭。</p>
+                </div>
+                <Badge className="shrink-0 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">强制开启</Badge>
+              </div>
+              <div className="flex items-start justify-between gap-4 rounded-lg bg-slate-50 p-4">
+                <div>
+                  <Label>删除二次确认</Label>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">由每个已完成适配的业务页面分别执行，不存在可以覆盖全系统的总开关。</p>
+                </div>
+                <Badge variant="outline" className="shrink-0">逐页面执行</Badge>
+              </div>
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div>
+                  <Label>全局软删除</Label>
+                  <p className="mt-1 text-xs leading-5 text-amber-700">当前未全局启用，删除后的可恢复性取决于具体业务模块。完善数据生命周期前，系统不会承诺所有删除都可恢复。</p>
+                </div>
+                <Badge variant="outline" className="shrink-0 border-amber-300 text-amber-700">未全局启用</Badge>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Notification */}
@@ -825,5 +845,6 @@ export default function Settings() {
     
 <div className="mt-6"><a href="/settings/deduction" className="text-blue-600 hover:underline">月度扣点比例设置</a></div>
 </div>
+    </>
   );
 }

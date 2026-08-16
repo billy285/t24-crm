@@ -34,11 +34,13 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
                 "/deals",
                 "/finance",
                 "/rmb-profit",
+                "/partner-portal",
                 "/tasks",
                 "/service-board",
                 "/callbacks",
                 "/employees",
                 "/settings",
+                "/settings/deduction",
                 "/permissions",
             ],
             "buttons": [
@@ -88,6 +90,7 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
                 "/callbacks",
                 "/employees",
                 "/settings",
+                "/settings/deduction",
                 "/permissions",
             ],
             "buttons": [
@@ -123,13 +126,13 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
             "sensitiveFields": {"viewPassword": True, "copyPassword": True, "viewFinance": True},
         },
         "sales": {
-            "pages": ["/sales-leads"],
+            "pages": ["/customers", "/sales-leads"],
             "buttons": [],
             "dataScope": "self",
             "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": False},
         },
         "sales_manager": {
-            "pages": ["/merchant-pool", "/sales-leads"],
+            "pages": ["/customers", "/merchant-pool", "/sales-leads"],
             "buttons": [],
             "dataScope": "department",
             "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": False},
@@ -161,7 +164,7 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
             "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": False},
         },
         "finance": {
-            "pages": ["/", "/finance", "/rmb-profit", "/customers", "/service-board"],
+            "pages": ["/", "/finance", "/rmb-profit", "/customers", "/service-board", "/settings/deduction"],
             "buttons": ["payment_create", "payment_edit", "customer_export"],
             "dataScope": "all",
             "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": True},
@@ -277,6 +280,8 @@ def ensure_can_update_config(key: str, user: UserResponse) -> None:
 
 
 def ensure_can_read_config(key: str, user: UserResponse) -> None:
+    if user.role == "sales_partner":
+        raise HTTPException(status_code=403, detail="Partner portal does not expose application configuration")
     if key in SENSITIVE_CONFIG_KEYS and user.role not in ADMIN_CONFIG_ROLES:
         raise HTTPException(status_code=403, detail="Admin access required")
 
@@ -314,6 +319,11 @@ async def get_all_app_configs(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # External partner accounts use frontend defaults for their single portal.
+    # Returning no configuration avoids exposing internal company, security,
+    # notification, export, or cross-role permission settings.
+    if current_user.role == "sales_partner":
+        return {"items": {}}
     app_settings_available = await tables_available(db, {APP_SETTINGS_TABLE})
     items = {}
     for key in DEFAULT_APP_CONFIGS:

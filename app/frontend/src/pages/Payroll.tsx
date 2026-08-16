@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { useRole } from '@/lib/role-context';
+import MobileDesktopOnlyNotice from '@/components/mobile/MobileDesktopOnlyNotice';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 type PayrollStatus = 'draft' | 'confirmed' | 'paid';
 type PaymentStatus = 'pending' | 'partial' | 'paid' | 'failed' | 'returned' | 'supplemental';
@@ -75,7 +77,7 @@ function errorMessage(error: any, fallback: string) {
 }
 
 function downloadCsv(filename: string, header: string[], rows: (string | number | undefined)[][]) {
-  const lines = rows.map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','));
+  const lines = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','));
   const blob = new Blob([`\ufeff${header.join(',')}\n${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -92,6 +94,7 @@ function MetricCard({ label, value, detail, tone = 'slate' }: { label: string; v
 
 export default function Payroll() {
   const { role, isAdmin } = useRole();
+  const isMobile = useIsMobile();
   const today = new Date();
   const currentMonth = today.toISOString().slice(0, 7);
   const currentYear = today.getFullYear();
@@ -143,8 +146,14 @@ export default function Payroll() {
     }
   };
 
-  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [month]);
-  useEffect(() => { if (view !== 'processing') void loadReport(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [view, reportYear]);
+  useEffect(() => {
+    if (!isMobile) void load();
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [isMobile, month]);
+  useEffect(() => {
+    if (!isMobile && view !== 'processing') void loadReport();
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [isMobile, view, reportYear]);
   useEffect(() => {
     if (showMarkPaid && data?.sheet.status && data.sheet.status !== 'confirmed') setShowMarkPaid(false);
   }, [data?.sheet.status, showMarkPaid]);
@@ -297,9 +306,17 @@ export default function Payroll() {
 
   const field = (label: string, key: keyof PayrollItem, type = 'number') => <div><Label className="text-xs text-slate-500">{label}</Label><Input className="mt-1" type={type} value={String(editing?.[key] ?? '')} onChange={event => setEditing(current => current ? { ...current, [key]: type === 'number' ? Math.max(0, Number(event.target.value) || 0) : event.target.value } : current)} /></div>;
 
+  if (isMobile) {
+    return <MobileDesktopOnlyNotice
+      title="工资处理请在电脑端完成"
+      description="工资录入、确认、发放、账号与导出都属于高敏感操作，手机版不展示明细或操作入口。"
+    />;
+  }
+
   if (loading && !data) return <div className="app-page"><div className="app-loading">正在读取工资表...</div></div>;
 
-  return <div className="app-page space-y-5">
+  return <>
+    <div className="app-page space-y-5">
     <div className="app-page-title flex-col items-start sm:flex-row sm:items-center">
       <div>
         <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Payroll</p>
@@ -422,5 +439,6 @@ export default function Payroll() {
     </div>}
 
     {showAudit && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"><Card className="max-h-[85vh] w-full max-w-2xl overflow-auto"><CardContent className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-semibold">{month} 操作日志</h2><p className="text-xs text-slate-500">确认、发放、重新打开与明细修改均留痕</p></div><Button variant="ghost" onClick={() => setShowAudit(false)}>关闭</Button></div><div className="space-y-2">{audit.map(log => <div key={log.id} className="rounded-lg border p-3"><div className="flex justify-between"><p className="font-medium">{auditLabels[log.action] || log.action}</p><p className="text-xs text-slate-500">{String(log.created_at).slice(0, 16).replace('T', ' ')}</p></div><p className="mt-1 text-xs text-slate-600">{log.actor_name || '系统'} · {log.actor_role}{log.reason ? ` · 原因：${log.reason}` : ''}</p></div>)}{!audit.length && <div className="app-empty">暂无操作日志</div>}</div></CardContent></Card></div>}
-  </div>;
+    </div>
+  </>;
 }

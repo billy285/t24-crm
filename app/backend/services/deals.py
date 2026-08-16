@@ -18,13 +18,16 @@ class DealsService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, data: Dict[str, Any]) -> Optional[Deals]:
+    async def create(self, data: Dict[str, Any], *, commit: bool = True) -> Optional[Deals]:
         """Create a new deals"""
         try:
             obj = Deals(**data)
             self.db.add(obj)
-            await self.db.commit()
-            await self.db.refresh(obj)
+            if commit:
+                await self.db.commit()
+                await self.db.refresh(obj)
+            else:
+                await self.db.flush()
             logger.info(f"Created deals with id: {obj.id}")
             return obj
         except Exception as e:
@@ -95,7 +98,13 @@ class DealsService:
             logger.error(f"Error fetching deals list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any]) -> Optional[Deals]:
+    async def update(
+        self,
+        obj_id: int,
+        update_data: Dict[str, Any],
+        *,
+        commit: bool = True,
+    ) -> Optional[Deals]:
         """Update deals"""
         try:
             obj = await self.get_by_id(obj_id)
@@ -106,8 +115,11 @@ class DealsService:
                 if hasattr(obj, key):
                     setattr(obj, key, value)
 
-            await self.db.commit()
-            await self.db.refresh(obj)
+            if commit:
+                await self.db.commit()
+                await self.db.refresh(obj)
+            else:
+                await self.db.flush()
             logger.info(f"Updated deals {obj_id}")
             return obj
         except Exception as e:
@@ -115,7 +127,7 @@ class DealsService:
             logger.error(f"Error updating deals {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int) -> bool:
+    async def delete(self, obj_id: int, *, commit: bool = True) -> bool:
         """Delete deals"""
         try:
             obj = await self.get_by_id(obj_id)
@@ -123,7 +135,10 @@ class DealsService:
                 logger.warning(f"Deals {obj_id} not found for deletion")
                 return False
             await self.db.delete(obj)
-            await self.db.commit()
+            if commit:
+                await self.db.commit()
+            else:
+                await self.db.flush()
             logger.info(f"Deleted deals {obj_id}")
             return True
         except Exception as e:

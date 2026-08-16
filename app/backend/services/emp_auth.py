@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 # JWT config
 DEFAULT_EMPLOYEE_JWT_SECRET = "crm-employee-auth-secret-key-2024"
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", DEFAULT_EMPLOYEE_JWT_SECRET)
+_KNOWN_WEAK_EMPLOYEE_JWT_SECRETS = {
+    DEFAULT_EMPLOYEE_JWT_SECRET,
+    "change-me-refresh",
+    "change-me-access",
+    "dev-secret-change-me",
+    "replace-with-a-long-random-secret",
+}
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 DEFAULT_ADMIN_EMAIL = "admin@company.com"
@@ -39,11 +46,27 @@ def _email_log_token(email: str) -> str:
 
 def validate_employee_auth_security_config() -> None:
     """Validate security-sensitive employee auth environment settings."""
-    if SECRET_KEY == DEFAULT_EMPLOYEE_JWT_SECRET:
-        message = "JWT_SECRET_KEY is using the bundled development default; set a strong secret before production use"
+    configured_secret = (os.getenv("JWT_SECRET_KEY") or DEFAULT_EMPLOYEE_JWT_SECRET).strip()
+    is_weak = (
+        len(configured_secret) < 32
+        or configured_secret.lower() in _KNOWN_WEAK_EMPLOYEE_JWT_SECRETS
+        or "replace-with" in configured_secret.lower()
+    )
+    if is_weak:
+        message = "JWT_SECRET_KEY must be a non-placeholder secret of at least 32 characters before production use"
         if _is_production_env():
             raise RuntimeError(message)
         logger.warning(message)
+
+
+def validate_runtime_security_config() -> None:
+    """Fail closed on production authentication and encryption misconfiguration."""
+    validate_employee_auth_security_config()
+    from core.mask_crypto import validate_mask_crypto_config
+
+    validate_mask_crypto_config()
+    if _is_production_env() and _is_truthy_env("ENABLE_LEGACY_AUTH"):
+        raise RuntimeError("ENABLE_LEGACY_AUTH cannot be enabled in production")
 
 
 def _default_admin_seed_config() -> Dict[str, Any]:
@@ -262,7 +285,7 @@ class EmpAuthService:
 
 async def initialize_default_employee_admin() -> None:
     """Optionally ensure the employee-login admin account exists for local/dev usage."""
-    validate_employee_auth_security_config()
+    validate_runtime_security_config()
 
     if not _is_truthy_env("ENABLE_DEFAULT_EMPLOYEE_ADMIN"):
         logger.info("Default employee admin initialization disabled; set ENABLE_DEFAULT_EMPLOYEE_ADMIN=true to enable")

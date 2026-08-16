@@ -92,10 +92,11 @@ async def initialize_services_once():
             from services.database import initialize_database
             from services.mock_data import initialize_mock_data
             from services.auth import initialize_admin_user
-            from services.emp_auth import initialize_default_employee_admin
+            from services.emp_auth import initialize_default_employee_admin, validate_runtime_security_config
             # MODULE_IMPORTS_END
 
             # MODULE_STARTUP_START
+            validate_runtime_security_config()
             await initialize_database()
             await initialize_mock_data()
             await initialize_default_employee_admin()

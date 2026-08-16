@@ -37,3 +37,9 @@
 # Keep small app branding assets in normal Git so production servers without Git LFS can deploy them.
 app/frontend/public/favicon.png -filter -diff -merge -text
 app/frontend/public/t2-marketing-logo.png -filter -diff -merge -text
+app/frontend/public/apple-touch-icon.png -filter -diff -merge -text
+app/frontend/public/pwa-icon-192.png -filter -diff -merge -text
+app/frontend/public/pwa-icon-512.png -filter -diff -merge -text
+app/frontend/public/pwa-icon-maskable-512.png -filter -diff -merge -text
+app/frontend/public/pwa-icon-source.svg -filter -diff -merge -text
+app/frontend/public/pwa-icon-maskable-source.svg -filter -diff -merge -text

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableHead, TableHeader, TableRow, TableBody, TableCell } from '@/components/ui/table';
-import { Plus, Edit, Trash2, RefreshCw, Upload, Shield } from 'lucide-react';
+import { Plus, Edit, Trash2, RefreshCw, Upload, Shield, Monitor } from 'lucide-react';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { getDefaultDeduction, updateDefaultDeduction, importMonthlyDeductions } from '@/lib/api';
 import { useRole } from '@/lib/role-context';
@@ -15,6 +15,9 @@ type RateItem = { year_month: string; rate: number; created_at?: string; updated
 
 export default function MonthlyDeduction() {
   const { isAdmin } = useRole();
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+  );
   const [items, setItems] = useState<RateItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -31,7 +34,7 @@ export default function MonthlyDeduction() {
   const [overwrite, setOverwrite] = useState<boolean>(true);
   const [importing, setImporting] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await invokeWithAuth({ url: '/api/v1/deductions-monthly', method: 'GET' });
@@ -45,9 +48,19 @@ export default function MonthlyDeduction() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const handleChange = (event: MediaQueryListEvent) => setIsMobileViewport(event.matches);
+    setIsMobileViewport(query.matches);
+    query.addEventListener('change', handleChange);
+    return () => query.removeEventListener('change', handleChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileViewport) void load();
+  }, [isMobileViewport, load]);
 
   const openCreate = () => {
     setEditTarget(null);
@@ -128,6 +141,27 @@ export default function MonthlyDeduction() {
       setImporting(false);
     }
   };
+
+  if (isMobileViewport) {
+    return (
+      <div className="mx-auto flex min-h-[60dvh] max-w-lg items-center px-1 py-6">
+        <Card className="w-full border-blue-100 bg-gradient-to-br from-blue-50 to-white">
+          <CardContent className="p-6 text-center">
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm ring-1 ring-blue-100">
+              <Monitor className="h-6 w-6" />
+            </span>
+            <h1 className="mt-4 text-lg font-semibold text-slate-900">月度扣点比例设置</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              此功能会影响公司财务计算口径，为避免手机误触，请在电脑端进入系统处理。
+            </p>
+            <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs leading-5 text-slate-500 ring-1 ring-slate-100">
+              手机端不会加载扣点明细，也不能新增、修改、删除或导入比例。
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">

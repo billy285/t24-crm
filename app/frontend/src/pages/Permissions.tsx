@@ -15,6 +15,8 @@ import { toast } from 'sonner';
 import { ShieldCheck, Save, RotateCcw, Eye, MousePointerClick, Database, Lock } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import { logOperation } from '../lib/operation-log-helper';
+import MobileDesktopOnlyNotice from '@/components/mobile/MobileDesktopOnlyNotice';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const allPages = Object.entries(pageLabels).map(([path, label]) => ({ path, label }));
 const allButtons = Object.entries(buttonPermissionLabels).map(([key, label]) => ({ key: key as ButtonPermission, label }));
@@ -28,19 +30,24 @@ const buttonGroups: { label: string; buttons: ButtonPermission[] }[] = [
   { label: '财务管理', buttons: ['payment_create', 'payment_edit'] },
   { label: '任务管理', buttons: ['task_create', 'task_edit', 'task_delete'] },
   { label: '媒体账号', buttons: ['media_account_create', 'media_account_edit', 'media_account_delete'] },
-  { label: '敏感信息', buttons: ['view_password', 'copy_password'] },
   { label: '员工管理', buttons: ['employee_create', 'employee_edit', 'employee_disable', 'employee_reset_password'] },
   { label: '系统设置', buttons: ['settings_edit', 'permission_edit'] },
 ];
 
 export default function Permissions() {
   const { isAdmin, employee } = useRole();
+  const isMobile = useIsMobile();
   const [config, setConfig] = useState<Record<SystemRole, RolePermissionConfig>>(defaultRolePermissions);
   const [selectedRole, setSelectedRole] = useState<SystemRole>('sales');
   const [changed, setChanged] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (isMobile) {
+      setLoading(false);
+      return;
+    }
+
     let active = true;
     const loadConfig = async () => {
       setLoading(true);
@@ -65,7 +72,16 @@ export default function Permissions() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isMobile]);
+
+  if (isMobile) {
+    return (
+      <MobileDesktopOnlyNotice
+        title="权限管理请在电脑端处理"
+        description="角色、数据范围和敏感信息权限属于高风险全局配置，手机版不提供修改入口。"
+      />
+    );
+  }
 
   if (!isAdmin) {
     return (
@@ -77,11 +93,7 @@ export default function Permissions() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
-    );
+    return <div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" /></div>;
   }
 
   const currentPerms = config[selectedRole];
@@ -139,7 +151,8 @@ export default function Permissions() {
   };
 
   return (
-    <div className="space-y-4">
+    <>
+      <div className="space-y-4">
       <div>
         <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
           <ShieldCheck className="w-5 h-5" /> 权限设置
@@ -298,6 +311,7 @@ export default function Permissions() {
           <Save className="w-4 h-4 mr-1" /> 保存权限配置
         </Button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

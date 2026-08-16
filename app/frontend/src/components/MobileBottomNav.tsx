@@ -32,8 +32,6 @@ export default function MobileBottomNav({ onOpenProfile, hidden = false, profile
   const todayPath = getRoleTodayPath(role);
   const pendingPath = getRolePendingPath(role);
   const customerPath = canOpen('/customers') ? '/customers' : canOpen('/partner-portal') ? '/partner-portal' : undefined;
-  const search = new URLSearchParams(location.search);
-
   let activeKey: MobileTabKey | undefined;
   if (location.pathname === '/apps') activeKey = 'home';
   else if (location.pathname === '/customers' || location.pathname === '/partner-portal') activeKey = 'customers';
@@ -41,7 +39,7 @@ export default function MobileBottomNav({ onOpenProfile, hidden = false, profile
     location.pathname === '/tasks'
     || location.pathname === '/callbacks'
     || location.pathname === '/service-board'
-    || (location.pathname === '/finance' && search.get('tab') === 'subscriptions')
+    || (role === 'finance' && location.pathname === '/finance')
   ) activeKey = 'pending';
   else if (location.pathname === pathnameOf(todayPath)) activeKey = 'today';
 

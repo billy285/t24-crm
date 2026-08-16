@@ -6,6 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.media_accounts import Media_accounts
+from services.customer_scope import apply_customer_scope
 
 logger = logging.getLogger(__name__)
 
@@ -90,20 +91,28 @@ class Media_accountsService:
             raise
 
     async def check_ownership(self, obj_id: int, user_id: str) -> bool:
-        """Check if user owns this record"""
+        """Backward-compatible record existence check.
+
+        ``user_id`` is retained as creator/audit attribution only. API access is
+        enforced through the linked customer's visibility scope.
+        """
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id)
             return obj is not None
         except Exception as e:
             logger.error(f"Error checking ownership for media_accounts {obj_id}: {str(e)}")
             return False
 
-    async def get_by_id(self, obj_id: int, user_id: Optional[str] = None) -> Optional[Media_accounts]:
-        """Get media_accounts by ID (user can only see their own records)"""
+    async def get_by_id(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        scope_user: Optional[Any] = None,
+    ) -> Optional[Media_accounts]:
+        """Get a media account if its linked customer is visible to the user."""
         try:
             query = select(Media_accounts).where(Media_accounts.id == obj_id)
-            if user_id:
-                query = query.where(Media_accounts.user_id == user_id)
+            query = apply_customer_scope(query, Media_accounts, scope_user)
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -115,17 +124,16 @@ class Media_accountsService:
         skip: int = 0, 
         limit: int = 20, 
         user_id: Optional[str] = None,
+        scope_user: Optional[Any] = None,
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Get paginated list of media_accountss (user can only see their own records)"""
+        """Get media accounts constrained by linked-customer visibility."""
         try:
             query = select(Media_accounts)
             count_query = select(func.count(Media_accounts.id))
-            
-            if user_id:
-                query = query.where(Media_accounts.user_id == user_id)
-                count_query = count_query.where(Media_accounts.user_id == user_id)
+            query = apply_customer_scope(query, Media_accounts, scope_user)
+            count_query = apply_customer_scope(count_query, Media_accounts, scope_user)
             
             if query_dict:
                 for field, value in query_dict.items():
@@ -160,10 +168,16 @@ class Media_accountsService:
             logger.error(f"Error fetching media_accounts list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any], user_id: Optional[str] = None) -> Optional[Media_accounts]:
-        """Update media_accounts (requires ownership)"""
+    async def update(
+        self,
+        obj_id: int,
+        update_data: Dict[str, Any],
+        user_id: Optional[str] = None,
+        scope_user: Optional[Any] = None,
+    ) -> Optional[Media_accounts]:
+        """Update a media account within the caller's customer scope."""
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 logger.warning(f"Media_accounts {obj_id} not found for update")
                 return None
@@ -181,10 +195,15 @@ class Media_accountsService:
             logger.error(f"Error updating media_accounts {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int, user_id: Optional[str] = None) -> bool:
-        """Delete media_accounts (requires ownership)"""
+    async def delete(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        scope_user: Optional[Any] = None,
+    ) -> bool:
+        """Delete a media account within the caller's customer scope."""
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 logger.warning(f"Media_accounts {obj_id} not found for deletion")
                 return False

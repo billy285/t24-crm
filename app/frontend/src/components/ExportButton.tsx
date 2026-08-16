@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -6,7 +7,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Download, FileSpreadsheet, FileText } from 'lucide-react';
-import { exportCSV, exportExcel } from '@/lib/export';
 import { toast } from 'sonner';
 
 interface ExportButtonProps {
@@ -17,12 +17,20 @@ interface ExportButtonProps {
 }
 
 export default function ExportButton({ data, columns, filename, sheetName }: ExportButtonProps) {
-  const handleExport = (format: 'csv' | 'xlsx') => {
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async (format: 'csv' | 'xlsx') => {
     if (data.length === 0) {
       toast.error('暂无数据可导出');
       return;
     }
+    if (exporting) return;
+    setExporting(true);
     try {
+      // XLSX is intentionally loaded only after a desktop user chooses an
+      // export format, keeping the large spreadsheet library out of mobile
+      // customer and delivery route startup bundles.
+      const { exportCSV, exportExcel } = await import('@/lib/export');
       if (format === 'csv') {
         exportCSV({ data, columns, filename });
       } else {
@@ -32,23 +40,25 @@ export default function ExportButton({ data, columns, filename, sheetName }: Exp
     } catch (err) {
       toast.error('导出失败，请重试');
       console.error(err);
+    } finally {
+      setExporting(false);
     }
   };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5">
+        <Button variant="outline" size="sm" className="gap-1.5" disabled={exporting}>
           <Download className="w-4 h-4" />
-          导出
+          {exporting ? '正在准备…' : '导出'}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => handleExport('xlsx')}>
+        <DropdownMenuItem onClick={() => void handleExport('xlsx')}>
           <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />
           导出 Excel (.xlsx)
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleExport('csv')}>
+        <DropdownMenuItem onClick={() => void handleExport('csv')}>
           <FileText className="w-4 h-4 mr-2 text-blue-600" />
           导出 CSV (.csv)
         </DropdownMenuItem>

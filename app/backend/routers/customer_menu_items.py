@@ -12,6 +12,7 @@ from schemas.auth import UserResponse
 from services.customer_menu_items import Customer_menu_itemsService
 from services.customers import CustomersService
 from services.operation_logs import Operation_logsService
+from services.role_permissions import normalized_role, require_any_page_permission, require_button_permission
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,22 @@ router = APIRouter(
     tags=["customer_menu_items"],
     dependencies=[Depends(get_current_user)],
 )
+CUSTOMER_WORKSPACE_PAGES = {"/customers", "/service-board"}
+
+
+async def _require_item_read(current_user: UserResponse, db: AsyncSession) -> None:
+    await require_any_page_permission(db, current_user, CUSTOMER_WORKSPACE_PAGES)
+
+
+async def _require_item_write(
+    current_user: UserResponse,
+    db: AsyncSession,
+    permission: str,
+    *,
+    admin_override: bool = False,
+) -> None:
+    await _require_item_read(current_user, db)
+    await require_button_permission(db, current_user, permission, admin_override=admin_override)
 
 
 class CustomerMenuItemData(BaseModel):
@@ -139,10 +156,13 @@ async def query_customer_menu_items(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_item_read(current_user, db)
     query_dict = _parse_query(query)
     customer_id = query_dict.get("customer_id") if query_dict else None
     if customer_id:
         await _ensure_customer_access(int(customer_id), current_user, db)
+    elif normalized_role(current_user) not in {"admin", "super_admin"}:
+        raise HTTPException(status_code=400, detail="customer_id query is required")
     return await Customer_menu_itemsService(db).get_list(skip=skip, limit=limit, query_dict=query_dict, sort=sort)
 
 
@@ -152,6 +172,7 @@ async def create_customer_menu_item(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_item_write(current_user, db, "task_create")
     await _ensure_customer_access(data.customer_id, current_user, db)
     now = datetime.utcnow()
     payload = _clean_item_payload(data.model_dump())
@@ -178,6 +199,7 @@ async def update_customer_menu_item(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_item_write(current_user, db, "task_edit")
     service = Customer_menu_itemsService(db)
     obj = await service.get_by_id(item_id)
     if not obj:
@@ -206,6 +228,7 @@ async def delete_customer_menu_item(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_item_write(current_user, db, "task_delete", admin_override=True)
     service = Customer_menu_itemsService(db)
     obj = await service.get_by_id(item_id)
     if not obj:

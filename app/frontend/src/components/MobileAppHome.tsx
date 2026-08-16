@@ -18,8 +18,7 @@ import { cn } from '@/lib/utils';
 import {
   getRolePendingPath,
   getRoleTodayPath,
-  mobileBusinessApps,
-  partnerBusinessApp,
+  getMobileBusinessApps,
   type MobileBusinessAppKey,
 } from '@/lib/app-navigation';
 import { getSafeInternalPath } from '@/lib/navigation-state';
@@ -165,7 +164,7 @@ export default function MobileAppHome({
   };
 
   const firstAccessiblePath = (paths: string[]) => paths.find(canOpen);
-  const appDefinitions = role === 'sales_partner' ? [partnerBusinessApp] : mobileBusinessApps;
+  const appDefinitions = getMobileBusinessApps(role);
   const availableApps = appDefinitions
     .map(app => ({ ...app, path: firstAccessiblePath(app.paths) }))
     .filter((app): app is (typeof appDefinitions)[number] & { path: string } => Boolean(app.path));
@@ -245,7 +244,7 @@ export default function MobileAppHome({
               <p className="mt-0.5 text-[10px] text-slate-400">只显示您有权使用的应用</p>
             </div>
           </div>
-          <div className={cn('grid gap-x-2 gap-y-5', role === 'sales_partner' ? 'grid-cols-1' : 'grid-cols-3')}>
+          <div className={cn('grid gap-x-2 gap-y-5', availableApps.length === 1 ? 'grid-cols-1' : 'grid-cols-3')}>
             {availableApps.map(app => {
               const Icon = app.icon;
               const badge = visibleBadge(appBadges[app.key]);

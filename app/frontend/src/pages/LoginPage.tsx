@@ -55,8 +55,8 @@ export default function LoginPage() {
 
   return (
     <Login
-      onLoginSuccess={async (token, employee) => {
-        await login(token, employee);
+      onLoginSuccess={async (token, employee, rememberMe) => {
+        await login(token, employee, rememberMe);
         const nextPath = resolvePostLoginPath(employee?.role, requestedRedirect);
         navigate(nextPath, { replace: true });
         window.setTimeout(() => requestBusinessDataRefresh('login'), 300);

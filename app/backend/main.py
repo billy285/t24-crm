@@ -21,7 +21,7 @@ from fastapi.routing import APIRouter
 from services.database import check_database_health, initialize_database, close_database
 from services.mock_data import initialize_mock_data
 from services.auth import initialize_admin_user
-from services.emp_auth import initialize_default_employee_admin
+from services.emp_auth import initialize_default_employee_admin, validate_runtime_security_config
 from services.emp_auth import decode_access_token as decode_employee_access_token
 from services.deal_payment_sync import backfill_missing_payments_from_deals
 from services.customer_lifecycle import sync_lifecycle_from_payments
@@ -100,6 +100,7 @@ def setup_logging():
 async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("=== Application startup initiated ===")
+    validate_runtime_security_config()
 
     # MODULE_STARTUP_START
     await initialize_database()
@@ -128,6 +129,22 @@ title="FastAPI Modular Template",
 )
 
 FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+PWA_NO_CACHE_MEDIA_TYPES = {
+    "manifest.webmanifest": "application/manifest+json",
+    "sw.js": "application/javascript",
+    "offline.html": "text/html",
+    "robots.txt": "text/plain",
+}
+PWA_REVALIDATE_MEDIA_TYPES = {
+    "apple-touch-icon.png": "image/png",
+    "pwa-icon-192.png": "image/png",
+    "pwa-icon-512.png": "image/png",
+    "pwa-icon-maskable-512.png": "image/png",
+}
+FRONTEND_RESERVED_FILES = {
+    *PWA_NO_CACHE_MEDIA_TYPES.keys(),
+    *PWA_REVALIDATE_MEDIA_TYPES.keys(),
+}
 
 
 # CORS: allow specific frontend origins via env, or the common local dev/preview origins by default.
@@ -182,12 +199,14 @@ PHONE_SALES_READONLY_CUSTOMER_API_PREFIXES = (
     "/api/v1/entities/customers",
     "/api/v1/entities/follow_ups",
     "/api/v1/entities/customer_contacts",
+    "/api/v1/entities/customer_callbacks",
     "/api/v1/entities/deals",
     "/api/v1/entities/subscriptions",
     "/api/v1/entities/service_progresses",
     "/api/v1/entities/service_tasks",
     "/api/v1/entities/customer_materials",
     "/api/v1/entities/customer_ai_copies",
+    "/api/v1/entities/customer_menu_items",
 )
 
 
@@ -378,6 +397,22 @@ def _frontend_file_response(requested_path: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     if candidate.is_file():
+        reserved_media_type = PWA_NO_CACHE_MEDIA_TYPES.get(safe_path)
+        if reserved_media_type:
+            headers = dict(NO_CACHE_HEADERS)
+            if safe_path == "sw.js":
+                headers["Service-Worker-Allowed"] = "/"
+            return FileResponse(candidate, media_type=reserved_media_type, headers=headers)
+        revalidate_media_type = PWA_REVALIDATE_MEDIA_TYPES.get(safe_path)
+        if revalidate_media_type:
+            return FileResponse(
+                candidate,
+                media_type=revalidate_media_type,
+                headers={
+                    "Cache-Control": "no-cache, max-age=0, must-revalidate",
+                    "Pragma": "no-cache",
+                },
+            )
         if candidate.suffix.lower() == ".html":
             return FileResponse(candidate, headers=NO_CACHE_HEADERS)
         return FileResponse(candidate, headers={"Cache-Control": "public, max-age=31536000, immutable"})
@@ -443,6 +478,9 @@ def frontend_catch_all(full_path: str):
     file_response = _frontend_file_response(full_path)
     if file_response is not None:
         return file_response
+
+    if full_path.lstrip("/") in FRONTEND_RESERVED_FILES:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     return _frontend_index_response()
 

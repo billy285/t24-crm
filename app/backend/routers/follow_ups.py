@@ -12,12 +12,24 @@ from core.database import get_db
 from dependencies.auth import get_current_user
 from services.follow_ups import Follow_upsService
 from services.customer_scope import ensure_customer_access
+from services.role_permissions import require_button_permission
 from schemas.auth import UserResponse
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/entities/follow_ups", tags=["follow_ups"], dependencies=[Depends(get_current_user)])
+
+
+async def _get_scoped_follow_up(
+    service: Follow_upsService,
+    follow_up_id: int,
+    current_user: UserResponse,
+):
+    item = await service.get_by_id(follow_up_id, scope_user=current_user)
+    if not item:
+        raise HTTPException(status_code=404, detail="Follow_ups not found")
+    return item
 
 
 # ---------- Pydantic Schemas ----------
@@ -223,6 +235,7 @@ async def create_follow_ups(
     
     service = Follow_upsService(db)
     try:
+        await require_button_permission(db, current_user, "follow_up_create", admin_override=True)
         await ensure_customer_access(db, current_user, data.customer_id)
         result = await service.create(data.model_dump())
         if not result:
@@ -230,6 +243,8 @@ async def create_follow_ups(
         
         logger.info(f"Follow_ups created successfully with id: {result.id}")
         return result
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"Validation error creating follow_ups: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -251,14 +266,18 @@ async def create_follow_upss_batch(
     results = []
     
     try:
+        await require_button_permission(db, current_user, "follow_up_create", admin_override=True)
         for item_data in request.items:
             await ensure_customer_access(db, current_user, item_data.customer_id)
+        for item_data in request.items:
             result = await service.create(item_data.model_dump())
             if result:
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} follow_upss successfully")
         return results
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch create: {str(e)}", exc_info=True)
@@ -278,17 +297,22 @@ async def update_follow_upss_batch(
     results = []
     
     try:
+        await require_button_permission(db, current_user, "follow_up_edit", admin_override=True)
+        for item in request.items:
+            await _get_scoped_follow_up(service, item.id, current_user)
+            if item.updates.customer_id is not None:
+                await ensure_customer_access(db, current_user, item.updates.customer_id)
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            if update_dict.get("customer_id") is not None:
-                await ensure_customer_access(db, current_user, update_dict["customer_id"])
             result = await service.update(item.id, update_dict, scope_user=current_user)
             if result:
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} follow_upss successfully")
         return results
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
@@ -307,6 +331,8 @@ async def update_follow_ups(
 
     service = Follow_upsService(db)
     try:
+        await require_button_permission(db, current_user, "follow_up_edit", admin_override=True)
+        await _get_scoped_follow_up(service, id, current_user)
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
         if update_dict.get("customer_id") is not None:
@@ -341,6 +367,9 @@ async def delete_follow_upss_batch(
     deleted_count = 0
     
     try:
+        await require_button_permission(db, current_user, "follow_up_delete", admin_override=True)
+        for item_id in request.ids:
+            await _get_scoped_follow_up(service, item_id, current_user)
         for item_id in request.ids:
             success = await service.delete(item_id, scope_user=current_user)
             if success:
@@ -348,6 +377,8 @@ async def delete_follow_upss_batch(
         
         logger.info(f"Batch deleted {deleted_count} follow_upss successfully")
         return {"message": f"Successfully deleted {deleted_count} follow_upss", "deleted_count": deleted_count}
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch delete: {str(e)}", exc_info=True)
@@ -365,6 +396,8 @@ async def delete_follow_ups(
     
     service = Follow_upsService(db)
     try:
+        await require_button_permission(db, current_user, "follow_up_delete", admin_override=True)
+        await _get_scoped_follow_up(service, id, current_user)
         success = await service.delete(id, scope_user=current_user)
         if not success:
             logger.warning(f"Follow_ups with id {id} not found for deletion")

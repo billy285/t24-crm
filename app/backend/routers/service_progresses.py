@@ -1,10 +1,12 @@
 import json
 import logging
+from datetime import datetime
 from typing import List, Optional
 
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -12,6 +14,8 @@ from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
 from services.service_progresses import Service_progressesService
 from services.customer_scope import ensure_customer_access
+from services.service_board_access import require_service_board_access
+from models.service_tasks import Service_tasks
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -152,6 +156,63 @@ class Service_progressesBatchDeleteRequest(BaseModel):
     ids: List[int]
 
 
+SERVER_MANAGED_PROGRESS_FIELDS = {
+    "customer_name",
+    "user_id",
+    "created_at",
+    "last_update_time",
+    "last_update_person",
+}
+
+
+def _operator_name(current_user: UserResponse) -> str:
+    for field_name in ("name", "full_name", "email"):
+        value = getattr(current_user, field_name, None)
+        if value:
+            return str(value)
+    return "系统管理员"
+
+
+def _trusted_customer_name(customer) -> str:
+    return str(getattr(customer, "business_name", None) or getattr(customer, "name", None) or "")
+
+
+def _progress_payload(data: BaseModel) -> dict:
+    payload = data.model_dump(exclude_unset=True)
+    for field_name in SERVER_MANAGED_PROGRESS_FIELDS:
+        payload.pop(field_name, None)
+    if "customer_id" in payload and payload["customer_id"] is None:
+        raise HTTPException(status_code=400, detail="服务进度必须关联客户")
+    percent = payload.get("progress_percent")
+    if percent is not None and not 0 <= percent <= 100:
+        raise HTTPException(status_code=400, detail="服务进度必须在 0 到 100 之间")
+    return payload
+
+
+async def _progress_has_tasks(db: AsyncSession, progress_id: int) -> bool:
+    result = await db.execute(
+        select(Service_tasks.id).where(Service_tasks.service_progress_id == progress_id).limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _prepare_progress_update(
+    db: AsyncSession,
+    current_user: UserResponse,
+    progress,
+    data: Service_progressesUpdateData,
+) -> dict:
+    update_dict = _progress_payload(data)
+    final_customer_id = update_dict.get("customer_id", progress.customer_id)
+    customer = await ensure_customer_access(db, current_user, final_customer_id)
+    if int(final_customer_id) != int(progress.customer_id) and await _progress_has_tasks(db, progress.id):
+        raise HTTPException(status_code=409, detail="该服务进度仍有关联任务，不能更换客户")
+    update_dict["customer_name"] = _trusted_customer_name(customer)
+    update_dict["last_update_time"] = datetime.utcnow().isoformat()
+    update_dict["last_update_person"] = _operator_name(current_user)
+    return update_dict
+
+
 # ---------- Routes ----------
 @router.get("", response_model=Service_progressesListResponse)
 async def query_service_progressess(
@@ -164,6 +225,7 @@ async def query_service_progressess(
     db: AsyncSession = Depends(get_db),
 ):
     """Query service_progressess with filtering, sorting, and pagination"""
+    await require_service_board_access(db, current_user)
     logger.debug(f"Querying service_progressess: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
     
     service = Service_progressesService(db)
@@ -203,6 +265,7 @@ async def query_service_progressess_all(
     db: AsyncSession = Depends(get_db),
 ):
     # Query service_progressess with filtering, sorting, and pagination without user limitation
+    await require_service_board_access(db, current_user)
     logger.debug(f"Querying service_progressess: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
 
     service = Service_progressesService(db)
@@ -239,6 +302,7 @@ async def get_service_progresses(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single service_progresses by ID"""
+    await require_service_board_access(db, current_user)
     logger.debug(f"Fetching service_progresses with id: {id}, fields={fields}")
     
     service = Service_progressesService(db)
@@ -263,12 +327,21 @@ async def create_service_progresses(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new service_progresses"""
-    logger.debug(f"Creating new service_progresses with data: {data}")
-    
+    await require_service_board_access(db, current_user, "task_create")
+    customer = await ensure_customer_access(db, current_user, data.customer_id)
+    create_dict = _progress_payload(data)
+    now = datetime.utcnow().isoformat()
+    create_dict.update({
+        "customer_name": _trusted_customer_name(customer),
+        "created_at": now,
+        "last_update_time": now,
+        "last_update_person": _operator_name(current_user),
+    })
+    logger.debug("Creating service progress for customer_id=%s", data.customer_id)
+
     service = Service_progressesService(db)
     try:
-        await ensure_customer_access(db, current_user, data.customer_id)
-        result = await service.create(data.model_dump(), user_id=str(current_user.id))
+        result = await service.create(create_dict, user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create service_progresses")
         
@@ -289,15 +362,27 @@ async def create_service_progressess_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple service_progressess in a single request"""
+    await require_service_board_access(db, current_user, "task_create")
+    prepared_items = []
+    for item_data in request.items:
+        customer = await ensure_customer_access(db, current_user, item_data.customer_id)
+        create_dict = _progress_payload(item_data)
+        now = datetime.utcnow().isoformat()
+        create_dict.update({
+            "customer_name": _trusted_customer_name(customer),
+            "created_at": now,
+            "last_update_time": now,
+            "last_update_person": _operator_name(current_user),
+        })
+        prepared_items.append(create_dict)
     logger.debug(f"Batch creating {len(request.items)} service_progressess")
     
     service = Service_progressesService(db)
     results = []
     
     try:
-        for item_data in request.items:
-            await ensure_customer_access(db, current_user, item_data.customer_id)
-            result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
+        for create_dict in prepared_items:
+            result = await service.create(create_dict, user_id=str(current_user.id))
             if result:
                 results.append(result)
         
@@ -316,18 +401,27 @@ async def update_service_progressess_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple service_progressess in a single request"""
+    await require_service_board_access(db, current_user, "task_edit")
     logger.debug(f"Batch updating {len(request.items)} service_progressess")
     
     service = Service_progressesService(db)
     results = []
+    prepared_items = []
+
+    item_ids = [item.id for item in request.items]
+    if len(item_ids) != len(set(item_ids)):
+        raise HTTPException(status_code=400, detail="批量更新不能包含重复服务进度")
+
+    for item in request.items:
+        progress = await service.get_by_id(item.id, scope_user=current_user)
+        if not progress:
+            raise HTTPException(status_code=404, detail="Service_progresses not found")
+        update_dict = await _prepare_progress_update(db, current_user, progress, item.updates)
+        prepared_items.append((item.id, update_dict))
     
     try:
-        for item in request.items:
-            # Only include non-None values for partial updates
-            update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            if update_dict.get("customer_id") is not None:
-                await ensure_customer_access(db, current_user, update_dict["customer_id"])
-            result = await service.update(item.id, update_dict, scope_user=current_user)
+        for item_id, update_dict in prepared_items:
+            result = await service.update(item_id, update_dict, scope_user=current_user)
             if result:
                 results.append(result)
         
@@ -347,14 +441,14 @@ async def update_service_progresses(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing service_progresses"""
-    logger.debug(f"Updating service_progresses {id} with data: {data}")
-
+    await require_service_board_access(db, current_user, "task_edit")
     service = Service_progressesService(db)
     try:
-        # Only include non-None values for partial updates
-        update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        if update_dict.get("customer_id") is not None:
-            await ensure_customer_access(db, current_user, update_dict["customer_id"])
+        progress = await service.get_by_id(id, scope_user=current_user)
+        if not progress:
+            raise HTTPException(status_code=404, detail="Service_progresses not found")
+        update_dict = await _prepare_progress_update(db, current_user, progress, data)
+        logger.debug("Updating service progress id=%s customer_id=%s", id, progress.customer_id)
         result = await service.update(id, update_dict, scope_user=current_user)
         if not result:
             logger.warning(f"Service_progresses with id {id} not found for update")
@@ -379,10 +473,20 @@ async def delete_service_progressess_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple service_progressess by their IDs"""
+    await require_service_board_access(db, current_user, "task_delete")
     logger.debug(f"Batch deleting {len(request.ids)} service_progressess")
     
     service = Service_progressesService(db)
     deleted_count = 0
+
+    if len(request.ids) != len(set(request.ids)):
+        raise HTTPException(status_code=400, detail="批量删除不能包含重复服务进度")
+
+    for item_id in request.ids:
+        if not await service.get_by_id(item_id, scope_user=current_user):
+            raise HTTPException(status_code=404, detail="Service_progresses not found")
+        if await _progress_has_tasks(db, item_id):
+            raise HTTPException(status_code=409, detail="该服务进度仍有关联任务，不能删除")
     
     try:
         for item_id in request.ids:
@@ -405,10 +509,16 @@ async def delete_service_progresses(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single service_progresses by ID"""
+    await require_service_board_access(db, current_user, "task_delete")
     logger.debug(f"Deleting service_progresses with id: {id}")
     
     service = Service_progressesService(db)
     try:
+        progress = await service.get_by_id(id, scope_user=current_user)
+        if not progress:
+            raise HTTPException(status_code=404, detail="Service_progresses not found")
+        if await _progress_has_tasks(db, id):
+            raise HTTPException(status_code=409, detail="该服务进度仍有关联任务，不能删除")
         success = await service.delete(id, scope_user=current_user)
         if not success:
             logger.warning(f"Service_progresses with id {id} not found for deletion")

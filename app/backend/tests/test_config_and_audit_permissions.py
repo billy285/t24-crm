@@ -68,9 +68,9 @@ async def test_expense_category_write_endpoints_require_login():
 
 
 @pytest.mark.asyncio
-async def test_operation_log_mutation_endpoints_require_admin_role():
+async def test_operation_log_mutation_endpoints_are_unavailable_even_to_admin():
     transport = ASGITransport(app=app)
-    headers = _auth_headers("sales")
+    headers = _auth_headers("admin")
 
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         responses = [
@@ -84,14 +84,14 @@ async def test_operation_log_mutation_endpoints_require_admin_role():
             await ac.request("DELETE", "/api/v1/entities/operation_logs/batch", json={"ids": [1]}, headers=headers),
         ]
 
-    assert [response.status_code for response in responses] == [403, 403, 403, 403]
+    assert [response.status_code for response in responses] == [405, 405, 405, 405]
 
 
 @pytest.mark.asyncio
-async def test_operation_log_mutation_endpoints_require_login():
+async def test_operation_log_mutation_endpoints_are_not_registered_without_login():
     transport = ASGITransport(app=app)
 
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         response = await ac.put("/api/v1/entities/operation_logs/1", json={"action_detail": "Changed"})
 
-    assert response.status_code == 401
+    assert response.status_code == 405

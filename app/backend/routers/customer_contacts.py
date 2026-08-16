@@ -12,12 +12,24 @@ from core.database import get_db
 from dependencies.auth import get_current_user
 from services.customer_contacts import Customer_contactsService
 from services.customer_scope import ensure_customer_access
+from services.role_permissions import require_button_permission
 from schemas.auth import UserResponse
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/entities/customer_contacts", tags=["customer_contacts"], dependencies=[Depends(get_current_user)])
+
+
+async def _get_scoped_contact(
+    service: Customer_contactsService,
+    contact_id: int,
+    current_user: UserResponse,
+):
+    item = await service.get_by_id(contact_id, scope_user=current_user)
+    if not item:
+        raise HTTPException(status_code=404, detail="Customer_contacts not found")
+    return item
 
 
 # ---------- Pydantic Schemas ----------
@@ -199,6 +211,7 @@ async def create_customer_contacts(
     
     service = Customer_contactsService(db)
     try:
+        await require_button_permission(db, current_user, "customer_edit")
         await ensure_customer_access(db, current_user, data.customer_id)
         result = await service.create(data.model_dump())
         if not result:
@@ -206,6 +219,8 @@ async def create_customer_contacts(
         
         logger.info(f"Customer_contacts created successfully with id: {result.id}")
         return result
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"Validation error creating customer_contacts: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -227,14 +242,18 @@ async def create_customer_contactss_batch(
     results = []
     
     try:
+        await require_button_permission(db, current_user, "customer_edit")
         for item_data in request.items:
             await ensure_customer_access(db, current_user, item_data.customer_id)
+        for item_data in request.items:
             result = await service.create(item_data.model_dump())
             if result:
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} customer_contactss successfully")
         return results
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch create: {str(e)}", exc_info=True)
@@ -254,17 +273,22 @@ async def update_customer_contactss_batch(
     results = []
     
     try:
+        await require_button_permission(db, current_user, "customer_edit")
+        for item in request.items:
+            await _get_scoped_contact(service, item.id, current_user)
+            if item.updates.customer_id is not None:
+                await ensure_customer_access(db, current_user, item.updates.customer_id)
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            if update_dict.get("customer_id") is not None:
-                await ensure_customer_access(db, current_user, update_dict["customer_id"])
             result = await service.update(item.id, update_dict, scope_user=current_user)
             if result:
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} customer_contactss successfully")
         return results
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
@@ -283,6 +307,8 @@ async def update_customer_contacts(
 
     service = Customer_contactsService(db)
     try:
+        await require_button_permission(db, current_user, "customer_edit")
+        await _get_scoped_contact(service, id, current_user)
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
         if update_dict.get("customer_id") is not None:
@@ -317,6 +343,9 @@ async def delete_customer_contactss_batch(
     deleted_count = 0
     
     try:
+        await require_button_permission(db, current_user, "customer_delete", admin_override=True)
+        for item_id in request.ids:
+            await _get_scoped_contact(service, item_id, current_user)
         for item_id in request.ids:
             success = await service.delete(item_id, scope_user=current_user)
             if success:
@@ -324,6 +353,8 @@ async def delete_customer_contactss_batch(
         
         logger.info(f"Batch deleted {deleted_count} customer_contactss successfully")
         return {"message": f"Successfully deleted {deleted_count} customer_contactss", "deleted_count": deleted_count}
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch delete: {str(e)}", exc_info=True)
@@ -341,6 +372,8 @@ async def delete_customer_contacts(
     
     service = Customer_contactsService(db)
     try:
+        await require_button_permission(db, current_user, "customer_delete", admin_override=True)
+        await _get_scoped_contact(service, id, current_user)
         success = await service.delete(id, scope_user=current_user)
         if not success:
             logger.warning(f"Customer_contacts with id {id} not found for deletion")

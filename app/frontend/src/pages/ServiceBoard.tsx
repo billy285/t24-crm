@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { invokeWithAuth } from '../lib/tokenStore';
 import { useRole } from '../lib/role-context';
+import { businessDateDifference, businessDateKey, businessWeekRange } from '../lib/business-date';
 import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
 import { getCountryLabel, getStateLabel } from '../lib/country-state-data';
 import { logOperation } from '../lib/operation-log-helper';
@@ -148,15 +149,10 @@ interface CustomerMaterialRecord {
 }
 
 // ==================== Helpers ====================
-const todayStr = () => new Date().toISOString().slice(0, 10);
 const SERVICE_EXPIRY_WARNING_DAYS = 7;
 const getServiceRemainingDays = (sp: Pick<ServiceProgress, 'service_end_date'>) => {
   if (!sp.service_end_date) return null;
-  const end = new Date(sp.service_end_date);
-  if (Number.isNaN(end.getTime())) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.ceil((end.getTime() - today.getTime()) / 86400000);
+  return businessDateDifference(sp.service_end_date.slice(0, 10));
 };
 const isOverdue = (sp: ServiceProgress) => {
   const remainDays = getServiceRemainingDays(sp);
@@ -194,18 +190,10 @@ const getPackagePlatformContext = () => {
   };
 };
 const getWeekStartStr = () => {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  const day = date.getDay() || 7;
-  date.setDate(date.getDate() - day + 1);
-  return date.toISOString().slice(0, 10);
+  return businessWeekRange().start;
 };
 const getWeekEndStr = () => {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  const day = date.getDay() || 7;
-  date.setDate(date.getDate() - day + 7);
-  return date.toISOString().slice(0, 10);
+  return businessWeekRange().end;
 };
 const getTaskDoneDate = (task: Pick<ServiceTask, 'completed_at' | 'completed_date'>) => (
   (task.completed_at || task.completed_date || '').slice(0, 10)
@@ -375,6 +363,15 @@ const authedListEntity = async <T,>(entity: string, params: EntityQueryParams = 
   return (res?.data?.items || []) as T[];
 };
 
+const authedListEmployeeDirectory = async <T,>(params: EntityQueryParams = {}): Promise<T[]> => {
+  const res = await invokeWithAuth({
+    url: '/api/v1/entities/employees/directory',
+    method: 'GET',
+    data: buildEntityQueryData(params),
+  });
+  return (res?.data?.items || []) as T[];
+};
+
 const authedGetEntity = async <T,>(entity: string, id: number | string): Promise<T | null> => {
   const res = await invokeWithAuth({
     url: `/api/v1/entities/${entity}/${id}`,
@@ -491,6 +488,7 @@ const requiresCompletionReference = (task?: Pick<ServiceTask, 'task_type'> | nul
 // ==================== Main Component ====================
 export default function ServiceBoard() {
   const { role, employee, isAdmin, dataScope, hasPermission } = useRole();
+  const businessToday = businessDateKey();
 
   // Core data
   const [progresses, setProgresses] = useState<ServiceProgress[]>([]);
@@ -502,6 +500,8 @@ export default function ServiceBoard() {
   const [allEmployees, setAllEmployees] = useState<EmployeeRecord[]>([]);
   const [allSubscriptions, setAllSubscriptions] = useState<SubscriptionRecord[]>([]);
   const [archivedStoppedCount, setArchivedStoppedCount] = useState(0);
+  const loadRequestSeqRef = useRef(0);
+  const allCustomersRef = useRef<CustomerRecord[]>([]);
 
   // Views
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'employee'>('list');
@@ -517,6 +517,8 @@ export default function ServiceBoard() {
   const [selectedProgress, setSelectedProgress] = useState<ServiceProgress | null>(null);
   const [detailTasks, setDetailTasks] = useState<ServiceTask[]>([]);
   const [detailTab, setDetailTab] = useState('overview');
+  const detailRequestSeqRef = useRef(0);
+  const activeDetailProgressIdRef = useRef<number | null>(null);
 
   // Progress Form
   const [showProgressForm, setShowProgressForm] = useState(false);
@@ -548,42 +550,76 @@ export default function ServiceBoard() {
   const [completionForm, setCompletionForm] = useState({ platform: '', selected_copy_id: '', selected_material_id: '', completion_note: '' });
   const [loadingCompletionRefs, setLoadingCompletionRefs] = useState(false);
   const [savingCompletion, setSavingCompletion] = useState(false);
+  const completionReferenceSeqRef = useRef(0);
+  const completionSaveSeqRef = useRef(0);
+  const activeCompletionTaskIdRef = useRef<number | null>(null);
+  const completionReferenceAbortRef = useRef<AbortController | null>(null);
   const [savingTaskActionId, setSavingTaskActionId] = useState<number | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'progress' | 'task'; item: any } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // ==================== Data Loading ====================
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    void loadData();
+    return () => {
+      loadRequestSeqRef.current += 1;
+    };
+  }, []);
 
   const loadData = async () => {
+    const requestSeq = ++loadRequestSeqRef.current;
     try {
-      const [progressItems, taskItems, customerItems, employeeItems, subscriptionItems] = await Promise.all([
+      const results = await Promise.allSettled([
         authedListEntity<ServiceProgress>('service_progresses', { limit: 1000, sort: '-last_update_time' }),
         authedListEntity<ServiceTask>('service_tasks', { limit: 1000, sort: '-created_at' }),
         authedListEntity<CustomerRecord>('customers', { limit: 1000, sort: '-created_at' }),
-        authedListEntity<EmployeeRecord>('employees', { limit: 200, sort: 'name' }),
+        authedListEmployeeDirectory<EmployeeRecord>({ limit: 200, sort: 'name' }),
         authedListEntity<SubscriptionRecord>('subscriptions', { limit: 1000, sort: '-created_at' }),
-      ]);
-      const customerStatusById = new Map(customerItems.map(customer => [Number(customer.id), customer.status]));
-      const stoppedProgresses = progressItems.filter(progress => customerStatusById.get(Number(progress.customer_id)) === 'lost');
-      let items = progressItems.filter(progress => customerStatusById.get(Number(progress.customer_id)) !== 'lost');
-      if (dataScope === 'self' && employee) {
-        items = items.filter((p: ServiceProgress) =>
-          p.ops_person === employee.name || p.sales_person === employee.name || p.design_person === employee.name
-        );
+      ] as const);
+
+      if (requestSeq !== loadRequestSeqRef.current) return;
+
+      const [progressResult, taskResult, customerResult, employeeResult, subscriptionResult] = results;
+      const customerItems = customerResult.status === 'fulfilled' ? customerResult.value : null;
+      if (customerItems) {
+        allCustomersRef.current = customerItems;
+        setAllCustomers(customerItems);
       }
-      setArchivedStoppedCount(stoppedProgresses.length);
-      setProgresses(items);
-      setAllTasks(taskItems);
-      setAllCustomers(customerItems);
-      setAllEmployees(employeeItems);
-      setAllSubscriptions(decorateEffectiveSubscriptions(subscriptionItems));
+      if (taskResult.status === 'fulfilled') setAllTasks(taskResult.value);
+      if (employeeResult.status === 'fulfilled') setAllEmployees(employeeResult.value);
+      if (subscriptionResult.status === 'fulfilled') {
+        setAllSubscriptions(decorateEffectiveSubscriptions(subscriptionResult.value));
+      }
+
+      if (progressResult.status === 'fulfilled') {
+        const statusSource = customerItems || allCustomersRef.current;
+        const customerStatusById = new Map(statusSource.map(customer => [Number(customer.id), customer.status]));
+        const stoppedProgresses = progressResult.value.filter(progress => customerStatusById.get(Number(progress.customer_id)) === 'lost');
+        let items = progressResult.value.filter(progress => customerStatusById.get(Number(progress.customer_id)) !== 'lost');
+        if (dataScope === 'self' && employee) {
+          items = items.filter((p: ServiceProgress) =>
+            p.ops_person === employee.name || p.sales_person === employee.name || p.design_person === employee.name
+          );
+        }
+        setArchivedStoppedCount(stoppedProgresses.length);
+        setProgresses(items);
+      } else {
+        console.error('Load service progresses failed:', progressResult.reason);
+        if (progresses.length === 0) toast.error(getErrorMessage(progressResult.reason, '加载服务进度失败'));
+      }
+
+      results.forEach((result, index) => {
+        if (result.status === 'rejected' && index !== 0) {
+          console.warn('Service board secondary request failed:', result.reason);
+        }
+      });
     } catch (err) {
+      if (requestSeq !== loadRequestSeqRef.current) return;
       console.error(err);
       toast.error(getErrorMessage(err, '加载数据失败'));
     } finally {
-      setLoading(false);
+      if (requestSeq === loadRequestSeqRef.current) setLoading(false);
     }
   };
 
@@ -665,7 +701,7 @@ export default function ServiceBoard() {
   const filtered = useMemo(() => {
     return progresses.filter(sp => {
       if (quickFilter === 'today_pending') {
-        const tasks = allTasks.filter(t => t.service_progress_id === sp.id && t.status !== 'completed' && t.status !== 'cancelled' && t.due_date && t.due_date <= todayStr());
+        const tasks = allTasks.filter(t => t.service_progress_id === sp.id && t.status !== 'completed' && t.status !== 'cancelled' && t.due_date && t.due_date.slice(0, 10) <= businessToday);
         if (tasks.length === 0) return false;
       }
       if (quickFilter === 'overdue' && !isOverdue(sp)) return false;
@@ -691,7 +727,7 @@ export default function ServiceBoard() {
 
       return true;
     });
-  }, [progresses, allTasks, quickFilter, search, filters]);
+  }, [progresses, allTasks, quickFilter, search, filters, businessToday]);
 
   const paginatedProgresses = useMemo(
     () => paginateList(filtered, progressPage, progressPageSize),
@@ -724,7 +760,7 @@ export default function ServiceBoard() {
     const taskTotal = scopedTasks.filter(t => t.status !== 'cancelled').length;
     const taskCompleted = scopedTasks.filter(t => t.status === 'completed').length;
     const taskPending = scopedTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length;
-    const taskOverdue = scopedTasks.filter(t => t.due_date && t.due_date < todayStr() && t.status !== 'completed' && t.status !== 'cancelled').length;
+    const taskOverdue = scopedTasks.filter(t => t.due_date && t.due_date.slice(0, 10) < businessToday && t.status !== 'completed' && t.status !== 'cancelled').length;
     const lowQualityCompleted = scopedTasks.filter(t => t.status === 'completed' && t.completion_quality === 'low_quality').length;
     const completionRate = taskTotal > 0 ? Math.round((taskCompleted / taskTotal) * 100) : 0;
     const healthScore = taskTotal > 0
@@ -757,7 +793,7 @@ export default function ServiceBoard() {
       taskTotal, taskCompleted, taskPending, taskOverdue, lowQualityCompleted, completionRate, healthScore, opsMap,
       weeklyPlatformTarget, weeklyPlatformDone, weeklyMissingPlatforms, weeklyReportTarget, weeklyReportDone, weeklyMissingReports,
     };
-  }, [progresses, allTasks]);
+  }, [progresses, allTasks, businessToday]);
 
   const weeklyActionItems = useMemo(() => (
     progresses
@@ -795,26 +831,17 @@ export default function ServiceBoard() {
     const total = tasks.length;
     const completed = tasks.filter(t => t.status === 'completed').length;
     const pending = tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
-    const overdue = tasks.filter(t => t.status === 'delayed' || (t.due_date && t.due_date < todayStr() && t.status !== 'completed' && t.status !== 'cancelled')).length;
+    const overdue = tasks.filter(t => t.status === 'delayed' || (t.due_date && t.due_date.slice(0, 10) < businessToday && t.status !== 'completed' && t.status !== 'cancelled')).length;
     const waitingClient = tasks.filter(t => t.status === 'waiting_client').length;
     const lowQuality = tasks.filter(t => t.status === 'completed' && t.completion_quality === 'low_quality').length;
     return { total, completed, pending, overdue, waitingClient, lowQuality };
-  }, [allTasks]);
+  }, [allTasks, businessToday]);
 
   // ==================== Permissions ====================
-  const currentRoleText = `${role || ''} ${employee?.role || ''} ${employee?.name || ''}`.toLowerCase();
-  const isServiceAdmin = isAdmin || ['super_admin', 'admin', 'system_admin', 'administrator', '系统管理员', '超级管理员', '管理员'].some(label => currentRoleText.includes(label.toLowerCase()));
-  const canEdit = isServiceAdmin || role === 'ops' || hasPermission('task_edit');
-  const canCreate = isServiceAdmin || role === 'ops' || hasPermission('task_create');
-  const canDelete = isServiceAdmin || hasPermission('task_delete');
+  const canEdit = hasPermission('task_edit');
+  const canCreate = hasPermission('task_create');
+  const canDelete = hasPermission('task_delete');
   const canAddServiceTask = canCreate || canEdit;
-  const canOperateTask = (task: ServiceTask) => {
-    if (canEdit) return true;
-    const operatorName = employee?.name || '';
-    if (!operatorName) return false;
-    const relatedProgress = progresses.find(item => item.id === task.service_progress_id);
-    return task.assignee_name === operatorName || relatedProgress?.ops_person === operatorName;
-  };
 
   // ==================== Form Helpers ====================
   function emptyProgressForm() {
@@ -822,7 +849,7 @@ export default function ServiceBoard() {
       customer_id: 0, customer_name: '', service_type: 'social_media', service_stage: 'deal_handover',
       progress_percent: 10, sales_person: '', ops_person: '', design_person: '', package_name: '', package_platforms: '',
       industry: 'restaurant', country: 'US', state: 'CA', city: '',
-      service_start_date: todayStr(), service_end_date: '', last_work_summary: '',
+      service_start_date: businessDateKey(), service_end_date: '', last_work_summary: '',
       issue_status: 'none', issue_description: '', issue_owner: '',
       issue_found_date: '', issue_resolved: false, issue_resolved_date: '',
       notes: '',
@@ -928,9 +955,9 @@ export default function ServiceBoard() {
         data.issue_resolved = progressForm.issue_resolved;
         data.issue_description = progressForm.issue_description;
         data.issue_owner = progressForm.issue_owner;
-        data.issue_found_date = progressForm.issue_found_date || todayStr();
+        data.issue_found_date = progressForm.issue_found_date || businessDateKey();
         if (progressForm.issue_resolved && !progressForm.issue_resolved_date) {
-          data.issue_resolved_date = todayStr();
+          data.issue_resolved_date = businessDateKey();
         } else {
           data.issue_resolved_date = progressForm.issue_resolved_date || null;
         }
@@ -953,9 +980,8 @@ export default function ServiceBoard() {
       setShowProgressForm(false);
       await loadData();
       // Refresh detail view if we were editing the currently selected progress
-      if (selectedProgress && editingProgressId === selectedProgress.id) {
-        const refreshed = await authedGetEntity<ServiceProgress>('service_progresses', editingProgressId);
-        if (refreshed) setSelectedProgress(refreshed);
+      if (editingProgressId && activeDetailProgressIdRef.current === editingProgressId) {
+        await refreshProgressDetail(editingProgressId);
       }
     } catch (err: unknown) {
       console.error('Save progress error:', err);
@@ -981,9 +1007,8 @@ export default function ServiceBoard() {
       toast.success(`已推进到: ${allStageLabels[nextStage] || nextStage}`);
       logOperation({ customerId: sp.customer_id, actionType: 'edit_customer', actionDetail: `推进服务阶段: ${sp.customer_name} ${allStageLabels[sp.service_stage]} → ${allStageLabels[nextStage]}`, operatorName: op });
       await loadData();
-      if (selectedProgress?.id === sp.id) {
-        const refreshed = await authedGetEntity<ServiceProgress>('service_progresses', sp.id);
-        if (refreshed) setSelectedProgress(refreshed);
+      if (activeDetailProgressIdRef.current === sp.id) {
+        await refreshProgressDetail(sp.id);
       }
     } catch (err) {
       console.error('Advance service stage error:', err);
@@ -1008,7 +1033,7 @@ export default function ServiceBoard() {
         issue_status: 'none',
         issue_resolved: true,
         issue_description: '',
-        issue_resolved_date: todayStr(),
+        issue_resolved_date: businessDateKey(),
         last_update_time: now,
         last_update_person: op,
         last_work_summary: waitingTasks.length > 0
@@ -1024,10 +1049,8 @@ export default function ServiceBoard() {
       await authedUpdateEntity<ServiceProgress>('service_progresses', sp.id, data);
       toast.success(nextStage ? `资料已收到，已推进到：${allStageLabels[nextStage] || nextStage}` : '资料已收到，卡点已解除');
       await loadData();
-      if (selectedProgress?.id === sp.id) {
-        await refreshDetailTasks(sp.id);
-        const refreshed = await authedGetEntity<ServiceProgress>('service_progresses', sp.id);
-        if (refreshed) setSelectedProgress(refreshed);
+      if (activeDetailProgressIdRef.current === sp.id) {
+        await refreshProgressDetail(sp.id);
       }
     } catch (err) {
       console.error('Resolve waiting material error:', err);
@@ -1064,68 +1087,117 @@ export default function ServiceBoard() {
       toast.success('工作摘要已更新');
       setShowQuickUpdate(false);
       await loadData();
-      if (selectedProgress?.id === quickUpdateSp.id) {
-        const refreshed = await authedGetEntity<ServiceProgress>('service_progresses', quickUpdateSp.id);
-        if (refreshed) setSelectedProgress(refreshed);
+      if (activeDetailProgressIdRef.current === quickUpdateSp.id) {
+        await refreshProgressDetail(quickUpdateSp.id);
       }
     } catch { toast.error('更新失败'); }
     finally { setSavingQuickUpdate(false); }
   };
 
   const refreshDetailTasks = async (progressId: number) => {
+    const requestSeq = ++detailRequestSeqRef.current;
     const items = await authedListEntity<ServiceTask>('service_tasks', { query: { service_progress_id: progressId }, sort: 'created_at', limit: 100 });
-    setDetailTasks(items);
+    if (detailRequestSeqRef.current === requestSeq && activeDetailProgressIdRef.current === progressId) {
+      setDetailTasks(items);
+    }
     return items;
   };
 
   const refreshProgressDetail = async (progressId: number) => {
-    const [progress] = await Promise.all([
+    const requestSeq = ++detailRequestSeqRef.current;
+    const [progressResult, tasksResult] = await Promise.allSettled([
       authedGetEntity<ServiceProgress>('service_progresses', progressId),
-      refreshDetailTasks(progressId),
+      authedListEntity<ServiceTask>('service_tasks', { query: { service_progress_id: progressId }, sort: 'created_at', limit: 100 }),
     ]);
-    if (progress) setSelectedProgress(progress);
+    if (detailRequestSeqRef.current !== requestSeq || activeDetailProgressIdRef.current !== progressId) return;
+    if (progressResult.status === 'fulfilled' && progressResult.value) setSelectedProgress(progressResult.value);
+    if (tasksResult.status === 'fulfilled') setDetailTasks(tasksResult.value);
+  };
+
+  const closeCompleteTaskDialog = () => {
+    completionReferenceSeqRef.current += 1;
+    completionSaveSeqRef.current += 1;
+    activeCompletionTaskIdRef.current = null;
+    completionReferenceAbortRef.current?.abort();
+    completionReferenceAbortRef.current = null;
+    setCompleteTaskTarget(null);
+    setCompletionCopies([]);
+    setCompletionMaterials([]);
+    setLoadingCompletionRefs(false);
+    setSavingCompletion(false);
+  };
+
+  const closeProgressDetail = () => {
+    detailRequestSeqRef.current += 1;
+    activeDetailProgressIdRef.current = null;
+    setSelectedProgress(null);
+    setDetailTasks([]);
+    setDetailTab('overview');
+    closeCompleteTaskDialog();
   };
 
   const openCompleteTask = async (task: ServiceTask) => {
     const progress = progresses.find(p => p.id === task.service_progress_id) || selectedProgress;
     const contractPlatforms = progress ? inferPlatformsFromProgress(progress) : [];
+    const requestSeq = ++completionReferenceSeqRef.current;
+    activeCompletionTaskIdRef.current = task.id;
+    completionReferenceAbortRef.current?.abort();
+    const abortController = new AbortController();
+    completionReferenceAbortRef.current = abortController;
     setCompleteTaskTarget(task);
     setCompletionForm({ platform: task.platform || contractPlatforms[0] || '', selected_copy_id: '', selected_material_id: '', completion_note: '' });
     setCompletionCopies([]);
     setCompletionMaterials([]);
     setLoadingCompletionRefs(true);
     try {
-      const [copyRes, materialRes] = await Promise.all([
+      const [copyResult, materialResult] = await Promise.allSettled([
         invokeWithAuth({
           url: '/api/v1/entities/customer_ai_copies',
           method: 'GET',
           data: { query: JSON.stringify({ customer_id: task.customer_id }), sort: '-updated_at', limit: 100 },
+          options: { signal: abortController.signal },
         }),
         invokeWithAuth({
           url: '/api/v1/entities/customer_materials',
           method: 'GET',
           data: { query: JSON.stringify({ customer_id: task.customer_id }), sort: '-updated_at', limit: 100 },
+          options: { signal: abortController.signal },
         }),
       ]);
-      setCompletionCopies(copyRes?.data?.items || []);
-      setCompletionMaterials(materialRes?.data?.items || []);
+      if (
+        completionReferenceSeqRef.current !== requestSeq
+        || activeCompletionTaskIdRef.current !== task.id
+        || abortController.signal.aborted
+      ) return;
+      setCompletionCopies(copyResult.status === 'fulfilled' ? copyResult.value?.data?.items || [] : []);
+      setCompletionMaterials(materialResult.status === 'fulfilled' ? materialResult.value?.data?.items || [] : []);
+      if (copyResult.status === 'rejected' && materialResult.status === 'rejected') {
+        toast.error(getErrorMessage(copyResult.reason, '加载客户文案/素材失败'));
+      }
     } catch (err) {
+      if (abortController.signal.aborted) return;
       console.error('Load completion references error:', err);
       toast.error(getErrorMessage(err, '加载客户文案/素材失败'));
     } finally {
-      setLoadingCompletionRefs(false);
+      if (completionReferenceSeqRef.current === requestSeq && activeCompletionTaskIdRef.current === task.id) {
+        setLoadingCompletionRefs(false);
+        if (completionReferenceAbortRef.current === abortController) completionReferenceAbortRef.current = null;
+      }
     }
   };
 
   const handleCompleteTask = async () => {
     if (!completeTaskTarget) return;
+    const task = completeTaskTarget;
+    const saveSeq = ++completionSaveSeqRef.current;
+    const detailProgressId = activeDetailProgressIdRef.current;
     setSavingCompletion(true);
     try {
       const selectedCopyId = completionForm.selected_copy_id ? Number(completionForm.selected_copy_id) : null;
       const selectedMaterialId = completionForm.selected_material_id ? Number(completionForm.selected_material_id) : null;
       const platform = completionForm.platform || selectedCompletionMaterial?.platform || selectedCompletionCopy?.platform || null;
       const res = await invokeWithAuth({
-        url: `/api/v1/entities/service_tasks/${completeTaskTarget.id}/complete`,
+        url: `/api/v1/entities/service_tasks/${task.id}/complete`,
         method: 'POST',
         data: {
           platform,
@@ -1137,20 +1209,27 @@ export default function ServiceBoard() {
       const completedTask = res?.data as ServiceTask;
       const isLowQuality = completedTask?.completion_quality === 'low_quality';
       toast.success(isLowQuality ? '任务已完成，但系统标记为低质量完成' : '任务已完成，并已同步文案/素材使用记录');
-      setCompleteTaskTarget(null);
+      if (activeCompletionTaskIdRef.current === task.id && completionSaveSeqRef.current === saveSeq) {
+        closeCompleteTaskDialog();
+      }
       await loadData();
-      if (selectedProgress) {
-        await refreshProgressDetail(selectedProgress.id);
+      if (detailProgressId && activeDetailProgressIdRef.current === detailProgressId) {
+        await refreshProgressDetail(detailProgressId);
       }
     } catch (err) {
-      console.error('Complete task error:', err);
-      toast.error(getErrorMessage(err, '完成任务失败'));
+      if (completionSaveSeqRef.current === saveSeq && activeCompletionTaskIdRef.current === task.id) {
+        console.error('Complete task error:', err);
+        toast.error(getErrorMessage(err, '完成任务失败'));
+      }
     } finally {
-      setSavingCompletion(false);
+      if (completionSaveSeqRef.current === saveSeq && activeCompletionTaskIdRef.current === task.id) {
+        setSavingCompletion(false);
+      }
     }
   };
 
   const completeTaskDirectly = async (task: ServiceTask) => {
+    const detailProgressId = activeDetailProgressIdRef.current;
     setSavingTaskActionId(task.id);
     try {
       const res = await invokeWithAuth({
@@ -1166,8 +1245,8 @@ export default function ServiceBoard() {
       const completedTask = res?.data as ServiceTask;
       toast.success(completedTask?.completion_quality === 'low_quality' ? '任务已完成，但系统标记为低质量完成' : '任务已完成');
       await loadData();
-      if (selectedProgress) {
-        await refreshProgressDetail(selectedProgress.id);
+      if (detailProgressId && activeDetailProgressIdRef.current === detailProgressId) {
+        await refreshProgressDetail(detailProgressId);
       }
     } catch (err) {
       console.error('Direct complete task error:', err);
@@ -1187,17 +1266,16 @@ export default function ServiceBoard() {
       }
       return;
     }
+    const detailProgressId = activeDetailProgressIdRef.current;
     try {
       setSavingTaskActionId(task.id);
-      const completedDate = newStatus === 'completed' ? todayStr() : null;
       await authedUpdateEntity<ServiceTask>('service_tasks', task.id, {
         status: newStatus,
-        completed_date: completedDate || '',
       });
       toast.success(`任务状态已更新为: ${taskStatusLabels[newStatus]}`);
       await loadData();
-      if (selectedProgress) {
-        await refreshProgressDetail(selectedProgress.id);
+      if (detailProgressId && activeDetailProgressIdRef.current === detailProgressId) {
+        await refreshProgressDetail(detailProgressId);
       }
     } catch (err: unknown) {
       console.error('Quick task status error:', err);
@@ -1222,6 +1300,10 @@ export default function ServiceBoard() {
   };
 
   const openEditTask = (t: ServiceTask) => {
+    if (t.status === 'completed') {
+      toast.info('已完成任务不可直接改写，请保留完成记录');
+      return;
+    }
     setTaskForm({
       service_progress_id: t.service_progress_id, customer_id: t.customer_id, customer_name: t.customer_name,
       task_name: t.task_name, task_type: t.task_type || 'other', assignee_name: t.assignee_name || '',
@@ -1234,9 +1316,13 @@ export default function ServiceBoard() {
   const handleSaveTask = async () => {
     if (!taskForm.task_name.trim()) { toast.error('请填写任务名称'); return; }
     if (!taskForm.customer_id) { toast.error('任务缺少关联客户信息'); return; }
+    if (taskForm.status === 'completed') {
+      toast.error('请使用“完成”操作提交完成结果');
+      return;
+    }
+    const detailProgressId = activeDetailProgressIdRef.current;
     setSavingTask(true);
     try {
-      const now = new Date().toISOString();
       const data: Record<string, unknown> = {
         service_progress_id: taskForm.service_progress_id || null,
         customer_id: taskForm.customer_id,
@@ -1249,7 +1335,6 @@ export default function ServiceBoard() {
         status: taskForm.status || 'pending',
         due_date: taskForm.due_date || null,
         notes: taskForm.notes || null,
-        completed_date: taskForm.status === 'completed' ? todayStr() : null,
       };
       if (editingTaskId) {
         await invokeWithAuth({
@@ -1259,7 +1344,6 @@ export default function ServiceBoard() {
         });
         toast.success('任务已更新');
       } else {
-        data.created_at = now;
         await invokeWithAuth({
           url: '/api/v1/entities/service_tasks',
           method: 'POST',
@@ -1269,8 +1353,8 @@ export default function ServiceBoard() {
       }
       setShowTaskForm(false);
       await loadData();
-      if (selectedProgress) {
-        await refreshProgressDetail(selectedProgress.id);
+      if (detailProgressId && activeDetailProgressIdRef.current === detailProgressId) {
+        await refreshProgressDetail(detailProgressId);
       }
     } catch (err: unknown) {
       console.error('Save task error:', err);
@@ -1340,6 +1424,7 @@ export default function ServiceBoard() {
       return;
     }
 
+    const detailProgressId = activeDetailProgressIdRef.current;
     setGeneratingWeeklyTasks(true);
     try {
       const createdCount = await generateWeeklyTasksForProgresses(safeTargets);
@@ -1349,8 +1434,8 @@ export default function ServiceBoard() {
         toast.info('没有需要新生成的任务');
       }
       await loadData();
-      if (selectedProgress) {
-        await refreshProgressDetail(selectedProgress.id);
+      if (detailProgressId && activeDetailProgressIdRef.current === detailProgressId) {
+        await refreshProgressDetail(detailProgressId);
       }
     } catch (err) {
       console.error('Generate weekly tasks error:', err);
@@ -1362,25 +1447,27 @@ export default function ServiceBoard() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    const detailProgressId = activeDetailProgressIdRef.current;
+    const target = deleteTarget;
     setDeleting(true);
     try {
-      if (deleteTarget.type === 'progress') {
+      if (target.type === 'progress') {
         // Also delete associated tasks
-        const relatedTasks = allTasks.filter(t => t.service_progress_id === deleteTarget.item.id);
+        const relatedTasks = allTasks.filter(t => t.service_progress_id === target.item.id);
         for (const t of relatedTasks) {
           try { await authedDeleteEntity('service_tasks', t.id); } catch { /* ignore */ }
         }
-        await authedDeleteEntity('service_progresses', deleteTarget.item.id);
+        await authedDeleteEntity('service_progresses', target.item.id);
         toast.success('服务进度及关联任务已删除');
-        if (selectedProgress?.id === deleteTarget.item.id) setSelectedProgress(null);
+        if (activeDetailProgressIdRef.current === target.item.id) closeProgressDetail();
       } else {
-        await authedDeleteEntity('service_tasks', deleteTarget.item.id);
+        await authedDeleteEntity('service_tasks', target.item.id);
         toast.success('任务已删除');
       }
       setDeleteTarget(null);
       await loadData();
-      if (selectedProgress && deleteTarget.type === 'task') {
-        await refreshProgressDetail(selectedProgress.id);
+      if (target.type === 'task' && detailProgressId && activeDetailProgressIdRef.current === detailProgressId) {
+        await refreshProgressDetail(detailProgressId);
       }
     } catch (err: unknown) {
       console.error('Delete error:', err);
@@ -1390,11 +1477,18 @@ export default function ServiceBoard() {
   };
 
   const openDetail = async (sp: ServiceProgress) => {
+    detailRequestSeqRef.current += 1;
+    activeDetailProgressIdRef.current = sp.id;
     setSelectedProgress(sp);
+    setDetailTasks([]);
     setDetailTab('overview');
     try {
       await refreshDetailTasks(sp.id);
-    } catch { setDetailTasks([]); }
+    } catch (err) {
+      if (activeDetailProgressIdRef.current === sp.id) {
+        console.error('Load service detail tasks failed:', err);
+      }
+    }
   };
 
   // ==================== Export data preparation ====================
@@ -1468,12 +1562,12 @@ export default function ServiceBoard() {
 
     return (
       <div
-        className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
+        className={`cursor-pointer rounded-xl border p-4 transition-all hover:shadow-md ${
           issue ? 'border-red-300 bg-red-50/50' : overdue ? 'border-red-300 bg-red-50/50' : expiring ? 'border-yellow-300 bg-yellow-50/50' : 'border-slate-200 bg-white'
         }`}
         onClick={() => openDetail(sp)}
       >
-        <div className="flex items-start justify-between mb-2">
+        <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-sm text-slate-800 truncate">{sp.customer_name}</span>
@@ -1516,7 +1610,14 @@ export default function ServiceBoard() {
         </div>
 
         {weekly.platforms.length > 0 && (
-          <div className="mb-2 rounded-md bg-slate-50 border border-slate-100 p-2">
+          <div className="mb-2 flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-2 text-xs sm:hidden">
+            <span className="text-slate-500">本周更新 / 周报</span>
+            <span className="font-medium text-slate-700">{weekly.platformDone}/{weekly.platformTarget} · {weekly.weeklyReportDone}/{weekly.weeklyReportTarget}</span>
+          </div>
+        )}
+
+        {weekly.platforms.length > 0 && (
+          <div className="mb-2 hidden rounded-md border border-slate-100 bg-slate-50 p-2 sm:block">
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="text-slate-500">本周平台更新</span>
               <span className={weekly.platformDone >= weekly.platformTarget ? 'text-green-600 font-medium' : 'text-orange-600 font-medium'}>
@@ -1561,21 +1662,21 @@ export default function ServiceBoard() {
 
         {/* Quick actions row */}
         {canEdit && (
-          <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-100" onClick={e => e.stopPropagation()}>
-            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-slate-500 hover:text-blue-600" onClick={() => openEditProgress(sp)}>
+          <div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 sm:flex sm:items-center sm:gap-1.5" onClick={e => e.stopPropagation()}>
+            <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-blue-600 md:h-7 md:min-h-0" onClick={() => openEditProgress(sp)}>
               <Edit className="w-3 h-3 mr-1" /> 编辑
             </Button>
-            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-slate-500 hover:text-blue-600" onClick={() => openQuickUpdate(sp)}>
+            <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-blue-600 md:h-7 md:min-h-0" onClick={() => openQuickUpdate(sp)}>
               <Copy className="w-3 h-3 mr-1" /> 更新摘要
             </Button>
             {nextStage && (
-              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-slate-500 hover:text-green-600" onClick={() => handleAdvanceStage(sp)}>
+              <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-green-600 md:h-7 md:min-h-0" onClick={() => handleAdvanceStage(sp)}>
                 <ChevronRight className="w-3 h-3 mr-1" /> 推进阶段
               </Button>
             )}
             {canDelete && (
-              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-slate-500 hover:text-red-600 ml-auto" onClick={() => setDeleteTarget({ type: 'progress', item: sp })}>
-                <Trash2 className="w-3 h-3" />
+              <Button aria-label={`删除服务进度：${sp.customer_name}`} size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-red-600 sm:ml-auto md:h-7 md:min-h-0" onClick={() => setDeleteTarget({ type: 'progress', item: sp })}>
+                <Trash2 className="w-3 h-3" /><span className="sm:sr-only">删除</span>
               </Button>
             )}
           </div>
@@ -1588,7 +1689,7 @@ export default function ServiceBoard() {
               <Button
                 size="sm"
                 variant="outline"
-                className="mt-2 h-7 w-full border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                className="mt-2 min-h-11 w-full border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 md:h-8 md:min-h-0"
                 onClick={e => {
                   e.stopPropagation();
                   void handleClientMaterialReceived(sp);
@@ -1618,7 +1719,7 @@ export default function ServiceBoard() {
         loading={deleting}
       />
 
-      <Dialog open={!!completeTaskTarget} onOpenChange={v => { if (!v) setCompleteTaskTarget(null); }}>
+      <Dialog open={!!completeTaskTarget} onOpenChange={v => { if (!v) closeCompleteTaskDialog(); }}>
         <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>完成任务 - {completeTaskTarget?.task_name}</DialogTitle>
@@ -1746,7 +1847,7 @@ export default function ServiceBoard() {
             </div>
           )}
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setCompleteTaskTarget(null)}>取消</Button>
+            <Button variant="outline" onClick={closeCompleteTaskDialog}>取消</Button>
             <Button onClick={handleCompleteTask} disabled={savingCompletion || loadingCompletionRefs} className="bg-green-600 hover:bg-green-700">
               {savingCompletion ? '保存中...' : '确认完成'}
             </Button>
@@ -1791,7 +1892,7 @@ export default function ServiceBoard() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>优先级</Label><NativeSelect value={taskForm.priority} onChange={v => setTaskForm({ ...taskForm, priority: v })} options={Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-              <div><Label>状态</Label><NativeSelect value={taskForm.status} onChange={v => setTaskForm({ ...taskForm, status: v })} options={Object.entries(taskStatusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+              <div><Label>状态</Label><NativeSelect value={taskForm.status} onChange={v => setTaskForm({ ...taskForm, status: v })} options={Object.entries(taskStatusLabels).filter(([key]) => key !== 'completed').map(([k, v]) => ({ value: k, label: v }))} /></div>
             </div>
             <div><Label>截止日期</Label><Input type="date" value={taskForm.due_date} onChange={e => setTaskForm({ ...taskForm, due_date: e.target.value })} /></div>
             <div><Label>备注</Label><Textarea value={taskForm.notes} onChange={e => setTaskForm({ ...taskForm, notes: e.target.value })} rows={2} placeholder="补充说明..." /></div>
@@ -1885,7 +1986,7 @@ export default function ServiceBoard() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
-          <Button variant="ghost" size="sm" onClick={() => setSelectedProgress(null)}><ArrowLeft className="w-4 h-4 mr-1" /> 返回看板</Button>
+          <Button variant="ghost" size="sm" onClick={closeProgressDetail}><ArrowLeft className="w-4 h-4 mr-1" /> 返回看板</Button>
           <h2 className="text-lg font-semibold">{sp.customer_name}</h2>
           <Badge className="bg-blue-100 text-blue-700">{serviceTypeLabels[sp.service_type]}</Badge>
           <Badge className={issueStatusColors[sp.issue_status]}>{issueStatusLabels[sp.issue_status]}</Badge>
@@ -2107,7 +2208,7 @@ export default function ServiceBoard() {
                     type="button"
                     onPointerDown={e => openCreateTaskSafely(sp, e)}
                     onClick={e => openCreateTaskSafely(sp, e)}
-                    className="relative z-20 inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 active:bg-blue-800"
+                    className="relative z-20 inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 active:bg-blue-800 md:h-9 md:min-h-0"
                   >
                     <Plus className="w-3.5 h-3.5 mr-1" /> 新增任务
                   </button>
@@ -2121,7 +2222,7 @@ export default function ServiceBoard() {
                       type="button"
                       onPointerDown={e => openCreateTaskSafely(sp, e)}
                       onClick={e => openCreateTaskSafely(sp, e)}
-                      className="relative z-20 inline-flex h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      className="relative z-20 inline-flex min-h-11 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 md:h-9 md:min-h-0"
                     >
                       <Plus className="w-3.5 h-3.5 mr-1" /> 创建第一个任务
                     </button>
@@ -2144,8 +2245,8 @@ export default function ServiceBoard() {
                     ...activeDetailTasks.map(task => ({ task, showCompletedHeader: false })),
                     ...completedDetailTasks.map((task, index) => ({ task, showCompletedHeader: index === 0 })),
                   ].map(({ task: t, showCompletedHeader }) => {
-                    const isTaskOverdue = t.due_date && t.due_date < todayStr() && t.status !== 'completed' && t.status !== 'cancelled';
-                    const canTaskOperate = canOperateTask(t);
+                    const isTaskOverdue = t.due_date && t.due_date.slice(0, 10) < businessToday && t.status !== 'completed' && t.status !== 'cancelled';
+                    const canTaskOperate = canEdit;
                     const isTaskActionSaving = savingTaskActionId === t.id;
                     return (
                       <div key={`${showCompletedHeader ? 'completed' : 'active'}-${t.id}`} className="space-y-2">
@@ -2155,7 +2256,7 @@ export default function ServiceBoard() {
                             <Badge className="bg-green-100 text-green-700">{completedDetailTasks.length} 个</Badge>
                           </div>
                         )}
-                        <div className={`p-3 rounded-lg border ${t.status === 'delayed' || isTaskOverdue ? 'border-red-200 bg-red-50/50' : t.status === 'completed' ? 'border-green-200 bg-green-50/30' : t.status === 'waiting_client' ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200'} group`}>
+                        <div data-testid={`service-task-${t.id}`} className={`p-3 rounded-lg border ${t.status === 'delayed' || isTaskOverdue ? 'border-red-200 bg-red-50/50' : t.status === 'completed' ? 'border-green-200 bg-green-50/30' : t.status === 'waiting_client' ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200'} group`}>
                           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
                           <div className="min-w-0">
                             <div className="flex min-w-0 flex-1 items-center gap-2 flex-wrap">
@@ -2193,7 +2294,7 @@ export default function ServiceBoard() {
                             {canTaskOperate && t.status !== 'completed' && t.status !== 'cancelled' && (
                               <button
                                 type="button"
-                                className="inline-flex h-8 items-center justify-center rounded-md border border-green-200 bg-green-50 px-3 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-50"
+                                className="inline-flex min-h-11 items-center justify-center rounded-md border border-green-200 bg-green-50 px-3 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-50 md:h-8 md:min-h-0"
                                 title="标记完成"
                                 onPointerDown={e => {
                                   e.preventDefault();
@@ -2212,7 +2313,7 @@ export default function ServiceBoard() {
                             {canTaskOperate && t.status === 'pending' && (
                               <button
                                 type="button"
-                                className="inline-flex h-8 items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                                className="inline-flex min-h-11 items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50 md:h-8 md:min-h-0"
                                 onPointerDown={e => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -2230,7 +2331,7 @@ export default function ServiceBoard() {
                             {canTaskOperate && t.status === 'waiting_client' && (
                               <button
                                 type="button"
-                                className="inline-flex h-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                className="inline-flex min-h-11 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 md:h-8 md:min-h-0"
                                 onPointerDown={e => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -2248,7 +2349,7 @@ export default function ServiceBoard() {
                             {canTaskOperate && t.status !== 'waiting_client' && t.status !== 'completed' && t.status !== 'cancelled' && (
                               <button
                                 type="button"
-                                className="inline-flex h-8 items-center justify-center rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                                className="inline-flex min-h-11 items-center justify-center rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 md:h-8 md:min-h-0"
                                 onPointerDown={e => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -2263,10 +2364,10 @@ export default function ServiceBoard() {
                                 等客户
                               </button>
                             )}
-                            {canEdit && (
+                            {canEdit && t.status !== 'completed' && (
                               <button
                                 type="button"
-                                className="inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 md:h-8 md:min-h-0"
                                 onPointerDown={e => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -2283,7 +2384,7 @@ export default function ServiceBoard() {
                             {canDelete && (
                               <button
                                 type="button"
-                                className="inline-flex h-8 items-center justify-center rounded-md border border-red-200 bg-white px-3 text-xs font-medium text-red-600 hover:bg-red-50"
+                                className="inline-flex min-h-11 items-center justify-center rounded-md border border-red-200 bg-white px-3 text-xs font-medium text-red-600 hover:bg-red-50 md:h-8 md:min-h-0"
                                 onPointerDown={e => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -2357,16 +2458,18 @@ export default function ServiceBoard() {
           <h2 className="mt-1 text-2xl font-bold text-slate-900">新客户交付进度看板</h2>
           <p className="mt-1 text-sm text-slate-500">从成交交接到首次上线，明确阶段、负责人、卡点和下一步动作</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <ExportButton
-            data={exportData}
-            columns={exportColumns}
-            filename={`服务进度_${todayStr()}`}
-            sheetName="服务进度"
-          />
-          <Button variant="outline" size="sm" onClick={() => setShowStats(!showStats)} className="gap-1.5"><BarChart3 className="w-4 h-4" /> {showStats ? '隐藏统计' : '显示统计'}</Button>
-          <Button variant="outline" size="sm" onClick={loadData} className="gap-1.5"><RefreshCw className="w-4 h-4" /> 刷新</Button>
-          {canCreate && <Button onClick={openCreateProgress} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 手动新增服务</Button>}
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <div className="hidden sm:block">
+            <ExportButton
+              data={exportData}
+              columns={exportColumns}
+              filename={`服务进度_${businessToday}`}
+              sheetName="服务进度"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setShowStats(!showStats)} className="min-h-11 gap-1.5 md:min-h-0"><BarChart3 className="w-4 h-4" /> {showStats ? '隐藏统计' : '显示统计'}</Button>
+          <Button variant="outline" size="sm" onClick={loadData} className="min-h-11 gap-1.5 md:min-h-0"><RefreshCw className="w-4 h-4" /> 刷新</Button>
+          {canCreate && <Button onClick={openCreateProgress} className="col-span-2 min-h-11 bg-blue-600 hover:bg-blue-700 sm:col-span-1 md:min-h-0"><Plus className="w-4 h-4 mr-1" /> 手动新增服务</Button>}
         </div>
       </div>
 
@@ -2380,7 +2483,7 @@ export default function ServiceBoard() {
                   本看板主要用于新客户首次交付。新成交需要交付时，请在成交管理打开“生成服务看板”开关，或在成交列表点击“看板”；旧客户补录和已进入长期运营的客户无需重复生成。
                 </p>
               </div>
-              <Button size="sm" variant="outline" className="border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-100" onClick={() => { window.location.href = '/deals'; }}>
+              <Button size="sm" variant="outline" className="min-h-11 border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-100 md:min-h-0" onClick={() => { window.location.href = '/deals'; }}>
                 去成交管理生成
               </Button>
             </div>
@@ -2466,7 +2569,7 @@ export default function ServiceBoard() {
 
       {/* Stats Panel */}
       {showStats && (isAdmin || role === 'ops') && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <div className="hidden grid-cols-2 gap-3 sm:grid sm:grid-cols-4 lg:grid-cols-7">
           {[
             { label: '服务中', value: stats.active, color: 'text-blue-600', bg: 'bg-blue-50' },
             { label: '有卡点', value: stats.withIssue, color: 'text-red-600', bg: 'bg-red-50' },
@@ -2486,7 +2589,7 @@ export default function ServiceBoard() {
 
       {/* Ops workload */}
       {showStats && isAdmin && Object.keys(stats.opsMap).length > 0 && (
-        <Card className="border-slate-200"><CardContent className="p-4">
+        <Card className="hidden border-slate-200 sm:block"><CardContent className="p-4">
           <h3 className="text-sm font-semibold text-slate-700 mb-2">运营工作量</h3>
           <div className="flex flex-wrap gap-4">
             {Object.entries(stats.opsMap).map(([name, data]) => (
@@ -2585,7 +2688,7 @@ export default function ServiceBoard() {
       <div className="flex gap-2 flex-wrap">
         {(Object.entries(quickFilterLabels) as [QuickFilter, string][]).map(([k, v]) => (
           <Button key={k} variant={quickFilter === k ? 'default' : 'outline'} size="sm"
-            className={`h-7 text-xs ${quickFilter === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
+            className={`min-h-11 text-xs md:h-8 md:min-h-0 ${quickFilter === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
             onClick={() => setQuickFilter(quickFilter === k ? 'all' : k)}
           >{v}
             {k === 'has_issue' && stats.withIssue > 0 && <span className="ml-1 text-[10px]">({stats.withIssue})</span>}
@@ -2603,12 +2706,12 @@ export default function ServiceBoard() {
             <Input placeholder="搜索客户名称、负责人..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
           </div>
           <div className="flex gap-2">
-            <div className="flex border border-slate-200 rounded-md overflow-hidden">
-              <button className={`px-3 py-2 text-xs flex items-center gap-1 ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} onClick={() => setViewMode('list')}><LayoutList className="w-3.5 h-3.5" /> 列表</button>
-              <button className={`px-3 py-2 text-xs flex items-center gap-1 ${viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} onClick={() => setViewMode('kanban')}><Kanban className="w-3.5 h-3.5" /> 看板</button>
-              <button className={`px-3 py-2 text-xs flex items-center gap-1 ${viewMode === 'employee' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} onClick={() => setViewMode('employee')}><Users className="w-3.5 h-3.5" /> 员工</button>
+            <div className="flex overflow-hidden rounded-md border border-slate-200">
+              <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} onClick={() => setViewMode('list')}><LayoutList className="w-3.5 h-3.5" /> 列表</button>
+              <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} onClick={() => setViewMode('kanban')}><Kanban className="w-3.5 h-3.5" /> 看板</button>
+              <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'employee' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} onClick={() => setViewMode('employee')}><Users className="w-3.5 h-3.5" /> 员工</button>
             </div>
-            <Button variant={showFilters ? 'default' : 'outline'} size="sm" className={`h-10 gap-1.5 ${showFilters ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setShowFilters(!showFilters)}>
+            <Button variant={showFilters ? 'default' : 'outline'} size="sm" className={`min-h-11 gap-1.5 md:h-10 md:min-h-0 ${showFilters ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setShowFilters(!showFilters)}>
               <Filter className="w-4 h-4" /> 筛选
             </Button>
           </div>
@@ -2624,7 +2727,7 @@ export default function ServiceBoard() {
               <div><label className="text-xs text-slate-500 mb-1 block">问题状态</label><NativeSelect value={filters.issue_status} onChange={v => setFilters({ ...filters, issue_status: v })} options={[{ value: 'all', label: '全部' }, ...Object.entries(issueStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
             </div>
             <div className="flex justify-end mt-2">
-              <Button size="sm" variant="ghost" className="text-xs text-slate-500" onClick={() => setFilters({ industry: 'all', service_type: 'all', service_stage: 'all', ops_person: '', sales_person: '', issue_status: 'all' })}>
+              <Button size="sm" variant="ghost" className="min-h-11 text-xs text-slate-500 md:min-h-0" onClick={() => setFilters({ industry: 'all', service_type: 'all', service_stage: 'all', ops_person: '', sales_person: '', issue_status: 'all' })}>
                 重置筛选
               </Button>
             </div>
@@ -2686,13 +2789,13 @@ export default function ServiceBoard() {
                         {/* Kanban quick actions */}
                         {canEdit && (
                           <div className="flex gap-1 mt-1.5 pt-1.5 border-t border-slate-100" onClick={e => e.stopPropagation()}>
-                            <Button size="sm" variant="ghost" className="h-5 px-1.5 text-[10px] text-slate-400 hover:text-blue-600" onClick={() => openEditProgress(sp)}>编辑</Button>
+                            <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-blue-600 md:h-7 md:min-h-0 md:px-1.5 md:text-[10px]" onClick={() => openEditProgress(sp)}>编辑</Button>
                             {nextStage && (
-                              <Button size="sm" variant="ghost" className="h-5 px-1.5 text-[10px] text-slate-400 hover:text-green-600" onClick={() => handleAdvanceStage(sp)}>
+                              <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-green-600 md:h-7 md:min-h-0 md:px-1.5 md:text-[10px]" onClick={() => handleAdvanceStage(sp)}>
                                 → {allStageLabels[nextStage]?.slice(0, 4)}
                               </Button>
                             )}
-                            <Button size="sm" variant="ghost" className="h-5 px-1.5 text-[10px] text-slate-400 hover:text-blue-600" onClick={() => openQuickUpdate(sp)}>摘要</Button>
+                            <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-blue-600 md:h-7 md:min-h-0 md:px-1.5 md:text-[10px]" onClick={() => openQuickUpdate(sp)}>摘要</Button>
                           </div>
                         )}
                       </div>
@@ -2763,7 +2866,7 @@ export default function ServiceBoard() {
       </Dialog>
 
       {/* Complete Task Dialog */}
-      <Dialog open={!!completeTaskTarget} onOpenChange={v => { if (!v) setCompleteTaskTarget(null); }}>
+      <Dialog open={!!completeTaskTarget} onOpenChange={v => { if (!v) closeCompleteTaskDialog(); }}>
         <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>完成任务 - {completeTaskTarget?.task_name}</DialogTitle>
@@ -2891,7 +2994,7 @@ export default function ServiceBoard() {
             </div>
           )}
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setCompleteTaskTarget(null)}>取消</Button>
+            <Button variant="outline" onClick={closeCompleteTaskDialog}>取消</Button>
             <Button onClick={handleCompleteTask} disabled={savingCompletion || loadingCompletionRefs} className="bg-green-600 hover:bg-green-700">
               {savingCompletion ? '保存中...' : '确认完成'}
             </Button>
@@ -3071,7 +3174,7 @@ export default function ServiceBoard() {
                 </div>
                 <div>
                   <Label>服务开始日期</Label>
-                  <Input type="date" value={progressForm.service_start_date} onChange={e => setProgressForm({ ...progressForm, service_start_date: e.target.value })} className={!isAdmin ? 'bg-slate-50' : ''} readOnly={!isAdmin && !!progressForm.service_start_date} />
+                  <Input type="date" data-testid="service-start-date-input" value={progressForm.service_start_date} onChange={e => setProgressForm({ ...progressForm, service_start_date: e.target.value })} className={!isAdmin ? 'bg-slate-50' : ''} readOnly={!isAdmin && !!progressForm.service_start_date} />
                 </div>
                 <div>
                   <Label>服务到期日期</Label>
@@ -3087,7 +3190,7 @@ export default function ServiceBoard() {
                 <Label>问题状态</Label>
                 <NativeSelect
                   value={progressForm.issue_status}
-                  onChange={v => setProgressForm({ ...progressForm, issue_status: v, issue_found_date: v !== 'none' && !progressForm.issue_found_date ? todayStr() : progressForm.issue_found_date })}
+                  onChange={v => setProgressForm({ ...progressForm, issue_status: v, issue_found_date: v !== 'none' && !progressForm.issue_found_date ? businessDateKey() : progressForm.issue_found_date })}
                   options={Object.entries(issueStatusLabels).map(([k, v]) => ({ value: k, label: v }))}
                 />
               </div>
@@ -3108,7 +3211,7 @@ export default function ServiceBoard() {
                   </div>
                   <div className="flex items-center gap-3">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="checkbox" checked={progressForm.issue_resolved} onChange={e => setProgressForm({ ...progressForm, issue_resolved: e.target.checked, issue_resolved_date: e.target.checked ? todayStr() : '' })} className="rounded" />
+                      <input type="checkbox" checked={progressForm.issue_resolved} onChange={e => setProgressForm({ ...progressForm, issue_resolved: e.target.checked, issue_resolved_date: e.target.checked ? businessDateKey() : '' })} className="rounded" />
                       已解决
                     </label>
                   </div>
@@ -3172,7 +3275,7 @@ export default function ServiceBoard() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>优先级</Label><NativeSelect value={taskForm.priority} onChange={v => setTaskForm({ ...taskForm, priority: v })} options={Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-              <div><Label>状态</Label><NativeSelect value={taskForm.status} onChange={v => setTaskForm({ ...taskForm, status: v })} options={Object.entries(taskStatusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+              <div><Label>状态</Label><NativeSelect value={taskForm.status} onChange={v => setTaskForm({ ...taskForm, status: v })} options={Object.entries(taskStatusLabels).filter(([key]) => key !== 'completed').map(([k, v]) => ({ value: k, label: v }))} /></div>
             </div>
             <div><Label>截止日期</Label><Input type="date" value={taskForm.due_date} onChange={e => setTaskForm({ ...taskForm, due_date: e.target.value })} /></div>
             <div><Label>备注</Label><Textarea value={taskForm.notes} onChange={e => setTaskForm({ ...taskForm, notes: e.target.value })} rows={2} placeholder="补充说明..." /></div>

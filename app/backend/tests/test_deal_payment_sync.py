@@ -1,4 +1,6 @@
 from datetime import datetime
+import importlib
+import pkgutil
 
 import pytest
 import pytest_asyncio
@@ -8,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from core.database import Base
+import models as models_package
 from models.customers import Customers
 from models.deals import Deals
 from models.finance_profit_closes import MonthlyProfitClose
@@ -18,6 +21,13 @@ from services.deal_payment_sync import (
     sync_payment_from_deal,
 )
 from services.payment_deal_sync import sync_deal_from_payment
+
+
+# Keep this focused module runnable by itself: the production database loader
+# imports every model before create_all, while a direct pytest invocation would
+# otherwise leave newer foreign-key targets unregistered in Base.metadata.
+for module_info in pkgutil.iter_modules(models_package.__path__, models_package.__name__ + "."):
+    importlib.import_module(module_info.name)
 
 
 @pytest_asyncio.fixture
@@ -312,3 +322,43 @@ async def test_sync_deal_from_payment_reuses_source_deal_id_instead_of_creating_
     assert synced_deal.billing_cycle == "quarterly"
     assert synced_deal.service_start_date == datetime(2026, 6, 1, 0, 0, 0)
     assert synced_deal.service_end_date == datetime(2026, 9, 1, 0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_sync_payment_from_deal_reuses_source_payment_instead_of_creating_duplicate(db_session):
+    customer = await seed_customer(db_session, business_name="Source Payment Customer")
+    payment = Payments(
+        customer_id=customer.id,
+        customer_name=customer.business_name,
+        income_type="other_income",
+        product_name="原收款套餐",
+        amount_due=198.0,
+        amount_paid=198.0,
+        currency="USD",
+        payment_date=datetime(2026, 7, 1, 12, 0, 0),
+        payment_mode="manual_collection",
+        payment_method="cash",
+        outstanding_amount=0.0,
+        expense_month="2026-07",
+        created_at=datetime(2026, 7, 1, 12, 0, 0),
+        user_id="7",
+    )
+    db_session.add(payment)
+    await db_session.flush()
+    deal = await seed_deal(
+        db_session,
+        customer,
+        source_payment_id=payment.id,
+        package_name="来源收款同步套餐",
+        deal_amount=249.0,
+    )
+    await db_session.commit()
+
+    synced_payment = await sync_payment_from_deal(db_session, deal)
+
+    payments = (await db_session.scalars(select(Payments))).all()
+    assert len(payments) == 1
+    assert synced_payment.id == payment.id
+    assert synced_payment.source_deal_id == deal.id
+    assert synced_payment.product_name == "来源收款同步套餐"
+    assert synced_payment.amount_due == 249.0

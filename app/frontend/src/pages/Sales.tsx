@@ -20,6 +20,7 @@ import {
   getSubscriptionRemainingDays,
 } from '../lib/subscription-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
+import { businessDateKey } from '../lib/business-date';
 
 const subStatusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
@@ -449,7 +450,7 @@ export default function Sales() {
             { key: 'outstanding_amount', label: '未收尾款' },
             { key: 'sales_person', label: '负责销售' },
           ]}
-          filename={`成交客户_${new Date().toISOString().slice(0, 10)}`}
+          filename={`成交客户_${businessDateKey()}`}
           sheetName="成交客户"
         />
       </div>
