@@ -64,9 +64,6 @@ def validate_source(root_raw: str, report_raw: str) -> None:
         fail("source root tree differs")
     if run_git(root, "rev-parse", "HEAD:app") != APP_TREE:
         fail("source app tree differs")
-    if run_git(root, "status", "--porcelain=v1", "--untracked-files=all"):
-        fail("source checkout is dirty")
-
     entries = run_git(root, "ls-files", "-s", "app").splitlines()
     if len(entries) != EXPECTED_FILE_COUNT:
         fail("tracked app file count differs")
@@ -74,6 +71,11 @@ def validate_source(root_raw: str, report_raw: str) -> None:
         fields = entry.split(None, 3)
         if len(fields) != 4 or fields[0] not in {"100644", "100755"}:
             fail("source contains a symlink, submodule, or unexpected tracked mode")
+        working_blob = run_git(root, "hash-object", "--no-filters", "--", fields[3])
+        if working_blob != fields[1]:
+            fail(f"source working file differs from approved Git blob: {fields[3]}")
+    if run_git(root, "ls-files", "--others", "--exclude-standard", "app"):
+        fail("source app tree contains an untracked file")
 
     for path_text in run_git(root, "ls-files", "app").splitlines():
         data = (root / path_text).read_bytes()
