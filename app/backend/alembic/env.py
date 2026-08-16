@@ -41,26 +41,57 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+# These tables are intentionally owned by explicit SQL contracts rather than
+# ORM models.  They are migrated, but must not be interpreted as removals by
+# ``alembic check``.
+NON_ORM_PERSISTENT_TABLES = {
+    "app_settings",
+    "monthly_deduction_rates",
+    "monthly_deduction_defaults",
+    "monthly_deduction_audits",
+}
+
+# Preserve the one legacy database-only column instead of letting
+# autogenerate suggest a destructive drop.  New reflected-only columns remain
+# visible to ``alembic check`` unless deliberately documented here.
+LEGACY_DATABASE_ONLY_COLUMNS = {("expense_categories", "user_id")}
+
+
 def alembic_include_object(object, name, type_, reflected, compare_to):
-    # type_ can be 'table', 'index', 'column', 'constraint'
-    # ignore particular table_name
-    if type_ == "table" and name in ["users", "sessions", "oidc_states"]:
+    if type_ == "table" and name in NON_ORM_PERSISTENT_TABLES:
         return False
+    if type_ == "column" and reflected and compare_to is None:
+        table_name = getattr(getattr(object, "table", None), "name", None)
+        if (table_name, name) in LEGACY_DATABASE_ONLY_COLUMNS:
+            return False
     return True
+
+
+def alembic_compare_server_default(*_args, **_kwargs):
+    """Ignore Python-default versus historical server-default noise.
+
+    The legacy models deliberately use application-side defaults while older
+    migrations use server defaults for safe backfills.  Column/table/index/FK
+    drift remains fully checked.
+    """
+
+    return False
+
+
+def _configure_context(connection) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=alembic_compare_server_default,
+        include_object=alembic_include_object,
+    )
 
 
 async def run_migrations_online():
     connectable = create_async_engine(config.get_main_option("sqlalchemy.url"), poolclass=pool.NullPool)
     async with connectable.connect() as connection:
-        await connection.run_sync(
-            lambda sync_conn: context.configure(
-                connection=sync_conn,
-                target_metadata=target_metadata,
-                compare_type=True,
-                compare_server_default=True,
-                include_object=alembic_include_object,
-            )
-        )
+        await connection.run_sync(_configure_context)
         async with connection.begin():
             await connection.run_sync(lambda sync_conn: context.run_migrations())
     await connectable.dispose()
