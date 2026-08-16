@@ -1,0 +1,62 @@
+name: Build Mobile PWA Candidate Once
+
+on:
+  push:
+    branches:
+      - agent/crm-mobile-pwa-build-once-20260817
+
+permissions:
+  contents: read
+
+concurrency:
+  group: t24-mobile-pwa-build-once-75997c6
+  cancel-in-progress: false
+
+jobs:
+  build-once:
+    if: github.repository == 'billy285/t24-crm'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_COMMIT: 75997c6f351eba1b35aaa6faf7fc801f42921c18
+      SOURCE_PARENT_1: d6a434d8705b07a67b4dbe59f11b160a1eb91613
+      SOURCE_PARENT_2: 6e841e2b963ec576da6bdf2a9d496d02e90e07c0
+      SOURCE_ROOT_TREE: 3e56f34dc7e858e656af3fc9508a57c6a9a75aa1
+      SOURCE_APP_TREE: cea0fc1f2c414e0f5606900a93895e04a567c0b2
+      SOURCE_ARCHIVE_SHA256: 17eda80f52db8d2fefe35c52047d13535a57ecdb4459d01209562f1b909f26af
+      ORIGINAL_DOCKERFILE_SHA256: 3fa8ded1c7d1ca14325bb94a5aca6d4cb25d1ff9f620d7e1c73eae04aa0a769c
+      DOCKERIGNORE_SHA256: 00904b81cc471610bce2ea2881a3d8f85c31a05f863952f6917a9a8a09a7c8b4
+      PNPM_LOCK_SHA256: a06f7ec6aed5abfaef495900d3f49833b7e262d8338a98b3d876299774ca4aee
+      REQUIREMENTS_SHA256: 2946db48dcb9bdc03d2295f929d65c7cc000ed83a5c9d9888ac88b61ea7633ed
+      SOURCE_FILE_COUNT: '503'
+      BUILD_PLATFORM: linux/amd64
+      CANDIDATE_TAG: t24-crm:mobile-pwa-75997c6-build-once
+    steps:
+      - name: Check out build controller
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: control
+          persist-credentials: false
+
+      - name: Check out approved source commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 75997c6f351eba1b35aaa6faf7fc801f42921c18
+          path: source
+          fetch-depth: 2
+          lfs: false
+          persist-credentials: false
+
+      - name: Build and freeze one candidate image
+        shell: bash
+        run: control/.github/scripts/mobile-pwa-build-once.sh
+
+      - name: Upload immutable candidate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: t24-mobile-pwa-candidate-75997c6-${{ github.run_id }}
+          path: candidate-artifact/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
