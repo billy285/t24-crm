@@ -45,11 +45,21 @@ export function Combobox({
   className,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const [portalContainer, setPortalContainer] = React.useState<HTMLElement | null>(null);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setPortalContainer(triggerRef.current?.closest<HTMLElement>('[role="dialog"]') ?? null);
+    }
+    setOpen(nextOpen);
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           variant="outline"
           role="combobox"
           aria-expanded={open}
@@ -67,6 +77,7 @@ export function Combobox({
       <PopoverContent
         align="start"
         sideOffset={6}
+        portalContainer={portalContainer ?? undefined}
         data-slot="combobox-content"
         className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border-slate-200 bg-white p-0 shadow-[0_18px_50px_-20px_rgba(15,23,42,0.45)]"
       >
@@ -77,7 +88,7 @@ export function Combobox({
           )}
         >
           <CommandInput placeholder={searchPlaceholder} />
-          <CommandList className="max-h-64 p-1">
+          <CommandList className="max-h-64 touch-pan-y overscroll-contain p-1 [scrollbar-gutter:stable]">
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup className="p-0">
               {options.map(option => (
