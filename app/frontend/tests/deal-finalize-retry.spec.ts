@@ -85,8 +85,15 @@ test('成交已保存但 finalize 未完成时逐项提示并可手动重试且�
   await page.goto(`${baseUrl}/deals`);
   await page.getByRole('button', { name: '录入成交' }).click();
   const dialog = page.getByRole('dialog', { name: '录入成交' });
-  await dialog.getByRole('combobox').first().click();
-  await page.getByPlaceholder('输入客户编号、名称、联系人、电话或城市…').fill('FINAL-031');
+  const customerPicker = dialog.getByRole('combobox').first();
+  const customerPickerBox = await customerPicker.boundingBox();
+  await customerPicker.click();
+  const customerSearchPanel = page.locator('[data-slot="combobox-content"]');
+  const customerSearchPanelBox = await customerSearchPanel.boundingBox();
+  expect(customerPickerBox).not.toBeNull();
+  expect(customerSearchPanelBox).not.toBeNull();
+  expect(Math.abs((customerSearchPanelBox?.width || 0) - (customerPickerBox?.width || 0))).toBeLessThan(2);
+  await page.getByPlaceholder('搜索商家名称或编号').fill('FINAL-031');
   await expect(page.getByRole('listbox', { name: 'Suggestions' }).getByRole('option')).toHaveCount(1);
   await page.getByRole('option', { name: 'Finalize 测试客户' }).click();
   await expect(dialog.getByRole('combobox').first()).toContainText('Finalize 测试客户');
@@ -176,7 +183,7 @@ test('成交 POST 响应丢失时查询恢复已提交记录并继续 finalize �
   await page.getByRole('button', { name: '录入成交' }).click();
   const dialog = page.getByRole('dialog', { name: '录入成交' });
   await dialog.getByRole('combobox').first().click();
-  await page.getByPlaceholder('输入客户编号、名称、联系人、电话或城市…').fill('FINAL-032');
+  await page.getByPlaceholder('搜索商家名称或编号').fill('FINAL-032');
   await page.getByRole('option', { name: '响应丢失测试客户' }).click();
   await dialog.getByLabel('基础套餐').check();
   await dialog.getByPlaceholder('0.00').fill('198');

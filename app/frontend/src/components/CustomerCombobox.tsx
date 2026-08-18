@@ -56,7 +56,7 @@ export default function CustomerCombobox({
       value={value}
       onValueChange={onValueChange}
       placeholder={placeholder}
-      searchPlaceholder="输入客户编号、名称、联系人、电话或城市…"
+      searchPlaceholder="搜索商家名称或编号"
       emptyText="没有找到匹配客户"
       disabled={disabled}
       className="h-10 justify-between overflow-hidden text-left font-normal [&>span]:truncate"
