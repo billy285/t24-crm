@@ -57,7 +57,9 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-full p-0">
-        <Command>
+        <Command filter={(option, search) => (
+          option.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) ? 1 : 0
+        )}>
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>

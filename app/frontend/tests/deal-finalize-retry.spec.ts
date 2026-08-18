@@ -87,6 +87,7 @@ test('成交已保存但 finalize 未完成时逐项提示并可手动重试且�
   const dialog = page.getByRole('dialog', { name: '录入成交' });
   await dialog.getByRole('combobox').first().click();
   await page.getByPlaceholder('输入客户编号、名称、联系人、电话或城市…').fill('FINAL-031');
+  await expect(page.getByRole('listbox', { name: 'Suggestions' }).getByRole('option')).toHaveCount(1);
   await page.getByRole('option', { name: /FINAL-031 · Finalize 测试客户/ }).click();
   await expect(dialog.getByRole('combobox').first()).toContainText('FINAL-031 · Finalize 测试客户');
   await dialog.getByLabel('基础套餐').check();
