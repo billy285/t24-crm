@@ -37,6 +37,15 @@
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         text-align: center;
       }
+      #t24-bootstrap-card {
+        box-sizing: border-box;
+        width: min(100%, 520px);
+        padding: 32px;
+        border: 1px solid #e2e8f0;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 24px 60px -36px rgba(15, 23, 42, 0.42);
+      }
       #t24-bootstrap-mark {
         width: 64px;
         height: 64px;
@@ -54,28 +63,85 @@
       }
       #t24-bootstrap-title {
         margin: 18px 0 0;
-        font-size: 18px;
+        color: #475569;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      #t24-bootstrap-heading {
+        margin: 8px 0 0;
+        font-size: 22px;
         font-weight: 700;
       }
-      #t24-bootstrap-spinner {
-        width: 26px;
-        height: 26px;
-        margin: 18px auto 0;
-        border: 3px solid #dbeafe;
-        border-bottom-color: #2563eb;
+      #t24-bootstrap-progress {
+        height: 6px;
+        margin: 24px 0 0;
+        overflow: hidden;
         border-radius: 999px;
-        animation: t24-bootstrap-spin 0.8s linear infinite;
+        background: #e2e8f0;
+      }
+      #t24-bootstrap-progress > span {
+        display: block;
+        width: 42%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #2563eb, #38bdf8);
+        animation: t24-bootstrap-progress 1.4s ease-in-out infinite;
       }
       #t24-bootstrap-message {
-        margin: 12px 0 0;
-        color: #64748b;
-        font-size: 13px;
+        margin: 16px 0 0;
+        color: #334155;
+        font-size: 14px;
+        font-weight: 600;
       }
-      @keyframes t24-bootstrap-spin {
-        to { transform: rotate(360deg); }
+      #t24-bootstrap-reassurance {
+        margin: 12px 0 0;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: #eff6ff;
+        color: #475569;
+        font-size: 13px;
+        line-height: 1.65;
+      }
+      #t24-bootstrap-slow {
+        margin: 14px 0 0;
+        color: #92400e;
+        font-size: 13px;
+        line-height: 1.6;
+        opacity: 0;
+        animation: t24-bootstrap-reveal 0.25s ease 6s forwards;
+      }
+      #t24-bootstrap-retry {
+        display: inline-flex;
+        margin-top: 12px;
+        padding: 9px 14px;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        color: #1d4ed8;
+        font-size: 13px;
+        font-weight: 700;
+        text-decoration: none;
+        opacity: 0;
+        pointer-events: none;
+        animation: t24-bootstrap-enable-retry 0.25s ease 12s forwards;
+      }
+      @keyframes t24-bootstrap-progress {
+        0% { transform: translateX(-125%); }
+        100% { transform: translateX(340%); }
+      }
+      @keyframes t24-bootstrap-reveal {
+        to { opacity: 1; }
+      }
+      @keyframes t24-bootstrap-enable-retry {
+        to { opacity: 1; pointer-events: auto; }
       }
       @media (prefers-reduced-motion: reduce) {
-        #t24-bootstrap-spinner { animation: none; }
+        #t24-bootstrap-progress > span { animation-duration: 3s; }
+      }
+      @media (max-width: 520px) {
+        #t24-bootstrap { padding: 16px; }
+        #t24-bootstrap-card { padding: 28px 20px; }
       }
     </style>
   </head>
@@ -83,11 +149,15 @@
   <body>
     <div id="root">
       <div id="t24-bootstrap" role="status" aria-live="polite" aria-busy="true">
-        <div>
+        <div id="t24-bootstrap-card">
           <div id="t24-bootstrap-mark" aria-hidden="true">T24</div>
           <p id="t24-bootstrap-title">T24 Marketing 客户管理系统</p>
-          <div id="t24-bootstrap-spinner" aria-hidden="true"></div>
-          <p id="t24-bootstrap-message">正在安全连接系统…</p>
+          <h1 id="t24-bootstrap-heading">正在打开工作台</h1>
+          <div id="t24-bootstrap-progress" aria-hidden="true"><span></span></div>
+          <p id="t24-bootstrap-message">正在验证登录状态和访问权限，请稍候…</p>
+          <p id="t24-bootstrap-reassurance">资料完整返回后会自动显示；加载期间不会用空白或“0 条”代替真实数据。</p>
+          <p id="t24-bootstrap-slow">连接时间比平时稍长。请保持页面打开，等待不会造成客户资料丢失。</p>
+          <a id="t24-bootstrap-retry" href="">重新连接</a>
         </div>
       </div>
     </div>
