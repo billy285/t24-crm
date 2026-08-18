@@ -270,6 +270,52 @@ test('合伙人门户在手机使用客户和分润卡片而不是宽表', async
   await expectNoHorizontalOverflow(page);
 });
 
+test('经营总览按老板待办、经营规模和生命周期建立清晰层级', async ({ page }) => {
+  await seedAdmin(page, 'super_admin');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const payloads = managementDecisionPayloads();
+  (payloads.classification.summary as any) = {
+    ...payloads.classification.summary,
+    warning_counts: { needs_classification: 26 },
+    review_counts: { pending: 0 },
+    project_count: 39,
+    active_project_count: 29,
+    multi_project_customers: 1,
+    high_anomaly_count: 0,
+    risk_reminder_count: 3,
+  };
+  (payloads.classification as any).recommendations = [{
+    level: 'info', title: '继续积累真实项目数据', message: '先补齐首次收款日期、负责人和停止原因。',
+  }];
+  await page.route(/\/api\/v1\/management-decisions\/classification-review/, route => fulfillJson(route, payloads.classification));
+  await page.route(/\/api\/v1\/management-decisions\/automation\/overview/, route => fulfillJson(route, payloads.automation));
+  await page.route(/\/api\/v1\/management-decisions\/growth-dashboard/, route => fulfillJson(route, payloads.growth));
+
+  await page.goto(`${baseUrl}/management-decisions`);
+
+  const decisionHeading = page.getByRole('heading', { name: '老板待办与决策建议' });
+  const scaleHeading = page.getByRole('heading', { name: '经营规模' });
+  const lifecycleHeading = page.getByRole('heading', { name: '各业务生命周期信号' });
+  await expect(decisionHeading).toBeVisible();
+  await expect(scaleHeading).toBeVisible();
+  await expect(lifecycleHeading).toBeVisible();
+  await expect(page.getByText('继续积累真实项目数据')).toBeVisible();
+  await expect(page.getByText('当前无需处理')).toHaveCount(2);
+  await expect(page.locator('details').filter({ hasText: '安全审核模式' })).not.toHaveAttribute('open', '');
+  await expect(page.getByLabel('辅助管理入口')).toBeVisible();
+
+  const [decisionBox, scaleBox, lifecycleBox] = await Promise.all([
+    decisionHeading.boundingBox(), scaleHeading.boundingBox(), lifecycleHeading.boundingBox(),
+  ]);
+  expect(decisionBox?.y).toBeLessThan(scaleBox?.y || 0);
+  expect(scaleBox?.y).toBeLessThan(lifecycleBox?.y || 0);
+  await expectNoHorizontalOverflow(page);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByLabel('辅助管理入口')).toBeHidden();
+  await expectNoHorizontalOverflow(page);
+});
+
 test('经营决策手机版不挂载高级月结控件且不会触发写请求', async ({ page }) => {
   await seedAdmin(page, 'super_admin');
   const payloads = managementDecisionPayloads();
