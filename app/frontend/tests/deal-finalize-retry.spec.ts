@@ -32,6 +32,7 @@ test('成交已保存但 finalize 未完成时逐项提示并可手动重试且�
       return fulfillJson(route, {
         items: [{
           id: 31,
+          customer_code: 'FINAL-031',
           business_name: 'Finalize 测试客户',
           contact_name: '测试负责人',
           phone: '555-0031',
@@ -84,7 +85,10 @@ test('成交已保存但 finalize 未完成时逐项提示并可手动重试且�
   await page.goto(`${baseUrl}/deals`);
   await page.getByRole('button', { name: '录入成交' }).click();
   const dialog = page.getByRole('dialog', { name: '录入成交' });
-  await dialog.locator('select').first().selectOption('31');
+  await dialog.getByRole('combobox').first().click();
+  await page.getByPlaceholder('输入客户编号、名称、联系人、电话或城市…').fill('FINAL-031');
+  await page.getByRole('option', { name: /FINAL-031 · Finalize 测试客户/ }).click();
+  await expect(dialog.getByRole('combobox').first()).toContainText('FINAL-031 · Finalize 测试客户');
   await dialog.getByLabel('基础套餐').check();
   await dialog.getByPlaceholder('0.00').fill('198');
   await dialog.getByRole('switch').first().click();
@@ -131,6 +135,7 @@ test('成交 POST 响应丢失时查询恢复已提交记录并继续 finalize �
       return fulfillJson(route, {
         items: [{
           id: 32,
+          customer_code: 'FINAL-032',
           business_name: '响应丢失测试客户',
           contact_name: '测试负责人',
           phone: '555-0032',
@@ -169,7 +174,9 @@ test('成交 POST 响应丢失时查询恢复已提交记录并继续 finalize �
   await page.goto(`${baseUrl}/deals`);
   await page.getByRole('button', { name: '录入成交' }).click();
   const dialog = page.getByRole('dialog', { name: '录入成交' });
-  await dialog.locator('select').first().selectOption('32');
+  await dialog.getByRole('combobox').first().click();
+  await page.getByPlaceholder('输入客户编号、名称、联系人、电话或城市…').fill('FINAL-032');
+  await page.getByRole('option', { name: /FINAL-032 · 响应丢失测试客户/ }).click();
   await dialog.getByLabel('基础套餐').check();
   await dialog.getByPlaceholder('0.00').fill('198');
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
