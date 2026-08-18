@@ -52,6 +52,9 @@ export interface MobileAppHomeProps {
   appBadges?: Partial<Record<MobileBusinessAppKey, string | number>>;
   recentItems?: MobileHomeRecentItem[];
   notificationCount?: number;
+  loading?: boolean;
+  loadError?: string;
+  onRetry?: () => void;
   onOpenProfile: () => void;
   onOpenNotifications?: () => void;
   todayPath?: string;
@@ -117,6 +120,17 @@ const visibleBadge = (value: string | number | undefined) => {
   return String(value);
 };
 
+const roleHomeCopy: Record<string, { eyebrow: string; title: string; subtitle: string }> = {
+  super_admin: { eyebrow: '经营总览', title: '老板今日工作台', subtitle: '先看风险，再推进今天最重要的事项' },
+  admin: { eyebrow: '经营总览', title: '管理工作台', subtitle: '查看团队、客户与财务的今日重点' },
+  sales: { eyebrow: '销售执行', title: '我的销售工作台', subtitle: '先拨打、再回访，记录每一次有效沟通' },
+  sales_manager: { eyebrow: '销售管理', title: '销售主管工作台', subtitle: '掌握团队进度，及时处理未完成任务' },
+  ops: { eyebrow: '客户交付', title: '我的运营工作台', subtitle: '优先处理逾期、回访与客户问题' },
+  design: { eyebrow: '设计交付', title: '我的设计工作台', subtitle: '集中处理自己的设计任务与素材事项' },
+  finance: { eyebrow: '财务核对', title: '财务今日工作台', subtitle: '关注待收款、续费风险与异常记录' },
+  sales_partner: { eyebrow: '合作进展', title: '客户与分润工作台', subtitle: '跟进客户续费与分润确认状态' },
+};
+
 export function T24AppMark({ className, decorative = false }: { className?: string; decorative?: boolean }) {
   return (
     <span
@@ -143,6 +157,9 @@ export default function MobileAppHome({
   appBadges = {},
   recentItems = [],
   notificationCount = 0,
+  loading = false,
+  loadError = '',
+  onRetry,
   onOpenProfile,
   onOpenNotifications,
   todayPath,
@@ -180,6 +197,7 @@ export default function MobileAppHome({
   const employeeName = employee?.name || employee?.full_name || '同事';
   const notificationBadge = visibleBadge(notificationCount);
   const todayTone = toneStyles[topTodayItem?.tone || 'info'];
+  const homeCopy = roleHomeCopy[role] || roleHomeCopy.admin;
 
   const openNotifications = () => {
     if (onOpenNotifications) {
@@ -192,7 +210,7 @@ export default function MobileAppHome({
   return (
     <div
       className={cn(
-        'mobile-app-home relative mx-auto min-h-[100dvh] w-full max-w-[32rem] overflow-x-hidden bg-[#f3f6fb] pb-[calc(6.25rem+env(safe-area-inset-bottom))] text-slate-950',
+        'mobile-app-home relative mx-auto min-h-[100dvh] w-full max-w-[48rem] overflow-x-hidden bg-[#f3f6fb] pb-[calc(6.25rem+env(safe-area-inset-bottom))] text-slate-950 md:min-h-full md:pb-10',
         className,
       )}
     >
@@ -203,7 +221,7 @@ export default function MobileAppHome({
           <T24AppMark decorative />
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-bold tracking-tight text-slate-950">T24 工作台</p>
-            <p className="mt-0.5 truncate text-[11px] text-slate-500">{employeeName} · {roleLabel}</p>
+            <p className="mt-0.5 truncate text-[11px] text-slate-500"><span className="font-semibold text-blue-600">当前账号</span> · {employeeName} · {roleLabel}</p>
           </div>
           <button
             type="button"
@@ -228,15 +246,26 @@ export default function MobileAppHome({
           </button>
         </div>
 
-        <div className="flex flex-col items-center pb-5 pt-5 text-center">
-          <T24AppMark className="h-[76px] w-[76px] rounded-[24px] [&>span:nth-child(2)]:text-[20px]" />
-          <h1 className="mt-3 text-[24px] font-black tracking-[-0.04em] text-[#10213f]">T24 OS</h1>
-          <p className="mt-1 text-[13px] font-medium text-slate-600">企业经营管理系统</p>
-          <p className="mt-1 text-[11px] text-slate-400">您的企业经营管理中心</p>
+        <div className="flex flex-col items-center pb-5 pt-5 text-center md:pb-6 md:pt-8">
+          <T24AppMark className="h-[72px] w-[72px] rounded-[23px] [&>span:nth-child(2)]:text-[20px]" />
+          <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">{homeCopy.eyebrow}</p>
+          <h1 className="mt-1 text-[25px] font-black tracking-[-0.04em] text-[#10213f]">{homeCopy.title}</h1>
+          <p className="mt-1.5 text-[12px] text-slate-500">{homeCopy.subtitle}</p>
         </div>
       </header>
 
       <main className="relative space-y-6 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
+        {loading ? (
+          <div className="flex items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50/80 px-4 py-3 text-xs text-blue-700" role="status" aria-live="polite">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+            正在更新当前账号的今日重点，应用入口可直接使用。
+          </div>
+        ) : loadError ? (
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800" role="status" aria-live="polite">
+            <span>{loadError}</span>
+            {onRetry ? <button type="button" className="shrink-0 font-bold underline" onClick={onRetry}>重新加载</button> : null}
+          </div>
+        ) : null}
         <section aria-labelledby="mobile-apps-heading" className="rounded-[28px] border border-white/90 bg-white/90 px-3 py-5 shadow-[0_24px_58px_-38px_rgba(37,70,132,0.65)] backdrop-blur-xl">
           <div className="mb-4 flex items-end justify-between px-1">
             <div>
@@ -244,7 +273,7 @@ export default function MobileAppHome({
               <p className="mt-0.5 text-[10px] text-slate-400">只显示您有权使用的应用</p>
             </div>
           </div>
-          <div className={cn('grid gap-x-2 gap-y-5', availableApps.length === 1 ? 'grid-cols-1' : 'grid-cols-3')}>
+          <div className={cn('grid gap-x-2 gap-y-5', availableApps.length === 1 ? 'grid-cols-1' : 'grid-cols-3', availableApps.length >= 4 && 'md:grid-cols-6')}>
             {availableApps.map(app => {
               const Icon = app.icon;
               const badge = visibleBadge(appBadges[app.key]);

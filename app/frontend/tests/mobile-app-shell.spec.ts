@@ -31,7 +31,17 @@ const roleVisibleApps: Record<TestRole, readonly string[]> = {
   sales_partner: ['我的客户与分润'],
 };
 
-async function mockAuthenticatedApi(page: Page, role: TestRole) {
+type HomeFixtures = {
+  tasks?: unknown[];
+  customers?: unknown[];
+  subscriptions?: unknown[];
+  payments?: unknown[];
+  salesWorkbench?: unknown;
+  salesManagement?: unknown;
+  partnerDashboard?: unknown;
+};
+
+async function mockAuthenticatedApi(page: Page, role: TestRole, fixtures: HomeFixtures = {}) {
   const employee = {
     id: role === 'admin' ? 1 : role.length + 10,
     name: `${role} 测试账号`,
@@ -50,6 +60,13 @@ async function mockAuthenticatedApi(page: Page, role: TestRole) {
     let data: unknown = {};
 
     if (path.endsWith('/emp-auth/me')) data = employee;
+    else if (path.endsWith('/sales-leads/workbench/today')) data = fixtures.salesWorkbench || {};
+    else if (path.endsWith('/sales-leads/dashboard/management')) data = fixtures.salesManagement || {};
+    else if (path.endsWith('/commissions/my-dashboard')) data = fixtures.partnerDashboard || {};
+    else if (path.endsWith('/entities/tasks')) data = { items: fixtures.tasks || [], total: (fixtures.tasks || []).length };
+    else if (path.endsWith('/entities/customers')) data = { items: fixtures.customers || [], total: (fixtures.customers || []).length };
+    else if (path.includes('/entities/subscriptions')) data = { items: fixtures.subscriptions || [], total: (fixtures.subscriptions || []).length };
+    else if (path.includes('/entities/payments')) data = { items: fixtures.payments || [], total: (fixtures.payments || []).length };
     else if (path.endsWith('/deductions-monthly/default')) data = { rate: 0.15 };
     else if (path.endsWith('/deductions-monthly')) data = [];
     else if (path.includes('/app-config')) data = { items: {} };
@@ -115,7 +132,8 @@ test('管理员在 360px、390px 与 430px 看到六个核心应用且页面无�
     await page.setViewportSize(viewport);
     await page.goto(`${baseUrl}/apps`);
 
-    await expect(page.getByRole('heading', { name: 'T24 OS' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '管理工作台' })).toBeVisible();
+    await expect(page.getByText(/当前账号.*admin 测试账号.*管理员/)).toBeVisible();
     await expect(appRegion(page).getByRole('button')).toHaveCount(6);
     for (const app of standardApps) {
       await expect(appRegion(page).getByRole('button', { name: app.accessibleName })).toBeVisible();
@@ -205,31 +223,102 @@ test('手机内页可从当前 App 功能菜单进入二级页面', async ({ pag
   await expect.poll(() => new URL(page.url()).pathname).toBe('/rmb-profit');
 });
 
-test('1440px 桌面保留侧栏并隐藏手机底栏', async ({ page }) => {
+test('1440px 网页 App 使用独立应用外壳，不再叠加后台侧栏', async ({ page }) => {
   await mockAuthenticatedApi(page, 'admin');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${baseUrl}/apps`);
 
-  await expect(page.locator('aside.app-sidebar')).toBeVisible();
-  await expect(page.locator('nav.app-sidebar-nav')).toBeVisible();
+  await expect(page.locator('aside.app-sidebar')).toHaveCount(0);
+  await expect(page.locator('header.app-topbar')).toBeHidden();
   const mobileBottomNav = page.locator('nav[aria-label="手机主导航"]');
   await expect(mobileBottomNav).toHaveCount(1);
   await expect(mobileBottomNav).toBeHidden();
-  await expect(page.locator('.mobile-app-home')).toHaveCSS('max-width', '512px');
+  await expect(page.locator('.mobile-app-home')).toHaveCSS('max-width', '768px');
+  await page.getByRole('button', { name: '打开我的账户' }).click();
+  await expect(page.getByRole('dialog', { name: '我的账户' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible();
 });
 
 test('财务角色在桌面侧栏可以发现月度扣点比例入口', async ({ page }) => {
   await mockAuthenticatedApi(page, 'finance');
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`${baseUrl}/apps`);
+  await page.goto(`${baseUrl}/finance`);
 
   const sidebar = page.locator('nav.app-sidebar-nav');
-  await sidebar.getByRole('button', { name: '展开财务与结算' }).click();
+  const financeSectionToggle = sidebar.getByRole('button', { name: /(展开|收起)财务与结算/ });
+  if (await financeSectionToggle.getAttribute('aria-label') === '展开财务与结算') await financeSectionToggle.click();
   const link = sidebar.getByRole('link', { name: '月度扣点比例' });
   await expect(link).toBeVisible();
   await link.click();
   await expect.poll(() => new URL(page.url()).pathname).toBe('/settings/deduction');
   await expect(page.getByRole('heading', { name: '月度扣点比例' })).toBeVisible();
+});
+
+test('销售账号首页直接显示真实剩余任务、回访数量与下一位客户', async ({ page }) => {
+  await mockAuthenticatedApi(page, 'sales', {
+    salesWorkbench: {
+      remaining_count: 4,
+      performance: { callbacks_due: 2 },
+      items: [{ task_id: 8, task_status: 'pending', lead: { business_name: '测试美甲店' } }],
+    },
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/apps`);
+
+  await expect(page.getByRole('heading', { name: '我的销售工作台' })).toBeVisible();
+  await expect(page.getByText('今天还有 4 条销售任务')).toBeVisible();
+  await expect(page.getByText(/2 条客户需要回访/)).toBeVisible();
+  await expect(page.getByText('下一位：测试美甲店')).toBeVisible();
+  await expect(page.getByRole('button', { name: '查看待办，6 项未处理' })).toBeVisible();
+});
+
+test('运营账号首页只汇总自己的逾期任务并提供继续处理入口', async ({ page }) => {
+  await mockAuthenticatedApi(page, 'ops', {
+    tasks: [
+      { id: 11, title: '补充客户月报', assignee_name: 'ops 测试账号', customer_name: 'A 客户', status: 'pending', due_date: '2020-01-01', updated_at: '2026-08-19' },
+      { id: 12, title: '其他人的任务', assignee_name: '另一位员工', status: 'pending', due_date: '2020-01-01' },
+    ],
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/apps`);
+
+  await expect(page.getByRole('heading', { name: '我的运营工作台' })).toBeVisible();
+  await expect(page.getByText('1 项运营任务已逾期')).toBeVisible();
+  await expect(page.getByRole('region', { name: '今天先处理' }).getByText('补充客户月报')).toBeVisible();
+  await expect(page.getByText('其他人的任务')).toHaveCount(0);
+});
+
+test('财务账号首页汇总待收款与续费风险', async ({ page }) => {
+  await mockAuthenticatedApi(page, 'finance', {
+    subscriptions: [
+      { id: 1, customer_id: 1, package_name: '基础版', status: 'expiring_soon' },
+      { id: 2, customer_id: 2, package_name: '高级版', status: 'active' },
+    ],
+    payments: [{ id: 1, outstanding_amount: 300 }, { id: 2, outstanding_amount: 0 }],
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/apps`);
+
+  await expect(page.getByRole('heading', { name: '财务今日工作台' })).toBeVisible();
+  await expect(page.getByText('2 项财务事项需要核对')).toBeVisible();
+  await expect(page.getByText('1 笔待收款 · 1 个续费风险')).toBeVisible();
+});
+
+test('销售合伙人首页显示客户续费与分润状态', async ({ page }) => {
+  await mockAuthenticatedApi(page, 'sales_partner', {
+    partnerDashboard: {
+      summary: {
+        renewal_attention_count: 3,
+        currencies: { USD: { payable: 2 } },
+      },
+    },
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/apps`);
+
+  await expect(page.getByRole('heading', { name: '客户与分润工作台' })).toBeVisible();
+  await expect(page.getByText('3 位合作客户需要关注')).toBeVisible();
+  await expect(page.getByText('当前有 2 笔分润进入可结算状态。')).toBeVisible();
 });
 
 test('无 returnTo 的任务详情始终有固定返回入口', async ({ page }) => {
