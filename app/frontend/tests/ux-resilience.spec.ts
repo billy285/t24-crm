@@ -86,6 +86,34 @@ test('390px 客户页首屏保留搜索、新增和客户卡片，批量工具�
   await expect(page.getByRole('button', { name: '列设置' })).toHaveCount(0);
 });
 
+test('客户资料读取期间说明真实状态，不显示空白或假零值', async ({ page }) => {
+  await seedAuth(page);
+  let releaseCustomers: (() => void) | undefined;
+  const customersReady = new Promise<void>(resolve => { releaseCustomers = resolve; });
+
+  await page.route(/^https?:\/\/[^/]+\/api\//, async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/emp-auth/me')) return fulfillJson(route, employee);
+    if (path.includes('/entities/customers')) {
+      await customersReady;
+      return fulfillJson(route, { items: [{ id: 1, customer_code: 'T24-002', business_name: '加载完成客户', status: 'following', level: 'normal' }] });
+    }
+    if (path.includes('/entities/employees')) return fulfillJson(route, { items: [] });
+    if (path.includes('/app-config')) return fulfillJson(route, { items: [] });
+    return fulfillJson(route, { items: [] });
+  });
+
+  await page.goto(`${baseUrl}/customers`);
+  await expect(page.getByText('正在读取客户资料…')).toBeVisible();
+  await expect(page.getByText('资料完整返回后会自动显示；加载期间不会用空白或“0 条”代替真实数据。')).toBeVisible();
+  await expect(page.getByText('全部 0')).toHaveCount(0);
+  await expect(page.getByText('共 0 条')).toHaveCount(0);
+
+  releaseCustomers?.();
+  await expect(page.getByRole('cell', { name: '加载完成客户', exact: true })).toBeVisible();
+  await expect(page.getByText('正在读取客户资料…')).toHaveCount(0);
+});
+
 test('员工危险操作使用文字菜单和对应确认语义', async ({ page }) => {
   await seedAuth(page);
   await page.route(/^https?:\/\/[^/]+\/api\//, async route => {
