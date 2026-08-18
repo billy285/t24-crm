@@ -21,15 +21,16 @@ type CustomerComboboxProps = {
   clearLabel?: string;
 };
 
-const customerLabel = (customer: CustomerLike) => {
-  const code = String(customer.customer_code || '').trim() || `#${customer.id}`;
-  const business = String(customer.business_name || '').trim() || `客户 #${customer.id}`;
-  const details = [customer.contact_name, customer.phone, customer.city]
+const customerLabel = (customer: CustomerLike) => (
+  String(customer.business_name || '').trim() || `客户 #${customer.id}`
+);
+
+const customerSearchValue = (customer: CustomerLike) => (
+  [customer.customer_code, customer.business_name, customer.contact_name, customer.phone, customer.city, customer.id]
     .map(value => String(value || '').trim())
     .filter(Boolean)
-    .join(' · ');
-  return `${code} · ${business}${details ? ` · ${details}` : ''}`;
-};
+    .join(' · ')
+);
 
 export default function CustomerCombobox({
   customers,
@@ -44,6 +45,7 @@ export default function CustomerCombobox({
     const items = customers.map(customer => ({
       value: String(customer.id),
       label: customerLabel(customer),
+      searchValue: customerSearchValue(customer),
     }));
     return allowClear ? [{ value: '', label: clearLabel }, ...items] : items;
   }, [allowClear, clearLabel, customers]);

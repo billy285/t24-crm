@@ -1654,7 +1654,7 @@ export default function Deals() {
                   : customers}
                 value={form.customer_id}
                 onValueChange={v => setForm({ ...form, customer_id: v })}
-                placeholder="搜索客户编号、名称、联系人或电话"
+                placeholder="请选择客户"
               />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
