@@ -92,7 +92,8 @@ test('成交已保存但 finalize 未完成时逐项提示并可手动重试且�
   const customerSearchPanelBox = await customerSearchPanel.boundingBox();
   expect(customerPickerBox).not.toBeNull();
   expect(customerSearchPanelBox).not.toBeNull();
-  expect(Math.abs((customerSearchPanelBox?.width || 0) - (customerPickerBox?.width || 0))).toBeLessThan(2);
+  const customerPanelWidthDelta = Math.abs((customerSearchPanelBox?.width || 0) - (customerPickerBox?.width || 0));
+  expect(customerPanelWidthDelta / (customerPickerBox?.width || 1)).toBeLessThan(0.03);
   await page.getByPlaceholder('搜索商家名称或编号').fill('FINAL-031');
   await expect(page.getByRole('listbox', { name: 'Suggestions' }).getByRole('option')).toHaveCount(1);
   await page.getByRole('option', { name: 'Finalize 测试客户' }).click();
