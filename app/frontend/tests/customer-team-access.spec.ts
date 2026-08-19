@@ -67,3 +67,17 @@ test('管理员可为多位客户批量添加团队成员并逐人设置只读�
   }]);
   await expect(page.getByText('已为 2 位客户更新团队成员')).toBeVisible();
 });
+
+test('客户负责人始终显示为可读写且不能在团队弹窗中降级', async ({ page }) => {
+  await mockCustomerTeamApis(page, []);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${baseUrl}/customers`);
+
+  await page.getByRole('button', { name: '更多客户操作：Alpha Cafe' }).click();
+  await page.getByRole('menuitem', { name: '管理团队成员' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: '管理客户团队成员' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /Sales Owner/ })).toBeDisabled();
+  await expect(dialog.getByText('负责人 · 可读写')).toBeVisible();
+  await expect(dialog.getByText('客户负责人始终可读写')).toBeVisible();
+});

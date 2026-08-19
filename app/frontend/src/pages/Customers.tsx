@@ -1630,10 +1630,12 @@ export default function Customers() {
         employeePromise,
       ]);
       if (employeeResponse) setEmployeesList(employeeResponse?.data?.items || []);
-      setAccessMembers(Object.fromEntries((response?.data?.members || []).map((item: any) => [
+      const loadedMembers = Object.fromEntries((response?.data?.members || []).map((item: any) => [
         Number(item.employee_id),
         item.access_level === 'read_only' ? 'read_only' : 'read_write',
-      ])));
+      ])) as Record<number, CustomerAccessLevel>;
+      if (c.sales_employee_id) loadedMembers[Number(c.sales_employee_id)] = 'read_write';
+      setAccessMembers(loadedMembers);
     } catch (error: any) {
       toast.error(getErrorDetail(error, '客户可见人员加载失败'));
       setShowAccessDialog(false);
@@ -1912,7 +1914,7 @@ export default function Customers() {
           <div className="space-y-4">
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
               <p className="text-sm font-semibold text-blue-900">{bulkAccessMode ? `已选择 ${selectedCustomerIds.length} 位客户` : accessTarget?.business_name}</p>
-              <p className="mt-1 text-xs leading-5 text-blue-700">“只读”可以查看客户与服务资料但不能新增、编辑或删除；“可读写”可以协作维护。团队成员权限不会改变客户负责人、业绩归属或分润。</p>
+              <p className="mt-1 text-xs leading-5 text-blue-700">“只读”可以查看客户与服务资料但不能新增、编辑或删除；“可读写”可以协作维护。客户负责人始终可读写，团队成员权限不会改变负责人、业绩归属或分润。</p>
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
               财务明细始终只对老板、管理员和财务开放。受邀销售或运营仍看不到扣点、手续费、客户成本、利润及收款拆分。
@@ -1927,11 +1929,11 @@ export default function Customers() {
                   const selected = Boolean(accessMembers[emp.id]);
                   const isOwner = Number(accessTarget?.sales_employee_id) === Number(emp.id);
                   return <div key={emp.id} className={`flex flex-col gap-3 rounded-xl border p-3 transition sm:flex-row sm:items-center sm:justify-between ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                    <button type="button" onClick={() => toggleAccessEmployee(emp.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                    <button type="button" disabled={isOwner} onClick={() => toggleAccessEmployee(emp.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default">
                       <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white'}`}>{selected ? '✓' : ''}</span>
                       <span className="min-w-0"><span className="block truncate text-sm font-medium text-slate-900">{emp.name}</span><span className="mt-1 block text-xs text-slate-500">{emp.employee_code || '无员工编号'} · {emp.department || emp.role || '未分组'}{isOwner ? ' · 当前负责人' : ''}</span></span>
                     </button>
-                    {selected && <NativeSelect className="sm:w-28" value={accessMembers[emp.id]} onChange={value => setAccessLevel(emp.id, value as CustomerAccessLevel)} options={[{ value: 'read_write', label: '可读写' }, { value: 'read_only', label: '只读' }]} />}
+                    {isOwner ? <Badge className="bg-blue-100 text-blue-700">负责人 · 可读写</Badge> : selected && <NativeSelect className="sm:w-28" value={accessMembers[emp.id]} onChange={value => setAccessLevel(emp.id, value as CustomerAccessLevel)} options={[{ value: 'read_write', label: '可读写' }, { value: 'read_only', label: '只读' }]} />}
                   </div>;
                 })}
                 {eligibleAccessEmployees.length === 0 && <p className="py-8 text-center text-sm text-slate-400">没有找到可邀请的员工</p>}
