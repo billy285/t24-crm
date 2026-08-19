@@ -442,9 +442,12 @@ async def test_manager_can_bulk_assign_clean_merchants_to_one_salesperson(sales_
 
 
 @pytest.mark.asyncio
-async def test_merchant_pool_import_recognizes_common_csv_and_excel_headers(sales_app_client):
+async def test_merchant_pool_import_requires_and_accepts_the_fixed_template(sales_app_client):
     manager = _auth_headers("sales_manager", 10, "Manager A")
-    csv_content = "Business Name,Phone Number,Full Address,Category,Google Rating\nCafe One,555-7000,1 Main St,Restaurant,4.6\n"
+    csv_content = (
+        "商家名称,商家电话,商家位置,地区,来源\n"
+        "Fixed Template Cafe,555-7000,1 Main St,Los Angeles CA US,Google Maps\n"
+    )
     csv_response = await sales_app_client.post(
         "/api/v1/merchant-pool/import-csv",
         headers=manager,
@@ -452,12 +455,20 @@ async def test_merchant_pool_import_recognizes_common_csv_and_excel_headers(sale
     )
     assert csv_response.status_code == 200
     assert csv_response.json()["total"] == 1
-    assert {"business_name", "phone", "address", "industry", "google_rating"}.issubset(csv_response.json()["recognized_fields"])
+    assert csv_response.json()["template_headers"] == ["商家名称", "商家电话", "商家位置", "地区", "来源"]
+
+    imported = await sales_app_client.get(
+        "/api/v1/merchant-pool?search=Fixed%20Template%20Cafe",
+        headers=manager,
+    )
+    assert imported.status_code == 200
+    assert imported.json()["items"][0]["address"] == "1 Main St"
+    assert imported.json()["items"][0]["data_source"] == "Google Maps"
 
     workbook = Workbook()
     sheet = workbook.active
-    sheet.append(["商户名称", "联系电话", "详细地址", "类别", "官网"])
-    sheet.append(["Cafe Two", "555-7001", "2 Main St", "餐厅", "https://example.com"])
+    sheet.append(["商家名称", "商家电话", "商家位置", "地区", "来源"])
+    sheet.append(["Fixed Excel Cafe", "555-7001", "2 Main St", "Las Vegas, NV, US", "展会名单"])
     content = io.BytesIO()
     workbook.save(content)
     excel_response = await sales_app_client.post(
@@ -470,7 +481,7 @@ async def test_merchant_pool_import_recognizes_common_csv_and_excel_headers(sale
 
 
 @pytest.mark.asyncio
-async def test_merchant_pool_import_accepts_the_sales_source_table_format(sales_app_client):
+async def test_merchant_pool_import_rejects_non_template_headers(sales_app_client):
     manager = _auth_headers("sales_manager", 10, "Manager A")
     csv_content = (
         "商家,电话 / 网站,地区 / 行业,州/省,城市,地址,Google评分\n"
@@ -482,9 +493,9 @@ async def test_merchant_pool_import_accepts_the_sales_source_table_format(sales_
         headers=manager,
         files={"file": ("sales-source.csv", csv_content.encode(), "text/csv")},
     )
-    assert response.status_code == 200
-    assert response.json()["total"] == 1
-    assert {"business_name", "phone", "industry", "state", "city", "address", "google_rating"}.issubset(response.json()["recognized_fields"])
+    assert response.status_code == 400
+    assert "第一行必须依次为" in response.json()["detail"]
+    assert "商家名称、商家电话、商家位置、地区、来源" in response.json()["detail"]
 
     bulk_response = await sales_app_client.post(
         "/api/v1/merchant-pool/import",

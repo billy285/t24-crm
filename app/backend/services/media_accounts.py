@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.media_accounts import Media_accounts
-from services.customer_scope import apply_customer_scope
+from services.customer_scope import apply_customer_scope, ensure_customer_access
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +181,7 @@ class Media_accountsService:
             if not obj:
                 logger.warning(f"Media_accounts {obj_id} not found for update")
                 return None
+            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True)
             update_data = normalize_media_account_payload(update_data, preserve_existing_password=True)
             for key, value in update_data.items():
                 if hasattr(obj, key) and key != 'user_id':
@@ -207,6 +208,7 @@ class Media_accountsService:
             if not obj:
                 logger.warning(f"Media_accounts {obj_id} not found for deletion")
                 return False
+            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True)
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted media_accounts {obj_id}")

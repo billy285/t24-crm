@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy import select
@@ -150,6 +151,9 @@ async def test_customer_service_finance_sees_all_but_operations_requires_invitat
 @pytest.mark.asyncio
 async def test_customer_access_endpoint_replaces_invited_employees(db_session, monkeypatch):
     customer = await CustomersService(db_session).create({"business_name": "Private Cafe", "contact_name": "Owner", "phone": "555"})
+    second_customer = await CustomersService(db_session).create({"business_name": "Second Cafe", "contact_name": "Owner", "phone": "556"})
+    customer_id = customer.id
+    second_customer_id = second_customer.id
     db_session.add_all([
         Employees(id=801, user_id="801", name="Ops One", role="ops", status="active"),
         Employees(id=802, user_id="802", name="Sales Two", role="sales", status="active"),
@@ -164,15 +168,60 @@ async def test_customer_access_endpoint_replaces_invited_employees(db_session, m
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             response = await ac.put(
-                f"/api/v1/entities/customers/{customer.id}/access",
-                json={"employee_ids": [801, 802]},
+                f"/api/v1/entities/customers/{customer_id}/access",
+                json={"members": [
+                    {"employee_id": 801, "access_level": "read_only"},
+                    {"employee_id": 802, "access_level": "read_write"},
+                ]},
                 headers=_auth_headers("admin", emp_id=9001, name="Admin"),
             )
             assert response.status_code == 200
             assert {row["employee_id"] for row in response.json()["members"]} == {801, 802}
+            assert {row["employee_id"]: row["access_level"] for row in response.json()["members"]} == {
+                801: "read_only", 802: "read_write",
+            }
+
+            read_only_update = await ac.put(
+                f"/api/v1/entities/customers/{customer_id}",
+                json={"business_name": "Read-only edit must fail"},
+                headers=_auth_headers("ops", emp_id=801, name="Ops One"),
+            )
+            assert read_only_update.status_code == 403
+
+            bulk_add = await ac.post(
+                "/api/v1/entities/customers/access/bulk-update",
+                json={
+                    "customer_ids": [customer_id, second_customer_id],
+                    "operation": "upsert",
+                    "members": [{"employee_id": 801, "access_level": "read_write"}],
+                },
+                headers=_auth_headers("admin", emp_id=9001, name="Admin"),
+            )
+            assert bulk_add.status_code == 200
+            assert bulk_add.json()["updated_grants"] == 2
+
+            read_write_update = await ac.put(
+                f"/api/v1/entities/customers/{customer_id}",
+                json={"business_name": "Writable Team Customer"},
+                headers=_auth_headers("ops", emp_id=801, name="Ops One"),
+            )
+            assert read_write_update.status_code == 200
+            assert read_write_update.json()["business_name"] == "Writable Team Customer"
+
+            bulk_remove = await ac.post(
+                "/api/v1/entities/customers/access/bulk-update",
+                json={
+                    "customer_ids": [customer_id, second_customer_id],
+                    "operation": "remove",
+                    "members": [{"employee_id": 801, "access_level": "read_only"}],
+                },
+                headers=_auth_headers("admin", emp_id=9001, name="Admin"),
+            )
+            assert bulk_remove.status_code == 200
+            assert bulk_remove.json()["updated_grants"] == 2
 
             replacement = await ac.put(
-                f"/api/v1/entities/customers/{customer.id}/access",
+                f"/api/v1/entities/customers/{customer_id}/access",
                 json={"employee_ids": [801]},
                 headers=_auth_headers("admin", emp_id=9001, name="Admin"),
             )
@@ -255,6 +304,35 @@ async def test_customer_access_removal_hides_linked_operational_records(db_sessi
     assert (await Customer_contactsService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 0
     assert (await Service_progressesService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 0
     assert (await Service_tasksService(db_session).get_list(limit=20, scope_user=operations_user))["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_read_only_customer_member_can_view_but_cannot_modify_linked_records(db_session):
+    customer = await CustomersService(db_session).create({"business_name": "Read Only Ops", "contact_name": "Owner", "phone": "111"})
+    follow_up = Follow_ups(customer_id=customer.id, content="visible but protected")
+    grant = CustomerAccessGrant(
+        customer_id=customer.id,
+        employee_id=404,
+        access_level="read_only",
+        granted_by_name="Admin",
+    )
+    db_session.add_all([follow_up, grant])
+    await db_session.commit()
+    follow_up_id = follow_up.id
+    grant_id = grant.id
+
+    operations_user = SimpleNamespace(id="404", role="ops", name="Ops")
+    service = Follow_upsService(db_session)
+    assert (await service.get_list(limit=20, scope_user=operations_user))["total"] == 1
+    with pytest.raises(HTTPException) as exc_info:
+        await service.update(follow_up_id, {"content": "forbidden"}, scope_user=operations_user)
+    assert exc_info.value.status_code == 403
+
+    grant = await db_session.get(CustomerAccessGrant, grant_id)
+    grant.access_level = "read_write"
+    await db_session.commit()
+    updated = await service.update(follow_up_id, {"content": "allowed"}, scope_user=operations_user)
+    assert updated.content == "allowed"
 
 
 @pytest.mark.asyncio

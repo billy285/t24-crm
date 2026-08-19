@@ -204,7 +204,7 @@ async def _prepare_progress_update(
 ) -> dict:
     update_dict = _progress_payload(data)
     final_customer_id = update_dict.get("customer_id", progress.customer_id)
-    customer = await ensure_customer_access(db, current_user, final_customer_id)
+    customer = await ensure_customer_access(db, current_user, final_customer_id, write=True)
     if int(final_customer_id) != int(progress.customer_id) and await _progress_has_tasks(db, progress.id):
         raise HTTPException(status_code=409, detail="该服务进度仍有关联任务，不能更换客户")
     update_dict["customer_name"] = _trusted_customer_name(customer)
@@ -328,7 +328,7 @@ async def create_service_progresses(
 ):
     """Create a new service_progresses"""
     await require_service_board_access(db, current_user, "task_create")
-    customer = await ensure_customer_access(db, current_user, data.customer_id)
+    customer = await ensure_customer_access(db, current_user, data.customer_id, write=True)
     create_dict = _progress_payload(data)
     now = datetime.utcnow().isoformat()
     create_dict.update({
@@ -365,7 +365,7 @@ async def create_service_progressess_batch(
     await require_service_board_access(db, current_user, "task_create")
     prepared_items = []
     for item_data in request.items:
-        customer = await ensure_customer_access(db, current_user, item_data.customer_id)
+        customer = await ensure_customer_access(db, current_user, item_data.customer_id, write=True)
         create_dict = _progress_payload(item_data)
         now = datetime.utcnow().isoformat()
         create_dict.update({

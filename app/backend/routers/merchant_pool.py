@@ -243,6 +243,22 @@ def _normalize_header(value: Any) -> str:
 
 HEADER_LOOKUP = {_normalize_header(header): field for header, field in CSV_HEADERS.items()}
 
+IMPORT_TEMPLATE_HEADERS = ("商家名称", "商家电话", "商家位置", "地区", "来源")
+IMPORT_TEMPLATE_FIELDS = ("business_name", "phone", "address", "region", "data_source")
+
+
+def _validate_import_template_headers(headers: list[Any]) -> None:
+    normalized = [str(value or "").strip() for value in headers]
+    while normalized and not normalized[-1]:
+        normalized.pop()
+    if normalized != list(IMPORT_TEMPLATE_HEADERS):
+        expected = "、".join(IMPORT_TEMPLATE_HEADERS)
+        actual = "、".join(value or "空列" for value in normalized) or "未读取到表头"
+        raise HTTPException(
+            status_code=400,
+            detail=f"导入模板不符合要求。第一行必须依次为：{expected}。当前为：{actual}。请下载固定模板后重新填写。",
+        )
+
 
 def _map_import_row(row: dict[Any, Any]) -> tuple[dict[str, Any], list[str]]:
     mapped: dict[str, Any] = {}
@@ -601,8 +617,8 @@ async def import_merchant_csv(
             rows = list(worksheet.iter_rows(values_only=True))
             if not rows:
                 raise HTTPException(status_code=400, detail="Excel 文件没有可导入的数据")
-            headers = [str(value or "").strip() for value in rows[0]]
-            reader = [dict(zip(headers, values)) for values in rows[1:] if any(value not in (None, "") for value in values)]
+            headers = list(rows[0])
+            data_rows = [list(values) for values in rows[1:] if any(value not in (None, "") for value in values)]
         except HTTPException:
             raise
         except Exception as exc:
@@ -613,29 +629,45 @@ async def import_merchant_csv(
             dialect = csv.Sniffer().sniff(text[:4096], delimiters=",\t;|")
         except csv.Error:
             dialect = csv.excel
-        reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+        rows = list(csv.reader(io.StringIO(text), dialect=dialect))
+        if not rows:
+            raise HTTPException(status_code=400, detail="CSV 文件没有可导入的数据")
+        headers = rows[0]
+        data_rows = [values for values in rows[1:] if any(str(value or "").strip() for value in values)]
+    _validate_import_template_headers(headers)
+    if len(data_rows) > 2000:
+        raise HTTPException(status_code=400, detail="单次最多导入 2000 条商家记录")
     created = []
     errors = []
-    recognized_fields: set[str] = set()
-    ignored_headers: set[str] = set()
     counts: dict[str, int] = {"pending": 0, "no_phone": 0, "duplicate": 0, "existing_customer": 0, "closed": 0}
-    for index, row in enumerate(reader, start=2):
-        mapped, unknown_headers = _map_import_row(row)
-        ignored_headers.update(unknown_headers)
-        recognized_fields.update(mapped.keys())
+    for index, values in enumerate(data_rows, start=2):
+        if len(values) != len(IMPORT_TEMPLATE_HEADERS):
+            errors.append({"row": index, "reason": f"必须正好填写 {len(IMPORT_TEMPLATE_HEADERS)} 列"})
+            continue
+        row = dict(zip(IMPORT_TEMPLATE_HEADERS, values))
+        mapped = {
+            field: str(value).strip()
+            for field, value in zip(IMPORT_TEMPLATE_FIELDS, values)
+            if value is not None and str(value).strip()
+        }
+        row_source = str(mapped.pop("data_source", "")).strip() or data_source
         try:
+            if len(row_source) > 50:
+                raise ValueError("来源最多填写 50 个字符")
             record = MerchantRecord.model_validate(_parse_import_values(mapped))
-            merchant = await _store_record(db, record, data_source, current_user, raw_record=dict(row))
+            merchant = await _store_record(db, record, row_source, current_user, raw_record=row)
             created.append(merchant)
             counts[merchant.pool_status] = counts.get(merchant.pool_status, 0) + 1
         except Exception as exc:
             errors.append({"row": index, "reason": str(exc)})
+    if not created:
+        await db.rollback()
+        example = "；".join(f"第{item['row']}行 {item['reason']}" for item in errors[:3])
+        raise HTTPException(status_code=400, detail=f"没有可导入的数据。{example or '请在模板中至少填写一条商家记录'}")
     await db.commit()
-    if not recognized_fields:
-        raise HTTPException(status_code=400, detail="未识别到可导入列。请确认第一行包含“商家名称/名称/Business Name”等表头")
     return {
         "total": len(created), "counts": counts, "errors": errors,
-        "recognized_fields": sorted(recognized_fields), "ignored_headers": sorted(ignored_headers),
+        "template_headers": list(IMPORT_TEMPLATE_HEADERS),
     }
 
 
