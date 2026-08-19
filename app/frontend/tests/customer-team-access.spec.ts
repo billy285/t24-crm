@@ -4,7 +4,7 @@ const baseUrl = process.env.T24_WORKBENCH_BASE_URL || 'http://127.0.0.1:5173';
 const admin = { id: 1, name: 'Team Admin', role: 'admin', status: 'active' };
 const customers = [
   { id: 101, customer_code: 'T24-101', business_name: 'Alpha Cafe', contact_name: 'Amy', phone: '555-0101', status: 'following', level: 'normal', industry: 'restaurant', state: 'CA', sales_person: 'Sales Owner', sales_employee_id: 31 },
-  { id: 102, customer_code: 'T24-102', business_name: 'Beta Spa', contact_name: 'Beth', phone: '555-0102', status: 'following', level: 'normal', industry: 'spa', state: 'NV', sales_person: 'Sales Owner', sales_employee_id: 31 },
+  { id: 102, customer_code: 'T24-102', business_name: 'Beta Spa', contact_name: 'Beth', phone: '555-0102', status: 'following', level: 'normal', industry: 'spa', state: 'NV', sales_person: 'Sales Owner', sales_employee_id: null },
 ];
 const employees = [
   { id: 31, name: 'Sales Owner', employee_code: 'S031', role: 'sales', department: 'Sales', status: 'active' },
@@ -80,4 +80,16 @@ test('客户负责人始终显示为可读写且不能在团队弹窗中降级',
   await expect(dialog.getByRole('button', { name: /Sales Owner/ })).toBeDisabled();
   await expect(dialog.getByText('负责人 · 可读写')).toBeVisible();
   await expect(dialog.getByText('客户负责人始终可读写')).toBeVisible();
+});
+
+test('历史客户只有负责人姓名时也锁定匹配成员为可读写', async ({ page }) => {
+  await mockCustomerTeamApis(page, []);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${baseUrl}/customers`);
+
+  await page.getByRole('button', { name: '更多客户操作：Beta Spa' }).click();
+  await page.getByRole('menuitem', { name: '管理团队成员' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name: /Sales Owner/ })).toBeDisabled();
+  await expect(dialog.getByText('负责人 · 可读写')).toBeVisible();
 });

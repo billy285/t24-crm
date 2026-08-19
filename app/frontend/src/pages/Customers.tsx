@@ -1629,12 +1629,14 @@ export default function Customers() {
         invokeWithAuth({ url: `/api/v1/entities/customers/${c.id}/access`, method: 'GET' }),
         employeePromise,
       ]);
-      if (employeeResponse) setEmployeesList(employeeResponse?.data?.items || []);
+      const directoryEmployees = employeeResponse?.data?.items || employeesList;
+      if (employeeResponse) setEmployeesList(directoryEmployees);
       const loadedMembers = Object.fromEntries((response?.data?.members || []).map((item: any) => [
         Number(item.employee_id),
         item.access_level === 'read_only' ? 'read_only' : 'read_write',
       ])) as Record<number, CustomerAccessLevel>;
-      if (c.sales_employee_id) loadedMembers[Number(c.sales_employee_id)] = 'read_write';
+      const ownerEmployeeId = Number(c.sales_employee_id || directoryEmployees.find((item: any) => item.name === c.sales_person)?.id || 0);
+      if (ownerEmployeeId) loadedMembers[ownerEmployeeId] = 'read_write';
       setAccessMembers(loadedMembers);
     } catch (error: any) {
       toast.error(getErrorDetail(error, '客户可见人员加载失败'));
@@ -1927,7 +1929,8 @@ export default function Customers() {
               <div className="space-y-2">
                 {eligibleAccessEmployees.map(emp => {
                   const selected = Boolean(accessMembers[emp.id]);
-                  const isOwner = Number(accessTarget?.sales_employee_id) === Number(emp.id);
+                  const isOwner = Number(accessTarget?.sales_employee_id) === Number(emp.id)
+                    || (!accessTarget?.sales_employee_id && Boolean(accessTarget?.sales_person) && emp.name === accessTarget.sales_person);
                   return <div key={emp.id} className={`flex flex-col gap-3 rounded-xl border p-3 transition sm:flex-row sm:items-center sm:justify-between ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
                     <button type="button" disabled={isOwner} onClick={() => toggleAccessEmployee(emp.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default">
                       <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white'}`}>{selected ? '✓' : ''}</span>
