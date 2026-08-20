@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '@/lib/tokenStore';
@@ -23,7 +23,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, MoreHorizontal, Activity, Building2, CalendarClock, ChevronRight, ShieldCheck } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, MoreHorizontal, Activity, Building2, CalendarClock, ShieldCheck } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -1036,7 +1036,6 @@ export default function Customers() {
   const [accessTarget, setAccessTarget] = useState<any>(null);
   const [accessMembers, setAccessMembers] = useState<Record<number, CustomerAccessLevel>>({});
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<number[]>([]);
-  const [focusedCustomerId, setFocusedCustomerId] = useState<number | null>(null);
   const [bulkAccessMode, setBulkAccessMode] = useState(false);
   const [accessSearch, setAccessSearch] = useState('');
   const [accessLoading, setAccessLoading] = useState(false);
@@ -1483,42 +1482,9 @@ export default function Customers() {
     return customers.filter(customer => String(customer.created_at || '').slice(0, 7) === currentMonth).length;
   }, [businessToday, customers]);
   const attentionCustomerCount = (customerStatusCounts.paused || 0) + (customerStatusCounts.lost || 0);
-  const focusedCustomer = filtered.find(customer => customer.id === focusedCustomerId)
-    || paginatedCustomers.items[0]
-    || null;
-  const focusedCustomerCompleteness = focusedCustomer ? Math.round(([
-    focusedCustomer.business_name,
-    focusedCustomer.contact_name,
-    focusedCustomer.phone,
-    focusedCustomer.email,
-    focusedCustomer.address,
-    focusedCustomer.city,
-    focusedCustomer.state,
-    focusedCustomer.country,
-    focusedCustomer.industry,
-    focusedCustomer.sales_person,
-  ].filter(Boolean).length / 10) * 100) : 0;
-  const focusedCustomerSuggestion = focusedCustomer?.status === 'lost'
-    ? '先核对流失原因与历史服务记录'
-    : focusedCustomer?.status === 'paused'
-      ? '确认暂停原因和恢复合作条件'
-      : focusedCustomer?.status === 'following'
-        ? '查看最近跟进并确认下一步安排'
-        : '打开客户详情核对服务与续费计划';
-
   useEffect(() => {
     setCustomerPage(1);
   }, [search, filterStatus, filterIndustry, filterLevel, filterSource, advFilters, customerPageSize]);
-
-  useEffect(() => {
-    if (filtered.length === 0) {
-      if (focusedCustomerId !== null) setFocusedCustomerId(null);
-      return;
-    }
-    if (!filtered.some(customer => customer.id === focusedCustomerId)) {
-      setFocusedCustomerId(filtered[0].id);
-    }
-  }, [filtered, focusedCustomerId]);
 
   useEffect(() => {
     setFollowUpPage(1);
@@ -3386,7 +3352,7 @@ export default function Customers() {
             <th className="w-28 px-4 py-3 text-right font-medium">操作</th>
           </tr></thead>
           <tbody>{paginatedCustomers.items.map(c => (
-            <tr key={c.id} onMouseEnter={() => setFocusedCustomerId(c.id)} className={`border-b border-slate-100 cursor-pointer transition-colors ${focusedCustomer?.id === c.id ? 'customer-360-row-active' : 'hover:bg-slate-50'}`}>
+            <tr key={c.id} className="border-b border-slate-100 cursor-pointer transition-colors hover:bg-blue-50/60">
               {isAdmin && <td className="px-4 py-3" onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={`选择客户 ${c.business_name}`} checked={selectedCustomerIds.includes(c.id)} onChange={event => setSelectedCustomerIds(current => event.target.checked ? [...current, c.id] : current.filter(id => id !== c.id))} /></td>}
               {visibleCols.includes('customer_code') && <td className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
               {visibleCols.includes('business_name') && <td className="px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(c)}>{c.business_name}</td>}
@@ -3554,34 +3520,6 @@ export default function Customers() {
       </CardContent></Card>
         </section>
 
-        <aside className="customer-360-preview" aria-label="客户 360 预览">
-          <div className="customer-360-preview-head"><div><p>客户 360°</p><span>基础资料快速预览</span></div><MoreHorizontal className="h-4 w-4 text-slate-400" /></div>
-          {focusedCustomer ? (
-            <>
-              <div className="customer-360-identity">
-                <span className="customer-360-avatar">{String(focusedCustomer.business_name || '客').trim().slice(0, 1).toUpperCase()}</span>
-                <div className="min-w-0"><h3>{focusedCustomer.business_name || '未命名客户'}</h3><p>#{focusedCustomer.customer_code || focusedCustomer.id}</p></div>
-                <Badge className={getLevelColorClass(focusedCustomer.level)}>{levelLabels[focusedCustomer.level] || focusedCustomer.level || '未分级'}</Badge>
-              </div>
-              <div className="customer-360-contact-grid">
-                <div><Phone /><span>电话<strong>{focusedCustomer.phone || '未填写'}</strong></span></div>
-                <div><MapPin /><span>地区<strong>{[focusedCustomer.state, focusedCustomer.country].filter(Boolean).join(' · ') || '未填写'}</strong></span></div>
-                <div><Building2 /><span>行业<strong>{industryLabels[focusedCustomer.industry] || focusedCustomer.industry || '未填写'}</strong></span></div>
-                <div><Users /><span>负责人<strong>{focusedCustomer.sales_person || '未分配'}</strong></span></div>
-              </div>
-              <div className="customer-360-score-card">
-                <div className="customer-360-score" style={{ '--score': `${focusedCustomerCompleteness * 3.6}deg` } as CSSProperties}><span>{focusedCustomerCompleteness}<small>%</small></span></div>
-                <div><p>资料完整度</p><strong>{focusedCustomerCompleteness >= 80 ? '基础资料较完整' : focusedCustomerCompleteness >= 50 ? '仍有资料待补充' : '建议优先补齐资料'}</strong><small>根据联系人、地区、行业和负责人等基础字段计算</small></div>
-              </div>
-              <div className="customer-360-lifecycle">
-                <div className="flex items-center justify-between"><p>当前生命周期</p><Badge className={statusColors[focusedCustomer.status] || 'bg-slate-100 text-slate-700'}>{statusLabels[focusedCustomer.status] || focusedCustomer.status || '未设置'}</Badge></div>
-                <div className="customer-360-steps"><span className="is-done">建立档案</span><span className={['following', 'closed', 'paused', 'lost'].includes(focusedCustomer.status) ? 'is-done' : ''}>持续跟进</span><span className={focusedCustomer.status === 'closed' ? 'is-done' : ''}>正式合作</span></div>
-              </div>
-              <div className="customer-360-next-action"><div><CalendarClock /><span><small>建议下一步</small><strong>{focusedCustomerSuggestion}</strong></span></div><p>合同、服务、回款与续费数据请进入客户详情查看，列表页不做推测。</p></div>
-              <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => openDetail(focusedCustomer)}>查看客户详情<ChevronRight className="ml-1 h-4 w-4" /></Button>
-            </>
-          ) : <div className="py-16 text-center text-sm text-slate-400">暂无可预览客户</div>}
-        </aside>
       </div>
 
       {sharedCustomerDialogs}
