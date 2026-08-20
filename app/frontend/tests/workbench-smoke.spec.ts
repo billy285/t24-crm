@@ -102,7 +102,7 @@ test('客户详情默认进入客户 360 并提供直接动作', async ({ page }
   await expect(page.getByRole('tab', { name: '客户 360' })).toHaveAttribute('data-state', 'active');
   await expect(page.getByText('下一步动作')).toBeVisible();
   await expect(page.getByRole('button', { name: '新增跟进' }).first()).toBeVisible();
-  await expect(page.locator('select').filter({ hasText: '更多资料与工具' })).toBeVisible();
+  await expect(page.locator('select:visible').filter({ hasText: '更多资料与工具' })).toBeVisible();
 });
 
 test('关键角色页面在手机宽度保持可操作且无横向溢出', async ({ page }) => {
@@ -118,5 +118,5 @@ test('关键角色页面在手机宽度保持可操作且无横向溢出', async
     expect(widths.document).toBeLessThanOrEqual(widths.viewport);
     expect(widths.body).toBeLessThanOrEqual(widths.viewport);
   }
-  await expect(page.getByRole('tab', { name: '概览' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '客户 360' })).toBeVisible();
 });

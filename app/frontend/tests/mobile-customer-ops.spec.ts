@@ -138,23 +138,25 @@ test.beforeEach(async ({ page }) => {
   await mockMobileApi(page);
 });
 
-test('客户详情手机端只保留三个主标签，更多资料和行操作仍可达', async ({ page }) => {
+test('客户详情手机端保留六个生命周期主标签，更多资料和行操作仍可达', async ({ page }) => {
   await page.goto(`${baseUrl}/customers?detail=1`);
   await expect(page.getByRole('heading', { name: customer.business_name })).toBeVisible();
 
   const mobileNavigation = page.getByRole('tablist', { name: '客户手机主导航' });
-  await expect(mobileNavigation.getByRole('tab', { name: '概览' })).toBeVisible();
-  await expect(mobileNavigation.getByRole('tab', { name: '跟进' })).toBeVisible();
-  await expect(mobileNavigation.getByRole('tab', { name: '服务' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: '客户 360' })).toHaveCount(0);
+  await expect(mobileNavigation.getByRole('tab', { name: '客户 360' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('tab', { name: '时间线' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('tab', { name: '客户商机' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('tab', { name: '服务信息' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('tab', { name: '财务信息' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('tab', { name: '续费信息' })).toBeVisible();
 
-  const more = page.getByLabel('更多客户资料');
+  const more = page.getByLabel('更多资料与工具');
   await expect(more).toBeVisible();
   await more.selectOption('contacts');
   await expect(page.getByText('联系人信息')).toBeVisible();
   await assertTouchTarget(page.getByRole('button', { name: '编辑联系人：王经理' }));
 
-  await mobileNavigation.getByRole('tab', { name: '跟进' }).click();
+  await more.selectOption('followups');
   await expect(page.getByText('确认下周素材')).toBeVisible();
   await assertTouchTarget(page.getByRole('button', { name: '编辑跟进记录' }));
 

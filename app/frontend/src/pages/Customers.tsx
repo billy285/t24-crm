@@ -72,6 +72,14 @@ const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
 const STRIPE_PLATFORM_FEE_RATE = 0.029;
 const STRIPE_PLATFORM_FEE_FIXED = 0.3;
 const CUSTOMER_PAGE_SIZE_OPTIONS = [20, 50, 100];
+const customerTimestampFormatter = new Intl.DateTimeFormat('zh-CN', {
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+});
 type CustomerAccessLevel = 'read_only' | 'read_write';
 const lifecycleEventLabels: Record<string, string> = {
   started: '第一笔有效记账', pause: '暂停合作', pending_stop: '进入待确认停止',
@@ -252,6 +260,43 @@ function buildInlineOptions(value: string | undefined, labels: Record<string, st
 
 function getLevelColorClass(level?: string) {
   return levelColors[level || ''] || defaultLevelColorClass;
+}
+
+function formatCustomerTimestamp(value: string | null) {
+  if (!value) return '尚未完成加载';
+  return customerTimestampFormatter.format(new Date(value));
+}
+
+function CustomerListLoadingState() {
+  return (
+    <div aria-live="polite" aria-label="客户资料加载中">
+      <div className="grid gap-3 p-3 md:hidden">
+        {[0, 1, 2].map(item => (
+          <div key={item} className="animate-pulse rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-2"><div className="h-4 w-36 rounded bg-slate-200" /><div className="h-3 w-20 rounded bg-slate-100" /></div>
+              <div className="h-5 w-16 rounded-full bg-slate-100" />
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-4">
+              {[0, 1, 2, 3].map(cell => <div key={cell} className="h-9 rounded bg-slate-100" />)}
+            </div>
+            <div className="mt-4 h-11 rounded-lg bg-slate-200" />
+          </div>
+        ))}
+      </div>
+      <div className="hidden animate-pulse md:block">
+        <div className="grid grid-cols-6 gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3">
+          {[0, 1, 2, 3, 4, 5].map(item => <div key={item} className="h-3 rounded bg-slate-200" />)}
+        </div>
+        {[0, 1, 2, 3, 4, 5].map(row => (
+          <div key={row} className="grid grid-cols-6 gap-4 border-b border-slate-100 px-4 py-4">
+            {[0, 1, 2, 3, 4, 5].map(cell => <div key={cell} className="h-4 rounded bg-slate-100" />)}
+          </div>
+        ))}
+      </div>
+      <span className="sr-only">客户资料正在加载，完成后会自动显示真实数据。</span>
+    </div>
+  );
 }
 
 function parseMultiValue(value?: string | null) {
@@ -602,6 +647,7 @@ export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [customersLoadedAt, setCustomersLoadedAt] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterIndustry, setFilterIndustry] = useState('all');
@@ -654,6 +700,7 @@ export default function Customers() {
   const [renewalPageSize, setRenewalPageSize] = useState(20);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailLoadError, setDetailLoadError] = useState<string | null>(null);
+  const [detailLoadedAt, setDetailLoadedAt] = useState<string | null>(null);
   const detailRequestSeqRef = useRef(0);
   const activeDetailCustomerIdRef = useRef<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1035,6 +1082,7 @@ export default function Customers() {
     setProductCatalog({ business_lines: [], products: [], plans: [] });
     setDetailLoadError(null);
     setDetailLoading(false);
+    setDetailLoadedAt(null);
     setShowFollowForm(false);
     setEditingFollowId(null);
     setDeleteFollowTarget(null);
@@ -1200,6 +1248,7 @@ export default function Customers() {
       setCustomerProjects(projectRes?.data?.items || []);
       setProductCatalog(catalogRes?.data || { business_lines: [], products: [], plans: [] });
       setContacts(contactRes?.data?.items || []);
+      setDetailLoadedAt(new Date().toISOString());
     } catch (err) {
       console.error(err);
       if (isCurrentRequest()) setDetailLoadError(getLoadErrorMessage(err));
@@ -1335,6 +1384,7 @@ export default function Customers() {
       if (dataScope === 'self' && employee) items = items.filter((c: any) => c.sales_person === employee.name || c.sales_employee_id === employee.id);
       setCustomers(items);
       setLoadError(null);
+      setCustomersLoadedAt(new Date().toISOString());
     } catch (err) {
       console.error(err);
       setLoadError(getLoadErrorMessage(err));
@@ -2468,14 +2518,6 @@ export default function Customers() {
       { value: 'logs', label: '操作日志' },
     ];
     const secondaryDetailTabValues = new Set(secondaryDetailTabs.map(item => item.value));
-    const mobileMoreDetailTabs = [
-      { value: 'timeline', label: `时间线 (${detailLoading ? '…' : timelineEvents.length})` },
-      { value: 'opportunities', label: '客户商机' },
-      ...(canViewFinance ? [{ value: 'payments', label: `财务信息 (${detailLoading ? '…' : customerFinanceRecordCount})` }] : []),
-      { value: 'renewals', label: `续费信息 (${detailLoading ? '…' : renewalRows.length})` },
-      ...secondaryDetailTabs.filter(item => item.value !== 'followups'),
-    ];
-    const mobileMoreDetailTabValues = new Set(mobileMoreDetailTabs.map(item => item.value));
     const customer360Actions: Array<{
       key: string;
       title: string;
@@ -2515,19 +2557,22 @@ export default function Customers() {
 
     return (
       <div className="app-page space-y-5">
-        <div className="app-page-title items-center">
-          <div className="flex min-w-0 items-center gap-3 flex-wrap">
+        <div className="app-page-title items-start md:items-center">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
           <Button variant="ghost" size="sm" onClick={closeDetail}><ArrowLeft className="w-4 h-4 mr-1" /> {detailReturnTo ? getReturnLabel(detailReturnTo) : detailFromFinance ? '返回财务' : '返回列表'}</Button>
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-blue-600">客户详情</p>
             <h2 className="truncate text-xl font-bold text-slate-900">{c.business_name}</h2>
+            <p className="mt-1 text-xs text-slate-500">编号 {c.customer_code || '-'} · 负责人 {c.sales_person || '-'} · 数据更新 {formatCustomerTimestamp(detailLoadedAt)}</p>
           </div>
           <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
           <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {isAdmin && <Button variant="outline" size="sm" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 管理团队成员</Button>}
-            <Button variant="outline" size="sm" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
+          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
+            {c.phone && <Button variant="outline" size="sm" className="min-h-11 flex-1 md:min-h-0 md:flex-none" asChild><a href={`tel:${c.phone}`}><Phone className="mr-1 h-3.5 w-3.5" /> 拨打电话</a></Button>}
+            {canCreateFollowUp && <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0 md:flex-none" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
+            {isAdmin && <Button variant="outline" size="sm" className="hidden md:inline-flex" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 管理团队成员</Button>}
+            <Button variant="outline" size="sm" className="min-h-11 md:min-h-0" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
               <RefreshCw className={`w-3.5 h-3.5 mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> 刷新数据
             </Button>
           </div>
@@ -2554,17 +2599,22 @@ export default function Customers() {
         )}
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
           <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
-          <TabsList aria-label="客户手机主导航" className="grid h-12 w-full grid-cols-3 gap-1 bg-slate-100 p-1 md:hidden">
-            <TabsTrigger value="overview" className="min-h-11 px-2 text-sm">概览</TabsTrigger>
-            <TabsTrigger value="followups" className="min-h-11 px-2 text-sm">跟进</TabsTrigger>
-            <TabsTrigger value="subscriptions" className="min-h-11 px-2 text-sm">服务</TabsTrigger>
-          </TabsList>
+          <div className="-mx-1 overflow-x-auto px-1 pb-1 md:hidden">
+            <TabsList aria-label="客户手机主导航" className="h-auto w-max min-w-full justify-start gap-1 bg-slate-100 p-1">
+              <TabsTrigger value="overview" className="min-h-11 shrink-0 px-3 text-sm">客户 360</TabsTrigger>
+              <TabsTrigger value="timeline" className="min-h-11 shrink-0 px-3 text-sm">时间线</TabsTrigger>
+              <TabsTrigger value="opportunities" className="min-h-11 shrink-0 px-3 text-sm">客户商机</TabsTrigger>
+              <TabsTrigger value="subscriptions" className="min-h-11 shrink-0 px-3 text-sm">服务信息</TabsTrigger>
+              {canViewFinance && <TabsTrigger value="payments" className="min-h-11 shrink-0 px-3 text-sm">财务信息</TabsTrigger>}
+              <TabsTrigger value="renewals" className="min-h-11 shrink-0 px-3 text-sm">续费信息</TabsTrigger>
+            </TabsList>
+          </div>
           <label className="md:hidden">
-            <span className="sr-only">更多客户资料</span>
+            <span className="sr-only">更多资料与工具</span>
             <NativeSelect
-              value={mobileMoreDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
+              value={secondaryDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
               onChange={value => { if (value) handleDetailTabChange(value); }}
-              options={[{ value: '', label: '更多客户资料' }, ...mobileMoreDetailTabs]}
+              options={[{ value: '', label: '更多资料与工具' }, ...secondaryDetailTabs]}
               className="w-full"
             />
           </label>
@@ -3207,10 +3257,13 @@ export default function Customers() {
         </SheetContent>
       </Sheet>
 
-      <div className="text-xs text-slate-500">共 {filtered.length} 条{filtered.length !== customers.length ? ` (筛选自 ${customers.length} 条)` : ''}</div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <span>共 {filtered.length} 条{filtered.length !== customers.length ? `（筛选自 ${customers.length} 条）` : ''}</span>
+        <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${loadError ? 'bg-rose-500' : loading ? 'bg-amber-500' : 'bg-emerald-500'}`} />{loading ? '正在同步客户资料' : loadError ? '同步失败，保留上次结果' : `数据更新 ${formatCustomerTimestamp(customersLoadedAt)}`}</span>
+      </div>
 
-      <Card className="border-slate-200"><CardContent className="p-0">
-        {loading ? <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+      <Card className="app-card border-slate-200"><CardContent className="p-0">
+        {loading ? <CustomerListLoadingState />
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无匹配的客户</p>
         : (
           <>
@@ -3253,7 +3306,7 @@ export default function Customers() {
               </div>
             ))}
           </div>
-          <div className="hidden overflow-x-auto md:block"><table className="w-full text-sm"><thead><tr className="border-b bg-slate-50 text-left text-slate-500">
+          <div className="hidden max-h-[calc(100vh-280px)] overflow-auto md:block"><table className="w-full text-sm"><thead className="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_rgb(226,232,240)]"><tr className="text-left text-slate-500">
             {isAdmin && <th className="w-12 px-4 py-3"><input type="checkbox" aria-label="选择本页客户" checked={paginatedCustomers.items.length > 0 && paginatedCustomers.items.every(customer => selectedCustomerIds.includes(customer.id))} onChange={event => setSelectedCustomerIds(current => event.target.checked ? Array.from(new Set([...current, ...paginatedCustomers.items.map(customer => customer.id)])) : current.filter(id => !paginatedCustomers.items.some(customer => customer.id === id)))} /></th>}
             {visibleCols.includes('customer_code') && <th className="px-4 py-3 font-medium">编号</th>}
             {visibleCols.includes('business_name') && <th className="px-4 py-3 font-medium">商家名称</th>}
