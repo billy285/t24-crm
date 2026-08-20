@@ -11,12 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
-  Plus, Search, Edit, Trash2, ExternalLink, Phone, Clock,
+  Plus, Search, Edit, Trash2, ExternalLink, Clock,
   CheckCircle2, AlertCircle, CalendarClock, PhoneCall, PhoneOff,
   Filter
 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import CustomerPhoneDial from '@/components/CustomerPhoneDial';
 import CustomerCombobox from '@/components/CustomerCombobox';
 import ExportButton from '@/components/ExportButton';
 import PageLoadState from '@/components/PageLoadState';
@@ -772,16 +773,7 @@ export default function Callbacks() {
                           {cust?.business_name || `客户#${cb.customer_id}`}
                           <ExternalLink className="w-3 h-3 opacity-50" />
                         </button>
-                        {cust?.phone && (
-                          <a
-                            href={`tel:${cust.phone}`}
-                            className="flex min-h-11 items-center gap-1 text-xs text-slate-500 hover:text-blue-600 md:min-h-0"
-                            title="点击拨打电话"
-                          >
-                            <Phone className="w-3 h-3" />
-                            {cust.phone}
-                          </a>
-                        )}
+                        {cust?.phone && <CustomerPhoneDial phone={cust.phone} label={cust.phone} variant="ghost" />}
                         <span className="text-xs text-slate-400">
                           {cb.callback_date?.slice(0, 10)}
                         </span>

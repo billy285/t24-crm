@@ -164,13 +164,20 @@ test('390px 销售线索直接提供拨号复制跟进，并用卡片呈现绩�
   await expect(card).toContainText('Happy Nails & Spa');
   await expect(card).toContainText('下一步：按计划跟进');
 
-  const dial = card.getByRole('link', { name: '拨号' });
+  const dial = card.getByRole('button', { name: 'RingCentral', exact: true });
+  const dialOptions = card.getByRole('button', { name: '选择其他拨号方式' });
   const copy = card.getByRole('button', { name: '复制' });
   const followUp = card.getByRole('button', { name: '记录跟进' });
-  await expect(dial).toHaveAttribute('href', 'tel:+17025550199');
   await expectTouchTarget(dial);
+  await expectTouchTarget(dialOptions);
   await expectTouchTarget(copy);
   await expectTouchTarget(followUp);
+
+  await dialOptions.click();
+  await expect(page.getByRole('menuitem', { name: 'RingCentral App' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'RingCentral 网页版' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '手机系统电话' })).toBeVisible();
+  await page.keyboard.press('Escape');
 
   await expect(page.getByTestId('sales-performance-mobile-list')).toBeVisible();
   await expect(page.getByTestId('sales-performance-desktop-table')).toBeHidden();

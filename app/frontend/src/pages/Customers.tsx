@@ -27,6 +27,7 @@ import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, Slid
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import CustomerPhoneDial from '@/components/CustomerPhoneDial';
 import MediaAccountsTab from '@/components/MediaAccountsTab';
 import OperationLogsTab from '@/components/OperationLogsTab';
 import CustomerAiCopyTab from '@/components/CustomerAiCopyTab';
@@ -2578,7 +2579,7 @@ export default function Customers() {
           <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
-            {c.phone && <Button variant="outline" size="sm" className="min-h-11 flex-1 md:min-h-0 md:flex-none" asChild><a href={`tel:${c.phone}`}><Phone className="mr-1 h-3.5 w-3.5" /> 拨打电话</a></Button>}
+            {c.phone && <CustomerPhoneDial phone={c.phone} label="RingCentral 拨号" className="flex-1 md:flex-none" />}
             {canCreateFollowUp && <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0 md:flex-none" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
             {isAdmin && <Button variant="outline" size="sm" className="hidden md:inline-flex" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 管理团队成员</Button>}
             <Button variant="outline" size="sm" className="min-h-11 md:min-h-0" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
@@ -3311,7 +3312,7 @@ export default function Customers() {
                   <div><p className="text-xs text-slate-400">联系人</p><p className="mt-1 text-slate-700">{c.contact_name || '-'}</p></div>
                   <div><p className="text-xs text-slate-400">负责人</p><p className="mt-1 text-slate-700">{c.sales_person || '-'}</p></div>
                   <div><p className="text-xs text-slate-400">行业 / 地区</p><p className="mt-1 text-slate-700">{industryLabels[c.industry] || c.industry || '-'} · {c.state || '-'}</p></div>
-                  <div><p className="text-xs text-slate-400">电话</p>{c.phone ? <a className="mt-1 block text-blue-600" href={`tel:${c.phone}`}>{c.phone}</a> : <p className="mt-1 text-slate-400">-</p>}</div>
+                  <div><p className="text-xs text-slate-400">电话</p>{c.phone ? <CustomerPhoneDial phone={c.phone} label={c.phone} variant="ghost" className="mt-1 max-w-full" /> : <p className="mt-1 text-slate-400">-</p>}</div>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                   <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0" onClick={() => openDetail(c)}>查看客户</Button>

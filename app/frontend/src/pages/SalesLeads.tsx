@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import CustomerPhoneDial from '@/components/CustomerPhoneDial';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -115,10 +116,6 @@ function nextLeadAction(lead: SalesLead) {
   if (lead.status === 'new') return '完成首次联系并记录结果';
   if (lead.next_follow_up_at) return `按计划跟进 · ${formatDate(lead.next_follow_up_at)}`;
   return '补充下一步跟进时间';
-}
-
-function phoneHref(phone: string) {
-  return `tel:${phone.replace(/[^+\d]/g, '')}`;
 }
 
 export default function SalesLeads() {
@@ -701,7 +698,7 @@ export default function SalesLeads() {
                     </dl>
                     <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm leading-5 text-slate-700"><span className="font-medium text-indigo-700">下一步：</span>{nextLeadAction(lead)}</div>
                     <div className="mt-4 grid grid-cols-2 gap-2">
-                      {protectedLead ? <Button className="h-11 px-2" variant="outline" disabled><Phone className="h-4 w-4" />拨号</Button> : <Button className="h-11 px-2" variant="outline" asChild><a href={phoneHref(lead.phone)}><Phone className="h-4 w-4" />拨号</a></Button>}
+                      {protectedLead ? <Button className="h-11 px-2" variant="outline" disabled><Phone className="h-4 w-4" />拨号</Button> : <CustomerPhoneDial phone={lead.phone} label="RingCentral" className="w-full" />}
                       <Button className="h-11 px-2" variant="outline" disabled={protectedLead} onClick={() => { void copyLeadPhone(lead); }}><Clipboard className="h-4 w-4" />复制</Button>
                       <Button className="h-11 px-2" onClick={() => openEdit(lead)}>{protectedLead ? <ShieldAlert className="h-4 w-4" /> : <MessageSquarePlus className="h-4 w-4" />}{protectedLead ? '查看保护' : '记录跟进'}</Button>
                       <DropdownMenu>
