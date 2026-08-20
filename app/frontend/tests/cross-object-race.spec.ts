@@ -307,7 +307,7 @@ test('客户详情 A 慢 B 快且关闭后，旧请求不能覆盖或重新打�
 
   await navigateWithSearch(page, '/customers?detail=2');
   await expect(page.getByRole('heading', { name: '快客户 B' })).toBeVisible();
-  await page.getByRole('tab', { name: '跟进' }).click();
+  await page.locator('select:visible').filter({ hasText: '更多资料与工具' }).selectOption('followups');
   await expect(page.getByText('B 正确跟进内容')).toBeVisible();
   await sleep(700);
   await expect(page.getByRole('heading', { name: '快客户 B' })).toBeVisible();

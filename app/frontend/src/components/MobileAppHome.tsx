@@ -16,6 +16,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import {
+  appNavigationItems,
   getRolePendingPath,
   getRoleTodayPath,
   getMobileBusinessApps,
@@ -90,6 +91,15 @@ const toneStyles: Record<MobileHomeItemTone, { label: string; container: string;
 };
 
 const iconTones = {
+  indigo: 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white ring-indigo-200',
+  blue: 'bg-gradient-to-br from-blue-500 to-blue-700 text-white ring-blue-200',
+  cyan: 'bg-gradient-to-br from-cyan-400 to-blue-600 text-white ring-cyan-200',
+  violet: 'bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white ring-violet-200',
+  emerald: 'bg-gradient-to-br from-emerald-400 to-teal-600 text-white ring-emerald-200',
+  slate: 'bg-gradient-to-br from-slate-500 to-slate-700 text-white ring-slate-200',
+} as const;
+
+const shortcutIconTones = {
   indigo: 'bg-indigo-50 text-indigo-600 ring-indigo-100',
   blue: 'bg-blue-50 text-blue-600 ring-blue-100',
   cyan: 'bg-cyan-50 text-cyan-600 ring-cyan-100',
@@ -97,6 +107,35 @@ const iconTones = {
   emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
   slate: 'bg-slate-100 text-slate-600 ring-slate-200',
 } as const;
+
+const mobileShortcutLabels: Record<string, string> = {
+  '/': '今日经营',
+  '/company-roadmap': '公司战略',
+  '/management-decisions': '经营决策',
+  '/sales-workbench': '销售工作台',
+  '/merchant-pool': '商家池',
+  '/sales-leads': '电话销售',
+  '/sales-knowledge': '销售知识',
+  '/customers': '客户管理',
+  '/sales': '成交客户',
+  '/deals': '成交管理',
+  '/customer-lifecycle': '客户周期',
+  '/operations-workbench': '运营工作台',
+  '/tasks': '任务协作',
+  '/service-board': '服务进度',
+  '/callbacks': '电话回访',
+  '/finance': '财务管理',
+  '/rmb-profit': '利润预估',
+  '/commissions': '渠道分润',
+  '/settings/deduction': '月度扣点',
+  '/payroll': '工资表',
+  '/employees': '员工管理',
+  '/settings': '系统设置',
+  '/permissions': '权限设置',
+  '/partner-portal': '客户与分润',
+};
+
+const shortcutDefinitionByPath = new Map(appNavigationItems.map(item => [item.path, item]));
 
 const recentIcons: Record<MobileBusinessAppKey, LucideIcon> = {
   strategy: Target,
@@ -185,6 +224,17 @@ export default function MobileAppHome({
   const availableApps = appDefinitions
     .map(app => ({ ...app, path: firstAccessiblePath(app.paths) }))
     .filter((app): app is (typeof appDefinitions)[number] & { path: string } => Boolean(app.path));
+  const appSections = availableApps
+    .map(app => ({
+      ...app,
+      shortcuts: app.paths.flatMap(path => {
+        const pathname = pathNameOf(path);
+        const definition = shortcutDefinitionByPath.get(pathname);
+        if (!pathname || !definition || !canOpen(path)) return [];
+        return [{ ...definition, path, label: mobileShortcutLabels[pathname] || definition.label }];
+      }),
+    }))
+    .filter(app => app.shortcuts.length > 0);
 
   const defaultTodayPath = getRoleTodayPath(role);
   const defaultPendingPath = getRolePendingPath(role);
@@ -246,10 +296,9 @@ export default function MobileAppHome({
           </button>
         </div>
 
-        <div className="flex flex-col items-center pb-5 pt-5 text-center md:pb-6 md:pt-8">
-          <T24AppMark className="h-[72px] w-[72px] rounded-[23px] [&>span:nth-child(2)]:text-[20px]" />
-          <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">{homeCopy.eyebrow}</p>
-          <h1 className="mt-1 text-[25px] font-black tracking-[-0.04em] text-[#10213f]">{homeCopy.title}</h1>
+        <div className="pb-5 pt-5 md:pb-6 md:pt-8">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">{homeCopy.eyebrow}</p>
+          <h1 className="mt-1 text-[26px] font-black tracking-[-0.04em] text-[#10213f]">{homeCopy.title}</h1>
           <p className="mt-1.5 text-[12px] text-slate-500">{homeCopy.subtitle}</p>
         </div>
       </header>
@@ -266,14 +315,15 @@ export default function MobileAppHome({
             {onRetry ? <button type="button" className="shrink-0 font-bold underline" onClick={onRetry}>重新加载</button> : null}
           </div>
         ) : null}
-        <section aria-labelledby="mobile-apps-heading" className="rounded-[28px] border border-white/90 bg-white/90 px-3 py-5 shadow-[0_24px_58px_-38px_rgba(37,70,132,0.65)] backdrop-blur-xl">
+        <section aria-label="工作应用" className="rounded-[24px] border border-white/90 bg-white/95 px-3 py-5 shadow-[0_20px_48px_-38px_rgba(37,70,132,0.58)] backdrop-blur-xl">
           <div className="mb-4 flex items-end justify-between px-1">
             <div>
-              <h2 id="mobile-apps-heading" className="text-[15px] font-bold tracking-tight text-slate-950">工作应用</h2>
-              <p className="mt-0.5 text-[10px] text-slate-400">只显示您有权使用的应用</p>
+              <h2 id="mobile-apps-heading" className="text-[17px] font-black tracking-tight text-slate-950">首页应用</h2>
+              <p className="mt-0.5 text-[10px] text-slate-400">常用业务中心 · 按当前账号权限显示</p>
             </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">{availableApps.length} 个入口</span>
           </div>
-          <div className={cn('grid gap-x-2 gap-y-5', availableApps.length === 1 ? 'grid-cols-1' : 'grid-cols-3', availableApps.length >= 4 && 'md:grid-cols-6')}>
+          <div className={cn('grid gap-x-1 gap-y-5', availableApps.length === 1 ? 'grid-cols-1' : 'grid-cols-4', availableApps.length >= 4 && 'md:grid-cols-6')}>
             {availableApps.map(app => {
               const Icon = app.icon;
               const badge = visibleBadge(appBadges[app.key]);
@@ -282,14 +332,14 @@ export default function MobileAppHome({
                   key={app.key}
                   type="button"
                   onClick={() => openPath(app.path)}
-                  className="relative flex min-h-[82px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-1 py-1 text-center active:scale-[0.96]"
+                  className="relative flex min-h-[84px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-0.5 py-1 text-center transition active:scale-[0.96]"
                   aria-label={`${app.label}：${app.description}`}
                 >
-                  <span className={cn('relative flex h-12 w-12 items-center justify-center rounded-[16px] ring-1 shadow-[0_10px_22px_-16px_rgba(15,23,42,0.55)]', iconTones[app.tone])}>
+                  <span className={cn('relative flex h-12 w-12 items-center justify-center rounded-[16px] ring-1 shadow-[0_12px_24px_-14px_rgba(15,23,42,0.65)]', iconTones[app.tone])}>
                     <Icon className="h-5 w-5" />
                     {badge ? <span className="absolute -right-2 -top-2 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold text-white ring-2 ring-white">{badge}</span> : null}
                   </span>
-                  <span className="max-w-full truncate text-[12px] font-bold text-slate-800">{app.label}</span>
+                  <span className="max-w-full text-[11px] font-bold leading-4 text-slate-800">{app.label}</span>
                 </button>
               );
             })}
@@ -380,6 +430,54 @@ export default function MobileAppHome({
                 );
               })}
             </div>
+          </section>
+        ) : null}
+
+        {appSections.length > 0 ? (
+          <section aria-labelledby="mobile-functions-heading" className="space-y-3">
+            <div className="px-1">
+              <h2 id="mobile-functions-heading" className="text-[17px] font-black tracking-tight text-slate-950">全部功能</h2>
+              <p className="mt-0.5 text-[11px] text-slate-500">按业务分类，直接进入需要处理的页面</p>
+            </div>
+            {appSections.map(section => (
+              <section
+                key={section.key}
+                aria-labelledby={`mobile-function-group-${section.key}`}
+                className="rounded-[22px] border border-white/90 bg-white px-3 pb-4 pt-4 shadow-[0_18px_46px_-38px_rgba(15,23,42,0.6)]"
+              >
+                <div className="mb-4 flex items-center justify-between px-1">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ring-1', shortcutIconTones[section.tone])}>
+                      <section.icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 id={`mobile-function-group-${section.key}`} className="text-[15px] font-black text-slate-900">{section.label}</h3>
+                      <p className="truncate text-[10px] text-slate-400">{section.description}</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold text-slate-400">{section.shortcuts.length} 项</span>
+                </div>
+                <div className="grid grid-cols-4 gap-x-1 gap-y-4">
+                  {section.shortcuts.map(shortcut => {
+                    const ShortcutIcon = shortcut.icon;
+                    return (
+                      <button
+                        key={`${section.key}:${shortcut.path}`}
+                        type="button"
+                        onClick={() => openPath(shortcut.path)}
+                        className="flex min-h-[76px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-0.5 py-1 text-center transition active:scale-[0.96] active:bg-slate-50"
+                        aria-label={`打开${shortcut.label}`}
+                      >
+                        <span className={cn('flex h-11 w-11 items-center justify-center rounded-[15px] ring-1', shortcutIconTones[section.tone])}>
+                          <ShortcutIcon className="h-5 w-5" />
+                        </span>
+                        <span className="line-clamp-2 text-[11px] font-semibold leading-4 text-slate-700">{shortcut.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </section>
         ) : null}
       </main>

@@ -226,6 +226,29 @@ test('管理员应用卡进入各自已有业务路径', async ({ page }) => {
   }
 });
 
+test('管理员手机工作台按真实业务分类展示全部功能并可直接进入', async ({ page }) => {
+  await mockAuthenticatedApi(page, 'admin');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/apps`);
+
+  await expect(page.getByRole('heading', { name: '全部功能' })).toBeVisible();
+  const salesFunctions = page.getByRole('region', { name: '销售中心' });
+  await expect(salesFunctions.getByRole('button')).toHaveCount(4);
+  await expect(salesFunctions.getByRole('button', { name: '打开销售工作台' })).toBeVisible();
+  await expect(salesFunctions.getByRole('button', { name: '打开商家池' })).toBeVisible();
+  await expect(salesFunctions.getByRole('button', { name: '打开电话销售' })).toBeVisible();
+  await expect(salesFunctions.getByRole('button', { name: '打开销售知识' })).toBeVisible();
+
+  await salesFunctions.getByRole('button', { name: '打开电话销售' }).click();
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/sales-leads');
+
+  await page.goto(`${baseUrl}/apps`);
+  const financeFunctions = page.getByRole('region', { name: '财务结算' });
+  await expect(financeFunctions.getByRole('button', { name: '打开财务管理' })).toBeVisible();
+  await expect(financeFunctions.getByRole('button', { name: '打开利润预估' })).toBeVisible();
+  await expectNoDocumentOverflow(page);
+});
+
 test('手机内页可从当前 App 功能菜单进入二级页面', async ({ page }) => {
   await mockAuthenticatedApi(page, 'admin');
   await page.setViewportSize({ width: 390, height: 844 });
