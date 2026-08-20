@@ -215,7 +215,7 @@ test('客户生命周期手机版只读查看轨迹且不挂载状态变更操�
   await expectNoHorizontalOverflow(page);
 });
 
-test('财务手机深链接回到统一经营摘要且不显示账本操作', async ({ page }) => {
+test('财务手机深链接进入记账工作台且只开放三类新增操作', async ({ page }) => {
   await seedAdmin(page);
   const nonGetRequests: string[] = [];
   page.on('request', request => {
@@ -229,11 +229,26 @@ test('财务手机深链接回到统一经营摘要且不显示账本操作', as
   await page.route(/\/api\/v1\/deductions-monthly(?:\?|$)/, route => fulfillJson(route, [{ year_month: '2026-08', rate: 0.15 }]));
   await page.goto(`${baseUrl}/finance?tab=income`);
 
-  await expect(page.getByText('手机版为经营摘要视图')).toBeVisible();
-  await expect(page.getByText('经营快照')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '财务工作台' })).toBeVisible();
+  await expect(page.getByText('快速记一笔')).toBeVisible();
+  await expect(page.getByRole('button', { name: '录入收款' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '客户支出' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '运营支出' })).toBeVisible();
   await expect(page.getByRole('button', { name: '导出 Excel' })).toHaveCount(0);
-  await expect(page.locator('button').filter({ hasText: /导出 CSV|导出 Excel|录入收款|记录退款|确认退款入账|新增月结|保存月结|录入客户支出|录入运营支出|确认关账|重新打开/ })).toHaveCount(0);
+  await expect(page.locator('button').filter({ hasText: /导出 CSV|导出 Excel|记录退款|确认退款入账|新增月结|保存月结|确认关账|重新打开|删除收款|删除支出|编辑收款|编辑支出/ })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: /收入管理/ })).toHaveCount(0);
+  await page.getByRole('button', { name: '录入收款' }).click();
+  await expect(page.getByRole('dialog').getByRole('heading', { name: '录入收款' })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: '客户支出' }).click();
+  await expect(page.getByRole('dialog').getByRole('heading', { name: '录入客户支出' })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: '运营支出' }).click();
+  await expect(page.getByRole('dialog').getByRole('heading', { name: '录入运营支出' })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.waitForTimeout(100);
   expect(nonGetRequests).toEqual([]);
   await expectNoHorizontalOverflow(page);
@@ -246,9 +261,60 @@ test('财务手机深链接回到统一经营摘要且不显示账本操作', as
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('dialog').getByRole('heading', { name: '录入运营支出' })).toHaveCount(0);
-  await expect(page.locator('button').filter({ hasText: /导出 CSV|导出 Excel|录入收款|记录退款|确认退款入账|新增月结|保存月结|录入客户支出|录入运营支出|确认关账|重新打开/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '录入收款' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '客户支出' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '运营支出' })).toBeVisible();
+  await expect(page.locator('button').filter({ hasText: /导出 CSV|导出 Excel|记录退款|确认退款入账|新增月结|保存月结|确认关账|重新打开/ })).toHaveCount(0);
   await page.waitForTimeout(100);
   expect(nonGetRequests).toEqual([]);
+});
+
+test('财务手机工作台可以提交收款、客户支出和运营支出', async ({ page }) => {
+  await seedAdmin(page);
+  const writes: string[] = [];
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'POST' && [
+      '/api/v1/entities/payments',
+      '/api/v1/entities/expenses',
+      '/api/v1/entities/company_expenses',
+    ].includes(path)) writes.push(path);
+  });
+  await page.route(/\/api\/v1\/entities\/customers(?:\/all)?/, route => fulfillJson(route, {
+    items: [{ id: 1, business_name: '手机记账客户', contact_name: '测试联系人', interested_packages: 'Google Ads' }],
+    total: 1,
+  }));
+  await page.route(/\/api\/v1\/entities\/payments(?:\/all)?/, route => fulfillJson(route, { items: [], total: 0 }));
+
+  await page.goto(`${baseUrl}/finance`);
+
+  await page.getByRole('button', { name: '录入收款' }).click();
+  let dialog = page.getByRole('dialog');
+  await dialog.locator('select').nth(0).selectOption('1');
+  await dialog.locator('input[type="number"]').fill('120');
+  await dialog.getByPlaceholder('例如：Google Ads 管理').fill('Google Ads');
+  await dialog.getByRole('button', { name: '确认录入收款' }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.getByRole('button', { name: '客户支出' }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.locator('select').nth(0).selectOption('1');
+  await dialog.locator('input[type="number"]').fill('35');
+  await dialog.getByRole('button', { name: '确认录入客户支出' }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await page.getByRole('button', { name: '运营支出' }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.locator('input[type="number"]').fill('88');
+  await dialog.getByRole('button', { name: '确认录入运营支出' }).click();
+  await expect(dialog).toHaveCount(0);
+
+  expect(writes).toEqual([
+    '/api/v1/entities/payments',
+    '/api/v1/entities/expenses',
+    '/api/v1/entities/company_expenses',
+  ]);
+  await expectNoHorizontalOverflow(page);
 });
 
 test('合伙人门户在手机使用客户和分润卡片而不是宽表', async ({ page }) => {

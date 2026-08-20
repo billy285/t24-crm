@@ -621,6 +621,8 @@ export default function Finance() {
   const canManageCompanyExpenseTypes = isAdmin || hasPermission('settings_edit');
   const canManageIncomeTypes = isAdmin || hasPermission('settings_edit');
   const canManageCustomerPackages = isAdmin || hasPermission('settings_edit');
+  const canCreatePayment = isAdmin || hasPermission('payment_create');
+  const canCreateExpense = isAdmin || employee?.role === 'finance';
   const incomeTypeOptions = useMemo(
     () => Object.entries(incomeTypeLabels).map(([value, label]) => ({ value, label })),
     [incomeTypeLabels],
@@ -644,10 +646,11 @@ export default function Finance() {
   const [activeFinanceTab, setActiveFinanceTab] = useState(() => (
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'overview' : normalizeFinanceTab(searchParams.get('tab'))
   ));
+  const [mobileFinanceView, setMobileFinanceView] = useState<'overview' | 'ledger' | 'receivables'>('overview');
   const [exporting, setExporting] = useState(false);
-  const blockMobileFinanceMutation = () => {
-    if (!isMobile) return false;
-    toast.info('手机版仅提供经营摘要；财务变更请在电脑端处理');
+  const blockMobileFinanceMutation = (allowCreate = false) => {
+    if (!isMobile || allowCreate) return false;
+    toast.info('手机版仅开放新增收款和支出；编辑、删除、退款与月结请在电脑端处理');
     return true;
   };
   const doExport = async (fmt: 'csv'|'xlsx') => {
@@ -2823,7 +2826,8 @@ export default function Finance() {
   };
 
   const handleSavePayment = async () => {
-    if (blockMobileFinanceMutation()) return;
+    if (blockMobileFinanceMutation(!editingPayId)) return;
+    if (isMobile && !canCreatePayment) { toast.error('你没有新增收款权限'); return; }
     if (!payForm.customer_id || !payForm.amount_due || !payForm.amount_paid) { toast.error('请填写必填字段'); return; }
     if (payForm.product_names.length === 0) { toast.error('请至少选择一个产品'); return; }
     const originalPayment = editingPayId ? payments.find((payment: any) => Number(payment.id) === Number(editingPayId)) : null;
@@ -3450,7 +3454,8 @@ export default function Finance() {
   };
 
   const handleSaveExpense = async () => {
-    if (blockMobileFinanceMutation()) return;
+    if (blockMobileFinanceMutation(!editingExpenseId)) return;
+    if (isMobile && !canCreateExpense) { toast.error('你没有新增客户支出权限'); return; }
     if (!expenseForm.customer_id || !expenseForm.amount) { toast.error('请填写必填字段'); return; }
     if (expenseForm.expense_type === ADS_FEE_KEY) {
       toast.error('投流成本请在投流月结中录入');
@@ -3550,7 +3555,8 @@ export default function Finance() {
   };
 
   const handleSaveCompanyExpense = async () => {
-    if (blockMobileFinanceMutation()) return;
+    if (blockMobileFinanceMutation(!editingCompanyExpenseId)) return;
+    if (isMobile && !canCreateExpense) { toast.error('你没有新增运营支出权限'); return; }
     if (!companyExpenseForm.amount) { toast.error('请填写金额'); return; }
     const originalCompanyExpense = editingCompanyExpenseId ? companyExpenses.find((expense: any) => Number(expense.id) === Number(editingCompanyExpenseId)) : null;
     const targetCompanyExpenseMonth = normalizeMonthKey(companyExpenseForm.expense_month);
@@ -3759,8 +3765,7 @@ export default function Finance() {
   }, [customers]);
 
   // Handler for customer select in payment form
-  const handlePayCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
+  const handlePayCustomerValueChange = (val: string) => {
     const selectedCustomer = customers.find(customer => String(customer.id) === val);
     const suggestedPackages = parseMultiValue(selectedCustomer?.interested_packages)
       .map(key => customerPackageLabels[key])
@@ -3771,11 +3776,75 @@ export default function Finance() {
       product_names: prev.product_names.length > 0 ? prev.product_names : suggestedPackages,
     }));
   };
+  const handlePayCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    handlePayCustomerValueChange(e.target.value);
+  };
 
   // Handler for customer select in expense form
   const handleExpenseCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     setExpenseForm(prev => ({ ...prev, customer_id: val }));
+  };
+
+  const mobileLedgerRows = useMemo(() => {
+    const rows: Array<{
+      id: string;
+      kind: 'income' | 'customer_expense' | 'company_expense';
+      title: string;
+      subtitle: string;
+      amount: number;
+      currency: CurrencyCode;
+      date: string;
+    }> = [];
+    filteredPayments.forEach((payment: any) => rows.push({
+      id: `payment-${payment.id}`,
+      kind: 'income',
+      title: payment.customer_name || customerMap[payment.customer_id]?.business_name || '未关联客户',
+      subtitle: `${incomeTypeLabels[getPaymentDisplayIncomeType(payment)] || '收款'} · ${getPaymentMethodLabel(normalizePaymentMethodKey(payment.payment_method), payMethodLabels)}`,
+      amount: toMoneyNumber(payment.amount_paid),
+      currency: normalizeCurrency(payment.currency, 'USD'),
+      date: payment.payment_date?.slice(0, 10) || payment.created_at?.slice(0, 10) || '',
+    }));
+    activeCustomerExpenses.forEach((expense: any) => rows.push({
+      id: `customer-expense-${expense.id}`,
+      kind: 'customer_expense',
+      title: expense.customer_name || customerMap[expense.customer_id]?.business_name || '未关联客户',
+      subtitle: customerExpenseTypeLabels[expense.expense_type] || expense.expense_type || '客户支出',
+      amount: toMoneyNumber(expense.amount),
+      currency: getCustomerExpenseCurrency(expense),
+      date: expense.payment_date?.slice(0, 10) || (expense.expense_month ? `${expense.expense_month}-01` : ''),
+    }));
+    filteredCompanyExpenses.forEach((expense: any) => rows.push({
+      id: `company-expense-${expense.id}`,
+      kind: 'company_expense',
+      title: companyExpenseTypeLabels[expense.category] || expense.category || '运营支出',
+      subtitle: '公司运营支出',
+      amount: toMoneyNumber(expense.amount),
+      currency: getCompanyExpenseCurrency(expense),
+      date: expense.expense_date?.slice(0, 10) || (expense.expense_month ? `${expense.expense_month}-01` : ''),
+    }));
+    return rows.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  }, [activeCustomerExpenses, companyExpenseTypeLabels, customerExpenseTypeLabels, customerMap, filteredCompanyExpenses, filteredPayments, incomeTypeLabels, payMethodLabels]);
+
+  const openMobilePaymentForm = () => {
+    if (!canCreatePayment) { toast.error('你没有新增收款权限'); return; }
+    setEditingPayId(null);
+    setPayForm({ ...emptyPayForm, payment_method: defaultManualPaymentMethod });
+    setShowPaymentForm(true);
+  };
+
+  const openMobileExpenseForm = () => {
+    if (!canCreateExpense) { toast.error('你没有新增客户支出权限'); return; }
+    setEditingExpenseId(null);
+    setExpenseForm({ ...emptyExpenseForm, expense_type: defaultCustomerExpenseType });
+    setShowExpenseForm(true);
+  };
+
+  const openMobileCompanyExpenseForm = () => {
+    if (!canCreateExpense) { toast.error('你没有新增运营支出权限'); return; }
+    setEditingCompanyExpenseId(null);
+    setCompanyExpenseForm({ ...emptyCompanyExpenseForm, category: defaultCompanyExpenseType });
+    setShowCompanyExpenseForm(true);
   };
 
   // ─── Render ──────────────────────────────────────────────────────
@@ -3790,6 +3859,245 @@ export default function Finance() {
   }
   if (loadError && !hasFinanceData) {
     return <PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadData(); }} />;
+  }
+
+  if (isMobile) {
+    const mobileEntryDisabled = closedFinanceMonths.has(currentMonthKey);
+    const visibleLedgerRows = mobileFinanceView === 'overview' ? mobileLedgerRows.slice(0, 5) : mobileLedgerRows.slice(0, 15);
+    const mobileIncomeTypeOptions = paymentIncomeTypeOptions.filter(option => option.value !== MIXED_MANAGEMENT_ADS_KEY);
+    const renderLedgerCard = (row: typeof mobileLedgerRows[number]) => {
+      const isIncome = row.kind === 'income';
+      const Icon = isIncome ? ArrowDownRight : ArrowUpRight;
+      return (
+        <div key={row.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${isIncome ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-slate-900">{row.title}</p>
+            <p className="mt-0.5 truncate text-xs text-slate-500">{row.subtitle} · {row.date || '日期待补充'}</p>
+          </div>
+          <p className={`shrink-0 text-sm font-bold tabular-nums ${isIncome ? 'text-emerald-600' : 'text-slate-900'}`}>
+            {isIncome ? '+' : '-'}{formatMoney(row.amount, row.currency)}
+          </p>
+        </div>
+      );
+    };
+
+    return (
+      <>
+        <div className="app-page min-h-full space-y-4 bg-slate-50 px-3 pb-28 pt-3">
+          <section className="overflow-hidden rounded-[28px] bg-slate-950 p-5 text-white shadow-[0_18px_50px_rgba(15,23,42,0.2)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium tracking-[0.16em] text-cyan-300">T24 FINANCE</p>
+                <h1 className="mt-1 text-2xl font-bold">财务工作台</h1>
+                <p className="mt-1 text-sm text-slate-300">{currentMonthKey} · 手机随手记账</p>
+              </div>
+              <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${mobileEntryDisabled ? 'bg-emerald-400/15 text-emerald-200' : 'bg-amber-300/15 text-amber-200'}`}>
+                {mobileEntryDisabled ? '已关账' : '进行中'}
+              </span>
+            </div>
+            <div className="mt-5 rounded-2xl bg-white/10 p-4 ring-1 ring-white/10">
+              <p className="text-xs text-slate-300">本月经营利润</p>
+              <div className="mt-1 flex items-end justify-between gap-3">
+                <p className="text-3xl font-bold tracking-tight tabular-nums">{fmt(summaryProfitUsd)}</p>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${summaryProfitUsd >= 0 ? 'bg-emerald-400/15 text-emerald-200' : 'bg-rose-400/15 text-rose-200'}`}>
+                  利润率 {(summaryProfitRate * 100).toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {loadError && hasFinanceData && (
+            <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              当前显示上一次成功同步的数据，刷新后会自动重试。
+            </div>
+          )}
+
+          <section aria-label="快速记账" className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">快速记一笔</h2>
+                <p className="mt-0.5 text-xs text-slate-500">只保留手机最常用的三个入口</p>
+              </div>
+              <Receipt className="h-5 w-5 text-blue-600" />
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2.5">
+              <button
+                type="button"
+                onClick={openMobilePaymentForm}
+                disabled={mobileEntryDisabled || !canCreatePayment}
+                className="flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl bg-blue-600 px-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15"><DollarSign className="h-5 w-5" /></span>
+                录入收款
+              </button>
+              <button
+                type="button"
+                onClick={openMobileExpenseForm}
+                disabled={mobileEntryDisabled || !canCreateExpense}
+                className="flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl bg-amber-50 px-2 text-sm font-semibold text-amber-800 ring-1 ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:ring-slate-200"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100"><Users className="h-5 w-5" /></span>
+                客户支出
+              </button>
+              <button
+                type="button"
+                onClick={openMobileCompanyExpenseForm}
+                disabled={mobileEntryDisabled || !canCreateExpense}
+                className="flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl bg-violet-50 px-2 text-sm font-semibold text-violet-800 ring-1 ring-violet-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:ring-slate-200"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-100"><Building2 className="h-5 w-5" /></span>
+                运营支出
+              </button>
+            </div>
+            {mobileEntryDisabled && <p className="mt-3 text-center text-xs text-slate-500">本月已关账，如需补录请在电脑端重新打开月份。</p>}
+          </section>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs text-slate-500">本月实收</p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-slate-900">{fmt(summaryNetReceiptsUsd)}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs text-slate-500">本月总成本</p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-slate-900">{fmt(summaryCostUsd)}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs text-slate-500">待收款</p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-amber-600">{fmt(ownerOverview.outstanding)}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs text-slate-500">人民币支出</p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-slate-900">{fmtRMB(summaryCompanyExpenseCny)}</p>
+            </div>
+          </div>
+
+          <nav aria-label="财务手机视图" className="grid grid-cols-3 rounded-2xl bg-slate-200/70 p-1">
+            {([
+              ['overview', '总览'],
+              ['ledger', '流水'],
+              ['receivables', `应收 ${ownerOverview.receivableCount}`],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setMobileFinanceView(value)}
+                className={`min-h-11 rounded-xl px-2 text-sm font-semibold transition ${mobileFinanceView === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+
+          {mobileFinanceView !== 'receivables' ? (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <h2 className="text-base font-bold text-slate-900">{mobileFinanceView === 'overview' ? '最近流水' : '本月流水'}</h2>
+                <span className="text-xs text-slate-500">收入与支出分开标记</span>
+              </div>
+              {visibleLedgerRows.length > 0 ? visibleLedgerRows.map(renderLedgerCard) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">本月还没有流水</div>
+              )}
+              {mobileFinanceView === 'overview' && mobileLedgerRows.length > 5 && (
+                <button type="button" onClick={() => setMobileFinanceView('ledger')} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-blue-600">
+                  查看全部流水
+                </button>
+              )}
+            </section>
+          ) : (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <h2 className="text-base font-bold text-slate-900">待收款客户</h2>
+                <span className="text-xs text-slate-500">合计 {fmt(ownerOverview.outstanding)}</span>
+              </div>
+              {receivableRows.length > 0 ? receivableRows.slice(0, 15).map(row => (
+                <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{row.customerName}</p>
+                      <p className="mt-1 text-xs text-slate-500">负责人 {row.salesPerson} · {row.paymentDate || '日期待补充'}</p>
+                    </div>
+                    <p className="shrink-0 text-base font-bold tabular-nums text-amber-600">{fmt(row.outstanding)}</p>
+                  </div>
+                  {row.overdueDays > 0 && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">已逾期 {row.overdueDays} 天</p>}
+                </div>
+              )) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">目前没有待收款</div>
+              )}
+            </section>
+          )}
+
+          <p className="px-2 text-center text-[11px] leading-5 text-slate-400">手机端只开放新增。编辑、删除、退款、月结与导出请使用电脑端。</p>
+        </div>
+
+        <Dialog open={showPaymentForm} onOpenChange={setShowPaymentForm}>
+          <DialogContent className="gap-5 rounded-[24px] p-4">
+            <DialogHeader className="pr-12 text-left">
+              <DialogTitle>录入收款</DialogTitle>
+              <p className="text-sm text-slate-500">记录实际到账，不自动修改成交或续费。</p>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2"><Label>客户 *</Label><NativeSelect value={payForm.customer_id} onChange={handlePayCustomerValueChange} options={customerOptions} placeholder="选择客户" /></div>
+              <div className="space-y-2">
+                <Label>收款金额（USD）*</Label>
+                <Input inputMode="decimal" type="number" min="0" step="0.01" className="h-12 text-lg" value={payForm.amount_paid} onChange={event => setPayForm(previous => ({ ...previous, amount_due: event.target.value, amount_paid: event.target.value, management_amount: '', ads_recharge_amount: '' }))} placeholder="0.00" />
+              </div>
+              <div className="space-y-2">
+                <Label>产品 / 服务 *</Label>
+                <Input list="mobile-finance-packages" className="h-12" value={payForm.product_names[0] || ''} onChange={event => setPayForm(previous => ({ ...previous, product_names: event.target.value ? [event.target.value] : [] }))} placeholder="例如：Google Ads 管理" />
+                <datalist id="mobile-finance-packages">{paymentPackageOptions.map(option => <option key={option.value} value={option.value} />)}</datalist>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2"><Label>收入类型</Label><NativeSelect value={payForm.income_type} onChange={value => setPayForm(previous => ({ ...previous, income_type: value, management_amount: '', ads_recharge_amount: '' }))} options={mobileIncomeTypeOptions} /></div>
+                <div className="space-y-2"><Label>收款方式</Label><NativeSelect value={payForm.payment_method} onChange={value => setPayForm(previous => ({ ...previous, payment_method: value }))} options={availablePaymentMethodOptions} /></div>
+              </div>
+              <div className="space-y-2"><Label>到账日期</Label><Input type="date" className="h-12" value={payForm.payment_date} onChange={event => setPayForm(previous => ({ ...previous, payment_date: event.target.value }))} /></div>
+              <div className="space-y-2"><Label>交易编号（选填）</Label><Input className="h-12" value={payForm.transaction_reference} onChange={event => setPayForm(previous => ({ ...previous, transaction_reference: event.target.value }))} placeholder="Zelle / Stripe / 支票编号" /></div>
+              <div className="space-y-2"><Label>备注（选填）</Label><Textarea value={payForm.notes} onChange={event => setPayForm(previous => ({ ...previous, notes: event.target.value }))} placeholder="补充说明" /></div>
+            </div>
+            <Button onClick={handleSavePayment} disabled={saving} className="min-h-12 w-full bg-blue-600 text-base hover:bg-blue-700">{saving ? '保存中…' : '确认录入收款'}</Button>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showExpenseForm} onOpenChange={setShowExpenseForm}>
+          <DialogContent className="gap-5 rounded-[24px] p-4">
+            <DialogHeader className="pr-12 text-left"><DialogTitle>录入客户支出</DialogTitle><p className="text-sm text-slate-500">记录为某个客户发生的交付成本。</p></DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2"><Label>客户 *</Label><NativeSelect value={expenseForm.customer_id} onChange={value => setExpenseForm(previous => ({ ...previous, customer_id: value }))} options={customerOptions} placeholder="选择客户" /></div>
+              <div className="space-y-2"><Label>支出类型</Label><NativeSelect value={expenseForm.expense_type} onChange={value => setExpenseForm(previous => ({ ...previous, expense_type: value }))} options={customerExpenseTypeOptions} /></div>
+              <div className="grid grid-cols-[1fr_112px] gap-3">
+                <div className="space-y-2"><Label>金额 *</Label><Input inputMode="decimal" type="number" min="0" step="0.01" className="h-12 text-lg" value={expenseForm.amount} onChange={event => setExpenseForm(previous => ({ ...previous, amount: event.target.value }))} placeholder="0.00" /></div>
+                <div className="space-y-2"><Label>币种</Label><NativeSelect value={expenseForm.currency} onChange={value => setExpenseForm(previous => ({ ...previous, currency: value as CurrencyCode }))} options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))} /></div>
+              </div>
+              <div className="space-y-2"><Label>归属月份</Label><Input type="month" className="h-12" value={expenseForm.expense_month} onChange={event => setExpenseForm(previous => ({ ...previous, expense_month: event.target.value }))} /></div>
+              <div className="space-y-2"><Label>备注（选填）</Label><Textarea value={expenseForm.notes} onChange={event => setExpenseForm(previous => ({ ...previous, notes: event.target.value }))} placeholder="例如：客户网站素材采购" /></div>
+            </div>
+            <Button onClick={handleSaveExpense} disabled={savingExpense} className="min-h-12 w-full bg-amber-600 text-base hover:bg-amber-700">{savingExpense ? '保存中…' : '确认录入客户支出'}</Button>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showCompanyExpenseForm} onOpenChange={setShowCompanyExpenseForm}>
+          <DialogContent className="gap-5 rounded-[24px] p-4">
+            <DialogHeader className="pr-12 text-left"><DialogTitle>录入运营支出</DialogTitle><p className="text-sm text-slate-500">记录工资、软件、房租等公司运营成本。</p></DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2"><Label>支出类型</Label><NativeSelect value={companyExpenseForm.category} onChange={value => setCompanyExpenseForm(previous => ({ ...previous, category: value }))} options={companyExpenseTypeOptions} /></div>
+              <div className="grid grid-cols-[1fr_112px] gap-3">
+                <div className="space-y-2"><Label>金额 *</Label><Input inputMode="decimal" type="number" min="0" step="0.01" className="h-12 text-lg" value={companyExpenseForm.amount} onChange={event => setCompanyExpenseForm(previous => ({ ...previous, amount: event.target.value }))} placeholder="0.00" /></div>
+                <div className="space-y-2"><Label>币种</Label><NativeSelect value={companyExpenseForm.currency} onChange={value => setCompanyExpenseForm(previous => ({ ...previous, currency: value as CurrencyCode }))} options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))} /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2"><Label>归属月份</Label><Input type="month" className="h-12" value={companyExpenseForm.expense_month} onChange={event => setCompanyExpenseForm(previous => ({ ...previous, expense_month: event.target.value }))} /></div>
+                <div className="space-y-2"><Label>支出日期</Label><Input type="date" className="h-12" value={companyExpenseForm.expense_date} onChange={event => setCompanyExpenseForm(previous => ({ ...previous, expense_date: event.target.value }))} /></div>
+              </div>
+              <div className="space-y-2"><Label>备注（选填）</Label><Textarea value={companyExpenseForm.notes} onChange={event => setCompanyExpenseForm(previous => ({ ...previous, notes: event.target.value }))} placeholder="补充说明或付款对象" /></div>
+            </div>
+            <Button onClick={handleSaveCompanyExpense} disabled={savingCompanyExpense} className="min-h-12 w-full bg-violet-600 text-base hover:bg-violet-700">{savingCompanyExpense ? '保存中…' : '确认录入运营支出'}</Button>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
   }
 
   return (

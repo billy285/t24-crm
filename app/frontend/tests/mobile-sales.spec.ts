@@ -293,5 +293,5 @@ test('统计接口失败时商家池仍保留成功加载的核心列表', async
   await page.goto(`${baseUrl}/merchant-pool`);
 
   await expect(page.getByTestId('merchant-mobile-card')).toContainText('Golden Dragon Restaurant');
-  await expect(page.getByText(/统计加载失败，已保留其他可用数据/)).toBeVisible();
+  await expect(page.getByText(/统计加载失败，已保留其他可用数据/).first()).toBeVisible();
 });

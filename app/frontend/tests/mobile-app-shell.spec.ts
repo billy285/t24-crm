@@ -194,7 +194,25 @@ test('财务手机底栏的今日与待办进入两个真实可用页面', async
   await page.goto(`${baseUrl}/apps`);
   await bottomNav.getByRole('button', { name: '待办' }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe('/finance');
-  await expect(page.getByText('手机版为经营摘要视图')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '财务工作台' })).toBeVisible();
+});
+
+test('手机业务内页共享深色摘要头、圆角卡片和安全底部留白', async ({ page }) => {
+  await mockAuthenticatedApi(page, 'admin');
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  for (const [path, heading] of [
+    ['/employees', '员工管理'],
+    ['/tasks', '任务协作'],
+  ] as const) {
+    await page.goto(`${baseUrl}${path}`);
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    const pageTitle = page.locator('.app-page-title').first();
+    await expect(pageTitle).toHaveCSS('border-radius', '28px');
+    await expect(pageTitle).toHaveCSS('background-color', 'rgb(2, 6, 23)');
+    await expect(page.locator('.app-page').first()).toHaveCSS('padding-bottom', '92px');
+    await expectNoDocumentOverflow(page);
+  }
 });
 
 test('管理员应用卡进入各自已有业务路径', async ({ page }) => {

@@ -90,6 +90,239 @@
   }
 }
 
+/* T24 mobile workspace system -------------------------------------------------
+   Shared visual contract for authenticated phone routes. Business permissions
+   and page-specific behavior stay in their existing components. */
+@media (max-width: 767px) {
+  .mobile-app-layout {
+    --mobile-workspace-ink: #020617;
+    --mobile-workspace-surface: #ffffff;
+    --mobile-workspace-muted: #64748b;
+    --mobile-workspace-radius: 1.5rem;
+    --mobile-workspace-shadow: 0 18px 48px -38px rgb(15 23 42 / 0.52);
+  }
+
+  .mobile-app-layout .app-main:not(.app-main-launcher) {
+    background:
+      linear-gradient(180deg, rgb(241 245 249 / 0.82), #f8fafc 13rem),
+      #f8fafc;
+  }
+
+  .mobile-app-layout .app-page {
+    padding-bottom: calc(5.75rem + env(safe-area-inset-bottom));
+  }
+
+  .mobile-app-layout .app-page-title {
+    position: relative;
+    isolation: isolate;
+    align-items: flex-start;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    padding: 1.25rem !important;
+    border: 0 !important;
+    border-radius: 1.75rem;
+    background:
+      radial-gradient(circle at 88% -12%, rgb(37 99 235 / 0.62), transparent 43%),
+      var(--mobile-workspace-ink);
+    color: white;
+    box-shadow: 0 22px 54px -38px rgb(15 23 42 / 0.88);
+  }
+
+  .mobile-app-layout .app-page-title::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(112deg, transparent 48%, rgb(34 211 238 / 0.07));
+  }
+
+  .mobile-app-layout .app-page-title > * {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+  }
+
+  .mobile-app-layout .app-page-title h1,
+  .mobile-app-layout .app-page-title h2,
+  .mobile-app-layout .app-page-title h3,
+  .mobile-app-layout .app-page-title .app-page-heading,
+  .mobile-app-layout .app-page-title .text-slate-800,
+  .mobile-app-layout .app-page-title .text-slate-900,
+  .mobile-app-layout .app-page-title .text-slate-950 {
+    color: white !important;
+  }
+
+  .mobile-app-layout .app-page-title .app-page-kicker,
+  .mobile-app-layout .app-page-title .text-blue-600,
+  .mobile-app-layout .app-page-title .text-blue-700 {
+    color: #67e8f9 !important;
+  }
+
+  .mobile-app-layout .app-page-title p,
+  .mobile-app-layout .app-page-title .app-page-description,
+  .mobile-app-layout .app-page-title .text-slate-400,
+  .mobile-app-layout .app-page-title .text-slate-500,
+  .mobile-app-layout .app-page-title .text-slate-600 {
+    color: #cbd5e1 !important;
+  }
+
+  .mobile-app-layout .app-page-title > button {
+    width: 100%;
+    min-height: 3rem;
+    border-color: rgb(255 255 255 / 0.18);
+    background: rgb(255 255 255 / 0.1);
+    color: white;
+  }
+
+  .mobile-app-layout .app-page-title > button:hover {
+    background: rgb(255 255 255 / 0.16);
+  }
+
+  .mobile-app-layout .app-page .bg-card.border.rounded-xl {
+    border-radius: var(--mobile-workspace-radius) !important;
+    border-color: rgb(226 232 240 / 0.94);
+    box-shadow: var(--mobile-workspace-shadow);
+  }
+
+  .mobile-app-layout .app-card,
+  .mobile-app-layout .app-toolbar,
+  .mobile-app-layout .app-metric,
+  .mobile-app-layout .app-table-wrap {
+    border-radius: var(--mobile-workspace-radius) !important;
+    box-shadow: var(--mobile-workspace-shadow);
+  }
+
+  .mobile-app-layout .app-page [role="tablist"] {
+    min-height: 3rem;
+    padding: 0.25rem;
+    border: 0;
+    border-radius: 1rem;
+    background: rgb(226 232 240 / 0.78);
+  }
+
+  .mobile-app-layout .app-page [role="tab"] {
+    min-height: 2.5rem;
+    border-radius: 0.75rem;
+  }
+
+  .mobile-app-layout .app-page button,
+  .mobile-app-layout .app-page a[role="button"] {
+    touch-action: manipulation;
+  }
+
+  .mobile-app-layout .app-page button:not([role="tab"]),
+  .mobile-app-layout .app-page a[role="button"] {
+    min-height: 2.75rem;
+  }
+
+  .mobile-app-layout .merchant-hero {
+    border: 0 !important;
+    border-radius: 1.75rem !important;
+    background:
+      radial-gradient(circle at 88% -12%, rgb(37 99 235 / 0.62), transparent 43%),
+      var(--mobile-workspace-ink) !important;
+    box-shadow: 0 22px 54px -38px rgb(15 23 42 / 0.88) !important;
+  }
+
+  .mobile-app-layout .merchant-hero h2 {
+    color: white !important;
+  }
+
+  .mobile-app-layout .merchant-hero p {
+    color: #cbd5e1 !important;
+  }
+
+  .mobile-app-layout .merchant-hero > div > div > div > div:first-child {
+    border-color: rgb(103 232 249 / 0.2) !important;
+    background: rgb(103 232 249 / 0.1) !important;
+    color: #67e8f9 !important;
+  }
+
+  .mobile-app-layout .merchant-kpi-grid,
+  .mobile-app-layout .t24-directory-metrics {
+    gap: 0.75rem;
+  }
+
+  .mobile-app-layout .merchant-kpi-card,
+  .mobile-app-layout .t24-directory-metrics > div {
+    min-height: 7.25rem;
+  }
+
+  .mobile-app-layout .merchant-filter-card,
+  .mobile-app-layout .t24-directory-toolbar,
+  .mobile-app-layout .knowledge-v4-toolbar {
+    position: static;
+    border-radius: var(--mobile-workspace-radius) !important;
+    box-shadow: var(--mobile-workspace-shadow);
+  }
+
+  .mobile-app-layout .knowledge-v4-header > div:last-child {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.625rem;
+  }
+
+  .mobile-app-layout .knowledge-v4-header > div:last-child button {
+    min-width: 0;
+    min-height: 3rem;
+    padding-inline: 0.625rem;
+  }
+
+  .mobile-app-layout .knowledge-v4-workspace,
+  .mobile-app-layout .sales-v3-shell {
+    border-radius: var(--mobile-workspace-radius);
+    box-shadow: var(--mobile-workspace-shadow);
+  }
+
+  .mobile-app-layout .sales-v3-topbar,
+  .mobile-app-layout .customer-360-hero,
+  .mobile-app-layout .t24-command-hero {
+    border-radius: 1.75rem !important;
+  }
+
+  .mobile-app-layout .sales-v3-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.625rem;
+  }
+
+  .mobile-app-layout .sales-v3-stats span {
+    min-width: 0;
+    border-radius: 0.875rem;
+    background: rgb(255 255 255 / 0.065);
+    padding: 0.625rem;
+  }
+
+  .mobile-app-layout .sales-v3-customer,
+  .mobile-app-layout .sales-v3-call {
+    border-radius: 1.25rem;
+  }
+
+  .mobile-app-layout .customer-360-metrics {
+    gap: 0.625rem;
+  }
+
+  .mobile-app-layout .customer-360-segments,
+  .mobile-app-layout .customer-360-toolbar,
+  .mobile-app-layout .customer-360-directory {
+    border-radius: var(--mobile-workspace-radius) !important;
+  }
+
+  .mobile-app-layout .partner-portal-page .app-page-title > button {
+    align-self: stretch;
+  }
+
+  .mobile-app-layout .t24-owner-layout .t24-command-metric {
+    min-height: 8.5rem;
+    border-radius: 1.25rem;
+  }
+
+  .mobile-app-layout .t24-owner-layout .t24-command-hero .grid-cols-1 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
