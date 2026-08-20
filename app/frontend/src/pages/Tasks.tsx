@@ -650,8 +650,8 @@ export default function Tasks() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <div className="t24-work-page app-page space-y-5">
+      <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           {returnTo && (
             <Button variant="ghost" size="sm" className="-ml-3 mb-1 min-h-11 text-slate-600 md:h-8 md:min-h-0" onClick={() => navigate(returnTo)}>

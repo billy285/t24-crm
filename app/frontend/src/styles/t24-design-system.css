@@ -1,0 +1,762 @@
+/*
+ * T24 CRM Design System
+ * Foundation layer for the global shell and the three core workspace patterns:
+ * command center, directory and execution workbench.
+ */
+
+.t24-system {
+  --t24-canvas: #f3f6fb;
+  --t24-surface: #ffffff;
+  --t24-surface-subtle: #f8fafc;
+  --t24-surface-muted: #f1f5f9;
+  --t24-ink: #0f172a;
+  --t24-ink-secondary: #334155;
+  --t24-ink-muted: #64748b;
+  --t24-border: #dfe5ee;
+  --t24-border-strong: #cbd5e1;
+  --t24-primary: #2563eb;
+  --t24-primary-strong: #1d4ed8;
+  --t24-primary-soft: #eff6ff;
+  --t24-navy: #0b1730;
+  --t24-positive: #059669;
+  --t24-warning: #d97706;
+  --t24-danger: #e11d48;
+  --t24-radius-sm: 10px;
+  --t24-radius-md: 14px;
+  --t24-radius-lg: 18px;
+  --t24-shadow-card: 0 1px 2px rgb(15 23 42 / 0.035), 0 14px 34px -28px rgb(15 23 42 / 0.38);
+  --t24-shadow-raised: 0 24px 54px -40px rgb(15 23 42 / 0.42);
+  background: var(--t24-canvas);
+  color: var(--t24-ink);
+}
+
+.t24-system .app-sidebar {
+  background: linear-gradient(180deg, #0b1730 0%, #101d37 58%, #0b1730 100%);
+  border-right-color: rgb(148 163 184 / 0.14);
+}
+
+.t24-system .app-topbar {
+  min-height: 64px;
+  border-bottom-color: rgb(203 213 225 / 0.72);
+  background: rgb(255 255 255 / 0.9);
+  box-shadow: 0 8px 24px -25px rgb(15 23 42 / 0.55);
+}
+
+.t24-system .app-main {
+  background:
+    radial-gradient(circle at 100% 0%, rgb(37 99 235 / 0.045), transparent 28rem),
+    var(--t24-canvas);
+}
+
+.t24-system .app-page {
+  width: min(100%, 1600px);
+}
+
+.t24-system .app-page-title {
+  margin-bottom: 20px;
+  padding-bottom: 18px;
+  border-bottom-color: var(--t24-border);
+}
+
+.t24-system .app-page-title h1,
+.t24-system .app-page-title h2 {
+  color: var(--t24-ink);
+  font-size: clamp(1.5rem, 2vw, 1.85rem);
+  font-weight: 720;
+  letter-spacing: -0.035em;
+}
+
+.t24-system input,
+.t24-system select,
+.t24-system textarea {
+  border-color: var(--t24-border-strong);
+}
+
+.t24-system input:focus,
+.t24-system select:focus,
+.t24-system textarea:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.12);
+}
+
+/* Command center: a deliberate dark decision surface, surrounded by calm white cards. */
+.t24-system .t24-command-center {
+  width: min(100%, 1540px);
+}
+
+.t24-system .t24-command-hero {
+  border-color: rgb(71 85 105 / 0.56) !important;
+  border-radius: var(--t24-radius-lg);
+  background:
+    radial-gradient(circle at 82% -30%, rgb(37 99 235 / 0.5), transparent 42%),
+    linear-gradient(135deg, #0b1730 0%, #111f3b 70%, #14284f 100%) !important;
+  box-shadow: 0 30px 70px -48px rgb(15 23 42 / 0.9) !important;
+}
+
+.t24-system .t24-command-metric {
+  min-height: 154px;
+  border-radius: var(--t24-radius-md);
+  background: rgb(255 255 255 / 0.065);
+}
+
+.t24-system .t24-command-metric:hover {
+  transform: translateY(-1px);
+  background: rgb(255 255 255 / 0.1);
+}
+
+.t24-system .t24-owner-layout > div:not(.t24-command-hero),
+.t24-system .t24-command-center [class*="rounded-xl"][class*="border-slate-200"] {
+  box-shadow: var(--t24-shadow-card);
+}
+
+/* Directory: customer and employee records should read like a focused index. */
+.t24-system .customer-360-page {
+  max-width: 1600px;
+}
+
+.t24-system .customer-360-hero {
+  overflow: visible;
+  border: 1px solid var(--t24-border);
+  border-radius: var(--t24-radius-lg);
+  background: var(--t24-surface);
+  background-image: none;
+  color: var(--t24-ink);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .customer-360-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: var(--t24-radius-lg) 0 0 var(--t24-radius-lg);
+  background: linear-gradient(180deg, #2563eb, #60a5fa);
+}
+
+.t24-system .customer-360-hero::after {
+  display: none;
+}
+
+.t24-system .customer-360-kicker {
+  color: var(--t24-primary);
+}
+
+.t24-system .customer-360-hero-copy h2 {
+  color: var(--t24-ink);
+  font-size: 1.6rem;
+  font-weight: 730;
+}
+
+.t24-system .customer-360-hero-copy > p:last-child {
+  color: var(--t24-ink-muted);
+}
+
+.t24-system .customer-360-hero-actions > div {
+  border-color: var(--t24-border) !important;
+  background: var(--t24-surface-subtle) !important;
+}
+
+.t24-system .customer-360-hero-actions > div button {
+  color: var(--t24-ink-secondary) !important;
+}
+
+.t24-system .customer-360-hero-actions > div button:hover {
+  background: var(--t24-surface-muted) !important;
+  color: var(--t24-primary-strong) !important;
+}
+
+.t24-system .customer-360-hero-actions > button:last-child {
+  background: var(--t24-primary);
+  box-shadow: 0 10px 22px -14px rgb(37 99 235 / 0.72);
+}
+
+.t24-system .customer-360-metrics {
+  border-top-color: var(--t24-border);
+}
+
+.t24-system .customer-360-metrics > div:not(.customer-360-distribution),
+.t24-system .customer-360-distribution {
+  border-color: var(--t24-border);
+  background: var(--t24-surface-subtle);
+}
+
+.t24-system .customer-360-metrics p,
+.t24-system .customer-360-distribution > small {
+  color: var(--t24-ink-muted);
+}
+
+.t24-system .customer-360-metrics strong {
+  color: var(--t24-ink);
+}
+
+.t24-system .customer-360-distribution > p {
+  color: var(--t24-ink-secondary);
+}
+
+.t24-system .customer-360-metric-icon.is-blue { background: #dbeafe; color: #2563eb; }
+.t24-system .customer-360-metric-icon.is-green { background: #d1fae5; color: #047857; }
+.t24-system .customer-360-metric-icon.is-rose { background: #ffe4e6; color: #be123c; }
+.t24-system .customer-360-metric-icon.is-cyan { background: #cffafe; color: #0e7490; }
+
+.t24-system .customer-360-distribution-bar {
+  background: #e2e8f0;
+}
+
+.t24-system .customer-360-segments,
+.t24-system .customer-360-toolbar,
+.t24-system .customer-360-directory {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .customer-360-segments {
+  padding: 6px;
+}
+
+.t24-system .customer-360-directory {
+  background: var(--t24-surface);
+}
+
+.t24-system .customer-360-directory table {
+  min-width: 64rem;
+}
+
+.t24-system .customer-360-directory thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+}
+
+.t24-system .customer-360-directory th {
+  color: #475569;
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.t24-system .customer-360-directory tbody tr:hover {
+  background: #f8fbff;
+}
+
+/* Workbench: queue, task and help remain distinct without squeezing the main task. */
+.t24-system .sales-v3-page {
+  width: min(100%, 1680px);
+  margin-inline: auto;
+}
+
+.t24-system .sales-v3-topbar {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--t24-border);
+  border-radius: var(--t24-radius-lg);
+  background: var(--t24-surface);
+  background-image: none;
+  color: var(--t24-ink);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .sales-v3-topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, #2563eb, #60a5fa);
+}
+
+.t24-system .sales-v3-kicker { color: var(--t24-primary); }
+.t24-system .sales-v3-topbar h2 { color: var(--t24-ink); }
+.t24-system .sales-v3-stats { color: var(--t24-ink-muted); }
+.t24-system .sales-v3-stats span {
+  min-width: 66px;
+  padding: 5px 10px;
+  border-left: 1px solid var(--t24-border);
+}
+.t24-system .sales-v3-stats b { color: var(--t24-ink); }
+.t24-system .sales-v3-topbar label { color: var(--t24-ink-muted) !important; }
+.t24-system .sales-v3-topbar input {
+  border-color: var(--t24-border-strong);
+  background: var(--t24-surface) !important;
+  color: var(--t24-ink) !important;
+}
+
+.t24-system .sales-v3-shell {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-lg);
+  box-shadow: var(--t24-shadow-raised);
+}
+
+.t24-system .sales-v3-queue {
+  background: #fbfcfe;
+}
+
+.t24-system .sales-v3-queue-item.is-active {
+  border-left-color: var(--t24-primary);
+  background: var(--t24-primary-soft);
+}
+
+.t24-system .sales-v3-main {
+  background: #f5f7fb;
+}
+
+.t24-system .sales-v3-customer,
+.t24-system .sales-v3-call {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .sales-v3-call-button {
+  background: var(--t24-primary);
+  box-shadow: 0 10px 22px -14px rgb(37 99 235 / 0.72);
+}
+
+.t24-system .sales-v3-call-button:hover {
+  background: var(--t24-primary-strong);
+}
+
+.t24-system .sales-v3-assistant-results button.is-active {
+  background: var(--t24-navy);
+}
+
+@media (min-width: 1280px) and (max-width: 1535px) {
+  .t24-system .sales-v3-shell.has-assistant {
+    position: relative;
+    grid-template-columns: 17rem minmax(0, 1fr);
+  }
+
+  .t24-system .sales-v3-shell.has-assistant .sales-v3-assistant {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 10;
+    width: min(22rem, 42vw);
+    border-left: 1px solid var(--t24-border);
+    box-shadow: -18px 0 44px -30px rgb(15 23 42 / 0.5);
+  }
+
+  .t24-system .sales-v3-shell.assistant-collapsed {
+    grid-template-columns: 17rem minmax(0, 1fr) 3.25rem;
+  }
+}
+
+@media (min-width: 1536px) {
+  .t24-system .sales-v3-shell.has-assistant {
+    grid-template-columns: 18rem minmax(32rem, 1fr) 21.5rem;
+  }
+
+  .t24-system .sales-v3-shell.assistant-collapsed {
+    grid-template-columns: 18rem minmax(32rem, 1fr) 3.25rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .t24-system .customer-360-hero,
+  .t24-system .sales-v3-topbar {
+    border-radius: var(--t24-radius-md);
+    padding-inline: 16px;
+  }
+
+  .t24-system .customer-360-metrics {
+    gap: 8px;
+  }
+
+  .t24-system .customer-360-metrics > div:not(.customer-360-distribution) {
+    min-height: 72px;
+  }
+
+  .t24-system .sales-v3-stats span {
+    padding-left: 8px;
+  }
+}
+
+/* Phase 3: records, reports and low-frequency administration */
+.t24-system .t24-record-page,
+.t24-system .t24-settings-page,
+.t24-system .t24-command-page,
+.t24-system .partner-portal-page {
+  width: min(100%, 1600px);
+}
+
+.t24-system .t24-record-page > .grid > div,
+.t24-system .t24-record-page > .grid > [class*="rounded"],
+.t24-system .t24-sales-leads-page > .grid > div {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-record-page > [class*="rounded-xl"][class*="border"],
+.t24-system .t24-record-page > [class*="rounded-2xl"][class*="border"] {
+  border-color: var(--t24-border);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-record-page table,
+.t24-system .t24-settings-page table,
+.t24-system .t24-command-page table,
+.t24-system .t24-work-page table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.t24-system .t24-record-page thead,
+.t24-system .t24-settings-page thead,
+.t24-system .t24-command-page thead,
+.t24-system .t24-work-page thead {
+  background: #f8fafc;
+  color: #475569;
+}
+
+.t24-system .t24-record-page tbody tr:hover,
+.t24-system .t24-settings-page tbody tr:hover,
+.t24-system .t24-command-page tbody tr:hover,
+.t24-system .t24-work-page tbody tr:hover {
+  background: #f8fbff;
+}
+
+.t24-system .t24-command-page > [class*="rounded-xl"][class*="border"],
+.t24-system .t24-command-page > [class*="rounded-2xl"][class*="border"],
+.t24-system .t24-command-page > div > [class*="rounded-xl"][class*="border"] {
+  border-color: var(--t24-border);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-command-page > .app-page-title {
+  margin-bottom: 0;
+}
+
+.t24-system .t24-command-page [role="tablist"],
+.t24-system .t24-record-page [role="tablist"],
+.t24-system .t24-settings-page [role="tablist"] {
+  height: auto;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  background: var(--t24-surface);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-command-page [role="tab"],
+.t24-system .t24-record-page [role="tab"],
+.t24-system .t24-settings-page [role="tab"] {
+  border-radius: var(--t24-radius-sm);
+}
+
+.t24-system .t24-command-page [role="tab"][data-state="active"],
+.t24-system .t24-record-page [role="tab"][data-state="active"],
+.t24-system .t24-settings-page [role="tab"][data-state="active"] {
+  background: var(--t24-primary);
+  color: white;
+  box-shadow: 0 8px 18px -13px rgb(37 99 235 / 0.8);
+}
+
+.t24-system .t24-settings-page > .app-page-title {
+  margin-bottom: 0;
+}
+
+.t24-system .t24-settings-page [role="tabpanel"] > div,
+.t24-system .t24-settings-page [role="tabpanel"] > [class*="rounded"] {
+  border-color: var(--t24-border);
+}
+
+.t24-system .t24-settings-page [role="tabpanel"] > [class*="rounded-xl"],
+.t24-system .t24-settings-page [role="tabpanel"] > [class*="border"] {
+  border-radius: var(--t24-radius-md);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-settings-page [class*="bg-slate-50"][class*="rounded"] {
+  border: 1px solid #e8edf4;
+  background: #f8fafc;
+}
+
+.t24-system .t24-sales-leads-page > .grid > div {
+  min-height: 96px;
+  background: var(--t24-surface);
+}
+
+.t24-system .management-decisions-page > div[class*="rounded"],
+.t24-system .partner-portal-page > div[class*="rounded"] {
+  border-color: var(--t24-border);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .partner-portal-page > .grid > div {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .app-loading,
+.t24-system .app-empty {
+  border: 1px dashed var(--t24-border-strong);
+  border-radius: var(--t24-radius-md);
+  background: var(--t24-surface);
+  color: var(--t24-ink-muted);
+}
+
+@media (min-width: 768px) {
+  .t24-system .t24-settings-page > [data-orientation="horizontal"] > [role="tablist"] {
+    position: sticky;
+    top: 72px;
+    z-index: 20;
+  }
+}
+
+@media (max-width: 767px) {
+  .t24-system .t24-record-page .app-page-title,
+  .t24-system .t24-command-page .app-page-title,
+  .t24-system .t24-work-page .app-page-title {
+    padding-bottom: 14px;
+  }
+
+  .t24-system .t24-command-page [role="tablist"],
+  .t24-system .t24-record-page [role="tablist"] {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+}
+
+/* Phase 2: shared directory surfaces */
+.t24-system .t24-directory-page {
+  width: min(100%, 1600px);
+}
+
+.t24-system .t24-directory-metrics > div {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  background: var(--t24-surface);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-directory-metrics > div > div {
+  min-height: 84px;
+  padding: 16px;
+  text-align: left;
+}
+
+.t24-system .t24-directory-metrics p:first-child {
+  color: var(--t24-ink-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.t24-system .t24-directory-metrics p:last-child {
+  margin-top: 6px;
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.t24-system .t24-directory-toolbar,
+.t24-system .t24-directory-results {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-directory-results {
+  overflow: hidden;
+}
+
+.t24-system .t24-directory-results thead {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.72rem;
+}
+
+.t24-system .t24-directory-results tbody tr:hover {
+  background: #f8fbff;
+}
+
+/* Merchant pool follows the workbench rhythm: context, metrics, filters, results. */
+.t24-system .merchant-pool-page {
+  max-width: 1600px;
+}
+
+.t24-system .merchant-hero {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-lg);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .merchant-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 2;
+  width: 4px;
+  background: linear-gradient(180deg, #2563eb, #60a5fa);
+}
+
+.t24-system .merchant-hero > div:first-child {
+  opacity: 0.45;
+}
+
+.t24-system .merchant-hero h2 {
+  font-size: clamp(1.55rem, 2.4vw, 1.9rem);
+  letter-spacing: -0.035em;
+}
+
+.t24-system .merchant-hero button {
+  background: var(--t24-primary);
+  box-shadow: 0 10px 22px -14px rgb(37 99 235 / 0.72);
+}
+
+.t24-system .merchant-kpi-grid {
+  gap: 10px;
+}
+
+.t24-system .merchant-kpi-card,
+.t24-system .merchant-filter-card,
+.t24-system .merchant-results-card {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .merchant-kpi-card > div {
+  min-height: 104px;
+}
+
+.t24-system .merchant-results-card thead {
+  background: #f8fafc;
+}
+
+.t24-system .merchant-results-card tbody tr:hover {
+  background: #f8fbff;
+}
+
+/* Knowledge workbench: scan left, select in the middle, use the answer on the right. */
+.t24-system .knowledge-v4-page {
+  width: min(100%, 1600px);
+}
+
+.t24-system .knowledge-v4-header {
+  margin-bottom: 0;
+}
+
+.t24-system .knowledge-v4-toolbar {
+  top: 72px;
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .knowledge-v4-workspace {
+  overflow: hidden;
+  border: 1px solid var(--t24-border);
+  border-radius: var(--t24-radius-lg);
+  background: var(--t24-surface);
+  box-shadow: var(--t24-shadow-raised);
+}
+
+.t24-system .knowledge-v4-categories,
+.t24-system .knowledge-v4-list,
+.t24-system .knowledge-v4-detail {
+  border-color: var(--t24-border);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.t24-system .knowledge-v4-categories {
+  background: #fbfcfe;
+}
+
+.t24-system .knowledge-v4-list-item.is-active {
+  border-color: #bfdbfe;
+  background: var(--t24-primary-soft);
+}
+
+.t24-system .knowledge-v4-short-answer {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+/* Tasks and service delivery share one operational page rhythm. */
+.t24-system .t24-work-page {
+  width: min(100%, 1600px);
+}
+
+.t24-system .t24-work-page > [class*="rounded-xl"][class*="border"],
+.t24-system .t24-work-page > [class*="rounded-2xl"][class*="border"] {
+  border-color: var(--t24-border);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-work-page [class*="bg-slate-900"] {
+  background: var(--t24-primary);
+}
+
+.t24-system .t24-work-page [class*="hover:bg-slate-50"]:hover {
+  background: #f8fbff;
+}
+
+.t24-system .t24-service-page > div.flex.gap-2.flex-wrap {
+  padding: 6px;
+  border: 1px solid var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  background: var(--t24-surface);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-service-page > div.grid.md\:grid-cols-2 {
+  gap: 14px;
+}
+
+/* Finance is a command page: headline numbers first, detailed ledgers second. */
+.t24-system .t24-command-page {
+  width: min(100%, 1600px);
+}
+
+.t24-system .t24-finance-page .app-page-title {
+  margin-bottom: 0;
+  border: 1px solid var(--t24-border);
+  border-radius: var(--t24-radius-lg);
+  background: var(--t24-surface);
+  padding: 20px;
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-finance-snapshot > div:last-child > div {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  box-shadow: var(--t24-shadow-card);
+}
+
+.t24-system .t24-finance-page [role="tablist"] {
+  border-color: var(--t24-border);
+  border-radius: var(--t24-radius-md);
+  background: var(--t24-surface);
+  box-shadow: var(--t24-shadow-card);
+}
+
+@media (min-width: 1280px) {
+  .t24-system .knowledge-v4-workspace {
+    grid-template-columns: 13rem 22.5rem minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .t24-system .t24-directory-metrics > div > div {
+    min-height: 76px;
+    padding: 13px;
+  }
+
+  .t24-system .merchant-hero {
+    padding: 18px 16px;
+  }
+
+  .t24-system .knowledge-v4-toolbar {
+    top: 0;
+  }
+
+  .t24-system .t24-finance-page .app-page-title {
+    padding: 16px;
+  }
+
+}

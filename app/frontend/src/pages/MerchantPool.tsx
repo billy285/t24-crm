@@ -424,7 +424,7 @@ export default function MerchantPool() {
 
   return (
     <div className="merchant-pool-page app-page space-y-5">
-      <section className="merchant-hero relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-white px-5 py-5 shadow-[0_20px_55px_-38px_rgba(15,23,42,0.45)] sm:px-7 sm:py-7">
+      <section className="merchant-hero t24-workbench-header relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-white px-5 py-5 shadow-[0_20px_55px_-38px_rgba(15,23,42,0.45)] sm:px-7 sm:py-7">
         <div className="pointer-events-none absolute -right-20 -top-28 h-64 w-64 rounded-full bg-blue-100/70 blur-3xl" />
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>

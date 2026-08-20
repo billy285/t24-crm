@@ -299,7 +299,7 @@ export default function OperationsWorkbench() {
   } as const;
 
   return (
-    <div className="app-page space-y-5">
+    <div className="t24-work-page app-page space-y-5">
       <div className="app-page-title">
         <div>
           <p className="app-page-kicker">T24 Marketing · Operations Today</p>

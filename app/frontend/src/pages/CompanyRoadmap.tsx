@@ -851,8 +851,8 @@ export default function CompanyRoadmap() {
     ?? 0;
 
   return (
-    <div className="app-page space-y-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="t24-command-page app-page space-y-5">
+      <div className="app-page-title flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Company Roadmap</p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">公司战略与里程碑</h1>

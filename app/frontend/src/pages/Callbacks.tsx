@@ -539,13 +539,13 @@ export default function Callbacks() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="t24-work-page app-page space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
+      <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+        <div><p className="app-page-kicker">T24 Marketing · Customer Care</p><h2 className="app-page-heading flex items-center gap-2">
           <PhoneCall className="w-5 h-5 text-blue-600" />
           电话回访
-        </h2>
+        </h2><p className="app-page-description">集中处理今日、逾期和后续回访，完成后记录真实结果。</p></div>
         <div className="flex w-full gap-2 sm:w-auto">
           <div className="hidden sm:block">
             <ExportButton

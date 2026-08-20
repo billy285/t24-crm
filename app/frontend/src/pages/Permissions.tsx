@@ -152,12 +152,13 @@ export default function Permissions() {
 
   return (
     <>
-      <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
+      <div className="t24-settings-page app-page space-y-5">
+      <div className="app-page-title">
+        <p className="app-page-kicker">T24 Marketing · Access Control</p>
+        <h2 className="app-page-heading flex items-center gap-2">
           <ShieldCheck className="w-5 h-5" /> 权限设置
         </h2>
-        <p className="text-sm text-slate-500 mt-1">配置不同角色的页面、按钮、数据和敏感信息权限</p>
+        <p className="app-page-description">配置不同角色的页面、按钮、数据和敏感信息权限。</p>
       </div>
 
       {/* Role selector */}

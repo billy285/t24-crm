@@ -200,7 +200,7 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div className="app-shell mobile-app-layout flex h-screen overflow-hidden">
+    <div className="t24-system app-shell mobile-app-layout flex h-screen overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 hidden bg-black/50 md:block lg:hidden" onClick={() => setSidebarOpen(false)} />

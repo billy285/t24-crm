@@ -208,8 +208,8 @@ export default function Commissions() {
 
   if (loading && !data) return <div className="app-page"><div className="app-loading">正在读取渠道与分润台账...</div></div>;
 
-  return <div className="app-page space-y-5">
-    <div className="flex flex-wrap items-start justify-between gap-3">
+  return <div className="t24-command-page app-page space-y-5">
+    <div className="app-page-title flex flex-wrap items-start justify-between gap-3">
       <div><p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Channel Commission</p><h1 className="mt-1 text-2xl font-bold text-slate-900">渠道与分润中心</h1><p className="mt-1 text-sm text-slate-500">收入按实收总额记录；佣金独立计提、确认、应付和发放，避免财务重复入账。</p></div>
       {!isMobile && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setDialog('partner')}><UserPlus className="mr-1 h-4 w-4" />新增渠道</Button><Button variant="outline" onClick={() => setDialog('agreement')}><ShieldCheck className="mr-1 h-4 w-4" />新增协议版本</Button><Button variant="outline" onClick={() => setDialog('attribution')}><Users className="mr-1 h-4 w-4" />客户归属</Button><Button onClick={scan} disabled={working}><RefreshCw className={`mr-1 h-4 w-4 ${working ? 'animate-spin' : ''}`} />扫描实收与退款</Button></div>}
     </div>

@@ -101,8 +101,8 @@ export default function PartnerPortal() {
   if (!data) return null;
 
   return (
-    <div className="partner-portal-page space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="partner-portal-page t24-command-page app-page space-y-5">
+      <div className="app-page-title flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Partner</p>
           <h2 className="mt-1 text-xl font-semibold text-slate-900">我的客户与分润</h2>

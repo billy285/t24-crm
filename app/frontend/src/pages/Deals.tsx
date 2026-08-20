@@ -1256,9 +1256,10 @@ export default function Deals() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <div className="t24-record-page t24-directory-page app-page space-y-5">
+      <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
+          <p className="app-page-kicker">T24 Marketing · Deals</p>
           <h2 className="text-xl font-semibold text-slate-800">成交管理</h2>
           <p className="text-sm text-slate-500">共 {deals.length} 笔成交，总金额 ${totalAmount.toLocaleString()}</p>
         </div>

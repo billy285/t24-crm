@@ -391,7 +391,7 @@ export default function Employees() {
   if (selectedEmp) {
     const e = selectedEmp;
     return (
-      <div className="space-y-4">
+      <div className="t24-detail-page app-page space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           <Button variant="ghost" size="sm" onClick={() => setSelectedEmp(null)}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
           <h2 className="text-lg font-semibold">{e.name}</h2>
@@ -521,9 +521,13 @@ export default function Employees() {
 
   // ========== LIST VIEW ==========
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-slate-800">员工管理</h2>
+    <div className="t24-directory-page t24-employee-directory app-page space-y-5">
+      <div className="app-page-title flex items-start justify-between">
+        <div>
+          <p className="app-page-kicker">T24 Marketing · Team</p>
+          <h2 className="app-page-heading">员工管理</h2>
+          <p className="app-page-description">统一查看员工身份、岗位、部门与工作状态，敏感账号操作集中在桌面端完成。</p>
+        </div>
         {!isMobile && canCreate && <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 添加员工</Button>}
       </div>
 
@@ -535,7 +539,7 @@ export default function Employees() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="t24-directory-metrics grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           { label: '总员工', value: loading || (loadError && employees.length === 0) ? '—' : employees.length, color: 'text-blue-600' },
           { label: '在职', value: loading || (loadError && employees.length === 0) ? '—' : employees.filter(e => e.status === 'active').length, color: 'text-green-600' },
@@ -548,7 +552,7 @@ export default function Employees() {
         ))}
       </div>
 
-      <Card className="border-slate-200"><CardContent className="p-3">
+      <Card className="t24-directory-toolbar border-slate-200"><CardContent className="p-3">
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索姓名、电话、邮箱、用户名..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
           <NativeSelect value={filterStatus} onChange={setFilterStatus} className="w-full sm:w-[120px]" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(empStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
@@ -577,7 +581,7 @@ export default function Employees() {
         </div>
       )}
 
-      <Card className="border-slate-200"><CardContent className="p-0">
+      <Card className="t24-directory-results border-slate-200"><CardContent className="p-0">
         {loading ? <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
         : loadError && employees.length === 0 ? <div className="py-12 text-center"><p className="text-sm font-medium text-slate-600">员工资料尚未加载</p><p className="mt-1 text-xs text-slate-400">请使用上方“重试”，当前不显示为零员工。</p></div>
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无员工</p>

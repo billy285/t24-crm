@@ -164,9 +164,9 @@ export default function MonthlyDeduction() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">月度扣点比例</h1>
+    <div className="t24-settings-page app-page space-y-5">
+      <div className="app-page-title flex items-center justify-between">
+        <div><p className="app-page-kicker">T24 Marketing · Finance Settings</p><h1 className="app-page-heading">月度扣点比例</h1><p className="app-page-description">统一管理每月平台扣点比例，修改后影响对应月份财务口径。</p></div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={load} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />

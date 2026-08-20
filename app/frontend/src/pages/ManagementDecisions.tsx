@@ -775,7 +775,7 @@ export default function ManagementDecisions() {
   const currentMonth = today.slice(0, 7);
 
   return (
-    <div className="management-decisions-page app-page space-y-5">
+    <div className="management-decisions-page t24-command-page app-page space-y-5">
       <div className="app-page-title gap-4">
         <div>
           <p className="app-page-kicker">{isFinancialInsights ? 'T24 Marketing · Operating Decisions' : 'T24 Marketing · Management Decisions'}</p>

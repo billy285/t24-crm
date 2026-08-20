@@ -141,7 +141,7 @@ export default function SalesWorkbench() {
   const [automationBusy, setAutomationBusy] = useState(false);
   const [assigneesLoaded, setAssigneesLoaded] = useState(false);
   const [assigneeLoadError, setAssigneeLoadError] = useState<string | null>(null);
-  const [knowledgeExpanded, setKnowledgeExpanded] = useState(true);
+  const [knowledgeExpanded, setKnowledgeExpanded] = useState(() => typeof window === 'undefined' || window.innerWidth >= 1536);
   const workbenchRequestRef = useRef(0);
 
   const salesIdParam = canManage ? selectedSalesId : '';

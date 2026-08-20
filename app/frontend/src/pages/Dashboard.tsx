@@ -664,8 +664,8 @@ export default function Dashboard() {
     ];
 
     return (
-      <section className="space-y-4">
-        <Card className="overflow-hidden border border-slate-800 bg-[#0f1b34] text-white shadow-[0_16px_42px_-30px_rgba(15,23,42,0.9)]">
+      <section className="t24-owner-layout space-y-4">
+        <Card className="t24-command-hero overflow-hidden border border-slate-800 bg-[#0f1b34] text-white shadow-[0_16px_42px_-30px_rgba(15,23,42,0.9)]">
           <CardContent className="p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
@@ -681,7 +681,7 @@ export default function Dashboard() {
             <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
               {topMetrics.map(item => {
                 const Icon = item.icon;
-                return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="rounded-xl border border-white/10 bg-white/[0.055] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.09]"><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="text-xs text-slate-300">{item.label}</p><p className="mt-1 text-2xl font-semibold tracking-[-0.02em]">{item.value}</p><p className="mt-1 text-[11px] leading-5 text-slate-400">{item.helper}</p></button>;
+                return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="t24-command-metric rounded-xl border border-white/10 bg-white/[0.055] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.09]"><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="text-xs text-slate-300">{item.label}</p><p className="mt-1 text-2xl font-semibold tracking-[-0.02em]">{item.value}</p><p className="mt-1 text-[11px] leading-5 text-slate-400">{item.helper}</p></button>;
               })}
             </div>
             <div className="mt-4 grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -969,7 +969,7 @@ export default function Dashboard() {
   const upcomingTasks = (data.tasks || []).filter((t: any) => t.status !== 'completed').slice(0, 5);
 
   return (
-    <div className="space-y-6">
+    <div className="t24-command-center app-page space-y-6">
       {renderOwnerCommandCenter()}
       {renderReminders()}
       <Collapsible open={showMoreOwnerDetails} onOpenChange={setShowMoreOwnerDetails} className="space-y-6">

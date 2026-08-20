@@ -316,7 +316,7 @@ export default function Payroll() {
   if (loading && !data) return <div className="app-page"><div className="app-loading">正在读取工资表...</div></div>;
 
   return <>
-    <div className="app-page space-y-5">
+    <div className="t24-command-page app-page space-y-5">
     <div className="app-page-title flex-col items-start sm:flex-row sm:items-center">
       <div>
         <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Payroll</p>

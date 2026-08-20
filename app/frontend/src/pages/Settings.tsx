@@ -416,8 +416,8 @@ export default function Settings() {
 
   return (
     <>
-      <div className="hidden space-y-4 md:block">
-      <div><h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2"><SettingsIcon className="w-5 h-5" /> 系统设置</h2><p className="text-sm text-slate-500 mt-1">配置系统参数、业务规则和权限</p></div>
+      <div className="t24-settings-page app-page hidden space-y-5 md:block">
+      <div className="app-page-title"><p className="app-page-kicker">T24 Marketing · System</p><h2 className="app-page-heading flex items-center gap-2"><SettingsIcon className="h-5 w-5 text-blue-600" />系统设置</h2><p className="app-page-description">配置公司资料、业务规则、产品套餐、提醒、安全与导出规则。</p></div>
 
       <Tabs defaultValue="company" className="w-full">
         <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">

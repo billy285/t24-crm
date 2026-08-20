@@ -583,8 +583,8 @@ export default function SalesLeads() {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="t24-directory-page t24-sales-leads-page app-page space-y-5">
+      <div className="app-page-title flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2 text-sm font-medium text-blue-600">
             <Headphones className="h-4 w-4" /> 独立售前数据区

@@ -3793,7 +3793,7 @@ export default function Finance() {
   }
 
   return (
-    <div className="app-page space-y-5">
+    <div className="t24-command-page t24-finance-page app-page space-y-5">
       {/* Header */}
       <div className="app-page-title flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-start gap-3">
@@ -3860,7 +3860,7 @@ export default function Finance() {
       <DateFilterBar />
 
       {/* First-screen business snapshot */}
-      <section aria-labelledby="finance-snapshot-title" className="space-y-3">
+      <section aria-labelledby="finance-snapshot-title" className="t24-finance-snapshot space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <h3 id="finance-snapshot-title" className="text-sm font-semibold text-slate-900">经营快照</h3>

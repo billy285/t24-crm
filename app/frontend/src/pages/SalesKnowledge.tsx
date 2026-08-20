@@ -211,8 +211,8 @@ export default function SalesKnowledge() {
   );
 
   return (
-    <div className="knowledge-v4-page">
-      <header className="knowledge-v4-header">
+    <div className="knowledge-v4-page app-page">
+      <header className="knowledge-v4-header app-page-title">
         <div>
           <p className="app-page-kicker"><BookOpen className="h-4 w-4" /> Sales Enablement</p>
           <h2 className="app-page-heading">销售知识库</h2>

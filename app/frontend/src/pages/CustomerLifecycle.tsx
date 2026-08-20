@@ -392,7 +392,7 @@ export default function CustomerLifecycle() {
   );
 
   return (
-    <div className="app-page space-y-5">
+    <div className="t24-record-page t24-directory-page app-page space-y-5">
       <div className="app-page-title gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Customer Lifecycle</p>

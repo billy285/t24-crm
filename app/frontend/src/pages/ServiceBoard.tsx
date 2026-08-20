@@ -2450,7 +2450,7 @@ export default function ServiceBoard() {
   }
 
   return (
-    <div className="app-page space-y-5">
+    <div className="t24-work-page t24-service-page app-page space-y-5">
       {/* Header */}
       <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
         <div>

@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import './index.css';
+import './styles/t24-design-system.css';
 import { loadRuntimeConfig } from './lib/config.ts';
 import { initializePwaInstallCapture, installViteChunkRecovery, registerOnlineFirstServiceWorker } from './lib/pwa-install.ts';
 
