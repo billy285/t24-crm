@@ -870,8 +870,8 @@ export default function Tasks() {
                             <ExternalLink className="mr-1 h-3.5 w-3.5" />打开客户
                           </Button>
                         )}
-                        {canEditTask && <Button aria-label="编辑任务" title="编辑任务" size="sm" variant="ghost" className="min-h-11 w-full p-0 text-slate-500 hover:text-blue-600 md:h-8 md:min-h-0 md:w-8" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /><span className="md:sr-only">编辑</span></Button>}
-                        {canDeleteTask && !t.automation_issue_id && <Button aria-label="删除任务" title="删除任务" size="sm" variant="ghost" className="min-h-11 w-full p-0 text-slate-500 hover:text-red-600 md:h-8 md:min-h-0 md:w-8" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /><span className="md:sr-only">删除</span></Button>}
+                        {canEditTask && <Button aria-label="编辑任务" title="编辑任务" size="sm" variant="ghost" className="min-h-11 w-full p-0 text-slate-500 hover:text-blue-600 md:h-8 md:min-h-0 md:w-8" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /><span className="md:hidden">编辑</span></Button>}
+                        {canDeleteTask && !t.automation_issue_id && <Button aria-label="删除任务" title="删除任务" size="sm" variant="ghost" className="min-h-11 w-full p-0 text-slate-500 hover:text-red-600 md:h-8 md:min-h-0 md:w-8" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /><span className="md:hidden">删除</span></Button>}
                       </div>
                     </div>
                   </div>

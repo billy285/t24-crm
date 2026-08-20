@@ -20,6 +20,7 @@ from services.aihub import AIHubService
 from services.customer_menu_items import Customer_menu_itemsService
 from services.customer_materials import Customer_materialsService
 from services.customers import CustomersService
+from services.customer_scope import ensure_customer_access as ensure_scoped_customer_access
 from services.operation_logs import Operation_logsService
 from services.role_permissions import normalized_role, require_any_page_permission, require_button_permission
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -225,11 +226,8 @@ def _parse_query(query: Optional[str]) -> Optional[dict]:
         raise HTTPException(status_code=400, detail="Invalid query JSON format")
 
 
-async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession):
-    customer = await CustomersService(db).get_by_id(customer_id, scope_user=current_user)
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    return customer
+async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession, *, write: bool = False):
+    return await ensure_scoped_customer_access(db, current_user, customer_id, write=write)
 
 
 async def _resolve_linked_item(
@@ -626,7 +624,7 @@ async def create_customer_material(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_material_write(current_user, db, "task_create")
-    await _ensure_customer_access(data.customer_id, current_user, db)
+    await _ensure_customer_access(data.customer_id, current_user, db, write=True)
     payload = data.model_dump()
     now = datetime.utcnow()
     payload["title"] = payload["title"].strip()
@@ -669,7 +667,7 @@ async def upload_customer_material(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_material_write(current_user, db, "task_create")
-    await _ensure_customer_access(customer_id, current_user, db)
+    await _ensure_customer_access(customer_id, current_user, db, write=True)
     resolved_linked_item_id, linked_item_snapshot = await _resolve_linked_item(
         db,
         customer_id=customer_id,
@@ -749,7 +747,7 @@ async def update_customer_material(
     obj = await service.get_by_id(material_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Material not found")
-    await _ensure_customer_access(obj.customer_id, current_user, db)
+    await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
 
     payload = data.model_dump(exclude_unset=True)
     if "linked_item_id" in payload:
@@ -784,7 +782,7 @@ async def delete_customer_material(
     obj = await service.get_by_id(material_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Material not found")
-    await _ensure_customer_access(obj.customer_id, current_user, db)
+    await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
 
     file_path = _material_path_from_record(obj.file_path)
     deleted = await service.delete(material_id)
@@ -836,7 +834,7 @@ async def duplicate_customer_material(
     obj = await service.get_by_id(material_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Material not found")
-    await _ensure_customer_access(obj.customer_id, current_user, db)
+    await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
 
     file_path = None
     next_file_path = None

@@ -18,6 +18,7 @@ from services.customer_ai_copies import Customer_ai_copiesService
 from services.customer_materials import Customer_materialsService
 from services.customer_menu_items import Customer_menu_itemsService
 from services.customers import CustomersService
+from services.customer_scope import ensure_customer_access as ensure_scoped_customer_access
 from services.service_progresses import Service_progressesService
 from services.service_tasks import Service_tasksService
 from services.role_permissions import normalized_role, require_any_page_permission, require_button_permission
@@ -181,11 +182,8 @@ def _parse_query(query: Optional[str]) -> Optional[Dict[str, Any]]:
         raise HTTPException(status_code=400, detail="Invalid query JSON format")
 
 
-async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession):
-    customer = await CustomersService(db).get_by_id(customer_id, scope_user=current_user)
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    return customer
+async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession, *, write: bool = False):
+    return await ensure_scoped_customer_access(db, current_user, customer_id, write=write)
 
 
 def _label(mapping: Dict[str, str], key: Optional[str]) -> str:
@@ -483,7 +481,7 @@ async def create_customer_ai_copy(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_copy_write(current_user, db, "task_create")
-    customer = await _ensure_customer_access(data.customer_id, current_user, db)
+    customer = await _ensure_customer_access(data.customer_id, current_user, db, write=True)
     payload = data.model_dump()
     now = datetime.utcnow()
     payload["customer_name"] = payload.get("customer_name") or getattr(customer, "business_name", None)
@@ -505,7 +503,7 @@ async def update_customer_ai_copy(
     obj = await service.get_by_id(copy_id)
     if not obj:
         raise HTTPException(status_code=404, detail="AI copy not found")
-    await _ensure_customer_access(obj.customer_id, current_user, db)
+    await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
     payload = data.model_dump(exclude_unset=True)
     payload["updated_at"] = payload.get("updated_at") or datetime.utcnow()
     updated = await service.update(copy_id, payload)
@@ -525,7 +523,7 @@ async def delete_customer_ai_copy(
     obj = await service.get_by_id(copy_id)
     if not obj:
         raise HTTPException(status_code=404, detail="AI copy not found")
-    await _ensure_customer_access(obj.customer_id, current_user, db)
+    await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
     deleted = await service.delete(copy_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="AI copy not found")
@@ -538,7 +536,7 @@ async def generate_customer_ai_copy(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_copy_write(current_user, db, "task_create")
-    customer = await _ensure_customer_access(request.customer_id, current_user, db)
+    customer = await _ensure_customer_access(request.customer_id, current_user, db, write=True)
     variants, ai_used, warning, prompt, model = await _generate_variants(customer, request, db)
     service = Customer_ai_copiesService(db)
     now = datetime.utcnow()

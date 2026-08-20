@@ -19,8 +19,41 @@ class CustomersService:
         self.db = db
 
     @staticmethod
-    def _scope_filter_for_user(scope_user: Optional[Any] = None):
-        """Return a customer ownership filter for non-all-data roles."""
+    def _owner_filters_for_user(scope_user: Any, employee_id: int, role: str):
+        owner_filters = []
+        if role not in {"sales", "sales_manager"}:
+            return owner_filters
+        owner_filters.append(Customers.sales_employee_id == employee_id)
+        employee_name = str(getattr(scope_user, "name", "") or "").strip()
+        if employee_name:
+            owner_filters.append(and_(
+                Customers.sales_employee_id.is_(None),
+                Customers.sales_person == employee_name,
+            ))
+        if role == "sales_manager":
+            manager_department = (
+                select(Employees.department)
+                .where(Employees.id == employee_id)
+                .scalar_subquery()
+            )
+            eligible_department_members = (
+                Employees.department.is_not(None),
+                Employees.department == manager_department,
+                Employees.status.in_(("active", "probation")),
+                Employees.role.in_(("sales", "sales_manager")),
+            )
+            owner_filters.append(Customers.sales_employee_id.in_(
+                select(Employees.id).where(*eligible_department_members)
+            ))
+            owner_filters.append(and_(
+                Customers.sales_employee_id.is_(None),
+                Customers.sales_person.in_(select(Employees.name).where(*eligible_department_members)),
+            ))
+        return owner_filters
+
+    @classmethod
+    def _scope_filter_for_user(cls, scope_user: Optional[Any] = None, *, write: bool = False):
+        """Return a customer visibility or write filter for non-all-data roles."""
         if not scope_user:
             return None
 
@@ -33,50 +66,12 @@ class CustomersService:
             employee_id = int(raw_user_id)
             granted = Customers.id.in_(
                 select(CustomerAccessGrant.customer_id).where(
-                    CustomerAccessGrant.employee_id == employee_id
+                    CustomerAccessGrant.employee_id == employee_id,
+                    *([CustomerAccessGrant.access_level == "read_write"] if write else []),
                 )
             )
-            if role in {"sales", "sales_manager"}:
-                owner_filters = [Customers.sales_employee_id == employee_id]
-                employee_name = str(getattr(scope_user, "name", "") or "").strip()
-                if employee_name:
-                    # ``sales_person`` is a legacy, non-unique display name. It
-                    # may only be used when the durable owner id has never been
-                    # assigned; a populated id always wins over a same-name
-                    # employee and prevents cross-sales visibility.
-                    owner_filters.append(and_(
-                        Customers.sales_employee_id.is_(None),
-                        Customers.sales_person == employee_name,
-                    ))
-                if role == "sales_manager":
-                    manager_department = (
-                        select(Employees.department)
-                        .where(Employees.id == employee_id)
-                        .scalar_subquery()
-                    )
-                    eligible_department_members = (
-                        Employees.department.is_not(None),
-                        Employees.department == manager_department,
-                        Employees.status.in_(("active", "probation")),
-                        Employees.role.in_(("sales", "sales_manager")),
-                    )
-                    department_employee_ids = select(Employees.id).where(
-                        *eligible_department_members
-                    )
-                    owner_filters.append(
-                        Customers.sales_employee_id.in_(department_employee_ids)
-                    )
-                    # Legacy name-only ownership follows the same department
-                    # boundary, but only where no durable owner id exists.
-                    department_employee_names = select(Employees.name).where(
-                        *eligible_department_members
-                    )
-                    owner_filters.append(and_(
-                        Customers.sales_employee_id.is_(None),
-                        Customers.sales_person.in_(department_employee_names),
-                    ))
-                return or_(granted, *owner_filters)
-            return granted
+            owner_filters = cls._owner_filters_for_user(scope_user, employee_id, role)
+            return or_(granted, *owner_filters) if owner_filters else granted
         except (TypeError, ValueError):
             return false()
 
@@ -100,11 +95,11 @@ class CustomersService:
             logger.error(f"Error creating customers: {str(e)}")
             raise
 
-    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None) -> Optional[Customers]:
+    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None, *, write: bool = False) -> Optional[Customers]:
         """Get customers by ID"""
         try:
             query = select(Customers).where(Customers.id == obj_id)
-            scope_filter = self._scope_filter(scope_user)
+            scope_filter = self._scope_filter_for_user(scope_user, write=write)
             if scope_filter is not None:
                 query = query.where(scope_filter)
             result = await self.db.execute(query)
@@ -168,7 +163,7 @@ class CustomersService:
     ) -> Optional[Customers]:
         """Update customers"""
         try:
-            obj = await self.get_by_id(obj_id, scope_user=scope_user)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user, write=True)
             if not obj:
                 logger.warning(f"Customers {obj_id} not found for update")
                 return None
@@ -197,7 +192,7 @@ class CustomersService:
     ) -> bool:
         """Delete customers"""
         try:
-            obj = await self.get_by_id(obj_id, scope_user=scope_user)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user, write=True)
             if not obj:
                 logger.warning(f"Customers {obj_id} not found for deletion")
                 return False

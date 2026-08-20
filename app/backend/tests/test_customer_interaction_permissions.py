@@ -59,8 +59,10 @@ async def interaction_api():
             Customers(id=106, business_name="Manager Department", contact_name="Owner", phone="106", sales_employee_id=14, sales_person="East Report"),
             Customers(id=107, business_name="Manager Other Department", contact_name="Owner", phone="107", sales_employee_id=15, sales_person="West Report"),
             Customers(id=108, business_name="Manager Inactive Department", contact_name="Owner", phone="108", sales_employee_id=16, sales_person="Inactive East"),
+            Customers(id=109, business_name="Read-only Operations", contact_name="Owner", phone="109"),
             CustomerAccessGrant(customer_id=102, employee_id=11, granted_by_name="Admin"),
             CustomerAccessGrant(customer_id=104, employee_id=21, granted_by_name="Admin"),
+            CustomerAccessGrant(customer_id=109, employee_id=21, access_level="read_only", granted_by_name="Admin"),
             Customer_callbacks(id=201, customer_id=101, employee_id=11, employee_name="Sales One", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="owned"),
             Customer_callbacks(id=202, customer_id=102, employee_id=11, employee_name="Sales One", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="granted"),
             Customer_callbacks(id=203, customer_id=103, employee_id=1, employee_name="Admin", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="hidden"),
@@ -69,6 +71,7 @@ async def interaction_api():
             Customer_callbacks(id=206, customer_id=106, employee_id=14, employee_name="East Report", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="manager department"),
             Customer_callbacks(id=207, customer_id=107, employee_id=15, employee_name="West Report", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="manager other department"),
             Customer_callbacks(id=208, customer_id=108, employee_id=16, employee_name="Inactive East", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="manager inactive department"),
+            Customer_callbacks(id=209, customer_id=109, employee_id=21, employee_name="Ops One", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="read only"),
             Follow_ups(id=301, customer_id=104, employee_id=21, employee_name="Ops One", content="ops follow"),
             Follow_ups(id=302, customer_id=101, employee_id=11, employee_name="Sales One", content="sales follow"),
             Customer_contacts(id=401, customer_id=104, contact_name="Ops Contact"),
@@ -161,8 +164,36 @@ async def test_callback_list_all_and_id_are_server_scoped(interaction_api):
     assert {row["id"] for row in manager_list.json()["items"]} == {206}
     assert manager_cross_department.status_code == 404
     assert manager_inactive_department.status_code == 404
-    assert {row["id"] for row in ops_list.json()["items"]} == {204}
-    assert {row["id"] for row in admin_list.json()["items"]} == {201, 202, 203, 204, 205, 206, 207, 208}
+    assert {row["id"] for row in ops_list.json()["items"]} == {204, 209}
+    assert {row["id"] for row in admin_list.json()["items"]} == {201, 202, 203, 204, 205, 206, 207, 208, 209}
+
+
+@pytest.mark.asyncio
+async def test_read_only_team_member_can_view_callback_but_cannot_mutate_it(interaction_api):
+    client, _ = interaction_api
+    ops = _headers("ops", 21, "Ops One")
+    visible = await client.get("/api/v1/entities/customer_callbacks/209", headers=ops)
+    assert visible.status_code == 200
+
+    created = await client.post(
+        "/api/v1/entities/customer_callbacks",
+        json={
+            "customer_id": 109,
+            "employee_id": 21,
+            "employee_name": "Ops One",
+            "callback_date": "2026-08-20T00:00:00Z",
+            "status": "pending",
+            "content": "must not create",
+        },
+        headers=ops,
+    )
+    updated = await client.put(
+        "/api/v1/entities/customer_callbacks/209",
+        json={"content": "must not update"},
+        headers=ops,
+    )
+    assert created.status_code == 403
+    assert updated.status_code == 403
 
 
 @pytest.mark.asyncio

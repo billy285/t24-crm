@@ -219,7 +219,7 @@ async def _validate_task_linkage(
     customer_id: int,
     service_progress_id: Optional[int],
 ):
-    customer = await ensure_customer_access(db, current_user, customer_id)
+    customer = await ensure_customer_access(db, current_user, customer_id, write=True)
     if service_progress_id is None:
         return customer, None
 

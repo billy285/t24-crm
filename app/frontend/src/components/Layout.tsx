@@ -20,7 +20,8 @@ import {
   appNavigationSections,
   getRoleTodayPath,
 } from '@/lib/app-navigation';
-import MobileAppHome, { T24AppMark } from '@/components/MobileAppHome';
+import { T24AppMark } from '@/components/MobileAppHome';
+import MobileAppLauncher from '@/components/MobileAppLauncher';
 import MobileBottomNav from '@/components/MobileBottomNav';
 import MobileModuleMenu from '@/components/MobileModuleMenu';
 import { getSafeInternalPath } from '@/lib/navigation-state';
@@ -206,7 +207,7 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
       {/* Sidebar */}
-      <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 hidden w-[248px] transform flex-col text-white transition-[width,transform] duration-200 md:flex ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-[248px]'}`}>
+      {!isAppLauncher && <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 hidden w-[248px] transform flex-col text-white transition-[width,transform] duration-200 md:flex ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-[248px]'}`}>
         <div className={`border-b border-white/10 px-4 py-5 ${sidebarCollapsed ? 'lg:px-3' : ''}`}>
           <div className="flex items-center justify-between">
             <Link to={homePath} className={`flex min-w-0 items-center gap-3 ${sidebarCollapsed ? 'lg:w-full lg:justify-center' : ''}`} onClick={() => setSidebarOpen(false)}>
@@ -319,7 +320,7 @@ export default function Layout({ children }: LayoutProps) {
             <span className={sidebarCollapsed ? 'lg:hidden' : ''}>退出登录</span>
           </button>
         </div>
-      </aside>
+      </aside>}
 
       {/* Main content */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -330,7 +331,7 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         )}
         {/* Top bar */}
-        <header className={`app-topbar sticky top-0 z-30 min-h-16 items-center justify-between px-3 py-2.5 md:px-4 md:py-3 lg:px-6 ${isAppLauncher ? 'hidden md:flex' : 'flex'}`}>
+        <header className={`app-topbar sticky top-0 z-30 min-h-16 items-center justify-between px-3 py-2.5 md:px-4 md:py-3 lg:px-6 ${isAppLauncher ? 'hidden' : 'flex'}`}>
           <div className="flex min-w-0 flex-1 items-center gap-3 md:hidden">
             <button
               type="button"
@@ -416,7 +417,7 @@ export default function Layout({ children }: LayoutProps) {
         <main className={`app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isAppLauncher ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>
           {hasPageAccess ? (
             isAppLauncher
-              ? <MobileAppHome onOpenProfile={() => setMobileProfileOpen(true)} />
+              ? <MobileAppLauncher key={`${employee?.id || 'unknown'}:${role}`} onOpenProfile={() => setMobileProfileOpen(true)} />
               : children
           ) : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -433,7 +434,7 @@ export default function Layout({ children }: LayoutProps) {
       </div>
 
       <Dialog open={mobileProfileOpen} onOpenChange={setMobileProfileOpen}>
-        <DialogContent className="bottom-0 top-auto w-full max-w-lg translate-y-0 rounded-b-none rounded-t-[28px] border-x-0 border-b-0 px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-6 md:hidden">
+        <DialogContent className={`bottom-0 top-auto w-full max-w-lg translate-y-0 rounded-b-none rounded-t-[28px] border-x-0 border-b-0 px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-6 ${isAppLauncher ? 'md:bottom-auto md:top-1/2 md:-translate-y-1/2 md:rounded-[28px] md:border' : 'md:hidden'}`}>
           <DialogHeader className="text-left">
             <DialogTitle>我的账户</DialogTitle>
           </DialogHeader>

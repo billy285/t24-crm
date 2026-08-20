@@ -369,7 +369,7 @@ async def create_media_accounts(
 ):
     """Create a new media_accounts"""
     await require_media_account_permission(current_user, db, "media_account_create")
-    await ensure_customer_access(db, current_user, data.customer_id)
+    await ensure_customer_access(db, current_user, data.customer_id, write=True)
     logger.debug(
         "Creating media account customer_id=%s platform=%s account=%s",
         data.customer_id,
@@ -402,7 +402,7 @@ async def create_media_accountss_batch(
     """Create multiple media_accountss in a single request"""
     await require_media_account_permission(current_user, db, "media_account_create")
     for item_data in request.items:
-        await ensure_customer_access(db, current_user, item_data.customer_id)
+        await ensure_customer_access(db, current_user, item_data.customer_id, write=True)
     logger.debug(f"Batch creating {len(request.items)} media_accountss")
     
     service = Media_accountsService(db)
@@ -442,7 +442,7 @@ async def update_media_accountss_batch(
         if not existing:
             raise HTTPException(status_code=404, detail="Media_accounts not found")
         if item.updates.customer_id is not None:
-            await ensure_customer_access(db, current_user, item.updates.customer_id)
+            await ensure_customer_access(db, current_user, item.updates.customer_id, write=True)
     
     try:
         for item in request.items:
@@ -470,7 +470,7 @@ async def update_media_accounts(
     """Update an existing media_accounts (requires ownership)"""
     await require_media_account_permission(current_user, db, "media_account_edit")
     if data.customer_id is not None:
-        await ensure_customer_access(db, current_user, data.customer_id)
+        await ensure_customer_access(db, current_user, data.customer_id, write=True)
     logger.debug(
         "Updating media account id=%s fields=%s",
         id,

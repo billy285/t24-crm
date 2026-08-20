@@ -21,15 +21,16 @@ type CustomerComboboxProps = {
   clearLabel?: string;
 };
 
-const customerLabel = (customer: CustomerLike) => {
-  const code = String(customer.customer_code || '').trim() || `#${customer.id}`;
-  const business = String(customer.business_name || '').trim() || `客户 #${customer.id}`;
-  const details = [customer.contact_name, customer.phone, customer.city]
+const customerLabel = (customer: CustomerLike) => (
+  String(customer.business_name || '').trim() || `客户 #${customer.id}`
+);
+
+const customerSearchValue = (customer: CustomerLike) => (
+  [customer.customer_code, customer.business_name, customer.contact_name, customer.phone, customer.city, customer.id]
     .map(value => String(value || '').trim())
     .filter(Boolean)
-    .join(' · ');
-  return `${code} · ${business}${details ? ` · ${details}` : ''}`;
-};
+    .join(' · ')
+);
 
 export default function CustomerCombobox({
   customers,
@@ -44,6 +45,7 @@ export default function CustomerCombobox({
     const items = customers.map(customer => ({
       value: String(customer.id),
       label: customerLabel(customer),
+      searchValue: customerSearchValue(customer),
     }));
     return allowClear ? [{ value: '', label: clearLabel }, ...items] : items;
   }, [allowClear, clearLabel, customers]);
@@ -54,7 +56,7 @@ export default function CustomerCombobox({
       value={value}
       onValueChange={onValueChange}
       placeholder={placeholder}
-      searchPlaceholder="输入客户编号、名称、联系人、电话或城市…"
+      searchPlaceholder="搜索商家名称或编号"
       emptyText="没有找到匹配客户"
       disabled={disabled}
       className="h-10 justify-between overflow-hidden text-left font-normal [&>span]:truncate"

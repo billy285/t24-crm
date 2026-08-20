@@ -23,11 +23,13 @@ def apply_customer_scope(
     return statement.join(Customers, entity_model.customer_id == Customers.id).where(scope_filter)
 
 
-async def ensure_customer_access(db: AsyncSession, scope_user: Any, customer_id: int) -> Customers:
+async def ensure_customer_access(db: AsyncSession, scope_user: Any, customer_id: int, *, write: bool = False) -> Customers:
     """Return the visible customer or fail without revealing whether it exists."""
     customer = await CustomersService(db).get_by_id(int(customer_id), scope_user=scope_user)
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
+    if write and not await CustomersService(db).get_by_id(int(customer_id), scope_user=scope_user, write=True):
+        raise HTTPException(status_code=403, detail="你对该客户只有只读权限，不能新增、修改或删除资料")
     return customer
 
 
@@ -49,7 +51,13 @@ def apply_callback_customer_scope(statement: Select, entity_model: Type[Any], sc
     return statement.join(Customers, entity_model.customer_id == Customers.id).where(scope_filter)
 
 
-async def ensure_callback_customer_access(db: AsyncSession, scope_user: Any, customer_id: int) -> Customers:
+async def ensure_callback_customer_access(
+    db: AsyncSession,
+    scope_user: Any,
+    customer_id: int,
+    *,
+    write: bool = False,
+) -> Customers:
     statement = select(Customers).where(Customers.id == int(customer_id))
     scope_filter = callback_customer_scope_filter(scope_user)
     if scope_filter is not None:
@@ -57,4 +65,6 @@ async def ensure_callback_customer_access(db: AsyncSession, scope_user: Any, cus
     customer = (await db.execute(statement)).scalar_one_or_none()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
+    if write and not await CustomersService(db).get_by_id(int(customer_id), scope_user=scope_user, write=True):
+        raise HTTPException(status_code=403, detail="你对该客户只有只读权限，不能新增、修改或删除资料")
     return customer

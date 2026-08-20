@@ -305,7 +305,7 @@ async def create_customer_callback(
     service = Customer_callbacksService(db)
     try:
         await _require_callback_mutation(db, current_user, "follow_up_create")
-        await ensure_callback_customer_access(db, current_user, data.customer_id)
+        await ensure_callback_customer_access(db, current_user, data.customer_id, write=True)
         result = await service.create(_apply_completion_audit(data.model_dump(), current_user, creating=True))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create customer_callback")
@@ -337,7 +337,7 @@ async def create_customer_callbacks_batch(
     try:
         await _require_callback_mutation(db, current_user, "follow_up_create")
         for item_data in request.items:
-            await ensure_callback_customer_access(db, current_user, item_data.customer_id)
+            await ensure_callback_customer_access(db, current_user, item_data.customer_id, write=True)
         for item_data in request.items:
             result = await service.create(_apply_completion_audit(item_data.model_dump(), current_user, creating=True))
             if result:
@@ -368,9 +368,10 @@ async def update_customer_callbacks_batch(
     try:
         await _require_callback_mutation(db, current_user, "follow_up_edit")
         for item in request.items:
-            await _get_scoped_callback(service, item.id, current_user)
+            callback = await _get_scoped_callback(service, item.id, current_user)
+            await ensure_callback_customer_access(db, current_user, callback.customer_id, write=True)
             if item.updates.customer_id is not None:
-                await ensure_callback_customer_access(db, current_user, item.updates.customer_id)
+                await ensure_callback_customer_access(db, current_user, item.updates.customer_id, write=True)
         for item in request.items:
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
             update_dict = _apply_completion_audit(update_dict, current_user)
@@ -401,10 +402,11 @@ async def update_customer_callback(
     service = Customer_callbacksService(db)
     try:
         await _require_callback_mutation(db, current_user, "follow_up_edit")
-        await _get_scoped_callback(service, id, current_user)
+        callback = await _get_scoped_callback(service, id, current_user)
+        await ensure_callback_customer_access(db, current_user, callback.customer_id, write=True)
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
         if update_dict.get("customer_id") is not None:
-            await ensure_callback_customer_access(db, current_user, update_dict["customer_id"])
+            await ensure_callback_customer_access(db, current_user, update_dict["customer_id"], write=True)
         update_dict = _apply_completion_audit(update_dict, current_user)
         result = await service.update(id, update_dict, scope_user=current_user)
         if not result:
@@ -438,7 +440,8 @@ async def delete_customer_callbacks_batch(
     try:
         await _require_callback_mutation(db, current_user, "follow_up_delete")
         for item_id in request.ids:
-            await _get_scoped_callback(service, item_id, current_user)
+            callback = await _get_scoped_callback(service, item_id, current_user)
+            await ensure_callback_customer_access(db, current_user, callback.customer_id, write=True)
         for item_id in request.ids:
             success = await service.delete(item_id, scope_user=current_user)
             if success:
@@ -466,7 +469,8 @@ async def delete_customer_callback(
     service = Customer_callbacksService(db)
     try:
         await _require_callback_mutation(db, current_user, "follow_up_delete")
-        await _get_scoped_callback(service, id, current_user)
+        callback = await _get_scoped_callback(service, id, current_user)
+        await ensure_callback_customer_access(db, current_user, callback.customer_id, write=True)
         success = await service.delete(id, scope_user=current_user)
         if not success:
             logger.warning(f"Customer_callback with id {id} not found for deletion")

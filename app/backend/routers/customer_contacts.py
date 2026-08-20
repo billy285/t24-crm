@@ -212,7 +212,7 @@ async def create_customer_contacts(
     service = Customer_contactsService(db)
     try:
         await require_button_permission(db, current_user, "customer_edit")
-        await ensure_customer_access(db, current_user, data.customer_id)
+        await ensure_customer_access(db, current_user, data.customer_id, write=True)
         result = await service.create(data.model_dump())
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create customer_contacts")
@@ -244,7 +244,7 @@ async def create_customer_contactss_batch(
     try:
         await require_button_permission(db, current_user, "customer_edit")
         for item_data in request.items:
-            await ensure_customer_access(db, current_user, item_data.customer_id)
+            await ensure_customer_access(db, current_user, item_data.customer_id, write=True)
         for item_data in request.items:
             result = await service.create(item_data.model_dump())
             if result:
@@ -277,7 +277,7 @@ async def update_customer_contactss_batch(
         for item in request.items:
             await _get_scoped_contact(service, item.id, current_user)
             if item.updates.customer_id is not None:
-                await ensure_customer_access(db, current_user, item.updates.customer_id)
+                await ensure_customer_access(db, current_user, item.updates.customer_id, write=True)
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
@@ -312,7 +312,7 @@ async def update_customer_contacts(
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
         if update_dict.get("customer_id") is not None:
-            await ensure_customer_access(db, current_user, update_dict["customer_id"])
+            await ensure_customer_access(db, current_user, update_dict["customer_id"], write=True)
         result = await service.update(id, update_dict, scope_user=current_user)
         if not result:
             logger.warning(f"Customer_contacts with id {id} not found for update")

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from schemas.auth import UserResponse
 from services.customer_menu_items import Customer_menu_itemsService
 from services.customers import CustomersService
+from services.customer_scope import ensure_customer_access as ensure_scoped_customer_access
 from services.operation_logs import Operation_logsService
 from services.role_permissions import normalized_role, require_any_page_permission, require_button_permission
 from sqlalchemy import update
@@ -106,11 +107,8 @@ def _parse_query(query: Optional[str]) -> Optional[dict]:
         raise HTTPException(status_code=400, detail="Invalid query JSON format")
 
 
-async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession):
-    customer = await CustomersService(db).get_by_id(customer_id, scope_user=current_user)
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    return customer
+async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession, *, write: bool = False):
+    return await ensure_scoped_customer_access(db, current_user, customer_id, write=write)
 
 
 def _clean_item_payload(payload: dict) -> dict:
@@ -173,7 +171,7 @@ async def create_customer_menu_item(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_item_write(current_user, db, "task_create")
-    await _ensure_customer_access(data.customer_id, current_user, db)
+    await _ensure_customer_access(data.customer_id, current_user, db, write=True)
     now = datetime.utcnow()
     payload = _clean_item_payload(data.model_dump())
     payload["created_at"] = payload.get("created_at") or now
@@ -204,7 +202,7 @@ async def update_customer_menu_item(
     obj = await service.get_by_id(item_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Menu item not found")
-    await _ensure_customer_access(obj.customer_id, current_user, db)
+    await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
 
     payload = _clean_item_payload(data.model_dump(exclude_unset=True))
     payload["updated_at"] = payload.get("updated_at") or datetime.utcnow()
@@ -233,7 +231,7 @@ async def delete_customer_menu_item(
     obj = await service.get_by_id(item_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Menu item not found")
-    await _ensure_customer_access(obj.customer_id, current_user, db)
+    await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
 
     await db.execute(
         update(Customer_materials)

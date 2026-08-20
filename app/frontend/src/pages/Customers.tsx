@@ -23,7 +23,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, ShieldCheck, MoreHorizontal } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, MoreHorizontal } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -72,6 +72,15 @@ const ADS_RECHARGE_DEDUCTION_RATE = 0.01;
 const STRIPE_PLATFORM_FEE_RATE = 0.029;
 const STRIPE_PLATFORM_FEE_FIXED = 0.3;
 const CUSTOMER_PAGE_SIZE_OPTIONS = [20, 50, 100];
+const customerTimestampFormatter = new Intl.DateTimeFormat('zh-CN', {
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+});
+type CustomerAccessLevel = 'read_only' | 'read_write';
 const lifecycleEventLabels: Record<string, string> = {
   started: '第一笔有效记账', pause: '暂停合作', pending_stop: '进入待确认停止',
   resume: '恢复合作', stop: '停止合作', reactivate: '重新合作', adjust_start: '修正合作开始日期',
@@ -251,6 +260,43 @@ function buildInlineOptions(value: string | undefined, labels: Record<string, st
 
 function getLevelColorClass(level?: string) {
   return levelColors[level || ''] || defaultLevelColorClass;
+}
+
+function formatCustomerTimestamp(value: string | null) {
+  if (!value) return '尚未完成加载';
+  return customerTimestampFormatter.format(new Date(value));
+}
+
+function CustomerListLoadingState() {
+  return (
+    <div aria-live="polite" aria-label="客户资料加载中">
+      <div className="grid gap-3 p-3 md:hidden">
+        {[0, 1, 2].map(item => (
+          <div key={item} className="animate-pulse rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-2"><div className="h-4 w-36 rounded bg-slate-200" /><div className="h-3 w-20 rounded bg-slate-100" /></div>
+              <div className="h-5 w-16 rounded-full bg-slate-100" />
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-4">
+              {[0, 1, 2, 3].map(cell => <div key={cell} className="h-9 rounded bg-slate-100" />)}
+            </div>
+            <div className="mt-4 h-11 rounded-lg bg-slate-200" />
+          </div>
+        ))}
+      </div>
+      <div className="hidden animate-pulse md:block">
+        <div className="grid grid-cols-6 gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3">
+          {[0, 1, 2, 3, 4, 5].map(item => <div key={item} className="h-3 rounded bg-slate-200" />)}
+        </div>
+        {[0, 1, 2, 3, 4, 5].map(row => (
+          <div key={row} className="grid grid-cols-6 gap-4 border-b border-slate-100 px-4 py-4">
+            {[0, 1, 2, 3, 4, 5].map(cell => <div key={cell} className="h-4 rounded bg-slate-100" />)}
+          </div>
+        ))}
+      </div>
+      <span className="sr-only">客户资料正在加载，完成后会自动显示真实数据。</span>
+    </div>
+  );
 }
 
 function parseMultiValue(value?: string | null) {
@@ -601,6 +647,7 @@ export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [customersLoadedAt, setCustomersLoadedAt] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterIndustry, setFilterIndustry] = useState('all');
@@ -653,6 +700,7 @@ export default function Customers() {
   const [renewalPageSize, setRenewalPageSize] = useState(20);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailLoadError, setDetailLoadError] = useState<string | null>(null);
+  const [detailLoadedAt, setDetailLoadedAt] = useState<string | null>(null);
   const detailRequestSeqRef = useRef(0);
   const activeDetailCustomerIdRef = useRef<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -986,7 +1034,9 @@ export default function Customers() {
   const [assigning, setAssigning] = useState(false);
   const [showAccessDialog, setShowAccessDialog] = useState(false);
   const [accessTarget, setAccessTarget] = useState<any>(null);
-  const [accessEmployeeIds, setAccessEmployeeIds] = useState<number[]>([]);
+  const [accessMembers, setAccessMembers] = useState<Record<number, CustomerAccessLevel>>({});
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<number[]>([]);
+  const [bulkAccessMode, setBulkAccessMode] = useState(false);
   const [accessSearch, setAccessSearch] = useState('');
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessSaving, setAccessSaving] = useState(false);
@@ -1032,6 +1082,7 @@ export default function Customers() {
     setProductCatalog({ business_lines: [], products: [], plans: [] });
     setDetailLoadError(null);
     setDetailLoading(false);
+    setDetailLoadedAt(null);
     setShowFollowForm(false);
     setEditingFollowId(null);
     setDeleteFollowTarget(null);
@@ -1197,6 +1248,7 @@ export default function Customers() {
       setCustomerProjects(projectRes?.data?.items || []);
       setProductCatalog(catalogRes?.data || { business_lines: [], products: [], plans: [] });
       setContacts(contactRes?.data?.items || []);
+      setDetailLoadedAt(new Date().toISOString());
     } catch (err) {
       console.error(err);
       if (isCurrentRequest()) setDetailLoadError(getLoadErrorMessage(err));
@@ -1332,6 +1384,7 @@ export default function Customers() {
       if (dataScope === 'self' && employee) items = items.filter((c: any) => c.sales_person === employee.name || c.sales_employee_id === employee.id);
       setCustomers(items);
       setLoadError(null);
+      setCustomersLoadedAt(new Date().toISOString());
     } catch (err) {
       console.error(err);
       setLoadError(getLoadErrorMessage(err));
@@ -1609,8 +1662,9 @@ export default function Customers() {
 
   const openAccessManager = async (c: any) => {
     setAccessTarget(c);
+    setBulkAccessMode(false);
     setAccessSearch('');
-    setAccessEmployeeIds([]);
+    setAccessMembers({});
     setShowAccessDialog(true);
     setAccessLoading(true);
     try {
@@ -1625,8 +1679,15 @@ export default function Customers() {
         invokeWithAuth({ url: `/api/v1/entities/customers/${c.id}/access`, method: 'GET' }),
         employeePromise,
       ]);
-      if (employeeResponse) setEmployeesList(employeeResponse?.data?.items || []);
-      setAccessEmployeeIds((response?.data?.members || []).map((item: any) => Number(item.employee_id)));
+      const directoryEmployees = employeeResponse?.data?.items || employeesList;
+      if (employeeResponse) setEmployeesList(directoryEmployees);
+      const loadedMembers = Object.fromEntries((response?.data?.members || []).map((item: any) => [
+        Number(item.employee_id),
+        item.access_level === 'read_only' ? 'read_only' : 'read_write',
+      ])) as Record<number, CustomerAccessLevel>;
+      const ownerEmployeeId = Number(c.sales_employee_id || directoryEmployees.find((item: any) => item.name === c.sales_person)?.id || 0);
+      if (ownerEmployeeId) loadedMembers[ownerEmployeeId] = 'read_write';
+      setAccessMembers(loadedMembers);
     } catch (error: any) {
       toast.error(getErrorDetail(error, '客户可见人员加载失败'));
       setShowAccessDialog(false);
@@ -1635,11 +1696,47 @@ export default function Customers() {
     }
   };
 
-  const toggleAccessEmployee = (employeeId: number) => {
-    setAccessEmployeeIds(current => current.includes(employeeId)
-      ? current.filter(id => id !== employeeId)
-      : [...current, employeeId]);
+  const openBulkAccessManager = async () => {
+    if (!selectedCustomerIds.length) return;
+    setAccessTarget(null);
+    setBulkAccessMode(true);
+    setAccessSearch('');
+    setAccessMembers({});
+    setShowAccessDialog(true);
+    if (employeesList.length > 0) return;
+    setAccessLoading(true);
+    try {
+      const response = await invokeWithAuth({
+        url: '/api/v1/entities/employees/directory',
+        method: 'GET',
+        data: { query: JSON.stringify({ status: 'active' }), limit: 200 },
+      });
+      setEmployeesList(response?.data?.items || []);
+    } catch (error: any) {
+      toast.error(getErrorDetail(error, '团队成员加载失败'));
+      setShowAccessDialog(false);
+    } finally {
+      setAccessLoading(false);
+    }
   };
+
+  const toggleAccessEmployee = (employeeId: number) => {
+    setAccessMembers(current => {
+      if (current[employeeId]) {
+        return Object.fromEntries(Object.entries(current).filter(([id]) => Number(id) !== employeeId));
+      }
+      return { ...current, [employeeId]: 'read_write' };
+    });
+  };
+
+  const setAccessLevel = (employeeId: number, accessLevel: CustomerAccessLevel) => {
+    setAccessMembers(current => ({ ...current, [employeeId]: accessLevel }));
+  };
+
+  const selectedAccessMembers = Object.entries(accessMembers).map(([employeeId, accessLevel]) => ({
+    employee_id: Number(employeeId),
+    access_level: accessLevel,
+  }));
 
   const saveCustomerAccess = async () => {
     if (!accessTarget) return;
@@ -1648,19 +1745,44 @@ export default function Customers() {
       await invokeWithAuth({
         url: `/api/v1/entities/customers/${accessTarget.id}/access`,
         method: 'PUT',
-        data: { employee_ids: accessEmployeeIds },
+        data: { members: selectedAccessMembers },
       });
       toast.success(`已更新「${accessTarget.business_name}」的可见人员`);
       logOperation({
         customerId: accessTarget.id,
         actionType: 'other',
-        actionDetail: `更新客户可见人员：${accessEmployeeIds.length} 人`,
+        actionDetail: `更新客户团队成员：${selectedAccessMembers.length} 人`,
         operatorName: employee?.name || '管理员',
       });
       setShowAccessDialog(false);
       setAccessTarget(null);
     } catch (error: any) {
       toast.error(getErrorDetail(error, '保存客户可见人员失败'));
+    } finally {
+      setAccessSaving(false);
+    }
+  };
+
+  const saveBulkCustomerAccess = async (operation: 'upsert' | 'remove') => {
+    if (!selectedCustomerIds.length || !selectedAccessMembers.length) {
+      toast.error('请至少选择一位团队成员');
+      return;
+    }
+    setAccessSaving(true);
+    try {
+      const response = await invokeWithAuth({
+        url: '/api/v1/entities/customers/access/bulk-update',
+        method: 'POST',
+        data: { customer_ids: selectedCustomerIds, operation, members: selectedAccessMembers },
+      });
+      toast.success(operation === 'remove'
+        ? `已从 ${response.data?.customer_count || selectedCustomerIds.length} 位客户移除所选成员`
+        : `已为 ${response.data?.customer_count || selectedCustomerIds.length} 位客户更新团队成员`);
+      setShowAccessDialog(false);
+      setSelectedCustomerIds([]);
+      setAccessMembers({});
+    } catch (error: any) {
+      toast.error(getErrorDetail(error, operation === 'remove' ? '批量移除成员失败' : '批量添加成员失败'));
     } finally {
       setAccessSaving(false);
     }
@@ -1814,7 +1936,7 @@ export default function Customers() {
 
       <Dialog open={showAssignDialog} onOpenChange={v => { if (!v) { setShowAssignDialog(false); setAssignTarget(null); } }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>分配负责人</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>设置客户负责人</DialogTitle></DialogHeader>
           {assignTarget && (
             <div className="space-y-4">
               <div className="p-3 bg-slate-50 rounded-lg">
@@ -1838,13 +1960,13 @@ export default function Customers() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showAccessDialog} onOpenChange={open => { setShowAccessDialog(open); if (!open) setAccessTarget(null); }}>
+      <Dialog open={showAccessDialog} onOpenChange={open => { setShowAccessDialog(open); if (!open) { setAccessTarget(null); setBulkAccessMode(false); setAccessMembers({}); } }}>
         <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
-          <DialogHeader><DialogTitle>管理客户可见人员</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{bulkAccessMode ? `批量管理 ${selectedCustomerIds.length} 位客户的团队成员` : '管理客户团队成员'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
-              <p className="text-sm font-semibold text-blue-900">{accessTarget?.business_name}</p>
-              <p className="mt-1 text-xs leading-5 text-blue-700">勾选的员工可以查看这位客户；移除后会立即失去列表、搜索、详情、任务与服务记录访问。这里不会改变负责人、业绩归属或分润。</p>
+              <p className="text-sm font-semibold text-blue-900">{bulkAccessMode ? `已选择 ${selectedCustomerIds.length} 位客户` : accessTarget?.business_name}</p>
+              <p className="mt-1 text-xs leading-5 text-blue-700">“只读”可以查看客户与服务资料但不能新增、编辑或删除；“可读写”可以协作维护。客户负责人始终可读写，团队成员权限不会改变负责人、业绩归属或分润。</p>
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
               财务明细始终只对老板、管理员和财务开放。受邀销售或运营仍看不到扣点、手续费、客户成本、利润及收款拆分。
@@ -1856,19 +1978,23 @@ export default function Customers() {
             {accessLoading ? <p className="py-8 text-center text-sm text-slate-400">正在加载人员…</p> : (
               <div className="space-y-2">
                 {eligibleAccessEmployees.map(emp => {
-                  const selected = accessEmployeeIds.includes(emp.id);
-                  const isOwner = Number(accessTarget?.sales_employee_id) === Number(emp.id);
-                  return <button key={emp.id} type="button" onClick={() => toggleAccessEmployee(emp.id)} className={`flex w-full items-center justify-between rounded-xl border p-3 text-left transition ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                    <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{emp.name}</p><p className="mt-1 text-xs text-slate-500">{emp.employee_code || '无员工编号'} · {emp.department || emp.role || '未分组'}{isOwner ? ' · 当前负责人' : ''}</p></div>
-                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white'}`}>{selected ? '✓' : ''}</span>
-                  </button>;
+                  const selected = Boolean(accessMembers[emp.id]);
+                  const isOwner = Number(accessTarget?.sales_employee_id) === Number(emp.id)
+                    || (!accessTarget?.sales_employee_id && Boolean(accessTarget?.sales_person) && emp.name === accessTarget.sales_person);
+                  return <div key={emp.id} className={`flex flex-col gap-3 rounded-xl border p-3 transition sm:flex-row sm:items-center sm:justify-between ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                    <button type="button" disabled={isOwner} onClick={() => toggleAccessEmployee(emp.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default">
+                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white'}`}>{selected ? '✓' : ''}</span>
+                      <span className="min-w-0"><span className="block truncate text-sm font-medium text-slate-900">{emp.name}</span><span className="mt-1 block text-xs text-slate-500">{emp.employee_code || '无员工编号'} · {emp.department || emp.role || '未分组'}{isOwner ? ' · 当前负责人' : ''}</span></span>
+                    </button>
+                    {isOwner ? <Badge className="bg-blue-100 text-blue-700">负责人 · 可读写</Badge> : selected && <NativeSelect className="sm:w-28" value={accessMembers[emp.id]} onChange={value => setAccessLevel(emp.id, value as CustomerAccessLevel)} options={[{ value: 'read_write', label: '可读写' }, { value: 'read_only', label: '只读' }]} />}
+                  </div>;
                 })}
                 {eligibleAccessEmployees.length === 0 && <p className="py-8 text-center text-sm text-slate-400">没有找到可邀请的员工</p>}
               </div>
             )}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-slate-500">已选择 {accessEmployeeIds.length} 人</p>
-              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setShowAccessDialog(false)}>取消</Button><Button onClick={() => void saveCustomerAccess()} disabled={accessLoading || accessSaving}>{accessSaving ? '保存中…' : '保存可见人员'}</Button></div>
+              <p className="text-xs text-slate-500">已选择 {selectedAccessMembers.length} 人</p>
+              <div className="flex flex-wrap justify-end gap-2"><Button variant="outline" onClick={() => setShowAccessDialog(false)}>取消</Button>{bulkAccessMode ? <><Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => void saveBulkCustomerAccess('remove')} disabled={accessLoading || accessSaving || !selectedAccessMembers.length}>批量移除</Button><Button onClick={() => void saveBulkCustomerAccess('upsert')} disabled={accessLoading || accessSaving || !selectedAccessMembers.length}>{accessSaving ? '处理中…' : '批量添加 / 更新'}</Button></> : <Button onClick={() => void saveCustomerAccess()} disabled={accessLoading || accessSaving}>{accessSaving ? '保存中…' : '保存团队成员'}</Button>}</div>
             </div>
           </div>
         </DialogContent>
@@ -2392,14 +2518,6 @@ export default function Customers() {
       { value: 'logs', label: '操作日志' },
     ];
     const secondaryDetailTabValues = new Set(secondaryDetailTabs.map(item => item.value));
-    const mobileMoreDetailTabs = [
-      { value: 'timeline', label: `时间线 (${detailLoading ? '…' : timelineEvents.length})` },
-      { value: 'opportunities', label: '客户商机' },
-      ...(canViewFinance ? [{ value: 'payments', label: `财务信息 (${detailLoading ? '…' : customerFinanceRecordCount})` }] : []),
-      { value: 'renewals', label: `续费信息 (${detailLoading ? '…' : renewalRows.length})` },
-      ...secondaryDetailTabs.filter(item => item.value !== 'followups'),
-    ];
-    const mobileMoreDetailTabValues = new Set(mobileMoreDetailTabs.map(item => item.value));
     const customer360Actions: Array<{
       key: string;
       title: string;
@@ -2439,19 +2557,22 @@ export default function Customers() {
 
     return (
       <div className="app-page space-y-5">
-        <div className="app-page-title items-center">
-          <div className="flex min-w-0 items-center gap-3 flex-wrap">
+        <div className="app-page-title items-start md:items-center">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
           <Button variant="ghost" size="sm" onClick={closeDetail}><ArrowLeft className="w-4 h-4 mr-1" /> {detailReturnTo ? getReturnLabel(detailReturnTo) : detailFromFinance ? '返回财务' : '返回列表'}</Button>
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-blue-600">客户详情</p>
             <h2 className="truncate text-xl font-bold text-slate-900">{c.business_name}</h2>
+            <p className="mt-1 text-xs text-slate-500">编号 {c.customer_code || '-'} · 负责人 {c.sales_person || '-'} · 数据更新 {formatCustomerTimestamp(detailLoadedAt)}</p>
           </div>
           <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
           <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {isAdmin && <Button variant="outline" size="sm" onClick={() => void openAccessManager(c)}><ShieldCheck className="mr-1 h-3.5 w-3.5" /> 管理可见人员</Button>}
-            <Button variant="outline" size="sm" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
+          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
+            {c.phone && <Button variant="outline" size="sm" className="min-h-11 flex-1 md:min-h-0 md:flex-none" asChild><a href={`tel:${c.phone}`}><Phone className="mr-1 h-3.5 w-3.5" /> 拨打电话</a></Button>}
+            {canCreateFollowUp && <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0 md:flex-none" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
+            {isAdmin && <Button variant="outline" size="sm" className="hidden md:inline-flex" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 管理团队成员</Button>}
+            <Button variant="outline" size="sm" className="min-h-11 md:min-h-0" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
               <RefreshCw className={`w-3.5 h-3.5 mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> 刷新数据
             </Button>
           </div>
@@ -2478,17 +2599,22 @@ export default function Customers() {
         )}
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
           <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
-          <TabsList aria-label="客户手机主导航" className="grid h-12 w-full grid-cols-3 gap-1 bg-slate-100 p-1 md:hidden">
-            <TabsTrigger value="overview" className="min-h-11 px-2 text-sm">概览</TabsTrigger>
-            <TabsTrigger value="followups" className="min-h-11 px-2 text-sm">跟进</TabsTrigger>
-            <TabsTrigger value="subscriptions" className="min-h-11 px-2 text-sm">服务</TabsTrigger>
-          </TabsList>
+          <div className="-mx-1 overflow-x-auto px-1 pb-1 md:hidden">
+            <TabsList aria-label="客户手机主导航" className="h-auto w-max min-w-full justify-start gap-1 bg-slate-100 p-1">
+              <TabsTrigger value="overview" className="min-h-11 shrink-0 px-3 text-sm">客户 360</TabsTrigger>
+              <TabsTrigger value="timeline" className="min-h-11 shrink-0 px-3 text-sm">时间线</TabsTrigger>
+              <TabsTrigger value="opportunities" className="min-h-11 shrink-0 px-3 text-sm">客户商机</TabsTrigger>
+              <TabsTrigger value="subscriptions" className="min-h-11 shrink-0 px-3 text-sm">服务信息</TabsTrigger>
+              {canViewFinance && <TabsTrigger value="payments" className="min-h-11 shrink-0 px-3 text-sm">财务信息</TabsTrigger>}
+              <TabsTrigger value="renewals" className="min-h-11 shrink-0 px-3 text-sm">续费信息</TabsTrigger>
+            </TabsList>
+          </div>
           <label className="md:hidden">
-            <span className="sr-only">更多客户资料</span>
+            <span className="sr-only">更多资料与工具</span>
             <NativeSelect
-              value={mobileMoreDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
+              value={secondaryDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
               onChange={value => { if (value) handleDetailTabChange(value); }}
-              options={[{ value: '', label: '更多客户资料' }, ...mobileMoreDetailTabs]}
+              options={[{ value: '', label: '更多资料与工具' }, ...secondaryDetailTabs]}
               className="w-full"
             />
           </label>
@@ -3039,6 +3165,13 @@ export default function Customers() {
         </div>
       )}
 
+      {!isMobile && isAdmin && selectedCustomerIds.length > 0 && (
+        <Card className="border-blue-200 bg-blue-50/70"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
+          <div><p className="text-sm font-semibold text-blue-950">已选择 {selectedCustomerIds.length} 位客户</p><p className="mt-1 text-xs text-blue-700">可同时添加、更新或移除团队成员，成员权限逐人设置。</p></div>
+          <div className="flex gap-2"><Button variant="outline" onClick={() => setSelectedCustomerIds([])}>取消选择</Button><Button onClick={() => void openBulkAccessManager()}><Users className="mr-2 h-4 w-4" />批量管理团队成员</Button></div>
+        </CardContent></Card>
+      )}
+
       <div className="app-toolbar space-y-3">
         <div className="flex gap-2 md:gap-3">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索编号、名称、联系人、电话..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
@@ -3124,10 +3257,13 @@ export default function Customers() {
         </SheetContent>
       </Sheet>
 
-      <div className="text-xs text-slate-500">共 {filtered.length} 条{filtered.length !== customers.length ? ` (筛选自 ${customers.length} 条)` : ''}</div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <span>共 {filtered.length} 条{filtered.length !== customers.length ? `（筛选自 ${customers.length} 条）` : ''}</span>
+        <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${loadError ? 'bg-rose-500' : loading ? 'bg-amber-500' : 'bg-emerald-500'}`} />{loading ? '正在同步客户资料' : loadError ? '同步失败，保留上次结果' : `数据更新 ${formatCustomerTimestamp(customersLoadedAt)}`}</span>
+      </div>
 
-      <Card className="border-slate-200"><CardContent className="p-0">
-        {loading ? <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+      <Card className="app-card border-slate-200"><CardContent className="p-0">
+        {loading ? <CustomerListLoadingState />
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无匹配的客户</p>
         : (
           <>
@@ -3158,7 +3294,7 @@ export default function Customers() {
                         <Button size="sm" variant="outline" className="h-11 min-w-11 px-2.5 md:h-8 md:min-w-0" aria-label={`更多客户操作：${c.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
-                        {isAdmin && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><ShieldCheck className="mr-2 h-4 w-4" />管理可见人员</DropdownMenuItem>}
+                        {isAdmin && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />管理团队成员</DropdownMenuItem>}
                         {hasPermission('customer_assign') && <DropdownMenuItem onSelect={() => openAssign(c)}><ArrowRightLeft className="mr-2 h-4 w-4" />分配负责人</DropdownMenuItem>}
                         {hasPermission('customer_edit') && <DropdownMenuItem onSelect={() => openEdit(c)}><Edit className="mr-2 h-4 w-4" />编辑客户</DropdownMenuItem>}
                         {hasPermission('customer_delete') && <DropdownMenuSeparator />}
@@ -3170,7 +3306,8 @@ export default function Customers() {
               </div>
             ))}
           </div>
-          <div className="hidden overflow-x-auto md:block"><table className="w-full text-sm"><thead><tr className="border-b bg-slate-50 text-left text-slate-500">
+          <div className="hidden max-h-[calc(100vh-280px)] overflow-auto md:block"><table className="w-full text-sm"><thead className="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_rgb(226,232,240)]"><tr className="text-left text-slate-500">
+            {isAdmin && <th className="w-12 px-4 py-3"><input type="checkbox" aria-label="选择本页客户" checked={paginatedCustomers.items.length > 0 && paginatedCustomers.items.every(customer => selectedCustomerIds.includes(customer.id))} onChange={event => setSelectedCustomerIds(current => event.target.checked ? Array.from(new Set([...current, ...paginatedCustomers.items.map(customer => customer.id)])) : current.filter(id => !paginatedCustomers.items.some(customer => customer.id === id)))} /></th>}
             {visibleCols.includes('customer_code') && <th className="px-4 py-3 font-medium">编号</th>}
             {visibleCols.includes('business_name') && <th className="px-4 py-3 font-medium">商家名称</th>}
             {visibleCols.includes('contact_name') && <th className="px-4 py-3 font-medium">联系人</th>}
@@ -3189,6 +3326,7 @@ export default function Customers() {
           </tr></thead>
           <tbody>{paginatedCustomers.items.map(c => (
             <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
+              {isAdmin && <td className="px-4 py-3" onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={`选择客户 ${c.business_name}`} checked={selectedCustomerIds.includes(c.id)} onChange={event => setSelectedCustomerIds(current => event.target.checked ? [...current, c.id] : current.filter(id => id !== c.id))} /></td>}
               {visibleCols.includes('customer_code') && <td className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
               {visibleCols.includes('business_name') && <td className="px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(c)}>{c.business_name}</td>}
               {visibleCols.includes('contact_name') && <td className="px-4 py-3" onClick={() => openDetail(c)}>{c.contact_name}</td>}
@@ -3337,7 +3475,7 @@ export default function Customers() {
                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-blue-600" aria-label={`更多客户操作：${c.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
-                        {isAdmin && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><ShieldCheck className="mr-2 h-4 w-4" />管理可见人员</DropdownMenuItem>}
+                        {isAdmin && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />管理团队成员</DropdownMenuItem>}
                         {hasPermission('customer_assign') && <DropdownMenuItem onSelect={() => openAssign(c)}><ArrowRightLeft className="mr-2 h-4 w-4" />分配负责人</DropdownMenuItem>}
                         {hasPermission('customer_edit') && <DropdownMenuItem onSelect={() => openEdit(c)}><Edit className="mr-2 h-4 w-4" />编辑客户</DropdownMenuItem>}
                         {hasPermission('customer_delete') && <DropdownMenuSeparator />}

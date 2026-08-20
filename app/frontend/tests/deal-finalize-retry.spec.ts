@@ -30,15 +30,25 @@ test('成交已保存但 finalize 未完成时逐项提示并可手动重试且�
     if (path.includes('/app-config')) return fulfillJson(route, { items: [] });
     if (path === '/api/v1/entities/customers' || path === '/api/v1/entities/customers/all') {
       return fulfillJson(route, {
-        items: [{
-          id: 31,
-          business_name: 'Finalize 测试客户',
-          contact_name: '测试负责人',
-          phone: '555-0031',
-          status: 'following',
-          sales_person: admin.name,
-        }],
-        total: 1,
+        items: [
+          {
+            id: 31,
+            customer_code: 'FINAL-031',
+            business_name: 'Finalize 测试客户',
+            contact_name: '测试负责人',
+            phone: '555-0031',
+            status: 'following',
+            sales_person: admin.name,
+          },
+          ...Array.from({ length: 20 }, (_, index) => ({
+            id: 100 + index,
+            customer_code: `SCROLL-${String(index + 1).padStart(3, '0')}`,
+            business_name: `下拉选择测试商家 ${String(index + 1).padStart(2, '0')}`,
+            status: 'following',
+            sales_person: admin.name,
+          })),
+        ],
+        total: 21,
       });
     }
     if (path === '/api/v1/entities/deals' && request.method() === 'GET') {
@@ -84,7 +94,29 @@ test('成交已保存但 finalize 未完成时逐项提示并可手动重试且�
   await page.goto(`${baseUrl}/deals`);
   await page.getByRole('button', { name: '录入成交' }).click();
   const dialog = page.getByRole('dialog', { name: '录入成交' });
-  await dialog.locator('select').first().selectOption('31');
+  const customerPicker = dialog.getByRole('combobox').first();
+  const customerPickerBox = await customerPicker.boundingBox();
+  await customerPicker.click();
+  const customerSearchPanel = page.locator('[data-slot="combobox-content"]');
+  const customerSearchPanelBox = await customerSearchPanel.boundingBox();
+  expect(customerPickerBox).not.toBeNull();
+  expect(customerSearchPanelBox).not.toBeNull();
+  const customerPanelWidthDelta = Math.abs((customerSearchPanelBox?.width || 0) - (customerPickerBox?.width || 0));
+  expect(customerPanelWidthDelta / (customerPickerBox?.width || 1)).toBeLessThan(0.03);
+  const customerList = page.getByRole('listbox', { name: 'Suggestions' });
+  const customerListBox = await customerList.boundingBox();
+  expect(customerListBox).not.toBeNull();
+  await expect(customerList.getByRole('option')).toHaveCount(21);
+  await page.mouse.move(
+    (customerListBox?.x || 0) + (customerListBox?.width || 0) / 2,
+    (customerListBox?.y || 0) + (customerListBox?.height || 0) / 2,
+  );
+  await page.mouse.wheel(0, 720);
+  await expect.poll(() => customerList.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  await page.getByPlaceholder('搜索商家名称或编号').fill('FINAL-031');
+  await expect(page.getByRole('listbox', { name: 'Suggestions' }).getByRole('option')).toHaveCount(1);
+  await page.getByRole('option', { name: 'Finalize 测试客户' }).click();
+  await expect(dialog.getByRole('combobox').first()).toContainText('Finalize 测试客户');
   await dialog.getByLabel('基础套餐').check();
   await dialog.getByPlaceholder('0.00').fill('198');
   await dialog.getByRole('switch').first().click();
@@ -131,6 +163,7 @@ test('成交 POST 响应丢失时查询恢复已提交记录并继续 finalize �
       return fulfillJson(route, {
         items: [{
           id: 32,
+          customer_code: 'FINAL-032',
           business_name: '响应丢失测试客户',
           contact_name: '测试负责人',
           phone: '555-0032',
@@ -169,7 +202,9 @@ test('成交 POST 响应丢失时查询恢复已提交记录并继续 finalize �
   await page.goto(`${baseUrl}/deals`);
   await page.getByRole('button', { name: '录入成交' }).click();
   const dialog = page.getByRole('dialog', { name: '录入成交' });
-  await dialog.locator('select').first().selectOption('32');
+  await dialog.getByRole('combobox').first().click();
+  await page.getByPlaceholder('搜索商家名称或编号').fill('FINAL-032');
+  await page.getByRole('option', { name: '响应丢失测试客户' }).click();
   await dialog.getByLabel('基础套餐').check();
   await dialog.getByPlaceholder('0.00').fill('198');
   await dialog.getByRole('button', { name: '保存', exact: true }).click();

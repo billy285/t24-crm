@@ -19,6 +19,7 @@ class CustomerAccessGrant(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     customer_id = Column(Integer, ForeignKey("customers.id", ondelete="CASCADE"), nullable=False, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    access_level = Column(String(20), nullable=False, default="read_write", server_default="read_write")
     granted_by_id = Column(String, nullable=True)
     granted_by_name = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

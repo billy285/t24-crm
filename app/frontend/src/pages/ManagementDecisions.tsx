@@ -780,7 +780,7 @@ export default function ManagementDecisions() {
         <div>
           <p className="app-page-kicker">{isFinancialInsights ? 'T24 Marketing · Operating Decisions' : 'T24 Marketing · Management Decisions'}</p>
           <h1 className="app-page-heading">{isFinancialInsights ? '经营健康与决策' : '经营分类与项目'}</h1>
-          <p className="app-page-description">{isFinancialInsights ? '集中查看项目效益、客户健康与团队产能；公司人民币利润使用独立报表。' : '逐位确认真实业务线；客户合作状态与代运营、OS、一次性项目分别管理。'}</p>
+          <p className="app-page-description">{isFinancialInsights ? '集中查看项目效益、客户健康与团队产能；公司人民币利润使用独立报表。' : '先处理风险和分类，再看项目规模与业务线留存；客户合作状态与独立项目继续分别管理。'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline"><Link to={isFinancialInsights ? '/finance' : '/customer-lifecycle'}><ArrowLeft className="mr-2 h-4 w-4" />{isFinancialInsights ? '财务管理' : '客户生命周期'}</Link></Button>
@@ -788,41 +788,106 @@ export default function ManagementDecisions() {
         </div>
       </div>
 
-      <Card className="border-blue-200 bg-blue-50/50">
-        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-blue-600" /><div><p className="text-sm font-semibold text-slate-800">{isFinancialInsights ? '老板管理口径' : '安全审核模式'}</p><p className="text-xs text-slate-500">{isFinancialInsights ? '财务数据保持原账不变；本页按锁定月均汇率汇总，并只读已发放工资用于经营判断。' : '确认项目不会改变客户“合作中/已停止”状态；原收款、订阅和生命周期记录保持不变。'}</p></div></div>
-          <div className="flex w-full flex-col items-stretch gap-2 md:w-auto md:flex-row md:flex-wrap md:items-end"><div><Label className="text-xs">统计开始</Label><Input type="date" min="2026-01-01" value={startDate} onChange={event => setStartDate(event.target.value)} className="mt-1 w-full bg-white md:w-40" /></div>{isAdmin && <div className="hidden md:block"><Label className="text-xs">单人项目容量</Label><Input type="number" min={1} max={100} value={projectCapacityTarget} onChange={event => setProjectCapacityTarget(Math.max(1, Number(event.target.value) || 1))} className="mt-1 w-28 bg-white" /></div>}<Button variant="outline" onClick={() => void loadData()}>应用</Button></div>
-        </CardContent>
-      </Card>
+      <details className="group rounded-xl border border-blue-200 bg-blue-50/45 shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm"><ShieldCheck className="h-4 w-4" /></span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-800">{isFinancialInsights ? '老板管理口径' : '安全审核模式'}</p>
+            <p className="mt-0.5 truncate text-xs text-slate-500">{isFinancialInsights ? '财务原账不变，经营结果按锁定汇率汇总。' : '项目确认不会改变客户整体合作状态。'}</p>
+          </div>
+          <span className="ml-auto shrink-0 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700 group-open:bg-blue-100">查看计算口径</span>
+        </summary>
+        <div className="flex flex-col gap-4 border-t border-blue-100 px-4 py-4 lg:flex-row lg:items-end lg:justify-between">
+          <p className="max-w-2xl text-xs leading-5 text-slate-600">{isFinancialInsights ? '财务数据保持原账不变；本页按锁定月均汇率汇总，并只读已发放工资用于经营判断。' : '确认项目不会改变客户“合作中/已停止”状态；原收款、订阅和生命周期记录保持不变。'}</p>
+          <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-end lg:w-auto">
+            <div><Label className="text-xs">统计开始</Label><Input type="date" min="2026-01-01" value={startDate} onChange={event => setStartDate(event.target.value)} className="mt-1 w-full bg-white sm:w-40" /></div>
+            {isAdmin && <div className="hidden md:block"><Label className="text-xs">单人项目容量</Label><Input type="number" min={1} max={100} value={projectCapacityTarget} onChange={event => setProjectCapacityTarget(Math.max(1, Number(event.target.value) || 1))} className="mt-1 w-28 bg-white" /></div>}
+            <Button variant="outline" onClick={() => void loadData()}>应用口径</Button>
+          </div>
+        </div>
+      </details>
 
       <Card className="border-slate-200">
-        <CardContent className="flex flex-wrap gap-2 p-2">
+        <CardContent className="flex flex-wrap items-center gap-2 p-2">
           {[
-            ['overview', '经营总览', BarChart3], ...(isAdmin ? [['insights', '项目效益·健康·产能', Gauge]] : []), ['projects', '项目客户明细', BriefcaseBusiness],
-            ['exceptions', `数据质量中心 ${activeQualityCount || summary?.anomaly_count || 0}`, Database], ['history', `历史补录 ${pendingCount}`, Clock3],
-          ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" className={!['overview', 'insights'].includes(value) ? 'hidden md:inline-flex' : ''} variant={section === value ? 'default' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
+            ['overview', '经营总览', BarChart3],
+            ...(isAdmin ? [['insights', '项目效益·健康·产能', Gauge]] : []),
+            ['projects', '项目客户明细', BriefcaseBusiness],
+          ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" className={value === 'projects' ? 'hidden md:inline-flex' : ''} variant={section === value ? 'default' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
+          <div className="ml-auto hidden items-center gap-1 border-l border-slate-200 pl-2 md:flex" aria-label="辅助管理入口">
+            {[
+              ['exceptions', `数据质量 ${activeQualityCount || summary?.anomaly_count || 0}`, Database],
+              ['history', `历史补录 ${pendingCount}`, Clock3],
+            ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" size="sm" variant={section === value ? 'secondary' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
+          </div>
         </CardContent>
       </Card>
 
       {!['overview', 'insights'].includes(section) && <MobileDesktopOnlyNotice title="该管理流程请在电脑端处理" description="手机版保留经营总览和老板决策摘要；项目状态、数据质量批处理和历史补录需要完整影响预览，因此仅在电脑端开放。" />}
 
-      {section === 'overview' && <>
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-7">
-          {[
-            ['待补录客户', pendingCount, '仅限历史数据', Clock3, 'text-orange-600', 'bg-orange-50'],
-            ['高优先异常', summary?.high_anomaly_count || 0, '需要老板确认', AlertTriangle, 'text-red-600', 'bg-red-50'],
-            ['自动风险提醒', summary?.risk_reminder_count || 0, '只提醒，不自动停止', AlertTriangle, 'text-amber-600', 'bg-amber-50'],
-            ['分类提示', warningTotal, '不会自动写入', ShieldCheck, 'text-blue-600', 'bg-blue-50'],
-            ['已确认项目', summary?.project_count || 0, '从客户管理产生', BriefcaseBusiness, 'text-violet-600', 'bg-violet-50'],
-            ['合作中项目', summary?.active_project_count || 0, '按项目口径统计', TrendingUp, 'text-emerald-600', 'bg-emerald-50'],
-            ['多项目客户', summary?.multi_project_customers || 0, '交叉销售样本', Layers3, 'text-cyan-600', 'bg-cyan-50'],
-          ].map(([label, value, hint, Icon, color, bg]: any[]) => <Card key={label} className="border-slate-200"><CardContent className="p-4"><div className={`flex h-9 w-9 items-center justify-center rounded-xl ${bg}`}><Icon className={`h-4 w-4 ${color}`} /></div><p className="mt-3 text-xs text-slate-500">{label}</p><p className="mt-1 text-xl font-bold text-slate-900">{value}</p><p className="mt-1 text-[11px] text-slate-400">{hint}</p></CardContent></Card>)}
-        </div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          <Card className="border-slate-200"><CardHeader><CardTitle className="text-base">各业务生命周期信号</CardTitle><p className="text-xs text-slate-500">项目样本不足时不输出虚假的增长结论。</p></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">{Object.entries(lineLabels).map(([code, label]) => { const metric = summary?.line_metrics?.[code]; return <div key={code} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between"><p className="font-semibold">{label}</p><Badge variant="outline">{metric?.active_count || 0} 合作中</Badge></div><div className="mt-3 grid grid-cols-3 gap-2 text-center"><div><p className="text-lg font-bold">{metric?.project_count || 0}</p><p className="text-[11px] text-slate-400">项目</p></div><div><p className="text-lg font-bold">{metric?.average_months ?? '-'}</p><p className="text-[11px] text-slate-400">平均月数</p></div><div><p className="text-lg font-bold">{metric?.churn_rate == null ? '-' : `${Math.round(metric.churn_rate * 100)}%`}</p><p className="text-[11px] text-slate-400">项目流失</p></div></div><p className="mt-3 text-[11px] text-slate-400">有效时长样本 {metric?.duration_sample_count || 0} 个</p></div>; })}</CardContent></Card>
-          <Card className="border-slate-200"><CardHeader><CardTitle className="text-base">老板决策建议</CardTitle><p className="text-xs text-slate-500">招聘和投入必须同时满足样本、留存与交付产能。</p></CardHeader><CardContent className="space-y-3">{(data?.recommendations || []).map((row, index) => <div key={`${row.title}-${index}`} className={`rounded-xl p-4 ${row.level === 'risk' ? 'bg-red-50 text-red-800' : row.level === 'growth' ? 'bg-emerald-50 text-emerald-800' : 'bg-blue-50 text-blue-800'}`}><p className="text-sm font-semibold">{row.title}</p><p className="mt-1 text-xs leading-5">{row.message}</p></div>)}<div className="rounded-xl border border-slate-200 p-4"><p className="text-sm font-semibold">多项目组合</p><div className="mt-2 space-y-2 text-xs">{Object.entries(summary?.multi_project_combinations || {}).map(([name, count]) => <div key={name} className="flex justify-between"><span>{name}</span><strong>{count} 位客户</strong></div>)}{Object.keys(summary?.multi_project_combinations || {}).length === 0 && <p className="text-slate-400">项目确认后显示交叉销售组合</p>}</div></div></CardContent></Card>
-        </div>
-      </>}
+      {section === 'overview' && <div className="space-y-5">
+        <Card className="overflow-hidden border-blue-200 shadow-sm">
+          <CardHeader className="border-b border-blue-100 bg-blue-50/60 pb-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-600">现在先处理</p>
+                <h2 id="owner-decisions-heading" className="mt-1 text-lg font-semibold text-slate-950">老板待办与决策建议</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">先处理真实风险和待确认分类，再决定招聘、投入与交付安排。</p>
+              </div>
+              <Badge className="bg-white text-blue-700 shadow-sm" variant="outline"><ListChecks className="mr-1.5 h-3.5 w-3.5" />决策优先</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="grid gap-5 p-4 lg:p-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+            <section aria-labelledby="owner-decisions-heading">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  ['高优先异常', summary?.high_anomaly_count || 0, '需要老板确认', AlertTriangle, 'border-red-200 bg-red-50 text-red-800'],
+                  ['自动风险提醒', summary?.risk_reminder_count || 0, '只提醒，不自动停止', AlertTriangle, 'border-amber-200 bg-amber-50 text-amber-800'],
+                  ['分类提示', warningTotal, '确认后才会写入', ShieldCheck, 'border-blue-200 bg-blue-50 text-blue-800'],
+                  ['待补录客户', pendingCount, '仅限历史数据', Clock3, 'border-orange-200 bg-orange-50 text-orange-800'],
+                ].map(([label, value, hint, Icon, activeClass]: any[]) => {
+                  const hasItems = Number(value) > 0;
+                  return <div key={label} className={`rounded-xl border p-4 ${hasItems ? activeClass : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                    <div className="flex items-center justify-between gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/80"><Icon className="h-4 w-4" /></span><strong className="text-2xl leading-none">{value}</strong></div>
+                    <p className="mt-3 text-sm font-semibold">{label}</p>
+                    <p className="mt-1 text-[11px] opacity-75">{hasItems ? hint : '当前无需处理'}</p>
+                  </div>;
+                })}
+              </div>
+            </section>
+            <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-4" aria-labelledby="owner-advice-heading">
+              <h3 id="owner-advice-heading" className="text-sm font-semibold text-slate-900">老板决策建议</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">招聘和投入必须同时满足样本、留存与交付产能。</p>
+              <div className="mt-3 space-y-2.5">
+                {(data?.recommendations || []).map((row, index) => <div key={`${row.title}-${index}`} className={`rounded-xl border p-3.5 ${row.level === 'risk' ? 'border-red-200 bg-red-50 text-red-800' : row.level === 'growth' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-blue-200 bg-blue-50 text-blue-800'}`}><p className="text-sm font-semibold">{row.title}</p><p className="mt-1 text-xs leading-5">{row.message}</p></div>)}
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5"><p className="text-sm font-semibold text-slate-800">多项目组合</p><div className="mt-2 space-y-2 text-xs text-slate-600">{Object.entries(summary?.multi_project_combinations || {}).map(([name, count]) => <div key={name} className="flex justify-between gap-4"><span>{name}</span><strong className="text-slate-900">{count} 位客户</strong></div>)}{Object.keys(summary?.multi_project_combinations || {}).length === 0 && <p className="text-slate-400">项目确认后显示交叉销售组合</p>}</div></div>
+              </div>
+            </section>
+          </CardContent>
+        </Card>
+
+        <section aria-labelledby="business-scale-heading" className="space-y-3">
+          <div>
+            <h2 id="business-scale-heading" className="text-base font-semibold text-slate-900">经营规模</h2>
+            <p className="mt-1 text-xs text-slate-500">确认处理优先级后，再看当前项目盘面。</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              ['已确认项目', summary?.project_count || 0, '从客户管理产生', BriefcaseBusiness, 'text-blue-700', 'bg-blue-50'],
+              ['合作中项目', summary?.active_project_count || 0, '按项目口径统计', TrendingUp, 'text-emerald-700', 'bg-emerald-50'],
+              ['多项目客户', summary?.multi_project_customers || 0, '交叉销售样本', Layers3, 'text-slate-700', 'bg-slate-100'],
+            ].map(([label, value, hint, Icon, color, bg]: any[]) => <Card key={label} className="border-slate-200"><CardContent className="flex items-center gap-4 p-4"><span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${bg}`}><Icon className={`h-5 w-5 ${color}`} /></span><div className="min-w-0"><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-1 text-2xl font-bold leading-none text-slate-950">{value}</p><p className="mt-1.5 text-[11px] text-slate-400">{hint}</p></div></CardContent></Card>)}
+          </div>
+        </section>
+
+        <Card className="border-slate-200">
+          <CardHeader>
+            <h2 className="text-base font-semibold text-slate-900">各业务生命周期信号</h2>
+            <p className="text-xs text-slate-500">项目样本不足时不输出虚假的增长结论。</p>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Object.entries(lineLabels).map(([code, label]) => { const metric = summary?.line_metrics?.[code]; return <div key={code} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between"><p className="font-semibold">{label}</p><Badge variant="outline">{metric?.active_count || 0} 合作中</Badge></div><div className="mt-3 grid grid-cols-3 gap-2 text-center"><div><p className="text-lg font-bold">{metric?.project_count || 0}</p><p className="text-[11px] text-slate-400">项目</p></div><div><p className="text-lg font-bold">{metric?.average_months ?? '-'}</p><p className="text-[11px] text-slate-400">平均月数</p></div><div><p className="text-lg font-bold">{metric?.churn_rate == null ? '-' : `${Math.round(metric.churn_rate * 100)}%`}</p><p className="text-[11px] text-slate-400">项目流失</p></div></div><p className="mt-3 text-[11px] text-slate-400">有效时长样本 {metric?.duration_sample_count || 0} 个</p></div>; })}</CardContent>
+        </Card>
+      </div>}
 
       {section === 'insights' && <div className="space-y-5">
         {!growth && !loading && <Card className="border-amber-200 bg-amber-50"><CardContent className="p-6 text-sm text-amber-800">当前账号没有老板经营分析权限，或数据尚未加载。</CardContent></Card>}

@@ -34,6 +34,7 @@ import {
 } from '../lib/dict-config';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import PageLoadState from '@/components/PageLoadState';
+import CustomerCombobox from '@/components/CustomerCombobox';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { businessDateKey } from '@/lib/business-date';
@@ -1647,14 +1648,13 @@ export default function Deals() {
           <div className="space-y-4">
             <div>
               <Label>选择客户 *</Label>
-              <NativeSelect
-                value={form.customer_id}
-                onChange={v => setForm({ ...form, customer_id: v })}
-                placeholder="请选择客户"
-                options={[{ value: '', label: '请选择客户' }, ...(dataScope === 'self' && employee
+              <CustomerCombobox
+                customers={dataScope === 'self' && employee
                   ? customers.filter(c => c.sales_person === employee.name || c.sales_employee_id === employee.id)
-                  : customers
-                ).map(c => ({ value: String(c.id), label: c.business_name }))]}
+                  : customers}
+                value={form.customer_id}
+                onValueChange={v => setForm({ ...form, customer_id: v })}
+                placeholder="请选择客户"
               />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

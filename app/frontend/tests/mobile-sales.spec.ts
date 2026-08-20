@@ -12,6 +12,7 @@ const merchant = {
   country: 'US',
   state: 'CA',
   city: 'Los Angeles',
+  address: '123 Main St, Los Angeles, CA 90012',
   website: 'https://example.com/a-very-long-merchant-page-that-must-not-expand-the-mobile-layout',
   data_source: 'manual',
   collected_at: '2026-08-16T09:00:00',
@@ -128,7 +129,8 @@ test('390px 商家池以卡片完成补资料与待分配，不暴露手机高�
   await expect(card).toContainText('Golden Dragon Restaurant');
   await expect(card).toContainText('+1 626-555-0123');
   await expect(card).toContainText('Los Angeles, CA');
-  await expect(card).toContainText('餐厅');
+  await expect(card).toContainText('123 Main St, Los Angeles, CA 90012');
+  await expect(card).toContainText('manual');
   await expect(page.getByText('批量导入、永久删除与批量资料管理请使用电脑端完成。')).toBeVisible();
   await expect(page.getByRole('button', { name: '导入商家数据' })).toHaveCount(0);
   await expect(page.locator('button').filter({ hasText: /批量设置行业|批量删除|永久删除/ })).toHaveCount(0);
@@ -142,7 +144,7 @@ test('390px 商家池以卡片完成补资料与待分配，不暴露手机高�
 
   await card.getByRole('button', { name: /更多商家操作/ }).click();
   await expect(page.getByRole('menuitem', { name: '补充资料' })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: /销售智能分析/ })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /销售智能分析/ })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: /删除/ })).toHaveCount(0);
   expect(dangerousRequests).toEqual([]);
   await expectNoDocumentOverflow(page);
@@ -203,8 +205,17 @@ test('1440px 商家池与销售中心继续保留完整桌面表格', async ({ p
 
   await page.goto(`${baseUrl}/merchant-pool`);
   await expect(page.getByTestId('merchant-pool-desktop-table')).toBeVisible();
+  for (const header of ['商家名称', '商家电话', '商家位置', '地区', '来源', '操作']) {
+    await expect(page.getByRole('columnheader', { name: header, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole('columnheader', { name: /Google评分|官网|行业|清洗结果/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'AI 分析' })).toHaveCount(0);
   await expect(page.getByTestId('merchant-pool-mobile-list')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '导入商家数据' })).toBeVisible();
+  await page.getByRole('button', { name: '导入商家数据' }).click();
+  await expect(page.getByRole('heading', { name: '按固定模板导入商家' })).toBeVisible();
+  await expect(page.getByText('商家名称、商家电话、商家位置、地区、来源')).toBeVisible();
+  await expect(page.getByRole('button', { name: '下载固定模板' })).toBeVisible();
 
   await page.goto(`${baseUrl}/sales-leads`);
   await expect(page.getByTestId('sales-leads-desktop-table')).toBeVisible();
