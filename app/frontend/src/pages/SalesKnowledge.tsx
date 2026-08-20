@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CheckCircle2, CircleHelp, Copy, Pencil, Plus, Search, Send, ShieldAlert } from 'lucide-react';
+import { BookOpen, CircleHelp, Copy, MessageSquareText, Pencil, Plus, Search, Send, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -11,23 +11,10 @@ import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { useRole } from '@/lib/role-context';
+import { getFullKnowledgeAnswer, getShortKnowledgeAnswer, type SalesKnowledgeArticle } from '@/lib/sales-knowledge';
 import { invokeWithAuth } from '@/lib/tokenStore';
 
-type Article = {
-  id: number;
-  category: string;
-  title: string;
-  customer_question?: string;
-  standard_answer: string;
-  action_steps: string[];
-  related_links: string[];
-  escalation_rule?: string;
-  tags: string[];
-  status: 'draft' | 'published' | 'archived';
-  is_sensitive: boolean;
-  sort_order: number;
-  updated_at?: string;
-};
+type Article = SalesKnowledgeArticle;
 
 type KnowledgeQuestion = {
   id: number;
@@ -54,7 +41,6 @@ const categoryOptions = ['销售准备与开场', '需求诊断', '产品与服�
 const emptyArticleForm = (): ArticleForm => ({
   category: '其他', title: '', customer_question: '', standard_answer: '', action_steps: '', escalation_rule: '', tags: '', is_sensitive: false, sort_order: '200',
 });
-const compact = (value?: string, length = 132) => value && value.length > length ? `${value.slice(0, length)}...` : value || '';
 const formatDate = (value?: string) => value ? value.slice(0, 16).replace('T', ' ') : '-';
 const splitLines = (value: string) => value.split('\n').map(item => item.trim()).filter(Boolean);
 const splitTags = (value: string) => value.split(/[，,]/).map(item => item.trim()).filter(Boolean);
@@ -132,14 +118,21 @@ export default function SalesKnowledge() {
     setEditorOpen(true);
   };
 
-  const copyAnswer = async (article: Article) => {
-    const content = `${article.title}\n\n标准答复：\n${article.standard_answer}${article.action_steps.length ? `\n\n建议步骤：\n${article.action_steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}` : ''}`;
+  const copyText = async (content: string, successMessage: string) => {
     try {
       await navigator.clipboard.writeText(content);
-      toast.success('标准答复已复制，可按实际情况调整后发送');
+      toast.success(successMessage);
     } catch {
       toast.error('复制失败，请手动选择内容复制');
     }
+  };
+
+  const copyAnswer = async (article: Article) => {
+    await copyText(getFullKnowledgeAnswer(article), '完整答复已复制，可按实际情况调整后发送');
+  };
+
+  const copyShortAnswer = async (article: Article) => {
+    await copyText(getShortKnowledgeAnswer(article.standard_answer), '电话短版话术已复制');
   };
 
   const saveArticle = async () => {
@@ -212,42 +205,206 @@ export default function SalesKnowledge() {
 
   const openQuestions = useMemo(() => questions.filter(item => item.status === 'open'), [questions]);
   const allCategories = useMemo(() => Array.from(new Set([...categories, ...categoryOptions])), [categories]);
+  const activeArticle = useMemo(
+    () => articles.find(item => item.id === selectedArticle?.id) || articles[0] || null,
+    [articles, selectedArticle?.id],
+  );
 
-  return <div className="space-y-5">
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-      <div>
-        <div className="mb-1 flex items-center gap-2 text-sm font-medium text-blue-600"><BookOpen className="h-4 w-4" /> 独立售前支持区</div>
-        <h2 className="text-2xl font-bold text-slate-900">销售知识库</h2>
-        <p className="mt-1 text-sm text-slate-500">把常见问题、标准答复和升级规则放在一个地方。知识卡不写入正式客户、成交或财务数据。</p>
+  return (
+    <div className="knowledge-v4-page">
+      <header className="knowledge-v4-header">
+        <div>
+          <p className="app-page-kicker"><BookOpen className="h-4 w-4" /> Sales Enablement</p>
+          <h2 className="app-page-heading">销售知识库</h2>
+          <p className="app-page-description">输入客户原话，快速找到可直接表达的短版话术、完整答复和升级规则。</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setQuestionOpen(true)}><CircleHelp className="mr-1.5 h-4 w-4" />提交新问题</Button>
+          {canManage ? <Button onClick={() => openEditor()}><Plus className="mr-1.5 h-4 w-4" />新建知识卡</Button> : null}
+        </div>
+      </header>
+
+      <div className="knowledge-v4-toolbar">
+        <div className="knowledge-v4-search">
+          <Search className="h-4 w-4" />
+          <Input
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder="直接输入客户原话：太贵、已有系统、怎么付款、能保证排名吗…"
+            aria-label="搜索销售知识库"
+          />
+        </div>
+        <div className="knowledge-v4-summary">
+          <span><b>{articles.filter(item => item.status === 'published').length}</b> 条可用答复</span>
+          {canManage ? <span><b>{openQuestions.length}</b> 个待补充问题</span> : null}
+        </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => setQuestionOpen(true)}><CircleHelp className="mr-1.5 h-4 w-4" />提交新问题</Button>
-        {canManage && <Button onClick={() => openEditor()}><Plus className="mr-1.5 h-4 w-4" />新建知识卡</Button>}
+
+      <div className="knowledge-v4-workspace">
+        <aside className="knowledge-v4-categories" aria-label="知识分类">
+          <div className="knowledge-v4-panel-title">
+            <span>销售场景</span>
+            <small>按流程筛选</small>
+          </div>
+          <nav>
+            {['全部', ...allCategories].map(item => (
+              <button key={item} type="button" className={category === item ? 'is-active' : ''} onClick={() => setCategory(item)}>
+                <span>{item}</span>
+                {category === item ? <span aria-hidden="true">›</span> : null}
+              </button>
+            ))}
+          </nav>
+          <div className="knowledge-v4-rule">
+            <ShieldAlert className="h-4 w-4" />
+            <div>
+              <b>先确认再承诺</b>
+              <p>折扣、退款、定制、效果保证和到账状态必须升级确认。</p>
+            </div>
+          </div>
+        </aside>
+
+        <section className="knowledge-v4-list" aria-label="知识卡列表">
+          <div className="knowledge-v4-panel-title">
+            <span>{category === '全部' ? '匹配结果' : category}</span>
+            <small>{loading ? '读取中' : `${articles.length} 条`}</small>
+          </div>
+          <div className="knowledge-v4-list-scroll">
+            {loading ? <p className="knowledge-v4-empty">正在加载销售知识卡…</p> : articles.length === 0 ? (
+              <div className="knowledge-v4-empty">
+                <MessageSquareText className="mx-auto mb-2 h-5 w-5" />
+                <p>没有匹配的知识卡</p>
+                <Button className="mt-3" size="sm" variant="outline" onClick={() => setQuestionOpen(true)}>提交这个问题</Button>
+              </div>
+            ) : articles.map(article => (
+              <button
+                key={article.id}
+                type="button"
+                className={`knowledge-v4-list-item ${activeArticle?.id === article.id ? 'is-active' : ''}`}
+                onClick={() => setSelectedArticle(article)}
+              >
+                <span className="knowledge-v4-list-meta">
+                  <span>{article.category}</span>
+                  {article.is_sensitive ? <span className="is-sensitive">内部信息</span> : null}
+                  {article.status === 'draft' ? <span className="is-draft">草稿</span> : null}
+                </span>
+                <strong>{article.title}</strong>
+                <p>{article.customer_question || '适用于相关销售场景'}</p>
+                <small>{getShortKnowledgeAnswer(article.standard_answer, 88)}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <article className="knowledge-v4-detail" aria-live="polite">
+          {activeArticle ? (
+            <>
+              <div className="knowledge-v4-detail-head">
+                <div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge className="bg-blue-50 text-blue-700">{activeArticle.category}</Badge>
+                    {activeArticle.is_sensitive ? <Badge className="bg-amber-100 text-amber-800">仅内部销售使用</Badge> : null}
+                    {activeArticle.status === 'draft' ? <Badge className="bg-violet-100 text-violet-700">草稿</Badge> : null}
+                  </div>
+                  <h3>{activeArticle.title}</h3>
+                  <p>客户问：{activeArticle.customer_question || '适用于此类问题'}</p>
+                </div>
+                {canManage ? <Button size="icon" variant="ghost" title="编辑知识卡" onClick={() => openEditor(activeArticle)}><Pencil className="h-4 w-4" /></Button> : null}
+              </div>
+
+              <section className="knowledge-v4-short-answer">
+                <div>
+                  <span>电话短版</span>
+                  <small>约 15–30 秒</small>
+                </div>
+                <p>{getShortKnowledgeAnswer(activeArticle.standard_answer)}</p>
+                <Button size="sm" onClick={() => void copyShortAnswer(activeArticle)}><Copy className="mr-1.5 h-4 w-4" />复制短版话术</Button>
+              </section>
+
+              <section className="knowledge-v4-full-answer">
+                <div className="flex items-center justify-between gap-3">
+                  <h4>完整标准答复</h4>
+                  <Button size="sm" variant="outline" onClick={() => void copyAnswer(activeArticle)}><Copy className="mr-1.5 h-4 w-4" />复制完整答复</Button>
+                </div>
+                <p>{activeArticle.standard_answer}</p>
+              </section>
+
+              {activeArticle.action_steps.length > 0 ? (
+                <section className="knowledge-v4-steps">
+                  <h4>执行步骤</h4>
+                  <ol>
+                    {activeArticle.action_steps.map((step, index) => (
+                      <li key={`${step}-${index}`}><span>{index + 1}</span><p>{step}</p></li>
+                    ))}
+                  </ol>
+                </section>
+              ) : null}
+
+              {activeArticle.escalation_rule ? (
+                <section className="knowledge-v4-escalation">
+                  <ShieldAlert className="h-5 w-5" />
+                  <div><h4>需要升级确认</h4><p>{activeArticle.escalation_rule}</p></div>
+                </section>
+              ) : null}
+
+              {activeArticle.tags.length > 0 ? (
+                <div className="knowledge-v4-tags">{activeArticle.tags.map(tag => <span key={tag}>{tag}</span>)}</div>
+              ) : null}
+            </>
+          ) : <p className="knowledge-v4-empty">选择一个问题查看可用话术。</p>}
+        </article>
       </div>
+
+      {canManage && openQuestions.length > 0 ? (
+        <Card className="border-amber-200 bg-amber-50/60 shadow-sm">
+          <CardContent className="p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <CircleHelp className="h-5 w-5 text-amber-700" />
+              <div><p className="font-semibold text-amber-950">销售待解答问题</p><p className="text-xs text-amber-800">补充知识卡后再标记完成。</p></div>
+            </div>
+            <div className="space-y-2">
+              {openQuestions.slice(0, 6).map(item => (
+                <div key={item.id} className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-white/80 p-3 sm:flex-row sm:items-center">
+                  <div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{item.question}</p><p className="mt-1 text-xs text-slate-500">{item.context || '未补充场景'} · {item.submitted_by_name || '销售'} · {formatDate(item.created_at)}</p></div>
+                  <Button size="sm" variant="outline" onClick={() => void resolveQuestion(item)}>标记已处理</Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
+          <DialogHeader><DialogTitle>{editorArticle ? '编辑知识卡' : '新建知识卡'}</DialogTitle></DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div><Label>销售过程分类</Label><NativeSelect value={articleForm.category} onChange={value => { setArticleForm(current => ({ ...current, category: value })); setCustomCategory(''); }} options={allCategories.map(item => ({ value: item, label: item }))} /></div>
+            <div><Label>新分类名称（选填）</Label><Input value={customCategory} onChange={event => setCustomCategory(event.target.value)} placeholder="没有合适分类时直接输入" /></div>
+            <div><Label>排序数字</Label><Input type="number" value={articleForm.sort_order} onChange={event => setArticleForm(current => ({ ...current, sort_order: event.target.value }))} /></div>
+            <div className="flex items-end"><p className="pb-2 text-xs text-slate-500">排序越小越靠前；新分类保存后会自动出现在分类栏。</p></div>
+            <div className="sm:col-span-2"><Label>标题</Label><Input value={articleForm.title} onChange={event => setArticleForm(current => ({ ...current, title: event.target.value }))} placeholder="例如：客户怎么付款？" /></div>
+            <div className="sm:col-span-2"><Label>客户问题</Label><Input value={articleForm.customer_question} onChange={event => setArticleForm(current => ({ ...current, customer_question: event.target.value }))} placeholder="销售常遇到的原始问法" /></div>
+            <div className="sm:col-span-2"><Label>标准答复</Label><Textarea rows={6} value={articleForm.standard_answer} onChange={event => setArticleForm(current => ({ ...current, standard_answer: event.target.value }))} placeholder="销售可直接参考并按实际情况表达的答复" /></div>
+            <div className="sm:col-span-2"><Label>执行步骤（每行一条）</Label><Textarea rows={4} value={articleForm.action_steps} onChange={event => setArticleForm(current => ({ ...current, action_steps: event.target.value }))} placeholder={'先确认客户购买的服务\n再发送正确的付款说明\n提交财务确认'} /></div>
+            <div className="sm:col-span-2"><Label>何时需要升级确认</Label><Textarea rows={3} value={articleForm.escalation_rule} onChange={event => setArticleForm(current => ({ ...current, escalation_rule: event.target.value }))} placeholder="如涉及折扣、退款、特殊价格或效果承诺..." /></div>
+            <div><Label>标签（用逗号分隔）</Label><Input value={articleForm.tags} onChange={event => setArticleForm(current => ({ ...current, tags: event.target.value }))} placeholder="付款，Stripe，收款" /></div>
+            <label className="mt-6 flex min-h-11 items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={articleForm.is_sensitive} onChange={event => setArticleForm(current => ({ ...current, is_sensitive: event.target.checked }))} />内部敏感信息</label>
+            <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700 sm:col-span-2"><input type="checkbox" checked={publishNow} onChange={event => setPublishNow(event.target.checked)} />保存后立即发布给销售查看</label>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setEditorOpen(false)}>取消</Button><Button disabled={saving} onClick={() => void saveArticle()}>{saving ? '保存中...' : '保存知识卡'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={questionOpen} onOpenChange={setQuestionOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>提交销售新问题</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">把客户的原话和具体场景留下来，销售主管会整理为统一的标准答复。</p>
+            <div><Label>客户问了什么？</Label><Textarea rows={4} value={questionForm.question} onChange={event => setQuestionForm(current => ({ ...current, question: event.target.value }))} placeholder="例如：客户问广告费是否包含在代运营套餐中？" /></div>
+            <div><Label>补充场景（可选）</Label><Textarea rows={3} value={questionForm.context} onChange={event => setQuestionForm(current => ({ ...current, context: event.target.value }))} placeholder="客户行业、正在讨论的套餐、已承诺内容等" /></div>
+            <DialogFooter><Button variant="outline" onClick={() => setQuestionOpen(false)}>取消</Button><Button disabled={saving} onClick={() => void submitQuestion()}><Send className="mr-1.5 h-4 w-4" />提交问题</Button></DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
-
-    <Card className="border-blue-100 bg-gradient-to-r from-blue-50 via-white to-indigo-50 shadow-sm">
-      <CardContent className="grid gap-4 p-5 lg:grid-cols-[1.3fr_repeat(3,1fr)]">
-        <div><p className="text-sm font-medium text-blue-700">可直接使用的标准答复</p><p className="mt-1 text-3xl font-bold text-slate-900">{articles.filter(item => item.status === 'published').length}</p><p className="mt-1 text-xs text-slate-500">销售可查看、复制并按客户实际情况表达</p></div>
-        <div className="rounded-xl bg-white/80 p-3"><ShieldAlert className="h-4 w-4 text-amber-600" /><p className="mt-2 text-sm font-semibold text-slate-800">先确认再承诺</p><p className="mt-1 text-xs text-slate-500">折扣、退款、定制和效果保证必须升级确认。</p></div>
-        <div className="rounded-xl bg-white/80 p-3"><CheckCircle2 className="h-4 w-4 text-emerald-600" /><p className="mt-2 text-sm font-semibold text-slate-800">收款由财务确认</p><p className="mt-1 text-xs text-slate-500">销售可协助指引和留档，但不自行确认到账。</p></div>
-        <div className="rounded-xl bg-white/80 p-3"><CircleHelp className="h-4 w-4 text-violet-600" /><p className="mt-2 text-sm font-semibold text-slate-800">待补充问题</p><p className="mt-1 text-2xl font-bold text-slate-900">{canManage ? openQuestions.length : '可提交'}</p></div>
-      </CardContent>
-    </Card>
-
-    <Card className="shadow-sm"><CardContent className="space-y-4 p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center"><div className="relative flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><Input className="pl-9" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索客户问题、套餐、Stripe、支票、折扣..." /></div>{canManage && <Badge className="w-fit bg-violet-100 text-violet-700">主管可持续新建、编辑和发布知识卡</Badge>}</div>
-      <div><p className="mb-2 text-xs font-semibold tracking-wide text-slate-500">按销售过程分类</p><div className="flex flex-wrap gap-2">{['全部', ...allCategories].map(item => <Button key={item} size="sm" variant={category === item ? 'default' : 'outline'} className={category === item ? 'bg-blue-600' : 'bg-white'} onClick={() => setCategory(item)}>{item}</Button>)}</div></div>
-    </CardContent></Card>
-
-    {canManage && openQuestions.length > 0 && <Card className="border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="p-4"><div className="mb-3 flex items-center gap-2"><CircleHelp className="h-5 w-5 text-amber-700" /><div><p className="font-semibold text-amber-950">销售待解答问题</p><p className="text-xs text-amber-800">处理后请补充或关联一张知识卡，再标记完成。</p></div></div><div className="space-y-2">{openQuestions.slice(0, 6).map(item => <div key={item.id} className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-white/80 p-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{item.question}</p><p className="mt-1 text-xs text-slate-500">{item.context || '未补充场景'} · {item.submitted_by_name || '销售'} · {formatDate(item.created_at)}</p></div><Button size="sm" variant="outline" onClick={() => void resolveQuestion(item)}>标记已处理</Button></div>)}</div></CardContent></Card>}
-
-    {loading ? <Card><CardContent className="py-14 text-center text-sm text-slate-500">正在加载销售知识卡...</CardContent></Card> : articles.length === 0 ? <Card><CardContent className="py-14 text-center text-sm text-slate-500">没有匹配的知识卡。请换个关键词，或提交新问题。</CardContent></Card> : <div className="grid gap-4 xl:grid-cols-2">{articles.map(article => <Card key={article.id} className={`shadow-sm transition-shadow hover:shadow-md ${article.status === 'draft' ? 'border-dashed border-violet-200 bg-violet-50/30' : 'border-slate-200'}`}><CardContent className="p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Badge className="bg-blue-100 text-blue-700">{article.category}</Badge>{article.is_sensitive && <Badge className="bg-amber-100 text-amber-800">内部收款信息</Badge>}{article.status === 'draft' && <Badge className="bg-violet-100 text-violet-700">草稿</Badge>}</div><h3 className="mt-3 text-lg font-semibold text-slate-900">{article.title}</h3><p className="mt-1 text-sm text-slate-500">客户问：{article.customer_question || '适用于相关销售场景'}</p></div>{canManage && <Button size="icon" variant="ghost" title="编辑知识卡" onClick={() => openEditor(article)}><Pencil className="h-4 w-4" /></Button>}</div><div className="mt-4 rounded-lg bg-slate-50 p-3"><p className="text-xs font-medium text-slate-500">标准答复</p><p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-700">{compact(article.standard_answer)}</p></div><div className="mt-4 flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap gap-1.5">{article.tags.slice(0, 4).map(tag => <span key={tag} className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">{tag}</span>)}</div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => setSelectedArticle(article)}>查看答案</Button><Button size="sm" onClick={() => void copyAnswer(article)}><Copy className="mr-1 h-3.5 w-3.5" />复制</Button></div></div></CardContent></Card>)}</div>}
-
-    <Dialog open={!!selectedArticle} onOpenChange={open => !open && setSelectedArticle(null)}><DialogContent className="max-h-[86vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>{selectedArticle?.title}</DialogTitle></DialogHeader>{selectedArticle && <div className="space-y-5"><div className="flex flex-wrap gap-2"><Badge className="bg-blue-100 text-blue-700">{selectedArticle.category}</Badge>{selectedArticle.is_sensitive && <Badge className="bg-amber-100 text-amber-800">仅内部销售使用</Badge>}</div><div><p className="text-sm font-medium text-slate-500">客户问题</p><p className="mt-1 text-slate-800">{selectedArticle.customer_question || '适用于此类问题'}</p></div><div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4"><p className="text-sm font-semibold text-blue-900">建议答复</p><p className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-800">{selectedArticle.standard_answer}</p></div>{selectedArticle.action_steps.length > 0 && <div><p className="font-semibold text-slate-900">执行步骤</p><ol className="mt-2 space-y-2 text-sm text-slate-700">{selectedArticle.action_steps.map((step, index) => <li key={`${step}-${index}`} className="flex gap-2"><span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">{index + 1}</span><span>{step}</span></li>)}</ol></div>}{selectedArticle.escalation_rule && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><div className="flex gap-2"><ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-amber-700" /><div><p className="text-sm font-semibold text-amber-950">需要升级确认</p><p className="mt-1 text-sm leading-6 text-amber-900">{selectedArticle.escalation_rule}</p></div></div></div>}<DialogFooter><Button onClick={() => void copyAnswer(selectedArticle)}><Copy className="mr-1.5 h-4 w-4" />复制标准答复</Button></DialogFooter></div>}</DialogContent></Dialog>
-
-    <Dialog open={editorOpen} onOpenChange={setEditorOpen}><DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>{editorArticle ? '编辑知识卡' : '新建知识卡'}</DialogTitle></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><div><Label>销售过程分类</Label><NativeSelect value={articleForm.category} onChange={value => { setArticleForm(current => ({ ...current, category: value })); setCustomCategory(''); }} options={allCategories.map(item => ({ value: item, label: item }))} /></div><div><Label>新分类名称（选填）</Label><Input value={customCategory} onChange={event => setCustomCategory(event.target.value)} placeholder="没有合适分类时直接输入" /></div><div><Label>排序数字</Label><Input type="number" value={articleForm.sort_order} onChange={event => setArticleForm(current => ({ ...current, sort_order: event.target.value }))} /></div><div className="flex items-end"><p className="pb-2 text-xs text-slate-500">排序越小越靠前；新分类保存后会自动出现在分类栏。</p></div><div className="sm:col-span-2"><Label>标题</Label><Input value={articleForm.title} onChange={event => setArticleForm(current => ({ ...current, title: event.target.value }))} placeholder="例如：客户怎么付款？" /></div><div className="sm:col-span-2"><Label>客户问题</Label><Input value={articleForm.customer_question} onChange={event => setArticleForm(current => ({ ...current, customer_question: event.target.value }))} placeholder="销售常遇到的原始问法" /></div><div className="sm:col-span-2"><Label>标准答复</Label><Textarea rows={6} value={articleForm.standard_answer} onChange={event => setArticleForm(current => ({ ...current, standard_answer: event.target.value }))} placeholder="销售可直接参考并按实际情况表达的答复" /></div><div className="sm:col-span-2"><Label>执行步骤（每行一条）</Label><Textarea rows={4} value={articleForm.action_steps} onChange={event => setArticleForm(current => ({ ...current, action_steps: event.target.value }))} placeholder={'先确认客户购买的服务\n再发送正确的付款说明\n提交财务确认'} /></div><div className="sm:col-span-2"><Label>何时需要升级确认</Label><Textarea rows={3} value={articleForm.escalation_rule} onChange={event => setArticleForm(current => ({ ...current, escalation_rule: event.target.value }))} placeholder="如涉及折扣、退款、特殊价格或效果承诺..." /></div><div><Label>标签（用逗号分隔）</Label><Input value={articleForm.tags} onChange={event => setArticleForm(current => ({ ...current, tags: event.target.value }))} placeholder="付款，Stripe，收款" /></div><label className="mt-6 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={articleForm.is_sensitive} onChange={event => setArticleForm(current => ({ ...current, is_sensitive: event.target.checked }))} />内部敏感信息</label><label className="sm:col-span-2 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={publishNow} onChange={event => setPublishNow(event.target.checked)} />保存后立即发布给销售查看</label></div><DialogFooter><Button variant="outline" onClick={() => setEditorOpen(false)}>取消</Button><Button disabled={saving} onClick={() => void saveArticle()}>{saving ? '保存中...' : '保存知识卡'}</Button></DialogFooter></DialogContent></Dialog>
-
-    <Dialog open={questionOpen} onOpenChange={setQuestionOpen}><DialogContent><DialogHeader><DialogTitle>提交销售新问题</DialogTitle></DialogHeader><div className="space-y-4"><p className="text-sm text-slate-500">把客户的原话和具体场景留下来，销售主管会整理为统一的标准答复。</p><div><Label>客户问了什么？</Label><Textarea rows={4} value={questionForm.question} onChange={event => setQuestionForm(current => ({ ...current, question: event.target.value }))} placeholder="例如：客户问广告费是否包含在代运营套餐中？" /></div><div><Label>补充场景（可选）</Label><Textarea rows={3} value={questionForm.context} onChange={event => setQuestionForm(current => ({ ...current, context: event.target.value }))} placeholder="客户行业、正在讨论的套餐、已承诺内容等" /></div><DialogFooter><Button variant="outline" onClick={() => setQuestionOpen(false)}>取消</Button><Button disabled={saving} onClick={() => void submitQuestion()}><Send className="mr-1.5 h-4 w-4" />提交问题</Button></DialogFooter></div></DialogContent></Dialog>
-  </div>;
+  );
 }

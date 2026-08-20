@@ -235,7 +235,9 @@
   .sales-v3-stats span { @apply flex flex-col gap-0.5 whitespace-nowrap; }
   .sales-v3-stats b { @apply text-base font-bold text-white; }
   .sales-v3-alert { @apply flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900; }
-  .sales-v3-shell { @apply grid overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_24px_60px_-46px_rgb(15_23_42_/_0.6)] xl:grid-cols-[17.5rem_minmax(0,1fr)_14rem]; min-height: min(44rem, calc(100vh - 11rem)); }
+  .sales-v3-shell { @apply grid overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_24px_60px_-46px_rgb(15_23_42_/_0.6)]; min-height: min(44rem, calc(100vh - 11rem)); }
+  .sales-v3-shell.has-assistant { @apply xl:grid-cols-[17.5rem_minmax(28rem,1fr)_21rem]; }
+  .sales-v3-shell.assistant-collapsed { @apply xl:grid-cols-[17.5rem_minmax(28rem,1fr)_3.25rem]; }
   .sales-v3-queue { @apply flex min-h-0 flex-col border-b border-slate-200 bg-white xl:border-b-0 xl:border-r; }
   .sales-v3-queue-head { @apply border-b border-slate-100 p-4; }
   .sales-v3-queue-head h3 { @apply text-sm font-bold text-slate-900; }
@@ -281,6 +283,98 @@
   .sales-v3-side section > button span { @apply mt-0.5 block text-[11px] leading-4 text-slate-500; }
   .sales-v3-more { @apply rounded-xl border border-slate-200 bg-white p-4 shadow-sm; }
   .sales-v3-more summary { @apply cursor-pointer text-sm font-semibold text-slate-800; }
+
+  .sales-v3-assistant { @apply flex min-h-0 flex-col border-t border-slate-200 bg-white xl:border-l xl:border-t-0; }
+  .sales-v3-assistant.is-collapsed { @apply min-h-14 flex-row items-center justify-center gap-1.5 px-1 xl:flex-col xl:justify-start xl:py-3; }
+  .sales-v3-assistant.is-collapsed > button { @apply min-h-11 min-w-11; }
+  .sales-v3-assistant.is-collapsed > span { @apply text-[10px] font-semibold text-slate-500 xl:[writing-mode:vertical-rl]; }
+  .sales-v3-assistant-head { @apply flex min-h-16 items-start justify-between gap-3 border-b border-slate-100 px-4 py-3; }
+  .sales-v3-assistant-head p { @apply flex items-center gap-2 text-sm font-semibold text-slate-900; }
+  .sales-v3-assistant-head span { @apply mt-1 block text-[11px] text-slate-500; }
+  .sales-v3-assistant-head button { @apply min-h-11 min-w-11; }
+  .sales-v3-assistant-search { @apply relative mx-3 mt-3; }
+  .sales-v3-assistant-search > svg { @apply pointer-events-none absolute left-3 top-3.5 z-10 text-slate-400; }
+  .sales-v3-assistant-search input { @apply h-11 pl-9 text-xs; }
+  .sales-v3-assistant-scenarios { @apply flex flex-wrap gap-1.5 px-3 py-3; }
+  .sales-v3-assistant-scenarios button { @apply min-h-9 rounded-md border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-600 transition hover:border-blue-300 hover:text-blue-700; }
+  .sales-v3-assistant-scenarios button.is-active { @apply border-blue-200 bg-blue-50 text-blue-700; }
+  .sales-v3-assistant-body { @apply min-h-0 flex-1 overflow-y-auto border-y border-slate-100; }
+  .sales-v3-assistant-empty { @apply p-5 text-center text-xs leading-5 text-slate-500; }
+  .sales-v3-assistant-results { @apply border-b border-slate-100 p-2; }
+  .sales-v3-assistant-results button { @apply flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 transition hover:bg-slate-50; }
+  .sales-v3-assistant-results button.is-active { @apply bg-slate-950 text-white; }
+  .sales-v3-assistant-results button span { @apply truncate font-medium; }
+  .sales-v3-assistant-results button small { @apply shrink-0 text-[9px] opacity-65; }
+  .sales-v3-assistant-answer { @apply space-y-3 p-3; }
+  .sales-v3-assistant-answer h4 { @apply text-sm font-semibold text-slate-900; }
+  .sales-v3-assistant-question { @apply text-[11px] leading-5 text-slate-500; }
+  .sales-v3-assistant-script { @apply rounded-lg border border-blue-100 bg-blue-50 p-3; }
+  .sales-v3-assistant-script > span { @apply text-[10px] font-semibold uppercase tracking-wide text-blue-700; }
+  .sales-v3-assistant-script p { @apply mt-1.5 text-xs leading-5 text-slate-800; }
+  .sales-v3-assistant-warning { @apply flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] leading-4 text-amber-900; }
+  .sales-v3-assistant-warning svg { @apply shrink-0 text-amber-700; }
+  .sales-v3-assistant-answer button { @apply min-h-11; }
+  .sales-v3-assistant-library { @apply m-2 min-h-11 text-xs text-blue-700; }
+
+  .knowledge-v4-page { @apply space-y-4; }
+  .knowledge-v4-header { @apply flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between; }
+  .knowledge-v4-header .app-page-kicker { @apply flex items-center gap-2; }
+  .knowledge-v4-header button { @apply min-h-11; }
+  .knowledge-v4-toolbar { @apply sticky top-0 z-20 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur lg:flex-row lg:items-center; }
+  .knowledge-v4-search { @apply relative min-w-0 flex-1; }
+  .knowledge-v4-search > svg { @apply pointer-events-none absolute left-3 top-3.5 z-10 text-slate-400; }
+  .knowledge-v4-search input { @apply h-11 pl-9; }
+  .knowledge-v4-summary { @apply flex items-center gap-4 px-1 text-xs text-slate-500; }
+  .knowledge-v4-summary b { @apply mr-1 text-sm text-slate-900; }
+  .knowledge-v4-workspace { @apply grid overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm; min-height: min(46rem, calc(100vh - 13rem)); }
+  .knowledge-v4-categories { @apply border-b border-slate-200 bg-slate-50/60 p-3 lg:border-b-0 lg:border-r; }
+  .knowledge-v4-panel-title { @apply flex min-h-11 items-center justify-between gap-3 border-b border-slate-100 px-3 text-sm font-semibold text-slate-900; }
+  .knowledge-v4-panel-title small { @apply text-[10px] font-normal text-slate-400; }
+  .knowledge-v4-categories nav { @apply flex gap-1.5 overflow-x-auto py-3 lg:block lg:space-y-1 lg:overflow-visible; }
+  .knowledge-v4-categories nav button { @apply flex min-h-11 shrink-0 items-center justify-between gap-2 rounded-md px-3 text-left text-xs font-medium text-slate-600 transition hover:bg-white hover:text-slate-950 lg:w-full; }
+  .knowledge-v4-categories nav button.is-active { @apply bg-slate-950 text-white shadow-sm; }
+  .knowledge-v4-rule { @apply mt-2 hidden gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950 lg:flex; }
+  .knowledge-v4-rule > svg { @apply mt-0.5 shrink-0 text-amber-700; }
+  .knowledge-v4-rule b { @apply text-xs; }
+  .knowledge-v4-rule p { @apply mt-1 text-[10px] leading-4 text-amber-800; }
+  .knowledge-v4-list { @apply min-h-0 border-b border-slate-200 lg:border-b-0 lg:border-r; }
+  .knowledge-v4-list-scroll { @apply max-h-[25rem] overflow-y-auto lg:max-h-[calc(100vh-17rem)]; }
+  .knowledge-v4-list-item { @apply block w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-50; }
+  .knowledge-v4-list-item.is-active { @apply border-l-[3px] border-l-blue-600 bg-blue-50/70 pl-[13px]; }
+  .knowledge-v4-list-meta { @apply flex flex-wrap items-center gap-1.5 text-[9px] font-medium text-blue-700; }
+  .knowledge-v4-list-meta > span { @apply rounded-full bg-blue-50 px-2 py-1; }
+  .knowledge-v4-list-meta > span.is-sensitive { @apply bg-amber-100 text-amber-800; }
+  .knowledge-v4-list-meta > span.is-draft { @apply bg-violet-100 text-violet-700; }
+  .knowledge-v4-list-item strong { @apply mt-2 block text-sm text-slate-900; }
+  .knowledge-v4-list-item > p { @apply mt-1 truncate text-xs text-slate-500; }
+  .knowledge-v4-list-item > small { @apply mt-2 block text-[11px] leading-5 text-slate-600; }
+  .knowledge-v4-detail { @apply min-h-0 space-y-5 overflow-y-auto p-5 lg:max-h-[calc(100vh-13rem)] lg:p-6; }
+  .knowledge-v4-detail-head { @apply flex items-start justify-between gap-4 border-b border-slate-100 pb-5; }
+  .knowledge-v4-detail-head h3 { @apply mt-3 text-xl font-semibold tracking-[-.02em] text-slate-950; }
+  .knowledge-v4-detail-head p { @apply mt-1.5 text-sm text-slate-500; }
+  .knowledge-v4-detail-head button { @apply min-h-11 min-w-11; }
+  .knowledge-v4-short-answer { @apply rounded-xl border border-blue-100 bg-blue-50 p-4; }
+  .knowledge-v4-short-answer > div { @apply flex items-center justify-between gap-3; }
+  .knowledge-v4-short-answer span { @apply text-xs font-semibold uppercase tracking-wide text-blue-700; }
+  .knowledge-v4-short-answer small { @apply text-[10px] text-blue-500; }
+  .knowledge-v4-short-answer p { @apply my-3 text-sm leading-7 text-slate-900; }
+  .knowledge-v4-short-answer button { @apply min-h-11; }
+  .knowledge-v4-full-answer h4, .knowledge-v4-steps h4, .knowledge-v4-escalation h4 { @apply text-sm font-semibold text-slate-900; }
+  .knowledge-v4-full-answer > p { @apply mt-3 whitespace-pre-line text-sm leading-7 text-slate-700; }
+  .knowledge-v4-full-answer button { @apply min-h-11; }
+  .knowledge-v4-steps ol { @apply mt-3 space-y-2; }
+  .knowledge-v4-steps li { @apply flex gap-3 text-sm leading-6 text-slate-700; }
+  .knowledge-v4-steps li > span { @apply flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600; }
+  .knowledge-v4-escalation { @apply flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950; }
+  .knowledge-v4-escalation > svg { @apply mt-0.5 shrink-0 text-amber-700; }
+  .knowledge-v4-escalation p { @apply mt-1 text-sm leading-6 text-amber-900; }
+  .knowledge-v4-tags { @apply flex flex-wrap gap-1.5 border-t border-slate-100 pt-4; }
+  .knowledge-v4-tags span { @apply rounded-full bg-slate-100 px-2.5 py-1 text-[10px] text-slate-600; }
+  .knowledge-v4-empty { @apply p-8 text-center text-sm text-slate-500; }
+
+  @screen lg {
+    .knowledge-v4-workspace { grid-template-columns: 13.5rem 22rem minmax(0, 1fr); }
+  }
 
   .customer-360-page { @apply max-w-[1680px]; }
   .customer-360-hero { @apply relative overflow-hidden rounded-[1.35rem] bg-slate-950 px-5 py-5 text-white md:px-6; background-image: radial-gradient(circle at 82% -15%, rgb(37 99 235 / .62), transparent 42%); box-shadow: 0 26px 64px -46px rgb(15 23 42 / .85); }
