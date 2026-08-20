@@ -227,6 +227,220 @@
     @apply mt-1 text-xs leading-5 text-slate-500;
   }
 
+  .stitch-page {
+    --stitch-blue: #2563eb;
+    --stitch-navy: #0f172a;
+    --stitch-canvas: #f4f6fa;
+  }
+
+  .stitch-page-header {
+    @apply relative overflow-hidden rounded-[1.35rem] border border-slate-200/90 bg-white px-5 py-5 md:px-6 md:py-6;
+    box-shadow: 0 24px 60px -48px rgb(15 23 42 / 0.55), 0 1px 2px rgb(15 23 42 / 0.04);
+  }
+
+  .stitch-page-header::after {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto auto;
+    width: 16rem;
+    height: 10rem;
+    pointer-events: none;
+    background: radial-gradient(circle at top right, rgb(37 99 235 / 0.12), transparent 68%);
+  }
+
+  .stitch-kicker {
+    @apply text-[10px] font-bold uppercase tracking-[0.2em] text-blue-600;
+  }
+
+  .stitch-title {
+    @apply mt-1 text-[1.75rem] font-bold leading-tight tracking-[-0.035em] text-slate-950 md:text-[2rem];
+  }
+
+  .stitch-subtitle {
+    @apply mt-2 max-w-3xl text-sm leading-6 text-slate-500;
+  }
+
+  .stitch-hero {
+    @apply relative overflow-hidden rounded-[1.35rem] border border-blue-100/90 bg-white;
+    box-shadow: 0 28px 70px -50px rgb(37 99 235 / 0.5), 0 1px 2px rgb(15 23 42 / 0.04);
+  }
+
+  .stitch-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(118deg, rgb(37 99 235 / 0.09), transparent 38%),
+      radial-gradient(circle at 92% 4%, rgb(96 165 250 / 0.18), transparent 26%);
+  }
+
+  .stitch-metric-card {
+    @apply relative rounded-2xl border border-slate-200/90 bg-white p-4 text-left;
+    box-shadow: 0 14px 38px -32px rgb(15 23 42 / 0.6);
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .stitch-metric-card:hover {
+    transform: translateY(-2px);
+    border-color: rgb(147 197 253);
+    box-shadow: 0 22px 44px -32px rgb(37 99 235 / 0.42);
+  }
+
+  .stitch-section-card {
+    @apply rounded-[1.2rem] border border-slate-200/90 bg-white;
+    box-shadow: 0 18px 48px -42px rgb(15 23 42 / 0.55), 0 1px 2px rgb(15 23 42 / 0.035);
+  }
+
+  .stitch-toolbar {
+    @apply rounded-2xl border border-slate-200/90 bg-white p-3;
+    box-shadow: 0 16px 40px -38px rgb(15 23 42 / 0.6);
+  }
+
+  .stitch-segment {
+    @apply rounded-xl border border-transparent bg-slate-100/90 p-1;
+  }
+
+  .stitch-customer-table tbody tr {
+    transition: background-color 140ms ease, box-shadow 140ms ease;
+  }
+
+  .stitch-customer-table tbody tr:hover {
+    background: rgb(239 246 255 / 0.72);
+    box-shadow: inset 3px 0 0 rgb(37 99 235 / 0.72);
+  }
+
+  .stitch-detail-hero {
+    @apply rounded-[1.35rem] border border-blue-100 bg-white p-4 md:p-5;
+    background-image: linear-gradient(118deg, rgb(239 246 255 / 0.95), rgb(255 255 255 / 0.98) 52%);
+    box-shadow: 0 22px 54px -44px rgb(37 99 235 / 0.48);
+  }
+
+  .stitch-command-deck {
+    @apply overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white;
+    box-shadow: 0 28px 70px -46px rgb(15 23 42 / 0.48);
+  }
+
+  .stitch-command-status {
+    @apply flex flex-col gap-2 border-b border-white/10 bg-slate-950 px-5 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-200 sm:flex-row sm:items-center sm:justify-between md:px-7;
+  }
+
+  .stitch-decision-rail {
+    @apply bg-slate-950 p-5 md:p-6;
+    background-image: radial-gradient(circle at top right, rgb(37 99 235 / 0.42), transparent 42%);
+  }
+
+  .stitch-decision-row {
+    @apply flex w-full items-start gap-3 rounded-xl border border-white/10 bg-white/[0.055] p-3 text-left transition hover:border-blue-300/50 hover:bg-white/[0.1];
+  }
+
+  .stitch-customer-header {
+    @apply relative overflow-hidden rounded-[1.5rem] border border-slate-800 bg-slate-950 px-5 py-5 md:px-6 md:py-6;
+    background-image: radial-gradient(circle at 88% 0%, rgb(37 99 235 / 0.62), transparent 37%);
+    box-shadow: 0 26px 64px -46px rgb(15 23 42 / 0.7);
+  }
+
+  .stitch-customer-header .stitch-kicker { color: rgb(147 197 253); }
+  .stitch-customer-header .stitch-title { color: white; }
+  .stitch-customer-header .stitch-subtitle { color: rgb(203 213 225); }
+
+  .stitch-customer-page .stitch-segment {
+    @apply border border-slate-800 bg-slate-950 p-2;
+    box-shadow: 0 18px 42px -36px rgb(15 23 42 / 0.76);
+  }
+
+  .stitch-customer-page .stitch-segment button:not([data-state]) {
+    @apply border-white/10 bg-white/[0.055] text-slate-200 hover:bg-white/10 hover:text-white;
+  }
+
+  .sales-v3-page { @apply space-y-4; }
+  .sales-v3-topbar { @apply flex flex-col gap-4 rounded-[1.35rem] bg-slate-950 px-5 py-4 text-white xl:flex-row xl:items-center xl:justify-between; background-image: radial-gradient(circle at 78% 0%, rgb(37 99 235 / .48), transparent 36%); box-shadow: 0 24px 60px -42px rgb(15 23 42 / .8); }
+  .sales-v3-kicker { @apply flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.18em] text-blue-300; }
+  .sales-v3-topbar h2 { @apply mt-1 text-xl font-bold tracking-[-.03em]; }
+  .sales-v3-stats { @apply grid grid-cols-3 gap-x-5 gap-y-2 text-[10px] text-slate-400 sm:flex sm:items-center; }
+  .sales-v3-stats span { @apply flex flex-col gap-0.5 whitespace-nowrap; }
+  .sales-v3-stats b { @apply text-base font-bold text-white; }
+  .sales-v3-alert { @apply flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900; }
+  .sales-v3-shell { @apply grid overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_24px_60px_-46px_rgb(15_23_42_/_0.6)] xl:grid-cols-[17.5rem_minmax(0,1fr)_14rem]; min-height: min(44rem, calc(100vh - 11rem)); }
+  .sales-v3-queue { @apply flex min-h-0 flex-col border-b border-slate-200 bg-white xl:border-b-0 xl:border-r; }
+  .sales-v3-queue-head { @apply border-b border-slate-100 p-4; }
+  .sales-v3-queue-head h3 { @apply text-sm font-bold text-slate-900; }
+  .sales-v3-queue-head > div > span { @apply text-xs text-slate-400; }
+  .sales-v3-progress { @apply h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100; }
+  .sales-v3-progress span { @apply block h-full rounded-full bg-emerald-500; }
+  .sales-v3-queue-list { @apply min-h-0 flex-1 overflow-y-auto; }
+  .sales-v3-queue-item { @apply flex w-full items-center gap-2.5 border-b border-slate-100 px-3 py-3 text-left transition hover:bg-slate-50; }
+  .sales-v3-queue-item.is-active { @apply border-l-[3px] border-l-blue-600 bg-blue-50; }
+  .sales-v3-queue-item.is-done { @apply opacity-45; }
+  .sales-v3-queue-index { @apply flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-500; }
+  .sales-v3-queue-index.is-overdue { @apply bg-rose-100 text-rose-700; }
+  .sales-v3-queue-name { @apply block truncate font-semibold text-slate-800; }
+  .sales-v3-queue-name::before { content: attr(data-name); }
+  .sales-v3-status { @apply rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600; }
+  .sales-v3-status.is-overdue { @apply bg-rose-100 text-rose-700; }
+  .sales-v3-main { @apply min-w-0 bg-slate-50/70 p-4 md:p-5; }
+  .sales-v3-empty { @apply flex min-h-[20rem] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500; }
+  .sales-v3-customer, .sales-v3-call { @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_16px_38px_-34px_rgb(15_23_42_/_0.6)]; }
+  .sales-v3-call { @apply mt-4; }
+  .sales-v3-customer h1 { @apply text-xl font-bold tracking-[-.025em] text-slate-900; }
+  .sales-v3-customer p { @apply mt-1 text-xs text-slate-500; }
+  .sales-v3-avatar { @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-700 text-lg font-bold text-white shadow-lg shadow-blue-500/20; }
+  .sales-v3-customer small { @apply block text-[10px] font-medium text-slate-400; }
+  .sales-v3-customer strong { @apply mt-1 block truncate text-sm text-slate-700; }
+  .sales-v3-customer > div:nth-child(2) > div { @apply rounded-xl bg-slate-50 p-3; }
+  .sales-v3-customer .sales-v3-phone { @apply bg-blue-50; }
+  .sales-v3-customer .sales-v3-phone strong { @apply text-blue-700; }
+  .sales-v3-next { @apply mt-4 flex flex-wrap items-center gap-2 rounded-xl border-t border-slate-100 pt-3 text-xs font-medium text-blue-700; }
+  .sales-v3-next > span { @apply text-slate-400; }
+  .sales-v3-next button { @apply ml-auto; }
+  .sales-v3-call h3 { @apply flex items-center gap-2 text-sm font-bold text-slate-900; }
+  .sales-v3-call > div:first-child > span { @apply hidden text-[10px] text-slate-400 md:block; }
+  .sales-v3-call-button { @apply bg-emerald-600 px-5 shadow-lg shadow-emerald-600/25 hover:bg-emerald-700; }
+  .sales-v3-outcome { @apply rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700; }
+  .sales-v3-side { @apply hidden border-l border-slate-200 bg-white p-3 xl:block; }
+  .sales-v3-side section { @apply rounded-xl border border-slate-100 bg-slate-50/70 p-3; }
+  .sales-v3-side section + section { @apply mt-3; }
+  .sales-v3-side h3 { @apply text-xs font-bold text-slate-800; }
+  .sales-v3-side p { @apply mt-2 text-[11px] leading-5 text-slate-500; }
+  .sales-v3-side section > button { @apply mt-2 block w-full rounded-lg border border-slate-100 bg-white p-2 text-left transition hover:border-blue-200 hover:bg-blue-50; }
+  .sales-v3-side section > button b { @apply block text-[10px] text-blue-700; }
+  .sales-v3-side section > button span { @apply mt-0.5 block text-[11px] leading-4 text-slate-500; }
+  .sales-v3-more { @apply rounded-xl border border-slate-200 bg-white p-4 shadow-sm; }
+  .sales-v3-more summary { @apply cursor-pointer text-sm font-semibold text-slate-800; }
+
+  /* Finance redesign: a compact review surface that keeps all existing accounting data and actions intact. */
+  .finance-v3-page { @apply max-w-[1600px]; }
+  .finance-v3-header { @apply relative overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white px-5 py-5; box-shadow: 0 20px 48px -42px rgb(15 23 42 / .52); }
+  .finance-v3-header::after { content: ""; position: absolute; inset: 0 0 0 auto; width: min(32%, 23rem); pointer-events: none; background: radial-gradient(circle at 82% 26%, rgb(16 185 129 / .16), transparent 58%); }
+  .finance-v3-header > * { @apply relative z-10; }
+  .finance-v3-filter { @apply rounded-xl bg-white shadow-[0_12px_32px_-28px_rgb(15_23_42_/_0.5)]; }
+  .finance-v3-filter .font-medium { @apply text-slate-700; }
+  .finance-v3-snapshot > div:first-child { @apply px-1; }
+  .finance-v3-metrics { @apply overflow-x-auto pb-1 xl:overflow-visible; }
+  .finance-v3-metric { @apply min-w-[10.75rem] rounded-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_30px_-24px_rgb(15_23_42_/_0.35)]; }
+  .finance-v3-metric-income { @apply border-emerald-100; }
+  .finance-v3-nav { @apply rounded-xl border-slate-100 shadow-[0_12px_30px_-26px_rgb(15_23_42_/_0.38)]; }
+  .finance-v3-nav [role="tablist"] { @apply bg-slate-50; }
+  .finance-v3-nav [data-state="active"] { @apply bg-slate-900 text-white shadow-sm; }
+  .finance-v3-overview > .grid { @apply gap-4; }
+  .finance-v3-trend-card, .finance-v3-composition-card, .finance-v3-action-card { @apply rounded-[1.1rem] shadow-[0_18px_42px_-36px_rgb(15_23_42_/_0.5)]; }
+  .finance-v3-trend-card { @apply overflow-hidden; background: linear-gradient(180deg, #fff 0%, #f8fbff 100%); }
+  .finance-v3-composition-card { @apply bg-white; }
+  .finance-v3-composition-row { @apply flex w-full items-center justify-between border-b border-slate-100 py-2.5 text-left transition last:border-b-0 hover:px-1; }
+  .finance-v3-composition-row span { @apply flex items-center gap-2 text-xs font-medium text-slate-600; }
+  .finance-v3-composition-row i { @apply h-2.5 w-2.5 rounded-sm; }
+  .finance-v3-composition-row b { @apply text-sm text-slate-800; }
+  .finance-v3-funds-note { @apply flex w-full items-center justify-between rounded-lg bg-amber-50 px-3 py-2 text-left text-[11px] font-medium leading-4 text-amber-700 transition hover:bg-amber-100; }
+  .finance-v3-cash-card { @apply rounded-[1.1rem]; box-shadow: 0 24px 56px -34px rgb(15 23 42 / .68); }
+  .finance-v3-cash-card .rounded-2xl { @apply rounded-xl; }
+  .finance-v3-action-card { @apply overflow-hidden bg-white; }
+  .finance-v3-action-card .space-y-2 > button { @apply rounded-lg border-l-4 py-2.5 transition hover:translate-x-0.5; }
+  .finance-v3-action-card .space-y-2 > button:nth-child(1) { @apply border-l-cyan-500; }
+  .finance-v3-action-card .space-y-2 > button:nth-child(2) { @apply border-l-red-500; }
+  .finance-v3-action-card .space-y-2 > button:nth-child(3) { @apply border-l-amber-500; }
+  .finance-v3-action-card .space-y-2 > button:nth-child(4) { @apply border-l-slate-400; }
+  .finance-v3-action-card .space-y-2 > button:nth-child(5) { @apply border-l-orange-500; }
+
   .app-table-wrap table {
     @apply min-w-[760px];
   }
@@ -297,6 +511,22 @@
     .merchant-pool-page .merchant-pool-table td,
     .merchant-pool-page .merchant-pool-table th {
       white-space: nowrap;
+    }
+
+    .stitch-page-header,
+    .stitch-hero,
+    .stitch-detail-hero,
+    .stitch-command-deck,
+    .stitch-customer-header {
+      border-radius: 1.125rem;
+    }
+
+    .finance-v3-header,
+    .finance-v3-trend-card,
+    .finance-v3-composition-card,
+    .finance-v3-cash-card,
+    .finance-v3-action-card {
+      border-radius: 1.125rem;
     }
   }
 

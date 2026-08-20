@@ -1472,6 +1472,15 @@ export default function Customers() {
     () => paginateList(filtered, customerPage, customerPageSize),
     [filtered, customerPage, customerPageSize],
   );
+  const highIntentLevelKeys = Object.entries(levelLabels)
+    .filter(([key, label]) => key.toLowerCase().includes('high') || String(label).includes('高意向'))
+    .map(([key]) => key);
+  const customerSummary = [
+    { label: '全部客户', value: customers.length, helper: '当前可访问客户' },
+    { label: '当前筛选结果', value: filtered.length, helper: filtered.length === customers.length ? '未缩小结果范围' : `已从 ${customers.length} 位客户中筛选` },
+    { label: '高意向客户', value: customers.filter(customer => highIntentLevelKeys.includes(customer.level)).length, helper: '需要优先跟进' },
+    { label: '已分配负责人', value: customers.filter(customer => Boolean(customer.sales_person)).length, helper: '已有明确负责人员' },
+  ];
 
   useEffect(() => {
     setCustomerPage(1);
@@ -2556,8 +2565,8 @@ export default function Customers() {
     });
 
     return (
-      <div className="app-page space-y-5">
-        <div className="app-page-title items-start md:items-center">
+      <div className="app-page stitch-page space-y-5">
+        <div className="stitch-detail-hero flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
           <Button variant="ghost" size="sm" onClick={closeDetail}><ArrowLeft className="w-4 h-4 mr-1" /> {detailReturnTo ? getReturnLabel(detailReturnTo) : detailFromFinance ? '返回财务' : '返回列表'}</Button>
           <div className="min-w-0">
@@ -2598,7 +2607,7 @@ export default function Customers() {
           </div>
         )}
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
-          <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
+          <div className="stitch-toolbar mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
           <div className="-mx-1 overflow-x-auto px-1 pb-1 md:hidden">
             <TabsList aria-label="客户手机主导航" className="h-auto w-max min-w-full justify-start gap-1 bg-slate-100 p-1">
               <TabsTrigger value="overview" className="min-h-11 shrink-0 px-3 text-sm">客户 360</TabsTrigger>
@@ -3111,12 +3120,12 @@ export default function Customers() {
 
   // ========== LIST VIEW ==========
   return (
-    <div className="app-page space-y-5">
-      <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
-        <div>
-          <p className="app-page-kicker">T24 Marketing · CRM</p>
-          <h2 className="app-page-heading">客户管理</h2>
-          <p className="app-page-description">从线索、成交到服务和续费，统一管理客户全生命周期</p>
+    <div className="app-page stitch-page stitch-customer-page space-y-5">
+      <div className="stitch-customer-header flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
+        <div className="relative z-10">
+          <p className="stitch-kicker">T24 Marketing · CRM</p>
+          <h2 className="stitch-title">客户中心</h2>
+          <p className="stitch-subtitle">从线索、成交到服务和续费，统一管理客户全生命周期</p>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {!isMobile && <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
@@ -3145,6 +3154,21 @@ export default function Customers() {
         {isMobile && <p className="text-xs text-slate-500">批量导入、敏感数据导出、列设置和快捷编辑请在电脑端处理。</p>}
       </div>
 
+      <div className="flex gap-3 overflow-x-auto pb-1 xl:grid xl:grid-cols-4 xl:overflow-visible xl:pb-0">
+        {customerSummary.map((item, index) => (
+          <div key={item.label} className="stitch-metric-card min-w-[9.5rem] flex-1 xl:min-w-0">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-slate-500">{item.label}</p>
+                <p className="mt-2 text-2xl font-bold tracking-[-0.03em] text-slate-950">{item.value}</p>
+              </div>
+              <span className={`mt-1 h-2.5 w-2.5 rounded-full ${index === 2 ? 'bg-amber-500' : index === 3 ? 'bg-emerald-500' : 'bg-blue-600'}`} />
+            </div>
+            <p className="mt-2 text-[11px] leading-5 text-slate-500">{item.helper}</p>
+          </div>
+        ))}
+      </div>
+
       {showColPicker && (
         <Card className="border-slate-200"><CardContent className="p-3">
           <div className="flex items-center justify-between mb-2"><span className="text-sm font-medium text-slate-600">自定义显示列</span><Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowColPicker(false)}><X className="w-3 h-3" /></Button></div>
@@ -3152,7 +3176,7 @@ export default function Customers() {
         </CardContent></Card>
       )}
 
-      <div className="app-toolbar -mx-1 flex flex-nowrap gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+      <div className="stitch-segment -mx-1 flex flex-nowrap gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-1 sm:pb-1">
         <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
         {Object.entries(statusLabels).map(([k, v]) => (
           <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
@@ -3172,7 +3196,7 @@ export default function Customers() {
         </CardContent></Card>
       )}
 
-      <div className="app-toolbar space-y-3">
+      <div className="stitch-toolbar space-y-3">
         <div className="flex gap-2 md:gap-3">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索编号、名称、联系人、电话..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
           <Button variant="outline" size="sm" className="h-11 shrink-0 gap-1.5 md:hidden" onClick={() => setMobileFiltersOpen(true)}>
@@ -3262,7 +3286,7 @@ export default function Customers() {
         <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${loadError ? 'bg-rose-500' : loading ? 'bg-amber-500' : 'bg-emerald-500'}`} />{loading ? '正在同步客户资料' : loadError ? '同步失败，保留上次结果' : `数据更新 ${formatCustomerTimestamp(customersLoadedAt)}`}</span>
       </div>
 
-      <Card className="app-card border-slate-200"><CardContent className="p-0">
+      <Card className="app-card stitch-section-card"><CardContent className="p-0">
         {loading ? <CustomerListLoadingState />
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无匹配的客户</p>
         : (
@@ -3306,7 +3330,7 @@ export default function Customers() {
               </div>
             ))}
           </div>
-          <div className="hidden max-h-[calc(100vh-280px)] overflow-auto md:block"><table className="w-full text-sm"><thead className="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_rgb(226,232,240)]"><tr className="text-left text-slate-500">
+          <div className="hidden max-h-[calc(100vh-280px)] overflow-auto md:block"><table className="stitch-customer-table w-full text-sm"><thead className="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_rgb(226,232,240)]"><tr className="text-left text-slate-500">
             {isAdmin && <th className="w-12 px-4 py-3"><input type="checkbox" aria-label="选择本页客户" checked={paginatedCustomers.items.length > 0 && paginatedCustomers.items.every(customer => selectedCustomerIds.includes(customer.id))} onChange={event => setSelectedCustomerIds(current => event.target.checked ? Array.from(new Set([...current, ...paginatedCustomers.items.map(customer => customer.id)])) : current.filter(id => !paginatedCustomers.items.some(customer => customer.id === id)))} /></th>}
             {visibleCols.includes('customer_code') && <th className="px-4 py-3 font-medium">编号</th>}
             {visibleCols.includes('business_name') && <th className="px-4 py-3 font-medium">商家名称</th>}

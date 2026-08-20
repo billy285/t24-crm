@@ -3675,7 +3675,7 @@ export default function Finance() {
 
   // ─── Date Filter Component ──────────────────────────────────────
   const DateFilterBar = () => (
-    <Card className="border-slate-200">
+    <Card className="finance-v3-filter border-slate-200">
       <CardContent className="p-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <div className="flex items-center gap-1.5 text-sm text-slate-600">
@@ -3793,15 +3793,15 @@ export default function Finance() {
   }
 
   return (
-    <div className="app-page space-y-5">
+    <div className="app-page finance-v3-page space-y-5">
       {/* Header */}
-      <div className="app-page-title flex-col gap-4 sm:flex-row sm:items-center">
+      <div className="app-page-title finance-v3-header flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-start gap-3">
           <div className="mt-1 hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-600 to-cyan-400 sm:block" />
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Finance</p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">财务管理</h2>
-            <p className="mt-1 text-sm text-slate-500">掌握收入、成本、利润和待处理事项</p>
+            <h2 className="mt-1 text-2xl font-bold text-slate-900">财务与结算</h2>
+            <p className="mt-1 text-sm text-slate-500">掌握收入、成本、利润和待处理事项，先看利润与现金风险，再进入明细处理</p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
               <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">老板视角</span>
               <span>收款与退款按实际资金日期归属月份</span>
@@ -3860,7 +3860,7 @@ export default function Finance() {
       <DateFilterBar />
 
       {/* First-screen business snapshot */}
-      <section aria-labelledby="finance-snapshot-title" className="space-y-3">
+      <section aria-labelledby="finance-snapshot-title" className="finance-v3-snapshot space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <h3 id="finance-snapshot-title" className="text-sm font-semibold text-slate-900">经营快照</h3>
@@ -3879,8 +3879,8 @@ export default function Finance() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-          <Card className="border-emerald-100 bg-gradient-to-br from-emerald-50/90 to-white shadow-sm">
+        <div className="finance-v3-metrics grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <Card className="finance-v3-metric finance-v3-metric-income border-emerald-100 bg-gradient-to-br from-emerald-50/90 to-white shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-medium text-slate-500">{summaryPeriodLabel}服务收入</p>
@@ -3891,7 +3891,7 @@ export default function Finance() {
             </CardContent>
           </Card>
 
-          <Card className={summaryProfitUsd >= 0 ? 'border-blue-100 bg-gradient-to-br from-blue-50/90 to-white shadow-sm' : 'border-red-100 bg-gradient-to-br from-red-50/90 to-white shadow-sm'}>
+          <Card className={`finance-v3-metric ${summaryProfitUsd >= 0 ? 'border-blue-100 bg-gradient-to-br from-blue-50/90 to-white shadow-sm' : 'border-red-100 bg-gradient-to-br from-red-50/90 to-white shadow-sm'}`}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-medium text-slate-500">{summaryPeriodLabel}经营利润 USD</p>
@@ -3902,7 +3902,7 @@ export default function Finance() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 shadow-sm">
+          <Card className="finance-v3-metric border-slate-200 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-medium text-slate-500">审计总成本 USD</p>
@@ -3913,7 +3913,7 @@ export default function Finance() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 shadow-sm">
+          <Card className="finance-v3-metric border-slate-200 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-medium text-slate-500">扣点与 Stripe</p>
@@ -3924,7 +3924,7 @@ export default function Finance() {
             </CardContent>
           </Card>
 
-          <Card className={totalOutstanding > 0 ? 'border-red-100 bg-red-50/50 shadow-sm' : 'border-slate-200 shadow-sm'}>
+          <Card className={`finance-v3-metric ${totalOutstanding > 0 ? 'border-red-100 bg-red-50/50 shadow-sm' : 'border-slate-200 shadow-sm'}`}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-medium text-slate-500">应收未收</p>
@@ -3935,7 +3935,7 @@ export default function Finance() {
             </CardContent>
           </Card>
 
-          <Card className={renewalAttentionCount > 0 ? 'border-cyan-100 bg-cyan-50/50 shadow-sm' : 'border-slate-200 shadow-sm'}>
+          <Card className={`finance-v3-metric ${renewalAttentionCount > 0 ? 'border-cyan-100 bg-cyan-50/50 shadow-sm' : 'border-slate-200 shadow-sm'}`}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-medium text-slate-500">续费提醒</p>
@@ -3954,7 +3954,7 @@ export default function Finance() {
         <p className="mt-1 text-xs leading-5 text-blue-700">可随时查看利润、成本、应收和续费风险；收款、退款、支出、导出及月结操作请在电脑端完成。</p>
       </div>
       <Tabs value={activeFinanceTab} onValueChange={handleFinanceTabChange} className="w-full">
-        <div className="hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm md:block">
+        <div className="finance-v3-nav hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm md:block">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <p className="px-1 text-xs font-semibold text-slate-700">常用财务流程</p>
@@ -4005,9 +4005,49 @@ export default function Finance() {
         )}
 
         <TabsContent value="overview">
-          <div className="space-y-4">
+          <div className="finance-v3-overview space-y-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+              <Card className="finance-v3-trend-card border-slate-100">
+                <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-4 w-4 text-blue-600" />近6个月收入与利润趋势</CardTitle>
+                    <p className="mt-1 text-xs text-slate-500">服务收入不含客户投流充值；利润按当前审计口径计算。</p>
+                  </div>
+                  <button type="button" onClick={() => handleFinanceTabChange('charts')} className="text-xs font-medium text-blue-600 hover:underline">查看分析</button>
+                </CardHeader>
+                <CardContent className="pt-2">
+                  <ResponsiveContainer width="100%" height={232}>
+                    <BarChart data={monthlyTrendData.slice(-6).some((row) => row.income !== 0 || row.profitUsd !== 0)
+                      ? monthlyTrendData.slice(-6)
+                      : [{ label: summaryPeriodLabel, income: summaryProfitRevenueUsd, profitUsd: summaryProfitUsd }]} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(value) => value >= 1000 ? `$${(value / 1000).toFixed(0)}k` : `$${value}`} />
+                      <Tooltip formatter={(value: number, name: string) => [fmt(value), name === 'income' ? '服务收入' : '经营利润']} contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0' }} />
+                      <Bar dataKey="income" name="income" fill="#3b82f6" radius={[5, 5, 0, 0]} maxBarSize={26} />
+                      <Line type="monotone" dataKey="profitUsd" name="profitUsd" stroke="#10b981" strokeWidth={3} dot={{ r: 3, fill: '#10b981' }} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              <Card className="finance-v3-composition-card border-slate-100">
+                <CardHeader className="pb-2"><CardTitle className="text-base">收入与成本构成</CardTitle><p className="mt-1 text-xs text-slate-500">先看可用服务收入，再看成本压力。</p></CardHeader>
+                <CardContent className="space-y-3">
+                  <button type="button" onClick={() => handleFinanceTabChange('income')} className="finance-v3-composition-row">
+                    <span><i className="bg-blue-500" />服务收入</span><b>{fmt(summaryProfitRevenueUsd)}</b>
+                  </button>
+                  <button type="button" onClick={() => handleFinanceTabChange('customer_expense')} className="finance-v3-composition-row">
+                    <span><i className="bg-amber-500" />客户成本</span><b>{fmt(summaryOtherCostUsd)}</b>
+                  </button>
+                  <button type="button" onClick={() => navigate('/commissions')} className="finance-v3-composition-row">
+                    <span><i className="bg-rose-500" />审计总成本</span><b>{fmt(summaryCostUsd)}</b>
+                  </button>
+                  <button type="button" onClick={() => handleFinanceTabChange('ad_funds')} className="finance-v3-funds-note">投流资金 {fmt(summaryAdsRevenueUsd)} 作为客户资金单独核算 <ArrowUpRight className="h-3.5 w-3.5" /></button>
+                </CardContent>
+              </Card>
+            </div>
             <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-              <Card className="overflow-hidden border-slate-900 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
+              <Card className="finance-v3-cash-card overflow-hidden border-slate-900 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
                 <CardContent className="p-5">
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                     <div>
@@ -4048,7 +4088,7 @@ export default function Finance() {
                 </CardContent>
               </Card>
 
-              <Card className="border-slate-200">
+              <Card className="finance-v3-action-card border-slate-200">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">待处理事项</CardTitle>
                   <p className="text-xs text-slate-500">按紧急程度处理，减少漏扣款、漏收款和错账。</p>

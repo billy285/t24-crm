@@ -48,7 +48,7 @@ test('管理员可为多位客户批量添加团队成员并逐人设置只读�
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${baseUrl}/customers`);
 
-  await expect(page.getByRole('heading', { name: '客户管理' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '客户中心' })).toBeVisible();
   await page.getByRole('checkbox', { name: '选择客户 Alpha Cafe' }).check();
   await page.getByRole('checkbox', { name: '选择客户 Beta Spa' }).check();
   await expect(page.getByText('已选择 2 位客户')).toBeVisible();

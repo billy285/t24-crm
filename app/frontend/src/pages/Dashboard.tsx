@@ -665,38 +665,42 @@ export default function Dashboard() {
 
     return (
       <section className="space-y-4">
-        <Card className="overflow-hidden border border-slate-800 bg-[#0f1b34] text-white shadow-[0_16px_42px_-30px_rgba(15,23,42,0.9)]">
-          <CardContent className="p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-300"><Gauge className="h-4 w-4" />T24 Owner Command Center</div>
-                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.02em]">今天先看结果，再看风险，最后确认谁来处理</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">{ownerCockpit.finance.currency_policy}</p>
-              </div>
-              <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${ownerCockpit.decision_state === 'healthy' ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-300/30 bg-amber-300/10'}`}>
-                {ownerCockpit.decision_state === 'healthy' ? <CheckCircle2 className="h-5 w-5 text-emerald-300" /> : <ShieldAlert className="h-5 w-5 text-amber-300" />}
-                <div><p className="text-sm font-semibold">{ownerCockpit.decision_state === 'healthy' ? '当前经营闭环正常' : `${ownerCockpit.decisions.length} 类事项需要关注`}</p><p className="mt-0.5 text-[11px] text-slate-300">数据截至 {new Date(ownerCockpit.as_of).toLocaleString('zh-CN', { hour12: false })}</p></div>
-              </div>
+        <Card className="stitch-command-deck">
+          <CardContent className="p-0">
+            <div className="stitch-command-status">
+              <div className="flex min-w-0 items-center gap-2"><Gauge className="h-4 w-4 text-blue-300" /><span>T24 Owner Command Center</span><span className="hidden text-slate-500 sm:inline">/ 今日经营快照</span></div>
+              <div className="flex items-center gap-2 text-[11px] text-slate-300"><span className={`h-2 w-2 rounded-full ${ownerCockpit.decision_state === 'healthy' ? 'bg-emerald-400' : 'bg-amber-400'}`} />数据截至 {new Date(ownerCockpit.as_of).toLocaleString('zh-CN', { hour12: false })}</div>
             </div>
-            <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-              {topMetrics.map(item => {
-                const Icon = item.icon;
-                return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="rounded-xl border border-white/10 bg-white/[0.055] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.09]"><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="text-xs text-slate-300">{item.label}</p><p className="mt-1 text-2xl font-semibold tracking-[-0.02em]">{item.value}</p><p className="mt-1 text-[11px] leading-5 text-slate-400">{item.helper}</p></button>;
-              })}
+            <div className="grid xl:grid-cols-[1.42fr_0.82fr]">
+              <div className="p-5 md:p-7">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">经营总览</p>
+                <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-slate-800">今天先看结果，再看风险，最后确认谁来处理</h2>
+                <div className="mt-3 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+                  <div><p className="text-sm text-slate-500">{ownerCockpit.period.month} 经营利润 USD</p><button type="button" onClick={() => navigate('/finance?tab=monthly_detail')} className="mt-1 text-left text-5xl font-bold tracking-[-0.06em] text-slate-950 transition hover:text-blue-700 md:text-6xl">{topMetrics[0].value}</button><p className="mt-3 max-w-lg text-sm leading-6 text-slate-500">{ownerCockpit.finance.currency_policy}</p></div>
+                  <div className={`rounded-2xl border px-4 py-3 ${ownerCockpit.decision_state === 'healthy' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                    <div className="flex items-center gap-2">{ownerCockpit.decision_state === 'healthy' ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <ShieldAlert className="h-4 w-4 text-amber-600" />}<span className="text-sm font-semibold">{ownerCockpit.decision_state === 'healthy' ? '经营闭环正常' : `${ownerCockpit.decisions.length} 类事项待处理`}</span></div><p className="mt-1 text-[11px] opacity-70">每项均可追溯到业务页面</p>
+                  </div>
+                </div>
+                <div className="mt-7 grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:grid-cols-3">
+                  {topMetrics.slice(1).map(item => {
+                    const Icon = item.icon;
+                    return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="bg-white p-4 text-left transition hover:bg-blue-50"><div className={`flex h-8 w-8 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="mt-4 text-xs text-slate-500">{item.label}</p><p className="mt-1 text-2xl font-bold tracking-[-0.03em] text-slate-950">{item.value}</p><p className="mt-1 text-[11px] leading-5 text-slate-500">{item.helper}</p></button>;
+                  })}
+                </div>
+              </div>
+              <aside className="stitch-decision-rail">
+                <div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-200">Decision queue</p><h3 className="mt-1 text-lg font-semibold text-white">今天必须拍板</h3></div><Button size="sm" variant="outline" className="border-white/15 bg-white/10 text-white hover:bg-white/20 hover:text-white" onClick={() => navigate('/tasks?source=system')}>全部任务</Button></div>
+                <div className="mt-5 space-y-2">{ownerCockpit.decisions.slice(0, 4).map(item => <button key={item.key} type="button" onClick={() => navigate(item.link)} className="stitch-decision-row"><span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.level === 'critical' ? 'bg-rose-400' : item.level === 'high' ? 'bg-amber-300' : 'bg-blue-300'}`} /><span className="min-w-0 flex-1"><span className="block text-[10px] font-semibold tracking-wide text-slate-400">{decisionLabel[item.level]}</span><span className="mt-1 block text-sm font-semibold text-white">{item.title}</span><span className="mt-1 block truncate text-[11px] text-slate-400">{item.description}</span></span><span className="rounded-full bg-white/10 px-2 py-1 text-sm font-bold text-white">{item.count}</span></button>)}{ownerCockpit.decisions.length === 0 && <div className="rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-4 text-sm text-emerald-100">当前没有需要老板拍板的异常事项</div>}</div>
+              </aside>
             </div>
-            <div className="mt-4 grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-2 xl:grid-cols-4">
-              {ownerShortcuts.map(item => (
-                <button key={item.path} type="button" onClick={() => navigate(item.path)} className="group flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-slate-300 transition hover:bg-white/[0.08] hover:text-white">
-                  <span><span className="block text-sm font-medium">{item.label}</span><span className="mt-0.5 block text-[11px] text-slate-500 group-hover:text-slate-400">{item.helper}</span></span>
-                  <ArrowRight className="h-4 w-4 text-slate-500 transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-300" />
-                </button>
-              ))}
+            <div className="grid border-t border-slate-200/80 bg-slate-50/80 px-4 py-2 sm:grid-cols-2 xl:grid-cols-4">
+              {ownerShortcuts.map(item => <button key={item.path} type="button" onClick={() => navigate(item.path)} className="group flex items-center justify-between rounded-lg px-3 py-2.5 text-left transition hover:bg-white"><span><span className="block text-sm font-semibold text-slate-700 group-hover:text-blue-700">{item.label}</span><span className="mt-0.5 block text-[11px] text-slate-500">{item.helper}</span></span><ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-blue-600" /></button>)}
             </div>
           </CardContent>
         </Card>
 
         <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
-          <Card className="border-slate-200">
+          <Card className="stitch-section-card">
             <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-4 w-4 text-rose-500" />老板今天需要推动</CardTitle><p className="mt-1 text-xs text-slate-500">按影响程度排序，点击直接进入处理页面。</p></div><Button size="sm" variant="outline" onClick={() => navigate('/tasks?source=system')}>查看系统任务</Button></div></CardHeader>
             <CardContent>
               <div className="grid gap-2 md:grid-cols-2">
@@ -706,7 +710,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200">
+          <Card className="stitch-section-card">
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Database className="h-4 w-4 text-blue-600" />自动化与数据可信度</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-2">
@@ -720,7 +724,7 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        <Card className="border-slate-200">
+        <Card className="stitch-section-card">
           <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="text-base">业务结构与团队执行</CardTitle><p className="mt-1 text-xs text-slate-500">用于判断当前人力应该投向获客、交付还是客户留存。</p></div><Button size="sm" variant="outline" onClick={() => navigate('/management-decisions')}>查看经营决策</Button></div></CardHeader>
           <CardContent>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -969,7 +973,17 @@ export default function Dashboard() {
   const upcomingTasks = (data.tasks || []).filter((t: any) => t.status !== 'completed').slice(0, 5);
 
   return (
-    <div className="space-y-6">
+    <div className="stitch-page space-y-6">
+      <div className="stitch-page-header flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="relative z-10">
+          <p className="stitch-kicker">Executive CRM</p>
+          <h1 className="stitch-title">老板今日工作台</h1>
+          <p className="stitch-subtitle">集中查看经营结果、客户风险与团队执行，只把需要你判断和推动的事项放在前面。</p>
+        </div>
+        <div className="relative z-10 flex items-center gap-2 text-xs text-slate-500">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />经营数据与业务任务分别按各自最近更新时间展示
+        </div>
+      </div>
       {renderOwnerCommandCenter()}
       {renderReminders()}
       <Collapsible open={showMoreOwnerDetails} onOpenChange={setShowMoreOwnerDetails} className="space-y-6">

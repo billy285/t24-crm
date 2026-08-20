@@ -31,7 +31,7 @@ test('operation log helper downgrades client business events to attributed user 
   });
 
   await page.goto(`${baseUrl}/customers`);
-  await expect(page.getByRole('heading', { name: '客户管理' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '客户中心' })).toBeVisible();
   await page.evaluate(async () => {
     const helperPath = performance.getEntriesByType('resource')
       .map(entry => entry.name)
