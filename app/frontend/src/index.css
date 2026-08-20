@@ -282,6 +282,78 @@
   .sales-v3-more { @apply rounded-xl border border-slate-200 bg-white p-4 shadow-sm; }
   .sales-v3-more summary { @apply cursor-pointer text-sm font-semibold text-slate-800; }
 
+  .customer-360-page { @apply max-w-[1680px]; }
+  .customer-360-hero { @apply relative overflow-hidden rounded-[1.35rem] bg-slate-950 px-5 py-5 text-white md:px-6; background-image: radial-gradient(circle at 82% -15%, rgb(37 99 235 / .62), transparent 42%); box-shadow: 0 26px 64px -46px rgb(15 23 42 / .85); }
+  .customer-360-hero::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(110deg, transparent 52%, rgb(59 130 246 / .08)); }
+  .customer-360-hero-copy, .customer-360-hero-actions, .customer-360-metrics { @apply relative z-10; }
+  .customer-360-hero-copy { @apply max-w-xl; }
+  .customer-360-kicker { @apply text-[10px] font-bold uppercase tracking-[.19em] text-blue-300; }
+  .customer-360-hero-copy h2 { @apply mt-1 text-2xl font-bold tracking-[-.035em]; }
+  .customer-360-hero-copy > p:last-child { @apply mt-1 text-sm text-slate-300; }
+  .customer-360-hero-actions { @apply mt-4 flex w-full flex-wrap items-center gap-2 lg:absolute lg:right-6 lg:top-5 lg:mt-0 lg:w-auto; }
+  .customer-360-hero-actions > div button { @apply text-slate-200; }
+  .customer-360-metrics { @apply mt-5 grid grid-cols-2 gap-3 border-t border-white/10 pt-4 md:grid-cols-4 xl:grid-cols-[repeat(4,minmax(8rem,1fr))_minmax(17rem,1.35fr)]; }
+  .customer-360-metrics > div:not(.customer-360-distribution) { @apply flex min-w-0 items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.045] px-3 py-2.5; }
+  .customer-360-metrics p { @apply text-[10px] text-slate-400; }
+  .customer-360-metrics strong { @apply mt-0.5 block text-xl font-bold leading-6 text-white; }
+  .customer-360-metrics small { @apply block truncate text-[9px] text-slate-500; }
+  .customer-360-metric-icon { @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-xl; }
+  .customer-360-metric-icon svg { @apply h-4 w-4; }
+  .customer-360-metric-icon.is-blue { @apply bg-blue-500/20 text-blue-300; }
+  .customer-360-metric-icon.is-green { @apply bg-emerald-500/20 text-emerald-300; }
+  .customer-360-metric-icon.is-rose { @apply bg-rose-500/20 text-rose-300; }
+  .customer-360-metric-icon.is-cyan { @apply bg-cyan-500/20 text-cyan-300; }
+  .customer-360-distribution { @apply col-span-2 rounded-xl border border-white/[0.07] bg-white/[0.045] px-4 py-3 md:col-span-4 xl:col-span-1; }
+  .customer-360-distribution > p { @apply font-medium text-slate-300; }
+  .customer-360-distribution > small { @apply mt-2 text-[9px] text-slate-400; }
+  .customer-360-distribution-bar { @apply mt-2 flex h-2 overflow-hidden rounded-full bg-white/10; }
+  .customer-360-distribution-bar span { @apply block h-full min-w-px; }
+  .customer-360-distribution-bar .is-green { @apply bg-emerald-400; }
+  .customer-360-distribution-bar .is-amber { @apply bg-amber-400; }
+  .customer-360-distribution-bar .is-slate { @apply bg-slate-400; }
+  .customer-360-distribution-bar .is-rose { @apply bg-rose-400; }
+  .customer-360-segments, .customer-360-toolbar { @apply rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_16px_40px_-38px_rgb(15_23_42_/_0.6)]; }
+  .customer-360-toolbar { @apply p-3; }
+  .customer-360-workspace { @apply grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_21.5rem]; }
+  .customer-360-directory { @apply overflow-hidden rounded-[1.2rem] border-slate-200 shadow-[0_22px_54px_-46px_rgb(15_23_42_/_0.62)]; }
+  .customer-360-directory table { min-width: 68rem; }
+  .customer-360-row-active { @apply bg-blue-50/80; box-shadow: inset 3px 0 0 rgb(37 99 235); }
+  .customer-360-preview { @apply hidden self-start rounded-[1.2rem] border border-slate-200 bg-white p-4 shadow-[0_22px_54px_-46px_rgb(15_23_42_/_0.62)] xl:sticky xl:top-4 xl:block; }
+  .customer-360-preview-head { @apply flex items-center justify-between border-b border-slate-100 pb-3; }
+  .customer-360-preview-head p { @apply text-sm font-bold text-slate-900; }
+  .customer-360-preview-head span { @apply mt-0.5 block text-[10px] text-slate-400; }
+  .customer-360-identity { @apply mt-4 flex items-center gap-3; }
+  .customer-360-avatar { @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-700 text-base font-bold text-white shadow-lg shadow-blue-500/20; }
+  .customer-360-identity h3 { @apply truncate text-base font-bold text-slate-900; }
+  .customer-360-identity p { @apply mt-0.5 text-[10px] font-medium text-slate-400; }
+  .customer-360-identity > [class*="badge"], .customer-360-identity > span:last-child { @apply ml-auto shrink-0; }
+  .customer-360-contact-grid { @apply mt-4 grid grid-cols-2 gap-2; }
+  .customer-360-contact-grid > div { @apply flex min-w-0 gap-2 rounded-xl bg-slate-50 p-2.5; }
+  .customer-360-contact-grid svg { @apply mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-600; }
+  .customer-360-contact-grid span { @apply min-w-0 text-[9px] text-slate-400; }
+  .customer-360-contact-grid strong { @apply mt-0.5 block truncate text-[11px] font-semibold text-slate-700; }
+  .customer-360-score-card { @apply mt-3 flex items-center gap-4 rounded-xl border border-slate-100 bg-slate-50/70 p-3; }
+  .customer-360-score { @apply grid h-16 w-16 shrink-0 place-items-center rounded-full; background: conic-gradient(rgb(34 197 94) var(--score), rgb(226 232 240) 0); position: relative; }
+  .customer-360-score::after { content: ""; @apply absolute rounded-full bg-white; inset: .34rem; }
+  .customer-360-score span { @apply relative z-10 text-lg font-bold text-slate-900; }
+  .customer-360-score small { @apply text-[9px] text-slate-400; }
+  .customer-360-score-card > div:last-child p { @apply text-[10px] text-slate-400; }
+  .customer-360-score-card > div:last-child strong { @apply mt-0.5 block text-xs text-slate-800; }
+  .customer-360-score-card > div:last-child small { @apply mt-1 block text-[9px] leading-4 text-slate-400; }
+  .customer-360-lifecycle { @apply mt-3 rounded-xl border border-slate-100 p-3; }
+  .customer-360-lifecycle p { @apply text-[10px] font-semibold text-slate-500; }
+  .customer-360-steps { @apply mt-3 grid grid-cols-3 gap-1; }
+  .customer-360-steps span { @apply relative border-t-2 border-slate-200 pt-2 text-center text-[9px] text-slate-400; }
+  .customer-360-steps span::before { content: ""; @apply absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 -translate-y-[5px] rounded-full bg-slate-300 ring-2 ring-white; }
+  .customer-360-steps span.is-done { @apply border-emerald-400 font-medium text-emerald-700; }
+  .customer-360-steps span.is-done::before { @apply bg-emerald-500; }
+  .customer-360-next-action { @apply my-3 rounded-xl border border-blue-100 bg-blue-50/70 p-3; }
+  .customer-360-next-action > div { @apply flex gap-2; }
+  .customer-360-next-action svg { @apply mt-0.5 h-4 w-4 shrink-0 text-blue-600; }
+  .customer-360-next-action span small { @apply block text-[9px] text-blue-500; }
+  .customer-360-next-action span strong { @apply mt-0.5 block text-xs leading-5 text-blue-950; }
+  .customer-360-next-action > p { @apply mt-2 border-t border-blue-100 pt-2 text-[9px] leading-4 text-blue-700; }
+
   .app-table-wrap table {
     @apply min-w-[760px];
   }

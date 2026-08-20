@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '@/lib/tokenStore';
@@ -23,7 +23,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, MoreHorizontal } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, MoreHorizontal, Activity, Building2, CalendarClock, ChevronRight, ShieldCheck } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -1036,6 +1036,7 @@ export default function Customers() {
   const [accessTarget, setAccessTarget] = useState<any>(null);
   const [accessMembers, setAccessMembers] = useState<Record<number, CustomerAccessLevel>>({});
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<number[]>([]);
+  const [focusedCustomerId, setFocusedCustomerId] = useState<number | null>(null);
   const [bulkAccessMode, setBulkAccessMode] = useState(false);
   const [accessSearch, setAccessSearch] = useState('');
   const [accessLoading, setAccessLoading] = useState(false);
@@ -1472,10 +1473,52 @@ export default function Customers() {
     () => paginateList(filtered, customerPage, customerPageSize),
     [filtered, customerPage, customerPageSize],
   );
+  const customerStatusCounts = useMemo(() => customers.reduce<Record<string, number>>((counts, customer) => {
+    const key = customer.status || 'unknown';
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {}), [customers]);
+  const newCustomersThisMonth = useMemo(() => {
+    const currentMonth = businessToday.slice(0, 7);
+    return customers.filter(customer => String(customer.created_at || '').slice(0, 7) === currentMonth).length;
+  }, [businessToday, customers]);
+  const attentionCustomerCount = (customerStatusCounts.paused || 0) + (customerStatusCounts.lost || 0);
+  const focusedCustomer = filtered.find(customer => customer.id === focusedCustomerId)
+    || paginatedCustomers.items[0]
+    || null;
+  const focusedCustomerCompleteness = focusedCustomer ? Math.round(([
+    focusedCustomer.business_name,
+    focusedCustomer.contact_name,
+    focusedCustomer.phone,
+    focusedCustomer.email,
+    focusedCustomer.address,
+    focusedCustomer.city,
+    focusedCustomer.state,
+    focusedCustomer.country,
+    focusedCustomer.industry,
+    focusedCustomer.sales_person,
+  ].filter(Boolean).length / 10) * 100) : 0;
+  const focusedCustomerSuggestion = focusedCustomer?.status === 'lost'
+    ? '先核对流失原因与历史服务记录'
+    : focusedCustomer?.status === 'paused'
+      ? '确认暂停原因和恢复合作条件'
+      : focusedCustomer?.status === 'following'
+        ? '查看最近跟进并确认下一步安排'
+        : '打开客户详情核对服务与续费计划';
 
   useEffect(() => {
     setCustomerPage(1);
   }, [search, filterStatus, filterIndustry, filterLevel, filterSource, advFilters, customerPageSize]);
+
+  useEffect(() => {
+    if (filtered.length === 0) {
+      if (focusedCustomerId !== null) setFocusedCustomerId(null);
+      return;
+    }
+    if (!filtered.some(customer => customer.id === focusedCustomerId)) {
+      setFocusedCustomerId(filtered[0].id);
+    }
+  }, [filtered, focusedCustomerId]);
 
   useEffect(() => {
     setFollowUpPage(1);
@@ -3111,15 +3154,15 @@ export default function Customers() {
 
   // ========== LIST VIEW ==========
   return (
-    <div className="app-page space-y-5">
-      <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
-        <div>
-          <p className="app-page-kicker">T24 Marketing · CRM</p>
-          <h2 className="app-page-heading">客户管理</h2>
-          <p className="app-page-description">从线索、成交到服务和续费，统一管理客户全生命周期</p>
+    <div className="app-page customer-360-page space-y-4">
+      <div className="customer-360-hero">
+        <div className="customer-360-hero-copy">
+          <p className="customer-360-kicker">T24 MARKETING · CUSTOMER 360</p>
+          <h2>客户管理</h2>
+          <p>统一管理客户、服务、合同与续费</p>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          {!isMobile && <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="customer-360-hero-actions">
+          {!isMobile && <div className="flex flex-wrap items-center gap-1 rounded-xl border border-white/10 bg-white/[0.06] p-1">
             {hasPermission('customer_create') && (
               <Suspense fallback={null}>
                 <ImportCustomers existingCustomers={customers} onImportComplete={loadCustomers} />
@@ -3128,21 +3171,37 @@ export default function Customers() {
             {hasPermission('customer_export') && <ExportButton data={filtered.map(c => ({ ...c, industry_label: industryLabels[c.industry] || c.industry, status_label: statusLabels[c.status] || c.status, level_label: levelLabels[c.level] || c.level, source_label: sourceLabels[c.source] || c.source, country_label: c.country ? getCountryLabel(c.country) : '' }))}
             columns={[{ key: 'customer_code', label: '编号' }, { key: 'business_name', label: '商家名称' }, { key: 'contact_name', label: '联系人' }, { key: 'phone', label: '电话' }, { key: 'email', label: '邮箱' }, { key: 'industry_label', label: '行业' }, { key: 'city', label: '城市' }, { key: 'state', label: '州' }, { key: 'country_label', label: '国家' }, { key: 'status_label', label: '状态' }, { key: 'level_label', label: '等级' }, { key: 'source_label', label: '来源' }, { key: 'sales_person', label: '负责销售' }, { key: 'facebook_link', label: 'Facebook' }, { key: 'instagram_link', label: 'Instagram' }, { key: 'google_business_link', label: 'Google Business' }, { key: 'yelp_link', label: 'Yelp' }, { key: 'tiktok_link', label: 'TikTok' }, { key: 'notes', label: '备注' }]}
             filename={`客户列表_${businessToday}`} sheetName="客户列表" />}
-            <Button variant="ghost" size="sm" className="h-9 gap-1.5" onClick={() => setShowColPicker(!showColPicker)}><Columns3 className="w-4 h-4" /> 列设置</Button>
+            <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-slate-200 hover:bg-white/10 hover:text-white" onClick={() => setShowColPicker(!showColPicker)}><Columns3 className="w-4 h-4" /> 列设置</Button>
             {hasPermission('customer_edit') && (
               <Button
                 variant={inlineEditMode ? 'default' : 'ghost'}
                 size="sm"
-                className={`h-9 gap-1.5 ${inlineEditMode ? 'bg-violet-600 text-white hover:bg-violet-700' : ''}`}
+                className={`h-9 gap-1.5 ${inlineEditMode ? 'bg-violet-500 text-white hover:bg-violet-400' : 'text-slate-200 hover:bg-white/10 hover:text-white'}`}
                 onClick={() => setInlineEditMode(value => !value)}
               >
                 <Edit className="w-4 h-4" /> {inlineEditMode ? '退出快捷编辑' : '快捷编辑'}
               </Button>
             )}
           </div>}
-          {hasPermission('customer_create') && <Button onClick={openCreate} className="flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none"><Plus className="w-4 h-4 mr-1" /> 新增客户</Button>}
+          {hasPermission('customer_create') && <Button onClick={openCreate} className="flex-1 bg-blue-600 shadow-lg shadow-blue-950/30 hover:bg-blue-500 sm:flex-none"><Plus className="w-4 h-4 mr-1" /> 新增客户</Button>}
         </div>
-        {isMobile && <p className="text-xs text-slate-500">批量导入、敏感数据导出、列设置和快捷编辑请在电脑端处理。</p>}
+        <div className="customer-360-metrics">
+          <div><span className="customer-360-metric-icon is-blue"><Building2 /></span><p>客户总数<strong>{customers.length}</strong><small>当前可访问</small></p></div>
+          <div><span className="customer-360-metric-icon is-green"><ShieldCheck /></span><p>已成交<strong>{customerStatusCounts.closed || 0}</strong><small>正式合作客户</small></p></div>
+          <div><span className="customer-360-metric-icon is-rose"><Activity /></span><p>需关注<strong>{attentionCustomerCount}</strong><small>暂停与流失</small></p></div>
+          <div><span className="customer-360-metric-icon is-cyan"><CalendarClock /></span><p>本月新增<strong>{newCustomersThisMonth}</strong><small>按创建日期统计</small></p></div>
+          <div className="customer-360-distribution">
+            <p>客户生命周期分布</p>
+            <div className="customer-360-distribution-bar" aria-label="客户生命周期分布">
+              <span className="is-green" style={{ width: `${customers.length ? ((customerStatusCounts.closed || 0) / customers.length) * 100 : 0}%` }} />
+              <span className="is-amber" style={{ width: `${customers.length ? ((customerStatusCounts.following || 0) / customers.length) * 100 : 0}%` }} />
+              <span className="is-slate" style={{ width: `${customers.length ? ((customerStatusCounts.paused || 0) / customers.length) * 100 : 0}%` }} />
+              <span className="is-rose" style={{ width: `${customers.length ? ((customerStatusCounts.lost || 0) / customers.length) * 100 : 0}%` }} />
+            </div>
+            <small>成交 {customerStatusCounts.closed || 0} · 跟进 {customerStatusCounts.following || 0} · 暂停 {customerStatusCounts.paused || 0} · 流失 {customerStatusCounts.lost || 0}</small>
+          </div>
+        </div>
+        {isMobile && <p className="relative z-10 mt-3 text-xs text-slate-400">批量导入、敏感数据导出、列设置和快捷编辑请在电脑端处理。</p>}
       </div>
 
       {showColPicker && (
@@ -3152,7 +3211,7 @@ export default function Customers() {
         </CardContent></Card>
       )}
 
-      <div className="app-toolbar -mx-1 flex flex-nowrap gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+      <div className="customer-360-segments -mx-1 flex flex-nowrap gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-1 sm:pb-1">
         <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
         {Object.entries(statusLabels).map(([k, v]) => (
           <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
@@ -3172,7 +3231,7 @@ export default function Customers() {
         </CardContent></Card>
       )}
 
-      <div className="app-toolbar space-y-3">
+      <div className="customer-360-toolbar space-y-3">
         <div className="flex gap-2 md:gap-3">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索编号、名称、联系人、电话..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
           <Button variant="outline" size="sm" className="h-11 shrink-0 gap-1.5 md:hidden" onClick={() => setMobileFiltersOpen(true)}>
@@ -3257,12 +3316,14 @@ export default function Customers() {
         </SheetContent>
       </Sheet>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-        <span>共 {filtered.length} 条{filtered.length !== customers.length ? `（筛选自 ${customers.length} 条）` : ''}</span>
-        <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${loadError ? 'bg-rose-500' : loading ? 'bg-amber-500' : 'bg-emerald-500'}`} />{loading ? '正在同步客户资料' : loadError ? '同步失败，保留上次结果' : `数据更新 ${formatCustomerTimestamp(customersLoadedAt)}`}</span>
-      </div>
+      <div className="customer-360-workspace">
+        <section className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+            <span className="font-medium text-slate-700">客户目录 · 共 {filtered.length} 条{filtered.length !== customers.length ? `（筛选自 ${customers.length} 条）` : ''}</span>
+            <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${loadError ? 'bg-rose-500' : loading ? 'bg-amber-500' : 'bg-emerald-500'}`} />{loading ? '正在同步客户资料' : loadError ? '同步失败，保留上次结果' : `数据更新 ${formatCustomerTimestamp(customersLoadedAt)}`}</span>
+          </div>
 
-      <Card className="app-card border-slate-200"><CardContent className="p-0">
+      <Card className="app-card customer-360-directory"><CardContent className="p-0">
         {loading ? <CustomerListLoadingState />
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无匹配的客户</p>
         : (
@@ -3325,7 +3386,7 @@ export default function Customers() {
             <th className="w-28 px-4 py-3 text-right font-medium">操作</th>
           </tr></thead>
           <tbody>{paginatedCustomers.items.map(c => (
-            <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
+            <tr key={c.id} onMouseEnter={() => setFocusedCustomerId(c.id)} className={`border-b border-slate-100 cursor-pointer transition-colors ${focusedCustomer?.id === c.id ? 'customer-360-row-active' : 'hover:bg-slate-50'}`}>
               {isAdmin && <td className="px-4 py-3" onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={`选择客户 ${c.business_name}`} checked={selectedCustomerIds.includes(c.id)} onChange={event => setSelectedCustomerIds(current => event.target.checked ? [...current, c.id] : current.filter(id => id !== c.id))} /></td>}
               {visibleCols.includes('customer_code') && <td className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
               {visibleCols.includes('business_name') && <td className="px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(c)}>{c.business_name}</td>}
@@ -3491,6 +3552,37 @@ export default function Customers() {
         )}
         {filtered.length > 0 && <CustomerPaginationFooter />}
       </CardContent></Card>
+        </section>
+
+        <aside className="customer-360-preview" aria-label="客户 360 预览">
+          <div className="customer-360-preview-head"><div><p>客户 360°</p><span>基础资料快速预览</span></div><MoreHorizontal className="h-4 w-4 text-slate-400" /></div>
+          {focusedCustomer ? (
+            <>
+              <div className="customer-360-identity">
+                <span className="customer-360-avatar">{String(focusedCustomer.business_name || '客').trim().slice(0, 1).toUpperCase()}</span>
+                <div className="min-w-0"><h3>{focusedCustomer.business_name || '未命名客户'}</h3><p>#{focusedCustomer.customer_code || focusedCustomer.id}</p></div>
+                <Badge className={getLevelColorClass(focusedCustomer.level)}>{levelLabels[focusedCustomer.level] || focusedCustomer.level || '未分级'}</Badge>
+              </div>
+              <div className="customer-360-contact-grid">
+                <div><Phone /><span>电话<strong>{focusedCustomer.phone || '未填写'}</strong></span></div>
+                <div><MapPin /><span>地区<strong>{[focusedCustomer.state, focusedCustomer.country].filter(Boolean).join(' · ') || '未填写'}</strong></span></div>
+                <div><Building2 /><span>行业<strong>{industryLabels[focusedCustomer.industry] || focusedCustomer.industry || '未填写'}</strong></span></div>
+                <div><Users /><span>负责人<strong>{focusedCustomer.sales_person || '未分配'}</strong></span></div>
+              </div>
+              <div className="customer-360-score-card">
+                <div className="customer-360-score" style={{ '--score': `${focusedCustomerCompleteness * 3.6}deg` } as CSSProperties}><span>{focusedCustomerCompleteness}<small>%</small></span></div>
+                <div><p>资料完整度</p><strong>{focusedCustomerCompleteness >= 80 ? '基础资料较完整' : focusedCustomerCompleteness >= 50 ? '仍有资料待补充' : '建议优先补齐资料'}</strong><small>根据联系人、地区、行业和负责人等基础字段计算</small></div>
+              </div>
+              <div className="customer-360-lifecycle">
+                <div className="flex items-center justify-between"><p>当前生命周期</p><Badge className={statusColors[focusedCustomer.status] || 'bg-slate-100 text-slate-700'}>{statusLabels[focusedCustomer.status] || focusedCustomer.status || '未设置'}</Badge></div>
+                <div className="customer-360-steps"><span className="is-done">建立档案</span><span className={['following', 'closed', 'paused', 'lost'].includes(focusedCustomer.status) ? 'is-done' : ''}>持续跟进</span><span className={focusedCustomer.status === 'closed' ? 'is-done' : ''}>正式合作</span></div>
+              </div>
+              <div className="customer-360-next-action"><div><CalendarClock /><span><small>建议下一步</small><strong>{focusedCustomerSuggestion}</strong></span></div><p>合同、服务、回款与续费数据请进入客户详情查看，列表页不做推测。</p></div>
+              <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => openDetail(focusedCustomer)}>查看客户详情<ChevronRight className="ml-1 h-4 w-4" /></Button>
+            </>
+          ) : <div className="py-16 text-center text-sm text-slate-400">暂无可预览客户</div>}
+        </aside>
+      </div>
 
       {sharedCustomerDialogs}
     </div>
