@@ -227,6 +227,61 @@
     @apply mt-1 text-xs leading-5 text-slate-500;
   }
 
+  .sales-v3-page { @apply space-y-4; }
+  .sales-v3-topbar { @apply flex flex-col gap-4 rounded-[1.35rem] bg-slate-950 px-5 py-4 text-white xl:flex-row xl:items-center xl:justify-between; background-image: radial-gradient(circle at 78% 0%, rgb(37 99 235 / .48), transparent 36%); box-shadow: 0 24px 60px -42px rgb(15 23 42 / .8); }
+  .sales-v3-kicker { @apply flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.18em] text-blue-300; }
+  .sales-v3-topbar h2 { @apply mt-1 text-xl font-bold tracking-[-.03em]; }
+  .sales-v3-stats { @apply grid grid-cols-3 gap-x-5 gap-y-2 text-[10px] text-slate-400 sm:flex sm:items-center; }
+  .sales-v3-stats span { @apply flex flex-col gap-0.5 whitespace-nowrap; }
+  .sales-v3-stats b { @apply text-base font-bold text-white; }
+  .sales-v3-alert { @apply flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900; }
+  .sales-v3-shell { @apply grid overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_24px_60px_-46px_rgb(15_23_42_/_0.6)] xl:grid-cols-[17.5rem_minmax(0,1fr)_14rem]; min-height: min(44rem, calc(100vh - 11rem)); }
+  .sales-v3-queue { @apply flex min-h-0 flex-col border-b border-slate-200 bg-white xl:border-b-0 xl:border-r; }
+  .sales-v3-queue-head { @apply border-b border-slate-100 p-4; }
+  .sales-v3-queue-head h3 { @apply text-sm font-bold text-slate-900; }
+  .sales-v3-queue-head > div > span { @apply text-xs text-slate-400; }
+  .sales-v3-progress { @apply h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100; }
+  .sales-v3-progress span { @apply block h-full rounded-full bg-emerald-500; }
+  .sales-v3-queue-list { @apply min-h-0 flex-1 overflow-y-auto; }
+  .sales-v3-queue-item { @apply flex w-full items-center gap-2.5 border-b border-slate-100 px-3 py-3 text-left transition hover:bg-slate-50; }
+  .sales-v3-queue-item.is-active { @apply border-l-[3px] border-l-blue-600 bg-blue-50; }
+  .sales-v3-queue-item.is-done { @apply opacity-45; }
+  .sales-v3-queue-index { @apply flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-500; }
+  .sales-v3-queue-index.is-overdue { @apply bg-rose-100 text-rose-700; }
+  .sales-v3-queue-name { @apply block truncate font-semibold text-slate-800; }
+  .sales-v3-queue-name::before { content: attr(data-name); }
+  .sales-v3-status { @apply rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600; }
+  .sales-v3-status.is-overdue { @apply bg-rose-100 text-rose-700; }
+  .sales-v3-main { @apply min-w-0 bg-slate-50/70 p-4 md:p-5; }
+  .sales-v3-empty { @apply flex min-h-[20rem] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500; }
+  .sales-v3-customer, .sales-v3-call { @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_16px_38px_-34px_rgb(15_23_42_/_0.6)]; }
+  .sales-v3-call { @apply mt-4; }
+  .sales-v3-customer h1 { @apply text-xl font-bold tracking-[-.025em] text-slate-900; }
+  .sales-v3-customer p { @apply mt-1 text-xs text-slate-500; }
+  .sales-v3-avatar { @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-700 text-lg font-bold text-white shadow-lg shadow-blue-500/20; }
+  .sales-v3-customer small { @apply block text-[10px] font-medium text-slate-400; }
+  .sales-v3-customer strong { @apply mt-1 block truncate text-sm text-slate-700; }
+  .sales-v3-customer > div:nth-child(2) > div { @apply rounded-xl bg-slate-50 p-3; }
+  .sales-v3-customer .sales-v3-phone { @apply bg-blue-50; }
+  .sales-v3-customer .sales-v3-phone strong { @apply text-blue-700; }
+  .sales-v3-next { @apply mt-4 flex flex-wrap items-center gap-2 rounded-xl border-t border-slate-100 pt-3 text-xs font-medium text-blue-700; }
+  .sales-v3-next > span { @apply text-slate-400; }
+  .sales-v3-next button { @apply ml-auto; }
+  .sales-v3-call h3 { @apply flex items-center gap-2 text-sm font-bold text-slate-900; }
+  .sales-v3-call > div:first-child > span { @apply hidden text-[10px] text-slate-400 md:block; }
+  .sales-v3-call-button { @apply bg-emerald-600 px-5 shadow-lg shadow-emerald-600/25 hover:bg-emerald-700; }
+  .sales-v3-outcome { @apply rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700; }
+  .sales-v3-side { @apply hidden border-l border-slate-200 bg-white p-3 xl:block; }
+  .sales-v3-side section { @apply rounded-xl border border-slate-100 bg-slate-50/70 p-3; }
+  .sales-v3-side section + section { @apply mt-3; }
+  .sales-v3-side h3 { @apply text-xs font-bold text-slate-800; }
+  .sales-v3-side p { @apply mt-2 text-[11px] leading-5 text-slate-500; }
+  .sales-v3-side section > button { @apply mt-2 block w-full rounded-lg border border-slate-100 bg-white p-2 text-left transition hover:border-blue-200 hover:bg-blue-50; }
+  .sales-v3-side section > button b { @apply block text-[10px] text-blue-700; }
+  .sales-v3-side section > button span { @apply mt-0.5 block text-[11px] leading-4 text-slate-500; }
+  .sales-v3-more { @apply rounded-xl border border-slate-200 bg-white p-4 shadow-sm; }
+  .sales-v3-more summary { @apply cursor-pointer text-sm font-semibold text-slate-800; }
+
   .app-table-wrap table {
     @apply min-w-[760px];
   }
