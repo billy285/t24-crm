@@ -620,7 +620,8 @@ export default function SalesWorkbench() {
               const selected = focusedTask?.task_id === task.task_id;
               const done = task.task_status === 'completed';
               const overdue = !done && isFollowUpOverdue(task.lead.next_follow_up_at);
-              const statusLabel = done ? '已完成' : overdue ? '已逾期' : statusLabels[task.lead.status] || '待联系';
+              const customerStatusLabel = statusLabels[task.lead.status] || '待联系';
+              const taskStateLabel = done ? '今日已完成' : overdue ? '逾期跟进' : selected ? '当前查看' : '';
               const initial = task.lead.business_name.trim().slice(0, 1).toUpperCase() || '商';
               return (
                 <button
@@ -646,22 +647,22 @@ export default function SalesWorkbench() {
                       <PhoneCall className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate tabular-nums">{task.lead.phone || '未填写电话'}</span>
                     </span>
-                    <span className={`mt-1 block truncate text-[11px] font-medium ${selected ? 'text-blue-700' : 'text-slate-500'}`}>{selected ? '当前查看 · ' : ''}{task.lead.industry || '行业未采集'}</span>
+                    <span className={`mt-1 block truncate text-[11px] font-medium ${selected ? 'text-blue-700' : overdue ? 'text-rose-600' : done ? 'text-emerald-700' : 'text-slate-500'}`}>{taskStateLabel ? `${taskStateLabel} · ` : ''}{task.lead.industry || '行业未采集'}</span>
                   </span>
                   <span className={`flex min-h-[58px] w-[76px] flex-col items-center justify-center rounded-2xl border px-1.5 text-center ${
-                    done
+                    task.lead.status === 'interested'
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                      : overdue
-                        ? 'border-rose-200 bg-rose-50 text-rose-700'
-                        : task.lead.status === 'interested'
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                          : task.lead.status === 'contacted'
-                            ? 'border-blue-200 bg-blue-50 text-blue-700'
-                            : task.lead.status === 'follow_up'
-                              ? 'border-amber-200 bg-amber-50 text-amber-800'
+                      : task.lead.status === 'contacted'
+                        ? 'border-blue-200 bg-blue-50 text-blue-700'
+                        : task.lead.status === 'follow_up'
+                          ? 'border-amber-200 bg-amber-50 text-amber-800'
+                          : task.lead.status === 'appointment'
+                            ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
+                            : task.lead.status === 'lost' || task.lead.status === 'blocked'
+                              ? 'border-rose-200 bg-rose-50 text-rose-700'
                               : 'border-slate-200 bg-slate-50 text-slate-700'
                   }`}>
-                    <span className="text-xs font-extrabold leading-4">{statusLabel}</span>
+                    <span className="text-xs font-extrabold leading-4">{customerStatusLabel}</span>
                     <span className="mt-1 flex items-center gap-0.5 text-[9px] font-semibold opacity-70">客户状态 <ChevronRight className="h-3 w-3" /></span>
                   </span>
                 </button>
