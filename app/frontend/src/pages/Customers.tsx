@@ -2655,7 +2655,7 @@ export default function Customers() {
           </div>
           </div>
           <div className="customer-detail-actions flex w-full items-center gap-2 md:w-auto md:justify-end">
-            {c.phone && <CustomerPhoneDial phone={c.phone} label="拨打电话" className="min-w-0 flex-[1.15] md:flex-none" buttonClassName="px-3" menuButtonClassName="shrink-0" />}
+            {c.phone && <CustomerPhoneDial phone={c.phone} label="拨号" className="min-w-0 flex-[1.15] md:flex-none" buttonClassName="px-3" menuButtonClassName="shrink-0" />}
             {canCreateFollowUp && <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0 md:flex-none" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
             {isAdmin && <Button variant="outline" size="sm" className="hidden md:inline-flex" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 管理团队成员</Button>}
             <Button aria-label="刷新客户数据" variant="outline" size="sm" className="h-11 w-11 shrink-0 px-0 md:h-8 md:w-auto md:px-3" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
