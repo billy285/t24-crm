@@ -628,32 +628,42 @@ export default function SalesWorkbench() {
                   type="button"
                   data-lead-id={task.lead.id}
                   onClick={() => setFocusedTask(task)}
-                  className={`flex min-h-[76px] w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition active:scale-[0.99] ${
+                  className={`grid min-h-[92px] w-full grid-cols-[52px_minmax(0,1fr)_76px] items-center gap-3 rounded-[20px] border px-3 py-3 text-left transition active:scale-[0.99] ${
                     selected
-                      ? 'border-blue-300 bg-blue-50 shadow-[0_6px_18px_rgba(37,99,235,0.12)]'
+                      ? 'border-blue-300 bg-gradient-to-r from-blue-50 to-white shadow-[0_8px_22px_rgba(37,99,235,0.14)]'
                       : overdue
-                        ? 'border-rose-200 bg-rose-50/60'
-                        : 'border-slate-200 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.04)]'
+                        ? 'border-rose-200 bg-gradient-to-r from-rose-50/80 to-white'
+                        : 'border-slate-200 bg-white shadow-[0_4px_14px_rgba(15,23,42,0.06)]'
                   } ${done ? 'opacity-60' : ''}`}
                 >
-                  <span className="relative shrink-0">
-                    <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-base font-bold ${selected ? 'bg-blue-600 text-white' : overdue ? 'bg-rose-100 text-rose-700' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>{done ? '✓' : initial}</span>
+                  <span className="relative">
+                    <span className={`flex h-[52px] w-[52px] items-center justify-center rounded-2xl text-lg font-bold ${selected ? 'bg-blue-600 text-white' : overdue ? 'bg-rose-100 text-rose-700' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>{done ? '✓' : initial}</span>
                     <span className={`absolute -bottom-1 -right-1 flex min-w-5 items-center justify-center rounded-full border-2 border-white px-1 text-[9px] font-bold leading-4 ${selected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-white'}`}>{index + 1}</span>
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-950">{task.lead.business_name}</span>
-                      <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${done ? 'bg-emerald-100 text-emerald-700' : overdue ? 'bg-rose-100 text-rose-700' : statusColor[task.lead.status] || 'bg-slate-100 text-slate-600'}`}>{statusLabel}</span>
-                    </span>
-                    <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-600">
+                  <span className="min-w-0 self-stretch py-0.5">
+                    <span className="line-clamp-2 text-[15px] font-bold leading-5 text-slate-950">{task.lead.business_name}</span>
+                    <span className="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-slate-600">
                       <PhoneCall className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate tabular-nums">{task.lead.phone || '未填写电话'}</span>
-                      <span className="text-slate-300">·</span>
-                      <span className="shrink-0 text-slate-500">{task.lead.industry || '行业未采集'}</span>
                     </span>
-                    {selected && <span className="mt-1 block text-[10px] font-semibold text-blue-700">当前查看 · 点击后可直接拨打并记录</span>}
+                    <span className={`mt-1 block truncate text-[11px] font-medium ${selected ? 'text-blue-700' : 'text-slate-500'}`}>{selected ? '当前查看 · ' : ''}{task.lead.industry || '行业未采集'}</span>
                   </span>
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${selected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}><ChevronRight className="h-4 w-4" /></span>
+                  <span className={`flex min-h-[58px] w-[76px] flex-col items-center justify-center rounded-2xl border px-1.5 text-center ${
+                    done
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : overdue
+                        ? 'border-rose-200 bg-rose-50 text-rose-700'
+                        : task.lead.status === 'interested'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : task.lead.status === 'contacted'
+                            ? 'border-blue-200 bg-blue-50 text-blue-700'
+                            : task.lead.status === 'follow_up'
+                              ? 'border-amber-200 bg-amber-50 text-amber-800'
+                              : 'border-slate-200 bg-slate-50 text-slate-700'
+                  }`}>
+                    <span className="text-xs font-extrabold leading-4">{statusLabel}</span>
+                    <span className="mt-1 flex items-center gap-0.5 text-[9px] font-semibold opacity-70">客户状态 <ChevronRight className="h-3 w-3" /></span>
+                  </span>
                 </button>
               );
             })}
