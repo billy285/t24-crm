@@ -144,8 +144,8 @@ export default function MonthlyDeduction() {
 
   if (isMobileViewport) {
     return (
-      <div className="mx-auto flex min-h-[60dvh] max-w-lg items-center px-1 py-6">
-        <Card className="w-full border-blue-100 bg-gradient-to-br from-blue-50 to-white">
+      <div className="app-page mx-auto flex min-h-[60dvh] max-w-lg items-center px-1 py-6">
+        <Card className="w-full border-blue-100 bg-white shadow-sm">
           <CardContent className="p-6 text-center">
             <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm ring-1 ring-blue-100">
               <Monitor className="h-6 w-6" />

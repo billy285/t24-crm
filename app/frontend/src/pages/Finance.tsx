@@ -968,8 +968,9 @@ export default function Finance() {
           const end = arr[arr.length - 1];
           let res;
           if (isMobile) {
-            // The phone finance experience is intentionally read-only: never create
-            // missing monthly deduction rows as a side effect of opening the summary.
+            // Phone entry is limited to new income and expense records. Keep
+            // reconciliation rows read-only here so opening the summary has no
+            // hidden accounting side effect.
             res = await invokeWithAuth({ url: '/api/v1/deductions-monthly', method: 'GET', data: { start, end } });
           } else {
             try {
@@ -2597,8 +2598,8 @@ export default function Finance() {
     if (!isMobile) return;
 
     // A desktop dialog can still be open when the viewport is narrowed. Clear
-    // every mutation target and draft so the mobile read-only contract remains
-    // true after a live desktop-to-phone transition, not only on first load.
+    // every desktop mutation target and draft, then expose only the three
+    // purpose-built mobile entry flows below.
     setShowPaymentForm(false);
     setEditingPayId(null);
     setPayForm(emptyPayForm);
@@ -3886,7 +3887,7 @@ export default function Finance() {
 
     return (
       <>
-        <div className="app-page min-h-full space-y-4 bg-slate-50 px-3 pb-28 pt-3">
+        <div className="app-page min-h-full space-y-4">
           <section className="overflow-hidden rounded-[28px] bg-slate-950 p-5 text-white shadow-[0_18px_50px_rgba(15,23,42,0.2)]">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -4033,12 +4034,12 @@ export default function Finance() {
         </div>
 
         <Dialog open={showPaymentForm} onOpenChange={setShowPaymentForm}>
-          <DialogContent className="gap-5 rounded-[24px] p-4">
+          <DialogContent className="!grid !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-5 overflow-hidden rounded-none p-4 pb-0 sm:!h-auto sm:!max-h-[calc(100dvh-2rem)] sm:!w-full sm:!max-w-lg sm:rounded-[24px] sm:p-6">
             <DialogHeader className="pr-12 text-left">
               <DialogTitle>录入收款</DialogTitle>
               <p className="text-sm text-slate-500">记录实际到账，不自动修改成交或续费。</p>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="min-h-0 space-y-4 overflow-y-auto pb-4">
               <div className="space-y-2"><Label>客户 *</Label><NativeSelect value={payForm.customer_id} onChange={handlePayCustomerValueChange} options={customerOptions} placeholder="选择客户" /></div>
               <div className="space-y-2">
                 <Label>收款金额（USD）*</Label>
@@ -4057,14 +4058,14 @@ export default function Finance() {
               <div className="space-y-2"><Label>交易编号（选填）</Label><Input className="h-12" value={payForm.transaction_reference} onChange={event => setPayForm(previous => ({ ...previous, transaction_reference: event.target.value }))} placeholder="Zelle / Stripe / 支票编号" /></div>
               <div className="space-y-2"><Label>备注（选填）</Label><Textarea value={payForm.notes} onChange={event => setPayForm(previous => ({ ...previous, notes: event.target.value }))} placeholder="补充说明" /></div>
             </div>
-            <Button onClick={handleSavePayment} disabled={saving} className="min-h-12 w-full bg-blue-600 text-base hover:bg-blue-700">{saving ? '保存中…' : '确认录入收款'}</Button>
+            <div className="-mx-4 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:mx-0 sm:border-0 sm:p-0"><Button onClick={handleSavePayment} disabled={saving} className="min-h-12 w-full bg-blue-600 text-base hover:bg-blue-700">{saving ? '保存中…' : '确认录入收款'}</Button></div>
           </DialogContent>
         </Dialog>
 
         <Dialog open={showExpenseForm} onOpenChange={setShowExpenseForm}>
-          <DialogContent className="gap-5 rounded-[24px] p-4">
+          <DialogContent className="!grid !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-5 overflow-hidden rounded-none p-4 pb-0 sm:!h-auto sm:!max-h-[calc(100dvh-2rem)] sm:!w-full sm:!max-w-lg sm:rounded-[24px] sm:p-6">
             <DialogHeader className="pr-12 text-left"><DialogTitle>录入客户支出</DialogTitle><p className="text-sm text-slate-500">记录为某个客户发生的交付成本。</p></DialogHeader>
-            <div className="space-y-4">
+            <div className="min-h-0 space-y-4 overflow-y-auto pb-4">
               <div className="space-y-2"><Label>客户 *</Label><NativeSelect value={expenseForm.customer_id} onChange={value => setExpenseForm(previous => ({ ...previous, customer_id: value }))} options={customerOptions} placeholder="选择客户" /></div>
               <div className="space-y-2"><Label>支出类型</Label><NativeSelect value={expenseForm.expense_type} onChange={value => setExpenseForm(previous => ({ ...previous, expense_type: value }))} options={customerExpenseTypeOptions} /></div>
               <div className="grid grid-cols-[1fr_112px] gap-3">
@@ -4074,14 +4075,14 @@ export default function Finance() {
               <div className="space-y-2"><Label>归属月份</Label><Input type="month" className="h-12" value={expenseForm.expense_month} onChange={event => setExpenseForm(previous => ({ ...previous, expense_month: event.target.value }))} /></div>
               <div className="space-y-2"><Label>备注（选填）</Label><Textarea value={expenseForm.notes} onChange={event => setExpenseForm(previous => ({ ...previous, notes: event.target.value }))} placeholder="例如：客户网站素材采购" /></div>
             </div>
-            <Button onClick={handleSaveExpense} disabled={savingExpense} className="min-h-12 w-full bg-amber-600 text-base hover:bg-amber-700">{savingExpense ? '保存中…' : '确认录入客户支出'}</Button>
+            <div className="-mx-4 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:mx-0 sm:border-0 sm:p-0"><Button onClick={handleSaveExpense} disabled={savingExpense} className="min-h-12 w-full bg-amber-600 text-base hover:bg-amber-700">{savingExpense ? '保存中…' : '确认录入客户支出'}</Button></div>
           </DialogContent>
         </Dialog>
 
         <Dialog open={showCompanyExpenseForm} onOpenChange={setShowCompanyExpenseForm}>
-          <DialogContent className="gap-5 rounded-[24px] p-4">
+          <DialogContent className="!grid !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-5 overflow-hidden rounded-none p-4 pb-0 sm:!h-auto sm:!max-h-[calc(100dvh-2rem)] sm:!w-full sm:!max-w-lg sm:rounded-[24px] sm:p-6">
             <DialogHeader className="pr-12 text-left"><DialogTitle>录入运营支出</DialogTitle><p className="text-sm text-slate-500">记录工资、软件、房租等公司运营成本。</p></DialogHeader>
-            <div className="space-y-4">
+            <div className="min-h-0 space-y-4 overflow-y-auto pb-4">
               <div className="space-y-2"><Label>支出类型</Label><NativeSelect value={companyExpenseForm.category} onChange={value => setCompanyExpenseForm(previous => ({ ...previous, category: value }))} options={companyExpenseTypeOptions} /></div>
               <div className="grid grid-cols-[1fr_112px] gap-3">
                 <div className="space-y-2"><Label>金额 *</Label><Input inputMode="decimal" type="number" min="0" step="0.01" className="h-12 text-lg" value={companyExpenseForm.amount} onChange={event => setCompanyExpenseForm(previous => ({ ...previous, amount: event.target.value }))} placeholder="0.00" /></div>
@@ -4093,7 +4094,7 @@ export default function Finance() {
               </div>
               <div className="space-y-2"><Label>备注（选填）</Label><Textarea value={companyExpenseForm.notes} onChange={event => setCompanyExpenseForm(previous => ({ ...previous, notes: event.target.value }))} placeholder="补充说明或付款对象" /></div>
             </div>
-            <Button onClick={handleSaveCompanyExpense} disabled={savingCompanyExpense} className="min-h-12 w-full bg-violet-600 text-base hover:bg-violet-700">{savingCompanyExpense ? '保存中…' : '确认录入运营支出'}</Button>
+            <div className="-mx-4 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:mx-0 sm:border-0 sm:p-0"><Button onClick={handleSaveCompanyExpense} disabled={savingCompanyExpense} className="min-h-12 w-full bg-violet-600 text-base hover:bg-violet-700">{savingCompanyExpense ? '保存中…' : '确认录入运营支出'}</Button></div>
           </DialogContent>
         </Dialog>
       </>

@@ -17,7 +17,7 @@ export default function MobileDesktopOnlyNotice({
 
   return (
     <section
-      className="mx-auto max-w-md rounded-[24px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-slate-50 p-5 shadow-sm md:hidden"
+      className="app-page mx-auto max-w-md rounded-[24px] border border-blue-100 bg-white p-5 shadow-sm md:hidden"
       data-testid="mobile-desktop-only"
       aria-labelledby="mobile-desktop-only-title"
     >

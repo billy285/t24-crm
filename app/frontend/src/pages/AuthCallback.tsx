@@ -12,10 +12,10 @@ export default function AuthCallback() {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">正在跳转到登录页...</p>
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f3f6fb] px-6">
+      <div className="w-full max-w-sm rounded-[28px] border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-blue-100 border-b-blue-600" />
+        <p className="font-semibold text-slate-800">正在打开登录页…</p>
       </div>
     </div>
   );

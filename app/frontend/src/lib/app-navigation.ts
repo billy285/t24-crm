@@ -128,7 +128,7 @@ export const mobileBusinessApps: MobileBusinessAppDefinition[] = [
     label: '财务结算',
     description: '收款、续费与分润',
     icon: DollarSign,
-    paths: ['/finance', '/rmb-profit', '/commissions', '/payroll'],
+    paths: ['/finance', '/rmb-profit', '/commissions', '/settings/deduction', '/payroll'],
     tone: 'emerald',
   },
   {

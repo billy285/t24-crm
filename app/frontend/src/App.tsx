@@ -2,7 +2,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Outlet, Routes, Route } from 'react-router-dom';
 import { RoleProvider } from './lib/role-context';
 import Layout from './components/Layout';
 import PageLoadState from './components/PageLoadState';
@@ -54,11 +54,11 @@ function PublicPage({ children }: { children: ReactNode }) {
   return <Suspense fallback={<PageFallback />}>{children}</Suspense>;
 }
 
-function ProtectedPage({ children }: { children: ReactNode }) {
+function ProtectedAppShell() {
   return (
     <Layout>
       <Suspense fallback={<PageLoadState loading message="正在加载当前页面…" />}>
-        {children}
+        <Outlet />
       </Suspense>
     </Layout>
   );
@@ -87,31 +87,33 @@ const App = () => (
             <Route path="/login" element={<PublicPage><LoginPage /></PublicPage>} />
             <Route path="/auth/callback" element={<PublicPage><AuthCallback /></PublicPage>} />
             <Route path="/auth/error" element={<PublicPage><AuthError /></PublicPage>} />
-            <Route path="/apps" element={<Layout><div /></Layout>} />
-            <Route path="/" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
-            <Route path="/company-roadmap" element={<ProtectedPage><CompanyRoadmap /></ProtectedPage>} />
-            <Route path="/merchant-pool" element={<ProtectedPage><MerchantPool /></ProtectedPage>} />
-            <Route path="/sales-leads" element={<ProtectedPage><SalesLeads /></ProtectedPage>} />
-            <Route path="/sales-workbench" element={<ProtectedPage><SalesWorkbench /></ProtectedPage>} />
-            <Route path="/operations-workbench" element={<ProtectedPage><OperationsWorkbench /></ProtectedPage>} />
-            <Route path="/sales-knowledge" element={<ProtectedPage><SalesKnowledge /></ProtectedPage>} />
-            <Route path="/customers" element={<ProtectedPage><Customers /></ProtectedPage>} />
-            <Route path="/sales" element={<ProtectedPage><Sales /></ProtectedPage>} />
-            <Route path="/deals" element={<ProtectedPage><Deals /></ProtectedPage>} />
-            <Route path="/customer-lifecycle" element={<ProtectedPage><CustomerLifecycle /></ProtectedPage>} />
-            <Route path="/management-decisions" element={<ProtectedPage><ManagementDecisions /></ProtectedPage>} />
-            <Route path="/finance" element={<ProtectedPage><Finance /></ProtectedPage>} />
-            <Route path="/rmb-profit" element={<ProtectedPage><RmbProfitEstimate /></ProtectedPage>} />
-            <Route path="/commissions" element={<ProtectedPage><Commissions /></ProtectedPage>} />
-            <Route path="/partner-portal" element={<ProtectedPage><PartnerPortal /></ProtectedPage>} />
-            <Route path="/payroll" element={<ProtectedPage><Payroll /></ProtectedPage>} />
-            <Route path="/tasks" element={<ProtectedPage><Tasks /></ProtectedPage>} />
-            <Route path="/employees" element={<ProtectedPage><Employees /></ProtectedPage>} />
-            <Route path="/settings" element={<ProtectedPage><Settings /></ProtectedPage>} />
-            <Route path="/permissions" element={<ProtectedPage><Permissions /></ProtectedPage>} />
-            <Route path="/service-board" element={<ProtectedPage><ServiceBoard /></ProtectedPage>} />
-            <Route path="/callbacks" element={<ProtectedPage><Callbacks /></ProtectedPage>} />
-            <Route path="/settings/deduction" element={<ProtectedPage><MonthlyDeduction /></ProtectedPage>} />
+            <Route element={<ProtectedAppShell />}>
+              <Route path="/apps" element={<div />} />
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/company-roadmap" element={<CompanyRoadmap />} />
+              <Route path="/merchant-pool" element={<MerchantPool />} />
+              <Route path="/sales-leads" element={<SalesLeads />} />
+              <Route path="/sales-workbench" element={<SalesWorkbench />} />
+              <Route path="/operations-workbench" element={<OperationsWorkbench />} />
+              <Route path="/sales-knowledge" element={<SalesKnowledge />} />
+              <Route path="/customers" element={<Customers />} />
+              <Route path="/sales" element={<Sales />} />
+              <Route path="/deals" element={<Deals />} />
+              <Route path="/customer-lifecycle" element={<CustomerLifecycle />} />
+              <Route path="/management-decisions" element={<ManagementDecisions />} />
+              <Route path="/finance" element={<Finance />} />
+              <Route path="/rmb-profit" element={<RmbProfitEstimate />} />
+              <Route path="/commissions" element={<Commissions />} />
+              <Route path="/partner-portal" element={<PartnerPortal />} />
+              <Route path="/payroll" element={<Payroll />} />
+              <Route path="/tasks" element={<Tasks />} />
+              <Route path="/employees" element={<Employees />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/permissions" element={<Permissions />} />
+              <Route path="/service-board" element={<ServiceBoard />} />
+              <Route path="/callbacks" element={<Callbacks />} />
+              <Route path="/settings/deduction" element={<MonthlyDeduction />} />
+            </Route>
             <Route path="*" element={<PublicPage><NotFound /></PublicPage>} />
           </Routes>
         </BrowserRouter>

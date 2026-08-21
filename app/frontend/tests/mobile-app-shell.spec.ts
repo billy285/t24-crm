@@ -264,6 +264,42 @@ test('手机内页可从当前 App 功能菜单进入二级页面', async ({ pag
   await expect.poll(() => new URL(page.url()).pathname).toBe('/rmb-profit');
 });
 
+test('手机业务页面切换时复用同一个应用外壳', async ({ page }) => {
+  await mockAuthenticatedApi(page, 'admin');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/finance`);
+
+  await page.locator('.app-shell').evaluate(element => {
+    (window as typeof window & { __t24AppShell?: Element }).__t24AppShell = element;
+  });
+  await page.getByRole('button', { name: '打开财务结算功能菜单' }).click();
+  await page.getByRole('button', { name: /人民币利润预估/ }).click();
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/rmb-profit');
+
+  const reused = await page.locator('.app-shell').evaluate(element => (
+    (window as typeof window & { __t24AppShell?: Element }).__t24AppShell === element
+  ));
+  expect(reused).toBe(true);
+});
+
+test('手机直接进入受控管理页时仍保留所属 App 导航', async ({ page }) => {
+  await mockAuthenticatedApi(page, 'admin');
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto(`${baseUrl}/settings`);
+  await expect(page.getByRole('heading', { name: '全局设置请在电脑端处理' })).toBeVisible();
+  await page.getByRole('button', { name: '打开组织设置功能菜单' }).click();
+  await expect(page.getByRole('button', { name: /员工管理/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /系统设置/ })).toBeVisible();
+
+  await page.goto(`${baseUrl}/payroll`);
+  await expect(page.getByRole('heading', { name: '工资处理请在电脑端完成' })).toBeVisible();
+  await page.getByRole('button', { name: '打开财务结算功能菜单' }).click();
+  await expect(page.getByRole('button', { name: /财务管理/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /工资表/ })).toBeVisible();
+  await expectNoDocumentOverflow(page);
+});
+
 test('1440px 网页 App 使用独立应用外壳，不再叠加后台侧栏', async ({ page }) => {
   await mockAuthenticatedApi(page, 'admin');
   await page.setViewportSize({ width: 1440, height: 900 });

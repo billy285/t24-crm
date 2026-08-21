@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, LogIn, Loader2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, LogIn, Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -74,85 +74,82 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center p-4">
-      {/* Background decorations */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative w-full max-w-md">
-        {/* Logo & Title */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-white p-1 shadow-xl shadow-blue-900/40 mb-4">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f3f6fb] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] py-[max(1.5rem,env(safe-area-inset-top))]">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex items-center gap-3 px-1">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[18px] border border-blue-100 bg-white p-1 shadow-sm">
             <img
               src="/t2-marketing-logo.png?v=t2-20260709b"
               alt="T24 Marketing"
-              className="h-full w-full rounded-full object-cover"
+              className="h-full w-full rounded-[14px] object-cover"
             />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-1">T24 Marketing 客户管理系统</h1>
-          <p className="text-slate-400 text-sm">适合美国华人餐厅/实体商家的一站式CRM</p>
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-600">T24 OS</p>
+            <h1 className="mt-1 truncate text-lg font-bold tracking-tight text-slate-950">T24 Marketing 工作台</h1>
+          </div>
         </div>
 
-        {/* Login Card */}
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl">
-          <h2 className="text-lg font-semibold text-white mb-6">员工登录</h2>
+        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.45)] sm:p-7">
+          <div className="mb-6">
+            <h2 className="text-2xl font-black tracking-[-0.035em] text-slate-950">登录工作台</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">进入与你岗位对应的客户、销售、交付或财务工作区。</p>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label className="text-slate-300 text-sm">邮箱地址</Label>
+              <Label className="text-sm font-semibold text-slate-700">邮箱地址</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   type="email"
                   placeholder="请输入邮箱"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20"
+                  className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-11 text-base text-slate-950 placeholder:text-slate-400 focus:bg-white"
                   autoComplete="email"
-                  autoFocus
+                  inputMode="email"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-slate-300 text-sm">密码</Label>
+              <Label className="text-sm font-semibold text-slate-700">密码</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   type={showPassword ? 'text' : 'password'}
                   placeholder="请输入密码"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 pr-12 bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20"
+                  className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-11 pr-12 text-base text-slate-950 placeholder:text-slate-400 focus:bg-white"
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                  className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  className="absolute right-0 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-2xl text-slate-400 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 >
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex min-h-11 items-center gap-2 text-slate-300 text-xs">
+            <label className="flex min-h-11 items-center gap-3 rounded-2xl bg-slate-50 px-3 text-sm text-slate-600">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-5 w-5 rounded border-white/20 bg-white/10"
+                  className="h-5 w-5 rounded border-slate-300 accent-blue-600"
                 />
-                保持登录
-              </label>
+                <span><span className="font-semibold text-slate-800">保持登录</span><span className="block text-[11px] text-slate-500">仅限你信任的个人设备</span></span>
+            </label>
+
               <Button
                 type="submit"
                 disabled={loading}
-                className="bg-blue-600 hover:bg-blue-700 text-white h-11 text-sm font-medium shadow-lg shadow-blue-600/25 transition-all"
+                className="h-12 w-full rounded-2xl bg-blue-600 text-sm font-bold text-white shadow-sm hover:bg-blue-700"
               >
                 {loading ? (
                   <>
@@ -166,13 +163,16 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                   </>
                 )}
               </Button>
-            </div>
           </form>
+
+          <div className="mt-5 flex items-start gap-2 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            登录后只显示当前账号有权限的业务应用和数据。
+          </div>
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-xs text-slate-600 mt-6">
-          © 2024 T24 Marketing CRM · 员工专用系统
+        <p className="mt-5 pb-[max(0rem,env(safe-area-inset-bottom))] text-center text-xs text-slate-400">
+          © T24 Marketing · 内部员工系统
         </p>
       </div>
     </div>

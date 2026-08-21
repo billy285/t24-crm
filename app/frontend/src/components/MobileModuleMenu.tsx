@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import {
   appNavigationItems,
   getMobileBusinessApps,
+  mobileBusinessApps,
 } from '@/lib/app-navigation';
 import { useRole } from '@/lib/role-context';
 import { cn } from '@/lib/utils';
@@ -24,8 +25,14 @@ export default function MobileModuleMenu({ currentPath }: { currentPath: string 
   const { role, canAccess } = useRole();
   const [open, setOpen] = useState(false);
   const definitions = getMobileBusinessApps(role);
-  const currentApp = definitions.find(app => app.paths.includes(currentPath));
-  const pages = currentApp?.paths
+  const directConfiguredApp = definitions.find(app => app.paths.includes(currentPath));
+  const baseApp = mobileBusinessApps.find(app => app.paths.includes(currentPath)) || directConfiguredApp;
+  const configuredApp = directConfiguredApp || definitions.find(app => app.key === baseApp?.key);
+  const currentApp = baseApp || configuredApp;
+  const availablePaths = currentApp
+    ? Array.from(new Set([...(configuredApp?.paths || []), currentPath]))
+    : [];
+  const pages = availablePaths
     .map(path => appNavigationItems.find(item => item.path === path))
     .filter((item): item is (typeof appNavigationItems)[number] => Boolean(item && canAccess(item.path))) || [];
 

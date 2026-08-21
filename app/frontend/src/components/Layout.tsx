@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
 import { pageLabels } from '../lib/permissions';
@@ -36,6 +36,9 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const currentPath = location.pathname;
+  const currentSearch = new URLSearchParams(location.search);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+  const scrollPositionsRef = useRef(new Map<string, number>());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
@@ -53,6 +56,30 @@ export default function Layout({ children }: LayoutProps) {
     const activeSection = appNavigationSections.find(section => section.paths.includes(currentPath));
     if (activeSection) setExpandedSection(activeSection.label);
   }, [currentPath]);
+
+  const mobileDetailKey = currentPath === '/customers'
+    ? currentSearch.get('detail') || ''
+    : currentPath === '/tasks'
+      ? currentSearch.get('task_id') || ''
+      : '';
+
+  const navigationSurfaceKey = `${currentPath}:${mobileDetailKey}`;
+
+  useEffect(() => {
+    const scrollContainer = mainScrollRef.current;
+    if (!scrollContainer) return;
+    const frame = window.requestAnimationFrame(() => {
+      scrollContainer.scrollTo({
+        top: scrollPositionsRef.current.get(navigationSurfaceKey) || 0,
+        left: 0,
+        behavior: 'auto',
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      scrollPositionsRef.current.set(navigationSurfaceKey, scrollContainer.scrollTop);
+    };
+  }, [navigationSurfaceKey]);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: '', newPwd: '', confirm: '' });
@@ -167,7 +194,6 @@ export default function Layout({ children }: LayoutProps) {
     : '管理员模式';
   const homePath = getRoleTodayPath(role);
   const isAppLauncher = currentPath === '/apps';
-  const currentSearch = new URLSearchParams(location.search);
   const isMobileDetailContext = (
     currentPath === '/customers' && currentSearch.has('detail')
   ) || (
@@ -200,7 +226,7 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div className="t24-system app-shell mobile-app-layout flex h-screen overflow-hidden">
+    <div className="t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 hidden bg-black/50 md:block lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -414,11 +440,11 @@ export default function Layout({ children }: LayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className={`app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isAppLauncher ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>
+        <main ref={mainScrollRef} className={`app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isAppLauncher ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>
           {hasPageAccess ? (
             isAppLauncher
               ? <MobileAppLauncher key={`${employee?.id || 'unknown'}:${role}`} onOpenProfile={() => setMobileProfileOpen(true)} />
-              : children
+              : <div key={currentPath} className="mobile-route-stage">{children}</div>
           ) : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
