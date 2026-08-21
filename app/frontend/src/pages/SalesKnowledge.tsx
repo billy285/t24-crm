@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CircleHelp, Copy, MessageSquareText, Pencil, Plus, Search, Send, ShieldAlert } from 'lucide-react';
+import { BookOpen, ChevronRight, CircleHelp, Copy, MessageSquareText, Pencil, Plus, Search, Send, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useRole } from '@/lib/role-context';
 import { getFullKnowledgeAnswer, getShortKnowledgeAnswer, type SalesKnowledgeArticle } from '@/lib/sales-knowledge';
 import { invokeWithAuth } from '@/lib/tokenStore';
@@ -45,8 +47,79 @@ const formatDate = (value?: string) => value ? value.slice(0, 16).replace('T', '
 const splitLines = (value: string) => value.split('\n').map(item => item.trim()).filter(Boolean);
 const splitTags = (value: string) => value.split(/[，,]/).map(item => item.trim()).filter(Boolean);
 
+function KnowledgeArticleDetail({
+  article,
+  canManage,
+  onEdit,
+  onCopyShort,
+  onCopyFull,
+}: {
+  article: Article;
+  canManage: boolean;
+  onEdit: (article: Article) => void;
+  onCopyShort: (article: Article) => void;
+  onCopyFull: (article: Article) => void;
+}) {
+  return (
+    <div className="knowledge-v4-detail-content">
+      <div className="knowledge-v4-detail-head">
+        <div>
+          <div className="flex flex-wrap gap-2">
+            <Badge className="bg-blue-50 text-blue-700">{article.category}</Badge>
+            {article.is_sensitive ? <Badge className="bg-amber-100 text-amber-800">仅内部销售使用</Badge> : null}
+            {article.status === 'draft' ? <Badge className="bg-violet-100 text-violet-700">草稿</Badge> : null}
+          </div>
+          <h3>{article.title}</h3>
+          <p>客户问：{article.customer_question || '适用于此类问题'}</p>
+        </div>
+        {canManage ? <Button size="icon" variant="ghost" title="编辑知识卡" onClick={() => onEdit(article)}><Pencil className="h-4 w-4" /></Button> : null}
+      </div>
+
+      <section className="knowledge-v4-short-answer">
+        <div>
+          <span>电话短版</span>
+          <small>约 15–30 秒</small>
+        </div>
+        <p>{getShortKnowledgeAnswer(article.standard_answer)}</p>
+        <Button size="sm" onClick={() => onCopyShort(article)}><Copy className="mr-1.5 h-4 w-4" />复制短版话术</Button>
+      </section>
+
+      <section className="knowledge-v4-full-answer">
+        <div className="flex items-center justify-between gap-3">
+          <h4>完整标准答复</h4>
+          <Button size="sm" variant="outline" onClick={() => onCopyFull(article)}><Copy className="mr-1.5 h-4 w-4" />复制完整答复</Button>
+        </div>
+        <p>{article.standard_answer}</p>
+      </section>
+
+      {article.action_steps.length > 0 ? (
+        <section className="knowledge-v4-steps">
+          <h4>执行步骤</h4>
+          <ol>
+            {article.action_steps.map((step, index) => (
+              <li key={`${step}-${index}`}><span>{index + 1}</span><p>{step}</p></li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+
+      {article.escalation_rule ? (
+        <section className="knowledge-v4-escalation">
+          <ShieldAlert className="h-5 w-5" />
+          <div><h4>需要升级确认</h4><p>{article.escalation_rule}</p></div>
+        </section>
+      ) : null}
+
+      {article.tags.length > 0 ? (
+        <div className="knowledge-v4-tags">{article.tags.map(tag => <span key={tag}>{tag}</span>)}</div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function SalesKnowledge() {
   const { role, isAdmin } = useRole();
+  const isMobile = useIsMobile();
   const canManage = isAdmin || role === 'sales_manager';
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -63,6 +136,7 @@ export default function SalesKnowledge() {
   const [questionOpen, setQuestionOpen] = useState(false);
   const [questionForm, setQuestionForm] = useState({ question: '', context: '' });
   const [saving, setSaving] = useState(false);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   const loadKnowledge = async (showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -280,7 +354,10 @@ export default function SalesKnowledge() {
                 key={article.id}
                 type="button"
                 className={`knowledge-v4-list-item ${activeArticle?.id === article.id ? 'is-active' : ''}`}
-                onClick={() => setSelectedArticle(article)}
+                onClick={() => {
+                  setSelectedArticle(article);
+                  if (isMobile) setMobileDetailOpen(true);
+                }}
               >
                 <span className="knowledge-v4-list-meta">
                   <span>{article.category}</span>
@@ -290,6 +367,7 @@ export default function SalesKnowledge() {
                 <strong>{article.title}</strong>
                 <p>{article.customer_question || '适用于相关销售场景'}</p>
                 <small>{getShortKnowledgeAnswer(article.standard_answer, 88)}</small>
+                <span className="knowledge-v4-list-action">查看并复制话术<ChevronRight className="h-4 w-4" /></span>
               </button>
             ))}
           </div>
@@ -297,62 +375,41 @@ export default function SalesKnowledge() {
 
         <article className="knowledge-v4-detail" aria-live="polite">
           {activeArticle ? (
-            <>
-              <div className="knowledge-v4-detail-head">
-                <div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge className="bg-blue-50 text-blue-700">{activeArticle.category}</Badge>
-                    {activeArticle.is_sensitive ? <Badge className="bg-amber-100 text-amber-800">仅内部销售使用</Badge> : null}
-                    {activeArticle.status === 'draft' ? <Badge className="bg-violet-100 text-violet-700">草稿</Badge> : null}
-                  </div>
-                  <h3>{activeArticle.title}</h3>
-                  <p>客户问：{activeArticle.customer_question || '适用于此类问题'}</p>
-                </div>
-                {canManage ? <Button size="icon" variant="ghost" title="编辑知识卡" onClick={() => openEditor(activeArticle)}><Pencil className="h-4 w-4" /></Button> : null}
-              </div>
-
-              <section className="knowledge-v4-short-answer">
-                <div>
-                  <span>电话短版</span>
-                  <small>约 15–30 秒</small>
-                </div>
-                <p>{getShortKnowledgeAnswer(activeArticle.standard_answer)}</p>
-                <Button size="sm" onClick={() => void copyShortAnswer(activeArticle)}><Copy className="mr-1.5 h-4 w-4" />复制短版话术</Button>
-              </section>
-
-              <section className="knowledge-v4-full-answer">
-                <div className="flex items-center justify-between gap-3">
-                  <h4>完整标准答复</h4>
-                  <Button size="sm" variant="outline" onClick={() => void copyAnswer(activeArticle)}><Copy className="mr-1.5 h-4 w-4" />复制完整答复</Button>
-                </div>
-                <p>{activeArticle.standard_answer}</p>
-              </section>
-
-              {activeArticle.action_steps.length > 0 ? (
-                <section className="knowledge-v4-steps">
-                  <h4>执行步骤</h4>
-                  <ol>
-                    {activeArticle.action_steps.map((step, index) => (
-                      <li key={`${step}-${index}`}><span>{index + 1}</span><p>{step}</p></li>
-                    ))}
-                  </ol>
-                </section>
-              ) : null}
-
-              {activeArticle.escalation_rule ? (
-                <section className="knowledge-v4-escalation">
-                  <ShieldAlert className="h-5 w-5" />
-                  <div><h4>需要升级确认</h4><p>{activeArticle.escalation_rule}</p></div>
-                </section>
-              ) : null}
-
-              {activeArticle.tags.length > 0 ? (
-                <div className="knowledge-v4-tags">{activeArticle.tags.map(tag => <span key={tag}>{tag}</span>)}</div>
-              ) : null}
-            </>
+            <KnowledgeArticleDetail
+              article={activeArticle}
+              canManage={canManage}
+              onEdit={openEditor}
+              onCopyShort={article => void copyShortAnswer(article)}
+              onCopyFull={article => void copyAnswer(article)}
+            />
           ) : <p className="knowledge-v4-empty">选择一个问题查看可用话术。</p>}
         </article>
       </div>
+
+      {isMobile ? (
+        <Sheet open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
+          <SheetContent side="bottom" className="knowledge-v4-mobile-sheet">
+            <SheetHeader className="sr-only">
+              <SheetTitle>{activeArticle?.title || '销售话术详情'}</SheetTitle>
+              <SheetDescription>查看并复制销售话术、执行步骤和升级规则。</SheetDescription>
+            </SheetHeader>
+            <div className="knowledge-v4-mobile-sheet-scroll">
+              {activeArticle ? (
+                <KnowledgeArticleDetail
+                  article={activeArticle}
+                  canManage={canManage}
+                  onEdit={article => {
+                    setMobileDetailOpen(false);
+                    openEditor(article);
+                  }}
+                  onCopyShort={article => void copyShortAnswer(article)}
+                  onCopyFull={article => void copyAnswer(article)}
+                />
+              ) : null}
+            </div>
+          </SheetContent>
+        </Sheet>
+      ) : null}
 
       {canManage && openQuestions.length > 0 ? (
         <Card className="border-amber-200 bg-amber-50/60 shadow-sm">

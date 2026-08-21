@@ -158,7 +158,7 @@ const mobileRoleAppPaths: Record<string, Partial<Record<MobileBusinessAppKey, st
     sales: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],
     customers: ['/customers', '/deals', '/customer-lifecycle'],
     delivery: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'],
-    finance: ['/finance', '/rmb-profit'],
+    finance: ['/finance', '/rmb-profit', '/payroll'],
     organization: ['/employees'],
   },
   admin: {
@@ -166,7 +166,7 @@ const mobileRoleAppPaths: Record<string, Partial<Record<MobileBusinessAppKey, st
     sales: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],
     customers: ['/customers', '/deals', '/customer-lifecycle'],
     delivery: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'],
-    finance: ['/finance', '/rmb-profit'],
+    finance: ['/finance', '/rmb-profit', '/payroll'],
     organization: ['/employees'],
   },
   sales: {
@@ -188,7 +188,7 @@ const mobileRoleAppPaths: Record<string, Partial<Record<MobileBusinessAppKey, st
     customers: ['/customers'],
   },
   finance: {
-    finance: ['/finance', '/rmb-profit'],
+    finance: ['/finance', '/rmb-profit', '/payroll'],
     customers: ['/customers'],
     strategy: ['/'],
   },
@@ -196,7 +196,7 @@ const mobileRoleAppPaths: Record<string, Partial<Record<MobileBusinessAppKey, st
 
 /**
  * Mobile is a focused execution surface, not a miniature copy of desktop admin.
- * Global settings, permissions, payroll and other high-impact bulk tools stay on desktop.
+ * Global settings, permissions and other high-impact bulk tools stay on desktop.
  */
 export function getMobileBusinessApps(role?: string | null): MobileBusinessAppDefinition[] {
   if (role === 'sales_partner') return [partnerBusinessApp];

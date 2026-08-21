@@ -2596,6 +2596,12 @@ export default function Customers() {
       { value: 'logs', label: '操作日志' },
     ];
     const secondaryDetailTabValues = new Set(secondaryDetailTabs.map(item => item.value));
+    const mobileSecondaryDetailTabs = [
+      { value: 'opportunities', label: '客户商机' },
+      ...(canViewFinance ? [{ value: 'renewals', label: `续费信息 (${renewalRows.length})` }] : []),
+      ...secondaryDetailTabs,
+    ];
+    const mobileSecondaryDetailTabValues = new Set(mobileSecondaryDetailTabs.map(item => item.value));
     const customer360Actions: Array<{
       key: string;
       title: string;
@@ -2634,24 +2640,26 @@ export default function Customers() {
     });
 
     return (
-      <div className="app-page space-y-5">
-        <div className="app-page-title items-start md:items-center">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={closeDetail}><ArrowLeft className="w-4 h-4 mr-1" /> {detailReturnTo ? getReturnLabel(detailReturnTo) : detailFromFinance ? '返回财务' : '返回列表'}</Button>
-          <div className="min-w-0">
+      <div className="customer-detail-page app-page space-y-4 md:space-y-5">
+        <div className="customer-detail-hero app-page-title items-start md:items-center">
+          <div className="flex w-full min-w-0 items-start gap-2.5">
+          <Button aria-label={detailReturnTo ? getReturnLabel(detailReturnTo) : detailFromFinance ? '返回财务' : '返回列表'} variant="ghost" size="sm" className="h-11 w-11 shrink-0 px-0 md:h-8 md:w-auto md:px-3" onClick={closeDetail}><ArrowLeft className="h-4 w-4 md:mr-1" /> <span className="hidden md:inline">{detailReturnTo ? getReturnLabel(detailReturnTo) : detailFromFinance ? '返回财务' : '返回列表'}</span></Button>
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-blue-600">客户详情</p>
-            <h2 className="truncate text-xl font-bold text-slate-900">{c.business_name}</h2>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+              <h2 className="min-w-0 flex-1 truncate text-xl font-bold text-slate-900">{c.business_name}</h2>
+              <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
+              <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
+            </div>
             <p className="mt-1 text-xs text-slate-500">编号 {c.customer_code || '-'} · 负责人 {c.sales_person || '-'} · 数据更新 {formatCustomerTimestamp(detailLoadedAt)}</p>
           </div>
-          <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
-          <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
           </div>
-          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
-            {c.phone && <CustomerPhoneDial phone={c.phone} label="RingCentral 拨号" className="flex-1 md:flex-none" />}
+          <div className="customer-detail-actions flex w-full items-center gap-2 md:w-auto md:justify-end">
+            {c.phone && <CustomerPhoneDial phone={c.phone} label="拨打电话" className="min-w-0 flex-[1.15] md:flex-none" buttonClassName="px-3" menuButtonClassName="shrink-0" />}
             {canCreateFollowUp && <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0 md:flex-none" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
             {isAdmin && <Button variant="outline" size="sm" className="hidden md:inline-flex" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 管理团队成员</Button>}
-            <Button variant="outline" size="sm" className="min-h-11 md:min-h-0" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
-              <RefreshCw className={`w-3.5 h-3.5 mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> 刷新数据
+            <Button aria-label="刷新客户数据" variant="outline" size="sm" className="h-11 w-11 shrink-0 px-0 md:h-8 md:w-auto md:px-3" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
+              <RefreshCw className={`h-3.5 w-3.5 md:mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> <span className="hidden md:inline">刷新数据</span>
             </Button>
           </div>
         </div>
@@ -2677,22 +2685,22 @@ export default function Customers() {
         )}
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
           <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
-          <div className="-mx-1 overflow-x-auto px-1 pb-1 md:hidden">
-            <TabsList aria-label="客户手机主导航" className="h-auto w-max min-w-full justify-start gap-1 bg-slate-100 p-1">
-              <TabsTrigger value="overview" className="min-h-11 shrink-0 px-3 text-sm">客户 360</TabsTrigger>
-              <TabsTrigger value="timeline" className="min-h-11 shrink-0 px-3 text-sm">时间线</TabsTrigger>
-              <TabsTrigger value="opportunities" className="min-h-11 shrink-0 px-3 text-sm">客户商机</TabsTrigger>
-              <TabsTrigger value="subscriptions" className="min-h-11 shrink-0 px-3 text-sm">服务信息</TabsTrigger>
-              {canViewFinance && <TabsTrigger value="payments" className="min-h-11 shrink-0 px-3 text-sm">财务信息</TabsTrigger>}
-              <TabsTrigger value="renewals" className="min-h-11 shrink-0 px-3 text-sm">续费信息</TabsTrigger>
+          <div className="md:hidden">
+            <TabsList aria-label="客户手机主导航" className="grid h-auto w-full grid-cols-4 gap-1 bg-slate-100 p-1">
+              <TabsTrigger value="overview" className="min-h-11 min-w-0 px-1 text-sm">概览</TabsTrigger>
+              <TabsTrigger value="timeline" className="min-h-11 min-w-0 px-1 text-sm">动态</TabsTrigger>
+              <TabsTrigger value="subscriptions" className="min-h-11 min-w-0 px-1 text-sm">服务</TabsTrigger>
+              {canViewFinance
+                ? <TabsTrigger value="payments" className="min-h-11 min-w-0 px-1 text-sm">财务</TabsTrigger>
+                : <TabsTrigger value="renewals" className="min-h-11 min-w-0 px-1 text-sm">续费</TabsTrigger>}
             </TabsList>
           </div>
           <label className="md:hidden">
             <span className="sr-only">更多资料与工具</span>
             <NativeSelect
-              value={secondaryDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
+              value={mobileSecondaryDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
               onChange={value => { if (value) handleDetailTabChange(value); }}
-              options={[{ value: '', label: '更多资料与工具' }, ...secondaryDetailTabs]}
+              options={[{ value: '', label: '更多资料与工具' }, ...mobileSecondaryDetailTabs]}
               className="w-full"
             />
           </label>
@@ -2715,35 +2723,35 @@ export default function Customers() {
           <TabsContent value="overview">
             <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
               <div className="space-y-4">
-                <Card className="border-slate-200"><CardContent className="p-5">
+                <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">下一步动作</h3><p className="mt-1 text-xs text-slate-500">提醒已转换成可直接处理的动作，不再需要先去别的页面找记录。</p></div><Badge className={customer360Actions.length ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}>{customer360Actions.length ? `${customer360Actions.length} 项待处理` : '当前无风险事项'}</Badge></div>
-                  {customer360Actions.length === 0 ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-sm text-emerald-800">客户资料、服务和财务状态目前没有发现需要立即处理的问题。</div> : <div className="mt-4 space-y-2">{customer360Actions.slice(0, 6).map(action => <div key={action.key} className={`flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center ${action.tone}`}><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{action.title}</p><p className="mt-1 text-xs text-slate-600">{action.description}</p></div><Button size="sm" variant="outline" className="shrink-0 bg-white" onClick={action.onClick}>{action.button}</Button></div>)}</div>}
+                  {customer360Actions.length === 0 ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-sm text-emerald-800">客户资料、服务和财务状态目前没有发现需要立即处理的问题。</div> : <div className="mt-4 space-y-2">{customer360Actions.slice(0, 6).map(action => <div key={action.key} className={`flex items-center gap-3 rounded-xl border p-3 ${action.tone}`}><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{action.title}</p><p className="mt-1 line-clamp-2 text-xs text-slate-600">{action.description}</p></div><Button size="sm" variant="outline" className="shrink-0 bg-white" onClick={action.onClick}>{action.button}</Button></div>)}</div>}
                 </CardContent></Card>
 
-                <Card className="border-slate-200"><CardContent className="p-5">
+                <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">当前合作与交付</h3><p className="mt-1 text-xs text-slate-500">项目、套餐和服务任务统一查看。</p></div><Button size="sm" variant="outline" onClick={() => handleDetailTabChange('subscriptions')}>查看服务明细</Button></div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-blue-50 p-3"><p className="text-xs text-blue-700">合作中项目</p><p className="mt-1 text-xl font-semibold text-blue-900">{activeCustomerProjectCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">在服套餐</p><p className="mt-1 text-xl font-semibold text-slate-900">{activeSubscriptionCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">待处理服务任务</p><p className="mt-1 text-xl font-semibold text-slate-900">{pendingServiceTasks}</p></div></div>
+                  <div className="mt-4 grid grid-cols-3 gap-2 md:gap-3"><div className="rounded-xl bg-blue-50 p-2.5 md:p-3"><p className="text-[11px] leading-4 text-blue-700 md:text-xs">合作项目</p><p className="mt-1 text-xl font-semibold text-blue-900">{activeCustomerProjectCount}</p></div><div className="rounded-xl bg-slate-50 p-2.5 md:p-3"><p className="text-[11px] leading-4 text-slate-500 md:text-xs">在服套餐</p><p className="mt-1 text-xl font-semibold text-slate-900">{activeSubscriptionCount}</p></div><div className="rounded-xl bg-slate-50 p-2.5 md:p-3"><p className="text-[11px] leading-4 text-slate-500 md:text-xs">待办任务</p><p className="mt-1 text-xl font-semibold text-slate-900">{pendingServiceTasks}</p></div></div>
                 </CardContent></Card>
 
-                <Card className="border-slate-200"><CardContent className="p-5">
+                <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <div className="flex items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">最近动态</h3><p className="mt-1 text-xs text-slate-500">跟进、成交、收款、服务和生命周期的统一时间线。</p></div><Button size="sm" variant="ghost" onClick={() => handleDetailTabChange('timeline')}>查看全部</Button></div>
                   {timelineEvents.length === 0 ? <div className="app-empty mt-4">暂无历史事件</div> : <div className="mt-4 divide-y divide-slate-100">{timelineEvents.slice(0, 5).map((event, index) => <div key={`${event.type}-${event.date}-${index}`} className="flex items-start gap-3 py-3"><Badge variant="outline" className="shrink-0">{event.type}</Badge><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-slate-800">{event.title}</p>{event.detail && <p className="mt-1 truncate text-xs text-slate-500">{event.detail}</p>}</div><span className="shrink-0 text-xs text-slate-400">{String(event.date).slice(0, 10)}</span></div>)}</div>}
                 </CardContent></Card>
               </div>
 
               <div className="space-y-4">
-                <Card className="border-slate-200"><CardContent className="p-5">
+                <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <h3 className="text-base font-semibold text-slate-900">客户摘要</h3>
                   <div className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{c.phone || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
                   <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}<Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>管理新商机</Button></div>
                 </CardContent></Card>
 
-                <Card className="border-slate-200"><CardContent className="p-5">
+                <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <div className="flex items-center justify-between gap-3"><h3 className="text-base font-semibold text-slate-900">经营摘要</h3>{canViewFinance && <Button size="sm" variant="ghost" onClick={() => handleDetailTabChange('payments')}>财务明细</Button>}</div>
                   <div className="mt-4 space-y-3">{canViewFinance && <><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计成交</p><p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(totalDealAmount)}</p></div><span className="text-xs text-slate-400">最近 {latestDealDate}</span></div><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计实收</p><p className="mt-1 text-xl font-semibold text-emerald-700">{formatCurrency(totalAmountPaid)}</p></div><span className="text-xs text-slate-400">最近 {latestPaymentDate}</span></div><div className="flex items-end justify-between"><div><p className="text-xs text-slate-500">当前未结清</p><p className={`mt-1 text-xl font-semibold ${totalOutstanding > 0 ? 'text-rose-700' : 'text-slate-900'}`}>{formatCurrency(totalOutstanding)}</p></div><span className="text-xs text-slate-400">累计应收 {formatCurrency(totalAmountDue)}</span></div></>}{!canViewFinance && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">当前角色仅显示合作、服务和续费状态；成交金额、收款、手续费、扣点、成本与利润均不可见。</p>}</div>
                 </CardContent></Card>
 
-                <Card className="border-slate-200"><CardContent className="p-5"><h3 className="text-base font-semibold text-slate-900">续费摘要</h3><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-amber-50 p-3"><p className="text-xs text-amber-700">即将到期</p><p className="mt-1 text-xl font-semibold text-amber-900">{upcomingRenewalCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">自动续费</p><p className="mt-1 text-xl font-semibold text-slate-900">{autoRenewCount}</p></div></div><Button className="mt-4 w-full" variant="outline" onClick={() => handleDetailTabChange('renewals')}>查看续费与收款状态</Button></CardContent></Card>
+                <Card className="border-slate-200"><CardContent className="p-4 md:p-5"><h3 className="text-base font-semibold text-slate-900">续费摘要</h3><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-amber-50 p-3"><p className="text-xs text-amber-700">即将到期</p><p className="mt-1 text-xl font-semibold text-amber-900">{upcomingRenewalCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">自动续费</p><p className="mt-1 text-xl font-semibold text-slate-900">{autoRenewCount}</p></div></div><Button className="mt-4 w-full" variant="outline" onClick={() => handleDetailTabChange('renewals')}>查看续费与收款状态</Button></CardContent></Card>
               </div>
             </div>
           </TabsContent>
@@ -2790,12 +2798,12 @@ export default function Customers() {
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">来源:</span><span>{sourceLabels[c.source] || c.source}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">国家:</span><span>{c.country ? getCountryLabel(c.country) : '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">州/省:</span><span>{c.country && c.state ? getStateLabel(c.country, c.state) : (c.state || '-')}</span></div>
-                <div className="flex gap-2 items-center col-span-2"><MapPin className="w-3 h-3 text-slate-400" /><span>{[c.address, c.city, c.state, c.country].filter(Boolean).join(', ')}</span></div>
-                {c.website && <div className="flex gap-2 items-center col-span-2"><Globe className="w-3 h-3 text-slate-400" /><a href={c.website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{c.website}</a></div>}
+                <div className="flex gap-2 items-center md:col-span-2"><MapPin className="w-3 h-3 text-slate-400" /><span>{[c.address, c.city, c.state, c.country].filter(Boolean).join(', ')}</span></div>
+                {c.website && <div className="flex min-w-0 gap-2 items-center md:col-span-2"><Globe className="w-3 h-3 shrink-0 text-slate-400" /><a href={c.website} target="_blank" rel="noreferrer" className="truncate text-blue-600 hover:underline">{c.website}</a></div>}
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">负责销售:</span><span>{c.sales_person || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">平台现状:</span><span>{c.current_platform || '-'}</span></div>
-                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">客户已有平台:</span><span>{formatSelectedPlatforms(c.selected_platforms)}</span></div>
-                <div className="flex gap-2 col-span-2"><span className="text-slate-500 w-24 shrink-0">套餐归类:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => getCustomerPackageLabel(c, item)).join('、') : '-'}{parseMultiValue(c.interested_packages).some(item => getHistoricalPackageLabel(c, item)) && <span className="ml-2 text-xs text-slate-400">（历史：{parseMultiValue(c.interested_packages).map(item => getHistoricalPackageLabel(c, item)).filter(Boolean).join('、')}）</span>}</span></div>
+                <div className="flex gap-2 md:col-span-2"><span className="text-slate-500 w-24 shrink-0">客户已有平台:</span><span>{formatSelectedPlatforms(c.selected_platforms)}</span></div>
+                <div className="flex gap-2 md:col-span-2"><span className="text-slate-500 w-24 shrink-0">套餐归类:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => getCustomerPackageLabel(c, item)).join('、') : '-'}{parseMultiValue(c.interested_packages).some(item => getHistoricalPackageLabel(c, item)) && <span className="ml-2 text-xs text-slate-400">（历史：{parseMultiValue(c.interested_packages).map(item => getHistoricalPackageLabel(c, item)).filter(Boolean).join('、')}）</span>}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">月订单量:</span><span>{c.monthly_orders || 0}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">已有点餐:</span><span>{c.has_ordering_system ? '是' : '否'}</span></div>
               </div>
@@ -2981,7 +2989,7 @@ export default function Customers() {
 
           {canViewFinance && (
             <TabsContent value="payments">
-              <Card className="border-slate-200"><CardContent className="p-5">
+              <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                 {customerFinanceRecordCount === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无财务记录</p> : (
                   <div className="space-y-5">
                     <div className="grid grid-cols-2 xl:grid-cols-6 gap-3">
@@ -3021,7 +3029,7 @@ export default function Customers() {
                       <h4 className="text-sm font-semibold text-slate-700 mb-2">按月收入成本利润</h4>
                       {customerFinanceSummary.monthlyRows.length === 0 ? <p className="text-sm text-slate-400 py-4">暂无按月汇总</p> : (
                         <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
+                          <table className="w-full min-w-[720px] text-sm">
                             <thead>
                               <tr className="border-b text-left text-slate-500">
                                 <th className="pb-2 font-medium">月份</th>
@@ -3055,8 +3063,48 @@ export default function Customers() {
                     <div>
                       <h4 className="text-sm font-semibold text-slate-700 mb-2">收款记录拆分</h4>
                       {payments.length === 0 ? <p className="text-sm text-slate-400 py-4">暂无收款记录</p> : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
+                        <>
+                          <div className="space-y-3 md:hidden">
+                            {paginatedFinancePaymentLines.items.map(line => {
+                              const p = line.payment;
+                              const displayIncomeType = getPaymentDisplayIncomeType(p);
+                              const outstanding = Number(p.outstanding_amount || 0);
+                              return (
+                                <article key={p.id} className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate text-sm font-semibold text-slate-900">{p.product_name || '未命名产品'}</p>
+                                      <p className="mt-1 text-xs text-slate-500">{p.payment_date?.slice(0, 10) || '日期未填写'} · {getPaymentModeLabel(p, payModeLabels)} / {getPaymentMethodLabel(p, payMethodLabels)}</p>
+                                    </div>
+                                    <Badge className="shrink-0 bg-blue-50 text-blue-700">{incomeTypeLabels[displayIncomeType] || displayIncomeType || '未分类'}</Badge>
+                                  </div>
+
+                                  <div className="mt-3 grid grid-cols-3 gap-2">
+                                    <div className="rounded-xl bg-emerald-50 p-2.5"><p className="text-[10px] text-emerald-700">实收</p><p className="mt-1 text-sm font-semibold text-emerald-700">{formatCurrency(line.amountPaid)}</p></div>
+                                    <div className="rounded-xl bg-cyan-50 p-2.5"><p className="text-[10px] text-cyan-700">净收入</p><p className={line.netBeforeCustomerCost >= 0 ? 'mt-1 text-sm font-semibold text-cyan-700' : 'mt-1 text-sm font-semibold text-red-600'}>{formatCurrency(line.netBeforeCustomerCost)}</p></div>
+                                    <div className={outstanding > 0 ? 'rounded-xl bg-red-50 p-2.5' : 'rounded-xl bg-slate-50 p-2.5'}><p className={outstanding > 0 ? 'text-[10px] text-red-700' : 'text-[10px] text-slate-500'}>欠款</p><p className={outstanding > 0 ? 'mt-1 text-sm font-semibold text-red-700' : 'mt-1 text-sm font-semibold text-slate-500'}>{outstanding > 0 ? formatCurrency(outstanding) : '$0'}</p></div>
+                                  </div>
+
+                                  <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-xs">
+                                    <div><p className="text-slate-400">管理费</p><p className="mt-1 font-medium text-blue-600">{line.managementAmount > 0 ? formatCurrency(line.managementAmount) : '-'}</p></div>
+                                    <div><p className="text-slate-400">投流费</p><p className="mt-1 font-medium text-orange-600">{line.adsRechargeAmount > 0 ? formatCurrency(line.adsRechargeAmount) : '-'}</p></div>
+                                    <div><p className="text-slate-400">其他收入</p><p className="mt-1 font-medium text-slate-700">{line.otherAmount > 0 ? formatCurrency(line.otherAmount) : '-'}</p></div>
+                                  </div>
+
+                                  <details className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5">
+                                    <summary className="cursor-pointer text-xs font-medium text-slate-600">查看扣点与手续费</summary>
+                                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] leading-5 text-slate-500">
+                                      <div>管理扣点<br /><span className="font-medium text-slate-700">{line.managementDeduction > 0 ? `${formatCurrency(line.managementDeduction)} · ${Math.round(line.managementRate * 100)}%` : '-'}</span></div>
+                                      <div>投流扣点<br /><span className="font-medium text-slate-700">{line.adsDeduction > 0 ? `${formatCurrency(line.adsDeduction)} · 1%` : '-'}</span></div>
+                                      <div>Stripe<br /><span className="font-medium text-slate-700">{line.stripeFee > 0 ? formatCurrency(line.stripeFee) : '-'}</span></div>
+                                    </div>
+                                  </details>
+                                </article>
+                              );
+                            })}
+                          </div>
+                          <div className="hidden overflow-x-auto md:block">
+                          <table className="w-full min-w-[1040px] text-sm">
                             <thead>
                               <tr className="border-b text-left text-slate-500">
                                 <th className="pb-2 font-medium">产品</th>
@@ -3103,15 +3151,16 @@ export default function Customers() {
                               );
                             })}</tbody>
                           </table>
+                          </div>
                           <DetailPaginationFooter pagination={paginatedFinancePaymentLines} pageSize={financePaymentPageSize} onPageChange={setFinancePaymentPage} onPageSizeChange={setFinancePaymentPageSize} label="收款记录" />
-                        </div>
+                        </>
                       )}
                     </div>
 
                     <div>
                       <h4 className="text-sm font-semibold text-slate-700 mb-2">客户支出记录</h4>
                       {customerExpenses.length === 0 ? <p className="text-sm text-slate-400 py-4">暂无客户支出记录</p> : (
-                        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">费用类型</th><th className="pb-2 font-medium">金额</th><th className="pb-2 font-medium">利润口径</th><th className="pb-2 font-medium">月份</th><th className="pb-2 font-medium">日期</th><th className="pb-2 font-medium">备注</th></tr></thead>
+                        <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="pb-2 font-medium">费用类型</th><th className="pb-2 font-medium">金额</th><th className="pb-2 font-medium">利润口径</th><th className="pb-2 font-medium">月份</th><th className="pb-2 font-medium">日期</th><th className="pb-2 font-medium">备注</th></tr></thead>
                         <tbody>{paginatedFinanceExpenses.items.map((e: any) => (<tr key={e.id} className="border-b border-slate-100"><td className="py-2">{customerExpenseTypeLabels[e.expense_type] || e.expense_type || '-'}</td><td className="py-2 text-amber-600 font-medium">{formatCurrencyByCode(e.amount, e.currency)}</td><td className="py-2 text-xs text-slate-500">{normalizeCurrencyCode(e.currency) === 'USD' ? '计入USD利润' : '单独记录'}</td><td className="py-2 text-slate-500">{e.expense_month || '-'}</td><td className="py-2 text-slate-500">{e.expense_date?.slice(0, 10) || '-'}</td><td className="py-2 text-slate-500 max-w-[240px] truncate">{e.notes || '-'}</td></tr>))}</tbody></table><DetailPaginationFooter pagination={paginatedFinanceExpenses} pageSize={financeExpensePageSize} onPageChange={setFinanceExpensePage} onPageSizeChange={setFinanceExpensePageSize} label="客户支出记录" /></div>
                       )}
                     </div>
@@ -3363,27 +3412,27 @@ export default function Customers() {
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无匹配的客户</p>
         : (
           <>
-          <div className="grid gap-3 p-3 md:hidden">
+          <div className="grid gap-2.5 p-3 md:hidden">
             {paginatedCustomers.items.map(c => (
-              <div key={c.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
+              <div key={c.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
                   <button type="button" className="min-w-0 text-left" onClick={() => openDetail(c)}>
-                    <p className="truncate font-semibold text-blue-700">{c.business_name || '-'}</p>
-                    <p className="mt-1 text-xs text-slate-400">{c.customer_code || `客户#${c.id}`}</p>
+                    <p className="truncate text-[15px] font-semibold text-blue-700">{c.business_name || '-'}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-400">{c.customer_code || `客户#${c.id}`}</p>
                   </button>
                   <div className="flex shrink-0 flex-wrap justify-end gap-1">
-                    <Badge className={`text-xs ${statusColors[c.status] || ''}`}>{statusLabels[c.status] || c.status || '-'}</Badge>
-                    <Badge className={`text-xs ${getLevelColorClass(c.level)}`}>{levelLabels[c.level] || c.level || '-'}</Badge>
+                    <Badge className={`px-2 py-1 text-[10px] ${statusColors[c.status] || ''}`}>{statusLabels[c.status] || c.status || '-'}</Badge>
+                    <Badge className={`px-2 py-1 text-[10px] ${getLevelColorClass(c.level)}`}>{levelLabels[c.level] || c.level || '-'}</Badge>
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                  <div><p className="text-xs text-slate-400">联系人</p><p className="mt-1 text-slate-700">{c.contact_name || '-'}</p></div>
-                  <div><p className="text-xs text-slate-400">负责人</p><p className="mt-1 text-slate-700">{c.sales_person || '-'}</p></div>
-                  <div><p className="text-xs text-slate-400">行业 / 地区</p><p className="mt-1 text-slate-700">{industryLabels[c.industry] || c.industry || '-'} · {c.state || '-'}</p></div>
-                  <div><p className="text-xs text-slate-400">电话</p>{c.phone ? <CustomerPhoneDial phone={c.phone} label={c.phone} variant="ghost" className="mt-1 max-w-full" /> : <p className="mt-1 text-slate-400">-</p>}</div>
+                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                  <p className="truncate text-slate-700"><span className="mr-1 text-slate-400">联系人</span>{c.contact_name || '-'}</p>
+                  <p className="truncate text-slate-700"><span className="mr-1 text-slate-400">负责人</span>{c.sales_person || '-'}</p>
+                  <p className="col-span-2 truncate text-slate-700"><span className="mr-1 text-slate-400">行业 / 地区</span>{industryLabels[c.industry] || c.industry || '-'} · {c.state || '-'}</p>
                 </div>
-                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-                  <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0" onClick={() => openDetail(c)}>查看客户</Button>
+                <div className="mt-2.5 flex items-center gap-2 border-t border-slate-100 pt-2.5">
+                  <div className="min-w-0 flex-1">{c.phone ? <CustomerPhoneDial phone={c.phone} label={c.phone} variant="outline" className="w-full min-w-0" buttonClassName="min-w-0 flex-1 justify-start px-3" /> : <span className="flex min-h-11 items-center px-3 text-xs text-slate-400">电话未填写</span>}</div>
+                  <Button size="sm" className="min-h-11 w-24 shrink-0 bg-blue-600 hover:bg-blue-700 md:min-h-0" onClick={() => openDetail(c)}>查看</Button>
                   {(isAdmin || hasPermission('customer_assign') || hasPermission('customer_edit') || hasPermission('customer_delete')) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

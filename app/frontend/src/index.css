@@ -221,6 +221,38 @@
     min-height: 2.75rem;
   }
 
+  .mobile-app-layout .customer-detail-hero {
+    gap: 0.875rem;
+  }
+
+  .mobile-app-layout .customer-detail-hero > div:first-child > button {
+    border: 1px solid rgb(255 255 255 / 0.16);
+    background: rgb(255 255 255 / 0.1);
+    color: white;
+  }
+
+  .mobile-app-layout .customer-detail-hero .customer-detail-actions {
+    margin-top: 0.125rem;
+  }
+
+  .mobile-app-layout .customer-detail-hero .customer-detail-actions > div {
+    min-width: 0;
+  }
+
+  .mobile-app-layout .customer-detail-page [role="tabpanel"] {
+    margin-top: 0.75rem;
+  }
+
+  .mobile-app-layout .customer-detail-page [role="tabpanel"] > .grid,
+  .mobile-app-layout .customer-detail-page [role="tabpanel"] > .space-y-4 {
+    gap: 0.75rem;
+  }
+
+  .mobile-app-layout .customer-detail-page .overflow-x-auto {
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .mobile-app-layout .merchant-hero {
     border: 0 !important;
     border-radius: 1.75rem !important;
@@ -275,10 +307,122 @@
     padding-inline: 0.625rem;
   }
 
-  .mobile-app-layout .knowledge-v4-workspace,
   .mobile-app-layout .sales-v3-shell {
     border-radius: var(--mobile-workspace-radius);
     box-shadow: var(--mobile-workspace-shadow);
+  }
+
+  .mobile-app-layout .knowledge-v4-workspace {
+    display: block;
+    min-height: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .mobile-app-layout .knowledge-v4-categories {
+    margin-bottom: 0.75rem;
+    border: 1px solid rgb(226 232 240 / 0.94);
+    border-radius: var(--mobile-workspace-radius);
+    background: white;
+    padding: 0.75rem;
+    box-shadow: var(--mobile-workspace-shadow);
+  }
+
+  .mobile-app-layout .knowledge-v4-categories .knowledge-v4-panel-title {
+    min-height: 2.5rem;
+    border: 0;
+    padding-inline: 0.25rem;
+  }
+
+  .mobile-app-layout .knowledge-v4-categories nav {
+    margin-inline: -0.25rem;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.25rem;
+    scrollbar-width: none;
+  }
+
+  .mobile-app-layout .knowledge-v4-categories nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-app-layout .knowledge-v4-categories nav button {
+    min-height: 2.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 9999px;
+    background: #f8fafc;
+    padding-inline: 0.875rem;
+    white-space: nowrap;
+  }
+
+  .mobile-app-layout .knowledge-v4-categories nav button.is-active {
+    border-color: #0f172a;
+    background: #0f172a;
+  }
+
+  .mobile-app-layout .knowledge-v4-list {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .mobile-app-layout .knowledge-v4-list > .knowledge-v4-panel-title {
+    min-height: 2.75rem;
+    border: 0;
+    padding-inline: 0.25rem;
+  }
+
+  .mobile-app-layout .knowledge-v4-list-scroll {
+    display: grid;
+    max-height: none;
+    gap: 0.75rem;
+    overflow: visible;
+  }
+
+  .mobile-app-layout .knowledge-v4-list-item {
+    border: 1px solid #e2e8f0;
+    border-radius: 1.25rem;
+    background: white;
+    padding: 1rem;
+    box-shadow: 0 16px 36px -30px rgb(15 23 42 / 0.7);
+  }
+
+  .mobile-app-layout .knowledge-v4-list-item.is-active {
+    border-color: #bfdbfe;
+    border-left-width: 1px;
+    background: white;
+    padding-left: 1rem;
+  }
+
+  .mobile-app-layout .knowledge-v4-list-item > p {
+    white-space: normal;
+  }
+
+  .mobile-app-layout .knowledge-v4-list-item > small {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .mobile-app-layout .knowledge-v4-list-action {
+    display: flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+    border-top: 1px solid #f1f5f9;
+    padding-top: 0.75rem;
+    color: #2563eb;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .mobile-app-layout .knowledge-v4-detail {
+    display: none;
   }
 
   .mobile-app-layout .sales-v3-topbar,
@@ -603,7 +747,9 @@
   .knowledge-v4-list-item strong { @apply mt-2 block text-sm text-slate-900; }
   .knowledge-v4-list-item > p { @apply mt-1 truncate text-xs text-slate-500; }
   .knowledge-v4-list-item > small { @apply mt-2 block text-[11px] leading-5 text-slate-600; }
+  .knowledge-v4-list-action { @apply hidden; }
   .knowledge-v4-detail { @apply min-h-0 space-y-5 overflow-y-auto p-5 lg:max-h-[calc(100vh-13rem)] lg:p-6; }
+  .knowledge-v4-detail-content { @apply space-y-5; }
   .knowledge-v4-detail-head { @apply flex items-start justify-between gap-4 border-b border-slate-100 pb-5; }
   .knowledge-v4-detail-head h3 { @apply mt-3 text-xl font-semibold tracking-[-.02em] text-slate-950; }
   .knowledge-v4-detail-head p { @apply mt-1.5 text-sm text-slate-500; }
@@ -626,6 +772,10 @@
   .knowledge-v4-tags { @apply flex flex-wrap gap-1.5 border-t border-slate-100 pt-4; }
   .knowledge-v4-tags span { @apply rounded-full bg-slate-100 px-2.5 py-1 text-[10px] text-slate-600; }
   .knowledge-v4-empty { @apply p-8 text-center text-sm text-slate-500; }
+  .knowledge-v4-mobile-sheet { @apply h-[88dvh] overflow-hidden rounded-t-[1.75rem] border-0 p-0; }
+  .knowledge-v4-mobile-sheet-scroll { @apply h-full overflow-y-auto px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-10; }
+  .knowledge-v4-mobile-sheet .knowledge-v4-detail-head h3 { @apply text-2xl; }
+  .knowledge-v4-mobile-sheet .knowledge-v4-short-answer button { @apply w-full; }
 
   @screen lg {
     .knowledge-v4-workspace { grid-template-columns: 13.5rem 22rem minmax(0, 1fr); }
