@@ -574,8 +574,9 @@ export default function SalesWorkbench() {
                     label="用 RingCentral 拨打"
                     variant="default"
                     size="default"
-                    className="w-full"
-                    buttonClassName="!min-h-14 rounded-l-2xl bg-emerald-600 text-base font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700"
+                    className="w-full overflow-hidden rounded-2xl shadow-lg shadow-emerald-600/20"
+                    buttonClassName="!min-h-14 rounded-l-2xl border-0 bg-emerald-600 text-base font-bold text-white shadow-none hover:bg-emerald-700"
+                    menuButtonClassName="!min-h-14 min-w-14 rounded-r-2xl border-0 border-l border-l-white/25 bg-emerald-600 px-4 text-white shadow-none hover:bg-emerald-700"
                     disabled={disabledCall}
                     onLaunched={() => openCall(focusedTask)}
                   />

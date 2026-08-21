@@ -18,6 +18,7 @@ type CustomerPhoneDialProps = Omit<ComponentProps<typeof Button>, 'asChild' | 'c
   showAlternatives?: boolean;
   menuLabel?: string;
   buttonClassName?: string;
+  menuButtonClassName?: string;
   onLaunched?: (mode: CustomerDialMode) => void;
 };
 
@@ -49,6 +50,7 @@ export default function CustomerPhoneDial({
   menuLabel = '选择其他拨号方式',
   className,
   buttonClassName,
+  menuButtonClassName,
   onLaunched,
   disabled,
   variant = 'outline',
@@ -79,7 +81,7 @@ export default function CustomerPhoneDial({
               size={size}
               variant={variant}
               disabled={unavailable}
-              className="min-h-11 min-w-11 rounded-l-none border-l-0 px-2 md:min-h-0 md:min-w-0"
+              className={cn('min-h-11 min-w-11 rounded-l-none border-l-0 px-2 md:min-h-0 md:min-w-0', menuButtonClassName)}
               aria-label={menuLabel}
             >
               <ChevronDown className="h-3.5 w-3.5" />
