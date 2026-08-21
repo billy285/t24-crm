@@ -323,7 +323,13 @@ export default function MobileAppHome({
             </div>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">{availableApps.length} 个入口</span>
           </div>
-          <div className={cn('grid gap-x-1 gap-y-5', availableApps.length === 1 ? 'grid-cols-1' : 'grid-cols-4', availableApps.length >= 4 && 'md:grid-cols-6')}>
+          <div className={cn(
+            'grid gap-x-2 gap-y-4',
+            availableApps.length === 1 && 'grid-cols-1',
+            (availableApps.length === 2 || availableApps.length === 4) && 'grid-cols-2',
+            (availableApps.length === 3 || availableApps.length >= 5) && 'grid-cols-3',
+            availableApps.length >= 4 && 'md:grid-cols-6',
+          )}>
             {availableApps.map(app => {
               const Icon = app.icon;
               const badge = visibleBadge(appBadges[app.key]);
@@ -332,7 +338,10 @@ export default function MobileAppHome({
                   key={app.key}
                   type="button"
                   onClick={() => openPath(app.path)}
-                  className="relative flex min-h-[84px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-0.5 py-1 text-center transition active:scale-[0.96]"
+                  className={cn(
+                    'relative flex min-h-[84px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-1 py-1 text-center transition active:scale-[0.96]',
+                    availableApps.length === 1 && 'mx-auto w-28',
+                  )}
                   aria-label={`${app.label}：${app.description}`}
                 >
                   <span className={cn('relative flex h-12 w-12 items-center justify-center rounded-[16px] ring-1 shadow-[0_12px_24px_-14px_rgba(15,23,42,0.65)]', iconTones[app.tone])}>
@@ -457,7 +466,13 @@ export default function MobileAppHome({
                   </div>
                   <span className="text-[10px] font-semibold text-slate-400">{section.shortcuts.length} 项</span>
                 </div>
-                <div className="grid grid-cols-4 gap-x-1 gap-y-4">
+                <div className={cn(
+                  'grid gap-x-2 gap-y-3',
+                  section.shortcuts.length === 1 && 'grid-cols-1',
+                  section.shortcuts.length === 2 && 'grid-cols-2',
+                  section.shortcuts.length === 3 && 'grid-cols-3',
+                  section.shortcuts.length >= 4 && 'grid-cols-4',
+                )}>
                   {section.shortcuts.map(shortcut => {
                     const ShortcutIcon = shortcut.icon;
                     return (
@@ -465,7 +480,10 @@ export default function MobileAppHome({
                         key={`${section.key}:${shortcut.path}`}
                         type="button"
                         onClick={() => openPath(shortcut.path)}
-                        className="flex min-h-[76px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-0.5 py-1 text-center transition active:scale-[0.96] active:bg-slate-50"
+                        className={cn(
+                          'flex min-h-[76px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-1 py-1 text-center transition active:scale-[0.96] active:bg-slate-50',
+                          section.shortcuts.length === 1 && 'mx-auto w-28',
+                        )}
                         aria-label={`打开${shortcut.label}`}
                       >
                         <span className={cn('flex h-11 w-11 items-center justify-center rounded-[15px] ring-1', shortcutIconTones[section.tone])}>
