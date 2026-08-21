@@ -152,6 +152,43 @@ test('销售今日工作台内嵌真实知识助手并支持收起与展开', as
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/sales-workbench-knowledge-assistant-local.png`, fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('complementary', { name: '销售知识助手' })).toBeVisible();
+  await expect(page.getByTestId('sales-workbench-mobile')).toBeVisible();
+  await expect(page.getByRole('complementary', { name: '销售知识助手' })).toHaveCount(0);
+  await expectNoHorizontalOverflow(page);
+});
+
+test('390px 销售工作台使用拨打返回记录一体化手机流程', async ({ page }) => {
+  await mockSalesApi(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/sales-workbench`);
+
+  const mobileWorkbench = page.getByTestId('sales-workbench-mobile');
+  await expect(mobileWorkbench).toBeVisible();
+  await expect(mobileWorkbench.getByRole('heading', { name: '手机电话工作台' })).toBeVisible();
+  await expect(page.locator('.sales-v3-shell')).toHaveCount(0);
+
+  const currentCustomer = mobileWorkbench.getByRole('region', { name: '当前拨打客户' });
+  await expect(currentCustomer).toContainText('示例商家');
+  await expect(currentCustomer).toContainText('(555) 010-2026');
+  const dial = currentCustomer.getByRole('button', { name: '用 RingCentral 拨打', exact: true });
+  const dialOptions = currentCustomer.getByRole('button', { name: '选择其他拨号方式' });
+  for (const target of [dial, dialOptions]) {
+    const box = await target.boundingBox();
+    expect(box?.height || 0).toBeGreaterThanOrEqual(44);
+    expect(box?.width || 0).toBeGreaterThanOrEqual(44);
+  }
+  await dialOptions.click();
+  await expect(page.getByRole('menuitem', { name: 'RingCentral App' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'RingCentral 网页版' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '手机系统电话' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await mobileWorkbench.getByRole('button', { name: '待回访', exact: true }).click();
+  const resultDialog = page.getByRole('dialog');
+  await expect(resultDialog.getByRole('heading', { name: '通话结束后记录 · 示例商家' })).toBeVisible();
+  await expect(resultDialog.getByRole('button', { name: '待回访', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(resultDialog.getByRole('button', { name: '保存并进入下一位' })).toBeVisible();
+  await expect.poll(async () => (await resultDialog.boundingBox())?.width || 0).toBeGreaterThanOrEqual(389);
+  await expect.poll(async () => (await resultDialog.boundingBox())?.height || 0).toBeGreaterThanOrEqual(843);
   await expectNoHorizontalOverflow(page);
 });

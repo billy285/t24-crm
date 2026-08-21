@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { launchCustomerDial, type CustomerDialMode } from '@/lib/phone-dial';
+import { getCustomerDialTarget, launchCustomerDial, type CustomerDialMode } from '@/lib/phone-dial';
 
 type CustomerPhoneDialProps = Omit<ComponentProps<typeof Button>, 'asChild' | 'children' | 'onClick'> & {
   phone: string;
@@ -18,14 +18,20 @@ type CustomerPhoneDialProps = Omit<ComponentProps<typeof Button>, 'asChild' | 'c
   showAlternatives?: boolean;
   menuLabel?: string;
   buttonClassName?: string;
+  onLaunched?: (mode: CustomerDialMode) => void;
 };
 
-function launch(phone: string, mode: CustomerDialMode) {
-  const target = launchCustomerDial(phone, mode);
+function launch(phone: string, mode: CustomerDialMode, onLaunched?: (mode: CustomerDialMode) => void) {
+  const target = getCustomerDialTarget(phone);
   if (!target) {
     toast.error('电话号码不完整，请先补充正确号码');
     return;
   }
+
+  // Prepare the CRM result form before the browser hands control to the
+  // external dialer. When the salesperson returns, the form is ready.
+  onLaunched?.(mode);
+  launchCustomerDial(phone, mode);
 
   if (mode === 'ringcentral') {
     toast.message('正在打开 RingCentral；返回系统后请如实记录通话结果。');
@@ -43,6 +49,7 @@ export default function CustomerPhoneDial({
   menuLabel = '选择其他拨号方式',
   className,
   buttonClassName,
+  onLaunched,
   disabled,
   variant = 'outline',
   size = 'sm',
@@ -59,7 +66,7 @@ export default function CustomerPhoneDial({
         variant={variant}
         disabled={unavailable}
         className={cn('min-h-11 min-w-0 flex-1 rounded-r-none md:min-h-0', !showAlternatives && 'rounded-r-md', buttonClassName)}
-        onClick={() => launch(phone, 'ringcentral')}
+        onClick={() => launch(phone, 'ringcentral', onLaunched)}
       >
         <PhoneCall className="mr-1.5 h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{label}</span>
@@ -79,15 +86,15 @@ export default function CustomerPhoneDial({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem className="min-h-11" onSelect={() => launch(phone, 'ringcentral')}>
+            <DropdownMenuItem className="min-h-11" onSelect={() => launch(phone, 'ringcentral', onLaunched)}>
               <PhoneCall className="mr-2 h-4 w-4" />
               RingCentral App
             </DropdownMenuItem>
-            <DropdownMenuItem className="min-h-11" onSelect={() => launch(phone, 'ringcentral_web')}>
+            <DropdownMenuItem className="min-h-11" onSelect={() => launch(phone, 'ringcentral_web', onLaunched)}>
               <Globe2 className="mr-2 h-4 w-4" />
               RingCentral 网页版
             </DropdownMenuItem>
-            <DropdownMenuItem className="min-h-11" onSelect={() => launch(phone, 'system')}>
+            <DropdownMenuItem className="min-h-11" onSelect={() => launch(phone, 'system', onLaunched)}>
               <Phone className="mr-2 h-4 w-4" />
               手机系统电话
             </DropdownMenuItem>
