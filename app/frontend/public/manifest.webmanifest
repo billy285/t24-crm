@@ -8,25 +8,25 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "background_color": "#f3f6fb",
-  "theme_color": "#2563eb",
+  "theme_color": "#06243f",
   "lang": "zh-CN",
   "orientation": "any",
   "categories": ["business", "productivity"],
   "icons": [
     {
-      "src": "/pwa-icon-192.png",
+      "src": "/t2-app-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-icon-512.png",
+      "src": "/t2-app-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-icon-maskable-512.png",
+      "src": "/t2-app-icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

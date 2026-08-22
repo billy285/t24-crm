@@ -40,9 +40,7 @@ const CompanyRoadmap = lazy(() => import('./pages/CompanyRoadmap'));
 const PageFallback = () => (
   <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6" role="status" aria-live="polite">
     <div className="text-center">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-sm font-bold tracking-wide text-white shadow-lg shadow-blue-200">
-        T24
-      </div>
+      <img src="/t2-marketing-logo.png?v=t2-20260822-official" alt="T2 Marketing" className="mx-auto h-14 w-14 rounded-2xl border border-slate-200 bg-white object-cover shadow-lg shadow-slate-200" />
       <p className="mt-4 text-sm font-semibold text-slate-800">T24 Marketing 客户管理系统</p>
       <div className="mx-auto mt-4 h-6 w-6 animate-spin rounded-full border-2 border-blue-100 border-b-blue-600" aria-hidden="true" />
       <p className="mt-3 text-xs text-slate-500">正在安全加载页面…</p>

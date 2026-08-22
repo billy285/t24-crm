@@ -79,7 +79,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         <div className="mb-6 flex items-center gap-3 px-1">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[18px] border border-blue-100 bg-white p-1 shadow-sm">
             <img
-              src="/t2-marketing-logo.png?v=t2-20260709b"
+              src="/t2-marketing-logo.png?v=t2-20260822-official"
               alt="T24 Marketing"
               className="h-full w-full rounded-[14px] object-cover"
             />

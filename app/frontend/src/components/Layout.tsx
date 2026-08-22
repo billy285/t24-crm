@@ -238,7 +238,7 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex items-center justify-between">
             <Link to={homePath} className={`flex min-w-0 items-center gap-3 ${sidebarCollapsed ? 'lg:w-full lg:justify-center' : ''}`} onClick={() => setSidebarOpen(false)}>
               <img
-                src="/t2-marketing-logo.png?v=t2-20260709b"
+                src="/t2-marketing-logo.png?v=t2-20260822-official"
                 alt="T24 Marketing"
                 className="h-10 w-10 flex-shrink-0 rounded-xl border border-white/15 bg-white object-cover shadow-md shadow-black/20"
               />

@@ -174,19 +174,18 @@ export function T24AppMark({ className, decorative = false }: { className?: stri
   return (
     <span
       className={cn(
-        'relative inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-[17px] border border-white bg-gradient-to-br from-white to-blue-50 shadow-[0_16px_34px_-18px_rgba(37,99,235,0.6)] ring-1 ring-blue-100/80',
+        'relative inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-[17px] border border-slate-200 bg-white shadow-[0_14px_30px_-18px_rgba(2,32,57,0.55)] ring-1 ring-slate-100',
         className,
       )}
       role={decorative ? undefined : 'img'}
       aria-label={decorative ? undefined : 'T24 OS'}
       aria-hidden={decorative || undefined}
     >
-      <span className="absolute -right-3 -top-3 h-9 w-9 rounded-full bg-blue-200/45 blur-md" />
-      <span className="relative bg-gradient-to-br from-blue-500 to-blue-700 bg-clip-text text-[13px] font-black italic tracking-[-0.08em] text-transparent">
-        T24
-      </span>
-      <span className="absolute bottom-[9px] left-[11px] h-[2px] w-6 -rotate-[26deg] rounded-full bg-gradient-to-r from-blue-300 to-blue-600" />
-      <span className="absolute right-[9px] top-[9px] h-2.5 w-2.5 rotate-[-8deg] border-r-2 border-t-2 border-blue-600" />
+      <img
+        src="/t2-marketing-logo.png?v=t2-20260822-official"
+        alt=""
+        className="h-full w-full scale-[1.08] rounded-full object-cover"
+      />
     </span>
   );
 }
