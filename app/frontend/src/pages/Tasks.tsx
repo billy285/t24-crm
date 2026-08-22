@@ -500,26 +500,50 @@ export default function Tasks() {
   const PaginationFooter = () => {
     if (paginated.total === 0) return null;
     return (
-      <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          显示 {paginated.start}-{paginated.end} 条 / 共 {paginated.total} 条
-          {filtered.length !== tasks.length ? `（筛选自 ${tasks.length} 条）` : ''}
+      <>
+        <div className="border-t border-slate-100 bg-slate-50/70 px-3 py-3 md:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 text-xs text-slate-500">
+              <span className="font-semibold text-slate-700">显示 {paginated.start}-{paginated.end} 条</span>
+              <span> / 共 {paginated.total} 条</span>
+              {filtered.length !== tasks.length && <span className="block truncate text-[11px] text-slate-400">筛选自 {tasks.length} 条任务</span>}
+            </div>
+            <NativeSelect
+              value={String(pageSize)}
+              onChange={value => setPageSize(Number(value))}
+              options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条/页` }))}
+              className="h-10 w-28 shrink-0 rounded-xl text-xs"
+            />
+          </div>
+          {paginated.totalPages > 1 && (
+            <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+              <Button size="sm" variant="outline" className="min-h-11 rounded-xl" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
+              <span className="min-w-16 text-center text-xs font-semibold text-slate-600">{paginated.page} / {paginated.totalPages}</span>
+              <Button size="sm" variant="outline" className="min-h-11 rounded-xl" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
+            </div>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-400">每页</span>
-          <NativeSelect
-            value={String(pageSize)}
-            onChange={value => setPageSize(Number(value))}
-            options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
-            className="h-8 w-24 text-xs"
-          />
-          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
-          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
-          <span className="min-w-20 text-center text-xs text-slate-500">{paginated.page} / {paginated.totalPages} 页</span>
-          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
-          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
+        <div className="hidden gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 md:flex md:items-center md:justify-between">
+          <div>
+            显示 {paginated.start}-{paginated.end} 条 / 共 {paginated.total} 条
+            {filtered.length !== tasks.length ? `（筛选自 ${tasks.length} 条）` : ''}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-400">每页</span>
+            <NativeSelect
+              value={String(pageSize)}
+              onChange={value => setPageSize(Number(value))}
+              options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
+              className="h-8 w-24 text-xs"
+            />
+            <Button size="sm" variant="outline" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
+            <Button size="sm" variant="outline" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
+            <span className="min-w-20 text-center text-xs text-slate-500">{paginated.page} / {paginated.totalPages} 页</span>
+            <Button size="sm" variant="outline" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
+            <Button size="sm" variant="outline" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
+          </div>
         </div>
-      </div>
+      </>
     );
   };
 
@@ -810,13 +834,121 @@ export default function Tasks() {
                 const waitingClient = isWaitingClientTask(t);
                 const stale = isStaleTask(t);
                 const completionSummary = t.completion_result || getCompletionSummary(t.notes);
+                const noteLines = String(t.notes || '').split('\n').map((line: string) => line.trim()).filter(Boolean);
+                const findingLine = noteLines.find((line: string) => line.startsWith('发现问题：'))?.replace(/^发现问题：\s*/, '');
+                const suggestionLine = noteLines.find((line: string) => line.startsWith('建议处理：'))?.replace(/^建议处理：\s*/, '');
+                const issueLine = noteLines.find((line: string) => line.startsWith('问题编号：'));
+                const otherNoteLines = noteLines.filter((line: string) => !/^(发现问题|建议处理|问题编号)：/.test(line));
+                const mobileTitle = String(t.title || '未命名任务').replace(/^【[^】]+】\s*/, '');
+                const TaskSourceIcon = source === 'system' ? Bot : ClipboardList;
                 return (
                   <div
                     key={t.id}
                     id={`task-row-${t.id}`}
-                    className={`rounded-xl border p-4 transition-colors md:rounded-none md:border-0 ${t.id === focusTaskId ? 'border-blue-200 bg-blue-50 ring-1 ring-blue-200' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                    className={`overflow-hidden rounded-[22px] border p-0 transition-colors md:rounded-none md:border-0 md:p-4 ${t.id === focusTaskId ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-200' : 'border-slate-200 bg-white shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)] hover:bg-slate-50 md:shadow-none'}`}
                   >
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="md:hidden">
+                      <div className={`h-1 w-full ${completed ? 'bg-emerald-500' : overdue ? 'bg-rose-500' : dueToday ? 'bg-blue-500' : waitingClient ? 'bg-violet-500' : 'bg-slate-300'}`} />
+                      <div className="p-4">
+                        <div className="flex items-start gap-3">
+                          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${taskSourceColors[source] || taskSourceColors.manual}`}>
+                            <TaskSourceIcon className="h-5 w-5" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                              <span>{taskSourceLabels[source]}</span>
+                              {t.automation_issue_id && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">自动闭环</span>}
+                            </div>
+                            <h3 className={`mt-1 line-clamp-2 text-[15px] font-bold leading-5 ${completed ? 'text-slate-400 line-through' : 'text-slate-950'}`}>{mobileTitle}</h3>
+                          </div>
+                          <span className={`max-w-[88px] shrink-0 rounded-full px-2.5 py-1.5 text-center text-[10px] font-bold leading-4 ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}`}>{extendedStatusLabels[t.status] || t.status || '未设置'}</span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${priorityColors[t.priority] || 'bg-slate-100 text-slate-600'}`}>{priorityLabels[t.priority] || t.priority || '普通'}优先级</span>
+                          {overdue && <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-700">已逾期</span>}
+                          {dueToday && <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-700">今日到期</span>}
+                          {stale && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-700">3天未更新</span>}
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200">
+                          <div className="col-span-2 bg-slate-50 px-3 py-2.5">
+                            <span className="block text-[10px] font-medium text-slate-400">客户</span>
+                            <span className="mt-0.5 block truncate text-xs font-semibold text-slate-800">{t.customer_name || '未关联客户'}</span>
+                          </div>
+                          <div className="bg-slate-50 px-3 py-2.5">
+                            <span className="block text-[10px] font-medium text-slate-400">负责人</span>
+                            <span className="mt-0.5 block truncate text-xs font-semibold text-slate-800">{t.assignee_name || '未分配'}</span>
+                          </div>
+                          <div className="bg-slate-50 px-3 py-2.5">
+                            <span className="block text-[10px] font-medium text-slate-400">截止时间</span>
+                            <span className={`mt-0.5 block text-xs font-semibold ${overdue ? 'text-rose-600' : 'text-slate-800'}`}>{t.due_date ? getTaskDateKey(t.due_date) : '未设置'}</span>
+                          </div>
+                        </div>
+
+                        {(findingLine || suggestionLine) ? (
+                          <div className="mt-3 space-y-2">
+                            {findingLine && (
+                              <div className="rounded-2xl border border-rose-100 bg-rose-50/70 px-3 py-2.5">
+                                <p className="text-[10px] font-bold text-rose-600">需要处理</p>
+                                <p className="mt-1 text-xs leading-5 text-slate-700">{findingLine}</p>
+                              </div>
+                            )}
+                            {suggestionLine && (
+                              <div className="rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-2.5">
+                                <p className="text-[10px] font-bold text-blue-600">建议下一步</p>
+                                <p className="mt-1 text-xs leading-5 text-slate-700">{suggestionLine}</p>
+                              </div>
+                            )}
+                          </div>
+                        ) : t.notes ? (
+                          <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-600">{t.notes}</div>
+                        ) : null}
+
+                        {(otherNoteLines.length > 0 || issueLine) && (findingLine || suggestionLine) && (
+                          <details className="mt-2 rounded-xl border border-slate-100 bg-white px-3 py-2 text-[11px] text-slate-500">
+                            <summary className="cursor-pointer list-none font-semibold text-slate-600">查看任务说明</summary>
+                            {otherNoteLines.length > 0 && <p className="mt-2 whitespace-pre-wrap leading-5">{otherNoteLines.join('\n')}</p>}
+                            {issueLine && <p className="mt-1 font-medium text-slate-400">{issueLine}</p>}
+                          </details>
+                        )}
+
+                        {completionSummary && (
+                          <p className="mt-3 rounded-2xl bg-emerald-50 px-3 py-2.5 text-xs font-medium leading-5 text-emerald-700">{completionSummary}</p>
+                        )}
+                        {t.attachment_link && (
+                          <a className="mt-2 inline-block text-xs font-semibold text-blue-600" href={t.attachment_link} target="_blank" rel="noreferrer">查看附件</a>
+                        )}
+
+                        <div className="mt-4 border-t border-slate-100 pt-3">
+                          {canEditTask && t.status === 'pending' && (
+                            <Button className="min-h-12 w-full rounded-2xl bg-blue-600 font-bold hover:bg-blue-700" onClick={() => handleStatusChange(t.id, 'in_progress')}>开始处理</Button>
+                          )}
+                          {canEditTask && !completed && t.status !== 'pending' && (
+                            <Button className="min-h-12 w-full rounded-2xl bg-emerald-600 font-bold hover:bg-emerald-700" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
+                              <CheckCircle2 className="mr-1.5 h-4 w-4" />完成并记录
+                            </Button>
+                          )}
+                          <div className="mt-2 flex gap-2">
+                            {canEditTask && !completed && t.status !== 'waiting_client' && (
+                              <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs text-violet-700" onClick={() => handleStatusChange(t.id, 'waiting_client')}>等客户</Button>
+                            )}
+                            {canEditTask && t.status === 'waiting_client' && (
+                              <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs text-blue-700" onClick={() => handleStatusChange(t.id, 'in_progress')}>继续处理</Button>
+                            )}
+                            {canOpenCustomers && t.customer_id && (
+                              <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs" onClick={() => navigate(buildReturnLink(`/customers?detail=${t.customer_id}`, getCurrentTaskPath(t.id), 'tasks'))}>
+                                <ExternalLink className="mr-1 h-3.5 w-3.5" />客户
+                              </Button>
+                            )}
+                            {canEditTask && <Button aria-label="编辑任务" size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs" onClick={() => openEditTask(t)}><Edit className="mr-1 h-3.5 w-3.5" />编辑</Button>}
+                            {canDeleteTask && !t.automation_issue_id && <Button aria-label="删除任务" size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs text-rose-600" onClick={() => setDeleteTarget(t)}><Trash2 className="mr-1 h-3.5 w-3.5" />删除</Button>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="hidden flex-col gap-3 md:flex lg:flex-row lg:items-start lg:justify-between">
                       <div className="flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className={`font-medium text-sm ${completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</span>
