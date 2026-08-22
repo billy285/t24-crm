@@ -292,10 +292,10 @@ export default function OperationsWorkbench() {
   }
 
   const urgencyStyles = {
-    overdue: { label: '已逾期', badge: 'bg-rose-100 text-rose-700', card: 'border-rose-200 bg-rose-50/40' },
-    today: { label: '今天处理', badge: 'bg-blue-100 text-blue-700', card: 'border-blue-200' },
-    waiting: { label: '等待客户', badge: 'bg-amber-100 text-amber-800', card: 'border-amber-200 bg-amber-50/40' },
-    normal: { label: '后续待办', badge: 'bg-slate-100 text-slate-600', card: 'border-slate-200' },
+    overdue: { label: '已逾期', badge: 'bg-rose-100 text-rose-700', card: 'border-rose-200 bg-rose-50/40', bar: 'bg-rose-500', icon: 'bg-rose-100 text-rose-700' },
+    today: { label: '今天处理', badge: 'bg-blue-100 text-blue-700', card: 'border-blue-200', bar: 'bg-blue-500', icon: 'bg-blue-100 text-blue-700' },
+    waiting: { label: '等待客户', badge: 'bg-amber-100 text-amber-800', card: 'border-amber-200 bg-amber-50/40', bar: 'bg-amber-500', icon: 'bg-amber-100 text-amber-700' },
+    normal: { label: '后续待办', badge: 'bg-slate-100 text-slate-600', card: 'border-slate-200', bar: 'bg-slate-400', icon: 'bg-slate-100 text-slate-600' },
   } as const;
 
   return (
@@ -313,7 +313,7 @@ export default function OperationsWorkbench() {
 
       {loadError && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{loadError}</div>}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 md:gap-3 xl:grid-cols-4">
         {[
           { key: 'overdue' as const, label: '逾期未处理', value: stats.overdue, icon: AlertTriangle, tone: 'text-rose-700' },
           { key: 'today' as const, label: '今天必须做', value: stats.today, icon: CalendarClock, tone: 'text-blue-700' },
@@ -321,18 +321,18 @@ export default function OperationsWorkbench() {
           { key: 'issue' as const, label: '服务问题', value: stats.issues, icon: ClipboardCheck, tone: 'text-violet-700' },
         ].map(item => (
           <button key={item.label} type="button" onClick={() => setFilter(item.key)} className="text-left">
-            <Card className={`h-full border-slate-200 transition hover:border-blue-300 hover:shadow-sm ${filter === item.key ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}>
-              <CardContent className="flex items-center gap-3 p-4">
-                <item.icon className={`h-5 w-5 ${item.tone}`} />
-                <div><p className="text-2xl font-semibold text-slate-900">{item.value}</p><p className="text-xs text-slate-500">{item.label}</p></div>
+            <Card className={`h-full rounded-[20px] border-slate-200 transition hover:border-blue-300 hover:shadow-sm md:rounded-xl ${filter === item.key ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}>
+              <CardContent className="flex min-h-[88px] items-center gap-2.5 p-3 md:gap-3 md:p-4">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50"><item.icon className={`h-[18px] w-[18px] ${item.tone}`} /></span>
+                <div className="min-w-0"><p className="text-xl font-bold text-slate-900 md:text-2xl md:font-semibold">{item.value}</p><p className="truncate text-[11px] font-medium text-slate-500 md:text-xs">{item.label}</p></div>
               </CardContent>
             </Card>
           </button>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h3 className="text-base font-semibold text-slate-900">下一步动作</h3><p className="text-xs text-slate-500">按逾期、今日、等待客户排序，共 {filteredActions.length} 项；先展示最需要处理的事项。</p></div>
+      <div className="flex items-start justify-between gap-3 px-0.5">
+        <div className="min-w-0"><div className="flex items-center gap-2"><h3 className="text-lg font-bold text-slate-950 md:text-base md:font-semibold md:text-slate-900">下一步动作</h3><span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white">{filteredActions.length} 项</span></div><p className="mt-1 text-xs leading-5 text-slate-500">按逾期、今日、等待客户排序，先处理最重要的事项。</p></div>
         {filter !== 'all' && <Button size="sm" variant="ghost" onClick={() => setFilter('all')}>查看全部 {actions.length} 项</Button>}
       </div>
 
@@ -344,25 +344,66 @@ export default function OperationsWorkbench() {
             const style = urgencyStyles[action.urgency];
             const overdueDays = action.urgency === 'overdue' ? daysBetweenDateKeys(action.date, today) : 0;
             const missingOwner = /尚未分配|待安排|需要确认处理人/.test(action.description);
+            const actionTypeLabel = action.kind === 'task' ? '任务' : action.kind === 'callback' ? '回访' : '服务问题';
+            const primaryActionLabel = action.kind === 'callback' ? '记录回访' : action.kind === 'issue' ? '解决问题' : '完成任务';
+            const ActionIcon = action.kind === 'callback' ? Clock3 : action.kind === 'issue' ? AlertTriangle : ClipboardCheck;
+            const ownerLabel = action.description.replace(/^(负责人|回访负责人|问题负责人)：\s*/, '');
             return (
-              <Card key={action.id} className={style.card}>
-                <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={style.badge}>{action.urgency === 'overdue' && overdueDays > 0 ? `逾期 ${overdueDays} 天` : style.label}</Badge>
-                      <Badge variant="outline">{action.kind === 'task' ? '任务' : action.kind === 'callback' ? '回访' : '服务问题'}</Badge>
-                      {missingOwner && <Badge className="bg-orange-100 text-orange-800">缺少负责人</Badge>}
-                      {action.date && <span className="text-xs text-slate-500">计划 {action.date}</span>}
+              <Card key={action.id} className={`overflow-hidden rounded-[22px] shadow-[0_10px_28px_-22px_rgba(15,23,42,0.55)] md:rounded-xl md:shadow-none ${style.card}`}>
+                <CardContent className="p-0 md:p-4">
+                  <div className="md:hidden">
+                    <div className={`h-1 w-full ${style.bar}`} />
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${style.icon}`}><ActionIcon className="h-[18px] w-[18px]" /></span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${style.badge}`}>{action.urgency === 'overdue' && overdueDays > 0 ? `逾期 ${overdueDays} 天` : style.label}</span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600">{actionTypeLabel}</span>
+                            </div>
+                          </div>
+                        </div>
+                        {action.date && <span className="shrink-0 rounded-full bg-white/80 px-2 py-1 text-[10px] font-medium tabular-nums text-slate-500">{action.date}</span>}
+                      </div>
+
+                      <button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId} className="mt-3 flex max-w-full items-center gap-1.5 text-left disabled:cursor-default">
+                        <span className="truncate text-[16px] font-bold text-slate-950">{action.customerName}</span>
+                        {action.customerId && <ArrowRight className="h-4 w-4 shrink-0 text-blue-600" />}
+                      </button>
+                      <p className="mt-1.5 line-clamp-2 text-[13px] font-medium leading-5 text-slate-700">{action.title}</p>
+
+                      <div className="mt-3 flex items-center gap-2 rounded-2xl border border-white/80 bg-white/70 px-3 py-2.5">
+                        <UserRound className={`h-4 w-4 shrink-0 ${missingOwner ? 'text-orange-600' : 'text-slate-500'}`} />
+                        <div className="min-w-0 flex-1"><span className="block text-[9px] font-medium text-slate-400">负责人</span><span className={`block truncate text-xs font-semibold ${missingOwner ? 'text-orange-700' : 'text-slate-700'}`}>{ownerLabel}</span></div>
+                        {missingOwner && <span className="shrink-0 rounded-full bg-orange-100 px-2 py-1 text-[9px] font-bold text-orange-700">待分配</span>}
+                      </div>
+
+                      <div className={`mt-3 grid gap-2 ${action.customerId ? 'grid-cols-[0.9fr_1.1fr]' : 'grid-cols-1'}`}>
+                        {action.customerId && <Button className="min-h-12 rounded-2xl bg-white text-slate-700 shadow-sm hover:bg-slate-50" variant="outline" onClick={() => openCustomer(action)}><UserRound className="mr-1.5 h-4 w-4" />客户 360</Button>}
+                        <Button className="min-h-12 rounded-2xl bg-blue-600 font-bold shadow-sm hover:bg-blue-700" onClick={() => openAction(action)}>{primaryActionLabel}</Button>
+                      </div>
                     </div>
-                    <button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId} className="mt-2 flex items-center gap-1 text-left font-semibold text-slate-900 hover:text-blue-700 disabled:cursor-default disabled:hover:text-slate-900">
-                      {action.customerName}{action.customerId && <ArrowRight className="h-3.5 w-3.5" />}
-                    </button>
-                    <p className="mt-1 text-sm text-slate-700">{action.title}</p>
-                    <p className="mt-1 text-xs text-slate-500">{action.description}</p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {action.customerId && <Button size="sm" variant="outline" onClick={() => openCustomer(action)}><UserRound className="mr-1 h-3.5 w-3.5" />客户 360</Button>}
-                    <Button size="sm" onClick={() => openAction(action)}>{action.kind === 'callback' ? '记录回访' : action.kind === 'issue' ? '解决问题' : '完成任务'}</Button>
+
+                  <div className="hidden gap-4 md:flex md:flex-col lg:flex-row lg:items-center">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={style.badge}>{action.urgency === 'overdue' && overdueDays > 0 ? `逾期 ${overdueDays} 天` : style.label}</Badge>
+                        <Badge variant="outline">{actionTypeLabel}</Badge>
+                        {missingOwner && <Badge className="bg-orange-100 text-orange-800">缺少负责人</Badge>}
+                        {action.date && <span className="text-xs text-slate-500">计划 {action.date}</span>}
+                      </div>
+                      <button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId} className="mt-2 flex items-center gap-1 text-left font-semibold text-slate-900 hover:text-blue-700 disabled:cursor-default disabled:hover:text-slate-900">
+                        {action.customerName}{action.customerId && <ArrowRight className="h-3.5 w-3.5" />}
+                      </button>
+                      <p className="mt-1 text-sm text-slate-700">{action.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">{action.description}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      {action.customerId && <Button size="sm" variant="outline" onClick={() => openCustomer(action)}><UserRound className="mr-1 h-3.5 w-3.5" />客户 360</Button>}
+                      <Button size="sm" onClick={() => openAction(action)}>{primaryActionLabel}</Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
