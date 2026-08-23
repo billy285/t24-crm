@@ -38,6 +38,7 @@ from services.ringcentral_sync import process_telephony_event, upsert_call_log_r
 router = APIRouter(prefix="/api/ringcentral", tags=["ringcentral"])
 SALES_ROLES = {"admin", "super_admin", "sales_manager", "sales"}
 _refresh_locks: dict[int, asyncio.Lock] = {}
+HEALTHY_WEBHOOK_STATUSES = {"active"}
 
 
 def _employee_id(user: UserResponse) -> int:
@@ -60,25 +61,42 @@ def _status_payload(connection: Optional[RingCentralConnections]) -> dict:
             "connected": False,
             "degraded": False,
             "needs_reconnect": False,
+            "realtime_sync_enabled": False,
+            "sync_health": "disconnected",
+            "authorization_status": "not_connected",
             "message": "可连接 RingCentral" if configured else "等待系统管理员完成服务器凭证配置",
         }
-    degraded = bool(connection.is_active and connection.last_error)
+    webhook_status = str(connection.webhook_subscription_status or "").strip().lower()
+    realtime_sync_enabled = bool(connection.is_active and webhook_status in HEALTHY_WEBHOOK_STATUSES)
+    degraded = bool(connection.is_active and (connection.last_error or (webhook_status and not realtime_sync_enabled)))
+    sync_health = (
+        "disconnected"
+        if not connection.is_active
+        else "enabled"
+        if realtime_sync_enabled
+        else "attention"
+        if degraded
+        else "pending"
+    )
     return {
         "configured": configured,
         "connected": bool(connection.is_active),
         "degraded": degraded,
         "needs_reconnect": not bool(connection.is_active),
+        "realtime_sync_enabled": realtime_sync_enabled,
+        "sync_health": sync_health,
+        "authorization_status": "connected" if connection.is_active else "reconnect_required",
         "extension_number": connection.extension_number,
         "connected_at": connection.created_at,
         "last_synced_at": connection.last_synced_at,
         "last_error": connection.last_error,
-        "webhook_status": connection.webhook_subscription_status,
+        "webhook_status": webhook_status or None,
         "webhook_expires_at": connection.webhook_expires_at,
         "last_event_at": connection.last_event_at,
         "message": (
-            "RingCentral 已连接，网络恢复后将自动重试"
-            if degraded
-            else "RingCentral 已连接"
+            "RingCentral 已授权，但实时通话同步需要处理"
+            if connection.is_active and not realtime_sync_enabled
+            else "RingCentral 实时通话同步已启用"
             if connection.is_active
             else "RingCentral 授权已失效，请重新连接"
         ),
@@ -191,7 +209,9 @@ async def _refresh_connection_if_needed(
         connection.token_expires_at = token_expiry(payload)
         connection.scopes = str(payload.get("scope") or connection.scopes or "")
         connection.is_active = True
-        connection.last_error = None
+        webhook_status = str(connection.webhook_subscription_status or "").strip().lower()
+        if not webhook_status or webhook_status in HEALTHY_WEBHOOK_STATUSES:
+            connection.last_error = None
         connection.last_synced_at = datetime.now(timezone.utc)
         await db.commit()
         return connection
@@ -318,9 +338,8 @@ async def sync_ringcentral_call_log(
     for record in records:
         if await upsert_call_log_record(db, connection, record):
             synced += 1
-    connection.last_error = None
     await db.commit()
-    return {"synced": synced, "last_synced_at": connection.last_synced_at}
+    return {"synced": synced, "last_synced_at": connection.last_synced_at, **_status_payload(connection)}
 
 
 @router.get("/calls/recent")

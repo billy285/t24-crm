@@ -12,7 +12,9 @@ from models.ringcentral_connections import RingCentralConnections
 from models.sales_call_activities import SalesCallActivities
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
 from models.sales_leads import SalesLeads
+from routers import ringcentral as ringcentral_router
 from routers.ringcentral import ringcentral_webhook
+from schemas.auth import UserResponse
 from services.ringcentral_sync import process_telephony_event, upsert_call_log_record
 
 
@@ -69,7 +71,7 @@ async def test_event_and_call_log_are_idempotent_and_match_employee_lead_task():
             task_date=date.today(),
             lead_id=lead.id,
             status="pending",
-            dial_started_at=datetime.now(timezone.utc),
+            dial_started_at=datetime(2026, 8, 23, 7, 59, tzinfo=timezone.utc),
         )
         db.add(task)
         await db.commit()
@@ -125,5 +127,81 @@ async def test_event_and_call_log_are_idempotent_and_match_employee_lead_task():
         })
         assert duplicate is not None
         assert duplicate.id == provider_call.id
+
+        stale_lead = SalesLeads(
+            business_name="Old Dial Salon",
+            phone="+1 555 444 5555",
+            status="new",
+            assigned_sales_id=11,
+            assigned_sales_name="Billy Li",
+        )
+        db.add(stale_lead)
+        await db.flush()
+        stale_task = SalesDailyDialTasks(
+            sales_employee_id=11,
+            task_date=date(2026, 8, 20),
+            lead_id=stale_lead.id,
+            status="pending",
+            dial_started_at=datetime(2026, 8, 20, 8, 0, tzinfo=timezone.utc),
+        )
+        db.add(stale_task)
+        await db.commit()
+
+        stale_call = await upsert_call_log_record(db, connection, {
+            "id": "call-stale-task",
+            "direction": "Outbound",
+            "from": {"phoneNumber": "+15550001111"},
+            "to": {"phoneNumber": "+15554445555"},
+            "result": "Call connected",
+            "duration": 42,
+            "startTime": "2026-08-23T08:00:00Z",
+        })
+        assert stale_call is not None
+        assert stale_call.lead_id == stale_lead.id
+        assert stale_call.task_id is None
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_manual_call_log_sync_keeps_realtime_subscription_error(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    tables = [RingCentralConnections.__table__, RingCentralCallRecords.__table__]
+    async with engine.begin() as connection:
+        await connection.run_sync(lambda sync_connection: Base.metadata.create_all(sync_connection, tables=tables))
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_maker() as db:
+        connection = RingCentralConnections(
+            employee_id=11,
+            access_token_encrypted="test-token",
+            is_active=True,
+            webhook_subscription_status="error",
+            last_error="实时订阅权限不足",
+        )
+        db.add(connection)
+        await db.commit()
+
+        async def keep_connection(_employee_id, current, _db):
+            return current
+
+        async def no_records(_access_token, *, date_from, telephony_session_id=None):
+            return []
+
+        monkeypatch.setattr(ringcentral_router, "_refresh_connection_if_needed", keep_connection)
+        monkeypatch.setattr(ringcentral_router, "_access_token", lambda _connection: "access-token")
+        monkeypatch.setattr(ringcentral_router, "fetch_extension_call_log", no_records)
+
+        result = await ringcentral_router.sync_ringcentral_call_log(
+            days=2,
+            current_user=UserResponse(id="11", email="sales@example.com", role="sales"),
+            db=db,
+        )
+        await db.refresh(connection)
+
+        assert connection.last_error == "实时订阅权限不足"
+        assert result["connected"] is True
+        assert result["realtime_sync_enabled"] is False
+        assert result["sync_health"] == "attention"
 
     await engine.dispose()

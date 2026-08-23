@@ -170,18 +170,13 @@ test('390px 销售工作台使用拨打返回记录一体化手机流程', async
   const currentCustomer = mobileWorkbench.getByRole('region', { name: '当前拨打客户' });
   await expect(currentCustomer).toContainText('示例商家');
   await expect(currentCustomer).toContainText('(555) 010-2026');
-  const dial = currentCustomer.getByRole('button', { name: '用 RingCentral 拨打', exact: true });
-  const dialOptions = currentCustomer.getByRole('button', { name: '选择其他拨号方式' });
-  for (const target of [dial, dialOptions]) {
+  const dial = currentCustomer.getByRole('button', { name: 'RingCentral 网页拨号', exact: true });
+  for (const target of [dial]) {
     const box = await target.boundingBox();
     expect(box?.height || 0).toBeGreaterThanOrEqual(44);
     expect(box?.width || 0).toBeGreaterThanOrEqual(44);
   }
-  await dialOptions.click();
-  await expect(page.getByRole('menuitem', { name: 'RingCentral App' })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: 'RingCentral 网页版' })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: '手机系统电话' })).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(currentCustomer.getByRole('button', { name: '选择其他拨号方式' })).toHaveCount(0);
 
   await mobileWorkbench.getByRole('button', { name: '待回访', exact: true }).click();
   const resultDialog = page.getByRole('dialog');
@@ -191,4 +186,17 @@ test('390px 销售工作台使用拨打返回记录一体化手机流程', async
   await expect.poll(async () => (await resultDialog.boundingBox())?.width || 0).toBeGreaterThanOrEqual(389);
   await expect.poll(async () => (await resultDialog.boundingBox())?.height || 0).toBeGreaterThanOrEqual(843);
   await expectNoHorizontalOverflow(page);
+
+  await page.keyboard.press('Escape');
+  await expect(resultDialog).toBeHidden();
+  await page.route('https://app.ringcentral.com/**', route => route.fulfill({
+    status: 200,
+    contentType: 'text/html',
+    body: '<!doctype html><title>RingCentral test handoff</title>',
+  }));
+  await dial.click();
+  await expect(page).toHaveURL('https://app.ringcentral.com/r/call?number=15550102026');
+  await page.goBack();
+  await expect(page).toHaveURL(`${baseUrl}/sales-workbench`);
+  await expect(page.getByRole('dialog').getByRole('heading', { name: '通话结束后记录 · 示例商家' })).toBeVisible();
 });

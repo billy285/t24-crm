@@ -1,5 +1,3 @@
-export type CustomerDialMode = 'ringcentral' | 'ringcentral_web' | 'system';
-
 export type CustomerDialTarget = {
   dialNumber: string;
   displayNumber: string;
@@ -18,26 +16,13 @@ export function getCustomerDialTarget(phone: string): CustomerDialTarget | null 
   };
 }
 
-export function launchCustomerDial(phone: string, mode: CustomerDialMode): CustomerDialTarget | null {
+export function launchCustomerDial(phone: string): CustomerDialTarget | null {
   const target = getCustomerDialTarget(phone);
   if (!target) return null;
 
-  if (mode === 'ringcentral') {
-    // RingCentral's registered URI expects digits only. Keeping this action
-    // directly inside the user's click also avoids mobile browser popup blocks.
-    window.location.assign(`rcmobile://call?number=${target.dialNumber}`);
-    return target;
-  }
-
-  if (mode === 'ringcentral_web') {
-    window.open(
-      `https://app.ringcentral.com/r/call?number=${target.dialNumber}`,
-      '_blank',
-      'noopener,noreferrer',
-    );
-    return target;
-  }
-
-  window.location.assign(`tel:${target.displayNumber}`);
+  // Keep this as a direct, same-tab navigation from the user's click. Mobile
+  // browsers and embedded webviews commonly block window.open(), while a
+  // normal HTTPS navigation remains reliable and preserves Back navigation.
+  window.location.assign(`https://app.ringcentral.com/r/call?number=${target.dialNumber}`);
   return target;
 }

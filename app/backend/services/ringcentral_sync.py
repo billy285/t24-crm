@@ -15,6 +15,7 @@ from models.sales_leads import SalesLeads
 
 CONNECTED_CODES = {"answered", "connected", "established"}
 TERMINAL_CODES = {"completed", "disconnected", "finished", "gone", "hangup", "terminated"}
+CALL_TASK_MATCH_WINDOW = timedelta(hours=12)
 
 
 def normalize_phone(value: Any) -> str:
@@ -92,6 +93,7 @@ async def _match_lead_and_task(
     db: AsyncSession,
     employee_id: int,
     remote_phone: str | None,
+    call_started_at: datetime | None,
 ) -> tuple[SalesLeads | None, SalesDailyDialTasks | None]:
     normalized = normalize_phone(remote_phone)
     if not normalized:
@@ -102,16 +104,32 @@ async def _match_lead_and_task(
     lead = next((candidate for candidate in leads if normalize_phone(candidate.phone) == normalized), None)
     if not lead:
         return None, None
-    task = (
+    tasks = (
         await db.execute(
             select(SalesDailyDialTasks)
             .where(
                 SalesDailyDialTasks.sales_employee_id == employee_id,
                 SalesDailyDialTasks.lead_id == lead.id,
+                SalesDailyDialTasks.dial_started_at.is_not(None),
             )
             .order_by(SalesDailyDialTasks.dial_started_at.desc(), SalesDailyDialTasks.id.desc())
         )
-    ).scalars().first()
+    ).scalars().all()
+    task = None
+    if call_started_at:
+        call_time = call_started_at if call_started_at.tzinfo else call_started_at.replace(tzinfo=timezone.utc)
+        call_time = call_time.astimezone(timezone.utc)
+        for candidate in tasks:
+            dial_time = candidate.dial_started_at
+            if not dial_time:
+                continue
+            dial_time = dial_time if dial_time.tzinfo else dial_time.replace(tzinfo=timezone.utc)
+            dial_time = dial_time.astimezone(timezone.utc)
+            # Allow a small provider clock skew, but never attach an old dial
+            # attempt merely because the employee and phone number match.
+            if dial_time <= call_time + timedelta(minutes=5) and call_time - dial_time <= CALL_TASK_MATCH_WINDOW:
+                task = candidate
+                break
     return lead, task
 
 
@@ -165,12 +183,14 @@ async def process_telephony_event(
     key = _provider_key(telephony_session_id, session_id, event_uuid)
     if not key:
         return None, False
+    event_time = _parse_datetime(body.get("eventTime") or payload.get("timestamp")) or datetime.now(timezone.utc)
+    started_at = _parse_datetime(body.get("startTime")) or event_time
     provider_key = f"event:{connection.employee_id}:{key}"
     item = (
         await db.execute(select(RingCentralCallRecords).where(RingCentralCallRecords.provider_key == provider_key))
     ).scalar_one_or_none()
     if not item:
-        lead, task = await _match_lead_and_task(db, connection.employee_id, remote_phone)
+        lead, task = await _match_lead_and_task(db, connection.employee_id, remote_phone, started_at)
         item = RingCentralCallRecords(
             provider_key=provider_key,
             sales_employee_id=connection.employee_id,
@@ -185,14 +205,13 @@ async def process_telephony_event(
         db.add(item)
     status_code = _status_code(party, body)
     normalized_status = status_code.lower()
-    event_time = _parse_datetime(body.get("eventTime") or payload.get("timestamp")) or datetime.now(timezone.utc)
     item.direction = direction or item.direction
     item.action = str(party.get("action") or body.get("action") or "").strip() or item.action
     item.provider_status = status_code or item.provider_status
     item.from_phone = from_phone or item.from_phone
     item.to_phone = to_phone or item.to_phone
     item.remote_phone = remote_phone or item.remote_phone
-    item.started_at = item.started_at or _parse_datetime(body.get("startTime")) or event_time
+    item.started_at = item.started_at or started_at
     item.connected = bool(item.connected or normalized_status in CONNECTED_CODES)
     if normalized_status in CONNECTED_CODES:
         item.connected_at = item.connected_at or event_time
@@ -240,8 +259,9 @@ async def upsert_call_log_record(
     from_phone = _party_phone(record.get("from"))
     to_phone = _party_phone(record.get("to"))
     remote_phone = to_phone if direction == "outbound" else from_phone
+    started_at = _parse_datetime(record.get("startTime"))
     if not item:
-        lead, task = await _match_lead_and_task(db, connection.employee_id, remote_phone)
+        lead, task = await _match_lead_and_task(db, connection.employee_id, remote_phone, started_at)
         item = RingCentralCallRecords(
             provider_key=f"log:{connection.employee_id}:{key}",
             sales_employee_id=connection.employee_id,
@@ -254,7 +274,6 @@ async def upsert_call_log_record(
         db.add(item)
     result = str(record.get("result") or "").strip()
     duration = int(record.get("duration") or 0)
-    started_at = _parse_datetime(record.get("startTime"))
     item.ringcentral_call_id = call_id or item.ringcentral_call_id
     item.telephony_session_id = telephony_session_id or item.telephony_session_id
     item.ringcentral_session_id = session_id or item.ringcentral_session_id
