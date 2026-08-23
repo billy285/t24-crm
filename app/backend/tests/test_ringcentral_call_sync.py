@@ -11,9 +11,11 @@ from models.ringcentral_call_records import RingCentralCallRecords
 from models.ringcentral_connections import RingCentralConnections
 from models.sales_call_activities import SalesCallActivities
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
+from models.sales_lead_conversion_logs import SalesLeadConversionLogs
 from models.sales_leads import SalesLeads
 from routers import ringcentral as ringcentral_router
 from routers.ringcentral import ringcentral_webhook
+from routers.sales_leads import sales_call_report
 from schemas.auth import UserResponse
 from services import ringcentral as ringcentral_service
 from services.ringcentral_sync import process_telephony_event, upsert_call_log_record
@@ -238,5 +240,76 @@ async def test_manual_call_log_sync_keeps_realtime_subscription_error(monkeypatc
         assert result["connected"] is True
         assert result["realtime_sync_enabled"] is False
         assert result["sync_health"] == "attention"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sales_call_report_uses_verified_provider_calls_for_connection_metrics():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    tables = [
+        Employees.__table__, SalesLeads.__table__, SalesDailyDialTasks.__table__,
+        SalesCallActivities.__table__, RingCentralCallRecords.__table__, SalesLeadConversionLogs.__table__,
+    ]
+    async with engine.begin() as connection:
+        await connection.run_sync(lambda sync_connection: Base.metadata.create_all(sync_connection, tables=tables))
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_maker() as db:
+        employee = Employees(id=21, user_id="21", name="Report Sales", role="sales", status="active")
+        lead = SalesLeads(
+            business_name="Report Salon", phone="+15551112222", status="interested",
+            assigned_sales_id=21, assigned_sales_name="Report Sales",
+        )
+        db.add_all([employee, lead])
+        await db.flush()
+        activity = SalesCallActivities(
+            lead_id=lead.id, sales_employee_id=21, sales_employee_name="Report Sales",
+            outcome="interested", notes="客户希望明天继续确认套餐", called_at=datetime.now(timezone.utc),
+        )
+        db.add(activity)
+        await db.flush()
+        task = SalesDailyDialTasks(
+            sales_employee_id=21, task_date=date.today(), lead_id=lead.id,
+            status="completed", completed_activity_id=activity.id,
+        )
+        db.add(task)
+        db.add_all([
+            RingCentralCallRecords(
+                provider_key="report-connected", sales_employee_id=21, sales_employee_name="Report Sales",
+                lead_id=lead.id, activity_id=activity.id, direction="outbound", provider_status="completed",
+                provider_result="Call connected", connected=True, duration_seconds=125,
+                started_at=datetime.now(timezone.utc), sync_status="verified",
+            ),
+            RingCentralCallRecords(
+                provider_key="report-no-answer", sales_employee_id=21, sales_employee_name="Report Sales",
+                lead_id=lead.id, direction="outbound", provider_status="completed", provider_result="No Answer",
+                connected=False, duration_seconds=20, started_at=datetime.now(timezone.utc), sync_status="verified",
+            ),
+            RingCentralCallRecords(
+                provider_key="report-busy", sales_employee_id=21, sales_employee_name="Report Sales",
+                lead_id=lead.id, direction="outbound", provider_status="completed", provider_result="Busy",
+                connected=False, duration_seconds=8, started_at=datetime.now(timezone.utc), sync_status="verified",
+            ),
+        ])
+        await db.commit()
+
+        report = await sales_call_report(
+            days=7,
+            current_user=UserResponse(id="1", email="admin@example.com", role="admin", name="Admin"),
+            db=db,
+        )
+
+        assert report["source"]["status"] == "verified"
+        assert report["summary"]["provider_calls"] == 3
+        assert report["summary"]["connected"] == 1
+        assert report["summary"]["not_connected"] == 2
+        assert report["summary"]["connection_rate"] == 33.3
+        assert report["summary"]["total_talk_seconds"] == 125
+        assert report["summary"]["average_talk_seconds"] == 125
+        assert report["summary"]["crm_records"] == 1
+        assert report["summary"]["linked_records"] == 1
+        assert report["employees"][0]["provider_calls"] == 3
+        assert {item["label"] for item in report["result_breakdown"]} == {"已接通", "无人接听", "忙线"}
 
     await engine.dispose()

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowRightLeft, Ban, BarChart3, Building2, CheckCircle2, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, Headphones, History, MessageSquarePlus, MoreHorizontal, Phone, Plus, Search, ShieldAlert, UserCheck, Users,
+  ArrowRightLeft, Ban, BarChart3, Building2, CheckCircle2, ChevronDown, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, Headphones, History, Link2, MessageSquarePlus, MoreHorizontal, Phone, PhoneCall, PhoneOff, Plus, Radio, Search, ShieldAlert, Timer, UserCheck, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -51,6 +51,15 @@ type RecoveryItem = { lead_id: number; business_name: string; assigned_sales_nam
 type RecoveryOverview = { items: RecoveryItem[]; summary: { recoverable: number; watch: number; protected: number; extended: number; extension_requests: number } };
 type PerformanceItem = { rank: number; sales_employee_id: number; salesperson: string; score: number; confidence: string; score_breakdown: { execution: number; discipline: number; opportunity: number; results: number; documentation: number }; metrics: { assigned: number; completed: number; calls: number; connected: number; interested: number; appointments: number; conversions: number; completion_rate: number; connection_rate: number; interest_rate: number; note_quality_rate: number; overdue_followups: number }; suggestions: string[] };
 type PerformanceDashboard = { period: { days: number; start_date: string; end_date: string }; items: PerformanceItem[] };
+type SalesCallReport = {
+  period: { days: number; start_date: string; end_date: string };
+  source: { status: 'verified' | 'waiting_provider_data' | 'no_salespeople'; label: string; provider: string };
+  summary: { provider_calls: number; connected: number; not_connected: number; connection_rate: number; total_talk_seconds: number; average_talk_seconds: number; crm_records: number; linked_records: number; link_rate: number; interested: number; appointments: number; conversions: number; assigned: number; completed: number; completion_rate: number };
+  result_breakdown: { label: string; count: number; rate: number }[];
+  daily: { date: string; calls: number; connected: number; talk_seconds: number; connection_rate: number }[];
+  employees: { sales_employee_id: number; salesperson: string; provider_calls: number; connected: number; not_connected: number; connection_rate: number; total_talk_seconds: number; average_talk_seconds: number; crm_records: number; linked_records: number; link_rate: number; interested: number; appointments: number; no_answer_records: number; conversions: number; assigned: number; completed: number; completion_rate: number }[];
+  recent_calls: { id: number; salesperson: string; business_name?: string; remote_phone?: string; started_at?: string; connected: boolean; duration_seconds: number; result: string; crm_recorded: boolean }[];
+};
 type CallHistoryItem = { id: number; outcome: string; outcome_label: string; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string };
 type Quote = { id: number; business_line_id?: number; product_id?: number; product_plan_id?: number; package_name: string; selected_platforms: string[]; billing_mode: string; billing_cycle: string; payment_method: string; currency: string; list_amount: number; discount_amount: number; final_amount: number; service_start_date?: string; service_end_date?: string; special_terms?: string; status: 'submitted' | 'approved' | 'rejected' | 'superseded'; submitted_by_name?: string; reviewed_by_name?: string; review_notes?: string };
 type Handoff = { quote_id?: number; customer_goal?: string; key_contacts?: string; service_start_date?: string; service_end_date?: string; special_commitments?: string; operations_owner?: string; operations_owner_employee_id?: number; collaborator_employee_ids?: number[]; operations_group_created?: boolean; finance_payment_confirmed?: boolean; payment_status?: string; amount_received?: number; payment_date?: string; payment_reference?: string; payment_confirmed_by_name?: string; generated_deal_id?: number; generate_service_board?: boolean; handoff_notes?: string };
@@ -110,6 +119,16 @@ function formatDate(value?: string) {
   return value.slice(0, 16).replace('T', ' ');
 }
 
+function formatDuration(seconds: number) {
+  const safeSeconds = Math.max(0, Math.round(seconds || 0));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainSeconds = safeSeconds % 60;
+  if (hours) return `${hours}小时${minutes}分`;
+  if (minutes) return `${minutes}分${remainSeconds}秒`;
+  return `${remainSeconds}秒`;
+}
+
 function nextLeadAction(lead: SalesLead) {
   if (lead.converted_customer_id) return '查看已转入的正式客户';
   if (lead.do_not_contact || lead.is_blacklisted) return '已停止联系，等待主管复核';
@@ -150,6 +169,8 @@ export default function SalesLeads() {
   const [recoveryBusy, setRecoveryBusy] = useState<number | null>(null);
   const [performanceDays, setPerformanceDays] = useState(30);
   const [performanceDashboard, setPerformanceDashboard] = useState<PerformanceDashboard | null>(null);
+  const [callReportDays, setCallReportDays] = useState(7);
+  const [callReport, setCallReport] = useState<SalesCallReport | null>(null);
   const [callHistory, setCallHistory] = useState<CallHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [followUpSaving, setFollowUpSaving] = useState(false);
@@ -181,6 +202,7 @@ export default function SalesLeads() {
       const coreRequests = [
         invokeWithAuth({ url: `/api/v1/sales-leads?${params.toString()}`, method: 'GET' }),
         invokeWithAuth({ url: '/api/v1/sales-leads/stats', method: 'GET' }),
+        invokeWithAuth({ url: `/api/v1/sales-leads/dashboard/call-report?days=${callReportDays}`, method: 'GET' }),
       ];
       const managementRequests = canManage ? [
         invokeWithAuth({ url: '/api/v1/sales-leads/assignees', method: 'GET' }),
@@ -194,7 +216,7 @@ export default function SalesLeads() {
       ]);
       if (requestId !== loadRequestSeqRef.current) return;
 
-      const [listResult, statsResult] = coreResults;
+      const [listResult, statsResult, callReportResult] = coreResults;
       const failedSections: string[] = [];
       if (listResult.status === 'fulfilled') {
         const nextItems = listResult.value.data?.items || [];
@@ -206,6 +228,8 @@ export default function SalesLeads() {
       }
       if (statsResult.status === 'fulfilled') setStats(statsResult.value.data || stats);
       else failedSections.push('统计');
+      if (callReportResult.status === 'fulfilled') setCallReport(callReportResult.value.data || null);
+      else failedSections.push('真实通话报告');
 
       if (canManage) {
         const [assigneeResult, dashboardResult, performanceResult, recoveryResult] = managementResults;
@@ -229,7 +253,7 @@ export default function SalesLeads() {
   useEffect(() => {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, statusFilter, contactFilter, performanceDays]);
+  }, [page, pageSize, statusFilter, contactFilter, performanceDays, callReportDays]);
 
   useEffect(() => {
     setPage(1);
@@ -613,11 +637,80 @@ export default function SalesLeads() {
         ))}
       </div>
 
-      {canManage && dashboard && <Card className="border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-blue-50 shadow-sm"><CardContent className="p-5"><div className="mb-4 flex items-center gap-2"><BarChart3 className="h-5 w-5 text-indigo-600" /><div><p className="font-semibold text-slate-900">销售管理驾驶舱</p><p className="text-xs text-slate-500">仅统计电话销售线索，不混入正式客户与财务数据。</p></div></div><div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">{[
+      {callReport && <Card className="overflow-hidden border-blue-200 bg-white shadow-sm">
+        <CardContent className="p-0">
+          <div className="border-b border-blue-100 bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 p-4 text-white sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2"><Radio className="h-5 w-5 text-cyan-300" /><h3 className="text-lg font-bold">真实通话数据报告</h3></div>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-blue-100">拨打、接通、未接通和通话时长只使用RingCentral官方记录；意向、预约和成交使用CRM销售结果，两种口径不混算。</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <Badge className={callReport.source.status === 'verified' ? 'bg-emerald-400 text-emerald-950' : 'bg-amber-300 text-amber-950'}>{callReport.source.status === 'verified' ? '官方数据已核验' : '等待官方通话数据'}</Badge>
+                  <span className="text-blue-100">{callReport.period.start_date} 至 {callReport.period.end_date}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/10 p-1 backdrop-blur">
+                {[1, 7, 30].map(days => <button key={days} type="button" onClick={() => setCallReportDays(days)} className={`min-h-10 rounded-lg px-3 text-xs font-semibold transition ${callReportDays === days ? 'bg-white text-blue-800 shadow-sm' : 'text-blue-100 hover:bg-white/10'}`}>{days === 1 ? '今日' : `${days}天`}</button>)}
+              </div>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              {[
+                { label: '真实拨出', value: callReport.summary.provider_calls, helper: 'RingCentral', icon: PhoneCall },
+                { label: '已接通', value: callReport.summary.connected, helper: `${callReport.summary.connection_rate}%`, icon: Phone },
+                { label: '未接通', value: callReport.summary.not_connected, helper: '官方结果', icon: PhoneOff },
+                { label: '接通率', value: `${callReport.summary.connection_rate}%`, helper: `${callReport.summary.connected}/${callReport.summary.provider_calls}`, icon: BarChart3 },
+                { label: '接通总时长', value: formatDuration(callReport.summary.total_talk_seconds), helper: '仅已接通', icon: Timer },
+                { label: '平均通话', value: formatDuration(callReport.summary.average_talk_seconds), helper: '每次接通', icon: Clock3 },
+              ].map(item => <div key={item.label} className="rounded-2xl border border-white/10 bg-white/10 p-3"><div className="flex items-center justify-between"><p className="text-[11px] text-blue-100">{item.label}</p><item.icon className="h-4 w-4 text-cyan-300" /></div><p className="mt-2 text-xl font-bold tracking-tight">{item.value}</p><p className="mt-1 text-[10px] text-blue-200">{item.helper}</p></div>)}
+            </div>
+          </div>
+
+          <div className="space-y-5 p-4 sm:p-5">
+            <div className="grid gap-3 lg:grid-cols-[1.35fr_.65fr]">
+              <section className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-start justify-between gap-3"><div><h4 className="font-semibold text-slate-900">业务转化结果</h4><p className="mt-1 text-xs text-slate-500">销售保存结果后进入统计，不代替RingCentral官方通话事实。</p></div><Badge variant="outline">CRM记录 {callReport.summary.crm_records}</Badge></div>
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    ['有意向', callReport.summary.interested, 'text-emerald-700 bg-emerald-50'],
+                    ['已预约', callReport.summary.appointments, 'text-cyan-700 bg-cyan-50'],
+                    ['转客户', callReport.summary.conversions, 'text-violet-700 bg-violet-50'],
+                    ['任务完成率', `${callReport.summary.completion_rate}%`, 'text-blue-700 bg-blue-50'],
+                  ].map(([label, value, tone]) => <div key={label} className={`rounded-xl p-3 ${tone}`}><p className="text-[11px] opacity-70">{label}</p><p className="mt-1 text-xl font-bold">{value}</p></div>)}
+                </div>
+                <div className="mt-4 flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600"><Link2 className="h-4 w-4 shrink-0 text-blue-600" /><span>官方通话已关联CRM结果 {callReport.summary.linked_records}/{callReport.summary.provider_calls}，匹配覆盖率 <strong className="text-slate-900">{callReport.summary.link_rate}%</strong></span></div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 p-4">
+                <h4 className="font-semibold text-slate-900">未接通原因</h4><p className="mt-1 text-xs text-slate-500">直接采用RingCentral返回结果。</p>
+                <div className="mt-3 space-y-2">{callReport.result_breakdown.filter(item => item.label !== '已接通').map(item => <div key={item.label} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span className="text-slate-600">{item.label}</span><span className="font-semibold text-slate-900">{item.count} <small className="font-normal text-slate-400">· {item.rate}%</small></span></div>)}{callReport.result_breakdown.filter(item => item.label !== '已接通').length === 0 && <p className="rounded-lg bg-slate-50 px-3 py-6 text-center text-xs text-slate-400">统计期内暂无未接通官方记录</p>}</div>
+              </section>
+            </div>
+
+            <section>
+              <div className="flex items-end justify-between gap-3"><div><h4 className="font-semibold text-slate-900">销售员工数据</h4><p className="mt-1 text-xs text-slate-500">比较工作量、接通质量、通话时长和客户推进结果。</p></div><span className="text-xs text-slate-400">{callReport.employees.length} 位销售</span></div>
+              <div className="mt-3 space-y-3 md:hidden">{callReport.employees.map(item => <article key={item.sales_employee_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between"><div><p className="font-semibold text-slate-950">{item.salesperson}</p><p className="mt-1 text-xs text-slate-500">任务完成 {item.completed}/{item.assigned} · CRM记录 {item.crm_records}</p></div><div className="text-right"><p className="text-2xl font-bold text-blue-700">{item.connection_rate}%</p><p className="text-[10px] text-slate-400">接通率</p></div></div><div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-xl bg-blue-50 p-2"><p className="font-bold text-blue-800">{item.provider_calls}</p><p className="mt-1 text-slate-500">拨出</p></div><div className="rounded-xl bg-emerald-50 p-2"><p className="font-bold text-emerald-800">{item.connected}</p><p className="mt-1 text-slate-500">接通</p></div><div className="rounded-xl bg-rose-50 p-2"><p className="font-bold text-rose-700">{item.not_connected}</p><p className="mt-1 text-slate-500">未接通</p></div></div><div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600"><p>总时长 <strong className="text-slate-900">{formatDuration(item.total_talk_seconds)}</strong></p><p>平均 <strong className="text-slate-900">{formatDuration(item.average_talk_seconds)}</strong></p><p>意向 <strong className="text-slate-900">{item.interested}</strong></p><p>预约 / 转客户 <strong className="text-slate-900">{item.appointments} / {item.conversions}</strong></p></div></article>)}{callReport.employees.length === 0 && <p className="py-8 text-center text-sm text-slate-400">暂无可统计销售</p>}</div>
+              <div className="mt-3 hidden overflow-x-auto rounded-2xl border border-slate-200 md:block"><table className="w-full min-w-[1080px] text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-4 py-3">销售</th><th>真实拨出</th><th>接通 / 未接通</th><th>接通率</th><th>总时长 / 平均</th><th>意向 / 预约</th><th>转客户</th><th>任务完成</th><th>匹配覆盖</th></tr></thead><tbody className="divide-y divide-slate-100">{callReport.employees.map(item => <tr key={item.sales_employee_id}><td className="px-4 py-3 font-semibold text-slate-900">{item.salesperson}</td><td>{item.provider_calls}</td><td><span className="text-emerald-700">{item.connected}</span> / <span className="text-rose-600">{item.not_connected}</span></td><td className="font-semibold text-blue-700">{item.connection_rate}%</td><td>{formatDuration(item.total_talk_seconds)}<p className="text-xs text-slate-400">平均 {formatDuration(item.average_talk_seconds)}</p></td><td>{item.interested} / {item.appointments}</td><td>{item.conversions}</td><td>{item.completed}/{item.assigned}<p className="text-xs text-slate-400">{item.completion_rate}%</p></td><td>{item.linked_records}/{item.provider_calls}<p className="text-xs text-slate-400">{item.link_rate}%</p></td></tr>)}{callReport.employees.length === 0 && <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-400">暂无可统计销售</td></tr>}</tbody></table></div>
+            </section>
+
+            <section>
+              <div><h4 className="font-semibold text-slate-900">最近官方通话</h4><p className="mt-1 text-xs text-slate-500">用于逐条核对销售、商家、接通结果、时长和CRM记录。</p></div>
+              <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">{callReport.recent_calls.slice(0, 12).map(call => <div key={call.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_140px_100px_100px] sm:items-center"><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{call.business_name || call.remote_phone || '未匹配商家'}</p><p className="mt-1 truncate text-xs text-slate-500">{call.salesperson} · {formatDate(call.started_at)}</p></div><Badge className={call.connected ? 'w-fit bg-emerald-100 text-emerald-700' : 'w-fit bg-rose-100 text-rose-700'}>{call.result}</Badge><p className="text-xs text-slate-600">{formatDuration(call.duration_seconds)}</p><p className={`text-xs font-medium ${call.crm_recorded ? 'text-blue-700' : 'text-amber-700'}`}>{call.crm_recorded ? '已记录结果' : '待补CRM结果'}</p></div>)}{callReport.recent_calls.length === 0 && <p className="px-4 py-10 text-center text-sm text-slate-400">统计期内暂无RingCentral官方通话记录</p>}</div>
+            </section>
+          </div>
+        </CardContent>
+      </Card>}
+
+      {canManage && (dashboard || performanceDashboard) && <details open={!isMobile} className="group rounded-2xl border border-violet-100 bg-white shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-4 marker:hidden sm:px-5">
+          <div className="flex min-w-0 items-start gap-3"><div className="rounded-xl bg-violet-50 p-2 text-violet-600"><BarChart3 className="h-5 w-5" /></div><div><p className="font-semibold text-slate-900">CRM跟进参考</p><p className="mt-1 text-xs leading-5 text-slate-500">手工保存的跟进与评分，不作为RingCentral官方接通率；手机端按需展开。</p></div></div>
+          <ChevronDown className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-4 border-t border-violet-100 p-3 sm:p-4">
+      {dashboard && <Card className="border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-blue-50 shadow-sm"><CardContent className="p-5"><div className="mb-4 flex items-center gap-2"><BarChart3 className="h-5 w-5 text-indigo-600" /><div><p className="font-semibold text-slate-900">CRM销售管理驾驶舱</p><p className="text-xs text-slate-500">仅统计销售在CRM中保存的跟进结果，不代表真实通话总量。</p></div></div><div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">{[
         ['任务完成', `${dashboard.metrics.completed}/${dashboard.metrics.assigned}`, `${dashboard.metrics.completion_rate}%`], ['接通率', `${dashboard.metrics.connected}/${dashboard.metrics.calls}`, `${dashboard.metrics.connection_rate}%`], ['意向率', String(dashboard.metrics.interested), `${dashboard.metrics.interest_rate}%`], ['预约率', String(dashboard.metrics.appointments), `${dashboard.metrics.appointment_rate}%`], ['成交率', String(dashboard.metrics.converted), `${dashboard.metrics.conversion_rate}%`], ['来源质量', String(dashboard.source_quality.reduce((sum, item) => sum + item.usable, 0)), `${dashboard.source_quality.reduce((sum, item) => sum + item.total, 0)} 条可追溯`], ['销售人数', String(dashboard.salespeople.length), '今日有保存结果']
       ].map(([label, value, sub]) => <div key={label} className="rounded-xl border border-white bg-white/80 p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-xl font-bold text-slate-900">{value}</p><p className="mt-1 text-xs text-indigo-600">{sub}</p></div>)}</div></CardContent></Card>}
 
-      {canManage && performanceDashboard && (
+      {performanceDashboard && (
         <Card className="border-violet-100 bg-gradient-to-r from-violet-50 via-white to-fuchsia-50 shadow-sm">
           <CardContent className="p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -655,6 +748,8 @@ export default function SalesLeads() {
           </CardContent>
         </Card>
       )}
+        </div>
+      </details>}
 
       {canManage && recoveryOverview && <Card className="border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center"><ShieldAlert className="h-8 w-8 text-amber-600" /><div className="flex-1"><p className="font-semibold text-slate-900">线索保护与回收</p><p className="mt-1 text-sm text-slate-600">系统只提示，主管确认后才会回收。已联系、有意向和已预约的线索不会被系统自动转走。</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge className="bg-rose-100 text-rose-700">可回收 {recoveryOverview.summary.recoverable}</Badge><Badge className="bg-amber-100 text-amber-800">提醒跟进 {recoveryOverview.summary.watch}</Badge><Badge className="bg-emerald-100 text-emerald-700">受保护 {recoveryOverview.summary.protected}</Badge><Badge className="bg-blue-100 text-blue-700">延期保护 {recoveryOverview.summary.extended}</Badge>{recoveryOverview.summary.extension_requests > 0 && <Badge className="bg-violet-100 text-violet-700">待审批延期 {recoveryOverview.summary.extension_requests}</Badge>}</div></div>{isMobile ? <p className="text-xs font-medium text-amber-800">批量回收与改派请在电脑端处理</p> : <Button variant="outline" onClick={() => setRecoveryOpen(true)}>查看并处理</Button>}</CardContent></Card>}
 

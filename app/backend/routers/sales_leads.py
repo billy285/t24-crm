@@ -73,6 +73,24 @@ def _provider_connected(activity: SalesCallActivities) -> bool:
         return bool(activity.ringcentral_connected)
     return activity.outcome != "no_answer"
 
+
+def _ringcentral_result_label(result: Optional[str], connected: bool) -> str:
+    """Keep provider results readable without replacing the provider fact."""
+    if connected:
+        return "已接通"
+    normalized = (result or "").strip().lower()
+    if any(value in normalized for value in ("no answer", "missed", "unanswered")):
+        return "无人接听"
+    if "busy" in normalized:
+        return "忙线"
+    if any(value in normalized for value in ("declined", "rejected")):
+        return "对方拒接"
+    if any(value in normalized for value in ("failed", "not connected", "network")):
+        return "拨打失败"
+    if any(value in normalized for value in ("cancel", "abandon")):
+        return "已取消"
+    return result or "未接通"
+
 # These are suggestions, not forced schedules. Sales can always select a more
 # appropriate time before saving the call result.
 FOLLOW_UP_RULES = {
@@ -1619,6 +1637,200 @@ async def sales_management_dashboard(
         "confirmed_received_amount": confirmed_received_amount,
         "unpaid_handoffs": len(unpaid_handoffs),
     }, "source_quality": [{**item, "quality_rate": round(item["usable"] / max(item["total"], 1) * 100, 1)} for item in sources.values()], "salespeople": list(people.values())}
+
+
+@router.get("/dashboard/call-report")
+async def sales_call_report(
+    days: int = Query(default=7, ge=1, le=90),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Provider-first sales call report with CRM outcomes kept as a separate layer."""
+    _ensure_lead_role(current_user)
+    today = datetime.now(BUSINESS_TIMEZONE).date()
+    start_date = today - timedelta(days=days - 1)
+    role = _role(current_user)
+    if role == "sales":
+        salesperson_ids = [_employee_id(current_user)]
+    elif role == "sales_manager":
+        salesperson_ids = await _direct_report_ids(db, current_user)
+    else:
+        salesperson_ids = [int(value) for value in (await db.execute(
+            select(Employees.id).where(
+                Employees.role == "sales",
+                Employees.status.in_(["active", "probation"]),
+            )
+        )).scalars().all()]
+
+    if not salesperson_ids:
+        return {
+            "period": {"days": days, "start_date": start_date, "end_date": today},
+            "source": {"status": "no_salespeople", "label": "暂无可统计销售", "provider": "RingCentral"},
+            "summary": {
+                "provider_calls": 0, "connected": 0, "not_connected": 0, "connection_rate": 0,
+                "total_talk_seconds": 0, "average_talk_seconds": 0, "crm_records": 0,
+                "linked_records": 0, "link_rate": 0, "interested": 0, "appointments": 0,
+                "conversions": 0, "assigned": 0, "completed": 0, "completion_rate": 0,
+            },
+            "result_breakdown": [], "daily": [], "employees": [], "recent_calls": [],
+        }
+
+    employees = (await db.execute(
+        select(Employees).where(Employees.id.in_(salesperson_ids))
+    )).scalars().all()
+    names = {employee.id: employee.name for employee in employees}
+
+    provider_rows = (await db.execute(
+        select(RingCentralCallRecords).where(
+            RingCentralCallRecords.sales_employee_id.in_(salesperson_ids),
+            func.lower(RingCentralCallRecords.direction) == "outbound",
+            RingCentralCallRecords.sync_status == "verified",
+        )
+    )).scalars().all()
+    provider_rows = [row for row in provider_rows if (_business_date(row.started_at) or today) >= start_date and (_business_date(row.started_at) or today) <= today]
+
+    activities = (await db.execute(
+        select(SalesCallActivities).where(SalesCallActivities.sales_employee_id.in_(salesperson_ids))
+    )).scalars().all()
+    activities = [row for row in activities if start_date <= (_business_date(row.called_at) or today) <= today]
+    tasks = (await db.execute(
+        select(SalesDailyDialTasks).where(
+            SalesDailyDialTasks.sales_employee_id.in_(salesperson_ids),
+            SalesDailyDialTasks.task_date >= start_date,
+            SalesDailyDialTasks.task_date <= today,
+        )
+    )).scalars().all()
+
+    lead_ids = {int(row.lead_id) for row in provider_rows if row.lead_id}
+    lead_names = {}
+    if lead_ids:
+        lead_names = {
+            int(row.id): row.business_name
+            for row in (await db.execute(select(SalesLeads).where(SalesLeads.id.in_(lead_ids)))).scalars().all()
+        }
+
+    conversions_by_sales = {sales_id: 0 for sales_id in salesperson_ids}
+    conversion_logs = (await db.execute(select(SalesLeadConversionLogs))).scalars().all()
+    for log in conversion_logs:
+        log_day = _business_date(log.created_at)
+        if not log_day or not start_date <= log_day <= today:
+            continue
+        sales_id = _parse_json_dict(log.lead_snapshot_json).get("assigned_sales_id")
+        if sales_id in conversions_by_sales:
+            conversions_by_sales[sales_id] += 1
+
+    result_counts: dict[str, int] = {}
+    daily_map = {
+        start_date + timedelta(days=index): {"calls": 0, "connected": 0, "talk_seconds": 0}
+        for index in range(days)
+    }
+    for row in provider_rows:
+        label = _ringcentral_result_label(row.provider_result, bool(row.connected))
+        result_counts[label] = result_counts.get(label, 0) + 1
+        row_day = _business_date(row.started_at)
+        if row_day in daily_map:
+            daily_map[row_day]["calls"] += 1
+            daily_map[row_day]["connected"] += int(bool(row.connected))
+            if row.connected:
+                daily_map[row_day]["talk_seconds"] += max(0, int(row.duration_seconds or 0))
+
+    employee_items = []
+    for sales_id in salesperson_ids:
+        employee_provider = [row for row in provider_rows if row.sales_employee_id == sales_id]
+        employee_activities = [row for row in activities if row.sales_employee_id == sales_id]
+        employee_tasks = [row for row in tasks if row.sales_employee_id == sales_id]
+        connected = sum(bool(row.connected) for row in employee_provider)
+        total_talk_seconds = sum(max(0, int(row.duration_seconds or 0)) for row in employee_provider if row.connected)
+        linked_records = sum(bool(row.activity_id) for row in employee_provider)
+        assigned = len(employee_tasks)
+        completed = sum(row.status == "completed" for row in employee_tasks)
+        employee_items.append({
+            "sales_employee_id": sales_id,
+            "salesperson": names.get(sales_id) or next((row.sales_employee_name for row in employee_provider if row.sales_employee_name), "未命名销售"),
+            "provider_calls": len(employee_provider),
+            "connected": connected,
+            "not_connected": len(employee_provider) - connected,
+            "connection_rate": round(connected / max(len(employee_provider), 1) * 100, 1),
+            "total_talk_seconds": total_talk_seconds,
+            "average_talk_seconds": round(total_talk_seconds / max(connected, 1)),
+            "crm_records": len(employee_activities),
+            "linked_records": linked_records,
+            "link_rate": round(linked_records / max(len(employee_provider), 1) * 100, 1),
+            "interested": sum(row.outcome in {"interested", "appointment"} for row in employee_activities),
+            "appointments": sum(row.outcome == "appointment" for row in employee_activities),
+            "no_answer_records": sum(row.outcome == "no_answer" for row in employee_activities),
+            "conversions": conversions_by_sales.get(sales_id, 0),
+            "assigned": assigned,
+            "completed": completed,
+            "completion_rate": round(completed / max(assigned, 1) * 100, 1),
+        })
+    employee_items.sort(key=lambda row: (-row["provider_calls"], -row["connected"], row["salesperson"]))
+
+    provider_calls = len(provider_rows)
+    connected = sum(bool(row.connected) for row in provider_rows)
+    linked_records = sum(bool(row.activity_id) for row in provider_rows)
+    total_talk_seconds = sum(max(0, int(row.duration_seconds or 0)) for row in provider_rows if row.connected)
+    assigned = len(tasks)
+    completed = sum(row.status == "completed" for row in tasks)
+    recent_calls = sorted(
+        provider_rows,
+        key=lambda row: (row.started_at or row.created_at or datetime.min.replace(tzinfo=timezone.utc)).replace(tzinfo=timezone.utc) if not (row.started_at or row.created_at or datetime.min.replace(tzinfo=timezone.utc)).tzinfo else (row.started_at or row.created_at),
+        reverse=True,
+    )[:50]
+    return {
+        "period": {"days": days, "start_date": start_date, "end_date": today},
+        "source": {
+            "status": "verified" if provider_calls else "waiting_provider_data",
+            "label": "RingCentral 官方通话记录" if provider_calls else "统计期内暂无 RingCentral 官方通话记录",
+            "provider": "RingCentral",
+        },
+        "summary": {
+            "provider_calls": provider_calls,
+            "connected": connected,
+            "not_connected": provider_calls - connected,
+            "connection_rate": round(connected / max(provider_calls, 1) * 100, 1),
+            "total_talk_seconds": total_talk_seconds,
+            "average_talk_seconds": round(total_talk_seconds / max(connected, 1)),
+            "crm_records": len(activities),
+            "linked_records": linked_records,
+            "link_rate": round(linked_records / max(provider_calls, 1) * 100, 1),
+            "interested": sum(row.outcome in {"interested", "appointment"} for row in activities),
+            "appointments": sum(row.outcome == "appointment" for row in activities),
+            "conversions": sum(conversions_by_sales.values()),
+            "assigned": assigned,
+            "completed": completed,
+            "completion_rate": round(completed / max(assigned, 1) * 100, 1),
+        },
+        "result_breakdown": [
+            {"label": label, "count": count, "rate": round(count / max(provider_calls, 1) * 100, 1)}
+            for label, count in sorted(result_counts.items(), key=lambda item: (-item[1], item[0]))
+        ],
+        "daily": [
+            {
+                "date": day,
+                **values,
+                "connection_rate": round(values["connected"] / max(values["calls"], 1) * 100, 1),
+            }
+            for day, values in daily_map.items()
+        ],
+        "employees": employee_items,
+        "recent_calls": [
+            {
+                "id": row.id,
+                "sales_employee_id": row.sales_employee_id,
+                "salesperson": names.get(row.sales_employee_id) or row.sales_employee_name or "未命名销售",
+                "lead_id": row.lead_id,
+                "business_name": lead_names.get(int(row.lead_id)) if row.lead_id else None,
+                "remote_phone": row.remote_phone,
+                "started_at": row.started_at,
+                "connected": bool(row.connected),
+                "duration_seconds": max(0, int(row.duration_seconds or 0)),
+                "result": _ringcentral_result_label(row.provider_result, bool(row.connected)),
+                "crm_recorded": bool(row.activity_id),
+            }
+            for row in recent_calls
+        ],
+    }
 
 
 def _performance_suggestions(metrics: dict) -> list[str]:
