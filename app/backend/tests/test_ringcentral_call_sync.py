@@ -15,6 +15,7 @@ from models.sales_leads import SalesLeads
 from routers import ringcentral as ringcentral_router
 from routers.ringcentral import ringcentral_webhook
 from schemas.auth import UserResponse
+from services import ringcentral as ringcentral_service
 from services.ringcentral_sync import process_telephony_event, upsert_call_log_record
 
 
@@ -30,6 +31,40 @@ async def test_webhook_validation_echoes_ringcentral_token():
     assert response.status_code == 200
     assert response.headers["Validation-Token"] == "ringcentral-validation-token"
     assert len(response.body) < 1024
+
+
+@pytest.mark.asyncio
+async def test_subscription_payload_does_not_send_unsupported_verification_token(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("RINGCENTRAL_WEBHOOK_URL", "https://t24-crm.com/api/ringcentral/webhook")
+    monkeypatch.setenv("RINGCENTRAL_WEBHOOK_VERIFICATION_TOKEN", "configured-in-developer-console")
+    captured = {}
+
+    async def capture_request(method, path, access_token, *, params=None, payload=None):
+        captured.update(
+            method=method,
+            path=path,
+            access_token=access_token,
+            params=params,
+            payload=payload,
+        )
+        return {"id": "subscription-1", "status": "Active"}
+
+    monkeypatch.setattr(ringcentral_service, "_authorized_json_request", capture_request)
+
+    result = await ringcentral_service.create_telephony_subscription(
+        "access-token",
+        account_id="account-1",
+        extension_id="extension-1",
+    )
+
+    assert result["id"] == "subscription-1"
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/restapi/v1.0/subscription"
+    assert captured["payload"]["deliveryMode"] == {
+        "transportType": "WebHook",
+        "address": "https://t24-crm.com/api/ringcentral/webhook",
+    }
 
 
 @pytest.mark.asyncio

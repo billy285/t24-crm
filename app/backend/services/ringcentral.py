@@ -301,8 +301,12 @@ async def create_telephony_subscription(
             status_code=503,
             detail="服务器缺少 RingCentral webhook verification token，暂不能启用实时通话同步。",
         )
-    if verification_token:
-        delivery_mode["verificationToken"] = verification_token
+    # RingCentral sends its one-time Validation-Token while validating the
+    # webhook URL, and the handler echoes that header.  Verification-Token is
+    # configured in the RingCentral developer console and then arrives on
+    # event requests; it is not a supported Subscription API deliveryMode
+    # property.  Sending it here makes subscription creation fail with an
+    # invalid deliveryMode.verificationToken error.
     return await _authorized_json_request(
         "POST",
         "/restapi/v1.0/subscription",
