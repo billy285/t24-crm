@@ -180,6 +180,22 @@ previous verified image plus the verified pre-release backup; never use
 
 ## Production Checklist
 
+### RingCentral real-call synchronization gate
+
+- Configure `RINGCENTRAL_CLIENT_ID`, `RINGCENTRAL_CLIENT_SECRET`, the HTTPS
+  callback URL, the HTTPS webhook URL, and a strong
+  `RINGCENTRAL_WEBHOOK_VERIFICATION_TOKEN` before any employee reconnects.
+- The RingCentral developer app must permit Call Log reads, telephony session
+  events, and webhook subscriptions. Each salesperson connects their own
+  RingCentral account so the local employee ID remains the attribution key.
+- Confirm `POST /api/ringcentral/webhook` echoes RingCentral's validation token
+  with HTTP 200 in under three seconds. Never expose this endpoint without the
+  verification token in production.
+- Complete one real outbound device test per employee: CRM task -> RingCentral
+  App -> answered call -> return to CRM -> provider-verified status and duration.
+- Treat manual sales outcome, notes, interest and appointment as business data;
+  treat RingCentral Call Log as the source of truth for connection and duration.
+
 - HTTPS domain works.
 - `JWT_SECRET_KEY` is not default.
 - `REFRESH_TOKEN_SECRET` is present, strong and different from `JWT_SECRET_KEY`.

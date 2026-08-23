@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from dependencies.auth import get_current_user
 from models.employees import Employees
+from models.ringcentral_call_records import RingCentralCallRecords
 from models.sales_leads import SalesLeads
 from models.sales_call_activities import SalesCallActivities
 from models.sales_call_ai_analyses import SalesCallAiAnalyses
@@ -64,6 +65,13 @@ CALL_OUTCOMES = {
     "not_interested": "无意向",
     "do_not_contact": "禁止再联系",
 }
+
+
+def _provider_connected(activity: SalesCallActivities) -> bool:
+    """Prefer provider truth, while preserving legacy manual-only records."""
+    if activity.sync_status == "verified":
+        return bool(activity.ringcentral_connected)
+    return activity.outcome != "no_answer"
 
 # These are suggestions, not forced schedules. Sales can always select a more
 # appropriate time before saving the call result.
@@ -788,7 +796,7 @@ async def get_daily_call_workbench(
         select(SalesCallActivities).where(SalesCallActivities.sales_employee_id == salesperson.id)
     )).scalars().all()
     day_activities = [item for item in activities if _business_date(item.called_at) == target_date]
-    connected = sum(item.outcome != "no_answer" for item in day_activities)
+    connected = sum(_provider_connected(item) for item in day_activities)
     interested = sum(item.outcome in {"interested", "appointment"} for item in day_activities)
     appointments = sum(item.outcome == "appointment" for item in day_activities)
     due_callbacks = sum(
@@ -1148,6 +1156,9 @@ async def get_sales_call_history(
         "id": row.id, "outcome": row.outcome, "outcome_label": CALL_OUTCOMES.get(row.outcome, row.outcome),
         "notes": row.notes, "next_follow_up_at": row.next_follow_up_at, "called_at": row.called_at,
         "sales_employee_id": row.sales_employee_id, "sales_employee_name": row.sales_employee_name,
+        "call_duration_seconds": row.call_duration_seconds, "sync_status": row.sync_status,
+        "ringcentral_connected": row.ringcentral_connected,
+        "ringcentral_call_id": row.ringcentral_call_id,
     } for row in rows]
 
 
@@ -1533,7 +1544,7 @@ async def sales_management_dashboard(
     activities = [] if not lead_ids else (await db.execute(select(SalesCallActivities).where(SalesCallActivities.lead_id.in_(lead_ids)))).scalars().all()
     today_activities = [item for item in activities if _business_date(item.called_at) == target_date]
     completed = sum(item.status == "completed" for item in tasks)
-    connected = sum(item.outcome != "no_answer" for item in today_activities)
+    connected = sum(_provider_connected(item) for item in today_activities)
     interested = sum(item.outcome in {"interested", "appointment"} for item in today_activities)
     appointments = sum(item.outcome == "appointment" for item in today_activities)
     # Conversion logs are the audit source of truth. Some legacy SQLite rows do not
@@ -1582,7 +1593,7 @@ async def sales_management_dashboard(
     for item in today_activities:
         name = item.sales_employee_name or "未命名销售"
         stat = people.setdefault(name, {"salesperson": name, "calls": 0, "connected": 0, "interested": 0, "appointments": 0})
-        stat["calls"] += 1; stat["connected"] += int(item.outcome != "no_answer"); stat["interested"] += int(item.outcome in {"interested", "appointment"}); stat["appointments"] += int(item.outcome == "appointment")
+        stat["calls"] += 1; stat["connected"] += int(_provider_connected(item)); stat["interested"] += int(item.outcome in {"interested", "appointment"}); stat["appointments"] += int(item.outcome == "appointment")
     sources = {}
     for lead in leads:
         label = lead.source or "未标注来源"
@@ -1696,7 +1707,7 @@ async def sales_performance_dashboard(
         assigned = len(employee_tasks)
         completed = sum(item.status == "completed" for item in employee_tasks)
         calls = len(employee_activities)
-        connected = sum(item.outcome != "no_answer" for item in employee_activities)
+        connected = sum(_provider_connected(item) for item in employee_activities)
         interested = sum(item.outcome in {"interested", "appointment"} for item in employee_activities)
         appointments = sum(item.outcome == "appointment" for item in employee_activities)
         documented = sum(bool((item.notes or "").strip()) and len((item.notes or "").strip()) >= 12 for item in employee_activities)
@@ -1780,6 +1791,21 @@ async def record_daily_call_result(
     )
     db.add(activity)
     await db.flush()
+    provider_call = (
+        await db.execute(
+            select(RingCentralCallRecords)
+            .where(RingCentralCallRecords.task_id == task.id)
+            .order_by(RingCentralCallRecords.started_at.desc(), RingCentralCallRecords.id.desc())
+        )
+    ).scalars().first()
+    if provider_call:
+        provider_call.activity_id = activity.id
+        activity.call_duration_seconds = provider_call.duration_seconds
+        activity.ringcentral_connected = provider_call.connected
+        activity.ringcentral_call_id = provider_call.ringcentral_call_id
+        activity.ringcentral_session_id = provider_call.ringcentral_session_id or provider_call.telephony_session_id
+        activity.recording_uri = provider_call.recording_uri
+        activity.sync_status = provider_call.sync_status
     old_assignment = (lead.assigned_sales_id, lead.assigned_sales_name)
     lead.status = _lead_status_from_outcome(payload.outcome)
     next_follow_up_at = _apply_automation_outcome(lead, payload.outcome, now, next_follow_up_at)

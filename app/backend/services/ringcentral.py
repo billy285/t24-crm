@@ -8,7 +8,7 @@ import os
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -19,6 +19,7 @@ from core.mask_crypto import decrypt_text, encrypt_text
 
 RINGCENTRAL_SERVER_URL = "https://platform.ringcentral.com"
 RINGCENTRAL_DEFAULT_REDIRECT_URI = "https://t24-crm.com/api/ringcentral/callback"
+RINGCENTRAL_DEFAULT_WEBHOOK_URI = "https://t24-crm.com/api/ringcentral/webhook"
 STATE_TTL_SECONDS = 15 * 60
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,14 @@ def connection_configured() -> bool:
 
 def redirect_uri() -> str:
     return (os.getenv("RINGCENTRAL_REDIRECT_URI") or RINGCENTRAL_DEFAULT_REDIRECT_URI).strip()
+
+
+def webhook_uri() -> str:
+    return (os.getenv("RINGCENTRAL_WEBHOOK_URL") or RINGCENTRAL_DEFAULT_WEBHOOK_URI).strip()
+
+
+def webhook_verification_token() -> str:
+    return (os.getenv("RINGCENTRAL_WEBHOOK_VERIFICATION_TOKEN") or "").strip()
 
 
 def _state_key() -> bytes:
@@ -211,6 +220,110 @@ async def get_extension_profile(access_token: str) -> Dict[str, Any]:
     if response.is_error:
         raise HTTPException(status_code=502, detail="无法读取 RingCentral 分机信息，请重新连接账号。")
     return response.json()
+
+
+async def _authorized_json_request(
+    method: str,
+    path: str,
+    access_token: str,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+    payload: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    response: httpx.Response | None = None
+    async with httpx.AsyncClient(timeout=20) as client:
+        for attempt in range(2):
+            try:
+                response = await client.request(
+                    method,
+                    f"{RINGCENTRAL_SERVER_URL}{path}",
+                    params=params,
+                    json=payload,
+                    headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+                )
+            except httpx.TransportError as exc:
+                if attempt == 0:
+                    await asyncio.sleep(0.25)
+                    continue
+                raise HTTPException(status_code=502, detail="RingCentral 网络暂时不可用。") from exc
+            if (response.status_code == 429 or response.status_code >= 500) and attempt == 0:
+                await asyncio.sleep(0.25)
+                continue
+            break
+    if response is None:
+        raise HTTPException(status_code=502, detail="RingCentral 没有返回响应。")
+    if response.is_error:
+        reason = _provider_reason(response)
+        code = 401 if response.status_code in {401, 403} else 404 if response.status_code == 404 else 502
+        raise HTTPException(status_code=code, detail=f"RingCentral 请求失败：{reason}。")
+    return response.json()
+
+
+async def fetch_extension_call_log(
+    access_token: str,
+    *,
+    date_from: datetime,
+    telephony_session_id: str | None = None,
+) -> list[Dict[str, Any]]:
+    payload = await _authorized_json_request(
+        "GET",
+        "/restapi/v1.0/account/~/extension/~/call-log",
+        access_token,
+        params={
+            "view": "Detailed",
+            "dateFrom": date_from.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "perPage": 100,
+        },
+    )
+    records = list(payload.get("records") or [])
+    if telephony_session_id:
+        records = [
+            record for record in records
+            if str(record.get("telephonySessionId") or "") == str(telephony_session_id)
+        ]
+    return records
+
+
+async def create_telephony_subscription(
+    access_token: str,
+    *,
+    account_id: str,
+    extension_id: str,
+) -> Dict[str, Any]:
+    delivery_mode: Dict[str, Any] = {
+        "transportType": "WebHook",
+        "address": webhook_uri(),
+    }
+    verification_token = webhook_verification_token()
+    environment = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "").strip().lower()
+    if not verification_token and environment in {"prod", "production"}:
+        raise HTTPException(
+            status_code=503,
+            detail="服务器缺少 RingCentral webhook verification token，暂不能启用实时通话同步。",
+        )
+    if verification_token:
+        delivery_mode["verificationToken"] = verification_token
+    return await _authorized_json_request(
+        "POST",
+        "/restapi/v1.0/subscription",
+        access_token,
+        payload={
+            "eventFilters": [
+                f"/restapi/v1.0/account/{account_id}/extension/{extension_id}/telephony/sessions"
+            ],
+            "deliveryMode": delivery_mode,
+            "expiresIn": 604800,
+        },
+    )
+
+
+async def renew_telephony_subscription(access_token: str, subscription_id: str) -> Dict[str, Any]:
+    return await _authorized_json_request(
+        "POST",
+        f"/restapi/v1.0/subscription/{subscription_id}/renew",
+        access_token,
+        payload={"expiresIn": 604800},
+    )
 
 
 def token_expiry(token_payload: Dict[str, Any]) -> datetime:

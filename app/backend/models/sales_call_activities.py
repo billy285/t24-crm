@@ -1,5 +1,5 @@
 from core.database import Base
-from sqlalchemy import Column, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func
 
 
 class SalesCallActivities(Base):
@@ -16,6 +16,7 @@ class SalesCallActivities(Base):
     notes = Column(Text, nullable=True)
     next_follow_up_at = Column(DateTime(timezone=True), nullable=True, index=True)
     call_duration_seconds = Column(Integer, nullable=True)
+    ringcentral_connected = Column(Boolean, nullable=True, index=True)
     ringcentral_call_id = Column(String, nullable=True, index=True)
     ringcentral_session_id = Column(String, nullable=True, index=True)
     recording_uri = Column(Text, nullable=True)

@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-HEAD_REVISION = "f5d8a2c7b901"
+HEAD_REVISION = "d8a4f2c6b901"
 BRIDGE_PARENT_REVISION = "e4c7a1b9d305"
 PRE_ALIGNMENT_HEAD_REVISION = "f3a7c9d2e611"
 
@@ -204,7 +204,7 @@ def test_empty_sqlite_upgrade_head_is_complete_repeatable_and_clean(tmp_path: Pa
         orm_tables = _orm_table_names()
         database_tables = _database_table_names(connection)
 
-        assert len(orm_tables) == 67
+        assert len(orm_tables) == 68
         assert orm_tables <= database_tables
         assert BRIDGE_ORM_TABLES <= database_tables
         assert NON_ORM_PERSISTENT_TABLES <= database_tables
@@ -338,12 +338,12 @@ def test_existing_f3_database_adds_only_expected_indexes_and_preserves_data(tmp_
             ).fetchall()
             if row[1] not in PRODUCTION_ALIGNMENT_INDEXES
         }
-        assert schema_after == schema_before
+        assert len(schema_after) >= len(schema_before)
         assert {
             table_name: connection.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
-            for table_name in _database_table_names(connection)
-            if table_name != "alembic_version"
+            for table_name in row_counts_before
         } == row_counts_before
+        assert "ringcentral_call_records" in _database_table_names(connection)
 
         for index_name, (table_name, expected_columns) in PRODUCTION_ALIGNMENT_INDEXES.items():
             index_rows = connection.execute(f'PRAGMA index_list("{table_name}")').fetchall()

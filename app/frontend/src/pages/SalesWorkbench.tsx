@@ -23,11 +23,12 @@ type Task = { task_id: number; task_status: string; completed_at?: string; prior
 type Workbench = { salesperson: { id: number; name: string }; quota: number; assigned_count: number; completed_count: number; remaining_count: number; is_target_complete: boolean; categories: { unfinished: number; callback: number; interested: number; appointment: number; new: number; retry: number; recycled: number; follow_up: number }; performance: { attempted: number; connected: number; interested: number; appointments: number; callbacks_due: number; connection_rate: number }; items: Task[] };
 type AutomationOverview = { counts: { eligible: number; assigned: number; protected: number; cooling: number; blocked: number; closed: number }; total: number; reusable: number; active_sales: number; daily_capacity: number; estimated_pool_days?: number; rules: { unstarted_release_hours: number; same_sales_no_answer_attempts: number; no_answer_cooldown_days: number; soft_reject_cooldown_days: number; existing_provider_cooldown_days: number } };
 type Assignee = { id: number; name: string };
-type HistoryItem = { id: number; outcome: string; outcome_label: string; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string };
+type HistoryItem = { id: number; outcome: string; outcome_label: string; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string; call_duration_seconds?: number; sync_status?: string };
 type Analysis = { available: boolean; message?: string; analysis?: { warning?: string; cards: { title: string; content: string; kind: string; sources: { label: string; value?: string | number; updated_at?: string }[] }[] } };
 type RecoveryAlert = { lead_id: number; business_name: string; state: 'watch' | 'recoverable'; message: string; deadline?: string; extension_request?: { reason?: string } | null };
 type PersonalPerformance = { rank: number; score: number; confidence: string; score_breakdown: { execution: number; discipline: number; opportunity: number; results: number; documentation: number }; metrics: { completion_rate: number; connection_rate: number; interest_rate: number; note_quality_rate: number; overdue_followups: number }; suggestions: string[] };
-type RingCentralStatus = { configured: boolean; connected: boolean; degraded?: boolean; needs_reconnect?: boolean; extension_number?: string; last_synced_at?: string; last_error?: string; message?: string };
+type RingCentralStatus = { configured: boolean; connected: boolean; degraded?: boolean; needs_reconnect?: boolean; extension_number?: string; last_synced_at?: string; last_error?: string; message?: string; webhook_status?: string; webhook_expires_at?: string; last_event_at?: string };
+type RingCentralCallStatus = { available: boolean; sync_status: 'waiting' | 'event_received' | 'awaiting_call_log' | 'verified'; provider_status?: string; provider_result?: string; connected?: boolean; duration_seconds?: number; sales_employee_name?: string };
 type WorkbenchReturnContext = { filter?: string; selectedSalesId?: string; date?: string; leadId?: number; scrollY?: number };
 
 const outcomeOptions = [
@@ -117,6 +118,7 @@ type CallResultDialogProps = {
   notes: string;
   nextFollowUpAt: string;
   saving: boolean;
+  providerCall: RingCentralCallStatus | null;
   onOutcomeChange: (value: string) => void;
   onNotesChange: (value: string) => void;
   onNextFollowUpChange: (value: string) => void;
@@ -132,6 +134,7 @@ function CallResultDialog({
   notes,
   nextFollowUpAt,
   saving,
+  providerCall,
   onOutcomeChange,
   onNotesChange,
   onNextFollowUpChange,
@@ -153,6 +156,25 @@ function CallResultDialog({
           <p className="mt-1 text-xs text-slate-500">保存后才计入今日执行，打开拨号器不代表电话已接通。</p>
         </DialogHeader>
         <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-4">
+          <div className={`rounded-2xl border p-3 ${providerCall?.sync_status === 'verified' ? 'border-emerald-200 bg-emerald-50' : providerCall?.connected ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-slate-50'}`}>
+            <div className="flex items-center gap-2">
+              {providerCall?.sync_status === 'verified' ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <RefreshCw className="h-5 w-5 text-blue-600" />}
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
+                  {providerCall?.sync_status === 'verified'
+                    ? `RingCentral 已验证${providerCall.connected ? '接通' : '未接通'}`
+                    : providerCall?.connected
+                      ? 'RingCentral 已回传接通状态'
+                      : '正在等待 RingCentral 回传'}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  {providerCall?.sync_status === 'verified'
+                    ? `通话时长 ${Math.floor((providerCall.duration_seconds || 0) / 60)}:${String((providerCall.duration_seconds || 0) % 60).padStart(2, '0')} · ${providerCall.sales_employee_name || '当前销售'}`
+                    : '可先填写业务结果，官方状态和时长会在通话结束后自动补全。'}
+                </p>
+              </div>
+            </div>
+          </div>
           <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
             <p className="text-xs font-medium text-blue-700">客户号码</p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -239,6 +261,7 @@ export default function SalesWorkbench() {
   const [extensionBusy, setExtensionBusy] = useState<number | null>(null);
   const [personalPerformance, setPersonalPerformance] = useState<PersonalPerformance | null>(null);
   const [ringCentral, setRingCentral] = useState<RingCentralStatus | null>(null);
+  const [providerCall, setProviderCall] = useState<RingCentralCallStatus | null>(null);
   const [returnLeadId, setReturnLeadId] = useState<number | null>(null);
   const [visibleCount, setVisibleCount] = useState(20);
   const [automationOverview, setAutomationOverview] = useState<AutomationOverview | null>(null);
@@ -247,6 +270,8 @@ export default function SalesWorkbench() {
   const [assigneeLoadError, setAssigneeLoadError] = useState<string | null>(null);
   const [knowledgeExpanded, setKnowledgeExpanded] = useState(() => typeof window === 'undefined' || window.innerWidth >= 1536);
   const workbenchRequestRef = useRef(0);
+  const ringCentralSubscriptionRequestedRef = useRef(false);
+  const ringCentralBackfillRequestedRef = useRef(false);
 
   const salesIdParam = canManage ? selectedSalesId : '';
   const loadAssignees = async () => {
@@ -320,7 +345,23 @@ export default function SalesWorkbench() {
   const loadRingCentral = async () => {
     try {
       const response = await invokeWithAuth({ url: '/api/ringcentral/status', method: 'GET' });
-      setRingCentral(response.data);
+      let status = response.data as RingCentralStatus;
+      const webhookExpiry = status.webhook_expires_at ? new Date(status.webhook_expires_at).getTime() : 0;
+      const webhookNeedsRenewal = status.webhook_status !== 'active' || !webhookExpiry || webhookExpiry <= Date.now() + 24 * 60 * 60 * 1000;
+      if (status.connected && webhookNeedsRenewal && !ringCentralSubscriptionRequestedRef.current) {
+        ringCentralSubscriptionRequestedRef.current = true;
+        try {
+          const subscription = await invokeWithAuth({ url: '/api/ringcentral/subscription/ensure', method: 'POST' });
+          status = subscription.data;
+        } catch {
+          // The status card exposes the provider error; manual calling remains available.
+        }
+      }
+      setRingCentral(status);
+      if (status.connected && !ringCentralBackfillRequestedRef.current) {
+        ringCentralBackfillRequestedRef.current = true;
+        void invokeWithAuth({ url: '/api/ringcentral/sync?days=2', method: 'POST' }).catch(() => undefined);
+      }
     } catch { setRingCentral(null); }
   };
   const loadAutomationOverview = async () => {
@@ -426,9 +467,30 @@ export default function SalesWorkbench() {
     });
   }, [filteredTasks]);
 
+  useEffect(() => {
+    if (!activeTask) return;
+    let cancelled = false;
+    const loadProviderCall = async () => {
+      try {
+        const response = await invokeWithAuth({ url: `/api/ringcentral/calls/recent?task_id=${activeTask.task_id}`, method: 'GET' });
+        if (!cancelled) setProviderCall(response.data);
+      } catch {
+        if (!cancelled) setProviderCall(null);
+      }
+    };
+    void loadProviderCall();
+    const timer = window.setInterval(() => void loadProviderCall(), 5000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [activeTask]);
+
   const openCall = (task: Task) => {
     if (task.task_status === 'completed') { toast.message('该任务今日已完成，可查看历史联系记录'); return; }
-    setSupplementalFollowUp(false); setActiveTask(task); setOutcome('no_answer'); setNotes(''); setNextFollowUpAt(suggestedFollowUpValue('no_answer'));
+    setProviderCall(null); setSupplementalFollowUp(false); setActiveTask(task); setOutcome('no_answer'); setNotes(''); setNextFollowUpAt(suggestedFollowUpValue('no_answer'));
+  };
+  const markDialStarted = (task: Task) => {
+    void invokeWithAuth({ url: `/api/v1/sales-leads/workbench/tasks/${task.task_id}/dial-started`, method: 'POST' })
+      .catch(() => undefined);
+    openCall(task);
   };
   const openCallWithOutcome = (task: Task, nextOutcome: string) => {
     openCall(task);
@@ -496,7 +558,7 @@ export default function SalesWorkbench() {
 
   if (isMobile) {
     const currentPosition = focusedTask ? filteredTasks.findIndex(task => task.task_id === focusedTask.task_id) + 1 : 0;
-    const ringCentralReady = ringCentral?.configured ? (ringCentral.connected ? '账号已连接' : '可使用手机 App') : '使用手机 App';
+    const ringCentralReady = ringCentral?.webhook_status === 'active' ? '通话同步已启用' : ringCentral?.configured ? (ringCentral.connected ? '账号已连接' : '可使用手机 App') : '使用手机 App';
     const disabledCall = Boolean(focusedTask && (
       focusedTask.task_status === 'completed'
       || focusedTask.lead.do_not_contact
@@ -578,7 +640,7 @@ export default function SalesWorkbench() {
                     buttonClassName="!min-h-14 rounded-l-2xl border-0 bg-emerald-600 text-base font-bold text-white shadow-none hover:bg-emerald-700"
                     menuButtonClassName="!min-h-14 min-w-14 rounded-r-2xl border-0 border-l border-l-white/25 bg-emerald-600 px-4 text-white shadow-none hover:bg-emerald-700"
                     disabled={disabledCall}
-                    onLaunched={() => openCall(focusedTask)}
+                    onLaunched={() => markDialStarted(focusedTask)}
                   />
                   <p className="mt-2 text-center text-xs leading-5 text-slate-500">默认打开已安装的 RingCentral App；返回 CRM 后记录页已经准备好。</p>
                 </div>
@@ -681,6 +743,7 @@ export default function SalesWorkbench() {
           notes={notes}
           nextFollowUpAt={nextFollowUpAt}
           saving={saving}
+          providerCall={providerCall}
           onOutcomeChange={setOutcome}
           onNotesChange={setNotes}
           onNextFollowUpChange={setNextFollowUpAt}
@@ -700,14 +763,14 @@ export default function SalesWorkbench() {
     {loadError && <div className="sales-v3-alert" role="alert">今日任务暂时无法更新：{workbench ? '继续显示上一次成功读取的任务。' : loadError}<Button size="sm" variant="outline" onClick={() => void loadWorkbench()}>重新加载</Button></div>}
     <div className={`sales-v3-shell ${knowledgeExpanded ? 'has-assistant' : 'assistant-collapsed'}`}>
       <aside className="sales-v3-queue"><div className="sales-v3-queue-head"><div className="flex items-center justify-between"><h3>今日任务队列</h3><span>{workbench?.assigned_count ?? '—'} 条</span></div><div className="mt-3 flex items-center gap-2"><div className="sales-v3-progress"><span style={{ width: `${workbench ? Math.min(100, Math.round((workbench.completed_count / Math.max(workbench.quota, 1)) * 100)) : 0}%` }} /></div><b>{loading ? '加载中' : canManage && !selectedSalesId ? '未选择' : progress}</b></div><div className="mt-3 grid grid-cols-2 gap-1.5"><Button size="sm" variant={filter === 'all' ? 'default' : 'outline'} onClick={() => setFilter('all')}>全部任务</Button><Button size="sm" variant={filter === 'overdue' ? 'default' : 'outline'} className={overdueFollowUpCount ? 'border-rose-200 text-rose-700' : ''} onClick={() => setFilter('overdue')}>逾期跟进 ({overdueFollowUpCount})</Button></div></div><div className="sales-v3-queue-list">{loading ? <p className="p-5 text-sm text-slate-400">正在加载任务…</p> : visibleTasks.map((task, index) => { const done = task.task_status === 'completed'; const overdue = !done && isFollowUpOverdue(task.lead.next_follow_up_at); const selected = focusedTask?.task_id === task.task_id; return <button key={task.task_id} type="button" data-lead-id={task.lead.id} onClick={() => setFocusedTask(task)} className={`sales-v3-queue-item ${selected ? 'is-active' : ''} ${done ? 'is-done' : ''}`}><span className={`sales-v3-queue-index ${overdue ? 'is-overdue' : ''}`}>{done ? '✓' : index + 1}</span><span className="min-w-0 flex-1"><span className="sales-v3-queue-name" data-name={task.lead.business_name} /><span className="mt-1 block truncate text-[11px] text-slate-500">{task.lead.phone || '未填写电话'} · {task.lead.industry || '行业未采集'}</span></span><span className={`sales-v3-status ${overdue ? 'is-overdue' : ''}`}>{done ? '已完成' : overdue ? '逾期' : statusLabels[task.lead.status] || '待打'}</span></button>; })}{visibleTasks.length < filteredTasks.length && <Button className="m-3 w-[calc(100%-1.5rem)]" size="sm" variant="outline" onClick={() => setVisibleCount(count => count + 20)}>显示更多</Button>}</div></aside>
-      <div className="sales-v3-main">{canManage && !selectedSalesId ? <div className="sales-v3-empty">{assigneesLoaded && assignees.length === 0 ? <><p className="font-medium text-slate-700">暂无可用销售人员</p><p className="mt-1 text-xs text-slate-500">请先在员工管理中新增或启用销售员工。</p></> : '请选择销售人员后查看固定任务批次。'}</div> : !focusedTask ? <div className="sales-v3-empty">本分类暂无任务。请从待清洗商家池转入并分配线索。</div> : <><section className="sales-v3-customer"><div className="flex items-start justify-between gap-4"><div className="flex min-w-0 items-center gap-3"><div className="sales-v3-avatar">{focusedTask.lead.business_name.slice(0, 1)}</div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1>{focusedTask.lead.business_name}</h1><Badge className={statusColor[focusedTask.lead.status] || statusColor.new}>{statusLabels[focusedTask.lead.status] || focusedTask.lead.status}</Badge>{focusedTask.priority && <Badge className={priorityStyle[focusedTask.priority]}>{priorityLabel[focusedTask.priority]}</Badge>}</div><p>#{focusedTask.lead.id} · {focusedTask.lead.industry || '行业未采集'} · {focusedTask.lead.city || focusedTask.lead.state || '地区未采集'}</p></div></div><span className="text-right text-xs text-slate-400">队列<br /><b className="text-lg text-slate-800">{filteredTasks.findIndex(task => task.task_id === focusedTask.task_id) + 1}</b></span></div><div className="mt-5 grid gap-2 sm:grid-cols-3"><div><small>联系人</small><strong>{focusedTask.lead.contact_name || '未填写'}</strong></div><div className="sales-v3-phone"><small>电话</small><strong>{focusedTask.lead.phone || '未填写'}</strong></div><div><small>下次跟进</small><strong>{formatDate(focusedTask.lead.next_follow_up_at)}</strong></div></div><div className="sales-v3-next"><span>下一步</span>{focusedTask.next_action_label || '完成本次联系并如实记录结果'}<Button size="sm" variant="ghost" onClick={() => void openHistory(focusedTask)}><History className="mr-1 h-3.5 w-3.5" />联系历史</Button></div></section><section className="sales-v3-call"><div className="flex items-center justify-between"><h3><PhoneCall className="h-4 w-4 text-blue-600" /> 通话操作</h3><span>拨号只提供辅助入口；保存结果后才计入执行</span></div><div className="mt-4 flex flex-wrap gap-2"><CustomerPhoneDial phone={focusedTask.lead.phone} label="开始拨打" variant="default" buttonClassName="sales-v3-call-button" disabled={focusedTask.task_status === 'completed' || focusedTask.lead.do_not_contact || focusedTask.lead.is_blacklisted} /><Button variant="outline" onClick={() => void copyPhone(focusedTask)}><Clipboard className="mr-1.5 h-3.5 w-3.5" />复制号码</Button><Button variant="outline" onClick={() => openCall(focusedTask)}><ClipboardList className="mr-1.5 h-3.5 w-3.5" />记录通话</Button><Button variant="outline" onClick={() => void openAnalysis(focusedTask)}><Sparkles className="mr-1.5 h-3.5 w-3.5" />AI 分析卡</Button></div><div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">{outcomeOptions.slice(0, 4).map(item => <button key={item.value} type="button" className="sales-v3-outcome" onClick={() => openCallWithOutcome(focusedTask, item.value)}>{item.label}</button>)}</div></section></>}</div>
+      <div className="sales-v3-main">{canManage && !selectedSalesId ? <div className="sales-v3-empty">{assigneesLoaded && assignees.length === 0 ? <><p className="font-medium text-slate-700">暂无可用销售人员</p><p className="mt-1 text-xs text-slate-500">请先在员工管理中新增或启用销售员工。</p></> : '请选择销售人员后查看固定任务批次。'}</div> : !focusedTask ? <div className="sales-v3-empty">本分类暂无任务。请从待清洗商家池转入并分配线索。</div> : <><section className="sales-v3-customer"><div className="flex items-start justify-between gap-4"><div className="flex min-w-0 items-center gap-3"><div className="sales-v3-avatar">{focusedTask.lead.business_name.slice(0, 1)}</div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1>{focusedTask.lead.business_name}</h1><Badge className={statusColor[focusedTask.lead.status] || statusColor.new}>{statusLabels[focusedTask.lead.status] || focusedTask.lead.status}</Badge>{focusedTask.priority && <Badge className={priorityStyle[focusedTask.priority]}>{priorityLabel[focusedTask.priority]}</Badge>}</div><p>#{focusedTask.lead.id} · {focusedTask.lead.industry || '行业未采集'} · {focusedTask.lead.city || focusedTask.lead.state || '地区未采集'}</p></div></div><span className="text-right text-xs text-slate-400">队列<br /><b className="text-lg text-slate-800">{filteredTasks.findIndex(task => task.task_id === focusedTask.task_id) + 1}</b></span></div><div className="mt-5 grid gap-2 sm:grid-cols-3"><div><small>联系人</small><strong>{focusedTask.lead.contact_name || '未填写'}</strong></div><div className="sales-v3-phone"><small>电话</small><strong>{focusedTask.lead.phone || '未填写'}</strong></div><div><small>下次跟进</small><strong>{formatDate(focusedTask.lead.next_follow_up_at)}</strong></div></div><div className="sales-v3-next"><span>下一步</span>{focusedTask.next_action_label || '完成本次联系并如实记录结果'}<Button size="sm" variant="ghost" onClick={() => void openHistory(focusedTask)}><History className="mr-1 h-3.5 w-3.5" />联系历史</Button></div></section><section className="sales-v3-call"><div className="flex items-center justify-between"><h3><PhoneCall className="h-4 w-4 text-blue-600" /> 通话操作</h3><span>拨号只提供辅助入口；保存结果后才计入执行</span></div><div className="mt-4 flex flex-wrap gap-2"><CustomerPhoneDial phone={focusedTask.lead.phone} label="开始拨打" variant="default" buttonClassName="sales-v3-call-button" disabled={focusedTask.task_status === 'completed' || focusedTask.lead.do_not_contact || focusedTask.lead.is_blacklisted} onLaunched={() => markDialStarted(focusedTask)} /><Button variant="outline" onClick={() => void copyPhone(focusedTask)}><Clipboard className="mr-1.5 h-3.5 w-3.5" />复制号码</Button><Button variant="outline" onClick={() => openCall(focusedTask)}><ClipboardList className="mr-1.5 h-3.5 w-3.5" />记录通话</Button><Button variant="outline" onClick={() => void openAnalysis(focusedTask)}><Sparkles className="mr-1.5 h-3.5 w-3.5" />AI 分析卡</Button></div><div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">{outcomeOptions.slice(0, 4).map(item => <button key={item.value} type="button" className="sales-v3-outcome" onClick={() => openCallWithOutcome(focusedTask, item.value)}>{item.label}</button>)}</div></section></>}</div>
       <SalesKnowledgeAssistant
         collapsed={!knowledgeExpanded}
         contextLabel={focusedTask?.lead.industry || undefined}
         onToggle={() => setKnowledgeExpanded(current => !current)}
       />
     </div>
-    <details className="sales-v3-more"><summary>拨号辅助、线索循环与个人复盘</summary><div className="mt-4 grid gap-3 lg:grid-cols-2"><Card className="border-sky-100"><CardContent className="p-4"><p className="font-semibold text-slate-800">拨号辅助（可选）</p><p className="mt-1 text-xs text-slate-500">RingCentral 已连接只代表授权可用，不代表浏览器已成功拨号或接通。</p>{ringCentral?.configured && <Button className="mt-3" size="sm" variant="outline" onClick={() => void connectRingCentral()}>{ringCentral.connected ? '检查 / 重连' : '连接 RingCentral'}</Button>}</CardContent></Card>{canManage && <Card><CardContent className="p-4"><p className="font-semibold text-slate-800">主管任务配额</p><div className="mt-3 flex gap-2"><Input className="w-24" type="number" min="1" max="300" value={quotaInput} onChange={event => setQuotaInput(event.target.value)} /><Button disabled={!selectedSalesId} onClick={() => void updateQuota()}>保存数量</Button></div></CardContent></Card>}</div></details>
+    <details className="sales-v3-more"><summary>拨号辅助、线索循环与个人复盘</summary><div className="mt-4 grid gap-3 lg:grid-cols-2"><Card className="border-sky-100"><CardContent className="p-4"><p className="font-semibold text-slate-800">拨号辅助与真实通话同步</p><p className="mt-1 text-xs text-slate-500">{ringCentral?.webhook_status === 'active' ? 'RingCentral 已启用实时事件；通话结束后会自动校准接通状态、时长和员工归属。' : ringCentral?.last_error || 'RingCentral 已连接只代表授权可用，启用实时同步后才会产生官方通话证据。'}</p>{ringCentral?.configured && <Button className="mt-3" size="sm" variant="outline" onClick={() => void connectRingCentral()}>{ringCentral.connected ? '检查 / 重连' : '连接 RingCentral'}</Button>}</CardContent></Card>{canManage && <Card><CardContent className="p-4"><p className="font-semibold text-slate-800">主管任务配额</p><div className="mt-3 flex gap-2"><Input className="w-24" type="number" min="1" max="300" value={quotaInput} onChange={event => setQuotaInput(event.target.value)} /><Button disabled={!selectedSalesId} onClick={() => void updateQuota()}>保存数量</Button></div></CardContent></Card>}</div></details>
     <CallResultDialog
       task={activeTask}
       supplemental={supplementalFollowUp}
@@ -715,6 +778,7 @@ export default function SalesWorkbench() {
       notes={notes}
       nextFollowUpAt={nextFollowUpAt}
       saving={saving}
+      providerCall={providerCall}
       onOutcomeChange={setOutcome}
       onNotesChange={setNotes}
       onNextFollowUpChange={setNextFollowUpAt}
