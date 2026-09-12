@@ -31,9 +31,15 @@
 }
 
 .t24-system .app-sidebar {
-  background: linear-gradient(180deg, #0b1730 0%, #101d37 58%, #0b1730 100%);
-  border-right-color: rgb(148 163 184 / 0.14);
+  background: var(--t24-surface-subtle);
+  border-right-color: var(--t24-border);
 }
+
+.t24-system .app-primary-rail {
+  background: linear-gradient(180deg, #0b1730 0%, #101d37 58%, #0b1730 100%);
+}
+
+.t24-system .app-navigation-search input:focus { box-shadow: none; }
 
 .t24-system .app-topbar {
   min-height: 64px;

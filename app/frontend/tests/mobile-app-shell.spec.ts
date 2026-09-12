@@ -321,9 +321,7 @@ test('财务角色在桌面侧栏可以发现月度扣点比例入口', async ({
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${baseUrl}/finance`);
 
-  const sidebar = page.locator('nav.app-sidebar-nav');
-  const financeSectionToggle = sidebar.getByRole('button', { name: /(展开|收起)财务与结算/ });
-  if (await financeSectionToggle.getAttribute('aria-label') === '展开财务与结算') await financeSectionToggle.click();
+  const sidebar = page.getByRole('navigation', { name: '财务与结算功能', exact: true });
   const link = sidebar.getByRole('link', { name: '月度扣点比例' });
   await expect(link).toBeVisible();
   await link.click();

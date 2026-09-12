@@ -49,6 +49,7 @@ import {
 } from '../lib/subscription-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import { useSessionViewState } from '@/hooks/use-session-view-state';
+import { getFinanceNavigationItem, normalizeFinanceTab } from '@/lib/finance-navigation';
 
 // ─── Constants ───────────────────────────────────────────────────────
 const defaultIncomeTypeLabels: Record<string, string> = {
@@ -112,7 +113,6 @@ const getEffectiveSubscriptionStatus = (subscription: any) => (
 );
 
 const PIE_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1'];
-const financeTabValues = new Set(['overview', 'customer_profit', 'receivables', 'income', 'refunds', 'ad_funds', 'customer_expense', 'company_expense', 'subscriptions', 'charts', 'monthly_detail']);
 type DateFilterMode = 'all' | 'today' | 'this_month' | 'last_month' | 'custom';
 type FinancePageKey = 'customer_profit' | 'receivables' | 'income' | 'customer_expense' | 'company_expense' | 'subscriptions' | 'monthly_detail';
 type SubscriptionGroupKey = 'pending' | 'risk' | 'active_auto' | 'manual' | 'stopped';
@@ -676,7 +676,6 @@ export default function Finance() {
     [companyExpenseTypeLabels],
   );
   const defaultCompanyExpenseType = companyExpenseTypeOptions[0]?.value || 'salary';
-  const normalizeFinanceTab = (tab?: string | null) => (tab && financeTabValues.has(tab) ? tab : 'overview');
   const [activeFinanceTab, setActiveFinanceTab] = useState(() => (
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'overview' : normalizeFinanceTab(searchParams.get('tab'))
   ));
@@ -4167,8 +4166,8 @@ export default function Finance() {
           <div className="mt-1 hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-600 to-cyan-400 sm:block" />
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Finance</p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">财务管理</h2>
-            <p className="mt-1 text-sm text-slate-500">掌握收入、成本、利润和待处理事项</p>
+            <h2 className="mt-1 text-2xl font-bold text-slate-900">{getFinanceNavigationItem(activeFinanceTab).label}</h2>
+            <p className="mt-1 text-sm text-slate-500">{getFinanceNavigationItem(activeFinanceTab).description}</p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
               <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">老板视角</span>
               <span>收款与退款按实际资金日期归属月份</span>
@@ -4322,7 +4321,7 @@ export default function Finance() {
         <p className="mt-1 text-xs leading-5 text-blue-700">可随时查看利润、成本、应收和续费风险；收款、退款、支出、导出及月结操作请在电脑端完成。</p>
       </div>
       <Tabs value={activeFinanceTab} onValueChange={handleFinanceTabChange} className="w-full">
-        <div className="hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm md:block">
+        <div className="finance-tab-navigation hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm md:block">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <p className="px-1 text-xs font-semibold text-slate-700">常用财务流程</p>

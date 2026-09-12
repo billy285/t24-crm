@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import { financeNavigationItems, normalizeFinanceTab } from './finance-navigation';
 import {
   Activity,
   BadgeDollarSign,
@@ -36,8 +37,19 @@ export interface AppNavigationItem {
 
 export interface AppNavigationSection {
   label: string;
+  railLabel: string;
+  description: string;
   paths: string[];
   icon: LucideIcon;
+}
+
+export interface DesktopNavigationItem extends AppNavigationItem {
+  group: string;
+  tab?: string;
+}
+
+export interface DesktopNavigationSection extends AppNavigationSection {
+  items: DesktopNavigationItem[];
 }
 
 export interface MobileBusinessAppDefinition {
@@ -77,18 +89,45 @@ export const appNavigationItems: AppNavigationItem[] = [
 ];
 
 export const appNavigationSections: AppNavigationSection[] = [
-  { label: '老板今日工作台', paths: ['/', '/company-roadmap'], icon: LayoutDashboard },
+  { label: '老板今日工作台', railLabel: '工作台', description: '今日重点与经营方向', paths: ['/', '/company-roadmap'], icon: LayoutDashboard },
   {
     label: '销售中心',
+    railLabel: '销售中心',
+    description: '线索、拨打与销售跟进',
     paths: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],
     icon: Headphones,
   },
-  { label: '客户中心', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle'], icon: Users },
-  { label: '任务与交付', paths: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'], icon: ListTodo },
-  { label: '财务与结算', paths: ['/finance', '/rmb-profit', '/management-decisions', '/commissions', '/settings/deduction', '/payroll'], icon: DollarSign },
-  { label: '我的客户与分润', paths: ['/partner-portal'], icon: BadgeDollarSign },
-  { label: '组织与设置', paths: ['/employees', '/settings', '/permissions'], icon: Settings },
+  { label: '客户中心', railLabel: '客户中心', description: '客户关系与成交进展', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle'], icon: Users },
+  { label: '任务与交付', railLabel: '任务交付', description: '任务协作、服务与回访', paths: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'], icon: ListTodo },
+  { label: '财务与结算', railLabel: '财务结算', description: '收款、续费与账目管理', paths: ['/finance', '/rmb-profit', '/management-decisions', '/settings/deduction', '/payroll'], icon: DollarSign },
+  { label: '渠道与分润', railLabel: '渠道分润', description: '渠道合作与分润进展', paths: ['/commissions', '/partner-portal'], icon: BadgeDollarSign },
+  { label: '组织与设置', railLabel: '组织设置', description: '员工、权限与系统配置', paths: ['/employees', '/settings', '/permissions'], icon: Settings },
 ];
+
+export function getDesktopNavigationSections(canAccess: (path: string) => boolean): DesktopNavigationSection[] {
+  return appNavigationSections.map(section => ({
+    ...section,
+    items: section.paths.flatMap((path): DesktopNavigationItem[] => {
+      if (!canAccess(path)) return [];
+      if (path === '/finance') return financeNavigationItems.map(item => ({ ...item, path }));
+      const item = appNavigationItems.find(entry => entry.path === path);
+      return item ? [{ ...item, group: section.paths.includes('/finance') ? '分析与设置' : '功能导航' }] : [];
+    }),
+  })).filter(section => section.items.length > 0);
+}
+
+export function isDesktopNavigationItemActive(item: DesktopNavigationItem, pathname: string, search: string) {
+  return item.path === pathname && (!item.tab || item.tab === normalizeFinanceTab(new URLSearchParams(search).get('tab')));
+}
+
+export function getDesktopNavigationHref(item: DesktopNavigationItem, pathname = '', search = '') {
+  if (!item.tab) return item.path;
+  // Preserve finance's existing query context when changing tabs, as its tab bar does.
+  const params = new URLSearchParams(pathname === '/finance' ? search : '');
+  if (item.tab === 'overview') params.delete('tab');
+  else params.set('tab', item.tab);
+  return `${item.path}${params.size ? `?${params.toString()}` : ''}`;
+}
 
 export const mobileBusinessApps: MobileBusinessAppDefinition[] = [
   {

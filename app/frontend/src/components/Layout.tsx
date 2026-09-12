@@ -3,8 +3,8 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
 import { pageLabels } from '../lib/permissions';
 import {
-  ArrowLeft, LayoutDashboard, LogOut, Menu, X, ChevronDown, User,
-  Lock, KeyRound, PanelLeftClose, PanelLeftOpen, ChevronRight,
+  ArrowLeft, LayoutDashboard, LogOut, Menu, ChevronDown, User,
+  Lock, KeyRound, ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import { client } from '@/lib/api';
 import {
   appNavigationItems,
-  appNavigationSections,
+  getDesktopNavigationSections,
   getRoleTodayPath,
 } from '@/lib/app-navigation';
 import { T24AppMark } from '@/components/MobileAppHome';
@@ -27,6 +27,8 @@ import MobileModuleMenu from '@/components/MobileModuleMenu';
 import { getSafeInternalPath } from '@/lib/navigation-state';
 import { getToken } from '@/lib/tokenStore';
 import PwaInstallAction from '@/components/PwaInstallAction';
+import DesktopBusinessNavigation from '@/components/DesktopBusinessNavigation';
+import { getFinanceNavigationItem } from '@/lib/finance-navigation';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -43,19 +45,11 @@ export default function Layout({ children }: LayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
   );
-  const [expandedSection, setExpandedSection] = useState<string | null>(
-    () => appNavigationSections.find(section => section.paths.includes(location.pathname))?.label || '老板今日工作台',
-  );
   const { employee, role, loading, isLoggedIn, isDisabled, logout, canAccess } = useRole();
 
   useEffect(() => {
     window.localStorage.setItem('t24_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
-
-  useEffect(() => {
-    const activeSection = appNavigationSections.find(section => section.paths.includes(currentPath));
-    if (activeSection) setExpandedSection(activeSection.label);
-  }, [currentPath]);
 
   const mobileDetailKey = currentPath === '/customers'
     ? currentSearch.get('detail') || ''
@@ -63,7 +57,9 @@ export default function Layout({ children }: LayoutProps) {
       ? currentSearch.get('task_id') || ''
       : '';
 
-  const navigationSurfaceKey = `${currentPath}:${mobileDetailKey}`;
+  const navigationSurfaceKey = currentPath === '/finance'
+    ? `${currentPath}:${getFinanceNavigationItem(currentSearch.get('tab')).tab}`
+    : `${currentPath}:${mobileDetailKey}`;
 
   useEffect(() => {
     const scrollContainer = mainScrollRef.current;
@@ -180,14 +176,11 @@ export default function Layout({ children }: LayoutProps) {
   const hasPageAccess = canAccess(currentPath);
 
   // Keep the business grouping stable while hiding pages the current role cannot access.
-  const visibleNavSections = appNavigationSections
-    .map(section => ({
-      ...section,
-      items: section.paths
-        .map(path => appNavigationItems.find(item => item.path === path))
-        .filter((item): item is (typeof appNavigationItems)[number] => !!item && canAccess(item.path)),
-    }))
-    .filter(section => section.items.length > 0);
+  const visibleNavSections = getDesktopNavigationSections(canAccess);
+  const activeNavSection = visibleNavSections.find(section => section.paths.includes(currentPath));
+  const desktopPageLabel = currentPath === '/finance'
+    ? getFinanceNavigationItem(currentSearch.get('tab')).label
+    : appNavigationItems.find(item => item.path === currentPath)?.label || '';
 
   const displayRole = employee
     ? (roleLabels[employee.role] || employee.role)
@@ -226,127 +219,26 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div className="t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen">
+    <div className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${sidebarCollapsed ? ' app-nav-secondary-collapsed' : ''}`}>
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 hidden bg-black/50 md:block lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <button type="button" tabIndex={-1} aria-label="关闭业务导航遮罩" className="fixed inset-0 z-40 hidden bg-slate-950/40 md:block lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
-      {!isAppLauncher && <aside className={`app-sidebar fixed inset-y-0 left-0 z-50 hidden w-[248px] transform flex-col text-white transition-[width,transform] duration-200 md:flex ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-[248px]'}`}>
-        <div className={`border-b border-white/10 px-4 py-5 ${sidebarCollapsed ? 'lg:px-3' : ''}`}>
-          <div className="flex items-center justify-between">
-            <Link to={homePath} className={`flex min-w-0 items-center gap-3 ${sidebarCollapsed ? 'lg:w-full lg:justify-center' : ''}`} onClick={() => setSidebarOpen(false)}>
-              <img
-                src="/t2-marketing-logo.png?v=t2-20260822-official"
-                alt="T24 Marketing"
-                className="h-10 w-10 flex-shrink-0 rounded-xl border border-white/15 bg-white object-cover shadow-md shadow-black/20"
-              />
-              <div className={`min-w-0 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
-                <h1 className="truncate text-[17px] font-semibold leading-tight tracking-tight">T24 Marketing</h1>
-                <p className="mt-1 truncate text-[11px] tracking-[0.08em] text-slate-400">BUSINESS OPERATING SYSTEM</p>
-              </div>
-            </Link>
-            <button className="lg:hidden text-slate-400 hover:text-white" onClick={() => setSidebarOpen(false)}>
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          {employee && (
-            <p className={`mt-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>{employee.name} · {displayRole}</p>
-          )}
-        </div>
-
-        <nav className="app-sidebar-nav flex-1 overflow-y-auto px-3 py-3">
-          <div className={`px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>
-            业务中心
-          </div>
-          <div className="space-y-1.5">
-            {visibleNavSections.map((section) => {
-              const SectionIcon = section.icon;
-              const primaryItem = section.items[0];
-              const childItems = section.items.slice(1);
-              const isSectionActive = section.paths.includes(currentPath);
-              const isExpanded = expandedSection === section.label;
-              return (
-                <div key={section.label} className="space-y-1">
-                  <div className={`group flex items-center rounded-lg ${isSectionActive ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'}`}>
-                    <Link
-                      to={primaryItem.path}
-                      onClick={() => {
-                        setExpandedSection(section.label);
-                        setSidebarOpen(false);
-                      }}
-                      title={sidebarCollapsed ? section.label : undefined}
-                      className={`app-nav-item relative flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${
-                        currentPath === primaryItem.path
-                          ? 'app-nav-item-active text-white'
-                          : isSectionActive ? 'text-white' : 'text-slate-300 hover:text-white'
-                      } ${sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:px-2' : ''}`}
-                    >
-                      <SectionIcon className="h-4 w-4 flex-shrink-0" />
-                      <span className={`truncate font-medium ${sidebarCollapsed ? 'lg:hidden' : ''}`}>{section.label}</span>
-                    </Link>
-                    {childItems.length > 0 && !sidebarCollapsed && (
-                      <button
-                        type="button"
-                        onClick={() => setExpandedSection(value => value === section.label ? null : section.label)}
-                        className="mr-1 block rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white"
-                        aria-label={`${isExpanded ? '收起' : '展开'}${section.label}`}
-                      >
-                        <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                      </button>
-                    )}
-                  </div>
-                  {childItems.length > 0 && isExpanded && (
-                    <div className={`space-y-0.5 border-l border-white/10 pl-3 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
-                      {childItems.map(item => {
-                        const isActive = currentPath === item.path;
-                        return (
-                          <Link
-                            key={item.path}
-                            to={item.path}
-                            onClick={() => setSidebarOpen(false)}
-                            className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] ${isActive ? 'bg-blue-500/20 font-medium text-blue-100' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}`}
-                          >
-                            <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
-                            <span>{item.label}</span>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {!sidebarCollapsed && (
-            <p className="mt-4 border-t border-white/[0.07] px-3 pt-3 text-[11px] leading-5 text-slate-500">
-              先进入业务中心，再按需展开明细。日常不需要遍历所有页面。
-            </p>
-          )}
-        </nav>
-
-        <div className="border-t border-white/10 p-3">
-          <button
-            type="button"
-            onClick={() => setSidebarCollapsed((value) => !value)}
-            className={`mb-1 hidden w-full items-center rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:bg-white/[0.07] hover:text-white lg:flex ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}
-            aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-            title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            <span className={sidebarCollapsed ? 'lg:hidden' : ''}>收起侧边栏</span>
-          </button>
-          <button
-            onClick={handleLogout}
-            className={`flex w-full items-center rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:bg-white/[0.07] hover:text-white ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}
-            title={sidebarCollapsed ? '退出登录' : undefined}
-          >
-            <LogOut className="w-4 h-4" />
-            <span className={sidebarCollapsed ? 'lg:hidden' : ''}>退出登录</span>
-          </button>
-        </div>
-      </aside>}
+      {!isAppLauncher && <DesktopBusinessNavigation
+        sections={visibleNavSections}
+        pathname={currentPath}
+        search={location.search}
+        homePath={homePath}
+        employeeName={employee?.name}
+        roleLabel={displayRole}
+        open={sidebarOpen}
+        collapsed={sidebarCollapsed}
+        onClose={() => setSidebarOpen(false)}
+        onCollapsedChange={setSidebarCollapsed}
+        onLogout={handleLogout}
+      />}
 
       {/* Main content */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -377,13 +269,13 @@ export default function Layout({ children }: LayoutProps) {
           <button className="hidden text-slate-600 hover:text-slate-800 md:block lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="打开业务导航">
             <Menu className="w-5 h-5" />
           </button>
-          <div className="hidden items-center gap-3 lg:flex">
-            <span className="h-6 w-1 rounded-full bg-blue-600" />
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">T24 Marketing</p>
-              <p className="text-sm font-semibold text-slate-800">{currentPageLabel}</p>
-            </div>
-          </div>
+          <nav aria-label="当前位置" className="hidden min-w-0 items-center gap-2 text-sm lg:flex">
+            {activeNavSection && <>
+              <span className="shrink-0 text-slate-400">{activeNavSection.label}</span>
+              <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+            </>}
+            <span className="truncate font-semibold text-slate-800">{desktopPageLabel || currentPageLabel}</span>
+          </nav>
           <div className="flex items-center gap-2">
             <MobileModuleMenu currentPath={currentPath} />
             <button
