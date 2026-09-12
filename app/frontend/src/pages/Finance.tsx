@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import {
   Plus, DollarSign, AlertTriangle, Clock, TrendingUp, TrendingDown,
   Edit, Trash2, CalendarDays, Filter, Receipt, Building2, Users, PieChartIcon,
-  ArrowUpRight, ArrowDownRight, ArrowRightLeft, Wallet, CheckCircle2
+  ArrowUpRight, ArrowDownRight, ArrowRightLeft, Wallet, CheckCircle2, Search, X, ChevronDown
 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import {
@@ -48,6 +48,7 @@ import {
   getSubscriptionRemainingDays,
 } from '../lib/subscription-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
+import { useSessionViewState } from '@/hooks/use-session-view-state';
 
 // ─── Constants ───────────────────────────────────────────────────────
 const defaultIncomeTypeLabels: Record<string, string> = {
@@ -133,6 +134,22 @@ const defaultFinancePages: Record<FinancePageKey, number> = {
   company_expense: 1,
   subscriptions: 1,
   monthly_detail: 1,
+};
+const financeViewDefaults = {
+  dateFilterMode: 'this_month' as DateFilterMode,
+  filterStartDate: '', filterEndDate: '',
+  expenseMonth: '', companyExpenseMonth: '',
+  companyExpenseCurrencyFilter: 'all' as 'all' | CurrencyCode,
+  financeIssueFilter: '',
+  pageSize: 20,
+  financePages: { ...defaultFinancePages },
+  subscriptionGroupKey: '' as SubscriptionGroupKey | '',
+  incomeSearch: '', subscriptionSearch: '',
+};
+const matchesFinanceSearch = (query: string, values: unknown[]) => {
+  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const text = values.filter(value => value != null).join(' ').toLocaleLowerCase();
+  return words.every(word => text.includes(word));
 };
 const financeIssueCopy: Record<string, { label: string; description: string }> = {
   missingPaymentDate: { label: '收款缺日期', description: '这些收款没有收款日期，会影响收入归属月份。' },
@@ -596,6 +613,23 @@ export default function Finance() {
   const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin, hasPermission, employee } = useRole();
+  const workspaceKey = `t24:finance-view:v1:${employee?.id ?? 'guest'}:${isMobile ? 'mobile' : 'desktop'}`;
+  const [viewState, setViewField] = useSessionViewState(workspaceKey, financeViewDefaults);
+  const { dateFilterMode, filterStartDate, filterEndDate, expenseMonth, companyExpenseMonth,
+    companyExpenseCurrencyFilter, financeIssueFilter, pageSize, financePages,
+    subscriptionGroupKey, incomeSearch, subscriptionSearch } = viewState;
+  const setDateFilterMode = (value: DateFilterMode) => setViewField('dateFilterMode', value);
+  const setFilterStartDate = (value: string) => setViewField('filterStartDate', value);
+  const setFilterEndDate = (value: string) => setViewField('filterEndDate', value);
+  const setExpenseMonth = (value: string) => setViewField('expenseMonth', value);
+  const setCompanyExpenseMonth = (value: string) => setViewField('companyExpenseMonth', value);
+  const setCompanyExpenseCurrencyFilter = (value: 'all' | CurrencyCode) => setViewField('companyExpenseCurrencyFilter', value);
+  const setFinanceIssueFilter = (value: string | null) => setViewField('financeIssueFilter', value || '');
+  const setPageSize = (value: number) => setViewField('pageSize', value);
+  const setFinancePages = (value: React.SetStateAction<Record<FinancePageKey, number>>) => setViewField('financePages', value);
+  const setSubscriptionGroupKey = (value: SubscriptionGroupKey) => setViewField('subscriptionGroupKey', value);
+  const setIncomeSearch = (value: string) => setViewField('incomeSearch', value);
+  const setSubscriptionSearch = (value: string) => setViewField('subscriptionSearch', value);
   const dictConfig = useDictConfig();
   const {
     paymentModes: payModeLabels,
@@ -646,6 +680,7 @@ export default function Finance() {
   const [activeFinanceTab, setActiveFinanceTab] = useState(() => (
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'overview' : normalizeFinanceTab(searchParams.get('tab'))
   ));
+  const [snapshotExpanded, setSnapshotExpanded] = useState(activeFinanceTab === 'overview');
   const [mobileFinanceView, setMobileFinanceView] = useState<'overview' | 'ledger' | 'receivables'>('overview');
   const [exporting, setExporting] = useState(false);
   const blockMobileFinanceMutation = (allowCreate = false) => {
@@ -793,7 +828,6 @@ export default function Finance() {
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
   const [savingExpense, setSavingExpense] = useState(false);
-  const [expenseMonth, setExpenseMonth] = useState('');
   const emptyExpenseForm = { customer_id: '', expense_type: defaultCustomerExpenseType, currency: 'USD' as CurrencyCode, amount: '', expense_month: getTodayDateInput().slice(0, 7), notes: '' };
   const [expenseForm, setExpenseForm] = useState(emptyExpenseForm);
   const [showCustomerExpenseTypeManager, setShowCustomerExpenseTypeManager] = useState(false);
@@ -805,10 +839,8 @@ export default function Finance() {
   const [showCompanyExpenseForm, setShowCompanyExpenseForm] = useState(false);
   const [editingCompanyExpenseId, setEditingCompanyExpenseId] = useState<number | null>(null);
   const [savingCompanyExpense, setSavingCompanyExpense] = useState(false);
-  const [companyExpenseMonth, setCompanyExpenseMonth] = useState('');
   const emptyCompanyExpenseForm = { category: defaultCompanyExpenseType, currency: 'USD' as CurrencyCode, amount: '', expense_month: getTodayDateInput().slice(0, 7), expense_date: '', notes: '' };
   const [companyExpenseForm, setCompanyExpenseForm] = useState(emptyCompanyExpenseForm);
-  const [companyExpenseCurrencyFilter, setCompanyExpenseCurrencyFilter] = useState<'all' | CurrencyCode>('all');
   const [showCompanyExpenseTypeManager, setShowCompanyExpenseTypeManager] = useState(false);
   const [newCompanyExpenseTypeName, setNewCompanyExpenseTypeName] = useState('');
   const [companyExpenseTypeDrafts, setCompanyExpenseTypeDrafts] = useState<Array<{ key: string; label: string }>>([]);
@@ -828,19 +860,12 @@ export default function Finance() {
   const [subscriptionChangeEffectiveDate, setSubscriptionChangeEffectiveDate] = useState(getTodayDateInput());
   const [subscriptionChangeReason, setSubscriptionChangeReason] = useState('');
   const [changingSubscriptionPackage, setChangingSubscriptionPackage] = useState(false);
-  const [subscriptionGroupKey, setSubscriptionGroupKey] = useState<SubscriptionGroupKey>('pending');
   const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<any>(null);
   const [deletingExpense, setDeletingExpense] = useState(false);
   const [deleteCompanyExpenseTarget, setDeleteCompanyExpenseTarget] = useState<any>(null);
   const [deletingCompanyExpense, setDeletingCompanyExpense] = useState(false);
 
   // Date filter
-  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('this_month');
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
-  const [financeIssueFilter, setFinanceIssueFilter] = useState<string | null>(null);
-  const [pageSize, setPageSize] = useState(20);
-  const [financePages, setFinancePages] = useState<Record<FinancePageKey, number>>({ ...defaultFinancePages });
   const [dateAnchor, setDateAnchor] = useState(() => new Date());
   const activeDateRange = useMemo(
     () => getDateFilterRange(dateFilterMode, filterStartDate, filterEndDate, dateAnchor),
@@ -899,9 +924,15 @@ export default function Finance() {
     return Boolean(month && closedFinanceMonths.has(month));
   };
 
+  // Restoring a workspace must not immediately reset its remembered page.
+  const pageFilterKey = JSON.stringify([dateFilterMode, filterStartDate, filterEndDate, expenseMonth, companyExpenseMonth, companyExpenseCurrencyFilter, pageSize, financeIssueFilter]);
+  const previousPageFilterKey = useRef({ workspaceKey, value: pageFilterKey });
   useEffect(() => {
+    const previous = previousPageFilterKey.current;
+    previousPageFilterKey.current = { workspaceKey, value: pageFilterKey };
+    if (previous.workspaceKey !== workspaceKey || previous.value === pageFilterKey) return;
     setFinancePages({ ...defaultFinancePages });
-  }, [dateFilterMode, filterStartDate, filterEndDate, expenseMonth, companyExpenseMonth, companyExpenseCurrencyFilter, pageSize, financeIssueFilter]);
+  }, [pageFilterKey, workspaceKey]);
 
   // ─── Load Data (all finance sources must agree before display) ─────
 
@@ -1514,9 +1545,16 @@ export default function Finance() {
     () => (activeDateRange ? commissionEntries.filter(entry => isMonthInRange(entry.service_month, activeDateRange)) : commissionEntries),
     [activeDateRange, commissionEntries],
   );
+  // Search narrows the displayed ledger only; reporting and accounting inputs stay intact.
+  const visiblePayments = useMemo(() => filteredPayments.filter(payment => {
+    const customer = customers.find(item => Number(item.id) === Number(payment.customer_id));
+    return matchesFinanceSearch(incomeSearch, [payment.customer_name, customer?.business_name,
+      customer?.customer_code, payment.product_name, payment.transaction_reference,
+      payment.payment_date, payMethodLabels[payment.payment_method]]);
+  }), [filteredPayments, customers, incomeSearch, payMethodLabels]);
   const paginatedPayments = useMemo(
-    () => paginateList(filteredPayments, financePages.income, pageSize),
-    [filteredPayments, financePages.income, pageSize],
+    () => paginateList(visiblePayments, financePages.income, pageSize),
+    [visiblePayments, financePages.income, pageSize],
   );
   const paginatedExpenses = useMemo(
     () => paginateList(filteredExpenses, financePages.customer_expense, pageSize),
@@ -2558,12 +2596,17 @@ export default function Finance() {
     }));
   }, [filteredSubscriptions]);
   const activeSubscriptionWorkbenchGroup = useMemo(
-    () => subscriptionWorkbenchGroups.find(group => group.key === subscriptionGroupKey) || subscriptionWorkbenchGroups[0],
+    () => subscriptionWorkbenchGroups.find(group => group.key === subscriptionGroupKey) || subscriptionWorkbenchGroups.find(group => group.rows.length > 0) || subscriptionWorkbenchGroups[0],
     [subscriptionGroupKey, subscriptionWorkbenchGroups],
   );
+  const visibleSubscriptions = useMemo(() => (activeSubscriptionWorkbenchGroup?.rows || []).filter(subscription => {
+    const customer = customerMap[subscription.customer_id];
+    return matchesFinanceSearch(subscriptionSearch, [subscription.customer_name, customer?.business_name,
+      customer?.customer_code, subscription.package_name, subscription.renewal_person]);
+  }), [activeSubscriptionWorkbenchGroup, customerMap, subscriptionSearch]);
   const paginatedActiveSubscriptions = useMemo(
-    () => paginateList(activeSubscriptionWorkbenchGroup?.rows || [], financePages.subscriptions, pageSize),
-    [activeSubscriptionWorkbenchGroup, financePages.subscriptions, pageSize],
+    () => paginateList(visibleSubscriptions, financePages.subscriptions, pageSize),
+    [visibleSubscriptions, financePages.subscriptions, pageSize],
   );
   const subscriptionChangeReplacementOptions = useMemo(() => {
     if (!subscriptionChangeTarget) return [];
@@ -2577,9 +2620,18 @@ export default function Finance() {
       .sort((a, b) => String(b.end_date || '').localeCompare(String(a.end_date || '')));
   }, [subscriptionChangeTarget, subscriptions]);
 
+  const listFilterKey = JSON.stringify([subscriptionGroupKey, subscriptionSearch, incomeSearch]);
+  const previousListFilterKey = useRef({ workspaceKey, value: listFilterKey });
   useEffect(() => {
-    setFinancePages(prev => ({ ...prev, subscriptions: 1 }));
-  }, [subscriptionGroupKey]);
+    const previous = previousListFilterKey.current;
+    previousListFilterKey.current = { workspaceKey, value: listFilterKey };
+    if (previous.workspaceKey !== workspaceKey || previous.value === listFilterKey) return;
+    const [oldGroup, oldSubscriptionSearch, oldIncomeSearch] = JSON.parse(previous.value);
+    setFinancePages(prev => ({ ...prev,
+      subscriptions: oldGroup !== subscriptionGroupKey || oldSubscriptionSearch !== subscriptionSearch ? 1 : prev.subscriptions,
+      income: oldIncomeSearch !== incomeSearch ? 1 : prev.income,
+    }));
+  }, [listFilterKey, workspaceKey]);
 
   const paginatedCustomerProfitRows = useMemo(
     () => paginateList(customerProfitRows, financePages.customer_profit, pageSize),
@@ -2593,6 +2645,7 @@ export default function Finance() {
   useEffect(() => {
     setActiveFinanceTab(isMobile ? 'overview' : normalizeFinanceTab(searchParams.get('tab')));
   }, [isMobile, searchParams]);
+  useEffect(() => { setSnapshotExpanded(activeFinanceTab === 'overview'); }, [activeFinanceTab]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -3681,18 +3734,19 @@ export default function Finance() {
   };
 
   // ─── Date Filter Component ──────────────────────────────────────
-  const DateFilterBar = () => (
+  const dateFilterBar = (
     <Card className="border-slate-200">
       <CardContent className="p-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <div className="flex items-center gap-1.5 text-sm text-slate-600">
             <Filter className="w-4 h-4" />
-            <span className="font-medium">时间筛选：</span>
+            <span className="font-medium">账目时间：</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {(['all', 'today', 'this_month', 'last_month', 'custom'] as DateFilterMode[]).map(mode => (
               <Button key={mode} size="sm"
                 variant={dateFilterMode === mode ? 'default' : 'outline'}
+                aria-pressed={dateFilterMode === mode}
                 className={dateFilterMode === mode ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
                 onClick={() => { setDateFilterMode(mode); if (mode !== 'custom') { setFilterStartDate(''); setFilterEndDate(''); } }}
               >
@@ -3705,9 +3759,9 @@ export default function Finance() {
             ))}
             {dateFilterMode === 'custom' && (
               <div className="flex items-center gap-2">
-                <Input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="h-8 w-36 text-sm" />
+                <Input aria-label="财务开始日期" type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="h-8 w-36 text-sm" />
                 <span className="text-slate-400 text-sm">至</span>
-                <Input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="h-8 w-36 text-sm" />
+                <Input aria-label="财务结束日期" type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="h-8 w-36 text-sm" />
                 {(filterStartDate || filterEndDate) && (
                   <Button size="sm" variant="ghost" className="h-8 text-xs text-slate-500" onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }}>清除</Button>
                 )}
@@ -3715,6 +3769,10 @@ export default function Finance() {
             )}
           </div>
         </div>
+        <p className="mt-2 text-xs text-slate-500" role="status">
+          {activeDateRange ? `当前账目：${activeDateRange.start || '不限开始日期'} 至 ${activeDateRange.end || '不限结束日期'}` : '当前账目：全部时间'}
+          {activeFinanceTab === 'subscriptions' ? ' · 下方续费按当前状态分组，不受账目时间限制' : ' · 查看客户后返回，保留当前筛选与页码'}
+        </p>
       </CardContent>
     </Card>
   );
@@ -3827,7 +3885,7 @@ export default function Finance() {
     return rows.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }, [activeCustomerExpenses, companyExpenseTypeLabels, customerExpenseTypeLabels, customerMap, filteredCompanyExpenses, filteredPayments, incomeTypeLabels, payMethodLabels]);
 
-  const openMobilePaymentForm = () => {
+  const openPaymentForm = () => {
     if (!canCreatePayment) { toast.error('你没有新增收款权限'); return; }
     setEditingPayId(null);
     setPayForm({ ...emptyPayForm, payment_method: defaultManualPaymentMethod });
@@ -3927,7 +3985,7 @@ export default function Finance() {
             <div className="mt-4 grid grid-cols-3 gap-2.5">
               <button
                 type="button"
-                onClick={openMobilePaymentForm}
+                onClick={openPaymentForm}
                 disabled={mobileEntryDisabled || !canCreatePayment}
                 className="flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl bg-blue-600 px-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
               >
@@ -4166,7 +4224,7 @@ export default function Finance() {
 
       </div>
 
-      <DateFilterBar />
+      {dateFilterBar}
 
       {/* First-screen business snapshot */}
       <section aria-labelledby="finance-snapshot-title" className="t24-finance-snapshot space-y-3">
@@ -4176,11 +4234,12 @@ export default function Finance() {
             <p className="mt-0.5 text-xs text-slate-500">先判断利润与现金风险，再进入明细处理。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Button variant="ghost" size="sm" aria-expanded={snapshotExpanded} aria-controls="finance-snapshot-cards" onClick={() => setSnapshotExpanded(value => !value)}>{snapshotExpanded ? '收起经营快照' : '展开经营快照'}<ChevronDown className={`ml-1 h-4 w-4 ${snapshotExpanded ? 'rotate-180' : ''}`} /></Button>
             <span className={auditedSummary ? 'rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700' : 'rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'}>
               {summaryProfitBasisLabel}
             </span>
             <span className={closedFinanceMonths.has(currentMonthKey) ? 'rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700' : 'rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'}>
-              {currentMonthKey} · {closedFinanceMonths.has(currentMonthKey) ? '已关账' : '未关账'}
+              本月关账 {currentMonthKey} · {closedFinanceMonths.has(currentMonthKey) ? '已关账' : '未关账'}
             </span>
             <button type="button" onClick={() => handleFinanceTabChange('monthly_detail')} className="hidden font-medium text-blue-600 hover:underline md:inline">
               查看月度明细
@@ -4188,7 +4247,7 @@ export default function Finance() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+        <div id="finance-snapshot-cards" className={snapshotExpanded ? "grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6" : "hidden"}>
           <Card className="border-emerald-100 bg-gradient-to-br from-emerald-50/90 to-white shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-3">
@@ -4732,17 +4791,27 @@ export default function Finance() {
         {/* ── Income Tab ── */}
         <TabsContent value="income">
           <Card className="border-slate-200">
+            <CardHeader className="gap-3 border-b border-slate-100 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><CardTitle className="text-base">收款账本</CardTitle><p className="mt-1 text-xs text-slate-500">按客户、产品、日期或交易参考号查找收款</p></div>
+                {canCreatePayment && <Button onClick={openPaymentForm} className="bg-blue-600 hover:bg-blue-700"><Plus className="mr-1.5 h-4 w-4" />录入收款</Button>}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative w-full max-w-lg"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><Input aria-label="搜索收款记录" placeholder="搜索客户、产品、日期、交易参考号…" value={incomeSearch} onChange={event => setIncomeSearch(event.target.value)} className="pl-9 pr-10" />{incomeSearch && <Button size="icon" variant="ghost" aria-label="清除收款搜索" className="absolute right-1 top-1 h-8 w-8" onClick={() => setIncomeSearch('')}><X className="h-4 w-4" /></Button>}</div>
+                <p role="status" className="text-xs text-slate-500">显示 {visiblePayments.length} / {filteredPayments.length} 笔 · 搜索仅筛选此账本</p>
+              </div>
+            </CardHeader>
             <CardContent className="p-0">
               {loading ? (
                 <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
-              ) : filteredPayments.length === 0 ? (
-                <p className="text-center text-slate-400 py-12">{dateFilterMode !== 'all' ? '该时间段内暂无收款记录' : '暂无收款记录，点击右上角「录入收款」开始添加'}</p>
+              ) : visiblePayments.length === 0 ? (
+                <div className="py-10 text-center"><p className="text-sm text-slate-500">{incomeSearch.trim() ? '当前账目范围内没有匹配的收款' : '当前账目范围内暂无收款记录'}</p><div className="mt-3 flex justify-center gap-2">{incomeSearch && <Button size="sm" variant="outline" onClick={() => setIncomeSearch('')}>清除搜索</Button>}{dateFilterMode !== 'all' && <Button size="sm" variant="outline" onClick={() => setDateFilterMode('all')}>查看全部时间</Button>}</div></div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
+                <div className="max-h-[65vh] overflow-auto">
+                  <table className="w-full min-w-[1100px] whitespace-nowrap text-sm tabular-nums">
+                    <thead className="sticky top-0 z-20 bg-slate-50">
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
-                        <th className="px-3 py-2.5 font-medium">客户</th>
+                        <th className="sticky left-0 z-30 min-w-[180px] bg-slate-50 px-3 py-2.5 font-medium">客户</th>
                         <th className="px-3 py-2.5 font-medium">收入类型</th>
                         <th className="px-3 py-2.5 font-medium">产品</th>
                         <th className="px-3 py-2.5 font-medium">应收</th>
@@ -4766,7 +4835,7 @@ export default function Finance() {
                         const refundedAmount = roundMoney(paymentRefunds.reduce((sum: number, item: any) => sum + toMoneyNumber(item.refund_amount), 0));
                         return (
                         <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50">
-                          <td className="px-3 py-2.5 font-medium">
+                          <td className="sticky left-0 z-10 bg-white px-3 py-2.5 font-medium">
                             <Button
                               type="button"
                               variant="link"
@@ -4811,8 +4880,8 @@ export default function Finance() {
                           <td className="px-3 py-2.5">
                             <div className="flex gap-1">
                               <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-amber-600 hover:text-amber-700" onClick={() => openRefundPayment(p)}>退款</Button>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => openEditPayment(p)}><Edit className="w-3.5 h-3.5" /></Button>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'payment', item: p })}><Trash2 className="w-3.5 h-3.5" /></Button>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" aria-label={`编辑收款：${p.customer_name || customerMap[p.customer_id]?.business_name || '未关联客户'} ${p.payment_date?.slice(0, 10) || ''}`} title="编辑收款" onClick={() => openEditPayment(p)}><Edit className="w-3.5 h-3.5" /></Button>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" aria-label={`删除收款：${p.customer_name || customerMap[p.customer_id]?.business_name || '未关联客户'} ${p.payment_date?.slice(0, 10) || ''}`} title="删除收款" onClick={() => setDeleteTarget({ type: 'payment', item: p })}><Trash2 className="w-3.5 h-3.5" /></Button>
                             </div>
                           </td>
                         </tr>
@@ -4821,7 +4890,7 @@ export default function Finance() {
                   </table>
                 </div>
               )}
-              {filteredPayments.length > 0 && <PaginationFooter pageKey="income" data={paginatedPayments} />}
+              {visiblePayments.length > 0 && <PaginationFooter pageKey="income" data={paginatedPayments} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -5186,7 +5255,7 @@ export default function Finance() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-3 xl:min-w-[610px] xl:grid-cols-5">
                     {subscriptionWorkbenchGroups.map(group => {
-                      const isSelected = subscriptionGroupKey === group.key;
+                      const isSelected = activeSubscriptionWorkbenchGroup?.key === group.key;
                       const label = group.key === 'pending'
                         ? '1 · 待确认'
                         : group.key === 'risk'
@@ -5222,7 +5291,7 @@ export default function Finance() {
             {filteredSubscriptions.length === 0 ? (
               <Card className="border-slate-200">
                 <CardContent className="py-12">
-                  <p className="text-center text-slate-400">{dateFilterMode !== 'all' ? '该时间段内暂无套餐信息' : '暂无套餐信息'}</p>
+                  <p className="text-center text-slate-400">{financeIssueFilter ? '当前体检条件下暂无套餐信息' : '暂无套餐信息'}</p>
                 </CardContent>
               </Card>
             ) : (
@@ -5272,8 +5341,12 @@ export default function Finance() {
                         </div>
                       </CardHeader>
                       <CardContent>
-                        {group.rows.length === 0 ? (
-                          <p className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-5 text-center text-sm text-slate-400">暂无需要处理的套餐</p>
+                        <div className="mb-4 flex flex-wrap items-center gap-3">
+                          <div className="relative w-full max-w-lg"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><Input aria-label="搜索当前续费分组" placeholder="在当前分组搜索客户、套餐、负责人…" value={subscriptionSearch} onChange={event => setSubscriptionSearch(event.target.value)} className="bg-white pl-9 pr-10" />{subscriptionSearch && <Button size="icon" variant="ghost" aria-label="清除续费搜索" className="absolute right-1 top-1 h-8 w-8" onClick={() => setSubscriptionSearch('')}><X className="h-4 w-4" /></Button>}</div>
+                          <p role="status" className="text-xs text-slate-500">显示 {visibleSubscriptions.length} / {group.rows.length} 个 · 金额为分组总额</p>
+                        </div>
+                        {visibleSubscriptions.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-5 text-center text-sm text-slate-500"><p>{subscriptionSearch.trim() ? '当前分组没有匹配的套餐，可清除搜索或切换分组' : `「${group.title}」当前没有套餐`}</p>{subscriptionSearch && <Button className="mt-3" size="sm" variant="outline" onClick={() => setSubscriptionSearch('')}>清除搜索</Button>}{!subscriptionSearch.trim() && subscriptionWorkbenchGroups.some(item => ['pending', 'risk'].includes(item.key) && item.key !== group.key && item.rows.length > 0) && <Button className="mt-3" size="sm" variant="outline" onClick={() => setSubscriptionGroupKey(subscriptionWorkbenchGroups.find(item => ['pending', 'risk'].includes(item.key) && item.key !== group.key && item.rows.length > 0)!.key)}>查看其他待处理套餐</Button>}</div>
                         ) : (
                           <div className="grid gap-3 lg:grid-cols-2">
                             {paginatedActiveSubscriptions.items.map((s: any) => {
