@@ -26,6 +26,7 @@ import {
 import ExportButton from '@/components/ExportButton';
 import { exportProfitMonthlyCsv, exportProfitMonthlyXlsx } from '../lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import FinanceOwnerOverview from '@/components/FinanceOwnerOverview';
 import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { loadRemoteAppConfig, saveRemoteAppConfig } from '../lib/app-config';
@@ -3734,7 +3735,7 @@ export default function Finance() {
 
   // ─── Date Filter Component ──────────────────────────────────────
   const dateFilterBar = (
-    <Card className="border-slate-200">
+    <Card className={`border-slate-200 ${activeFinanceTab === 'overview' ? 'finance-owner-date-filter' : ''}`}>
       <CardContent className="p-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <div className="flex items-center gap-1.5 text-sm text-slate-600">
@@ -3858,7 +3859,7 @@ export default function Finance() {
       id: `payment-${payment.id}`,
       kind: 'income',
       title: payment.customer_name || customerMap[payment.customer_id]?.business_name || '未关联客户',
-      subtitle: `${incomeTypeLabels[getPaymentDisplayIncomeType(payment)] || '收款'} · ${getPaymentMethodLabel(normalizePaymentMethodKey(payment.payment_method), payMethodLabels)}`,
+      subtitle: `${incomeTypeLabels[getPaymentDisplayIncomeType(payment)] || '收款'} · ${getPaymentMethodLabel(payment, payMethodLabels)}`,
       amount: toMoneyNumber(payment.amount_paid),
       currency: normalizeCurrency(payment.currency, 'USD'),
       date: payment.payment_date?.slice(0, 10) || payment.created_at?.slice(0, 10) || '',
@@ -4159,19 +4160,19 @@ export default function Finance() {
   }
 
   return (
-    <div className="t24-command-page t24-finance-page app-page space-y-5">
+    <div className={`t24-command-page t24-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
       {/* Header */}
       <div className="app-page-title flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="mt-1 hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-600 to-cyan-400 sm:block" />
+          {activeFinanceTab !== 'overview' && <div className="mt-1 hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-600 to-cyan-400 sm:block" />}
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Finance</p>
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">T24 Marketing · Finance</p>
             <h2 className="mt-1 text-2xl font-bold text-slate-900">{getFinanceNavigationItem(activeFinanceTab).label}</h2>
-            <p className="mt-1 text-sm text-slate-500">{getFinanceNavigationItem(activeFinanceTab).description}</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+            <p className="mt-1 text-sm text-slate-500">{activeFinanceTab === 'overview' ? '经营结果一目了然，重要事项及时处理。' : getFinanceNavigationItem(activeFinanceTab).description}</p>
+            {activeFinanceTab !== 'overview' && <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
               <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">老板视角</span>
               <span>收款与退款按实际资金日期归属月份</span>
-            </div>
+            </div>}
           </div>
         </div>
         {!isMobile && <div className="ml-auto flex flex-wrap gap-2">
@@ -4195,38 +4196,12 @@ export default function Finance() {
           </div>
         )}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
       </div>
 
       {dateFilterBar}
 
-      {/* First-screen business snapshot */}
-      <section aria-labelledby="finance-snapshot-title" className="t24-finance-snapshot space-y-3">
+      {/* Compact snapshot remains available in the detailed ledgers. */}
+      {activeFinanceTab !== 'overview' && <section aria-labelledby="finance-snapshot-title" className="t24-finance-snapshot space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <h3 id="finance-snapshot-title" className="text-sm font-semibold text-slate-900">经营快照</h3>
@@ -4313,7 +4288,7 @@ export default function Finance() {
             </CardContent>
           </Card>
         </div>
-      </section>
+      </section>}
 
       {/* Main Tabs */}
       <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900 md:hidden">
@@ -4353,7 +4328,7 @@ export default function Finance() {
           </div>
         </div>
 
-        {financeIssueFilter && (
+        {financeIssueFilter && activeFinanceTab !== 'overview' && (
           <div className="mt-3 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <span className="font-semibold">正在查看：{financeIssueCopy[financeIssueFilter]?.label || '异常数据'}</span>
@@ -4371,272 +4346,48 @@ export default function Finance() {
           </div>
         )}
 
-        <TabsContent value="overview">
-          <div className="space-y-4">
-            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-              <Card className="overflow-hidden border-slate-900 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
-                <CardContent className="p-5">
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-[0.2em] text-blue-200">老板驾驶舱</p>
-                      <h3 className="mt-2 text-2xl font-bold">{summaryPeriodLabel}经营结果</h3>
-                      <p className="mt-2 max-w-xl text-sm text-blue-100">
-                        先看利润和现金风险，再处理扣款、欠款、数据异常。利润、收入、扣点和成本统一按当前口径显示：{summaryProfitBasisLabel}。
-                      </p>
-                    </div>
-                    <div className="rounded-2xl bg-white/10 px-4 py-3 text-right backdrop-blur">
-                      <p className="text-xs text-blue-100">经营利润 USD</p>
-                      <p className={`mt-1 text-3xl font-bold ${summaryProfitUsd >= 0 ? 'text-emerald-200' : 'text-red-200'}`}>{fmt(summaryProfitUsd)}</p>
-                      <p className="mt-1 text-xs text-blue-100">利润率 {(summaryProfitRate * 100).toFixed(1)}% · {summaryProfitBasisLabel}</p>
-                    </div>
-                  </div>
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-2xl bg-white/10 p-4">
-                      <p className="text-xs text-blue-100">净实收现金 USD</p>
-                      <p className="mt-2 text-2xl font-bold text-emerald-200">{fmt(summaryNetReceiptsUsd)}</p>
-                      <p className="mt-1 text-xs text-blue-100">总收款 {fmt(summaryGrossReceiptsUsd)} · 退款 {fmt(summaryRefundsUsd)}</p>
-                    </div>
-                    <div className="rounded-2xl bg-white/10 p-4">
-                      <p className="text-xs text-blue-100">应收未收</p>
-                      <p className="mt-2 text-2xl font-bold text-red-200">{fmt(ownerOverview.outstanding)}</p>
-                      <p className="mt-1 text-xs text-blue-100">{ownerOverview.receivableCount} 笔需要跟进</p>
-                    </div>
-                    <div className="rounded-2xl bg-white/10 p-4">
-                      <p className="text-xs text-blue-100">扣点 / Stripe</p>
-                      <p className="mt-2 text-2xl font-bold text-violet-200">{fmt(summaryDeductionUsd + summaryStripePlatformFeeUsd)}</p>
-                      <p className="mt-1 text-xs text-blue-100">扣点 {fmt(summaryDeductionUsd)} · Stripe {fmt(summaryStripePlatformFeeUsd)}</p>
-                    </div>
-                    <div className="rounded-2xl bg-white/10 p-4">
-                      <p className="text-xs text-blue-100">30天续费预测</p>
-                      <p className="mt-2 text-2xl font-bold text-cyan-200">{fmt(renewalForecast.d30.amount)}</p>
-                      <p className="mt-1 text-xs text-blue-100">{renewalForecast.d30.count} 个套餐</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-slate-200">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">待处理事项</CardTitle>
-                  <p className="text-xs text-slate-500">按紧急程度处理，减少漏扣款、漏收款和错账。</p>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <button type="button" onClick={() => handleFinanceTabChange('subscriptions')} className="flex w-full items-center justify-between rounded-xl border border-cyan-100 bg-cyan-50 px-4 py-3 text-left hover:bg-cyan-100/70">
-                    <div>
-                      <p className="font-semibold text-cyan-800">确认订阅扣款</p>
-                      <p className="mt-1 text-xs text-cyan-700">到计划扣款日后确认实际入账日期</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-cyan-800">{renewalPendingSubs}</p>
-                      <p className="text-xs text-cyan-700">{fmt(renewalPendingAmount)}</p>
-                    </div>
-                  </button>
-                  <button type="button" onClick={() => handleFinanceTabChange('receivables')} className="flex w-full items-center justify-between rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-left hover:bg-red-100/70">
-                    <div>
-                      <p className="font-semibold text-red-800">跟进应收欠款</p>
-                      <p className="mt-1 text-xs text-red-700">应收大于实收，需要尽快处理</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-red-800">{ownerOverview.receivableCount}</p>
-                      <p className="text-xs text-red-700">{fmt(ownerOverview.outstanding)}</p>
-                    </div>
-                  </button>
-                  <button type="button" onClick={() => handleFinanceTabChange('subscriptions')} className="flex w-full items-center justify-between rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-left hover:bg-amber-100/70">
-                    <div>
-                      <p className="font-semibold text-amber-800">7天内续费风险</p>
-                      <p className="mt-1 text-xs text-amber-700">提前确认续费、停止合作或手动收款</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-amber-800">{renewalForecast.d7.count}</p>
-                      <p className="text-xs text-amber-700">{fmt(renewalForecast.d7.amount)}</p>
-                    </div>
-                  </button>
-                  <button type="button" onClick={() => financeHealthIssueCount > 0 && handleFinanceIssueClick(financeHealthItems.find(item => item.count > 0)?.key || 'splitMismatch', financeHealthItems.find(item => item.count > 0)?.tab || 'income', financeHealthIssueCount)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50">
-                    <div>
-                      <p className="font-semibold text-slate-800">数据体检异常</p>
-                      <p className="mt-1 text-xs text-slate-500">缺日期、拆分异常、客户关联异常会影响利润</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={financeHealthIssueCount > 0 ? 'text-lg font-bold text-amber-700' : 'text-lg font-bold text-emerald-700'}>{financeHealthIssueCount}</p>
-                      <p className="text-xs text-slate-400">{financeHealthIssueCount > 0 ? '点击核对' : '正常'}</p>
-                    </div>
-                  </button>
-                  <button type="button" onClick={() => handleFinanceTabChange('customer_profit')} className="flex w-full items-center justify-between rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 text-left hover:bg-orange-100/70">
-                    <div>
-                      <p className="font-semibold text-orange-800">客户利润预警</p>
-                      <p className="mt-1 text-xs text-orange-700">亏损或利润率低于 {(CUSTOMER_PROFIT_WARNING_RATE * 100).toFixed(0)}% 的客户</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={profitWarningRows.length > 0 ? 'text-lg font-bold text-orange-800' : 'text-lg font-bold text-emerald-700'}>{profitWarningRows.length}</p>
-                      <p className="text-xs text-orange-700">{profitWarningRows.length > 0 ? '点击复盘' : '正常'}</p>
-                    </div>
-                  </button>
-                </CardContent>
-              </Card>
-            </div>
-
-            {financeHealthIssueCount > 0 && (
-              <Card className="border-amber-200 bg-amber-50/70 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-amber-600">
-                        <AlertTriangle className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-amber-950">数据体检发现 {financeHealthIssueCount} 个问题</p>
-                        <p className="mt-1 text-xs text-amber-800">这些问题可能影响收入归属、客户利润或续费提醒，请优先核对。</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    {financeHealthItems.filter(item => item.count > 0).map(item => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => handleFinanceIssueClick(item.key, item.tab, item.count)}
-                        className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-left transition hover:bg-amber-50"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm font-semibold text-slate-800">{item.label}</span>
-                          <span className="text-lg font-bold text-amber-700">{item.count}</span>
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500">{item.help}</p>
-                      </button>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <Card className="border-slate-200"><CardContent className="p-4">
-                <p className="text-xs text-slate-500">Stripe 净手续费 USD</p>
-                <p className="mt-1 text-xl font-bold text-amber-600">{fmt(summaryStripePlatformFeeUsd)}</p>
-                <p className="mt-1 text-xs text-slate-400">已包含明确记录的手续费返还</p>
-              </CardContent></Card>
-              <Card className="border-slate-200"><CardContent className="p-4">
-                <p className="text-xs text-slate-500">渠道佣金 USD</p>
-                <p className="mt-1 text-xl font-bold text-red-600">{fmt(summaryChannelCommissionUsd)}</p>
-                <p className="mt-1 text-xs text-slate-400">已确认、待支付和已支付只计一次成本</p>
-              </CardContent></Card>
-              <Card className="border-slate-200"><CardContent className="p-4">
-                <p className="text-xs text-slate-500">活跃订阅</p>
-                <p className="mt-1 text-xl font-bold text-blue-600">{activeSubs}</p>
-                <p className="mt-1 text-xs text-slate-400">待确认 {renewalPendingSubs} · 到期风险 {expiringSubs.length}</p>
-              </CardContent></Card>
-              <Card className={closedFinanceMonths.has(currentMonthKey) ? 'border-emerald-100 bg-emerald-50' : 'border-amber-100 bg-amber-50'}>
-                <CardContent className="p-4">
-                  <p className={closedFinanceMonths.has(currentMonthKey) ? 'text-xs text-emerald-700' : 'text-xs text-amber-700'}>{currentMonthKey} 关账状态</p>
-                  <p className={closedFinanceMonths.has(currentMonthKey) ? 'mt-1 text-xl font-bold text-emerald-700' : 'mt-1 text-xl font-bold text-amber-700'}>
-                    {closedFinanceMonths.has(currentMonthKey) ? '已关账' : '未关账'}
-                  </p>
-                  <button type="button" onClick={() => handleFinanceTabChange('monthly_detail')} className="mt-1 text-xs text-blue-600 hover:underline">去按月明细处理</button>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-              <Card className="border-slate-200 xl:col-span-2">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">经营拆解</CardTitle>
-                  <p className="text-xs text-slate-500">快速判断收入质量、成本压力和现金风险。</p>
-                </CardHeader>
-                <CardContent className="grid gap-3 md:grid-cols-3">
-                  <button type="button" onClick={() => handleFinanceTabChange('income')} className="rounded-xl border border-green-100 bg-green-50 p-4 text-left hover:bg-green-100/70">
-                    <p className="text-sm font-semibold text-green-800">收入结构</p>
-                    <p className="mt-2 text-lg font-bold text-green-700">{fmt(summaryProfitRevenueUsd)}</p>
-                    <p className="mt-1 text-xs text-green-700">投流充值 {fmt(summaryAdsRevenueUsd)} 作为客户资金单独核算</p>
-                  </button>
-                  <button type="button" onClick={() => handleFinanceTabChange('customer_profit')} className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-left hover:bg-emerald-100/70">
-                    <p className="text-sm font-semibold text-emerald-800">客户利润分析</p>
-                    <p className="mt-2 text-lg font-bold text-emerald-700">{customerProfitRows.length} 个客户</p>
-                    <p className="mt-1 text-xs text-emerald-700">客户级分摊用于排查，不冒充公司审计总利润</p>
-                  </button>
-                  <button type="button" onClick={() => navigate('/commissions')} className="rounded-xl border border-red-100 bg-red-50 p-4 text-left hover:bg-red-100/70">
-                    <p className="text-sm font-semibold text-red-800">审计总成本</p>
-                    <p className="mt-2 text-lg font-bold text-red-700">{fmt(summaryCostUsd)}</p>
-                    <p className="mt-1 text-xs text-red-700">渠道佣金 {fmt(summaryChannelCommissionUsd)} · 点击查看分润台账</p>
-                  </button>
-                </CardContent>
-              </Card>
-
-              <Card className="border-slate-200">
-                <CardHeader className="pb-2"><CardTitle className="text-base">客户利润 Top 5</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {customerProfitRows.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-slate-400">暂无客户利润数据</p>
-                  ) : customerProfitRows.slice(0, 5).map((row, index) => (
-                    <button
-                      key={`${row.customerId || row.customerName}-${index}`}
-                      type="button"
-                      onClick={() => setProfitDetailTarget(row)}
-                      className="flex w-full items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-left hover:bg-slate-100"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-700">{index + 1}. {row.customerName}</p>
-                        <p className="text-xs text-slate-400">收入 {fmt(row.revenue)} · 成本 {fmt(row.customerCostUsd + row.totalFee)}</p>
-                        {row.warningLevel !== 'healthy' && (
-                          <Badge className={row.warningLevel === 'loss' ? 'mt-1 bg-red-100 text-red-700' : 'mt-1 bg-amber-100 text-amber-700'}>
-                            {row.warningLabel}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className={row.profit >= 0 ? 'text-sm font-bold text-emerald-600' : 'text-sm font-bold text-red-600'}>{fmt(row.profit)}</p>
-                    </button>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="border-slate-200 bg-slate-50/60 shadow-none">
-              <CardContent className="p-4">
-                <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs sm:gap-3">
-                      <span className="font-semibold text-slate-700">建议工作顺序</span>
-                      <span className="rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700">1. 核对收入</span>
-                      <span className="hidden text-slate-300 sm:inline">→</span>
-                      <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">2. 核对成本</span>
-                      <span className="hidden text-slate-300 sm:inline">→</span>
-                      <span className="rounded-full bg-cyan-50 px-3 py-1 font-medium text-cyan-700">3. 处理续费</span>
-                      <span className="hidden text-slate-300 sm:inline">→</span>
-                      <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">4. 月度关账</span>
-                    </div>
-                    <details className="group mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
-                      <summary className="cursor-pointer list-none text-sm font-semibold text-slate-700">
-                        <span className="flex items-center justify-between gap-3">
-                          财务计算口径
-                          <span className="text-xs font-normal text-blue-600 group-open:hidden">展开查看</span>
-                          <span className="hidden text-xs font-normal text-slate-400 group-open:inline">收起</span>
-                        </span>
-                      </summary>
-                      <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-600 md:grid-cols-2">
-                        <p>收入按「收款日期」进入月份；服务覆盖期只影响续费和服务周期。</p>
-                        <p>管理费按当月扣点率计算；投流充值属于客户资金，只有月结确认差价才计入收入。</p>
-                        <p>Stripe 订阅按实收金额计算 2.9% + $0.30/笔；手动收款不算 Stripe 手续费。</p>
-                        <p>客户成本进入单客利润；运营支出进入老板总览利润，人民币支出单独统计不混算。</p>
-                      </div>
-                    </details>
-                  </div>
-
-                  <div className={financeHealthIssueCount > 0 ? 'rounded-xl border border-amber-200 bg-amber-50 p-4' : 'rounded-xl border border-emerald-100 bg-emerald-50 p-4'}>
-                    <div className="flex items-center gap-3">
-                      <div className={financeHealthIssueCount > 0 ? 'flex h-9 w-9 items-center justify-center rounded-xl bg-white text-amber-600' : 'flex h-9 w-9 items-center justify-center rounded-xl bg-white text-emerald-600'}>
-                        {financeHealthIssueCount > 0 ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">数据体检</p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          {financeHealthIssueCount > 0 ? `仍有 ${financeHealthIssueCount} 个问题需要核对` : '关键财务数据口径正常，无需额外处理'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <TabsContent value="overview" className="mt-0">
+          <FinanceOwnerOverview
+            periodLabel={summaryPeriodLabel}
+            basisLabel={summaryProfitBasisLabel}
+            audited={!!auditedSummary}
+            currentMonth={currentMonthKey}
+            monthClosed={closedFinanceMonths.has(currentMonthKey)}
+            summary={{
+              profit: summaryProfitUsd, profitRate: summaryProfitRate,
+              revenue: summaryProfitRevenueUsd, cost: summaryCostUsd, otherCost: summaryOtherCostUsd,
+              deduction: summaryDeductionUsd, stripeFee: summaryStripePlatformFeeUsd,
+              commission: summaryChannelCommissionUsd, grossReceipts: summaryGrossReceiptsUsd,
+              refunds: summaryRefundsUsd, netReceipts: summaryNetReceiptsUsd,
+              adFunds: summaryAdsRevenueUsd, companyCostCny: summaryCompanyExpenseCny,
+            }}
+            receivables={{ count: ownerOverview.receivableCount, amount: ownerOverview.outstanding }}
+            subscriptions={{
+              pendingCount: renewalPendingSubs, pendingAmount: renewalPendingAmount,
+              attentionCount: renewalAttentionCount, expiringCount: expiringSubs.length,
+              activeCount: activeSubs, d7: renewalForecast.d7, d30: renewalForecast.d30,
+            }}
+            healthItems={financeHealthItems}
+            healthIssueCount={financeHealthIssueCount}
+            profitWarningCount={profitWarningRows.length}
+            profitWarningRate={CUSTOMER_PROFIT_WARNING_RATE}
+            customers={customerProfitRows}
+            formatMoney={fmt}
+            formatRmb={fmtRMB}
+            onNavigate={tab => {
+              setFinanceIssueFilter(null);
+              handleFinanceTabChange(tab);
+            }}
+            onPendingSubscriptions={() => {
+              setSubscriptionGroupKey('pending');
+              setSubscriptionSearch('');
+              setFinanceIssueFilter(null);
+              handleFinanceTabChange('subscriptions');
+            }}
+            onHealthIssue={handleFinanceIssueClick}
+            onCustomer={setProfitDetailTarget}
+            onCommissions={() => navigate('/commissions')}
+          />
         </TabsContent>
 
         <TabsContent value="customer_profit">
