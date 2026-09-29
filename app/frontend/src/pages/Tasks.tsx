@@ -1,3 +1,4 @@
+import { DeliveryEmpty } from '@/components/DeliveryUI';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
@@ -674,8 +675,8 @@ export default function Tasks() {
   }
 
   return (
-    <div className="t24-work-page app-page space-y-5">
-      <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+    <div className="t24-work-page delivery-center-ui dc-tasks app-page">
+      <div className="dc-heading flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           {returnTo && (
             <Button variant="ghost" size="sm" className="-ml-3 mb-1 min-h-11 text-slate-600 md:h-8 md:min-h-0" onClick={() => navigate(returnTo)}>
@@ -734,96 +735,47 @@ export default function Tasks() {
         </CardContent>
       </Card>
 
-      <Card className="hidden border-slate-200 md:block">
-        <CardContent className="p-2">
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-            {primaryViews.map(view => {
-              const Icon = view.icon;
-              const active = primaryView === view.key;
-              return (
-                <button key={view.key} type="button" onClick={() => changePrimaryView(view.key)} className={`rounded-lg border px-3 py-3 text-left transition ${active ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50'}`}>
-                  <div className="flex items-center justify-between gap-2"><Icon className="h-4 w-4" /><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${active ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'}`}>{view.count}</span></div>
-                  <p className="mt-2 text-sm font-semibold">{view.label}</p>
-                  <p className="mt-0.5 truncate text-[11px] opacity-70">{view.hint}</p>
-                </button>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="hidden border-slate-200/90 bg-white md:block">
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="app-section-title">需要处理</p>
-              <p className="app-section-description">点击一个问题类型，直接筛出对应任务。</p>
-            </div>
-            {quickFilter !== 'all' && (
-              <Button size="sm" variant="outline" onClick={() => setQuickFilter('all')}>
-                清除筛选：{quickFilterLabels[quickFilter]}
-              </Button>
-            )}
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-            {quickCards.map(card => (
-              <button
-                key={card.key}
-                type="button"
-                onClick={() => setQuickFilter(quickFilter === card.key ? 'all' : card.key)}
-                className={`rounded-lg border p-3 text-left transition hover:shadow-sm ${card.color} ${quickFilter === card.key ? 'ring-2 ring-blue-300' : ''}`}
-              >
-                <div className="text-2xl font-semibold">{card.value}</div>
-                <div className="mt-1 text-sm font-medium">{card.title}</div>
-                <div className="mt-1 text-xs opacity-80">{card.hint}</div>
-              </button>
-            ))}
-          </div>
-          {workload.length > 0 && (
-            <div className="mt-4 rounded-xl border border-slate-100 bg-white p-3">
-              <p className="text-xs font-semibold text-slate-500">当前未完成任务分布</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {workload.map(([name, count]) => (
-                  <Badge key={name} className="bg-slate-100 text-slate-700">
-                    {name} · {count}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <nav className="dc-task-views hidden md:grid" aria-label="任务工作视角">{primaryViews.map(view => {
+        const Icon = view.icon;
+        return <button key={view.key} type="button" aria-pressed={primaryView === view.key} onClick={() => changePrimaryView(view.key)} title={view.hint}><Icon size={15} /><span>{view.label}</span><b>{view.count}</b></button>;
+      })}</nav>
+      <section className="dc-task-priorities hidden md:block" aria-label="任务提醒">
+        <div className="dc-priority-strip">{quickCards.map(card => <button key={card.key} type="button" aria-pressed={quickFilter === card.key} onClick={() => setQuickFilter(quickFilter === card.key ? 'all' : card.key)} title={card.hint}><span>{card.title}</span><b className={card.key === 'overdue' ? 'dc-danger-text' : ''}>{card.value}</b></button>)}</div>
+        {workload.length > 0 && <details className="dc-workload"><summary><Users size={14} />团队工作量<span>{workload.length} 组负责人 · 展开查看分布</span></summary><div>{workload.map(([name, count]) => <span key={name}>{name}<b>{count}</b></span>)}</div></details>}
+        {quickFilter !== 'all' && <button type="button" className="dc-clear-filter" onClick={() => setQuickFilter('all')}>清除筛选：{quickFilterLabels[quickFilter]}</button>}
+      </section>
 
       {/* Filters */}
-      <div className="app-toolbar">
+      <div className="app-toolbar dc-task-toolbar">
           <div className="flex flex-col gap-3 md:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input placeholder="搜索任务名称、客户、负责人..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+              <Input aria-label="搜索协作任务" placeholder="搜索任务名称、客户、负责人..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
             </div>
             <div className="hidden gap-3 md:flex">
-              <NativeSelect value={filterStatus} onChange={setFilterStatus} className="w-[140px]" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-              <NativeSelect value={filterPriority} onChange={setFilterPriority} className="w-[140px]" options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-              <NativeSelect value={filterSource} onChange={setFilterSource} className="w-[140px]" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              <label className="dc-filter-label"><span className="sr-only">任务状态</span><NativeSelect value={filterStatus} onChange={setFilterStatus} className="w-[140px]" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
+              <label className="dc-filter-label"><span className="sr-only">任务优先级</span><NativeSelect value={filterPriority} onChange={setFilterPriority} className="w-[140px]" options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
+              <label className="dc-filter-label"><span className="sr-only">任务来源</span><NativeSelect value={filterSource} onChange={setFilterSource} className="w-[140px]" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
             </div>
           </div>
           <details className="mt-3 rounded-xl border border-slate-200 bg-white md:hidden">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-slate-700">更多筛选<span className="text-xs font-normal text-slate-400">状态 · 优先级 · 来源</span></summary>
             <div className="grid gap-3 border-t border-slate-100 p-3">
-              <NativeSelect value={filterStatus} onChange={setFilterStatus} options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-              <NativeSelect value={filterPriority} onChange={setFilterPriority} options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-              <NativeSelect value={filterSource} onChange={setFilterSource} options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              <label className="dc-filter-label"><span className="sr-only">任务状态</span><NativeSelect value={filterStatus} onChange={setFilterStatus} options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
+              <label className="dc-filter-label"><span className="sr-only">任务优先级</span><NativeSelect value={filterPriority} onChange={setFilterPriority} options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
+              <label className="dc-filter-label"><span className="sr-only">任务来源</span><NativeSelect value={filterSource} onChange={setFilterSource} options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
             </div>
           </details>
       </div>
 
       {/* Task list */}
-      <Card className="border-slate-200">
+      <Card className="dc-task-list border-slate-200">
+        <div className="dc-panel-heading"><h3>{primaryViewLabels[primaryView] || '任务列表'}</h3><span>{filtered.length} 项</span><small>先看负责人和截止时间，再记录处理结果</small></div>
         <CardContent className="p-0">
           {loading ? (
             <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
           ) : filtered.length === 0 ? (
-            <div className="py-12 text-center"><p className="text-sm font-medium text-slate-500">当前视角下暂无任务</p><p className="mt-1 text-xs text-slate-400">可以切换任务分层或清除筛选条件。</p></div>
+            <DeliveryEmpty title="当前视角下暂无任务" description="可以切换任务视角或调整搜索和筛选条件。" />
           ) : (
             <div className="grid gap-3 p-3 md:block md:divide-y md:divide-slate-100 md:p-0">
               {paginated.items.map(t => {
@@ -845,7 +797,7 @@ export default function Tasks() {
                   <div
                     key={t.id}
                     id={`task-row-${t.id}`}
-                    className={`overflow-hidden rounded-[22px] border p-0 transition-colors md:rounded-none md:border-0 md:p-4 ${t.id === focusTaskId ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-200' : 'border-slate-200 bg-white shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)] hover:bg-slate-50 md:shadow-none'}`}
+                    className={`dc-task-row overflow-hidden rounded-[22px] border p-0 transition-colors md:rounded-none md:border-0 md:p-4 ${t.id === focusTaskId ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-200' : 'border-slate-200 bg-white shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)] hover:bg-slate-50 md:shadow-none'}`}
                   >
                     <div className="md:hidden">
                       <div className={`h-1 w-full ${completed ? 'bg-emerald-500' : overdue ? 'bg-rose-500' : dueToday ? 'bg-blue-500' : waitingClient ? 'bg-violet-500' : 'bg-slate-300'}`} />
@@ -948,13 +900,13 @@ export default function Tasks() {
                       </div>
                     </div>
 
-                    <div className="hidden flex-col gap-3 md:flex lg:flex-row lg:items-start lg:justify-between">
+                    <div className="dc-task-desktop hidden flex-col gap-3 md:flex lg:flex-row lg:items-start lg:justify-between">
                       <div className="flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className={`font-medium text-sm ${completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</span>
                           <Badge className={`text-xs ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}`}>{extendedStatusLabels[t.status] || t.status || '未设置'}</Badge>
                           <Badge className={`text-xs ${priorityColors[t.priority] || 'bg-slate-100 text-slate-600'}`}>{priorityLabels[t.priority] || t.priority || '普通'}</Badge>
-                          <Badge className={`text-xs ${taskSourceColors[source] || taskSourceColors.manual}`}>来源: {taskSourceLabels[source]}</Badge>
+                          <Badge className={`dc-source-badge text-xs ${taskSourceColors[source] || taskSourceColors.manual}`}> {taskSourceLabels[source]}</Badge>
                           {t.automation_issue_id && <Badge className="bg-violet-100 text-violet-700 text-xs">自动闭环</Badge>}
                           {overdue && <Badge className="bg-red-100 text-red-700 text-xs">逾期</Badge>}
                           {dueToday && <Badge className="bg-blue-100 text-blue-700 text-xs">今日到期</Badge>}
@@ -968,7 +920,8 @@ export default function Tasks() {
                           <span>类型: {taskTypeLabels[t.task_type] || t.task_type || '其他'}</span>
                           {t.due_date && <span className={overdue ? 'text-red-500 font-medium' : ''}>截止: {getTaskDateKey(t.due_date)}</span>}
                         </div>
-                        {t.notes && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-500">{t.notes}</p>}
+                        {(findingLine || suggestionLine) && <p className="dc-task-next">{suggestionLine || findingLine}</p>}
+                        {t.notes && <details className="dc-task-notes"><summary>查看任务说明</summary><p>{t.notes}</p></details>}
                         {completionSummary && (
                           <p className="mt-2 rounded-lg bg-green-50 px-3 py-2 text-xs font-medium text-green-700">{completionSummary}</p>
                         )}
@@ -1027,7 +980,7 @@ export default function Tasks() {
       )}
 
       {canEditTask && <Dialog open={!!completeTarget} onOpenChange={(v) => { if (!v) { setCompleteTarget(null); setCompletionNote(''); } }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="delivery-dialog max-w-md">
           <DialogHeader><DialogTitle>填写处理结果并完成</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="rounded-lg bg-slate-50 px-3 py-2">
@@ -1056,7 +1009,7 @@ export default function Tasks() {
 
       {/* Add/Edit task dialog */}
       {(canCreateTask || (canEditTask && editingId !== null)) && <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setEditingId(null); setForm(emptyTaskForm); } }}>
-        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+        <DialogContent className="delivery-dialog max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader><DialogTitle>{editingId ? '编辑任务' : '新建任务'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div><Label>任务名称 *</Label><Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></div>

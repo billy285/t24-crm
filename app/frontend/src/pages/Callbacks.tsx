@@ -1,3 +1,4 @@
+import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
@@ -540,9 +541,9 @@ export default function Callbacks() {
   }
 
   return (
-    <div className="t24-work-page app-page space-y-5">
+    <div className="t24-work-page delivery-center-ui dc-callbacks app-page">
       {/* Header */}
-      <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+      <div className="dc-heading flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div><p className="app-page-kicker">T24 Marketing · Customer Care</p><h2 className="app-page-heading flex items-center gap-2">
           <PhoneCall className="w-5 h-5 text-blue-600" />
           电话回访
@@ -592,48 +593,17 @@ export default function Callbacks() {
         </Card>
       )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-2 md:grid-cols-5 md:gap-3">
-        <Card className="hidden border-slate-200 md:block">
-          <CardContent className="p-3 text-center">
-            <p className="text-xs text-slate-500">总回访</p>
-            <p className="text-2xl font-bold text-slate-800">{stats.total}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="p-3 text-center">
-            <p className="text-xs text-amber-600">待回访</p>
-            <p className="text-2xl font-bold text-amber-700">{stats.pendingCount}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-3 text-center">
-            <p className="text-xs text-red-600">已逾期</p>
-            <p className="text-2xl font-bold text-red-700" data-testid="callback-overdue-count">{stats.overdueCount}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="p-3 text-center">
-            <p className="text-xs text-blue-600">今日待办</p>
-            <p className="text-2xl font-bold text-blue-700" data-testid="callback-today-count">{stats.todayPending}</p>
-          </CardContent>
-        </Card>
-        <Card className="hidden border-green-200 bg-green-50 md:block">
-          <CardContent className="p-3 text-center">
-            <p className="text-xs text-green-600">已完成</p>
-            <p className="text-2xl font-bold text-green-700">{stats.completedCount}</p>
-          </CardContent>
-        </Card>
-      </div>
+      <DeliveryMetrics label="回访概览" items={[
+        { key: 'all', label: '全部回访', value: stats.total, note: '当前可见范围', onClick: () => { setFilterStatus('all'); setFilterSchedule('all'); }, active: filterStatus === 'all' && filterSchedule === 'all' },
+        { key: 'pending', label: '待回访', value: stats.pendingCount, note: '等待联系和结果记录', tone: 'amber', onClick: () => { setFilterStatus('pending'); setFilterSchedule('all'); }, active: filterStatus === 'pending' && filterSchedule === 'all' },
+        { key: 'overdue', label: '已逾期', value: stats.overdueCount, testId: 'callback-overdue-count', note: '优先联系并重新安排', tone: 'rose', onClick: () => { setFilterStatus('pending'); setFilterSchedule('overdue'); }, active: filterSchedule === 'overdue' },
+        { key: 'today', label: '今日待办', value: stats.todayPending, testId: 'callback-today-count', note: '今天计划联系', onClick: () => { setFilterStatus('pending'); setFilterSchedule('today'); }, active: filterSchedule === 'today' },
+        { key: 'completed', label: '已完成', value: stats.completedCount, note: '已留存回访结果', tone: 'green', onClick: () => { setFilterStatus('completed'); setFilterSchedule('all'); }, active: filterStatus === 'completed' && filterSchedule === 'all' },
+      ]} />
 
       {/* Overdue reminders */}
       {stats.overdueCount > 0 && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-red-700 mb-2">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm font-medium">逾期回访提醒 ({stats.overdueCount})</span>
-            </div>
+        <details className="dc-guidance dc-overdue-reminder"><summary><AlertCircle size={15} /><strong>逾期回访提醒</strong><span>{stats.overdueCount} 项待处理 · 展开快速处理</span></summary><div>
             <div className="space-y-1">
               {callbacks
                 .filter(cb => cb.status === 'pending' && cb.callback_date && cb.callback_date.slice(0, 10) < businessToday)
@@ -664,25 +634,25 @@ export default function Callbacks() {
                   );
                 })}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </details>
       )}
 
       {/* Filters */}
-      <Card className="border-slate-200">
+      <Card className="dc-callback-toolbar border-slate-200">
         <CardContent className="p-3">
           <div className="space-y-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder="搜索客户名称、联系人、回访内容..."
+                aria-label="搜索回访记录" placeholder="搜索客户名称、联系人、回访内容..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-9"
               />
             </div>
             <div className="hidden flex-wrap gap-3 md:flex">
-            <NativeSelect
+            <label className="dc-filter-label"><span className="sr-only">回访状态</span><NativeSelect
               value={filterStatus}
               onChange={setFilterStatus}
               className="w-[140px]"
@@ -690,8 +660,8 @@ export default function Callbacks() {
                 { value: 'all', label: '全部状态' },
                 ...Object.entries(callbackStatusLabels).map(([k, v]) => ({ value: k, label: v })),
               ]}
-            />
-            <NativeSelect
+            /></label>
+            <label className="dc-filter-label"><span className="sr-only">回访类型</span><NativeSelect
               value={filterType}
               onChange={setFilterType}
               className="w-[160px]"
@@ -699,8 +669,8 @@ export default function Callbacks() {
                 { value: 'all', label: '全部类型' },
                 ...Object.entries(callbackTypeLabels).map(([k, v]) => ({ value: k, label: v })),
               ]}
-            />
-            <NativeSelect
+            /></label>
+            <label className="dc-filter-label"><span className="sr-only">回访时间</span><NativeSelect
               value={filterSchedule}
               onChange={setFilterSchedule}
               className="w-[150px]"
@@ -709,7 +679,7 @@ export default function Callbacks() {
                 { value: 'today', label: '今日待办' },
                 { value: 'overdue', label: '已逾期' },
               ]}
-            />
+            /></label>
             <div className="w-full sm:w-[260px]">
               <CustomerCombobox
                 customers={selectableCustomers}
@@ -720,21 +690,21 @@ export default function Callbacks() {
                 clearLabel="全部客户"
               />
             </div>
-            <NativeSelect
+            <label className="dc-filter-label"><span className="sr-only">回访负责人</span><NativeSelect
               value={filterEmployeeId}
               onChange={setFilterEmployeeId}
               className="w-[170px]"
               options={[{ value: 'all', label: '全部负责人' }, ...employeeOptions]}
-            />
+            /></label>
             </div>
             <details className="rounded-xl border border-slate-200 bg-white md:hidden">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-slate-700">筛选回访<span className="text-xs font-normal text-slate-400">状态 · 时间 · 客户</span></summary>
               <div className="grid gap-3 border-t border-slate-100 p-3">
-                <NativeSelect value={filterStatus} onChange={setFilterStatus} options={[{ value: 'all', label: '全部状态' }, ...Object.entries(callbackStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-                <NativeSelect value={filterType} onChange={setFilterType} options={[{ value: 'all', label: '全部类型' }, ...Object.entries(callbackTypeLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-                <NativeSelect value={filterSchedule} onChange={setFilterSchedule} options={[{ value: 'all', label: '全部时间' }, { value: 'today', label: '今日待办' }, { value: 'overdue', label: '已逾期' }]} />
+                <label className="dc-filter-label"><span className="sr-only">回访状态</span><NativeSelect value={filterStatus} onChange={setFilterStatus} options={[{ value: 'all', label: '全部状态' }, ...Object.entries(callbackStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
+                <label className="dc-filter-label"><span className="sr-only">回访类型</span><NativeSelect value={filterType} onChange={setFilterType} options={[{ value: 'all', label: '全部类型' }, ...Object.entries(callbackTypeLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
+                <label className="dc-filter-label"><span className="sr-only">回访时间</span><NativeSelect value={filterSchedule} onChange={setFilterSchedule} options={[{ value: 'all', label: '全部时间' }, { value: 'today', label: '今日待办' }, { value: 'overdue', label: '已逾期' }]} /></label>
                 <CustomerCombobox customers={selectableCustomers} value={filterCustomerId} onValueChange={setFilterCustomerId} placeholder="搜索客户" allowClear clearLabel="全部客户" />
-                <NativeSelect value={filterEmployeeId} onChange={setFilterEmployeeId} options={[{ value: 'all', label: '全部负责人' }, ...employeeOptions]} />
+                <label className="dc-filter-label"><span className="sr-only">回访负责人</span><NativeSelect value={filterEmployeeId} onChange={setFilterEmployeeId} options={[{ value: 'all', label: '全部负责人' }, ...employeeOptions]} /></label>
               </div>
             </details>
           </div>
@@ -742,14 +712,15 @@ export default function Callbacks() {
       </Card>
 
       {/* Callback list */}
-      <Card className="border-slate-200">
+      <Card className="dc-callback-list border-slate-200">
+        <div className="dc-panel-heading"><h3>回访记录</h3><span>{filtered.length} 条</span><small>联系客户 · 记录结果 · 约定下一次跟进</small></div>
         <CardContent className="p-0">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
             </div>
           ) : filtered.length === 0 ? (
-            <p className="text-center text-slate-400 py-12">暂无回访记录</p>
+            <DeliveryEmpty title={callbacks.length ? "没有匹配的回访记录" : "把下一次联系安排在这里"} description={callbacks.length ? "试试调整搜索条件，或切换回访状态和日期。" : "为客户安排回访时间和负责人，记录每次沟通结果，让后续跟进更有条理。"} />
           ) : (
             <div className="grid gap-3 p-3 md:block md:divide-y md:divide-slate-100 md:p-0">
               {paginated.items.map(cb => {
@@ -761,7 +732,7 @@ export default function Callbacks() {
                 return (
                   <div
                     key={cb.id}
-                    className={`rounded-xl border p-4 transition-colors md:rounded-none md:border-0 ${isOverdue ? 'border-red-200 bg-red-50/50' : isToday && cb.status === 'pending' ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                    className={`dc-callback-row rounded-xl border p-4 transition-colors md:rounded-none md:border-0 ${isOverdue ? 'border-red-200 bg-red-50/50' : isToday && cb.status === 'pending' ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
                   >
                     <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -877,7 +848,7 @@ export default function Callbacks() {
 
       {/* Add/Edit Dialog */}
       {(canCreateCallback || canEditCallback) && <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setEditingId(null); setForm(emptyForm); } }}>
-        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto sm:max-h-[85vh]">
+        <DialogContent className="delivery-dialog max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>{editingId ? '编辑回访记录' : '新增回访记录'}</DialogTitle>
           </DialogHeader>

@@ -1,10 +1,9 @@
+import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowRight,
-  CalendarClock,
-  CheckCircle2,
   ClipboardCheck,
   Clock3,
   RefreshCw,
@@ -299,8 +298,8 @@ export default function OperationsWorkbench() {
   } as const;
 
   return (
-    <div className="t24-work-page app-page space-y-5">
-      <div className="app-page-title">
+    <div className="t24-work-page delivery-center-ui dc-today app-page">
+      <div className="dc-heading">
         <div>
           <p className="app-page-kicker">T24 Marketing · Operations Today</p>
           <h2 className="app-page-heading">运营今日工作台</h2>
@@ -313,33 +312,18 @@ export default function OperationsWorkbench() {
 
       {loadError && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{loadError}</div>}
 
-      <div className="grid grid-cols-2 gap-2 md:gap-3 xl:grid-cols-4">
-        {[
-          { key: 'overdue' as const, label: '逾期未处理', value: stats.overdue, icon: AlertTriangle, tone: 'text-rose-700' },
-          { key: 'today' as const, label: '今天必须做', value: stats.today, icon: CalendarClock, tone: 'text-blue-700' },
-          { key: 'waiting' as const, label: '等待客户', value: stats.waiting, icon: Clock3, tone: 'text-amber-700' },
-          { key: 'issue' as const, label: '服务问题', value: stats.issues, icon: ClipboardCheck, tone: 'text-violet-700' },
-        ].map(item => (
-          <button key={item.label} type="button" onClick={() => setFilter(item.key)} className="text-left">
-            <Card className={`h-full rounded-[20px] border-slate-200 transition hover:border-blue-300 hover:shadow-sm md:rounded-xl ${filter === item.key ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}>
-              <CardContent className="flex min-h-[88px] items-center gap-2.5 p-3 md:gap-3 md:p-4">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50"><item.icon className={`h-[18px] w-[18px] ${item.tone}`} /></span>
-                <div className="min-w-0"><p className="text-xl font-bold text-slate-900 md:text-2xl md:font-semibold">{item.value}</p><p className="truncate text-[11px] font-medium text-slate-500 md:text-xs">{item.label}</p></div>
-              </CardContent>
-            </Card>
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-start justify-between gap-3 px-0.5">
-        <div className="min-w-0"><div className="flex items-center gap-2"><h3 className="text-lg font-bold text-slate-950 md:text-base md:font-semibold md:text-slate-900">下一步动作</h3><span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white">{filteredActions.length} 项</span></div><p className="mt-1 text-xs leading-5 text-slate-500">按逾期、今日、等待客户排序，先处理最重要的事项。</p></div>
-        {filter !== 'all' && <Button size="sm" variant="ghost" onClick={() => setFilter('all')}>查看全部 {actions.length} 项</Button>}
-      </div>
+      <DeliveryMetrics label="今日事项概览" items={[
+        { key: 'overdue', label: '逾期未处理', value: stats.overdue, note: '优先推动，避免继续延误', tone: 'rose', active: filter === 'overdue', onClick: () => setFilter('overdue') },
+        { key: 'today', label: '今天必须做', value: stats.today, note: '今日需要完成的事项', active: filter === 'today', onClick: () => setFilter('today') },
+        { key: 'waiting', label: '等待客户', value: stats.waiting, note: '资料或反馈尚未到位', tone: 'amber', active: filter === 'waiting', onClick: () => setFilter('waiting') },
+        { key: 'issue', label: '服务问题', value: stats.issues, note: '需要协调处理的卡点', tone: 'green', active: filter === 'issue', onClick: () => setFilter('issue') },
+      ]} />
+      <div className="dc-today-toolbar"><div><h3>下一步动作 <span>{filteredActions.length} 项</span></h3><p>{usePersonalScope ? '我的待办' : '团队待办'} · 按逾期、今日、等待客户排序</p></div><nav aria-label="今日事项筛选">{([{ key: 'all', label: '全部' }, { key: 'overdue', label: '已逾期' }, { key: 'today', label: '今日' }, { key: 'waiting', label: '等待客户' }, { key: 'issue', label: '服务问题' }] as const).map(item => <button key={item.key} type="button" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>{item.label}</button>)}</nav></div>
 
       {filteredActions.length === 0 ? (
-        <Card className="border-dashed border-emerald-200 bg-emerald-50/40"><CardContent className="flex flex-col items-center py-12 text-center"><CheckCircle2 className="h-8 w-8 text-emerald-600" /><p className="mt-3 font-medium text-emerald-900">当前分类没有待处理事项</p><p className="mt-1 text-sm text-emerald-700">系统每 30 秒刷新一次；新任务和提醒会自动进入这里。</p></CardContent></Card>
+        <DeliveryEmpty title="当前分类没有待处理事项" description="新任务和提醒会自动进入这里，也可以切换分类查看其他事项。" />
       ) : (
-        <div className="grid gap-3">
+        <div className="dc-action-list">
           {visibleActions.map(action => {
             const style = urgencyStyles[action.urgency];
             const overdueDays = action.urgency === 'overdue' ? daysBetweenDateKeys(action.date, today) : 0;
@@ -350,7 +334,7 @@ export default function OperationsWorkbench() {
             const ownerLabel = action.description.replace(/^(负责人|回访负责人|问题负责人)：\s*/, '');
             const mobileActionTitle = action.title.replace(/^【[^】]+】\s*/, '');
             return (
-              <Card key={action.id} className={`overflow-hidden rounded-[22px] shadow-[0_10px_28px_-22px_rgba(15,23,42,0.55)] md:rounded-xl md:shadow-none ${style.card}`}>
+              <Card key={action.id} className={`dc-action-card dc-urgency-${action.urgency} overflow-hidden rounded-[22px] shadow-[0_10px_28px_-22px_rgba(15,23,42,0.55)] md:rounded-xl md:shadow-none ${style.card}`}>
                 <CardContent className="p-0 md:p-4">
                   <div className="md:hidden">
                     <div className={`h-1 w-full ${style.bar}`} />
@@ -391,24 +375,11 @@ export default function OperationsWorkbench() {
                     </div>
                   </div>
 
-                  <div className="hidden gap-4 md:flex md:flex-col lg:flex-row lg:items-center">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge className={style.badge}>{action.urgency === 'overdue' && overdueDays > 0 ? `逾期 ${overdueDays} 天` : style.label}</Badge>
-                        <Badge variant="outline">{actionTypeLabel}</Badge>
-                        {missingOwner && <Badge className="bg-orange-100 text-orange-800">缺少负责人</Badge>}
-                        {action.date && <span className="text-xs text-slate-500">计划 {action.date}</span>}
-                      </div>
-                      <button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId} className="mt-2 flex items-center gap-1 text-left font-semibold text-slate-900 hover:text-blue-700 disabled:cursor-default disabled:hover:text-slate-900">
-                        {action.customerName}{action.customerId && <ArrowRight className="h-3.5 w-3.5" />}
-                      </button>
-                      <p className="mt-1 text-sm text-slate-700">{action.title}</p>
-                      <p className="mt-1 text-xs text-slate-500">{action.description}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      {action.customerId && <Button size="sm" variant="outline" onClick={() => openCustomer(action)}><UserRound className="mr-1 h-3.5 w-3.5" />客户 360</Button>}
-                      <Button size="sm" onClick={() => openAction(action)}>{primaryActionLabel}</Button>
-                    </div>
+                  <div className="dc-action-desktop hidden md:grid">
+                    <div className="dc-action-main"><span className="dc-kind"><ActionIcon size={13} />{actionTypeLabel}</span><h4>{mobileActionTitle}</h4><button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId}>{action.customerName}{action.customerId && <ArrowRight size={12} />}</button></div>
+                    <div className="dc-action-owner"><small>负责人</small><span className={missingOwner ? 'dc-warning-text' : ''}>{ownerLabel}</span></div>
+                    <div className="dc-action-due"><span className={`dc-status dc-status-${action.urgency === 'overdue' ? 'rose' : action.urgency === 'waiting' ? 'amber' : 'blue'}`}>{action.urgency === 'overdue' && overdueDays > 0 ? `逾期 ${overdueDays} 天` : style.label}</span><small>{action.date || '未设置截止时间'}</small></div>
+                    <div className="dc-row-actions">{action.customerId && <Button size="sm" variant="ghost" onClick={() => openCustomer(action)}>客户档案</Button>}<Button size="sm" variant="outline" onClick={() => openAction(action)}>{primaryActionLabel}</Button></div>
                   </div>
                 </CardContent>
               </Card>
@@ -426,7 +397,7 @@ export default function OperationsWorkbench() {
       )}
 
       <Dialog open={!!completeTarget} onOpenChange={open => { if (!open) setCompleteTarget(null); }}>
-        <DialogContent>
+        <DialogContent className="delivery-dialog">
           <DialogHeader><DialogTitle>{completeTarget?.kind === 'issue' ? '解决服务问题' : '完成任务'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="rounded-lg bg-slate-50 p-3"><p className="font-medium text-slate-900">{completeTarget?.customerName}</p><p className="mt-1 text-sm text-slate-600">{completeTarget?.title}</p></div>

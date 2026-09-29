@@ -1,3 +1,4 @@
+import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { invokeWithAuth } from '../lib/tokenStore';
 import { useRole } from '../lib/role-context';
@@ -511,7 +512,7 @@ export default function ServiceBoard() {
   const [filters, setFilters] = useState({ industry: 'all', service_type: 'all', service_stage: 'all', ops_person: '', sales_person: '', issue_status: 'all' });
   const [progressPage, setProgressPage] = useState(1);
   const [progressPageSize, setProgressPageSize] = useState(20);
-  const [showStats, setShowStats] = useState(true);
+  const [showStats, setShowStats] = useState(false);
 
   // Detail
   const [selectedProgress, setSelectedProgress] = useState<ServiceProgress | null>(null);
@@ -1553,7 +1554,7 @@ export default function ServiceBoard() {
   const ProgressCard = ({ sp }: { sp: ServiceProgress }) => {
     const ts = getTaskStats(sp.id);
     const overdue = isOverdue(sp);
-    const expiring = isExpiringSoon(sp);
+    const expiring = sp.service_stage !== 'ended' && isExpiringSoon(sp);
     const issue = hasIssue(sp);
     const nextStage = getNextStage(sp.service_type, sp.service_stage);
     const remainDays = getServiceRemainingDays(sp);
@@ -1562,7 +1563,7 @@ export default function ServiceBoard() {
 
     return (
       <div
-        className={`cursor-pointer rounded-xl border p-4 transition-all hover:shadow-md ${
+        className={`dc-progress-card cursor-pointer rounded-xl border p-4 transition-all hover:shadow-md ${
           issue ? 'border-red-300 bg-red-50/50' : overdue ? 'border-red-300 bg-red-50/50' : expiring ? 'border-yellow-300 bg-yellow-50/50' : 'border-slate-200 bg-white'
         }`}
         onClick={() => openDetail(sp)}
@@ -1578,7 +1579,7 @@ export default function ServiceBoard() {
             </div>
             <p className="text-xs text-slate-500 mt-0.5">{sp.city}{sp.state ? `, ${sp.state}` : ''} · {industryLabels[sp.industry] || sp.industry}</p>
             <p className={`text-xs mt-1 ${
-              remainDays == null
+              sp.service_stage === 'ended' ? 'text-slate-500' : remainDays == null
                 ? 'text-slate-400'
                 : remainDays <= 0
                   ? 'text-red-600 font-medium'
@@ -1586,7 +1587,7 @@ export default function ServiceBoard() {
                     ? 'text-yellow-700 font-medium'
                     : 'text-slate-500'
             }`}>
-              {remainDays == null
+              {sp.service_stage === 'ended' ? '服务已结束' : remainDays == null
                 ? '到期剩余: -'
                 : remainDays <= 0
                   ? `已逾期 ${Math.abs(remainDays)} 天`
@@ -1704,6 +1705,269 @@ export default function ServiceBoard() {
     );
   };
 
+  const renderProgressActionDialogs = () => (
+    <>
+      {/* Quick Update Work Summary Dialog */}
+      <Dialog open={showQuickUpdate} onOpenChange={v => { if (!v) setShowQuickUpdate(false); }}>
+        <DialogContent className="delivery-dialog max-w-md">
+          <DialogHeader><DialogTitle>更新工作摘要 - {quickUpdateSp?.customer_name}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>最近工作摘要</Label>
+              <Textarea
+                value={quickUpdateSummary}
+                onChange={e => setQuickUpdateSummary(e.target.value)}
+                rows={4}
+                placeholder="例如：本周已完成 Facebook 内容更新和 Google Business 图片上传"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowQuickUpdate(false)}>取消</Button>
+            <Button onClick={handleQuickUpdateSave} disabled={savingQuickUpdate} className="bg-blue-600 hover:bg-blue-700">{savingQuickUpdate ? '保存中...' : '保存'}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== SMART Progress Form Dialog ==================== */}
+      <Dialog open={showProgressForm} onOpenChange={setShowProgressForm}>
+        <DialogContent className="delivery-dialog max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editingProgressId ? '编辑服务进度' : '新增服务进度'}</DialogTitle></DialogHeader>
+
+          {/* Section 1: Customer Selection */}
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <h4 className="text-sm font-semibold text-blue-800 mb-2 flex items-center gap-1.5"><Search className="w-4 h-4" /> 选择客户</h4>
+              <div className="relative" ref={customerDropdownRef}>
+                <Input
+                  placeholder="搜索客户名称、编号、联系人、电话..."
+                  value={customerSearch}
+                  onChange={e => {
+                    setCustomerSearch(e.target.value);
+                    setShowCustomerDropdown(true);
+                    if (!e.target.value.trim()) {
+                      setSelectedCustomerState(null);
+                      setProgressForm(prev => ({ ...prev, customer_id: 0, customer_name: '' }));
+                    }
+                  }}
+                  onFocus={() => setShowCustomerDropdown(true)}
+                  className="bg-white"
+                />
+                {showCustomerDropdown && filteredCustomers.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {filteredCustomers.map(c => (
+                      <div
+                        key={c.id}
+                        className={`px-3 py-2.5 hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0 ${selectedCustomer?.id === c.id ? 'bg-blue-50' : ''}`}
+                        onClick={() => handleSelectCustomer(c)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-sm text-slate-800">{c.business_name}</span>
+                          <span className="text-xs text-slate-400 font-mono">{c.customer_code || `#${c.id}`}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                          <span>{displayCountry(c.country)}{c.state ? ` · ${c.state}` : ''}{c.city ? ` · ${c.city}` : ''}</span>
+                          <span>{industryLabels[c.industry] || c.industry}</span>
+                          {c.sales_person && <span>销售: {c.sales_person}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {showCustomerDropdown && customerSearch.trim() && filteredCustomers.length === 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-4 text-center text-sm text-slate-400">
+                    未找到匹配的客户
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Section 2: Auto-populated customer info (read-only) */}
+            {selectedCustomer && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <h4 className="text-sm font-semibold text-slate-600 mb-2 flex items-center gap-1.5"><Info className="w-4 h-4" /> 客户档案信息（自动带出）</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                  <div><span className="text-slate-400 text-xs">客户ID</span><p className="text-slate-700 font-mono">{progressForm.customer_id}</p></div>
+                  <div><span className="text-slate-400 text-xs">行业</span><p className="text-slate-700">{industryLabels[progressForm.industry] || progressForm.industry}</p></div>
+                  <div><span className="text-slate-400 text-xs">国家</span><p className="text-slate-700">{displayCountry(progressForm.country)}</p></div>
+                  <div><span className="text-slate-400 text-xs">州/省</span><p className="text-slate-700">{progressForm.state ? getStateLabel(progressForm.country, progressForm.state) : '-'}</p></div>
+                  <div><span className="text-slate-400 text-xs">城市</span><p className="text-slate-700">{progressForm.city || <span className="text-amber-500 text-xs">⚠ 客户档案缺少城市信息</span>}</p></div>
+                  <div><span className="text-slate-400 text-xs">套餐名称</span><p className="text-slate-700">{progressForm.package_name || '-'}</p></div>
+                  <div><span className="text-slate-400 text-xs">服务开始日期</span><p className="text-slate-700">{progressForm.service_start_date || '-'}</p></div>
+                  <div><span className="text-slate-400 text-xs">服务到期日期</span><p className="text-slate-700">{progressForm.service_end_date || '-'}</p></div>
+                </div>
+              </div>
+            )}
+
+            {/* Section 3: Service-specific editable fields */}
+            <div className="border border-slate-200 rounded-lg p-3 space-y-3">
+              <h4 className="text-sm font-semibold text-slate-600">本次服务进度信息</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>服务类型</Label>
+                  <NativeSelect
+                    value={progressForm.service_type}
+                    onChange={v => {
+                      const currentStageValid = isStageValidForType(v, progressForm.service_stage);
+                      const newStage = currentStageValid ? progressForm.service_stage : getFirstStageForType(v);
+                      const defaultProg = getDefaultProgress(v, newStage);
+                      setProgressForm({
+                        ...progressForm,
+                        service_type: v,
+                        service_stage: newStage,
+                        progress_percent: defaultProg >= 0 ? defaultProg : progressForm.progress_percent,
+                      });
+                    }}
+                    options={Object.entries(serviceTypeLabels).map(([k, v]) => ({ value: k, label: v }))}
+                  />
+                </div>
+                <div>
+                  <Label>服务阶段</Label>
+                  <NativeSelect
+                    value={progressForm.service_stage}
+                    onChange={v => {
+                      const defaultProg = getDefaultProgress(progressForm.service_type, v);
+                      setProgressForm({
+                        ...progressForm,
+                        service_stage: v,
+                        progress_percent: defaultProg >= 0 ? defaultProg : progressForm.progress_percent,
+                      });
+                    }}
+                    options={(() => {
+                      const stages = getStagesForType(progressForm.service_type);
+                      const opts = Object.entries(stages).map(([k, v]) => ({ value: k, label: v }));
+                      if (progressForm.service_stage && !stages[progressForm.service_stage]) {
+                        const legacyLabel = allStageLabels[progressForm.service_stage] || progressForm.service_stage;
+                        opts.unshift({ value: progressForm.service_stage, label: `${legacyLabel} (旧阶段)` });
+                      }
+                      return opts;
+                    })()}
+                  />
+                </div>
+                <div>
+                  <Label>进度百分比 ({progressForm.progress_percent}%)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={progressForm.progress_percent}
+                      onChange={e => {
+                        const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                        setProgressForm({ ...progressForm, progress_percent: val });
+                      }}
+                      className="w-20"
+                    />
+                    <div className="flex-1 bg-slate-200 rounded-full h-2">
+                      <div className={`h-2 rounded-full transition-all ${progressForm.progress_percent >= 100 ? 'bg-green-500' : progressForm.progress_percent >= 60 ? 'bg-blue-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(progressForm.progress_percent, 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <Label>销售负责人</Label>
+                  <NativeSelect
+                    value={progressForm.sales_person}
+                    onChange={v => setProgressForm({ ...progressForm, sales_person: v })}
+                    options={[
+                      { value: '', label: '请选择销售' },
+                      ...salesEmployees.map(e => ({ value: e.name, label: e.name })),
+                      ...(progressForm.sales_person && !salesEmployees.find(e => e.name === progressForm.sales_person) ? [{ value: progressForm.sales_person, label: `${progressForm.sales_person} (当前)` }] : []),
+                    ]}
+                  />
+                </div>
+                <div>
+                  <Label>运营负责人</Label>
+                  <NativeSelect
+                    value={progressForm.ops_person}
+                    onChange={v => setProgressForm({ ...progressForm, ops_person: v })}
+                    options={[
+                      { value: '', label: '请选择运营' },
+                      ...opsEmployees.map(e => ({ value: e.name, label: e.name })),
+                      ...(progressForm.ops_person && !opsEmployees.find(e => e.name === progressForm.ops_person) ? [{ value: progressForm.ops_person, label: `${progressForm.ops_person} (当前)` }] : []),
+                    ]}
+                  />
+                </div>
+                <div>
+                  <Label>设计负责人</Label>
+                  <NativeSelect
+                    value={progressForm.design_person}
+                    onChange={v => setProgressForm({ ...progressForm, design_person: v })}
+                    options={[
+                      { value: '', label: '请选择设计' },
+                      ...designEmployees.map(e => ({ value: e.name, label: e.name })),
+                      ...(progressForm.design_person && !designEmployees.find(e => e.name === progressForm.design_person) ? [{ value: progressForm.design_person, label: `${progressForm.design_person} (当前)` }] : []),
+                    ]}
+                  />
+                </div>
+                <div>
+                  <Label>服务开始日期</Label>
+                  <Input type="date" data-testid="service-start-date-input" value={progressForm.service_start_date} onChange={e => setProgressForm({ ...progressForm, service_start_date: e.target.value })} className={!isAdmin ? 'bg-slate-50' : ''} readOnly={!isAdmin && !!progressForm.service_start_date} />
+                </div>
+                <div>
+                  <Label>服务到期日期</Label>
+                  <Input type="date" value={progressForm.service_end_date} onChange={e => setProgressForm({ ...progressForm, service_end_date: e.target.value })} />
+                </div>
+              </div>
+            </div>
+
+            {/* Section 4: Issue status */}
+            <div className="border border-slate-200 rounded-lg p-3 space-y-3">
+              <h4 className="text-sm font-semibold text-slate-600">问题卡点</h4>
+              <div>
+                <Label>问题状态</Label>
+                <NativeSelect
+                  value={progressForm.issue_status}
+                  onChange={v => setProgressForm({ ...progressForm, issue_status: v, issue_found_date: v !== 'none' && !progressForm.issue_found_date ? businessDateKey() : progressForm.issue_found_date })}
+                  options={Object.entries(issueStatusLabels).map(([k, v]) => ({ value: k, label: v }))}
+                />
+              </div>
+              {progressForm.issue_status !== 'none' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2"><Label>问题描述</Label><Textarea value={progressForm.issue_description} onChange={e => setProgressForm({ ...progressForm, issue_description: e.target.value })} rows={2} placeholder="描述具体问题..." /></div>
+                  <div><Label>问题开始时间</Label><Input type="date" value={progressForm.issue_found_date} onChange={e => setProgressForm({ ...progressForm, issue_found_date: e.target.value })} /></div>
+                  <div>
+                    <Label>问题负责人</Label>
+                    <NativeSelect
+                      value={progressForm.issue_owner}
+                      onChange={v => setProgressForm({ ...progressForm, issue_owner: v })}
+                      options={[
+                        { value: '', label: '请选择' },
+                        ...activeEmployees.map(e => ({ value: e.name, label: e.name })),
+                      ]}
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={progressForm.issue_resolved} onChange={e => setProgressForm({ ...progressForm, issue_resolved: e.target.checked, issue_resolved_date: e.target.checked ? businessDateKey() : '' })} className="rounded" />
+                      已解决
+                    </label>
+                  </div>
+                  {progressForm.issue_resolved && (
+                    <div><Label>解决时间</Label><Input type="date" value={progressForm.issue_resolved_date} onChange={e => setProgressForm({ ...progressForm, issue_resolved_date: e.target.value })} /></div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Section 5: Work summary */}
+            <div className="border border-slate-200 rounded-lg p-3 space-y-3">
+              <h4 className="text-sm font-semibold text-slate-600">工作记录</h4>
+              <div><Label>最近工作摘要</Label><Textarea value={progressForm.last_work_summary} onChange={e => setProgressForm({ ...progressForm, last_work_summary: e.target.value })} rows={3} placeholder="例如：本周已完成 Facebook 内容更新和 Google Business 图片上传" /></div>
+              <div><Label>备注</Label><Textarea value={progressForm.notes} onChange={e => setProgressForm({ ...progressForm, notes: e.target.value })} rows={2} /></div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowProgressForm(false)}>取消</Button>
+            <Button onClick={handleSaveProgress} disabled={savingProgress} className="bg-blue-600 hover:bg-blue-700">{savingProgress ? '保存中...' : '保存'}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task Form Dialog */}
+    </>
+  );
+
   const renderTaskActionDialogs = () => (
     <>
       <ConfirmDialog
@@ -1720,7 +1984,7 @@ export default function ServiceBoard() {
       />
 
       <Dialog open={!!completeTaskTarget} onOpenChange={v => { if (!v) closeCompleteTaskDialog(); }}>
-        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="delivery-dialog max-w-xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>完成任务 - {completeTaskTarget?.task_name}</DialogTitle>
           </DialogHeader>
@@ -1856,7 +2120,7 @@ export default function ServiceBoard() {
       </Dialog>
 
       <Dialog open={showTaskForm} onOpenChange={setShowTaskForm}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="delivery-dialog max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingTaskId ? '编辑任务' : '新增任务'} - {taskForm.customer_name}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div><Label>任务名称 *</Label><Input value={taskForm.task_name} onChange={e => setTaskForm({ ...taskForm, task_name: e.target.value })} placeholder="例如：收集菜单图片" /></div>
@@ -1984,14 +2248,14 @@ export default function ServiceBoard() {
     ].sort((a, b) => a.time.localeCompare(b.time));
 
     return (
-      <div className="space-y-4">
+      <div className="delivery-center-ui dc-service dc-service-detail">
         <div className="flex items-center gap-3 flex-wrap">
           <Button variant="ghost" size="sm" onClick={closeProgressDetail}><ArrowLeft className="w-4 h-4 mr-1" /> 返回看板</Button>
           <h2 className="text-lg font-semibold">{sp.customer_name}</h2>
           <Badge className="bg-blue-100 text-blue-700">{serviceTypeLabels[sp.service_type]}</Badge>
           <Badge className={issueStatusColors[sp.issue_status]}>{issueStatusLabels[sp.issue_status]}</Badge>
           {isOverdue(sp) && <Badge className="bg-red-100 text-red-700">已逾期</Badge>}
-          {isExpiringSoon(sp) && <Badge className="bg-yellow-100 text-yellow-700">即将到期</Badge>}
+          {sp.service_stage !== 'ended' && isExpiringSoon(sp) && <Badge className="bg-yellow-100 text-yellow-700">即将到期</Badge>}
         </div>
 
         {/* Quick action bar */}
@@ -2066,6 +2330,7 @@ export default function ServiceBoard() {
                       {sp.service_end_date?.slice(0, 10) || '-'}
                       {(() => {
                         const remainDays = getServiceRemainingDays(sp);
+                        if (sp.service_stage === 'ended') return ' (服务已结束)';
                         if (remainDays == null) return '';
                         if (remainDays <= 0) return ` (已逾期 ${Math.abs(remainDays)} 天)`;
                         if (remainDays <= SERVICE_EXPIRY_WARNING_DAYS) return ` (剩余 ${remainDays} 天)`;
@@ -2439,6 +2704,7 @@ export default function ServiceBoard() {
             </CardContent></Card>
           </TabsContent>
         </Tabs>
+        {renderProgressActionDialogs()}
         {renderTaskActionDialogs()}
       </div>
     );
@@ -2450,9 +2716,9 @@ export default function ServiceBoard() {
   }
 
   return (
-    <div className="t24-work-page t24-service-page app-page space-y-5">
+    <div className="t24-work-page t24-service-page delivery-center-ui dc-service app-page">
       {/* Header */}
-      <div className="app-page-title flex-col sm:flex-row items-start sm:items-center">
+      <div className="dc-heading flex-col sm:flex-row items-start sm:items-center">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Delivery</p>
           <h2 className="mt-1 text-2xl font-bold text-slate-900">新客户交付进度看板</h2>
@@ -2467,39 +2733,25 @@ export default function ServiceBoard() {
               sheetName="服务进度"
             />
           </div>
-          <Button variant="outline" size="sm" onClick={() => setShowStats(!showStats)} className="min-h-11 gap-1.5 md:min-h-0"><BarChart3 className="w-4 h-4" /> {showStats ? '隐藏统计' : '显示统计'}</Button>
+          <Button variant="outline" size="sm" aria-expanded={showStats} aria-controls="delivery-operating-details" onClick={() => setShowStats(!showStats)} className="min-h-11 gap-1.5 md:min-h-0"><BarChart3 className="w-4 h-4" /> {showStats ? '收起运营详情' : '运营详情'}</Button>
           <Button variant="outline" size="sm" onClick={loadData} className="min-h-11 gap-1.5 md:min-h-0"><RefreshCw className="w-4 h-4" /> 刷新</Button>
           {canCreate && <Button onClick={openCreateProgress} className="col-span-2 min-h-11 bg-blue-600 hover:bg-blue-700 sm:col-span-1 md:min-h-0"><Plus className="w-4 h-4 mr-1" /> 手动新增服务</Button>}
         </div>
       </div>
 
-      {canCreate && (
-        <Card className="border-emerald-100 bg-emerald-50/70">
-          <CardContent className="p-3">
-            <div className="flex flex-col gap-2 text-sm text-emerald-800 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-start gap-2">
-                <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                <p>
-                  本看板主要用于新客户首次交付。新成交需要交付时，请在成交管理打开“生成服务看板”开关，或在成交列表点击“看板”；旧客户补录和已进入长期运营的客户无需重复生成。
-                </p>
-              </div>
-              <Button size="sm" variant="outline" className="min-h-11 border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-100 md:min-h-0" onClick={() => { window.location.href = '/deals'; }}>
-                去成交管理生成
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {(isAdmin || role === 'ops') && <DeliveryMetrics label="交付概览" items={[
+        { key: 'total', label: '交付客户', value: stats.total, note: '当前可见的交付记录', onClick: () => setQuickFilter('all'), active: quickFilter === 'all' },
+        { key: 'active', label: '服务进行中', value: stats.active, note: '正在推进的服务交付', tone: 'green' },
+        { key: 'issue', label: '问题卡点', value: stats.withIssue, note: '需要协调和解决', tone: 'rose', onClick: () => setQuickFilter('has_issue'), active: quickFilter === 'has_issue' },
+        { key: 'overdue', label: '交付已逾期', value: stats.overdueCount, note: '已到期且尚未结束', tone: 'amber', onClick: () => setQuickFilter('overdue'), active: quickFilter === 'overdue' },
+      ]} />}
 
-      {archivedStoppedCount > 0 && (
-        <Card className="border-slate-200 bg-slate-50/80">
-          <CardContent className="flex items-center gap-2 p-3 text-sm text-slate-600">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-            已自动隐藏 {archivedStoppedCount} 条停止合作客户的历史交付记录；历史仍保留在客户生命周期与操作记录中。
-          </CardContent>
-        </Card>
-      )}
+      {(canCreate || archivedStoppedCount > 0) && <details className="dc-guidance">
+        <summary><Info size={15} /><strong>交付规则与历史说明</strong><span>{archivedStoppedCount > 0 ? `已隐藏 ${archivedStoppedCount} 条停止合作的历史记录` : '从成交交接开始，避免重复建档'}</span><ChevronRight size={14} /></summary>
+        <div>{canCreate && <><p>本看板用于新客户首次交付。新成交需要交付时，请在成交管理开启“生成服务看板”，或点击成交列表中的“看板”；旧客户补录和长期运营客户无需重复生成。</p><Button size="sm" variant="outline" onClick={() => { window.location.href = '/deals'; }}>去成交管理生成</Button></>}{archivedStoppedCount > 0 && <p>停止合作客户的历史交付仍保留在客户生命周期与操作记录中。</p>}</div>
+      </details>}
 
+      <section id="delivery-operating-details" className="dc-operating-details" hidden={!showStats} aria-label="运营详细统计">
       {showStats && (isAdmin || role === 'ops') && (
         <Card className="border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50">
           <CardContent className="p-4">
@@ -2684,10 +2936,12 @@ export default function ServiceBoard() {
         </Card>
       )}
 
+      </section>
+      <section className="dc-board-tools" aria-label="交付筛选与视图">
       {/* Quick Filters */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="dc-quick-filters flex gap-2 flex-wrap">
         {(Object.entries(quickFilterLabels) as [QuickFilter, string][]).map(([k, v]) => (
-          <Button key={k} variant={quickFilter === k ? 'default' : 'outline'} size="sm"
+          <Button key={k} aria-pressed={quickFilter === k} variant={quickFilter === k ? 'default' : 'outline'} size="sm"
             className={`min-h-11 text-xs md:h-8 md:min-h-0 ${quickFilter === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
             onClick={() => setQuickFilter(quickFilter === k ? 'all' : k)}
           >{v}
@@ -2703,15 +2957,15 @@ export default function ServiceBoard() {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input placeholder="搜索客户名称、负责人..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            <Input aria-label="搜索服务交付" placeholder="搜索客户名称、负责人..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
           </div>
           <div className="flex gap-2">
             <div className="flex overflow-hidden rounded-md border border-slate-200">
-              <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} onClick={() => setViewMode('list')}><LayoutList className="w-3.5 h-3.5" /> 列表</button>
-              <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} onClick={() => setViewMode('kanban')}><Kanban className="w-3.5 h-3.5" /> 看板</button>
-              <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'employee' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} onClick={() => setViewMode('employee')}><Users className="w-3.5 h-3.5" /> 员工</button>
+              <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} aria-pressed={viewMode === 'list'} onClick={() => setViewMode('list')}><LayoutList className="w-3.5 h-3.5" /> 列表</button>
+              <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} aria-pressed={viewMode === 'kanban'} onClick={() => setViewMode('kanban')}><Kanban className="w-3.5 h-3.5" /> 看板</button>
+              <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'employee' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} aria-pressed={viewMode === 'employee'} onClick={() => setViewMode('employee')}><Users className="w-3.5 h-3.5" /> 员工</button>
             </div>
-            <Button variant={showFilters ? 'default' : 'outline'} size="sm" className={`min-h-11 gap-1.5 md:h-10 md:min-h-0 ${showFilters ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setShowFilters(!showFilters)}>
+            <Button variant={showFilters ? 'default' : 'outline'} size="sm" className={`min-h-11 gap-1.5 md:h-10 md:min-h-0 ${showFilters ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}>
               <Filter className="w-4 h-4" /> 筛选
             </Button>
           </div>
@@ -2735,30 +2989,30 @@ export default function ServiceBoard() {
         )}
       </CardContent></Card>
 
-      <div className="text-xs text-slate-500">共 {filtered.length} 条{filtered.length !== progresses.length ? ` (筛选自 ${progresses.length} 条)` : ''}</div>
+      </section>
+      <div className="dc-list-heading"><h3>客户交付进展</h3><span>共 {filtered.length} 条{filtered.length !== progresses.length ? ` (筛选自 ${progresses.length} 条)` : ''}</span><small>查看阶段、负责人和最近进展</small></div>
 
       {/* LIST VIEW */}
-      {viewMode === 'list' && (
-        <>
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.length === 0 ? (
-              <div className="col-span-full text-center text-slate-400 py-12">
-                <p className="mb-3">暂无匹配的服务记录</p>
-                {canCreate && (
-                  <Button variant="outline" onClick={openCreateProgress}>
-                    <Plus className="w-4 h-4 mr-1" /> 新增第一条服务记录
-                  </Button>
-                )}
-              </div>
-            ) : paginatedProgresses.items.map(sp => <ProgressCard key={sp.id} sp={sp} />)}
-          </div>
-          <ProgressPaginationFooter />
-        </>
-      )}
+      {viewMode === 'list' && <section className="dc-progress-list">
+        {filtered.length === 0 ? <DeliveryEmpty title="没有匹配的交付记录" description="可以调整客户名称或筛选条件，查看其他服务进展。">{canCreate && <Button variant="outline" onClick={openCreateProgress}><Plus size={15} />新增服务记录</Button>}</DeliveryEmpty> : <>
+          <div className="hidden md:block dc-table-scroll"><table className="dc-progress-table"><thead><tr><th>客户 / 服务</th><th>阶段与进度</th><th>负责团队</th><th>最近进展</th><th>操作</th></tr></thead><tbody>{paginatedProgresses.items.map(sp => {
+            const ts = getTaskStats(sp.id); const nextStage = getNextStage(sp.service_type, sp.service_stage); const issue = hasIssue(sp); const onboarding = getOnboardingProgress(sp, allTasks);
+            return <tr key={sp.id}>
+              <td><button type="button" className="dc-customer-name" onClick={() => openDetail(sp)}>{sp.customer_name}</button><p>{serviceTypeLabels[sp.service_type] || sp.service_type} · {sp.package_name || '未填写套餐'}</p><small>{[sp.city, sp.state].filter(Boolean).join(', ') || '未填写地区'}</small></td>
+              <td><div className="dc-stage-line"><span>{allStageLabels[sp.service_stage] || sp.service_stage}</span><b>{sp.progress_percent}%</b></div><div className="dc-progress-track"><i style={{ width: `${Math.max(0, Math.min(sp.progress_percent, 100))}%` }} /></div><small>{ts.total ? `${ts.completed} / ${ts.total} 任务完成` : '尚无交付任务'}{ts.overdue > 0 ? ` · ${ts.overdue} 项逾期` : ''}</small></td>
+              <td><span className="dc-person"><i>{(sp.ops_person || '待')[0]}</i>{sp.ops_person || '待分配运营'}</span><small>销售 · {sp.sales_person || '未分配'}</small>{sp.design_person && <small>设计 · {sp.design_person}</small>}</td>
+              <td>{issue ? <span className="dc-status dc-status-rose">{issueStatusLabels[sp.issue_status] || '有问题卡点'}</span> : <span className={`dc-status ${sp.service_stage === 'ended' ? 'dc-status-green' : isOverdue(sp) ? 'dc-status-rose' : 'dc-status-blue'}`}>{sp.service_stage === 'ended' ? '服务已结束' : isOverdue(sp) ? '交付已逾期' : isExpiringSoon(sp) ? '即将到期' : '按阶段推进'}</span>}<p className="dc-summary-text" title={issue ? sp.issue_description : sp.last_work_summary}>{issue ? sp.issue_description || '待补充问题说明' : onboarding.nextStep && !onboarding.isComplete ? `下一步：${onboarding.nextStep.label}` : sp.last_work_summary || '暂无工作摘要'}</p><small>更新于 {sp.last_update_time?.slice(0, 10) || '尚未更新'}</small></td>
+              <td><div className="dc-row-actions"><Button size="sm" variant="outline" onClick={() => openDetail(sp)}>查看详情</Button>{canEdit && <><Button size="sm" variant="ghost" onClick={() => openQuickUpdate(sp)}>更新摘要</Button><Button size="sm" variant="ghost" aria-label={`编辑服务进度：${sp.customer_name}`} onClick={() => openEditProgress(sp)}><Edit size={14} /></Button>{nextStage && <Button size="sm" variant="ghost" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</>}{canEdit && canDelete && <Button size="sm" variant="ghost" aria-label={`删除服务进度：${sp.customer_name}`} onClick={() => setDeleteTarget({ type: 'progress', item: sp })}><Trash2 size={14} /></Button>}</div></td>
+            </tr>;
+          })}</tbody></table></div>
+          <div className="dc-mobile-progress md:hidden">{paginatedProgresses.items.map(sp => <ProgressCard key={sp.id} sp={sp} />)}</div>
+        </>}
+        <ProgressPaginationFooter />
+      </section>}
 
       {/* KANBAN VIEW */}
       {viewMode === 'kanban' && (
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="dc-kanban flex gap-4 overflow-x-auto pb-4">
           {kanbanColumns.map(col => {
             const items = filtered.filter(sp => col.stages.includes(sp.service_stage));
             return (
@@ -2843,31 +3097,11 @@ export default function ServiceBoard() {
       {/* ==================== DIALOGS ==================== */}
       <ConfirmDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }} title={deleteTarget?.type === 'progress' ? '确认删除服务进度' : '确认删除任务'} description={deleteTarget?.type === 'progress' ? `确定要删除「${deleteTarget?.item?.customer_name}」的服务进度记录吗？关联的所有任务也将被删除。此操作不可撤销。` : `确定要删除任务「${deleteTarget?.item?.task_name}」吗？此操作不可撤销。`} onConfirm={handleDelete} loading={deleting} />
 
-      {/* Quick Update Work Summary Dialog */}
-      <Dialog open={showQuickUpdate} onOpenChange={v => { if (!v) setShowQuickUpdate(false); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>更新工作摘要 - {quickUpdateSp?.customer_name}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>最近工作摘要</Label>
-              <Textarea
-                value={quickUpdateSummary}
-                onChange={e => setQuickUpdateSummary(e.target.value)}
-                rows={4}
-                placeholder="例如：本周已完成 Facebook 内容更新和 Google Business 图片上传"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowQuickUpdate(false)}>取消</Button>
-            <Button onClick={handleQuickUpdateSave} disabled={savingQuickUpdate} className="bg-blue-600 hover:bg-blue-700">{savingQuickUpdate ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {renderProgressActionDialogs()}
 
       {/* Complete Task Dialog */}
       <Dialog open={!!completeTaskTarget} onOpenChange={v => { if (!v) closeCompleteTaskDialog(); }}>
-        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="delivery-dialog max-w-xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>完成任务 - {completeTaskTarget?.task_name}</DialogTitle>
           </DialogHeader>
@@ -3002,244 +3236,8 @@ export default function ServiceBoard() {
         </DialogContent>
       </Dialog>
 
-      {/* ==================== SMART Progress Form Dialog ==================== */}
-      <Dialog open={showProgressForm} onOpenChange={setShowProgressForm}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingProgressId ? '编辑服务进度' : '新增服务进度'}</DialogTitle></DialogHeader>
-
-          {/* Section 1: Customer Selection */}
-          <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <h4 className="text-sm font-semibold text-blue-800 mb-2 flex items-center gap-1.5"><Search className="w-4 h-4" /> 选择客户</h4>
-              <div className="relative" ref={customerDropdownRef}>
-                <Input
-                  placeholder="搜索客户名称、编号、联系人、电话..."
-                  value={customerSearch}
-                  onChange={e => {
-                    setCustomerSearch(e.target.value);
-                    setShowCustomerDropdown(true);
-                    if (!e.target.value.trim()) {
-                      setSelectedCustomerState(null);
-                      setProgressForm(prev => ({ ...prev, customer_id: 0, customer_name: '' }));
-                    }
-                  }}
-                  onFocus={() => setShowCustomerDropdown(true)}
-                  className="bg-white"
-                />
-                {showCustomerDropdown && filteredCustomers.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {filteredCustomers.map(c => (
-                      <div
-                        key={c.id}
-                        className={`px-3 py-2.5 hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0 ${selectedCustomer?.id === c.id ? 'bg-blue-50' : ''}`}
-                        onClick={() => handleSelectCustomer(c)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-sm text-slate-800">{c.business_name}</span>
-                          <span className="text-xs text-slate-400 font-mono">{c.customer_code || `#${c.id}`}</span>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
-                          <span>{displayCountry(c.country)}{c.state ? ` · ${c.state}` : ''}{c.city ? ` · ${c.city}` : ''}</span>
-                          <span>{industryLabels[c.industry] || c.industry}</span>
-                          {c.sales_person && <span>销售: {c.sales_person}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {showCustomerDropdown && customerSearch.trim() && filteredCustomers.length === 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-4 text-center text-sm text-slate-400">
-                    未找到匹配的客户
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Section 2: Auto-populated customer info (read-only) */}
-            {selectedCustomer && (
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <h4 className="text-sm font-semibold text-slate-600 mb-2 flex items-center gap-1.5"><Info className="w-4 h-4" /> 客户档案信息（自动带出）</h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm">
-                  <div><span className="text-slate-400 text-xs">客户ID</span><p className="text-slate-700 font-mono">{progressForm.customer_id}</p></div>
-                  <div><span className="text-slate-400 text-xs">行业</span><p className="text-slate-700">{industryLabels[progressForm.industry] || progressForm.industry}</p></div>
-                  <div><span className="text-slate-400 text-xs">国家</span><p className="text-slate-700">{displayCountry(progressForm.country)}</p></div>
-                  <div><span className="text-slate-400 text-xs">州/省</span><p className="text-slate-700">{progressForm.state ? getStateLabel(progressForm.country, progressForm.state) : '-'}</p></div>
-                  <div><span className="text-slate-400 text-xs">城市</span><p className="text-slate-700">{progressForm.city || <span className="text-amber-500 text-xs">⚠ 客户档案缺少城市信息</span>}</p></div>
-                  <div><span className="text-slate-400 text-xs">套餐名称</span><p className="text-slate-700">{progressForm.package_name || '-'}</p></div>
-                  <div><span className="text-slate-400 text-xs">服务开始日期</span><p className="text-slate-700">{progressForm.service_start_date || '-'}</p></div>
-                  <div><span className="text-slate-400 text-xs">服务到期日期</span><p className="text-slate-700">{progressForm.service_end_date || '-'}</p></div>
-                </div>
-              </div>
-            )}
-
-            {/* Section 3: Service-specific editable fields */}
-            <div className="border border-slate-200 rounded-lg p-3 space-y-3">
-              <h4 className="text-sm font-semibold text-slate-600">本次服务进度信息</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>服务类型</Label>
-                  <NativeSelect
-                    value={progressForm.service_type}
-                    onChange={v => {
-                      const currentStageValid = isStageValidForType(v, progressForm.service_stage);
-                      const newStage = currentStageValid ? progressForm.service_stage : getFirstStageForType(v);
-                      const defaultProg = getDefaultProgress(v, newStage);
-                      setProgressForm({
-                        ...progressForm,
-                        service_type: v,
-                        service_stage: newStage,
-                        progress_percent: defaultProg >= 0 ? defaultProg : progressForm.progress_percent,
-                      });
-                    }}
-                    options={Object.entries(serviceTypeLabels).map(([k, v]) => ({ value: k, label: v }))}
-                  />
-                </div>
-                <div>
-                  <Label>服务阶段</Label>
-                  <NativeSelect
-                    value={progressForm.service_stage}
-                    onChange={v => {
-                      const defaultProg = getDefaultProgress(progressForm.service_type, v);
-                      setProgressForm({
-                        ...progressForm,
-                        service_stage: v,
-                        progress_percent: defaultProg >= 0 ? defaultProg : progressForm.progress_percent,
-                      });
-                    }}
-                    options={(() => {
-                      const stages = getStagesForType(progressForm.service_type);
-                      const opts = Object.entries(stages).map(([k, v]) => ({ value: k, label: v }));
-                      if (progressForm.service_stage && !stages[progressForm.service_stage]) {
-                        const legacyLabel = allStageLabels[progressForm.service_stage] || progressForm.service_stage;
-                        opts.unshift({ value: progressForm.service_stage, label: `${legacyLabel} (旧阶段)` });
-                      }
-                      return opts;
-                    })()}
-                  />
-                </div>
-                <div>
-                  <Label>进度百分比 ({progressForm.progress_percent}%)</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={progressForm.progress_percent}
-                      onChange={e => {
-                        const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
-                        setProgressForm({ ...progressForm, progress_percent: val });
-                      }}
-                      className="w-20"
-                    />
-                    <div className="flex-1 bg-slate-200 rounded-full h-2">
-                      <div className={`h-2 rounded-full transition-all ${progressForm.progress_percent >= 100 ? 'bg-green-500' : progressForm.progress_percent >= 60 ? 'bg-blue-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(progressForm.progress_percent, 100)}%` }} />
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <Label>销售负责人</Label>
-                  <NativeSelect
-                    value={progressForm.sales_person}
-                    onChange={v => setProgressForm({ ...progressForm, sales_person: v })}
-                    options={[
-                      { value: '', label: '请选择销售' },
-                      ...salesEmployees.map(e => ({ value: e.name, label: e.name })),
-                      ...(progressForm.sales_person && !salesEmployees.find(e => e.name === progressForm.sales_person) ? [{ value: progressForm.sales_person, label: `${progressForm.sales_person} (当前)` }] : []),
-                    ]}
-                  />
-                </div>
-                <div>
-                  <Label>运营负责人</Label>
-                  <NativeSelect
-                    value={progressForm.ops_person}
-                    onChange={v => setProgressForm({ ...progressForm, ops_person: v })}
-                    options={[
-                      { value: '', label: '请选择运营' },
-                      ...opsEmployees.map(e => ({ value: e.name, label: e.name })),
-                      ...(progressForm.ops_person && !opsEmployees.find(e => e.name === progressForm.ops_person) ? [{ value: progressForm.ops_person, label: `${progressForm.ops_person} (当前)` }] : []),
-                    ]}
-                  />
-                </div>
-                <div>
-                  <Label>设计负责人</Label>
-                  <NativeSelect
-                    value={progressForm.design_person}
-                    onChange={v => setProgressForm({ ...progressForm, design_person: v })}
-                    options={[
-                      { value: '', label: '请选择设计' },
-                      ...designEmployees.map(e => ({ value: e.name, label: e.name })),
-                      ...(progressForm.design_person && !designEmployees.find(e => e.name === progressForm.design_person) ? [{ value: progressForm.design_person, label: `${progressForm.design_person} (当前)` }] : []),
-                    ]}
-                  />
-                </div>
-                <div>
-                  <Label>服务开始日期</Label>
-                  <Input type="date" data-testid="service-start-date-input" value={progressForm.service_start_date} onChange={e => setProgressForm({ ...progressForm, service_start_date: e.target.value })} className={!isAdmin ? 'bg-slate-50' : ''} readOnly={!isAdmin && !!progressForm.service_start_date} />
-                </div>
-                <div>
-                  <Label>服务到期日期</Label>
-                  <Input type="date" value={progressForm.service_end_date} onChange={e => setProgressForm({ ...progressForm, service_end_date: e.target.value })} />
-                </div>
-              </div>
-            </div>
-
-            {/* Section 4: Issue status */}
-            <div className="border border-slate-200 rounded-lg p-3 space-y-3">
-              <h4 className="text-sm font-semibold text-slate-600">问题卡点</h4>
-              <div>
-                <Label>问题状态</Label>
-                <NativeSelect
-                  value={progressForm.issue_status}
-                  onChange={v => setProgressForm({ ...progressForm, issue_status: v, issue_found_date: v !== 'none' && !progressForm.issue_found_date ? businessDateKey() : progressForm.issue_found_date })}
-                  options={Object.entries(issueStatusLabels).map(([k, v]) => ({ value: k, label: v }))}
-                />
-              </div>
-              {progressForm.issue_status !== 'none' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2"><Label>问题描述</Label><Textarea value={progressForm.issue_description} onChange={e => setProgressForm({ ...progressForm, issue_description: e.target.value })} rows={2} placeholder="描述具体问题..." /></div>
-                  <div><Label>问题开始时间</Label><Input type="date" value={progressForm.issue_found_date} onChange={e => setProgressForm({ ...progressForm, issue_found_date: e.target.value })} /></div>
-                  <div>
-                    <Label>问题负责人</Label>
-                    <NativeSelect
-                      value={progressForm.issue_owner}
-                      onChange={v => setProgressForm({ ...progressForm, issue_owner: v })}
-                      options={[
-                        { value: '', label: '请选择' },
-                        ...activeEmployees.map(e => ({ value: e.name, label: e.name })),
-                      ]}
-                    />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="checkbox" checked={progressForm.issue_resolved} onChange={e => setProgressForm({ ...progressForm, issue_resolved: e.target.checked, issue_resolved_date: e.target.checked ? businessDateKey() : '' })} className="rounded" />
-                      已解决
-                    </label>
-                  </div>
-                  {progressForm.issue_resolved && (
-                    <div><Label>解决时间</Label><Input type="date" value={progressForm.issue_resolved_date} onChange={e => setProgressForm({ ...progressForm, issue_resolved_date: e.target.value })} /></div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Section 5: Work summary */}
-            <div className="border border-slate-200 rounded-lg p-3 space-y-3">
-              <h4 className="text-sm font-semibold text-slate-600">工作记录</h4>
-              <div><Label>最近工作摘要</Label><Textarea value={progressForm.last_work_summary} onChange={e => setProgressForm({ ...progressForm, last_work_summary: e.target.value })} rows={3} placeholder="例如：本周已完成 Facebook 内容更新和 Google Business 图片上传" /></div>
-              <div><Label>备注</Label><Textarea value={progressForm.notes} onChange={e => setProgressForm({ ...progressForm, notes: e.target.value })} rows={2} /></div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowProgressForm(false)}>取消</Button>
-            <Button onClick={handleSaveProgress} disabled={savingProgress} className="bg-blue-600 hover:bg-blue-700">{savingProgress ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Task Form Dialog */}
       <Dialog open={showTaskForm} onOpenChange={setShowTaskForm}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="delivery-dialog max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingTaskId ? '编辑任务' : '新增任务'} - {taskForm.customer_name}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div><Label>任务名称 *</Label><Input value={taskForm.task_name} onChange={e => setTaskForm({ ...taskForm, task_name: e.target.value })} placeholder="例如：收集菜单图片" /></div>
