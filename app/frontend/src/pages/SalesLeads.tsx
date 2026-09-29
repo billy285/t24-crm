@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import '@/components/sales-center.css';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import CustomerPhoneDial from '@/components/CustomerPhoneDial';
@@ -145,6 +146,7 @@ export default function SalesLeads() {
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [stats, setStats] = useState({ total: 0, assigned: 0, unassigned: 0, blacklisted: 0, do_not_contact: 0 });
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<'leads' | 'calls' | 'performance'>('leads');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [contactFilter, setContactFilter] = useState('');
@@ -604,11 +606,11 @@ export default function SalesLeads() {
   };
 
   return (
-    <div className="t24-directory-page t24-sales-leads-page app-page space-y-5">
-      <div className="app-page-title flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="t24-directory-page t24-sales-leads-page sales-center-ui sc-directory app-page space-y-5">
+      <div className="sc-section-heading app-page-title flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2 text-sm font-medium text-blue-600">
-            <Headphones className="h-4 w-4" /> 独立售前数据区
+            <Headphones className="h-4 w-4" /> T24 MARKETING · SALES CRM
           </div>
           <h2 className="text-2xl font-bold text-slate-900">{canManage ? '电话销售中心' : '我的销售线索'}</h2>
           <p className="mt-1 text-sm text-slate-500">当前范围：{scopeText}。这里的陌生商家不会进入正式客户管理。</p>
@@ -620,7 +622,7 @@ export default function SalesLeads() {
         手机端优先完成拨号、复制号码和记录跟进。批量改派等管理操作请使用电脑；禁联、黑名单与成交审核收在单条线索的“更多”中。
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="sc-metrics grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
           { label: '可见线索', value: stats.total, icon: Building2, color: 'text-blue-600 bg-blue-50' },
           { label: '已分配', value: stats.assigned, icon: UserCheck, color: 'text-emerald-600 bg-emerald-50' },
@@ -630,14 +632,21 @@ export default function SalesLeads() {
         ].map(stat => (
           <Card key={stat.label} className="border-slate-200 shadow-sm">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className={`rounded-xl p-2.5 ${stat.color}`}><stat.icon className="h-5 w-5" /></div>
-              <div><p className="text-xs text-slate-500">{stat.label}</p><p className="text-2xl font-bold text-slate-900">{stat.value}</p></div>
+              <div className={`sc-metric-icon rounded-xl p-2.5 ${stat.color}`}><stat.icon className="h-5 w-5" /></div>
+              <div><p className="text-xs text-slate-500">{stat.label}</p><p className="sc-metric-value text-2xl font-bold text-slate-900">{stat.value}</p></div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {callReport && <Card className="overflow-hidden border-blue-200 bg-white shadow-sm">
+      <nav className="sc-view-nav" aria-label="电话销售中心视图">
+        <button type="button" aria-pressed={view === 'leads'} onClick={() => setView('leads')}><Users className="h-4 w-4" />销售线索<span>{stats.total}</span></button>
+        <button type="button" aria-pressed={view === 'calls'} onClick={() => setView('calls')}><Radio className="h-4 w-4" />通话数据</button>
+        {canManage && <button type="button" aria-pressed={view === 'performance'} onClick={() => setView('performance')}><BarChart3 className="h-4 w-4" />跟进参考</button>}
+      </nav>
+      {view === 'calls' && !callReport && <div className="sc-panel sc-empty">通话数据暂不可用，请刷新后重试。</div>}
+      {view === 'performance' && !dashboard && !performanceDashboard && <div className="sc-panel sc-empty">跟进参考暂不可用，请刷新后重试。</div>}
+      {view === 'calls' && callReport && <Card className="overflow-hidden border-blue-200 bg-white shadow-sm">
         <CardContent className="p-0">
           <div className="border-b border-blue-100 bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 p-4 text-white sm:p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -700,7 +709,7 @@ export default function SalesLeads() {
         </CardContent>
       </Card>}
 
-      {canManage && (dashboard || performanceDashboard) && <details open={!isMobile} className="group rounded-2xl border border-violet-100 bg-white shadow-sm">
+      {view === 'performance' && canManage && (dashboard || performanceDashboard) && <details open className="group rounded-2xl border border-violet-100 bg-white shadow-sm">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-4 marker:hidden sm:px-5">
           <div className="flex min-w-0 items-start gap-3"><div className="rounded-xl bg-violet-50 p-2 text-violet-600"><BarChart3 className="h-5 w-5" /></div><div><p className="font-semibold text-slate-900">CRM跟进参考</p><p className="mt-1 text-xs leading-5 text-slate-500">手工保存的跟进与评分，不作为RingCentral官方接通率；手机端按需展开。</p></div></div>
           <ChevronDown className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
@@ -751,14 +760,15 @@ export default function SalesLeads() {
         </div>
       </details>}
 
-      {canManage && recoveryOverview && <Card className="border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center"><ShieldAlert className="h-8 w-8 text-amber-600" /><div className="flex-1"><p className="font-semibold text-slate-900">线索保护与回收</p><p className="mt-1 text-sm text-slate-600">系统只提示，主管确认后才会回收。已联系、有意向和已预约的线索不会被系统自动转走。</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge className="bg-rose-100 text-rose-700">可回收 {recoveryOverview.summary.recoverable}</Badge><Badge className="bg-amber-100 text-amber-800">提醒跟进 {recoveryOverview.summary.watch}</Badge><Badge className="bg-emerald-100 text-emerald-700">受保护 {recoveryOverview.summary.protected}</Badge><Badge className="bg-blue-100 text-blue-700">延期保护 {recoveryOverview.summary.extended}</Badge>{recoveryOverview.summary.extension_requests > 0 && <Badge className="bg-violet-100 text-violet-700">待审批延期 {recoveryOverview.summary.extension_requests}</Badge>}</div></div>{isMobile ? <p className="text-xs font-medium text-amber-800">批量回收与改派请在电脑端处理</p> : <Button variant="outline" onClick={() => setRecoveryOpen(true)}>查看并处理</Button>}</CardContent></Card>}
+      <section className="sc-lead-panel space-y-4" hidden={view !== 'leads'} aria-label="销售线索列表">
+      {canManage && recoveryOverview && <Card className="sc-recovery-banner border-amber-200 bg-amber-50/60 shadow-sm"><CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center"><ShieldAlert className="h-8 w-8 text-amber-600" /><div className="flex-1"><p className="font-semibold text-slate-900">线索保护与回收</p><p className="mt-1 text-sm text-slate-600">系统只提示，主管确认后才会回收。已联系、有意向和已预约的线索不会被系统自动转走。</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><Badge className="bg-rose-100 text-rose-700">可回收 {recoveryOverview.summary.recoverable}</Badge><Badge className="bg-amber-100 text-amber-800">提醒跟进 {recoveryOverview.summary.watch}</Badge><Badge className="bg-emerald-100 text-emerald-700">受保护 {recoveryOverview.summary.protected}</Badge><Badge className="bg-blue-100 text-blue-700">延期保护 {recoveryOverview.summary.extended}</Badge>{recoveryOverview.summary.extension_requests > 0 && <Badge className="bg-violet-100 text-violet-700">待审批延期 {recoveryOverview.summary.extension_requests}</Badge>}</div></div>{isMobile ? <p className="text-xs font-medium text-amber-800">批量回收与改派请在电脑端处理</p> : <Button variant="outline" onClick={() => setRecoveryOpen(true)}>查看并处理</Button>}</CardContent></Card>}
 
-      <Card className="border-slate-200 shadow-sm">
+      <Card className="sc-filter-card border-slate-200 shadow-sm">
         <CardContent className="p-4">
           <div className="flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input className="pl-9" value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索商家、联系人、电话或城市" />
+              <Input aria-label="搜索销售线索" className="pl-9" value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索商家、联系人、电话或城市" />
             </div>
             <NativeSelect className="lg:w-40" value={statusFilter} onChange={setStatusFilter} options={[{ value: '', label: '全部状态' }, ...statusOptions]} />
             <NativeSelect className="lg:w-44" value={contactFilter} onChange={setContactFilter} options={[
@@ -769,9 +779,10 @@ export default function SalesLeads() {
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden border-slate-200 shadow-sm">
+      <Card className="sc-table-card overflow-hidden border-slate-200 shadow-sm">
         <CardContent className="p-0">
-          {canManage && !isMobile && <div className="flex flex-col gap-3 border-b bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center"><p className="flex-1 text-sm font-medium text-slate-700">当前页已选 {selectedLeadIds.length} 条，可批量补齐待分配线索或调整负责人</p><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择目标销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button size="sm" variant="outline" disabled={!selectedLeadIds.length || !bulkAssigneeId || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign', selectedLeadIds)}>批量分配 / 改派</Button></div>}
+          <div className="sc-table-heading"><div><h3>销售线索</h3><p>共 {total} 条 · {scopeText}</p></div><span>第 {page} / {totalPages} 页</span></div>
+          {canManage && !isMobile && selectedLeadIds.length > 0 && <div className="sc-bulk-bar flex flex-col gap-3 border-b bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center"><p className="flex-1 text-sm font-medium text-slate-700">当前页已选 {selectedLeadIds.length} 条，可批量补齐待分配线索或调整负责人</p><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择目标销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button size="sm" variant="outline" disabled={!selectedLeadIds.length || !bulkAssigneeId || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign', selectedLeadIds)}>批量分配 / 改派</Button></div>}
           <div data-testid="sales-leads-mobile-list" className="divide-y divide-slate-100 md:hidden">
             {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载线索...</p>
               : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">当前范围暂无销售线索</p>
@@ -824,12 +835,12 @@ export default function SalesLeads() {
                     <tr key={lead.id} className={protectedLead ? 'bg-rose-50/40' : 'hover:bg-slate-50/70'}>
                       {canManage && <td className="px-4 py-3"><input type="checkbox" aria-label={`选择 ${lead.business_name}`} checked={selectedLeadIds.includes(lead.id)} onChange={event => setSelectedLeadIds(current => event.target.checked ? [...current, lead.id] : current.filter(id => id !== lead.id))} /></td>}
                       <td className="px-4 py-3"><p className="font-semibold text-slate-900">{lead.business_name}</p><p className="text-xs text-slate-500">{lead.contact_name || '未填写联系人'} · #{lead.id}</p></td>
-                      <td className="px-4 py-3"><div className={`flex items-center gap-2 font-medium ${protectedLead ? 'text-slate-400 line-through' : 'text-blue-700'}`}><Phone className="h-3.5 w-3.5" />{lead.phone}</div>{protectedLead && <p className="mt-1 text-xs text-rose-600">禁止拨打</p>}</td>
+                      <td className="px-4 py-3"><div className={`flex items-center gap-2 whitespace-nowrap font-medium ${protectedLead ? 'text-slate-400 line-through' : 'text-blue-700'}`}><Phone className="h-3.5 w-3.5" />{lead.phone}</div>{protectedLead && <p className="mt-1 text-xs text-rose-600">禁止拨打</p>}</td>
                       <td className="px-4 py-3 text-slate-600"><p>{[lead.city, lead.state, lead.country].filter(Boolean).join(', ') || '-'}</p><p className="text-xs text-slate-400">{lead.industry || '未分类'}</p></td>
-                      <td className="px-4 py-3">{lead.assigned_sales_name || <span className="text-amber-600">待分配</span>}</td>
+                      <td className="whitespace-nowrap px-4 py-3">{lead.assigned_sales_name || <span className="text-amber-600">待分配</span>}</td>
                       <td className="px-4 py-3"><div className="flex flex-wrap gap-1"><Badge className={statusColors[lead.status] || statusColors.new}>{statusLabels[lead.status] || lead.status}</Badge>{lead.do_not_contact && <Badge className="bg-rose-100 text-rose-700">禁止再联系</Badge>}{lead.is_blacklisted && <Badge className="bg-slate-800 text-white">黑名单</Badge>}</div></td>
-                      <td className="px-4 py-3 text-slate-600">{formatDate(lead.next_follow_up_at)}</td>
-                      <td className="px-4 py-3"><div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" onClick={() => openEdit(lead)}><Edit3 className="mr-1 h-3.5 w-3.5" />{canManage ? '编辑' : '跟进'}</Button>{!lead.converted_customer_id && !protectedLead && <Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700" onClick={() => void openDealControl(lead)}><ClipboardCheck className="mr-1 h-3.5 w-3.5" />成交审核</Button>}{lead.converted_customer_id && <Button size="sm" variant="outline" className="text-emerald-700" onClick={() => window.location.assign(`/customers?detail=${lead.converted_customer_id}&tab=info`)}>正式客户</Button>}<Button size="sm" variant="outline" className={lead.do_not_contact ? 'text-emerald-700' : 'text-rose-700'} onClick={() => updateProtection(lead, 'do_not_contact', !lead.do_not_contact)}>{lead.do_not_contact ? '解除禁联' : '禁止联系'}</Button>{canManage && <Button size="sm" variant="outline" onClick={() => updateProtection(lead, 'is_blacklisted', !lead.is_blacklisted)}>{lead.is_blacklisted ? '移出黑名单' : '黑名单'}</Button>}</div></td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDate(lead.next_follow_up_at)}</td>
+                      <td className="px-4 py-3"><div className="sc-row-tools"><Button size="sm" variant="outline" onClick={() => openEdit(lead)}><Edit3 className="mr-1 h-3.5 w-3.5" />{canManage ? '编辑' : '跟进'}</Button>{!lead.converted_customer_id && !protectedLead && <Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700" onClick={() => void openDealControl(lead)}><ClipboardCheck className="mr-1 h-3.5 w-3.5" />成交审核</Button>}{lead.converted_customer_id && <Button size="sm" variant="outline" className="text-emerald-700" onClick={() => window.location.assign(`/customers?detail=${lead.converted_customer_id}&tab=info`)}>正式客户</Button>}<DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu"><DropdownMenuItem className={lead.do_not_contact ? 'text-emerald-700' : 'text-rose-700'} onSelect={() => void updateProtection(lead, 'do_not_contact', !lead.do_not_contact)}><Ban className="mr-2 h-4 w-4" />{lead.do_not_contact ? '解除禁联' : '禁止联系'}</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => void updateProtection(lead, 'is_blacklisted', !lead.is_blacklisted)}><ShieldAlert className="mr-2 h-4 w-4" />{lead.is_blacklisted ? '移出黑名单' : '加入黑名单'}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></td>
                     </tr>
                   );
                 })}
@@ -843,6 +854,7 @@ export default function SalesLeads() {
         </CardContent>
       </Card>
 
+      </section>
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="!h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none rounded-none pb-0 sm:!h-auto sm:!max-h-[90vh] sm:!w-full sm:!max-w-4xl sm:rounded-lg sm:pb-6">
           <DialogHeader><DialogTitle>{editing ? (canManage ? '编辑销售线索' : '记录跟进结果') : '新增销售线索'}</DialogTitle></DialogHeader>

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { NativeSelect } from '@/components/ui/native-select';
 import { Input } from '@/components/ui/input';
 import { getFullKnowledgeAnswer, getShortKnowledgeAnswer, type SalesKnowledgeArticle } from '@/lib/sales-knowledge';
 import { invokeWithAuth } from '@/lib/tokenStore';
@@ -32,12 +33,15 @@ export default function SalesKnowledgeAssistant({ collapsed = false, contextLabe
   const [articles, setArticles] = useState<SalesKnowledgeArticle[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     if (collapsed) return;
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       setLoading(true);
+      setLoadError(false);
       try {
         const params = new URLSearchParams();
         if (query.trim()) params.set('query', query.trim());
@@ -47,7 +51,7 @@ export default function SalesKnowledgeAssistant({ collapsed = false, contextLabe
         setArticles(items);
         setSelectedId(current => items.some(item => item.id === current) ? current : items[0]?.id ?? null);
       } catch {
-        if (!cancelled) setArticles([]);
+        if (!cancelled) { setArticles([]); setLoadError(true); }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -56,7 +60,7 @@ export default function SalesKnowledgeAssistant({ collapsed = false, contextLabe
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [collapsed, query]);
+  }, [collapsed, query, retry]);
 
   const selectedArticle = useMemo(
     () => articles.find(article => article.id === selectedId) || articles[0] || null,
@@ -101,30 +105,19 @@ export default function SalesKnowledgeAssistant({ collapsed = false, contextLabe
 
       <div className="sales-v3-assistant-scenarios" aria-label="高频销售场景">
         {quickScenarios.map(item => (
-          <button key={item} type="button" className={query === item ? 'is-active' : ''} onClick={() => setQuery(item)}>{item}</button>
+          <button key={item} type="button" className={query === item ? 'is-active' : ''} aria-pressed={query === item} onClick={() => setQuery(item)}>{item}</button>
         ))}
       </div>
 
       <div className="sales-v3-assistant-body">
-        {loading ? <p className="sales-v3-assistant-empty">正在查找可用话术…</p> : articles.length === 0 ? (
+        {loading ? <p className="sales-v3-assistant-empty">正在查找可用话术…</p> : loadError ? <div className="sales-v3-assistant-empty" role="alert">话术加载失败<Button variant="ghost" size="sm" onClick={() => setRetry(value => value + 1)}>重新加载</Button></div> : articles.length === 0 ? (
           <p className="sales-v3-assistant-empty">没有匹配话术，可前往知识库提交新问题。</p>
         ) : (
           <>
-            <div className="sales-v3-assistant-results" role="listbox" aria-label="话术搜索结果">
-              {articles.slice(0, 6).map(article => (
-                <button
-                  key={article.id}
-                  type="button"
-                  role="option"
-                  aria-selected={selectedArticle?.id === article.id}
-                  className={selectedArticle?.id === article.id ? 'is-active' : ''}
-                  onClick={() => setSelectedId(article.id)}
-                >
-                  <span>{article.title}</span>
-                  <small>{article.category}</small>
-                </button>
-              ))}
-            </div>
+            <label className="sc-answer-picker">
+              <span>匹配话术 · {articles.length} 条</span>
+              <NativeSelect value={String(selectedArticle?.id || '')} onChange={value => setSelectedId(Number(value))} options={articles.map(article => ({ value: String(article.id), label: article.title }))} />
+            </label>
 
             {selectedArticle ? (
               <div className="sales-v3-assistant-answer">

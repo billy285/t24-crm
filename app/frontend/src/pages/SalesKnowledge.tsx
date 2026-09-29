@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ChevronRight, CircleHelp, Copy, MessageSquareText, Pencil, Plus, Search, Send, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
+import '@/components/sales-center.css';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -125,6 +126,8 @@ export default function SalesKnowledge() {
   const [categories, setCategories] = useState<string[]>([]);
   const [questions, setQuestions] = useState<KnowledgeQuestion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const knowledgeRequestRef = useRef(0);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('全部');
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
@@ -139,19 +142,22 @@ export default function SalesKnowledge() {
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   const loadKnowledge = async (showLoader = true) => {
+    const requestId = ++knowledgeRequestRef.current;
     if (showLoader) setLoading(true);
+    setLoadError(null);
     try {
       const params = new URLSearchParams();
       if (query.trim()) params.set('query', query.trim());
       if (category !== '全部') params.set('category', category);
       if (canManage) params.set('include_all', 'true');
       const response = await invokeWithAuth({ url: `/api/v1/sales-knowledge/articles?${params}`, method: 'GET' });
+      if (requestId !== knowledgeRequestRef.current) return;
       setArticles(response.data?.items || []);
       setCategories(response.data?.categories || []);
     } catch (error: any) {
-      toast.error(error?.data?.detail || error?.message || '销售知识库加载失败');
+      if (requestId === knowledgeRequestRef.current) setLoadError(error?.data?.detail || error?.message || '销售知识库加载失败');
     } finally {
-      if (showLoader) setLoading(false);
+      if (showLoader && requestId === knowledgeRequestRef.current) setLoading(false);
     }
   };
 
@@ -167,7 +173,7 @@ export default function SalesKnowledge() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadKnowledge(); }, 160);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); knowledgeRequestRef.current += 1; };
     // The search terms intentionally refresh the server-side result set.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, canManage, query]);
@@ -280,15 +286,15 @@ export default function SalesKnowledge() {
   const openQuestions = useMemo(() => questions.filter(item => item.status === 'open'), [questions]);
   const allCategories = useMemo(() => Array.from(new Set([...categories, ...categoryOptions])), [categories]);
   const activeArticle = useMemo(
-    () => articles.find(item => item.id === selectedArticle?.id) || articles[0] || null,
-    [articles, selectedArticle?.id],
+    () => loadError || loading ? null : articles.find(item => item.id === selectedArticle?.id) || articles[0] || null,
+    [articles, selectedArticle?.id, loadError, loading],
   );
 
   return (
-    <div className="knowledge-v4-page app-page">
-      <header className="knowledge-v4-header app-page-title">
+    <div className="knowledge-v4-page sales-center-ui app-page">
+      <header className="knowledge-v4-header sc-section-heading app-page-title">
         <div>
-          <p className="app-page-kicker"><BookOpen className="h-4 w-4" /> Sales Enablement</p>
+          <p className="app-page-kicker sc-eyebrow"><BookOpen className="h-3.5 w-3.5" /> T24 MARKETING · KNOWLEDGE</p>
           <h2 className="app-page-heading">销售知识库</h2>
           <p className="app-page-description">输入客户原话，快速找到可直接表达的短版话术、完整答复和升级规则。</p>
         </div>
@@ -309,7 +315,7 @@ export default function SalesKnowledge() {
           />
         </div>
         <div className="knowledge-v4-summary">
-          <span><b>{articles.filter(item => item.status === 'published').length}</b> 条可用答复</span>
+          <span><b>{loading || loadError ? '—' : articles.filter(item => item.status === 'published').length}</b> 条当前可用答复</span>
           {canManage ? <span><b>{openQuestions.length}</b> 个待补充问题</span> : null}
         </div>
       </div>
@@ -322,7 +328,7 @@ export default function SalesKnowledge() {
           </div>
           <nav>
             {['全部', ...allCategories].map(item => (
-              <button key={item} type="button" className={category === item ? 'is-active' : ''} onClick={() => setCategory(item)}>
+              <button key={item} type="button" className={category === item ? 'is-active' : ''} aria-pressed={category === item} onClick={() => setCategory(item)}>
                 <span>{item}</span>
                 {category === item ? <span aria-hidden="true">›</span> : null}
               </button>
@@ -343,7 +349,7 @@ export default function SalesKnowledge() {
             <small>{loading ? '读取中' : `${articles.length} 条`}</small>
           </div>
           <div className="knowledge-v4-list-scroll">
-            {loading ? <p className="knowledge-v4-empty">正在加载销售知识卡…</p> : articles.length === 0 ? (
+            {loading ? <p className="knowledge-v4-empty">正在加载销售知识卡…</p> : loadError ? <div className="knowledge-v4-empty" role="alert"><p>销售知识库暂时无法读取</p><Button className="mt-3" size="sm" variant="outline" onClick={() => void loadKnowledge()}>重新加载</Button></div> : articles.length === 0 ? (
               <div className="knowledge-v4-empty">
                 <MessageSquareText className="mx-auto mb-2 h-5 w-5" />
                 <p>没有匹配的知识卡</p>
@@ -353,6 +359,7 @@ export default function SalesKnowledge() {
               <button
                 key={article.id}
                 type="button"
+                aria-pressed={activeArticle?.id === article.id}
                 className={`knowledge-v4-list-item ${activeArticle?.id === article.id ? 'is-active' : ''}`}
                 onClick={() => {
                   setSelectedArticle(article);
