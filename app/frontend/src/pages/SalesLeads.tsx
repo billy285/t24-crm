@@ -256,16 +256,10 @@ export default function SalesLeads() {
   };
 
   useEffect(() => {
-    void loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, statusFilter, contactFilter, performanceDays, callReportDays]);
-
-  useEffect(() => {
-    setPage(1);
-    const timer = window.setTimeout(() => void loadData({ page: 1 }), 300);
+    const timer = window.setTimeout(() => void loadData(), search.trim() ? 300 : 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [page, pageSize, search, statusFilter, contactFilter, performanceDays, callReportDays]);
 
   useAutoRefresh(loadData, { intervalMs: 30000, enabled: !showForm });
 
@@ -773,7 +767,7 @@ export default function SalesLeads() {
           <div className="sl-table-toolbar">
             <div className="sl-table-title"><h3>商家联系进展 <span>{loading ? '加载中' : `${total} 家`}</span></h3><div className="sl-density"><button type="button" aria-pressed={!compactRows} onClick={() => setCompactRows(false)}>标准</button><button type="button" aria-pressed={compactRows} onClick={() => setCompactRows(true)}>紧凑</button></div></div>
             <div className="sl-search-row">
-              <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input aria-label="搜索销售线索" className="pl-9" value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索商家、联系人、电话或城市" /></div>
+              <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input aria-label="搜索销售线索" className="pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索商家、联系人、电话或城市" /></div>
               <label><span className="sr-only">线索状态</span><NativeSelect value={statusFilter} onChange={value => { setStatusFilter(value); setPage(1); }} options={[{ value: '', label: '全部状态' }, ...statusOptions]} /></label>
               <label><span className="sr-only">联系规则</span><NativeSelect value={contactFilter} onChange={value => { setContactFilter(value); setPage(1); }} options={[{ value: '', label: '全部联系规则' }, { value: 'contactable', label: '允许联系' }, { value: 'do_not_contact', label: '禁止再联系' }, { value: 'blacklisted', label: '黑名单' }]} /></label>
             </div>
