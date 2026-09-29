@@ -296,6 +296,7 @@ async def list_insights(
     sort: str = "attention",
     skip: int = Query(0, ge=0),
     limit: int = Query(30, ge=1, le=100),
+    lead_ids: list[int] | None = Query(None, max_length=100),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -313,6 +314,9 @@ async def list_insights(
             {i["profile"].get("stage_label", "未建立商机") for i in items}
         ),
     }
+    if lead_ids is not None:
+        requested_ids = set(lead_ids)
+        items = [i for i in items if i["id"] in requested_ids]
     if search:
         items = [
             i

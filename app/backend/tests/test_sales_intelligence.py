@@ -50,6 +50,24 @@ async def db_write(callback):
 
 
 @pytest.mark.asyncio
+async def test_visible_lead_summaries_keep_owner_scope(sales_app_client):
+    client = sales_app_client
+    own = await create_lead(client, 11)
+    other = await create_lead(client, 12)
+    params = [("lead_ids", own), ("lead_ids", other), ("limit", 100)]
+    scoped = await client.get(f"{BASE}/leads", headers=A, params=params)
+    assert scoped.status_code == 200
+    assert [x["id"] for x in scoped.json()["items"]] == [own]
+    assert scoped.json()["total"] == 1
+    admin = await client.get(f"{BASE}/leads", headers=ADMIN, params=params)
+    assert {x["id"] for x in admin.json()["items"]} == {own, other}
+    missing = await client.get(f"{BASE}/leads", headers=A, params={"lead_ids": other})
+    assert missing.json()["items"] == []
+    invalid = await client.get(f"{BASE}/leads", headers=A, params={"lead_ids": "invalid"})
+    assert invalid.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_contact_details_persist_and_no_answer_rolls_back(sales_app_client):
     client = sales_app_client
     lead = await create_lead(client)
