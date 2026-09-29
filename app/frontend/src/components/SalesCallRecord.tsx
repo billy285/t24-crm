@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { emptyContact, type ContactDetails } from '@/lib/sales-intelligence';
 import { ArrowRight, CalendarCheck2, CheckCircle2, Clock3, MessageCircle, PencilLine, PhoneMissed, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -7,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 
-export type SalesCallValues = { outcome: string; notes: string; nextFollowUpAt: string };
+export type SalesCallValues = { outcome: string; notes: string; nextFollowUpAt: string; contactDetails?: ContactDetails };
 type ProviderCall = { sync_status: string; connected?: boolean; duration_seconds?: number };
 type Props = {
   draftKey: string;
@@ -30,6 +31,7 @@ function readDraft(key: string, options: Props['options']): SalesCallValues {
       outcome: options.some(item => item.value === draft.values?.outcome) ? draft.values.outcome : '',
       notes: typeof draft.values?.notes === 'string' ? draft.values.notes : '',
       nextFollowUpAt: typeof draft.values?.nextFollowUpAt === 'string' ? draft.values.nextFollowUpAt : '',
+      contactDetails: {...emptyContact,...draft.values?.contactDetails},
     };
   } catch { return empty; }
 }
@@ -54,6 +56,7 @@ export default function SalesCallRecord({ draftKey, saving, disabledReason, prov
   };
   const changeOutcome = (outcome: string) => update({
     outcome,
+    contactDetails: outcome === 'no_answer' ? {...emptyContact} : values.contactDetails,
     nextFollowUpAt: ['not_interested', 'do_not_contact', 'not_now', 'existing_provider'].includes(outcome)
       ? '' : values.nextFollowUpAt || suggestedFollowUp(outcome),
   });
@@ -91,6 +94,7 @@ export default function SalesCallRecord({ draftKey, saving, disabledReason, prov
           <div><Label htmlFor="sc-call-notes">沟通要点 {requiresNotes && <span className="sc-required">*</span>}</Label><Textarea id="sc-call-notes" value={values.notes} onChange={event => update({ notes: event.target.value })} placeholder="记录商家的需求、顾虑，以及约定的下一步…" rows={4} /></div>
           {!hidesFollowUp && <div><Label htmlFor="sc-followup-time">下次跟进 {requiresFollowUp && <span className="sc-required">*</span>}</Label><Input id="sc-followup-time" type="datetime-local" value={values.nextFollowUpAt} onChange={event => update({ nextFollowUpAt: event.target.value })} /><p className="sc-field-hint">北京时间 · 可按商家约定调整</p></div>}
         </div>
+        {values.outcome && values.outcome !== 'no_answer' && <details className="si-contact-extra"><summary>补充沟通对象与需求 · 用于累计分析</summary><div className="si-form-grid"><label>沟通对象<NativeSelect value={values.contactDetails?.reached_person||'unknown'} onChange={v=>update({contactDetails:{...emptyContact,...values.contactDetails,reached_person:v}})} options={[{value:'unknown',label:'尚未确认'},{value:'gatekeeper',label:'前台／其他人员'},{value:'decision_maker',label:'老板／决策人'}]}/></label><label>拒绝／暂缓原因<Input value={values.contactDetails?.rejection_reason||''} onChange={e=>update({contactDetails:{...emptyContact,...values.contactDetails,rejection_reason:e.target.value}})} placeholder="例如：预算、合同未到期、产品不匹配"/></label><label>确认的真实需求<Input value={values.contactDetails?.need_summary||''} onChange={e=>update({contactDetails:{...emptyContact,...values.contactDetails,need_summary:e.target.value}})}/></label><label>约定的下一步<Input value={values.contactDetails?.next_step||''} onChange={e=>update({contactDetails:{...emptyContact,...values.contactDetails,next_step:e.target.value}})}/></label></div></details>}
       </fieldset>
       {disabledReason && <p className="sc-record-message">{disabledReason}</p>}
       {validation && <p className="sc-validation" role="alert">{validation}</p>}

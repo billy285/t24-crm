@@ -15,6 +15,8 @@ from dependencies.auth import get_current_user
 from models.employees import Employees
 from models.ringcentral_call_records import RingCentralCallRecords
 from models.sales_leads import SalesLeads
+from models.sales_intelligence import SalesContactDetails
+from schemas.sales_intelligence import ContactDetails
 from models.sales_call_activities import SalesCallActivities
 from models.sales_call_ai_analyses import SalesCallAiAnalyses
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
@@ -258,6 +260,7 @@ class SalesDailyQuotaUpdate(BaseModel):
 
 
 class SalesCallResultCreate(BaseModel):
+    contact_details: Optional[ContactDetails] = None
     outcome: str
     notes: Optional[str] = Field(default=None, max_length=4000)
     next_follow_up_at: Optional[datetime] = None
@@ -1970,6 +1973,17 @@ async def sales_performance_dashboard(
     return {"period": {"days": days, "start_date": start_date, "end_date": today}, "items": items}
 
 
+async def _save_contact_details(db, activity, payload, user):
+    details = payload.contact_details
+    if not details:
+        return
+    if payload.outcome == "no_answer" and details.reached_person != "unknown":
+        raise HTTPException(status_code=422, detail="未接通不能标记为已与决策人沟通")
+    await db.flush()
+    db.add(SalesContactDetails(activity_id=activity.id, lead_id=activity.lead_id,
+        recorded_by_id=_employee_id(user), **details.model_dump()))
+
+
 @router.post("/workbench/tasks/{task_id}/result")
 async def record_daily_call_result(
     task_id: int,
@@ -2002,6 +2016,7 @@ async def record_daily_call_result(
         called_at=now,
     )
     db.add(activity)
+    await _save_contact_details(db, activity, payload, current_user)
     await db.flush()
     provider_call = (
         await db.execute(
@@ -2080,6 +2095,7 @@ async def record_supplemental_follow_up(
         called_at=now,
     )
     db.add(activity)
+    await _save_contact_details(db, activity, payload, current_user)
     old_assignment = (lead.assigned_sales_id, lead.assigned_sales_name)
     lead.status = _lead_status_from_outcome(payload.outcome)
     next_follow_up_at = _apply_automation_outcome(lead, payload.outcome, now, next_follow_up_at)

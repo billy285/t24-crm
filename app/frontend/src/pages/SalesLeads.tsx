@@ -5,6 +5,8 @@ import {
 import { toast } from 'sonner';
 
 import '@/components/sales-center.css';
+import SalesIntelligenceCenter from '@/components/SalesIntelligenceCenter';
+import SalesLeadDossier from '@/components/SalesLeadDossier';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import CustomerPhoneDial from '@/components/CustomerPhoneDial';
@@ -146,7 +148,8 @@ export default function SalesLeads() {
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [stats, setStats] = useState({ total: 0, assigned: 0, unassigned: 0, blacklisted: 0, do_not_contact: 0 });
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'leads' | 'calls' | 'performance'>('leads');
+  const [view, setView] = useState<'leads' | 'calls' | 'performance' | 'intelligence'>(()=>new URLSearchParams(window.location.search).get('view')==='intelligence'?'intelligence':'leads');
+  const [dossierId, setDossierId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [contactFilter, setContactFilter] = useState('');
@@ -639,11 +642,14 @@ export default function SalesLeads() {
         ))}
       </div>
 
+      <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} />
       <nav className="sc-view-nav" aria-label="电话销售中心视图">
         <button type="button" aria-pressed={view === 'leads'} onClick={() => setView('leads')}><Users className="h-4 w-4" />销售线索<span>{stats.total}</span></button>
         <button type="button" aria-pressed={view === 'calls'} onClick={() => setView('calls')}><Radio className="h-4 w-4" />通话数据</button>
-        {canManage && <button type="button" aria-pressed={view === 'performance'} onClick={() => setView('performance')}><BarChart3 className="h-4 w-4" />跟进参考</button>}
+        <button type="button" aria-pressed={view === 'intelligence'} onClick={() => setView('intelligence')}><BarChart3 className="h-4 w-4" />经营中心</button>
+        {canManage && <button type="button" aria-pressed={view === 'performance'} onClick={() => setView('performance')}><BarChart3 className="h-4 w-4" />历史跟进参考</button>}
       </nav>
+      {view === 'intelligence' && <SalesIntelligenceCenter />}
       {view === 'calls' && !callReport && <div className="sc-panel sc-empty">通话数据暂不可用，请刷新后重试。</div>}
       {view === 'performance' && !dashboard && !performanceDashboard && <div className="sc-panel sc-empty">跟进参考暂不可用，请刷新后重试。</div>}
       {view === 'calls' && callReport && <Card className="overflow-hidden border-blue-200 bg-white shadow-sm">
@@ -803,7 +809,7 @@ export default function SalesLeads() {
                       <div><dt className="text-xs text-slate-400">地区 / 行业</dt><dd className="mt-0.5 break-words text-slate-700">{[lead.city, lead.state].filter(Boolean).join(', ') || '地区未采集'} · {lead.industry || '未分类'}</dd></div>
                     </dl>
                     <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm leading-5 text-slate-700"><span className="font-medium text-indigo-700">下一步：</span>{nextLeadAction(lead)}</div>
-                    <div className="mt-4 grid grid-cols-2 gap-2">
+                    <div className="mt-4 grid grid-cols-2 gap-2"><Button variant="outline" onClick={() => setDossierId(lead.id)}>累计档案</Button>
                       {protectedLead ? <Button className="h-11 px-2" variant="outline" disabled><Phone className="h-4 w-4" />拨号</Button> : <CustomerPhoneDial phone={lead.phone} label="RingCentral" className="w-full" />}
                       <Button className="h-11 px-2" variant="outline" disabled={protectedLead} onClick={() => { void copyLeadPhone(lead); }}><Clipboard className="h-4 w-4" />复制</Button>
                       <Button className="h-11 px-2" onClick={() => openEdit(lead)}>{protectedLead ? <ShieldAlert className="h-4 w-4" /> : <MessageSquarePlus className="h-4 w-4" />}{protectedLead ? '查看保护' : '记录跟进'}</Button>
@@ -840,7 +846,7 @@ export default function SalesLeads() {
                       <td className="whitespace-nowrap px-4 py-3">{lead.assigned_sales_name || <span className="text-amber-600">待分配</span>}</td>
                       <td className="px-4 py-3"><div className="flex flex-wrap gap-1"><Badge className={statusColors[lead.status] || statusColors.new}>{statusLabels[lead.status] || lead.status}</Badge>{lead.do_not_contact && <Badge className="bg-rose-100 text-rose-700">禁止再联系</Badge>}{lead.is_blacklisted && <Badge className="bg-slate-800 text-white">黑名单</Badge>}</div></td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDate(lead.next_follow_up_at)}</td>
-                      <td className="px-4 py-3"><div className="sc-row-tools"><Button size="sm" variant="outline" onClick={() => openEdit(lead)}><Edit3 className="mr-1 h-3.5 w-3.5" />{canManage ? '编辑' : '跟进'}</Button>{!lead.converted_customer_id && !protectedLead && <Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700" onClick={() => void openDealControl(lead)}><ClipboardCheck className="mr-1 h-3.5 w-3.5" />成交审核</Button>}{lead.converted_customer_id && <Button size="sm" variant="outline" className="text-emerald-700" onClick={() => window.location.assign(`/customers?detail=${lead.converted_customer_id}&tab=info`)}>正式客户</Button>}<DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu"><DropdownMenuItem className={lead.do_not_contact ? 'text-emerald-700' : 'text-rose-700'} onSelect={() => void updateProtection(lead, 'do_not_contact', !lead.do_not_contact)}><Ban className="mr-2 h-4 w-4" />{lead.do_not_contact ? '解除禁联' : '禁止联系'}</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => void updateProtection(lead, 'is_blacklisted', !lead.is_blacklisted)}><ShieldAlert className="mr-2 h-4 w-4" />{lead.is_blacklisted ? '移出黑名单' : '加入黑名单'}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></td>
+                      <td className="px-4 py-3"><div className="sc-row-tools"><Button size="sm" variant="outline" onClick={() => setDossierId(lead.id)}>累计档案</Button><Button size="sm" variant="outline" onClick={() => openEdit(lead)}><Edit3 className="mr-1 h-3.5 w-3.5" />{canManage ? '编辑' : '跟进'}</Button>{!lead.converted_customer_id && !protectedLead && <Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700" onClick={() => void openDealControl(lead)}><ClipboardCheck className="mr-1 h-3.5 w-3.5" />成交审核</Button>}{lead.converted_customer_id && <Button size="sm" variant="outline" className="text-emerald-700" onClick={() => window.location.assign(`/customers?detail=${lead.converted_customer_id}&tab=info`)}>正式客户</Button>}<DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu"><DropdownMenuItem className={lead.do_not_contact ? 'text-emerald-700' : 'text-rose-700'} onSelect={() => void updateProtection(lead, 'do_not_contact', !lead.do_not_contact)}><Ban className="mr-2 h-4 w-4" />{lead.do_not_contact ? '解除禁联' : '禁止联系'}</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => void updateProtection(lead, 'is_blacklisted', !lead.is_blacklisted)}><ShieldAlert className="mr-2 h-4 w-4" />{lead.is_blacklisted ? '移出黑名单' : '加入黑名单'}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></td>
                     </tr>
                   );
                 })}

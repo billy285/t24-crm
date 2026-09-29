@@ -191,6 +191,7 @@ PHONE_SALES_ALLOWED_API_PREFIXES = (
     "/api/ringcentral",
     "/api/v1/emp-auth",
     "/api/v1/sales-leads",
+    "/api/v1/sales-intelligence",
     "/api/v1/sales-deal-controls",
     "/api/v1/merchant-pool",
     "/api/v1/sales-knowledge",
