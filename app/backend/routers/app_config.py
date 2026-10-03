@@ -202,6 +202,8 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
         "customerExpenseTypes": "ads_fee:投流成本,website_fee:网站成本,domain_fee:域名费,hosting_fee:主机/服务器费,design_fee:设计制作费,other:其他客户成本",
         "companyExpenseTypes": "salary:工资,internet:网络费,phone:电话费,rent:办公室租金,software:软件订阅费,ai_tools:AI工具费,cloud_services:云服务费,operations_tools:运营工具费,recruitment:招聘费,travel:差旅费,other_company:其他支出",
         "subscriptionStatuses": "active:正常,expiring_soon:即将到期,renewal_pending:待扣款确认,expired:已到期,renewed:已续费,upgraded:已升级结束,stopped:停止续费,paused:暂停,lost:流失",
+        "customerFollowUpStatuses": "in_service:正常服务中,awaiting_reply:待客户回复,renewal_pending:待续费,upsell_interest:有增购意向,paused_service:暂停合作,service_ended:已结束合作,follow_later:后续再跟进",
+        "customerFollowUpStatusArchive": "",
         "followUpStages": "new_lead:新线索,contacted:已联系,communicating:沟通中,quoted:已报价,considering:考虑中,pending_close:待成交,closed:已成交,not_closed:未成交,lost:流失,follow_later:后续再跟进",
         "followUpMethods": "phone:电话,wechat:微信,sms:短信,email:邮件",
         "callbackTypes": "satisfaction:满意度回访,renewal:续费提醒,upsell:增值服务推荐,maintenance:售后维护,feedback:意见收集,other:其他",
@@ -277,6 +279,27 @@ def ensure_can_update_config(key: str, user: UserResponse) -> None:
 
     detail = "当前账号没有维护业务字典的权限" if key == "dict_config" else "Admin access required"
     raise HTTPException(status_code=403, detail=detail)
+
+
+def validate_customer_follow_up_statuses(value: dict) -> None:
+    keys = set()
+    labels = set()
+    for field in ("customerFollowUpStatuses", "customerFollowUpStatusArchive"):
+        raw = value.get(field, DEFAULT_APP_CONFIGS["dict_config"][field])
+        if not isinstance(raw, str) or len(raw) > 20000:
+            raise HTTPException(status_code=422, detail="跟进状态配置格式错误")
+        entries = [entry.strip() for entry in raw.split(",") if entry.strip()]
+        if field == "customerFollowUpStatuses" and not entries:
+            raise HTTPException(status_code=422, detail="至少保留一个可用状态")
+        for entry in entries:
+            parts = entry.split(":")
+            if len(parts) != 2:
+                raise HTTPException(status_code=422, detail="跟进状态配置格式错误")
+            code, label = (part.strip() for part in parts)
+            if not code or not label or len(label) > 40 or any(char in label for char in "，：") or code in keys or label in labels:
+                raise HTTPException(status_code=422, detail="跟进状态名称和标识须唯一，名称长度 1–40 字")
+            keys.add(code)
+            labels.add(label)
 
 
 def ensure_can_read_config(key: str, user: UserResponse) -> None:
@@ -362,6 +385,17 @@ async def update_app_config(
             status_code=503,
             detail="数据库结构尚未升级，暂时无法保存系统配置，请联系管理员",
         ) from exc
+    if key == "dict_config":
+        current = (await read_config_value(db, key)).value
+        if not isinstance(payload.value, dict):
+            raise HTTPException(status_code=422, detail="字典配置格式错误")
+        for field in ("customerFollowUpStatuses", "customerFollowUpStatusArchive"):
+            existing = current.get(field, DEFAULT_APP_CONFIGS[key][field])
+            incoming = payload.value.get(field, existing)
+            if incoming != existing and current_user.role not in ADMIN_CONFIG_ROLES:
+                raise HTTPException(status_code=403, detail="仅管理员可维护客户跟进状态")
+            payload.value[field] = incoming
+        validate_customer_follow_up_statuses(payload.value)
     value_json = json.dumps(payload.value, ensure_ascii=False)
     await db.execute(
         text(

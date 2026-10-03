@@ -665,7 +665,7 @@ export default function Settings() {
             <div><Label>收款方式</Label><Textarea value={dictConfig.paymentMethods} onChange={e => { setDictConfig({ ...dictConfig, paymentMethods: e.target.value }); setDictChanged(true); }} rows={2} /></div>
             <div><Label>公司支出类型</Label><Textarea value={dictConfig.companyExpenseTypes} onChange={e => { setDictConfig({ ...dictConfig, companyExpenseTypes: e.target.value }); setDictChanged(true); }} rows={2} /></div>
             <div><Label>套餐状态</Label><Textarea value={dictConfig.subscriptionStatuses} onChange={e => { setDictConfig({ ...dictConfig, subscriptionStatuses: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>跟进阶段</Label><Textarea value={dictConfig.followUpStages} onChange={e => { setDictConfig({ ...dictConfig, followUpStages: e.target.value }); setDictChanged(true); }} rows={3} /></div>
+            <div><Label>售前跟进阶段（销售中心）</Label><Textarea value={dictConfig.followUpStages} onChange={e => { setDictConfig({ ...dictConfig, followUpStages: e.target.value }); setDictChanged(true); }} rows={3} /></div>
             <div><Label>跟进方式</Label><Textarea value={dictConfig.followUpMethods} onChange={e => { setDictConfig({ ...dictConfig, followUpMethods: e.target.value }); setDictChanged(true); }} rows={2} /></div>
             <div><Label>回访类型</Label><Textarea value={dictConfig.callbackTypes} onChange={e => { setDictConfig({ ...dictConfig, callbackTypes: e.target.value }); setDictChanged(true); }} rows={2} /></div>
             <div><Label>回访状态</Label><Textarea value={dictConfig.callbackStatuses} onChange={e => { setDictConfig({ ...dictConfig, callbackStatuses: e.target.value }); setDictChanged(true); }} rows={2} /></div>

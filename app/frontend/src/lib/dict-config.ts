@@ -17,6 +17,8 @@ export interface BusinessDictConfig {
   customerExpenseTypes: string;
   companyExpenseTypes: string;
   subscriptionStatuses: string;
+  customerFollowUpStatuses: string;
+  customerFollowUpStatusArchive: string;
   followUpStages: string;
   followUpMethods: string;
   callbackTypes: string;
@@ -43,6 +45,8 @@ export const defaultBusinessDictConfig: BusinessDictConfig = {
   customerExpenseTypes: 'ads_fee:投流成本,website_fee:网站成本,domain_fee:域名费,hosting_fee:主机/服务器费,design_fee:设计制作费,other:其他客户成本',
   companyExpenseTypes: 'salary:工资,internet:网络费,phone:电话费,rent:办公室租金,software:软件订阅费,ai_tools:AI工具费,cloud_services:云服务费,operations_tools:运营工具费,recruitment:招聘费,travel:差旅费,other_company:其他支出',
   subscriptionStatuses: 'active:正常,expiring_soon:即将到期,renewal_pending:待扣款确认,expired:已到期,renewed:已续费,upgraded:已升级结束,stopped:停止续费,paused:暂停,lost:流失',
+  customerFollowUpStatuses: 'in_service:正常服务中,awaiting_reply:待客户回复,renewal_pending:待续费,upsell_interest:有增购意向,paused_service:暂停合作,service_ended:已结束合作,follow_later:后续再跟进',
+  customerFollowUpStatusArchive: '',
   followUpStages: 'new_lead:新线索,contacted:已联系,communicating:沟通中,quoted:已报价,considering:考虑中,pending_close:待成交,closed:已成交,not_closed:未成交,lost:流失,follow_later:后续再跟进',
   followUpMethods: 'phone:电话,wechat:微信,sms:短信,email:邮件',
   callbackTypes: 'satisfaction:满意度回访,renewal:续费提醒,upsell:增值服务推荐,maintenance:售后维护,feedback:意见收集,other:其他',

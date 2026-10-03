@@ -32,6 +32,8 @@ import MediaAccountsTab from '@/components/MediaAccountsTab';
 import OperationLogsTab from '@/components/OperationLogsTab';
 import CustomerAiCopyTab from '@/components/CustomerAiCopyTab';
 import CustomerMaterialsTab from '@/components/CustomerMaterialsTab';
+import CustomerFollowUpStatusManager from '@/components/CustomerFollowUpStatusManager';
+import { parseDictEntries } from '../lib/dict-config';
 import CustomerOpportunitiesTab from '@/components/CustomerOpportunitiesTab';
 import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../lib/customer-code-settings';
 import { saveRemoteAppConfig } from '../lib/app-config';
@@ -682,7 +684,11 @@ export default function Customers() {
   const statusLabels = businessDicts.statuses;
   const levelLabels = businessDicts.levels;
   const sourceLabels = businessDicts.sources;
-  const stageLabels = businessDicts.followUpStages;
+  const stageLabels = parseDictEntries(dictConfig.customerFollowUpStatuses);
+  const historicalStageLabels = { ...businessDicts.followUpStages, ...parseDictEntries(dictConfig.customerFollowUpStatusArchive), ...stageLabels };
+  const [showFollowStatusManager, setShowFollowStatusManager] = useState(false);
+  const canManageFollowStatuses = isAdmin;
+  const [showFollowSalesFields, setShowFollowSalesFields] = useState(false);
   const productLabels = businessDicts.products;
   const incomeTypeLabels = businessDicts.incomeTypes;
   const customerPackageLabels = businessDicts.customerPackages;
@@ -771,7 +777,7 @@ export default function Customers() {
   const [editingFollowId, setEditingFollowId] = useState<number | null>(null);
   const [deleteFollowTarget, setDeleteFollowTarget] = useState<any>(null);
   const [deletingFollow, setDeletingFollow] = useState(false);
-  const emptyFollowForm = { contact_method: 'phone', content: '', customer_needs: '', customer_pain_points: '', has_quoted: false, quote_plan: '', close_probability: 30, stage: 'communicating', next_follow_date: '' };
+  const emptyFollowForm = { contact_method: 'phone', content: '', customer_needs: '', customer_pain_points: '', has_quoted: false, quote_plan: '', close_probability: 0, stage: Object.keys(stageLabels)[0] || '', next_follow_date: '' };
   const [followForm, setFollowForm] = useState(emptyFollowForm);
 
   // Owner contacts state
@@ -1315,6 +1321,7 @@ export default function Customers() {
   const openEditFollow = (f: any) => {
     if (!canEditFollowUp) return;
     setFollowForm({ contact_method: f.contact_method || 'phone', content: f.content || '', customer_needs: f.customer_needs || '', customer_pain_points: f.customer_pain_points || '', has_quoted: f.has_quoted || false, quote_plan: f.quote_plan || '', close_probability: f.close_probability ?? 30, stage: f.stage || 'communicating', next_follow_date: f.next_follow_date ? f.next_follow_date.slice(0, 10) : '' });
+    setShowFollowSalesFields(Boolean(f.has_quoted));
     setEditingFollowId(f.id);
     setShowFollowForm(true);
   };
@@ -1326,6 +1333,7 @@ export default function Customers() {
     }
     if (!followForm.content.trim()) { toast.error('请填写跟进内容'); return; }
     if (!selectedCustomer) return;
+    if (!followForm.stage || (!stageLabels[followForm.stage] && !editingFollowId)) { toast.error('请选择可用的跟进状态'); return; }
     setSavingFollow(true);
     try {
       const now = new Date().toISOString();
@@ -2636,7 +2644,7 @@ export default function Customers() {
     });
     if (canCreateFollowUp && followUps.length === 0) customer360Actions.push({
       key: 'followup', title: '补充首次跟进记录', description: '记录客户当前情况和下一步安排，让团队接手时不丢上下文。', button: '新增跟进',
-      tone: 'border-slate-200 bg-slate-50', onClick: () => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); },
+      tone: 'border-slate-200 bg-slate-50', onClick: () => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setShowFollowSalesFields(false); setEditingFollowId(null); setShowFollowForm(true); },
     });
 
     return (
@@ -2743,7 +2751,7 @@ export default function Customers() {
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <h3 className="text-base font-semibold text-slate-900">客户摘要</h3>
                   <div className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{c.phone || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
-                  <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}<Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>管理新商机</Button></div>
+                  <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setShowFollowSalesFields(false); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}<Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>管理新商机</Button></div>
                 </CardContent></Card>
 
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
@@ -2872,18 +2880,19 @@ export default function Customers() {
             </CardContent></Card>
           </TabsContent>
 
+          <CustomerFollowUpStatusManager open={showFollowStatusManager} onOpenChange={setShowFollowStatusManager} onSaved={entries => { if (!entries[followForm.stage] && !editingFollowId) setFollowForm(current => ({ ...current, stage: Object.keys(entries)[0] || '' })); }} />
           <TabsContent value="followups">
             <Card className="border-slate-200"><CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium text-slate-600">跟进记录</span>
-                {canCreateFollowUp && <Button size="sm" onClick={() => { setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }} className="bg-blue-600 hover:bg-blue-700"><MessageSquarePlus className="w-3.5 h-3.5 mr-1" /> 新增跟进</Button>}
+                {canCreateFollowUp && <Button size="sm" onClick={() => { setFollowForm(emptyFollowForm); setShowFollowSalesFields(false); setEditingFollowId(null); setShowFollowForm(true); }} className="bg-blue-600 hover:bg-blue-700"><MessageSquarePlus className="w-3.5 h-3.5 mr-1" /> 新增跟进</Button>}
               </div>
               {showFollowForm && (editingFollowId ? canEditFollowUp : canCreateFollowUp) && (
                 <div className="mb-4 p-4 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
                   <span className="text-sm font-medium text-blue-700">{editingFollowId ? '编辑跟进' : '新增跟进'}</span>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div><Label className="text-xs">方式</Label><NativeSelect value={followForm.contact_method} onChange={v => setFollowForm({ ...followForm, contact_method: v })} options={Object.entries(methodLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-                    <div><Label className="text-xs">阶段</Label><NativeSelect value={followForm.stage} onChange={v => setFollowForm({ ...followForm, stage: v })} options={Object.entries(stageLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+                    <div><div className="flex items-center justify-between"><Label className="text-xs">跟进状态</Label>{canManageFollowStatuses && <Button size="sm" variant="link" className="h-6 px-0 text-xs" onClick={() => setShowFollowStatusManager(true)}>管理状态</Button>}</div><NativeSelect value={followForm.stage} onChange={v => setFollowForm({ ...followForm, stage: v })} options={[...(followForm.stage && !stageLabels[followForm.stage] ? [{ value: followForm.stage, label: `${historicalStageLabels[followForm.stage] || followForm.stage}（历史状态）` }] : []), ...Object.entries(stageLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
                   </div>
                   <div><Label className="text-xs">内容 *</Label><Textarea value={followForm.content} onChange={e => setFollowForm({ ...followForm, content: e.target.value })} rows={3} placeholder="跟进详情..." /></div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -2891,13 +2900,14 @@ export default function Customers() {
                     <div><Label className="text-xs">痛点</Label><Input value={followForm.customer_pain_points} onChange={e => setFollowForm({ ...followForm, customer_pain_points: e.target.value })} /></div>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div><Label className="text-xs">成交概率 ({followForm.close_probability}%)</Label><Input type="range" min={0} max={100} step={10} value={followForm.close_probability} onChange={e => setFollowForm({ ...followForm, close_probability: Number(e.target.value) })} /></div>
+                    {showFollowSalesFields && <div><Label className="text-xs">成交概率 ({followForm.close_probability}%)</Label><Input type="range" min={0} max={100} step={10} value={followForm.close_probability} onChange={e => setFollowForm({ ...followForm, close_probability: Number(e.target.value) })} /></div>}
                     <div><Label className="text-xs">下次跟进</Label><Input type="date" value={followForm.next_follow_date} onChange={e => setFollowForm({ ...followForm, next_follow_date: e.target.value })} /></div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={showFollowSalesFields} onChange={e => { setShowFollowSalesFields(e.target.checked); if (!e.target.checked) setFollowForm(current => ({ ...current, has_quoted: false, quote_plan: '', close_probability: 0 })); }} />涉及续费 / 增购商机</label>
+                  {showFollowSalesFields && <div className="flex items-center gap-3">
                     <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={followForm.has_quoted} onChange={e => setFollowForm({ ...followForm, has_quoted: e.target.checked })} className="rounded" />已报价</label>
                     {followForm.has_quoted && <Input placeholder="报价方案" value={followForm.quote_plan} onChange={e => setFollowForm({ ...followForm, quote_plan: e.target.value })} className="flex-1 h-8 text-sm" />}
-                  </div>
+                  </div>}
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" size="sm" onClick={() => { setShowFollowForm(false); setEditingFollowId(null); }}>取消</Button>
                     <Button size="sm" onClick={handleSaveFollow} disabled={savingFollow} className="bg-blue-600 hover:bg-blue-700">{savingFollow ? '保存中...' : '保存'}</Button>
@@ -2910,7 +2920,7 @@ export default function Customers() {
                     <div key={f.id} className="border-l-2 border-blue-300 pl-4 py-2 group">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs text-slate-500">{f.created_at?.slice(0, 16)}</span>
-                        <Badge variant="secondary" className="text-xs">{stageLabels[f.stage] || f.stage}</Badge>
+                        <Badge variant="secondary" className="text-xs">{historicalStageLabels[f.stage] || f.stage}</Badge>
                         <span className="text-xs text-slate-400">{f.employee_name} · {methodLabels[f.contact_method] || f.contact_method}</span>
                         {(canEditFollowUp || canDeleteFollowUp) && <div className="ml-auto flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
                           {canEditFollowUp && <Button aria-label="编辑跟进记录" size="sm" variant="ghost" className="h-11 w-11 p-0 text-slate-500 hover:text-blue-600 md:h-6 md:w-6" onClick={() => openEditFollow(f)}><Edit className="w-3.5 h-3.5" /></Button>}
@@ -2920,7 +2930,7 @@ export default function Customers() {
                       <p className="text-sm text-slate-700">{f.content}</p>
                       {f.customer_needs && <p className="text-xs text-slate-500 mt-1">需求: {f.customer_needs}</p>}
                       {f.customer_pain_points && <p className="text-xs text-slate-500 mt-1">痛点: {f.customer_pain_points}</p>}
-                      {f.close_probability != null && <p className="text-xs text-slate-500 mt-1">概率: {f.close_probability}%</p>}
+                      {f.has_quoted && f.close_probability != null && <p className="text-xs text-slate-500 mt-1">概率: {f.close_probability}%</p>}
                       {f.has_quoted && <p className="text-xs text-green-600 mt-1">已报价: {f.quote_plan}</p>}
                       {f.next_follow_date && <p className="text-xs text-amber-600 mt-1">下次跟进: {f.next_follow_date.slice(0, 10)}</p>}
                     </div>
