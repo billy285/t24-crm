@@ -3617,7 +3617,7 @@ export default function Customers() {
               {visibleCols.includes('source') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{sourceLabels[c.source] || c.source}</td>}
               <td className="px-4 py-3">
                 <div className="flex items-center justify-end gap-1">
-                  <Button size="sm" variant="ghost" className="h-8 px-2 text-xs text-blue-600" aria-label={`快捷查看 ${c.business_name}`} onClick={() => setPreviewCustomerId(c.id)}>概览</Button>
+                  <Button size="sm" variant="ghost" className="h-8 px-2 text-xs text-blue-600" aria-label={`快捷查看 ${c.business_name}`} onClick={() => window.matchMedia('(min-width: 1100px)').matches ? setPreviewCustomerId(c.id) : openDetail(c)}>概览</Button>
                   {(isAdmin || hasPermission('customer_assign') || hasPermission('customer_edit') || hasPermission('customer_delete')) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

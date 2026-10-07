@@ -1,3 +1,4 @@
+import { useIsMobile } from '@/hooks/use-mobile';
 import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -91,6 +92,7 @@ const isWaitingClient = (task: WorkbenchTask) => task.status === 'waiting_client
 const splitNames = (value?: string) => (value || '').split(/[,，]/).map(item => item.trim()).filter(Boolean);
 
 export default function OperationsWorkbench() {
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
   const { role, employee, isAdmin } = useRole();
@@ -339,7 +341,7 @@ export default function OperationsWorkbench() {
             return (
               <Card key={action.id} className={`dc-action-card ${selectedAction?.id === action.id ? 'calm-action-selected' : ''} dc-urgency-${action.urgency} overflow-hidden rounded-[22px] shadow-[0_10px_28px_-22px_rgba(15,23,42,0.55)] md:rounded-xl md:shadow-none ${style.card}`}>
                 <CardContent className="p-0 md:p-4">
-                  <div className="md:hidden">
+                  {isMobile && <div className="md:hidden">
                     <div className={`h-1 w-full ${style.bar}`} />
                     <div className="p-4">
                       <div className="flex items-start gap-3">
@@ -376,14 +378,14 @@ export default function OperationsWorkbench() {
                         {action.customerId && <Button className="mt-2 min-h-11 w-full rounded-xl bg-white text-slate-700 shadow-sm hover:bg-slate-50" variant="outline" onClick={() => openCustomer(action)}><UserRound className="mr-1.5 h-4 w-4" />客户 360</Button>}
                       </div>
                     </div>
-                  </div>
+                  </div>}
 
-                  <div className="dc-action-desktop hidden md:grid">
+                  {!isMobile && <div className="dc-action-desktop hidden md:grid">
                     <div className="dc-action-main"><span className="dc-kind"><ActionIcon size={13} />{actionTypeLabel}</span><h4>{mobileActionTitle}</h4><button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId}>{action.customerName}{action.customerId && <ArrowRight size={12} />}</button></div>
                     <div className="dc-action-owner"><small>负责人</small><span className={missingOwner ? 'dc-warning-text' : ''}>{ownerLabel}</span></div>
                     <div className="dc-action-due"><span className={`dc-status dc-status-${action.urgency === 'overdue' ? 'rose' : action.urgency === 'waiting' ? 'amber' : 'blue'}`}>{action.urgency === 'overdue' && overdueDays > 0 ? `逾期 ${overdueDays} 天` : style.label}</span><small>{action.date || '未设置截止时间'}</small></div>
-                    <div className="dc-row-actions"><Button size="sm" variant="outline" aria-label={`查看事项 ${mobileActionTitle}`} onClick={() => setSelectedActionId(action.id)}>查看事项</Button></div>
-                  </div>
+                    <div className="dc-row-actions"><Button size="sm" variant="outline" aria-label={`查看事项 ${mobileActionTitle}`} onClick={() => window.matchMedia('(min-width: 1100px)').matches ? setSelectedActionId(action.id) : openAction(action)}>查看事项</Button></div>
+                  </div>}
                 </CardContent>
               </Card>
             );
@@ -400,7 +402,7 @@ export default function OperationsWorkbench() {
       )}
 
       </section>
-      {selectedAction && <aside className="calm-current-action" aria-label="当前事项">
+      {!isMobile && selectedAction && <aside className="calm-current-action" aria-label="当前事项">
         <p className="text-xs font-medium text-slate-500">当前事项</p>
         <h3 className="mt-3 text-xl font-semibold leading-8 text-slate-900">{selectedAction.title.replace(/^【[^】]+】\s*/, '')}</h3>
         <p className="mt-3 text-sm text-slate-500">客户 · {selectedAction.customerName}</p>
