@@ -42,6 +42,7 @@ export default function Layout({ children }: LayoutProps) {
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const scrollPositionsRef = useRef(new Map<string, number>());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [commissionNavigationExpanded, setCommissionNavigationExpanded] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
   );
@@ -219,7 +220,7 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${sidebarCollapsed ? ' app-nav-secondary-collapsed' : ''}`}>
+    <div className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${(currentPath === '/commissions' ? !commissionNavigationExpanded : sidebarCollapsed) ? ' app-nav-secondary-collapsed' : ''}`}>
       {/* Mobile overlay */}
       {sidebarOpen && (
         <button type="button" tabIndex={-1} aria-label="关闭业务导航遮罩" className="fixed inset-0 z-40 hidden bg-slate-950/40 md:block lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -234,9 +235,9 @@ export default function Layout({ children }: LayoutProps) {
         employeeName={employee?.name}
         roleLabel={displayRole}
         open={sidebarOpen}
-        collapsed={sidebarCollapsed}
+        collapsed={currentPath === '/commissions' ? !commissionNavigationExpanded : sidebarCollapsed}
         onClose={() => setSidebarOpen(false)}
-        onCollapsedChange={setSidebarCollapsed}
+        onCollapsedChange={collapsed => currentPath === '/commissions' ? setCommissionNavigationExpanded(!collapsed) : setSidebarCollapsed(collapsed)}
         onLogout={handleLogout}
       />}
 

@@ -180,7 +180,7 @@ test('分润中心手机版只加载结算摘要且不挂载任何变更控件',
   }));
 
   await page.goto(`${baseUrl}/commissions`);
-  await expect(page.getByRole('heading', { name: '渠道与分润中心' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '渠道与分润' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '手机版为只读结算摘要' })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /新增渠道|新增协议版本|客户归属|扫描实收与退款|一键补齐归属|确认|转应付|已发放|作废|暂停结算|停止合作|恢复合作/ })).toHaveCount(0);
