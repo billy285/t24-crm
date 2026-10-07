@@ -101,6 +101,7 @@ export default function OperationsWorkbench() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [filter, setFilter] = useState<ActionFilter>('all');
+  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(30);
   const [completeTarget, setCompleteTarget] = useState<ActionItem | null>(null);
   const [completionNote, setCompletionNote] = useState('');
@@ -220,6 +221,7 @@ export default function OperationsWorkbench() {
       ? actions.filter(action => action.kind === 'issue')
       : actions.filter(action => action.urgency === filter);
   const visibleActions = filteredActions.slice(0, visibleCount);
+  const selectedAction = visibleActions.find(action => action.id === selectedActionId) || visibleActions[0];
 
   useEffect(() => { setVisibleCount(30); }, [filter]);
 
@@ -298,7 +300,7 @@ export default function OperationsWorkbench() {
   } as const;
 
   return (
-    <div className="t24-work-page delivery-center-ui dc-today app-page">
+    <div className="t24-work-page delivery-center-ui dc-today calm-operations-page app-page">
       <div className="dc-heading">
         <div>
           <p className="app-page-kicker">T24 Marketing · Operations Today</p>
@@ -312,14 +314,15 @@ export default function OperationsWorkbench() {
 
       {loadError && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{loadError}</div>}
 
-      <DeliveryMetrics label="今日事项概览" items={[
+      <div className="calm-operations-metrics"><DeliveryMetrics label="今日事项概览" items={[
         { key: 'overdue', label: '逾期未处理', value: stats.overdue, note: '优先推动，避免继续延误', tone: 'rose', active: filter === 'overdue', onClick: () => setFilter('overdue') },
         { key: 'today', label: '今天必须做', value: stats.today, note: '今日需要完成的事项', active: filter === 'today', onClick: () => setFilter('today') },
         { key: 'waiting', label: '等待客户', value: stats.waiting, note: '资料或反馈尚未到位', tone: 'amber', active: filter === 'waiting', onClick: () => setFilter('waiting') },
         { key: 'issue', label: '服务问题', value: stats.issues, note: '需要协调处理的卡点', tone: 'green', active: filter === 'issue', onClick: () => setFilter('issue') },
-      ]} />
+      ]} /></div>
       <div className="dc-today-toolbar"><div><h3>下一步动作 <span>{filteredActions.length} 项</span></h3><p>{usePersonalScope ? '我的待办' : '团队待办'} · 按逾期、今日、等待客户排序</p></div><nav aria-label="今日事项筛选">{([{ key: 'all', label: '全部' }, { key: 'overdue', label: '已逾期' }, { key: 'today', label: '今日' }, { key: 'waiting', label: '等待客户' }, { key: 'issue', label: '服务问题' }] as const).map(item => <button key={item.key} type="button" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>{item.label}</button>)}</nav></div>
 
+      <div className="calm-execution-workspace"><section className="min-w-0">
       {filteredActions.length === 0 ? (
         <DeliveryEmpty title="当前分类没有待处理事项" description="新任务和提醒会自动进入这里，也可以切换分类查看其他事项。" />
       ) : (
@@ -334,7 +337,7 @@ export default function OperationsWorkbench() {
             const ownerLabel = action.description.replace(/^(负责人|回访负责人|问题负责人)：\s*/, '');
             const mobileActionTitle = action.title.replace(/^【[^】]+】\s*/, '');
             return (
-              <Card key={action.id} className={`dc-action-card dc-urgency-${action.urgency} overflow-hidden rounded-[22px] shadow-[0_10px_28px_-22px_rgba(15,23,42,0.55)] md:rounded-xl md:shadow-none ${style.card}`}>
+              <Card key={action.id} className={`dc-action-card ${selectedAction?.id === action.id ? 'calm-action-selected' : ''} dc-urgency-${action.urgency} overflow-hidden rounded-[22px] shadow-[0_10px_28px_-22px_rgba(15,23,42,0.55)] md:rounded-xl md:shadow-none ${style.card}`}>
                 <CardContent className="p-0 md:p-4">
                   <div className="md:hidden">
                     <div className={`h-1 w-full ${style.bar}`} />
@@ -379,7 +382,7 @@ export default function OperationsWorkbench() {
                     <div className="dc-action-main"><span className="dc-kind"><ActionIcon size={13} />{actionTypeLabel}</span><h4>{mobileActionTitle}</h4><button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId}>{action.customerName}{action.customerId && <ArrowRight size={12} />}</button></div>
                     <div className="dc-action-owner"><small>负责人</small><span className={missingOwner ? 'dc-warning-text' : ''}>{ownerLabel}</span></div>
                     <div className="dc-action-due"><span className={`dc-status dc-status-${action.urgency === 'overdue' ? 'rose' : action.urgency === 'waiting' ? 'amber' : 'blue'}`}>{action.urgency === 'overdue' && overdueDays > 0 ? `逾期 ${overdueDays} 天` : style.label}</span><small>{action.date || '未设置截止时间'}</small></div>
-                    <div className="dc-row-actions">{action.customerId && <Button size="sm" variant="ghost" onClick={() => openCustomer(action)}>客户档案</Button>}<Button size="sm" variant="outline" onClick={() => openAction(action)}>{primaryActionLabel}</Button></div>
+                    <div className="dc-row-actions"><Button size="sm" variant="outline" aria-label={`查看事项 ${mobileActionTitle}`} onClick={() => setSelectedActionId(action.id)}>查看事项</Button></div>
                   </div>
                 </CardContent>
               </Card>
@@ -395,6 +398,22 @@ export default function OperationsWorkbench() {
           </Button>
         </div>
       )}
+
+      </section>
+      {selectedAction && <aside className="calm-current-action" aria-label="当前事项">
+        <p className="text-xs font-medium text-slate-500">当前事项</p>
+        <h3 className="mt-3 text-xl font-semibold leading-8 text-slate-900">{selectedAction.title.replace(/^【[^】]+】\s*/, '')}</h3>
+        <p className="mt-3 text-sm text-slate-500">客户 · {selectedAction.customerName}</p>
+        <dl className="my-6 space-y-4 border-y border-slate-100 py-5 text-sm">
+          <div><dt className="text-slate-500">负责人</dt><dd className="mt-1 font-medium">{selectedAction.description.replace(/^(负责人|回访负责人|问题负责人)：\s*/, '')}</dd></div>
+          <div><dt className="text-slate-500">截止时间</dt><dd className="mt-1 font-medium">{selectedAction.date || '未设置截止时间'}</dd></div>
+        </dl>
+        {selectedAction.urgency === 'waiting' && <p className="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">等待客户资料或反馈，继续核对约定的跟进时间。</p>}
+        <p className="text-sm leading-6 text-slate-500">处理后记录做了什么、实际结果以及下一步安排。</p>
+        <Button className="mt-5 w-full bg-blue-600 hover:bg-blue-700" onClick={() => openAction(selectedAction)}>{selectedAction.kind === 'callback' ? '记录回访' : selectedAction.kind === 'issue' ? '解决问题并记录' : '填写处理结果'}</Button>
+        {selectedAction.customerId && <Button variant="outline" className="mt-3 w-full" onClick={() => openCustomer(selectedAction)}>查看客户上下文</Button>}
+      </aside>}
+      </div>
 
       <Dialog open={!!completeTarget} onOpenChange={open => { if (!open) setCompleteTarget(null); }}>
         <DialogContent className="delivery-dialog">
