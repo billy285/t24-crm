@@ -97,3 +97,17 @@ test('续费保留原金额与日期，危险操作按需展开，核对到账�
  // Existing monthly-rate initialization is preserved; no customer, task or ledger writes.
  expect(writes.filter(path => path !== '/api/v1/deductions-monthly/ensure')).toEqual([]);
 });
+
+test('平板宽度没有右侧面板时，概览与事项仍直接打开详情和处理窗口', async ({ page }) => {
+ await page.setViewportSize({ width: 960, height: 900 });
+ const writes = await seed(page);
+ await page.goto(`${base}/customers`);
+ await page.getByRole('button', { name: '快捷查看 星河餐厅' }).click();
+ await expect(page.getByRole('heading', { name: '星河餐厅', exact: true })).toBeVisible();
+ await expect(page.getByText('$428', { exact: true }).first()).toBeVisible();
+ await page.goto(`${base}/operations-workbench`);
+ await page.getByRole('button', { name: '查看事项 核对官网上线资料' }).click();
+ await expect(page.getByRole('dialog')).toContainText('核对官网上线资料');
+ await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+ expect(writes.filter(path => path !== '/api/v1/deductions-monthly/ensure')).toEqual([]);
+});
