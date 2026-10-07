@@ -1,0 +1,40 @@
+.commission-page {
+  max-width: 1120px;
+  margin-inline: auto;
+  padding: 24px 28px 40px;
+}
+.commission-heading, .commission-record-heading, .commission-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.commission-heading { margin-bottom: 40px; }
+.commission-priority {
+  margin-bottom: 40px;
+  border-radius: 16px;
+  background: #f4f7fc;
+  padding: 30px 32px;
+}
+.commission-record-heading { margin-bottom: 18px; }
+.commission-toolbar { border-top: 1px solid #e7edf4; padding: 16px 0; }
+.commission-page .commission-view-button {
+  border-radius: 0;
+  padding-inline: 0;
+  color: #64748b;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+}
+.commission-page .commission-view-button[aria-pressed="true"] { color: #1e293b; border-bottom-color: #2563eb; }
+.commission-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.commission-empty { padding: 48px 24px 64px; text-align: center; }
+.commission-accounting { padding-top: 24px; margin-top: 24px; border-top: 1px solid #e7edf4; }
+.commission-page [role="tabpanel"] > .bg-card { box-shadow: none; }
+@media (max-width: 767px) {
+  .commission-page { padding: 16px 4px 28px; }
+  .commission-heading { margin-bottom: 28px; }
+  .commission-priority { padding: 24px; margin-bottom: 28px; }
+  .commission-filters { flex-direction: column; }
+  .commission-empty { padding: 40px 20px; }
+}
