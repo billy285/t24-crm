@@ -604,7 +604,8 @@ test('任务完成后的快刷新胜过完成前的慢响应，旧状态不会�
     return fulfillJson(route, {});
   });
 
-  await page.goto(`${baseUrl}/tasks`);
+  // Keep completed history visible while verifying that an old refresh cannot undo completion.
+  await page.goto(`${baseUrl}/tasks?view=all`);
   const taskRow = page.locator('#task-row-903');
   await expect(taskRow.getByText(taskTitle, { exact: true })).toBeVisible();
 

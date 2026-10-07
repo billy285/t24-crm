@@ -180,7 +180,7 @@ test('分润中心手机版只加载结算摘要且不挂载任何变更控件',
   }));
 
   await page.goto(`${baseUrl}/commissions`);
-  await expect(page.getByRole('heading', { name: '渠道与分润中心' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '渠道与分润' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '手机版为只读结算摘要' })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /新增渠道|新增协议版本|客户归属|扫描实收与退款|一键补齐归属|确认|转应付|已发放|作废|暂停结算|停止合作|恢复合作/ })).toHaveCount(0);
@@ -242,9 +242,8 @@ test('财务手机深链接进入记账工作台且只开放三类新增操作',
   await expect(mobileDialog.getByRole('heading', { name: '录入收款' })).toBeVisible();
   await expect(mobileDialog.getByRole('button', { name: '确认录入收款' })).toBeVisible();
   await expect(mobileDialog).toHaveCSS('border-radius', '0px');
-  const paymentDialogBounds = await mobileDialog.boundingBox();
-  expect(paymentDialogBounds?.width).toBeGreaterThanOrEqual(389);
-  expect(paymentDialogBounds?.height).toBeGreaterThanOrEqual(843);
+  await expect.poll(async () => (await mobileDialog.boundingBox())?.width || 0).toBeGreaterThanOrEqual(389);
+  await expect.poll(async () => (await mobileDialog.boundingBox())?.height || 0).toBeGreaterThanOrEqual(843);
   await mobileDialog.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: '客户支出' }).click();

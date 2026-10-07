@@ -231,7 +231,7 @@ test('手机端月度扣点只提示电脑处理且不加载财务配置', async
   await expect(page.getByRole('heading', { name: '月度扣点比例设置' })).toBeVisible();
   await expect(page.getByText(/请在电脑端进入系统处理/)).toBeVisible();
   await expect(page.getByRole('button', { name: /保存默认|新增月份|导入/ })).toHaveCount(0);
-  await expect(page.locator('input')).toHaveCount(0);
+  await expect(page.locator('main input')).toHaveCount(0);
   expect(deductionRequests).toEqual([]);
 });
 

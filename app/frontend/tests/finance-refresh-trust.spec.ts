@@ -74,6 +74,7 @@ async function installFinanceApi(page: Page) {
 
 test('财务只提交最新一轮快照，刷新失败时明确标注旧数据且保留已核对结果', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.clock.install({ time: new Date('2026-08-05T12:00:00+08:00') });
   const api = await installFinanceApi(page);
   await page.goto(`${baseUrl}/finance?tab=income`);
 

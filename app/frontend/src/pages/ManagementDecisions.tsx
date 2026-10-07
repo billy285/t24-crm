@@ -1,3 +1,4 @@
+import './admin-workspace.css';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
@@ -775,7 +776,7 @@ export default function ManagementDecisions() {
   const currentMonth = today.slice(0, 7);
 
   return (
-    <div className="management-decisions-page t24-command-page app-page space-y-5">
+    <div className="management-decisions-page t24-command-page calm-admin-page calm-decisions-page app-page space-y-5">
       <div className="app-page-title gap-4">
         <div>
           <p className="app-page-kicker">{isFinancialInsights ? 'T24 Marketing · Operating Decisions' : 'T24 Marketing · Management Decisions'}</p>
@@ -892,6 +893,9 @@ export default function ManagementDecisions() {
       {section === 'insights' && <div className="space-y-5">
         {!growth && !loading && <Card className="border-amber-200 bg-amber-50"><CardContent className="p-6 text-sm text-amber-800">当前账号没有老板经营分析权限，或数据尚未加载。</CardContent></Card>}
         {growth && <>
+          <nav className="calm-analysis-jumps" aria-label="经营分析内容">
+            <a href="#decision-economics">项目效益</a><a href="#decision-health">客户健康</a><a href="#decision-capacity">团队产能</a>
+          </nav>
           <Card className="border-blue-200 bg-blue-50/50">
             <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -945,7 +949,7 @@ export default function ManagementDecisions() {
           </Card>
             </div>
           </details>}
-          <Card className="border-slate-200">
+          <Card id="decision-economics" className="calm-analysis-section border-slate-200">
             <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><WalletCards className="h-5 w-5 text-blue-600" />项目级真实利润与单位经济</CardTitle><p className="mt-1 text-xs text-slate-500">{growth.unit_economics.definition}</p></div><Badge variant="outline">{growth.period.start_date} 至 {growth.period.end_date}</Badge></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -955,11 +959,13 @@ export default function ManagementDecisions() {
               </div>
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800"><p className="font-semibold">核算护栏</p><p className="mt-1 leading-5">{growth.unit_economics.guardrails.join('；')}</p><div className="mt-2 flex flex-wrap gap-3">{Object.entries(growth.unit_economics.unallocated).flatMap(([name, currencies]) => Object.entries(currencies).filter(([, value]) => Number(value) !== 0).map(([currency, value]) => <span key={`${name}-${currency}`}>待分摊 {name}：{money(value, currency)}</span>))}</div></div>
               <div><p className="mb-2 text-sm font-semibold text-slate-800">业务线单位经济</p><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{growth.unit_economics.business_lines.map(row => <div key={`${row.business_line_code}-${row.currency}`} className="rounded-xl border border-slate-200 p-4"><div className="flex items-center justify-between"><p className="font-semibold">{row.business_line}</p><Badge variant="outline">{row.project_count} 项 · {row.currency}</Badge></div><p className={`mt-3 text-xl font-bold ${row.contribution_profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(row.contribution_profit, row.currency)}</p><div className="mt-2 space-y-1 text-xs text-slate-500"><p>单项目平均贡献 {money(row.average_project_contribution, row.currency)}</p><p>贡献利润率 {row.contribution_margin == null ? '-' : `${(row.contribution_margin * 100).toFixed(1)}%`}</p></div></div>)}</div></div>
+              <details className="calm-admin-disclosure"><summary><span>项目收支明细</span><span className="text-xs font-normal text-slate-500">展开完整记录</span></summary>
               <div className="overflow-x-auto"><table className="w-full min-w-[1000px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户/项目</th><th className="px-3 py-3">业务线</th><th className="px-3 py-3">服务收入</th><th className="px-3 py-3">投流差价</th><th className="px-3 py-3">退款及手续费</th><th className="px-3 py-3">成本及分润</th><th className="px-3 py-3">贡献利润</th><th className="px-3 py-3">可信度</th></tr></thead><tbody>{growth.unit_economics.projects.slice(0, 30).flatMap(project => project.metrics.map((metric, index) => { const currency = String(metric.currency); const profit = Number(metric.contribution_profit || 0); return <tr key={`${project.project_id}-${currency}`} className="border-b border-slate-100"><td className="px-3 py-3"><Link className="font-medium text-blue-700 hover:underline" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="text-xs text-slate-400">{project.product_name}</p></td><td className="px-3 py-3">{project.business_line}</td><td className="px-3 py-3">{money(Number(metric.service_revenue), currency)}</td><td className="px-3 py-3">{money(Number(metric.ad_spread), currency)}</td><td className="px-3 py-3">{money(Number(metric.service_refunds) + Number(metric.stripe_fee_burden), currency)}</td><td className="px-3 py-3">{money(Number(metric.customer_cost) + Number(metric.channel_commission), currency)}</td><td className={`px-3 py-3 font-semibold ${profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(profit, currency)}<p className="text-[11px] font-normal text-slate-400">利润率 {metric.contribution_margin == null ? '-' : `${(Number(metric.contribution_margin) * 100).toFixed(1)}%`}</p></td><td className="px-3 py-3"><Badge variant="outline">{project.confidence === 'direct' ? '直接关联' : project.confidence === 'single_project_inferred' ? '单项目推断' : '待关联'}</Badge></td></tr>; }))}</tbody></table></div>
+              </details>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200">
+          <Card id="decision-health" className="calm-analysis-section border-slate-200">
             <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-5 w-5 text-orange-600" />客户健康度与流失预警</CardTitle><p className="mt-1 text-xs text-slate-500">收款、续费、退款、任务、交付和回访共同评分；每日自动更新，只提醒不自动停止。</p></div><Badge variant="outline">更新至 {growth.customer_health.updated_through}</Badge></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-4">{[['healthy', '健康'], ['watch', '需关注'], ['risk', '有风险'], ['critical', '高风险']].map(([level, label]) => <div key={level} className="rounded-xl border border-slate-200 p-4"><Badge className={healthClasses[level]}>{label}</Badge><p className="mt-3 text-2xl font-bold">{growth.customer_health.summary[level] || 0}</p><p className="mt-1 text-xs text-slate-400">个项目</p></div>)}</div>
@@ -967,14 +973,16 @@ export default function ManagementDecisions() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200">
+          <Card id="decision-capacity" className="calm-analysis-section border-slate-200">
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Users className="h-5 w-5 text-violet-600" />团队产能与招聘决策</CardTitle><p className="mt-1 text-xs text-slate-500">项目负载与逾期必须同时越线才建议招聘；销售招聘还要先看可复用线索池是否够用。</p></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{[
                 ['合作中项目', growth.team_capacity.summary.active_projects], ['未分配项目', growth.team_capacity.summary.unassigned_projects], ['达到预警线', growth.team_capacity.summary.near_or_over_capacity], ['任务逾期率', `${(growth.team_capacity.summary.overdue_rate * 100).toFixed(1)}%`], ['线索可用天数', Number(salesCapacitySummary.estimated_pool_days || 0).toFixed(1)],
               ].map(([label, value]) => <div key={String(label)} className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold">{value}</p></div>)}</div>
               <div className="grid gap-3 lg:grid-cols-2">{growth.team_capacity.recommendations.map(row => <div key={row.title} className={`rounded-xl p-4 ${row.level === 'hire' ? 'bg-red-50 text-red-800' : row.level === 'hold' || row.level === 'process' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800'}`}><p className="font-semibold">{row.title}</p><p className="mt-1 text-xs leading-5">{row.message}</p></div>)}</div>
+              <details className="calm-admin-disclosure"><summary><span>员工产能明细</span><span className="text-xs font-normal text-slate-500">展开完整记录</span></summary>
               <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">员工</th><th className="px-3 py-3">在管项目</th><th className="px-3 py-3">容量使用</th><th className="px-3 py-3">协作任务</th><th className="px-3 py-3">交付任务</th><th className="px-3 py-3">判断</th></tr></thead><tbody>{growth.team_capacity.employees.map(row => <tr key={row.employee_id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium">{row.employee_name}<p className="text-xs font-normal text-slate-400">{row.role}</p></td><td className="px-3 py-3">{row.active_projects} / {row.capacity_target}</td><td className="px-3 py-3"><div className="h-2 w-32 overflow-hidden rounded-full bg-slate-100"><div className={`h-full ${row.utilization >= 1 ? 'bg-red-500' : row.utilization >= .85 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, row.utilization * 100)}%` }} /></div><p className="mt-1 text-xs text-slate-400">{(row.utilization * 100).toFixed(0)}%</p></td><td className="px-3 py-3">{row.open_tasks} 待办<p className="text-xs text-red-500">{row.overdue_tasks} 逾期</p></td><td className="px-3 py-3">{row.open_delivery_tasks} 待办<p className="text-xs text-red-500">{row.overdue_delivery_tasks} 逾期</p></td><td className="px-3 py-3"><Badge className={row.capacity_level === 'overloaded' ? 'bg-red-100 text-red-700' : row.capacity_level === 'near_limit' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}>{row.capacity_level === 'overloaded' ? '超负荷' : row.capacity_level === 'near_limit' ? '接近上限' : '仍有余量'}</Badge></td></tr>)}</tbody></table></div>
+              </details>
             </CardContent>
           </Card>
         </>}

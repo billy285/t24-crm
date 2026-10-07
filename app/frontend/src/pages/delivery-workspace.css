@@ -1,0 +1,89 @@
+/* Display-only refinements for delivery, task and customer record workspaces. */
+.t24-system .calm-delivery-page { min-width:0; }
+.t24-system .calm-delivery-page .dc-heading { padding:0; }
+.t24-system .calm-delivery-page .dc-heading h2 { font-size:26px; line-height:1.4; }
+.t24-system .calm-delivery-page .dc-heading p:first-child { color:#8a98ad; }
+.t24-system .calm-delivery-page .dc-metrics { gap:0; padding:4px 0 12px; border-bottom:1px solid #e5eaf2; }
+.t24-system .calm-delivery-page .dc-metric { border:0; border-right:1px solid #e5eaf2; border-radius:0; background:transparent; padding:6px 18px; box-shadow:none; }
+.t24-system .calm-delivery-page .dc-metric:first-child { padding-left:0; }
+.t24-system .calm-delivery-page .dc-metric:last-child { border-right:0; }
+.t24-system .calm-delivery-page .dc-metric.is-active { background:transparent; box-shadow:none; }
+.t24-system .calm-delivery-page .dc-metric.is-active .dc-metric-label { color:#245bdd; }
+.t24-system .calm-delivery-page .dc-metric strong { font-size:26px; margin:8px 0 3px; }
+.t24-system .calm-delivery-page .dc-metric small { display:block; font-size:10px; color:#8b97a9; }
+.t24-system .calm-delivery-page .dc-guidance summary { padding:10px 14px; }
+.t24-system .calm-delivery-page .dc-task-views { display:flex; flex-wrap:wrap; gap:3px; }
+.t24-system .calm-delivery-page .dc-task-views > button { padding:11px 16px; min-width:100px; }
+.t24-system .calm-delivery-page .dc-task-priorities { border:0; background:transparent; padding:0; }
+.t24-system .calm-delivery-page .dc-priority-strip { padding:2px 0; }
+.t24-system .calm-delivery-page .dc-priority-strip button { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 12px; }
+.t24-system .calm-delivery-page .dc-priority-strip b { font-size:15px; margin:0; }
+.t24-system .calm-delivery-page .dc-workload { margin-top:5px; }
+.t24-system .calm-delivery-page .dc-task-row { padding-top:20px; padding-bottom:20px; }
+.t24-system .calm-delivery-page .dc-task-desktop > div:first-child > div:first-child > span:first-child { display:block; width:100%; font-size:14px; line-height:1.7; font-weight:600; }
+.t24-system .calm-delivery-page .dc-source-badge { background:#f1f4f8; color:#8290a3; }
+.t24-system .calm-delivery-page .dc-task-notes { margin-top:10px; }
+.t24-system .calm-delivery-page .dc-board-tools { border:0; background:transparent; border-radius:0; overflow:visible; }
+.t24-system .calm-delivery-page .dc-board-tools > .bg-card { border:1px solid #e5eaf2; border-radius:10px; }
+.t24-system .calm-delivery-page .dc-quick-filters { border:0; padding:0 0 12px; }
+.t24-system .calm-delivery-page .dc-progress-table th { background:#f8fafc; }
+.t24-system .calm-delivery-page .dc-progress-table td { padding-top:24px; padding-bottom:24px; }
+.t24-system .calm-delivery-page .dc-row-actions { gap:5px; }
+.t24-system .calm-delivery-page .dc-callback-row { background:#fff; padding-top:22px; padding-bottom:22px; }
+.t24-system .calm-delivery-page .dc-callback-row:has(.bg-red-100) { border-left:3px solid #f3b7bd; }
+.t24-system .calm-delivery-page .calm-filter-details { border-top:1px solid #edf1f6; padding-top:10px; }
+.t24-system .calm-delivery-page .calm-filter-details > summary { display:flex; align-items:center; gap:12px; cursor:pointer; font-size:12px; font-weight:600; color:#5b6d86; list-style:none; min-height:30px; }
+.t24-system .calm-delivery-page .calm-filter-details > summary::after { content:'展开'; font-weight:400; color:#8b97a9; margin-left:auto; }
+.t24-system .calm-delivery-page .calm-filter-details[open] > summary::after { content:'收起'; }
+.t24-system .calm-delivery-page .calm-filter-details > summary > span { font-size:11px; font-weight:400; color:#8b97a9; }
+.t24-system .calm-delivery-page .calm-record-metrics { gap:0; border-bottom:1px solid #e5eaf2; padding:0 0 16px; }
+.t24-system .calm-delivery-page .calm-record-metrics > .bg-card { background:transparent; border:0; border-right:1px solid #e5eaf2; box-shadow:none; border-radius:0; }
+.t24-system .calm-delivery-page .calm-record-metrics > .bg-card:last-child { border-right:0; }
+.t24-system .calm-delivery-page .calm-record-metrics > .bg-card > div { padding:6px 18px; }
+.t24-system .calm-delivery-page .calm-record-metrics > .bg-card:first-child > div { padding-left:0; }
+.t24-system .calm-delivery-page .calm-record-metrics > .bg-card > div > button { padding:0; }
+.t24-system .calm-delivery-page .calm-record-metrics p.text-2xl { font-size:26px; font-weight:600; }
+.t24-system .calm-delivery-page .calm-record-list-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:18px 20px; border-bottom:1px solid #e5eaf2; }
+.t24-system .calm-delivery-page .calm-record-list-heading h3 { font-size:14px; font-weight:600; color:#24354d; }
+.t24-system .calm-delivery-page .calm-record-list-heading p { font-size:11px; color:#8794a7; margin-top:4px; }
+.t24-system .calm-delivery-page .calm-record-table { min-width:860px; }
+.t24-system .calm-delivery-page .calm-record-table.calm-table-full { min-width:1460px; }
+.t24-system .calm-delivery-page .calm-record-table td { padding-top:20px; padding-bottom:20px; }
+.t24-system .calm-delivery-page .calm-lifecycle-period { background:#fff; box-shadow:none; }
+.t24-system .calm-delivery-page .calm-stat-definition { margin-left:auto; color:#8491a4; font-size:11px; max-width:380px; }
+.t24-system .calm-delivery-page .calm-stat-definition summary { cursor:pointer; }
+.t24-system .calm-delivery-page .calm-stat-definition p { padding-top:8px; line-height:1.8; }
+.t24-system .calm-delivery-page .calm-lifecycle-metrics { gap:0; border-bottom:1px solid #e5eaf2; padding-bottom:16px; }
+.t24-system .calm-delivery-page .calm-lifecycle-metrics > button > .bg-card { border:0; border-radius:0; background:transparent; box-shadow:none; border-right:1px solid #e5eaf2; transform:none; }
+.t24-system .calm-delivery-page .calm-lifecycle-metrics > button:last-child > .bg-card { border-right:0; }
+.t24-system .calm-delivery-page .calm-lifecycle-metrics > button > .bg-card > div { padding:4px 16px; }
+.t24-system .calm-delivery-page .calm-lifecycle-metrics > button > .bg-card > div > div { display:none; }
+.t24-system .calm-delivery-page .calm-lifecycle-metrics > button > .bg-card > div > p:first-of-type { margin-top:0; }
+.t24-system .calm-delivery-page .calm-maintenance-tools { position:relative; }
+.t24-system .calm-delivery-page .calm-maintenance-tools summary { display:flex; gap:8px; align-items:center; cursor:pointer; list-style:none; font-size:12px; color:#64748b; padding:8px 12px; min-height:36px; border:1px solid #e2e8f0; border-radius:8px; background:#fff; }
+.t24-system .calm-delivery-page .calm-maintenance-tools > div { position:absolute; right:0; top:calc(100% + 6px); min-width:190px; display:grid; gap:4px; background:#fff; border:1px solid #e2e8f0; padding:8px; border-radius:10px; box-shadow:0 12px 24px #15233b12; z-index:30; }
+.t24-system .calm-delivery-page .calm-maintenance-tools > div > button, .t24-system .calm-delivery-page .calm-maintenance-tools > div > a { justify-content:flex-start; }
+@media (max-width:767px) {
+  .t24-system .calm-delivery-page .dc-heading h2 { font-size:23px; }
+  .t24-system .calm-delivery-page .dc-metrics { display:flex; gap:0; overflow-x:auto; padding-bottom:8px; }
+  .t24-system .calm-delivery-page .dc-metric { flex:0 0 125px; padding:9px 12px; min-height:74px; }
+  .t24-system .calm-delivery-page .dc-metric:first-child { padding-left:0; flex-basis:115px; }
+  .t24-system .calm-delivery-page .dc-metric strong { font-size:22px; }
+  .t24-system .calm-delivery-page .dc-metric small { display:none; }
+  .t24-system .calm-delivery-page .dc-guidance summary > span { display:none; }
+  .t24-system .calm-delivery-page .dc-quick-filters { flex-wrap:nowrap; overflow-x:auto; padding-bottom:8px; }
+  .t24-system .calm-delivery-page .dc-quick-filters > button { flex-shrink:0; white-space:nowrap; }
+  .t24-system .calm-delivery-page .dc-task-views { display:none; }
+  .t24-system .calm-delivery-page .dc-task-row { padding:0; }
+  .t24-system .calm-delivery-page .dc-callback-row { padding:16px; }
+  .t24-system .calm-delivery-page .calm-record-metrics { gap:12px 0; }
+  .t24-system .calm-delivery-page .calm-record-metrics > .bg-card:nth-child(even) { border-right:0; }
+  .t24-system .calm-delivery-page .calm-record-metrics > .bg-card > div { padding:0 12px; }
+  .t24-system .calm-delivery-page .calm-record-metrics > .bg-card:nth-child(odd) > div { padding-left:0; }
+  .t24-system .calm-delivery-page .calm-record-metrics p.text-2xl { font-size:22px; }
+  .t24-system .calm-delivery-page .calm-filter-details > summary > span { display:none; }
+  .t24-system .calm-delivery-page .calm-record-list-heading { padding:15px 16px; }
+  .t24-system .calm-delivery-page .calm-stat-definition { margin-left:0; }
+  .t24-system .calm-delivery-page .calm-lifecycle-metrics { gap:12px 0; }
+  .t24-system .calm-delivery-page .calm-lifecycle-metrics > button:nth-child(even) > .bg-card { border-right:0; }
+}

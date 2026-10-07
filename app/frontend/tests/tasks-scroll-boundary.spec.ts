@@ -44,7 +44,7 @@ async function installTaskMocks(page: Page) {
 test('任务列表只在内容区滚动，不会把浏览器页面撑成空白长页', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await installTaskMocks(page);
-  await page.goto(`${baseUrl}/tasks`);
+  await page.goto(`${baseUrl}/tasks?view=all`);
 
   await expect(page.getByText('显示 1-20 条 / 共 20 条')).toBeVisible();
   await expect(page.getByRole('button', { name: '编辑任务' })).toHaveCount(20);
@@ -67,4 +67,17 @@ test('任务列表只在内容区滚动，不会把浏览器页面撑成空白�
   });
   await expect(page.getByText('1 / 1 页')).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+test('任务默认聚焦未完成，全部任务保留已完成历史', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installTaskMocks(page);
+  await page.goto(`${baseUrl}/tasks`);
+
+  await expect(page.getByRole('button', { name: /^未完成/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('显示 1-10 条 / 共 10 条')).toBeVisible();
+  await expect(page.getByText('滚动边界任务 2', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: /^全部任务/ }).click();
+  await expect(page.getByText('显示 1-20 条 / 共 20 条')).toBeVisible();
+  await expect(page.getByText('滚动边界任务 2', { exact: true })).toBeVisible();
 });

@@ -52,10 +52,12 @@ test('销售任务加载完成前不显示假零值，并使用北京时间业�
 
   await page.goto(`${baseUrl}/sales-workbench`);
   await expect(page.getByRole('heading', { name: '销售今日工作台' })).toBeVisible();
-  await expect(page.getByText('—/—')).toBeVisible();
-  await expect(page.getByText('0/100')).toHaveCount(0);
+  const progress = page.getByRole('region', { name: '今日执行进度' });
+  await expect(progress.locator('.sc-day-progress strong')).toHaveText('— / —');
+  await expect(progress.locator('.sc-day-progress strong')).not.toHaveText('0 / 100');
   await expect(page.getByLabel('任务日期（北京时间）')).toHaveValue('2026-08-16');
-  await expect(page.getByText('待联系测试商家')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '待联系测试商家' })).toBeVisible();
+  await expect(progress.locator('.sc-day-progress strong')).toHaveText('0 / 100');
   expect(requestedDate).toBe('2026-08-16');
 });
 
@@ -76,7 +78,6 @@ test('390px 客户页首屏保留搜索、新增和客户卡片，批量工具�
   await expect(page.getByRole('button', { name: '管理' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /筛选/ })).toBeVisible();
   await expect(page.getByRole('button', { name: '新增客户' })).toBeVisible();
-  await expect(page.getByText('批量导入、敏感数据导出、列设置和快捷编辑请在电脑端处理。')).toBeVisible();
   const customerCardTitle = page.getByRole('button', { name: /首屏测试客户/ }).first();
   await expect(customerCardTitle).toBeVisible();
   const cardBox = await customerCardTitle.boundingBox();
@@ -134,7 +135,7 @@ test('员工危险操作使用文字菜单和对应确认语义', async ({ page 
   await expect(page.getByRole('button', { name: '确认停用' })).toBeVisible();
 });
 
-test('财务快照与老板驾驶舱使用同一审计收入、成本和利润', async ({ page }) => {
+test('财务快照保留审计利润、成本、净实收与投流资金口径', async ({ page }) => {
   await seedAuth(page);
   await page.route(/^https?:\/\/[^/]+\/api\//, async route => {
     const path = new URL(route.request().url()).pathname;
@@ -145,10 +146,13 @@ test('财务快照与老板驾驶舱使用同一审计收入、成本和利润',
   });
 
   await page.goto(`${baseUrl}/finance`);
-  await expect(page.getByText('$700')).toHaveCount(2);
-  await expect(page.getByText(/月度审计统一口径/)).toHaveCount(4);
+  await expect(page.getByText('$700', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/月度审计统一口径/)).toBeVisible();
+  await page.goto(`${baseUrl}/finance?tab=income`);
+  await page.getByRole('button', { name: '展开经营快照', exact: true }).click();
+  await expect(page.getByText('$700', { exact: true })).toBeVisible();
   await expect(page.getByText('审计总成本 USD').locator('../..')).toContainText('$200');
-  await expect(page.getByText('净实收现金 USD').locator('..')).toContainText('$1,000');
+  await expect(page.getByText('净实收 $1,000 · 投流资金 $300', { exact: true })).toBeVisible();
 });
 
 test('主管没有可用销售时结束加载并给出明确下一步', async ({ page }) => {
@@ -162,9 +166,8 @@ test('主管没有可用销售时结束加载并给出明确下一步', async ({
   });
 
   await page.goto(`${baseUrl}/sales-workbench`);
-  await expect(page.getByText('暂无可用销售人员', { exact: true })).toBeVisible();
-  await expect(page.getByText('请先在员工管理中新增或启用销售员工。')).toBeVisible();
-  await expect(page.getByText('—/—')).toBeVisible();
+  await expect(page.getByText('暂无可用销售人员，请先新增或启用销售员工。', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: '今日执行进度' }).locator('.sc-day-progress strong')).toHaveText('— / —');
   await expect(page.getByText('正在加载今日任务')).toHaveCount(0);
 });
 
@@ -194,9 +197,9 @@ test('快速切换销售时较慢的旧请求不能覆盖新结果', async ({ pa
   await page.goto(`${baseUrl}/sales-workbench`);
   await expect.poll(() => requestedSales.includes('1')).toBeTruthy();
   await page.locator('select').first().selectOption('2');
-  await expect(page.getByText('新选择商家')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '新选择商家' })).toBeVisible();
   await page.waitForTimeout(1000);
-  await expect(page.getByText('新选择商家')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '新选择商家' })).toBeVisible();
   await expect(page.getByText('旧请求商家')).toHaveCount(0);
 });
 

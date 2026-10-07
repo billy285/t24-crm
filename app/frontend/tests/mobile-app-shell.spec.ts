@@ -197,7 +197,7 @@ test('财务手机底栏的今日与待办进入两个真实可用页面', async
   await expect(page.getByRole('heading', { name: '财务工作台' })).toBeVisible();
 });
 
-test('手机业务内页共享深色摘要头、圆角卡片和安全底部留白', async ({ page }) => {
+test('手机业务内页标题紧凑、操作可达并保留安全底部留白', async ({ page }) => {
   await mockAuthenticatedApi(page, 'admin');
   await page.setViewportSize({ width: 390, height: 844 });
 
@@ -207,9 +207,8 @@ test('手机业务内页共享深色摘要头、圆角卡片和安全底部留�
   ] as const) {
     await page.goto(`${baseUrl}${path}`);
     await expect(page.getByRole('heading', { name: heading })).toBeVisible();
-    const pageTitle = page.locator('.app-page-title').first();
-    await expect(pageTitle).toHaveCSS('border-radius', '28px');
-    await expect(pageTitle).toHaveCSS('background-color', 'rgb(2, 6, 23)');
+    const headingBounds = await page.getByRole('heading', { name: heading, exact: true }).boundingBox();
+    expect(headingBounds!.y).toBeLessThan(240);
     await expect(page.locator('.app-page').first()).toHaveCSS('padding-bottom', '92px');
     await expectNoDocumentOverflow(page);
   }
@@ -259,7 +258,7 @@ test('手机内页可从当前 App 功能菜单进入二级页面', async ({ pag
   await expect(page.getByRole('button', { name: /财务管理/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /人民币利润预估/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /渠道与分润/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /工资表/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /工资表/ })).toBeVisible();
   await page.getByRole('button', { name: /人民币利润预估/ }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe('/rmb-profit');
 });
@@ -322,6 +321,7 @@ test('财务角色在桌面侧栏可以发现月度扣点比例入口', async ({
   await page.goto(`${baseUrl}/finance`);
 
   const sidebar = page.getByRole('navigation', { name: '财务与结算功能', exact: true });
+  await page.getByRole('button', { name: '展开功能导航', exact: true }).click();
   const link = sidebar.getByRole('link', { name: '月度扣点比例' });
   await expect(link).toBeVisible();
   await link.click();

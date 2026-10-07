@@ -72,37 +72,40 @@ test.beforeEach(async ({ page }) => {
 
 test('老板、销售、运营工作台保持角色化入口', async ({ page }) => {
   await page.goto(`${baseUrl}/`);
-  await expect(page.getByText('今天先看结果，再看风险，最后确认谁来处理')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今日经营', exact: true })).toBeVisible();
 
   await page.goto(`${baseUrl}/sales-workbench`);
   await expect(page.getByRole('heading', { name: '销售今日工作台' })).toBeVisible();
-  await expect(page.getByText('测试商家线索')).toBeVisible();
-  await expect(page.getByRole('button', { name: '逾期跟进 (1)' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '测试商家线索', exact: true })).toBeVisible();
+  await expect(page.getByText('逾期跟进 · 555-0200', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '返回今日工作台' })).toBeVisible();
   await expect(page.getByText('拨号辅助、线索循环与个人复盘')).toBeVisible();
 
   await page.goto(`${baseUrl}/operations-workbench`);
   await expect(page.getByRole('heading', { name: '运营今日工作台' })).toBeVisible();
-  await expect(page.getByText('确认本周服务进度')).toBeVisible();
-  await expect(page.getByRole('button', { name: '完成任务' })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: '当前事项' }).getByRole('heading', { name: '确认本周服务进度' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '填写处理结果' })).toBeVisible();
 });
 
 test('财务双层导航直达明细，收起后保留页内切换', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${baseUrl}/finance`);
   const sidebar = page.getByRole('navigation', { name: '财务与结算功能', exact: true });
+  await expect(sidebar).toBeHidden();
+  await page.getByRole('button', { name: '展开功能导航', exact: true }).click();
   await expect(sidebar.getByRole('link', { name: '老板总览', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(sidebar.getByRole('link', { name: '套餐续费', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: '按月明细', exact: true })).toBeVisible();
-  await expect(page.getByText('常用财务流程')).toBeHidden();
+  await expect(page.getByRole('tab', { name: /老板总览/ })).toBeHidden();
   await sidebar.getByRole('link', { name: '收入管理', exact: true }).click();
   await expect(page).toHaveURL(/tab=income/);
   await expect(sidebar.getByRole('link', { name: '收入管理', exact: true })).toHaveAttribute('aria-current', 'page');
   await page.reload();
+  await page.getByRole('button', { name: '展开功能导航', exact: true }).click();
   await expect(sidebar.getByRole('link', { name: '收入管理', exact: true })).toHaveAttribute('aria-current', 'page');
   await page.getByRole('button', { name: '收起功能导航', exact: true }).click();
   await expect(sidebar).toBeHidden();
-  await expect(page.getByText('常用财务流程')).toBeVisible();
+  await expect(page.getByRole('tab', { name: /老板总览/ })).toBeVisible();
   await expect(page.getByRole('tab', { name: /收入管理/ })).toHaveAttribute('data-state', 'active');
   await expect(page.getByLabel('更多财务明细')).toBeVisible();
   await page.getByRole('button', { name: '展开功能导航', exact: true }).click();
@@ -131,5 +134,5 @@ test('关键角色页面在手机宽度保持可操作且无横向溢出', async
     expect(widths.document).toBeLessThanOrEqual(widths.viewport);
     expect(widths.body).toBeLessThanOrEqual(widths.viewport);
   }
-  await expect(page.getByRole('tab', { name: '客户 360' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '概览', exact: true })).toBeVisible();
 });
