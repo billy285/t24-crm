@@ -7,6 +7,7 @@ import SalesLeadDossier from '@/components/SalesLeadDossier';
 import SalesCallRecord, { type SalesCallValues } from '@/components/SalesCallRecord';
 import SalesRecentHistory from '@/components/SalesRecentHistory';
 import '@/components/sales-center.css';
+import './sales-workspace.css';
 import SalesKnowledgeAssistant from '@/components/SalesKnowledgeAssistant';
 import CustomerPhoneDial from '@/components/CustomerPhoneDial';
 import { Badge } from '@/components/ui/badge';
@@ -638,8 +639,8 @@ export default function SalesWorkbench() {
     ));
 
     return (
-      <div className="app-page min-h-full space-y-4" data-testid="sales-workbench-mobile">
-        <section className="overflow-hidden rounded-[28px] bg-slate-950 p-5 text-white shadow-[0_18px_50px_rgba(15,23,42,0.2)]">
+      <div className="calm-sales-mobile app-page min-h-full space-y-4" data-testid="sales-workbench-mobile">
+        <section className="calm-mobile-call-header overflow-hidden rounded-[28px] bg-slate-950 p-5 text-white shadow-[0_18px_50px_rgba(15,23,42,0.2)]">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-300">T24 SALES CALL</p>
@@ -844,7 +845,7 @@ export default function SalesWorkbench() {
     ? '该商家已被保护或禁止联系，不能发起拨打。'
     : focusedTask?.task_status === 'completed' ? '该任务今日已完成，可查看联系历史或追加跟进。' : undefined;
 
-  return <div className="sales-center-ui sc-workbench app-page" data-testid="sales-workbench-desktop">
+  return <div className="sales-center-ui sc-workbench calm-sales-page calm-sales-workbench app-page" data-testid="sales-workbench-desktop">
     <header className="sc-page-heading">
       <div><p className="sc-eyebrow"><Headphones size={14} />T24 MARKETING · SALES</p><h1>销售今日工作台</h1><p className="sc-description">接着上次沟通，完成下一步。</p></div>
       <div className="sc-heading-actions"><Button variant="outline" onClick={() => window.location.assign("/sales-leads?view=intelligence")}>经营中心</Button>

@@ -3,6 +3,7 @@ import { BookOpen, ChevronRight, CircleHelp, Copy, MessageSquareText, Pencil, Pl
 import { toast } from 'sonner';
 
 import '@/components/sales-center.css';
+import './sales-workspace.css';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -85,13 +86,14 @@ function KnowledgeArticleDetail({
         <Button size="sm" onClick={() => onCopyShort(article)}><Copy className="mr-1.5 h-4 w-4" />复制短版话术</Button>
       </section>
 
-      <section className="knowledge-v4-full-answer">
+      <details className="knowledge-v4-full-answer calm-full-answer">
+        <summary>展开完整标准答复</summary>
         <div className="flex items-center justify-between gap-3">
           <h4>完整标准答复</h4>
           <Button size="sm" variant="outline" onClick={() => onCopyFull(article)}><Copy className="mr-1.5 h-4 w-4" />复制完整答复</Button>
         </div>
         <p>{article.standard_answer}</p>
-      </section>
+      </details>
 
       {article.action_steps.length > 0 ? (
         <section className="knowledge-v4-steps">
@@ -291,7 +293,7 @@ export default function SalesKnowledge() {
   );
 
   return (
-    <div className="knowledge-v4-page sales-center-ui app-page">
+    <div className="knowledge-v4-page sales-center-ui calm-sales-page calm-sales-knowledge app-page">
       <header className="knowledge-v4-header sc-section-heading app-page-title">
         <div>
           <p className="app-page-kicker sc-eyebrow"><BookOpen className="h-3.5 w-3.5" /> T24 MARKETING · KNOWLEDGE</p>
@@ -373,7 +375,6 @@ export default function SalesKnowledge() {
                 </span>
                 <strong>{article.title}</strong>
                 <p>{article.customer_question || '适用于相关销售场景'}</p>
-                <small>{getShortKnowledgeAnswer(article.standard_answer, 88)}</small>
                 <span className="knowledge-v4-list-action">查看并复制话术<ChevronRight className="h-4 w-4" /></span>
               </button>
             ))}

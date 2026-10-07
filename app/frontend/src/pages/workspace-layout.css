@@ -53,3 +53,42 @@
 }
 
 .calm-renewal-confirm { background: #fff; }
+
+/* Shared information hierarchy across authenticated workspaces. */
+.t24-system.app-shell .app-main { background: #f6f8fb; }
+.t24-system.app-shell .app-page { max-width: 1500px; min-width: 0; }
+.t24-system.app-shell .app-page-title {
+ background: transparent; border: 0; border-radius: 0; box-shadow: none;
+ padding: 0 0 12px !important; margin-bottom: 12px; overflow: visible; gap: 16px;
+}
+.t24-system.app-shell .app-page-title::before,
+.t24-system.app-shell .app-page-title::after { display: none; }
+.t24-system.app-shell .app-page-title h1,
+.t24-system.app-shell .app-page-title h2 { color: #0f172a !important; font-size: 28px; font-weight: 650; letter-spacing: -.025em; }
+.t24-system.app-shell .app-page-title p { color: #64748b !important; line-height: 1.7; }
+.t24-system.app-shell .app-page-title .app-page-kicker,
+.t24-system.app-shell .app-page-title p[class*=uppercase] { color: #7a8ba6 !important; font-size: 10px; letter-spacing: .12em; }
+.t24-system.app-shell .app-page [role=tablist] { box-shadow: none; max-width: 100%; }
+.t24-system.app-shell .app-page [role=tab] { box-shadow: none; min-height: 38px; }
+.t24-system.app-shell .app-page [role=tab][data-state=active] { background: #eff6ff; color: #1d4ed8; box-shadow: none; }
+.t24-system.app-shell .app-card,
+.t24-system.app-shell .app-toolbar,
+.t24-system.app-shell .app-metric,
+.t24-system.app-shell .app-page .shadow-sm { box-shadow: none; }
+.t24-system.app-shell .app-page table { font-variant-numeric: tabular-nums; }
+.t24-system.app-shell .app-page th { font-size: 12px; font-weight: 500; color: #64748b; }
+.t24-system.app-shell .calm-report-page table td { padding-top: 16px; padding-bottom: 16px; }
+.calm-secondary-panel { border: 1px solid #e2e8f0; border-radius: 12px; background: white; min-width: 0; }
+.calm-secondary-panel > summary { cursor: pointer; color: #475569; font-size: 13px; font-weight: 500; padding: 16px 20px; }
+.calm-secondary-panel > div { border: 0; box-shadow: none; }
+.t24-system.app-shell .calm-finance-page .app-page-title > div:first-child > div:first-child[class*=h-12] { display: none; }
+@media(max-width: 767px) {
+ .t24-system.app-shell .app-page-title { gap: 12px; }
+ .t24-system.app-shell .app-page-title h1,
+ .t24-system.app-shell .app-page-title h2 { font-size: 23px; }
+ .t24-system.app-shell .app-page-title > button { width: auto; background: #fff; color: #475569; border: 1px solid #e2e8f0; min-height: 44px; }
+ .t24-system.app-shell .app-page-title p[class*=uppercase],
+ .t24-system.app-shell .app-page-title .app-page-kicker { display: none; }
+ .t24-system.app-shell .app-page [role=tab] { min-height: 44px; }
+ .calm-secondary-panel > summary { padding: 14px 16px; }
+}

@@ -1,3 +1,4 @@
+import './admin-workspace.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -851,7 +852,7 @@ export default function CompanyRoadmap() {
     ?? 0;
 
   return (
-    <div className="t24-command-page app-page space-y-5">
+    <div className="t24-command-page calm-admin-page calm-roadmap-page app-page space-y-5">
       <div className="app-page-title flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Company Roadmap</p>
@@ -867,7 +868,29 @@ export default function CompanyRoadmap() {
       {!overview.settings.configured ? <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">当前显示的是系统默认规划参数，尚未由老板正式确认</p><p className="mt-1 text-xs leading-5 text-amber-700">默认目标为 2026–2030 年累计净利润 2,000 万元、现金安全线为 6 个月固定支出。确认前只用于规划提示。</p></div>{isAdmin ? <Button size="sm" variant="outline" onClick={openSettings}>现在确认目标</Button> : null}</div> : null}
       {syncWarning ? <div role="status" className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">数据已保存，但页面同步尚未完成</p><p className="mt-1 text-xs leading-5 text-amber-700">{syncWarning}</p></div><Button size="sm" variant="outline" onClick={refreshCurrentMonth} disabled={loading}>重新同步</Button></div> : null}
 
-      <Card className="overflow-hidden border-slate-800 bg-[#0f1b34] text-white">
+      <Card className={`calm-roadmap-focus ${recommendationTone[recommendation.level]}`}>
+        <CardContent className="p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-4xl">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"><Rocket className="h-4 w-4" />本阶段统一经营焦点</div>
+              <h2 className="mt-2 text-xl font-bold text-slate-900">{recommendation.title}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-700">判断：{recommendation.why}</p>
+              <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-sm font-medium text-slate-800">下一步：{recommendation.action}</p>
+              {overview.settings.current_focus ? <p className="mt-2 rounded-lg border border-slate-200 bg-white/60 px-3 py-2 text-xs leading-5 text-slate-600">老板补充边界：{overview.settings.current_focus}</p> : null}
+              {recommendation.decision ? <div className="mt-3 rounded-lg border border-slate-200/80 bg-white/60 px-3 py-2.5 text-xs text-slate-600"><div className="flex flex-wrap gap-x-4 gap-y-1"><span>决定：{decisionStatusLabels[recommendation.decision.status] || recommendation.decision.status}</span><span>确认人：{recommendation.decision.decided_by_name || '待确认'}</span><span>复盘日：{recommendation.decision.next_review_date || '待安排'}</span>{recommendation.decision.task_id ? <span>执行负责人：{recommendation.decision.task_assignee_name || '待分配'}</span> : null}{recommendation.decision.task_id ? <span>任务状态：{taskStatusLabels[recommendation.decision.task_status || ''] || '打开任务核对'}</span> : null}</div>{recommendation.decision.decision_note ? <p className="mt-1.5 leading-5">说明：{recommendation.decision.decision_note}</p> : null}{recommendation.decision.task_completion_result ? <p className="mt-1.5 rounded-md bg-emerald-50 px-2 py-1.5 leading-5 text-emerald-700">完成结果：{recommendation.decision.task_completion_result}</p> : null}{recommendation.decision.task_id ? <Button asChild size="sm" variant="link" className="mt-1 h-auto p-0 text-xs"><Link to={`/tasks?task_id=${recommendation.decision.task_id}`}>打开执行任务 #{recommendation.decision.task_id}<ArrowRight className="ml-1 h-3 w-3" /></Link></Button> : null}</div> : null}
+            </div>
+            {isAdmin ? <Button onClick={() => {
+              setDecisionStatus((recommendation.decision?.status as typeof decisionStatus) || 'accepted');
+              setDecisionNote(recommendation.decision?.decision_note || '');
+              setNextReviewDate(recommendation.decision?.next_review_date || '');
+              setCreateTask(true);
+              setDecisionOpen(true);
+            }}>{recommendation.decision ? '查看 / 更新决定' : '处理这项建议'}<ArrowRight className="ml-2 h-4 w-4" /></Button> : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="calm-roadmap-goal overflow-hidden border-slate-200 bg-white text-slate-900">
         <CardContent className="p-5 lg:p-6">
           <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
             <div>
@@ -896,31 +919,10 @@ export default function CompanyRoadmap() {
         </CardContent>
       </Card>
 
-      <Card className={recommendationTone[recommendation.level]}>
-        <CardContent className="p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-4xl">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"><Rocket className="h-4 w-4" />本阶段统一经营焦点</div>
-              <h2 className="mt-2 text-xl font-bold text-slate-900">{recommendation.title}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-700">判断：{recommendation.why}</p>
-              <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-sm font-medium text-slate-800">下一步：{recommendation.action}</p>
-              {overview.settings.current_focus ? <p className="mt-2 rounded-lg border border-slate-200 bg-white/60 px-3 py-2 text-xs leading-5 text-slate-600">老板补充边界：{overview.settings.current_focus}</p> : null}
-              {recommendation.decision ? <div className="mt-3 rounded-lg border border-slate-200/80 bg-white/60 px-3 py-2.5 text-xs text-slate-600"><div className="flex flex-wrap gap-x-4 gap-y-1"><span>决定：{decisionStatusLabels[recommendation.decision.status] || recommendation.decision.status}</span><span>确认人：{recommendation.decision.decided_by_name || '待确认'}</span><span>复盘日：{recommendation.decision.next_review_date || '待安排'}</span>{recommendation.decision.task_id ? <span>执行负责人：{recommendation.decision.task_assignee_name || '待分配'}</span> : null}{recommendation.decision.task_id ? <span>任务状态：{taskStatusLabels[recommendation.decision.task_status || ''] || '打开任务核对'}</span> : null}</div>{recommendation.decision.decision_note ? <p className="mt-1.5 leading-5">说明：{recommendation.decision.decision_note}</p> : null}{recommendation.decision.task_completion_result ? <p className="mt-1.5 rounded-md bg-emerald-50 px-2 py-1.5 leading-5 text-emerald-700">完成结果：{recommendation.decision.task_completion_result}</p> : null}{recommendation.decision.task_id ? <Button asChild size="sm" variant="link" className="mt-1 h-auto p-0 text-xs"><Link to={`/tasks?task_id=${recommendation.decision.task_id}`}>打开执行任务 #{recommendation.decision.task_id}<ArrowRight className="ml-1 h-3 w-3" /></Link></Button> : null}</div> : null}
-            </div>
-            {isAdmin ? <Button onClick={() => {
-              setDecisionStatus((recommendation.decision?.status as typeof decisionStatus) || 'accepted');
-              setDecisionNote(recommendation.decision?.decision_note || '');
-              setNextReviewDate(recommendation.decision?.next_review_date || '');
-              setCreateTask(true);
-              setDecisionOpen(true);
-            }}>{recommendation.decision ? '查看 / 更新决定' : '处理这项建议'}<ArrowRight className="ml-2 h-4 w-4" /></Button> : null}
-          </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base">阶段路线图</CardTitle><p className="mt-1 text-xs text-slate-500">未达到前一阶段时，后面的投入默认不启动。</p></CardHeader>
-        <CardContent>
+      <details className="calm-admin-disclosure">
+        <summary><span>阶段路线图</span><span className="text-xs font-normal text-slate-500">查看各阶段的投入条件</span></summary>
+        <div className="border-t border-slate-200 p-4">
           <div className="grid gap-3 md:grid-cols-5">
             {overview.milestones.map((item, index) => <div key={item.key} className={`relative rounded-xl border p-4 ${item.status === 'completed' ? 'border-emerald-200 bg-emerald-50' : item.status === 'current' ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-slate-50'}`}>
               <div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-400">阶段 {index + 1}</span>{item.status === 'completed' ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : item.status === 'current' ? <Clock3 className="h-5 w-5 text-blue-600" /> : <span className="h-5 w-5 rounded-full border-2 border-slate-300" />}</div>
@@ -928,8 +930,9 @@ export default function CompanyRoadmap() {
               <p className="mt-2 text-xs leading-5 text-slate-500">{item.target}</p>
             </div>)}
           </div>
-        </CardContent>
-      </Card>
+          <p className="mt-3 text-xs text-slate-500">未达到前一阶段时，后面的投入默认不启动。</p>
+        </div>
+      </details>
 
       <Tabs defaultValue="cash" id="cash-ledger" className="scroll-mt-4">
         <TabsList className="grid h-auto w-full grid-cols-2 sm:w-[420px]"><TabsTrigger value="cash">现金底账</TabsTrigger><TabsTrigger value="signals">经营信号</TabsTrigger></TabsList>

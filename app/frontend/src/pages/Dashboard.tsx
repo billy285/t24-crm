@@ -1,3 +1,4 @@
+import './admin-workspace.css';
 import { useState, useEffect, useMemo } from 'react';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
@@ -670,7 +671,7 @@ export default function Dashboard() {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
                 <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-300"><Gauge className="h-4 w-4" />T24 Owner Command Center</div>
-                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.02em]">今天先看结果，再看风险，最后确认谁来处理</h2>
+                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.02em]">今日经营</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">{ownerCockpit.finance.currency_policy}</p>
               </div>
               <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${ownerCockpit.decision_state === 'healthy' ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-300/30 bg-amber-300/10'}`}>
@@ -678,13 +679,13 @@ export default function Dashboard() {
                 <div><p className="text-sm font-semibold">{ownerCockpit.decision_state === 'healthy' ? '当前经营闭环正常' : `${ownerCockpit.decisions.length} 类事项需要关注`}</p><p className="mt-0.5 text-[11px] text-slate-300">数据截至 {new Date(ownerCockpit.as_of).toLocaleString('zh-CN', { hour12: false })}</p></div>
               </div>
             </div>
-            <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="calm-owner-metrics mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
               {topMetrics.map(item => {
                 const Icon = item.icon;
                 return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="t24-command-metric rounded-xl border border-white/10 bg-white/[0.055] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.09]"><div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="text-xs text-slate-300">{item.label}</p><p className="mt-1 text-2xl font-semibold tracking-[-0.02em]">{item.value}</p><p className="mt-1 text-[11px] leading-5 text-slate-400">{item.helper}</p></button>;
               })}
             </div>
-            <div className="mt-4 grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="calm-owner-shortcuts mt-4 grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-2 xl:grid-cols-4">
               {ownerShortcuts.map(item => (
                 <button key={item.path} type="button" onClick={() => navigate(item.path)} className="group flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-slate-300 transition hover:bg-white/[0.08] hover:text-white">
                   <span><span className="block text-sm font-medium">{item.label}</span><span className="mt-0.5 block text-[11px] text-slate-500 group-hover:text-slate-400">{item.helper}</span></span>
@@ -715,12 +716,12 @@ export default function Dashboard() {
                 <button type="button" onClick={() => navigate('/service-board')} className="rounded-lg bg-amber-50 p-3 text-left"><p className="text-xs text-amber-600">交付逾期</p><p className="mt-1 text-xl font-bold text-amber-800">{ownerCockpit.delivery.overdue_service_tasks}</p></button>
                 <button type="button" onClick={() => navigate('/callbacks?status=pending&schedule=overdue')} className="rounded-lg bg-violet-50 p-3 text-left"><p className="text-xs text-violet-600">逾期回访</p><p className="mt-1 text-xl font-bold text-violet-800">{ownerCockpit.delivery.overdue_callbacks}</p></button>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600"><div className="flex items-center justify-between"><span>每日扫描</span><Badge className={ownerCockpit.automation.schedule.enabled ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-200 text-slate-600 hover:bg-slate-200'}>{ownerCockpit.automation.schedule.enabled ? '已开启' : '未开启'}</Badge></div><p className="mt-2">上次：{lastRunAt}</p><p className="mt-1">下次：{nextRunAt}</p><p className="mt-2 text-[11px] text-slate-400">只提醒、建任务和追踪结果，不会自动停止客户。</p></div>
+              <details className="calm-admin-disclosure text-xs text-slate-600"><summary><span>自动扫描状态</span><span className="text-xs font-normal text-slate-500">查看运行记录</span></summary><div className="border-t border-slate-200 p-3"><div className="flex items-center justify-between"><span>每日扫描</span><Badge className={ownerCockpit.automation.schedule.enabled ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-200 text-slate-600 hover:bg-slate-200'}>{ownerCockpit.automation.schedule.enabled ? '已开启' : '未开启'}</Badge></div><p className="mt-2">上次：{lastRunAt}</p><p className="mt-1">下次：{nextRunAt}</p><p className="mt-2 text-[11px] text-slate-400">只提醒、建任务和追踪结果，不会自动停止客户。</p></div></details>
             </CardContent>
           </Card>
         </div>
 
-        <Card className="border-slate-200">
+        <details className="calm-admin-disclosure"><summary><span>业务结构与团队执行</span><span className="text-xs font-normal text-slate-500">展开经营明细</span></summary><Card className="border-0 shadow-none">
           <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="text-base">业务结构与团队执行</CardTitle><p className="mt-1 text-xs text-slate-500">用于判断当前人力应该投向获客、交付还是客户留存。</p></div><Button size="sm" variant="outline" onClick={() => navigate('/management-decisions')}>查看经营决策</Button></div></CardHeader>
           <CardContent>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -730,7 +731,7 @@ export default function Dashboard() {
               <div className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">人民币公司支出</p><p className="mt-2 text-2xl font-bold text-slate-900">¥{ownerCockpit.finance.company_cost_cny.toLocaleString()}</p><p className="mt-1 text-xs text-slate-500">与美元利润分开，不做临时汇率换算</p></div>
             </div>
           </CardContent>
-        </Card>
+        </Card></details>
       </section>
     );
   };
@@ -969,7 +970,7 @@ export default function Dashboard() {
   const upcomingTasks = (data.tasks || []).filter((t: any) => t.status !== 'completed').slice(0, 5);
 
   return (
-    <div className="t24-command-center app-page space-y-6">
+    <div className="t24-command-center calm-admin-page calm-admin-dashboard app-page space-y-6">
       {renderOwnerCommandCenter()}
       {renderReminders()}
       <Collapsible open={showMoreOwnerDetails} onOpenChange={setShowMoreOwnerDetails} className="space-y-6">

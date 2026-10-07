@@ -38,6 +38,7 @@ import CustomerCombobox from '@/components/CustomerCombobox';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { businessDateKey } from '@/lib/business-date';
+import './delivery-workspace.css';
 
 function parseMultiValue(value?: string | null) {
   return (value || '').split(',').map(item => item.trim()).filter(Boolean);
@@ -1256,12 +1257,12 @@ export default function Deals() {
   }
 
   return (
-    <div className="t24-record-page t24-directory-page app-page space-y-5">
+    <div className="t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-deals-page">
       <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <p className="app-page-kicker">T24 Marketing · Deals</p>
           <h2 className="text-xl font-semibold text-slate-800">成交管理</h2>
-          <p className="text-sm text-slate-500">共 {deals.length} 笔成交，总金额 ${totalAmount.toLocaleString()}</p>
+          <p className="text-sm text-slate-500">核对成交记录与交接进展；成交金额按原始记录展示。</p>
         </div>
         <div className="hidden gap-2 md:flex">
           <ExportButton
@@ -1303,9 +1304,9 @@ export default function Deals() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <div className="calm-record-metrics grid grid-cols-2 gap-3 xl:grid-cols-5" aria-label="当前可见范围的成交记录概览">
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">成交记录</p><p className="mt-1 text-2xl font-semibold text-slate-900">{deals.length}</p><p className="mt-1 text-xs text-slate-400">总额 ${totalAmount.toLocaleString()}</p></CardContent></Card>
-        <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">已付款</p><p className="mt-1 text-2xl font-semibold text-emerald-600">{paidDealCount}</p><p className="mt-1 text-xs text-slate-400">已确认收款</p></CardContent></Card>
+        <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">已付款</p><p className="mt-1 text-2xl font-semibold text-emerald-600">{paidDealCount}</p><p className="mt-1 text-xs text-slate-400">成交记录中的付款标记</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">未付款</p><p className="mt-1 text-2xl font-semibold text-red-600">{unpaidDealCount}</p><p className="mt-1 text-xs text-slate-400">需要跟进</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">待完成交接</p><p className="mt-1 text-2xl font-semibold text-amber-600">{pendingHandoffCount}</p><p className="mt-1 text-xs text-slate-400">交接或转运营未完成</p></CardContent></Card>
         <Card className={duplicateGroupCount > 0 ? 'border-orange-200 bg-orange-50/60' : 'border-slate-200'}>
@@ -1333,7 +1334,9 @@ export default function Deals() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input placeholder="搜索客户名称、电话、邮箱、地址、套餐、销售..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+          <details className="calm-filter-details">
+          <summary>筛选成交<span>{hasActiveFilters ? `当前筛选 ${filtered.length} 笔` : '产品 · 付款标记 · 周期 · 成交日期'}</span></summary>
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap pt-3">
             <NativeSelect
               value={filterProduct}
               onChange={setFilterProduct}
@@ -1402,6 +1405,7 @@ export default function Deals() {
               </Button>
             )}
           </div>
+          </details>
           {hasActiveFilters && (
             <p className="text-xs text-slate-500">
               筛选结果：{filtered.length} 条记录，合计 (USD) ${filtered.reduce((s, d) => s + (d.deal_amount || 0), 0).toLocaleString()}
@@ -1462,6 +1466,7 @@ export default function Deals() {
       {/* Deals list */}
       <Card className="border-slate-200">
         <CardContent className="p-0">
+          <div className="calm-record-list-heading"><div><h3>成交记录</h3><p>{filtered.length} 笔 · 金额与交接状态分开核对</p></div></div>
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
@@ -1470,7 +1475,7 @@ export default function Deals() {
             <p className="text-center text-slate-400 py-12">暂无成交记录</p>
           ) : (
             <>
-            <div className="grid gap-3 p-3 md:hidden">
+            {isMobile && <div className="grid gap-3 p-3 md:hidden">
               {paginated.items.map(d => {
                 const isDuplicate = duplicateDealIds.has(d.id);
                 const packageClassification = getPackageClassification(d.package_name);
@@ -1503,7 +1508,7 @@ export default function Deals() {
                 </div>
                 );
               })}
-            </div>
+            </div>}
             {!isMobile && <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>

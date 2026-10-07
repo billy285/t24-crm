@@ -24,6 +24,8 @@ import { client } from '@/lib/api';
 import { businessDateKey } from '@/lib/business-date';
 import { useRole } from '@/lib/role-context';
 import { getToken } from '@/lib/tokenStore';
+import PageLoadState from '@/components/PageLoadState';
+import './delivery-workspace.css';
 
 type Summary = {
   new_customers: number;
@@ -391,8 +393,15 @@ export default function CustomerLifecycle() {
     </div>
   );
 
+  if (loading && !data) {
+    return <PageLoadState loading message="正在核对客户合作周期与状态…" />;
+  }
+  if (error && !data) {
+    return <PageLoadState error={error} onRetry={() => void loadData()} />;
+  }
+
   return (
-    <div className="t24-record-page t24-directory-page app-page space-y-5">
+    <div className="t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-lifecycle-page">
       <div className="app-page-title gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Customer Lifecycle</p>
@@ -400,9 +409,11 @@ export default function CustomerLifecycle() {
           <p className="mt-1 text-sm text-slate-500">看清客户增长、留存与风险，快速定位需要处理的客户。</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {!isMobile && <Button asChild variant="outline"><Link to="/management-decisions"><Layers3 className="mr-2 h-4 w-4" />经营分类与项目</Link></Button>}
-          {!isMobile && isAdmin && <Button variant="outline" onClick={() => void runBackfill()} disabled={loading}><History className="mr-2 h-4 w-4" />回溯历史</Button>}
-          <Button onClick={() => void loadData()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新数据</Button>
+          {!isMobile && <details className="calm-maintenance-tools"><summary>更多工具<MoreHorizontal className="h-4 w-4" /></summary><div>
+            <Button asChild variant="ghost"><Link to="/management-decisions"><Layers3 className="mr-2 h-4 w-4" />经营分类与项目</Link></Button>
+            {isAdmin && <Button variant="ghost" onClick={() => void runBackfill()} disabled={loading}><History className="mr-2 h-4 w-4" />回溯历史</Button>}
+          </div></details>}
+          <Button variant="outline" onClick={() => void loadData()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新数据</Button>
         </div>
       </div>
 
@@ -426,19 +437,19 @@ export default function CustomerLifecycle() {
         ))}
       </div>
 
-      <Card className="border-slate-200">
+      <Card className="calm-lifecycle-period border-slate-200">
         <CardContent className="flex flex-col items-stretch gap-3 p-4 md:flex-row md:flex-wrap md:items-end">
           <div><Label>统计开始</Label><Input type="date" value={startDate} min="2026-01-01" onChange={event => setStartDate(event.target.value)} className="mt-1 w-full md:w-44" /></div>
           <div><Label>统计截止</Label><Input type="date" value={asOf} max={today} onChange={event => setAsOf(event.target.value)} className="mt-1 w-full md:w-44" /></div>
           <Button variant="outline" onClick={() => void loadData()} disabled={loading}><CalendarDays className="mr-2 h-4 w-4" />应用时间</Button>
-          <p className="text-xs text-slate-500">合作起点来自第一笔金额大于0且有实际收款日期的记账；套餐到期不会自动判定客户流失。</p>
+          <details className="calm-stat-definition"><summary>统计口径</summary><p>合作起点来自第一笔金额大于0且有实际收款日期的记账；套餐到期不会自动判定客户流失。</p></details>
         </CardContent>
       </Card>
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
       {activeSection === 'overview' && <>
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+        <div className="calm-lifecycle-metrics grid grid-cols-2 gap-3 xl:grid-cols-6">
           {cards.map(({ label, value, hint, icon: Icon, color, bg, onClick }) => (
             <button key={label} type="button" onClick={onClick} className="group text-left">
               <Card className="h-full border-slate-200 transition-all group-hover:-translate-y-0.5 group-hover:border-blue-200 group-hover:shadow-md">

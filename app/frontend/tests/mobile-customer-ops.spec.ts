@@ -138,17 +138,14 @@ test.beforeEach(async ({ page }) => {
   await mockMobileApi(page);
 });
 
-test('客户详情手机端保留六个生命周期主标签，更多资料和行操作仍可达', async ({ page }) => {
+test('客户详情手机端保留四个核心标签，更多资料和行操作仍可达', async ({ page }) => {
   await page.goto(`${baseUrl}/customers?detail=1`);
   await expect(page.getByRole('heading', { name: customer.business_name })).toBeVisible();
 
   const mobileNavigation = page.getByRole('tablist', { name: '客户手机主导航' });
-  await expect(mobileNavigation.getByRole('tab', { name: '客户 360' })).toBeVisible();
-  await expect(mobileNavigation.getByRole('tab', { name: '时间线' })).toBeVisible();
-  await expect(mobileNavigation.getByRole('tab', { name: '客户商机' })).toBeVisible();
-  await expect(mobileNavigation.getByRole('tab', { name: '服务信息' })).toBeVisible();
-  await expect(mobileNavigation.getByRole('tab', { name: '财务信息' })).toBeVisible();
-  await expect(mobileNavigation.getByRole('tab', { name: '续费信息' })).toBeVisible();
+  for (const name of ['概览', '动态', '服务', '财务']) {
+    await expect(mobileNavigation.getByRole('tab', { name, exact: true })).toBeVisible();
+  }
 
   const more = page.getByLabel('更多资料与工具');
   await expect(more).toBeVisible();
@@ -168,7 +165,6 @@ test('客户详情手机端保留六个生命周期主标签，更多资料和�
 
 test('新增客户手机表单单列分区，底部保存操作保持可达', async ({ page }) => {
   await page.goto(`${baseUrl}/customers`);
-  await expect(page.getByText('批量导入、敏感数据导出、列设置和快捷编辑请在电脑端处理。')).toBeVisible();
   await expect(page.getByRole('button', { name: /导入|导出|列设置|快捷编辑|管理/ })).toHaveCount(0);
   await expect(page.locator('button').filter({ hasText: /导入客户|导出 Excel|导出 CSV|列设置|快捷编辑/ })).toHaveCount(0);
   await page.getByRole('button', { name: '新增客户' }).click();

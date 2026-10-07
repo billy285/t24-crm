@@ -11,6 +11,8 @@ import { Search, ExternalLink } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Combobox } from '@/components/ui/combobox';
 import ExportButton from '@/components/ExportButton';
+import './delivery-workspace.css';
+import { useIsMobile } from '@/hooks/use-mobile';
 import PageLoadState from '@/components/PageLoadState';
 import { classifyPackageDisplay, useBusinessDicts } from '../lib/dict-config';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
@@ -117,6 +119,7 @@ const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
 
 export default function Sales() {
   const { employee, dataScope, canViewFinance } = useRole();
+  const isMobile = useIsMobile();
   const {
     billingCycles: cycleLabels,
     customerPackages: customerPackageLabels,
@@ -133,6 +136,7 @@ export default function Sales() {
   const [filterCountry, setFilterCountry] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [showAllColumns, setShowAllColumns] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -417,7 +421,7 @@ export default function Sales() {
   }
 
   return (
-    <div className="t24-record-page t24-directory-page app-page space-y-5">
+    <div className="t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-active-customers">
       <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <p className="app-page-kicker">T24 Marketing · Active Customers</p>
@@ -456,7 +460,7 @@ export default function Sales() {
         />
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="calm-record-metrics grid grid-cols-2 xl:grid-cols-4 gap-3" aria-label="当前可见范围的成交客户概览">
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">成交客户</p><p className="text-2xl font-semibold text-slate-800 mt-1">{totalClosedCustomers}</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">服务中客户</p><p className="text-2xl font-semibold text-green-600 mt-1">{activeCustomers}</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">续费关注</p><p className="text-2xl font-semibold text-amber-600 mt-1">{renewalCustomers}</p></CardContent></Card>
@@ -464,16 +468,8 @@ export default function Sales() {
       </div>
 
       <Card className="border-slate-200">
-        <CardContent className="p-3">
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-[300px_minmax(0,1fr)_170px_170px_170px] gap-3">
-            <Combobox
-              value={filterCustomerId}
-              onValueChange={setFilterCustomerId}
-              options={[{ value: 'all', label: '全部成交客户' }, ...customerOptions]}
-              placeholder="选择成交客户"
-              searchPlaceholder="输入商家名、编号、联系人或电话"
-              emptyText="没有找到成交客户"
-            />
+        <CardContent className="p-3 space-y-3">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_190px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -499,6 +495,18 @@ export default function Sales() {
                 { value: 'none', label: '未建服务' },
               ]}
             />
+          </div>
+          <details className="calm-filter-details">
+            <summary>更多筛选<span>{filterCustomerId !== 'all' || filterSalesPerson !== 'all' || filterCountry !== 'all' ? `当前筛选 ${filtered.length} 位客户` : '客户 · 负责人 · 国家'}</span></summary>
+            <div className="grid gap-3 pt-3 md:grid-cols-[minmax(0,1fr)_190px_190px]">
+            <Combobox
+              value={filterCustomerId}
+              onValueChange={setFilterCustomerId}
+              options={[{ value: 'all', label: '全部成交客户' }, ...customerOptions]}
+              placeholder="选择成交客户"
+              searchPlaceholder="输入商家名、编号、联系人或电话"
+              emptyText="没有找到成交客户"
+            />
             <NativeSelect
               value={filterSalesPerson}
               onChange={setFilterSalesPerson}
@@ -509,12 +517,17 @@ export default function Sales() {
               onChange={setFilterCountry}
               options={[{ value: 'all', label: '全部国家' }, ...countryOptions]}
             />
-          </div>
+            </div>
+          </details>
         </CardContent>
       </Card>
 
       <Card className="border-slate-200">
         <CardContent className="p-0">
+          <div className="calm-record-list-heading">
+            <div><h3>成交客户</h3><p>{filtered.length} 位 · 查看服务、到期时间与下一步</p></div>
+            <Button type="button" variant="outline" size="sm" className="hidden md:inline-flex" aria-pressed={showAllColumns} onClick={() => setShowAllColumns(value => !value)}>{showAllColumns ? '简洁视图' : '展开全部列'}</Button>
+          </div>
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
@@ -523,7 +536,7 @@ export default function Sales() {
             <p className="text-center text-slate-400 py-12">暂无符合条件的成交客户</p>
           ) : (
             <>
-            <div className="grid gap-3 p-3 md:hidden">
+            {isMobile && <div className="grid gap-3 p-3 md:hidden">
               {paginated.items.map(row => (
                 <div key={row.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
@@ -552,19 +565,19 @@ export default function Sales() {
                   </Button>
                 </div>
               ))}
-            </div>
-            <div className="hidden overflow-x-auto md:block">
-              <table className="w-full text-sm">
+            </div>}
+            {!isMobile && <div className="hidden overflow-x-auto md:block">
+              <table className={`calm-record-table w-full text-sm ${showAllColumns ? 'calm-table-full' : ''}`}>
                 <thead>
                   <tr className="border-b bg-slate-50 text-left text-slate-500">
                     <th className="px-4 py-3 font-medium">商家名称</th>
                     <th className="px-4 py-3 font-medium">联系人</th>
-                    <th className="px-4 py-3 font-medium">州/国家</th>
-                    <th className="px-4 py-3 font-medium">成交套餐</th>
+                    {showAllColumns && <th className="px-4 py-3 font-medium">州/国家</th>}
+                    {showAllColumns && <th className="px-4 py-3 font-medium">成交套餐</th>}
                     <th className="px-4 py-3 font-medium">当前服务</th>
-                    <th className="px-4 py-3 font-medium">最近成交</th>
+                    {showAllColumns && <th className="px-4 py-3 font-medium">最近成交</th>}
                     <th className="px-4 py-3 font-medium">服务状态</th>
-                    {canViewFinance && <th className="px-4 py-3 font-medium">最近收款</th>}
+                    {canViewFinance && showAllColumns && <th className="px-4 py-3 font-medium">最近收款</th>}
                     {canViewFinance && <th className="px-4 py-3 font-medium">尾款</th>}
                     <th className="px-4 py-3 font-medium">负责销售</th>
                     <th className="px-4 py-3 font-medium text-right">操作</th>
@@ -586,15 +599,15 @@ export default function Sales() {
                         <div>{row.contact_name || '-'}</div>
                         <div className="text-xs text-slate-400 mt-1">{row.phone || '-'}</div>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">
+                      {showAllColumns && <td className="px-4 py-3 text-slate-600">
                         <div>{row.state || '-'}</div>
                         <div className="text-xs text-slate-400 mt-1">{row.country_label}</div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
+                      </td>}
+                      {showAllColumns && <td className="px-4 py-3 text-slate-600">
                         <div className="font-medium text-slate-700">{row.selected_package_name}</div>
                         {row.selected_package_historical_name && <div className="mt-1 text-xs text-slate-400">历史：{row.selected_package_historical_name}</div>}
                         <div className="text-xs text-slate-400 mt-1">{row.selected_package_source || '-'}</div>
-                      </td>
+                      </td>}
                       <td className="px-4 py-3 text-slate-600">
                         <div>{row.latest_package_name}</div>
                         {row.latest_package_historical_name && <div className="mt-1 text-xs text-slate-400">历史：{row.latest_package_historical_name}</div>}
@@ -604,10 +617,10 @@ export default function Sales() {
                         </div>
                         {row.active_service_count > 1 && <div className="mt-1 text-xs font-medium text-violet-600">共 {row.active_service_count} 个当前套餐</div>}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">
+                      {showAllColumns && <td className="px-4 py-3 text-slate-600">
                         <div className="font-medium text-slate-700">{row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-'}</div>
                         <div className="text-xs text-slate-400 mt-1">{row.latest_deal_date?.slice(0, 10) || '-'}</div>
-                      </td>
+                      </td>}
                       <td className="px-4 py-3">
                         <Badge className={subStatusColors[row.service_status] || subStatusColors.none}>
                           {subStatusLabels[row.service_status] || serviceStatusLabels[row.service_status] || row.service_status}
@@ -641,7 +654,7 @@ export default function Sales() {
                           下次付款: {row.next_payment_date?.slice(0, 10) || '-'}
                         </div>
                       </td>
-                      {canViewFinance && (
+                      {canViewFinance && showAllColumns && (
                         <td className="px-4 py-3 text-slate-600">
                           <div className="font-medium text-slate-700">{row.latest_payment_amount ? fmt(row.latest_payment_amount) : '-'}</div>
                           <div className="text-xs text-slate-400 mt-1">{row.latest_payment_date?.slice(0, 10) || '-'}</div>
@@ -666,7 +679,7 @@ export default function Sales() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div>}
             </>
           )}
           {filtered.length > 0 && <PaginationFooter />}
