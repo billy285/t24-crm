@@ -113,9 +113,9 @@ async function expectNoDocumentOverflow(page: Page) {
 }
 
 async function expectTouchTarget(locator: Locator) {
-  const box = await locator.boundingBox();
-  expect(box?.height || 0).toBeGreaterThanOrEqual(44);
-  expect(box?.width || 0).toBeGreaterThanOrEqual(44);
+  await expect(locator).toBeVisible();
+  await expect.poll(async () => (await locator.boundingBox())?.height || 0).toBeGreaterThanOrEqual(44);
+  await expect.poll(async () => (await locator.boundingBox())?.width || 0).toBeGreaterThanOrEqual(44);
 }
 
 test('390px 商家池以卡片完成补资料与待分配，不暴露手机高风险批量操作', async ({ page }) => {
