@@ -83,7 +83,7 @@ test('老板、销售、运营工作台保持角色化入口', async ({ page }) 
 
   await page.goto(`${baseUrl}/operations-workbench`);
   await expect(page.getByRole('heading', { name: '运营今日工作台' })).toBeVisible();
-  await expect(page.getByText('确认本周服务进度')).toBeVisible();
+  await expect(page.getByRole('complementary', { name: '当前事项' }).getByRole('heading', { name: '确认本周服务进度' })).toBeVisible();
   await expect(page.getByRole('button', { name: '填写处理结果' })).toBeVisible();
 });
 

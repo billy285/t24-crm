@@ -148,6 +148,9 @@ test('财务快照保留审计利润、成本、净实收与投流资金口径',
   await page.goto(`${baseUrl}/finance`);
   await expect(page.getByText('$700', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/月度审计统一口径/)).toBeVisible();
+  await page.goto(`${baseUrl}/finance?tab=income`);
+  await page.getByRole('button', { name: '展开经营快照', exact: true }).click();
+  await expect(page.getByText('$700', { exact: true })).toBeVisible();
   await expect(page.getByText('审计总成本 USD').locator('../..')).toContainText('$200');
   await expect(page.getByText('净实收 $1,000 · 投流资金 $300', { exact: true })).toBeVisible();
 });
