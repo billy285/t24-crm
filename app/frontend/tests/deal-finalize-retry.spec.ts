@@ -95,14 +95,13 @@ test('成交已保存但 finalize 未完成时逐项提示并可手动重试且�
   await page.getByRole('button', { name: '录入成交' }).click();
   const dialog = page.getByRole('dialog', { name: '录入成交' });
   const customerPicker = dialog.getByRole('combobox').first();
-  const customerPickerBox = await customerPicker.boundingBox();
   await customerPicker.click();
   const customerSearchPanel = page.locator('[data-slot="combobox-content"]');
-  const customerSearchPanelBox = await customerSearchPanel.boundingBox();
-  expect(customerPickerBox).not.toBeNull();
-  expect(customerSearchPanelBox).not.toBeNull();
-  const customerPanelWidthDelta = Math.abs((customerSearchPanelBox?.width || 0) - (customerPickerBox?.width || 0));
-  expect(customerPanelWidthDelta / (customerPickerBox?.width || 1)).toBeLessThan(0.03);
+  await expect(customerSearchPanel).toBeVisible();
+  await expect.poll(async () => {
+    const [picker, panel] = await Promise.all([customerPicker.boundingBox(), customerSearchPanel.boundingBox()]);
+    return picker && panel ? Math.abs(panel.width - picker.width) / picker.width : 1;
+  }).toBeLessThan(0.03);
   const customerList = page.getByRole('listbox', { name: 'Suggestions' });
   const customerListBox = await customerList.boundingBox();
   expect(customerListBox).not.toBeNull();
