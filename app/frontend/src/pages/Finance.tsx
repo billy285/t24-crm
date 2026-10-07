@@ -1,3 +1,4 @@
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '@/lib/tokenStore';
@@ -4160,7 +4161,7 @@ export default function Finance() {
   }
 
   return (
-    <div className={`t24-command-page t24-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
+    <div className={`t24-command-page t24-finance-page calm-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
       {/* Header */}
       <div className="app-page-title flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-start gap-3">
@@ -4198,7 +4199,7 @@ export default function Finance() {
 
       </div>
 
-      {dateFilterBar}
+      {activeFinanceTab === 'subscriptions' ? <p className="text-sm text-slate-500" role="status">续费队列 · 全部时间 · 按当前状态分组；经营快照{activeDateRange ? `使用 ${activeDateRange.start || '不限开始'} 至 ${activeDateRange.end || '不限结束'}` : '使用全部账目时间'}</p> : dateFilterBar}
 
       {/* Compact snapshot remains available in the detailed ledgers. */}
       {activeFinanceTab !== 'overview' && <section aria-labelledby="finance-snapshot-title" className="t24-finance-snapshot space-y-3">
@@ -4987,7 +4988,7 @@ export default function Finance() {
         </TabsContent>
 
         {/* ── Subscriptions Tab ── */}
-        <TabsContent value="subscriptions">
+        <TabsContent value="subscriptions" className="calm-renewal-workbench">
           <div className="space-y-4">
             <Card className="overflow-hidden border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-sm">
               <CardContent className="p-4">
@@ -5098,7 +5099,7 @@ export default function Finance() {
                         {visibleSubscriptions.length === 0 ? (
                           <div className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-5 text-center text-sm text-slate-500"><p>{subscriptionSearch.trim() ? '当前分组没有匹配的套餐，可清除搜索或切换分组' : `「${group.title}」当前没有套餐`}</p>{subscriptionSearch && <Button className="mt-3" size="sm" variant="outline" onClick={() => setSubscriptionSearch('')}>清除搜索</Button>}{!subscriptionSearch.trim() && subscriptionWorkbenchGroups.some(item => ['pending', 'risk'].includes(item.key) && item.key !== group.key && item.rows.length > 0) && <Button className="mt-3" size="sm" variant="outline" onClick={() => setSubscriptionGroupKey(subscriptionWorkbenchGroups.find(item => ['pending', 'risk'].includes(item.key) && item.key !== group.key && item.rows.length > 0)!.key)}>查看其他待处理套餐</Button>}</div>
                         ) : (
-                          <div className="grid gap-3 lg:grid-cols-2">
+                          <div className="calm-renewal-list">
                             {paginatedActiveSubscriptions.items.map((s: any) => {
                               const remainDays = getSubscriptionRemainingDays(s);
                               const plannedDate = getSubscriptionPlannedPaymentDate(s);
@@ -5109,7 +5110,7 @@ export default function Finance() {
                               const linkedPlan = productPlanMap[s.product_plan_id];
                               const servicePlatforms = parseServicePlatforms(s.selected_platforms);
                               return (
-                                <div key={s.id} className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-4">
+                                <div key={s.id} className="calm-renewal-row rounded-xl border border-slate-200 bg-white p-4">
                                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                     <div className="min-w-0">
                                       <Button
@@ -5170,11 +5171,12 @@ export default function Finance() {
                                   <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="flex items-center gap-2">
                                       <Switch
+                                        aria-label={`续费记录方式：${s.customer_name || customerMap[s.customer_id]?.business_name || '客户'}`}
                                         checked={Boolean(s.auto_renew)}
                                         onCheckedChange={checked => handleToggleSubscriptionAutoRenew(s, checked)}
                                         disabled={updatingSubscriptionId === Number(s.id) || ['stopped', 'lost', 'upgraded', 'paused', 'renewed'].includes(status)}
                                       />
-                                      <span className="text-xs font-medium text-slate-600">{s.auto_renew ? 'Stripe 自动扣款' : '手动收款'}</span>
+                                      <span className="text-xs font-medium text-slate-600">{s.auto_renew ? 'Stripe 续费记录' : '手动收款记录'}</span>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
                                       {s.auto_renew && status === 'renewal_pending' && (
@@ -5185,7 +5187,7 @@ export default function Finance() {
                                           disabled={confirmingRenewalId === Number(s.id)}
                                         >
                                           <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                                          {confirmingRenewalId === Number(s.id) ? '确认中' : '确认扣款'}
+                                          {confirmingRenewalId === Number(s.id) ? '确认中' : '核对到账'}
                                         </Button>
                                       )}
                                       {!s.auto_renew && status === 'expired' && (
@@ -5196,44 +5198,19 @@ export default function Finance() {
                                           disabled={confirmingRenewalId === Number(s.id)}
                                         >
                                           <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                                          {confirmingRenewalId === Number(s.id) ? '确认中' : '确认收款'}
+                                          {confirmingRenewalId === Number(s.id) ? '确认中' : '核对到账'}
                                         </Button>
                                       )}
-                                      {!['stopped', 'lost', 'upgraded', 'paused', 'renewed'].includes(status) && (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-8 px-3 text-xs text-violet-600 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                                          onClick={() => openSubscriptionPackageChange(s)}
-                                        >
-                                          <ArrowRightLeft className="mr-1 h-3.5 w-3.5" />
-                                          套餐变更
-                                        </Button>
-                                      )}
-                                      {!['stopped', 'lost', 'upgraded', 'paused', 'renewed'].includes(status) && (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-8 px-3 text-xs text-red-600 hover:text-red-700"
-                                          onClick={() => handleStopSubscriptionRenewal(s)}
-                                          disabled={updatingSubscriptionId === Number(s.id)}
-                                        >
-                                          停止此套餐
-                                        </Button>
-                                      )}
-                                      {isAdmin && (
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className="h-8 px-3 text-xs text-red-700 hover:bg-red-50 hover:text-red-800"
-                                          onClick={() => navigate(`/customer-lifecycle?customer=${s.customer_id}`)}
-                                        >
-                                          客户停止合作
-                                        </Button>
-                                      )}
-                                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'subscription', item: s })}>
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </Button>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild><Button size="sm" variant="outline" aria-label={`更多续费操作：${s.customer_name || customerMap[s.customer_id]?.business_name || '客户'}`}>更多操作</Button></DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          {!['stopped', 'lost', 'upgraded', 'paused', 'renewed'].includes(status) && <DropdownMenuItem onSelect={() => openSubscriptionPackageChange(s)}>变更当前套餐</DropdownMenuItem>}
+                                          {!['stopped', 'lost', 'upgraded', 'paused', 'renewed'].includes(status) && <DropdownMenuItem disabled={updatingSubscriptionId === Number(s.id)} onSelect={() => handleStopSubscriptionRenewal(s)}>停止此套餐的未来续费</DropdownMenuItem>}
+                                          {isAdmin && <DropdownMenuItem onSelect={() => navigate(`/customer-lifecycle?customer=${s.customer_id}`)}>查看客户停止合作流程</DropdownMenuItem>}
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={() => setDeleteTarget({ type: 'subscription', item: s })}>删除套餐记录</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
                                     </div>
                                   </div>
                                 </div>
@@ -5837,9 +5814,9 @@ export default function Finance() {
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="calm-renewal-confirm max-w-md">
           <DialogHeader>
-            <DialogTitle>{subscriptionRenewalTarget?.auto_renew ? '确认订阅扣款' : '确认手动收款'}</DialogTitle>
+            <DialogTitle>核对实际到账</DialogTitle>
           </DialogHeader>
           {subscriptionRenewalTarget && (() => {
             const isAutomaticRenewal = Boolean(subscriptionRenewalTarget.auto_renew);
@@ -5916,6 +5893,7 @@ export default function Finance() {
                     {actualDate.slice(0, 7)} 已关账，请先在“按月明细”重新打开该月份。
                   </div>
                 )}
+                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-6 text-blue-900">仅在核对实际到账后确认。登记会新增收款记录，并按原服务到期日衔接续费周期；本窗口不发起扣款。</div>
                 <div className="flex justify-end gap-2">
                   <Button
                     type="button"
@@ -5941,7 +5919,7 @@ export default function Finance() {
                   >
                     {confirmingRenewalId === Number(subscriptionRenewalTarget.id)
                       ? '确认中...'
-                      : isAutomaticRenewal ? '确认扣款并入账' : '确认收款并续期'}
+                      : '确认已到账并登记'}
                   </Button>
                 </div>
               </div>

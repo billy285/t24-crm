@@ -164,7 +164,7 @@ export default function MonthlyDeduction() {
   }
 
   return (
-    <div className="t24-settings-page app-page space-y-5">
+    <div className="t24-settings-page calm-report-page app-page space-y-5">
       <div className="app-page-title flex items-center justify-between">
         <div><p className="app-page-kicker">T24 Marketing · Finance Settings</p><h1 className="app-page-heading">月度扣点比例</h1><p className="app-page-description">统一管理每月平台扣点比例，修改后影响对应月份财务口径。</p></div>
         <div className="flex gap-2">
@@ -246,6 +246,8 @@ export default function MonthlyDeduction() {
       </Card>
 
       {isAdmin && (
+        <details className="calm-secondary-panel">
+          <summary>批量维护 · CSV 导入</summary>
         <Card>
           <CardHeader>
             <CardTitle>批量导入 (CSV)</CardTitle>
@@ -268,6 +270,7 @@ export default function MonthlyDeduction() {
             </div>
           </CardContent>
         </Card>
+        </details>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>

@@ -1,4 +1,5 @@
 import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
+import './delivery-workspace.css';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
@@ -541,7 +542,7 @@ export default function Callbacks() {
   }
 
   return (
-    <div className="t24-work-page delivery-center-ui dc-callbacks app-page">
+    <div className="t24-work-page delivery-center-ui dc-callbacks app-page calm-delivery-page">
       {/* Header */}
       <div className="dc-heading flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div><p className="app-page-kicker">T24 Marketing · Customer Care</p><h2 className="app-page-heading flex items-center gap-2">
@@ -651,7 +652,9 @@ export default function Callbacks() {
                 className="pl-9"
               />
             </div>
-            <div className="hidden flex-wrap gap-3 md:flex">
+            <details className="calm-filter-details hidden md:block">
+            <summary>筛选回访<span>{filterStatus !== 'all' || filterType !== 'all' || filterSchedule !== 'all' || filterCustomerId || filterEmployeeId !== 'all' ? `当前筛选 ${filtered.length} 条` : '状态 · 类型 · 时间 · 客户 · 负责人'}</span></summary>
+            <div className="flex flex-wrap gap-3 pt-3">
             <label className="dc-filter-label"><span className="sr-only">回访状态</span><NativeSelect
               value={filterStatus}
               onChange={setFilterStatus}
@@ -697,6 +700,7 @@ export default function Callbacks() {
               options={[{ value: 'all', label: '全部负责人' }, ...employeeOptions]}
             /></label>
             </div>
+            </details>
             <details className="rounded-xl border border-slate-200 bg-white md:hidden">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-slate-700">筛选回访<span className="text-xs font-normal text-slate-400">状态 · 时间 · 客户</span></summary>
               <div className="grid gap-3 border-t border-slate-100 p-3">
@@ -774,6 +778,7 @@ export default function Callbacks() {
                               aria-label={`完成回访：${cust?.business_name || `客户${cb.customer_id}`}`}
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span className="hidden md:inline">记录结果</span>
                             </Button>
                             <Button
                               size="sm"
@@ -785,6 +790,7 @@ export default function Callbacks() {
                               aria-label={`标记未接：${cust?.business_name || `客户${cb.customer_id}`}`}
                             >
                               <PhoneOff className="w-3.5 h-3.5" />
+                              <span className="hidden md:inline">未接通</span>
                             </Button>
                           </>
                         )}

@@ -1,3 +1,4 @@
+import './admin-workspace.css';
 import { useState, useEffect } from 'react';
 import { useRole } from '../lib/role-context';
 import {
@@ -13,7 +14,6 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { ShieldCheck, Save, RotateCcw, Eye, MousePointerClick, Database, Lock } from 'lucide-react';
-import { NativeSelect } from '@/components/ui/native-select';
 import { logOperation } from '../lib/operation-log-helper';
 import MobileDesktopOnlyNotice from '@/components/mobile/MobileDesktopOnlyNotice';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -152,33 +152,23 @@ export default function Permissions() {
 
   return (
     <>
-      <div className="t24-settings-page app-page space-y-5">
-      <div className="app-page-title">
+      <div className="t24-settings-page calm-admin-page calm-permissions-page app-page space-y-5">
+      <div className="app-page-title"><div>
         <p className="app-page-kicker">T24 Marketing · Access Control</p>
         <h2 className="app-page-heading flex items-center gap-2">
           <ShieldCheck className="w-5 h-5" /> 权限设置
         </h2>
         <p className="app-page-description">配置不同角色的页面、按钮、数据和敏感信息权限。</p>
-      </div>
+      </div></div>
 
-      {/* Role selector */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm text-slate-500">选择角色:</span>
-        {roles.map(r => (
-          <Button
-            key={r}
-            variant={selectedRole === r ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setSelectedRole(r)}
-            className={selectedRole === r ? 'bg-blue-600 hover:bg-blue-700' : ''}
-          >
-            {systemRoleLabels[r]}
-          </Button>
-        ))}
+      <div className="calm-permission-role">
+        <label htmlFor="permission-role" className="text-sm font-medium text-slate-700">当前配置角色</label>
+        <select id="permission-role" value={selectedRole} onChange={event => setSelectedRole(event.target.value as SystemRole)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm sm:w-56">{roles.map(role => <option key={role} value={role}>{systemRoleLabels[role]}</option>)}</select>
+        <p className="text-xs text-slate-500">按页面、操作和数据范围逐项核对，修改后统一保存。</p>
       </div>
 
       <Tabs defaultValue="pages" className="w-full">
-        <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
+        <TabsList className="calm-admin-tab-navigation">
           <TabsTrigger value="pages" className="text-xs gap-1"><Eye className="w-3 h-3" /> 页面权限</TabsTrigger>
           <TabsTrigger value="buttons" className="text-xs gap-1"><MousePointerClick className="w-3 h-3" /> 按钮权限</TabsTrigger>
           <TabsTrigger value="data" className="text-xs gap-1"><Database className="w-3 h-3" /> 数据权限</TabsTrigger>
@@ -192,14 +182,15 @@ export default function Permissions() {
               <CardTitle className="text-base">页面访问权限</CardTitle>
               <CardDescription>控制 {systemRoleLabels[selectedRole]} 角色可以访问的页面</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="calm-page-permissions">
               {allPages.map(p => (
                 <div key={p.path} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                   <div className="flex items-center gap-2">
                     <span className="text-sm">{p.label}</span>
-                    <code className="text-xs text-slate-400">{p.path}</code>
+
                   </div>
                   <Switch
+                    aria-label={`${p.label}页面访问`}
                     checked={currentPerms.pages.includes(p.path)}
                     onCheckedChange={() => togglePage(p.path)}
                     disabled={p.path === '/'} // Dashboard always accessible
@@ -217,22 +208,23 @@ export default function Permissions() {
               <CardTitle className="text-base">按钮操作权限</CardTitle>
               <CardDescription>控制 {systemRoleLabels[selectedRole]} 角色可以执行的操作</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="calm-button-permissions">
               {buttonGroups.map(group => (
-                <div key={group.label}>
-                  <h4 className="text-sm font-medium text-slate-700 mb-2">{group.label}</h4>
-                  <div className="space-y-2">
+                <details key={group.label} className="calm-permission-group">
+                  <summary><span>{group.label}</span><span className="text-xs font-normal text-slate-500">{group.buttons.filter(button => currentPerms.buttons.includes(button)).length} / {group.buttons.length} 已允许</span></summary>
+                  <div className="space-y-2 border-t border-slate-200 p-3">
                     {group.buttons.map(btn => (
                       <div key={btn} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg">
                         <span className="text-sm">{buttonPermissionLabels[btn]}</span>
                         <Switch
+                          aria-label={buttonPermissionLabels[btn]}
                           checked={currentPerms.buttons.includes(btn)}
                           onCheckedChange={() => toggleButton(btn)}
                         />
                       </div>
                     ))}
                   </div>
-                </div>
+                </details>
               ))}
             </CardContent>
           </Card>
@@ -304,7 +296,8 @@ export default function Permissions() {
       </Tabs>
 
       {/* Save / Reset */}
-      <div className="flex items-center justify-between pt-2">
+      <div className="calm-permission-savebar">
+        <p className="text-xs text-slate-500" role="status">{changed ? '有未保存的权限调整' : '权限调整将在点击保存后生效'}</p>
         <Button variant="outline" size="sm" onClick={handleReset}>
           <RotateCcw className="w-3.5 h-3.5 mr-1" /> 恢复默认
         </Button>

@@ -5,6 +5,7 @@ import {
 import { toast } from 'sonner';
 
 import '@/components/sales-center.css';
+import './sales-workspace.css';
 import SalesIntelligenceCenter from '@/components/SalesIntelligenceCenter';
 import SalesLeadDossier from '@/components/SalesLeadDossier';
 import { SalesLeadPulse, LeadContactSnapshot, LeadProgressSnapshot, LeadNextStep } from '@/components/SalesLeadSnapshot';
@@ -153,6 +154,7 @@ export default function SalesLeads() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [contactFilter, setContactFilter] = useState('');
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
@@ -618,7 +620,7 @@ export default function SalesLeads() {
   };
 
   return (
-    <div className="t24-directory-page t24-sales-leads-page sales-center-ui sc-directory sl-clarity app-page space-y-5">
+    <div className="t24-directory-page t24-sales-leads-page sales-center-ui sc-directory sl-clarity calm-sales-page calm-leads-page app-page space-y-5">
       <div className="sc-section-heading flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2 text-sm font-medium text-blue-600">
@@ -768,9 +770,12 @@ export default function SalesLeads() {
             <div className="sl-table-title"><h3>商家联系进展 <span>{loading ? '加载中' : `${total} 家`}</span></h3><div className="sl-density"><button type="button" aria-pressed={!compactRows} onClick={() => setCompactRows(false)}>标准</button><button type="button" aria-pressed={compactRows} onClick={() => setCompactRows(true)}>紧凑</button></div></div>
             <div className="sl-search-row">
               <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input aria-label="搜索销售线索" className="pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索商家、联系人、电话或城市" /></div>
-              <label><span className="sr-only">线索状态</span><NativeSelect value={statusFilter} onChange={value => { setStatusFilter(value); setPage(1); }} options={[{ value: '', label: '全部状态' }, ...statusOptions]} /></label>
-              <label><span className="sr-only">联系规则</span><NativeSelect value={contactFilter} onChange={value => { setContactFilter(value); setPage(1); }} options={[{ value: '', label: '全部联系规则' }, { value: 'contactable', label: '允许联系' }, { value: 'do_not_contact', label: '禁止再联系' }, { value: 'blacklisted', label: '黑名单' }]} /></label>
+              <Button type="button" variant="outline" aria-expanded={filtersExpanded} aria-controls="sales-lead-extra-filters" onClick={() => setFiltersExpanded(current => !current)}><ChevronDown className="h-4 w-4" />筛选{contactFilter ? ' · 1' : ''}</Button>
             </div>
+            {filtersExpanded && <div id="sales-lead-extra-filters" className="calm-sales-extra-filters">
+              <label><span className="sc-filter-label">线索状态</span><NativeSelect value={statusFilter} onChange={value => { setStatusFilter(value); setPage(1); }} options={[{ value: '', label: '全部状态' }, ...statusOptions]} /></label>
+              <label><span className="sc-filter-label">联系规则</span><NativeSelect value={contactFilter} onChange={value => { setContactFilter(value); setPage(1); }} options={[{ value: '', label: '全部联系规则' }, { value: 'contactable', label: '允许联系' }, { value: 'do_not_contact', label: '禁止再联系' }, { value: 'blacklisted', label: '黑名单' }]} /></label>
+            </div>}
             <div className="sl-quick-filters" aria-label="快捷线索状态">{[{ value: '', label: '全部' }, { value: 'interested', label: '有意向' }, { value: 'appointment', label: '已预约' }, { value: 'follow_up', label: '待跟进' }, { value: 'new', label: '新线索' }].map(option => <button key={option.value} type="button" aria-pressed={statusFilter === option.value} onClick={() => { setStatusFilter(option.value); setPage(1); }}>{option.label}</button>)}<span>列表数据为累计 · 拨打／接通仅计官方通话</span>{(search || statusFilter || contactFilter) && <button type="button" className="sl-clear" onClick={() => { setSearch(''); setStatusFilter(''); setContactFilter(''); setPage(1); }}>清空筛选</button>}</div>
           </div>
           {insightsError && <div className="sl-inline-error" role="alert">累计联系数据暂时未能加载，商家资料仍可查看。<Button size="sm" variant="ghost" onClick={() => setInsightRetry(value => value + 1)}>重试</Button></div>}
