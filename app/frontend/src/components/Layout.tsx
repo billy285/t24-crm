@@ -44,7 +44,7 @@ export default function Layout({ children }: LayoutProps) {
   const scrollPositionsRef = useRef(new Map<string, number>());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedWorkRoutes, setExpandedWorkRoutes] = useState<Record<string, boolean>>({});
-  const isFocusedWorkspace = ['/commissions', '/customers', '/operations-workbench', '/finance'].includes(currentPath);
+  const isFocusedWorkspace = appNavigationItems.some(item => item.path === currentPath);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
   );

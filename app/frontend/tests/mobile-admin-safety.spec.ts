@@ -242,9 +242,8 @@ test('财务手机深链接进入记账工作台且只开放三类新增操作',
   await expect(mobileDialog.getByRole('heading', { name: '录入收款' })).toBeVisible();
   await expect(mobileDialog.getByRole('button', { name: '确认录入收款' })).toBeVisible();
   await expect(mobileDialog).toHaveCSS('border-radius', '0px');
-  const paymentDialogBounds = await mobileDialog.boundingBox();
-  expect(paymentDialogBounds?.width).toBeGreaterThanOrEqual(389);
-  expect(paymentDialogBounds?.height).toBeGreaterThanOrEqual(843);
+  await expect.poll(async () => (await mobileDialog.boundingBox())?.width || 0).toBeGreaterThanOrEqual(389);
+  await expect.poll(async () => (await mobileDialog.boundingBox())?.height || 0).toBeGreaterThanOrEqual(843);
   await mobileDialog.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: '客户支出' }).click();

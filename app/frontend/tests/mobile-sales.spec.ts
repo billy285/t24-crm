@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 
 const baseUrl = process.env.T24_WORKBENCH_BASE_URL || 'http://127.0.0.1:5173';
+const screenshotDir = process.env.T24_UI_SCREENSHOT_DIR;
 const employee = { id: 1, name: '手机销售测试主管', role: 'sales_manager', status: 'active' };
 
 const merchant = {
@@ -70,6 +71,13 @@ async function mockSalesApis(page: Page) {
     if (path === '/api/v1/merchant-pool') return fulfillJson(route, { items: [merchant], total: 1 });
     if (path === '/api/v1/sales-leads/stats') return fulfillJson(route, { total: 2, assigned: 2, unassigned: 0, blacklisted: 0, do_not_contact: 1 });
     if (path === '/api/v1/sales-leads/assignees') return fulfillJson(route, [{ id: 1, name: '手机销售测试主管', role: 'sales_manager' }]);
+    if (path === '/api/v1/sales-leads/dashboard/call-report') return fulfillJson(route, {
+      period: { days: Number(url.searchParams.get('days') || 7), start_date: '2026-08-10', end_date: '2026-08-16' },
+      source: { status: 'verified', label: 'RingCentral', provider: 'ringcentral' },
+      summary: { provider_calls: 8, connected: 5, not_connected: 3, connection_rate: 62.5, total_talk_seconds: 450, average_talk_seconds: 90, crm_records: 8, linked_records: 8, link_rate: 100, interested: 2, appointments: 1, conversions: 0, assigned: 1, completed: 1, completion_rate: 100 },
+      result_breakdown: [], daily: [], employees: [], recent_calls: [],
+    });
+    if (path.endsWith('/sales-intelligence/leads')) return fulfillJson(route, { items: [] });
     if (path === '/api/v1/sales-leads/dashboard/management') return fulfillJson(route, {
       metrics: { assigned: 1, completed: 1, completion_rate: 100, calls: 8, connected: 5, connection_rate: 62.5, interested: 2, interest_rate: 40, appointments: 1, appointment_rate: 20, converted: 0, conversion_rate: 0 },
       source_quality: [{ source: 'merchant_pool', total: 1, usable: 1, quality_rate: 100 }],
@@ -131,6 +139,7 @@ test('390px 商家池以卡片完成补资料与待分配，不暴露手机高�
   await expect(card).toContainText('Los Angeles, CA');
   await expect(card).toContainText('123 Main St, Los Angeles, CA 90012');
   await expect(card).toContainText('manual');
+  if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-pool-mobile-layout.png`, animations: 'disabled', fullPage: true });
   await expect(page.getByText('批量导入、永久删除与批量资料管理请使用电脑端完成。')).toBeVisible();
   await expect(page.getByRole('button', { name: '导入商家数据' })).toHaveCount(0);
   await expect(page.locator('button').filter({ hasText: /批量设置行业|批量删除|永久删除/ })).toHaveCount(0);
@@ -162,7 +171,8 @@ test('390px 销售线索直接提供拨号复制跟进，并用卡片呈现绩�
   await expect(page.getByTestId('sales-leads-desktop-table')).toHaveCount(0);
   const card = page.getByTestId('sales-lead-mobile-card').filter({ hasText: 'Happy Nails & Spa' });
   await expect(card).toContainText('Happy Nails & Spa');
-  await expect(card).toContainText('下一步：按计划跟进');
+  await expect(card).toContainText('08/17 18:30');
+  if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/sales-leads-mobile-layout.png`, animations: 'disabled', fullPage: true });
 
   const dial = card.getByRole('button', { name: 'RingCentral', exact: true });
   const copy = card.getByRole('button', { name: '复制' });
@@ -172,10 +182,12 @@ test('390px 销售线索直接提供拨号复制跟进，并用卡片呈现绩�
   await expectTouchTarget(followUp);
   await expect(card.getByRole('button', { name: '选择其他拨号方式' })).toHaveCount(0);
 
+  await page.getByRole('button', { name: '历史跟进参考' }).click();
   await expect(page.getByTestId('sales-performance-mobile-list')).toBeVisible();
   await expect(page.getByTestId('sales-performance-desktop-table')).toBeHidden();
   await expect(page.getByTestId('sales-performance-mobile-list')).toContainText('#1 手机销售测试主管');
   await expect(page.getByTestId('sales-performance-mobile-list')).toContainText('86');
+  await page.getByRole('navigation', { name: '电话销售中心视图' }).getByRole('button', { name: /销售线索/ }).click();
 
   const protectedCard = page.getByTestId('sales-lead-mobile-card').filter({ hasText: 'Do Not Call Test Merchant' });
   await expect(protectedCard.getByRole('button', { name: '拨号' })).toBeDisabled();
@@ -205,6 +217,7 @@ test('1440px 商家池与销售中心继续保留完整桌面表格', async ({ p
 
   await page.goto(`${baseUrl}/merchant-pool`);
   await expect(page.getByTestId('merchant-pool-desktop-table')).toBeVisible();
+  if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-pool-desktop-layout.png`, animations: 'disabled', fullPage: true });
   for (const header of ['商家名称', '商家电话', '商家位置', '地区', '来源', '操作']) {
     await expect(page.getByRole('columnheader', { name: header, exact: true })).toBeVisible();
   }
@@ -220,6 +233,8 @@ test('1440px 商家池与销售中心继续保留完整桌面表格', async ({ p
   await page.goto(`${baseUrl}/sales-leads`);
   await expect(page.getByTestId('sales-leads-desktop-table')).toBeVisible();
   await expect(page.getByTestId('sales-leads-mobile-list')).toBeHidden();
+  if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/sales-leads-desktop-layout.png`, animations: 'disabled', fullPage: true });
+  await page.getByRole('button', { name: '历史跟进参考' }).click();
   await expect(page.getByTestId('sales-performance-desktop-table')).toBeVisible();
   await expect(page.getByTestId('sales-performance-mobile-list')).toBeHidden();
 });
@@ -294,4 +309,33 @@ test('统计接口失败时商家池仍保留成功加载的核心列表', async
 
   await expect(page.getByTestId('merchant-mobile-card')).toContainText('Golden Dragon Restaurant');
   await expect(page.getByText(/统计加载失败，已保留其他可用数据/).first()).toBeVisible();
+});
+
+test('展开次要筛选保留原查询条件且不提交商家或收款变更', async ({ page }) => {
+  await mockSalesApis(page);
+  const writes: string[] = [];
+  page.on('request', request => {
+    if (request.url().includes('/api/') && request.method() !== 'GET') writes.push(`${request.method()} ${new URL(request.url()).pathname}`);
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${baseUrl}/merchant-pool`);
+  await expect(page.getByRole('heading', { name: '待清洗商家池' })).toBeVisible();
+  await expect(page.getByLabel('行业', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '更多筛选', exact: true }).click();
+  const poolQuery = page.waitForRequest(request => new URL(request.url()).pathname === '/api/v1/merchant-pool' && new URL(request.url()).searchParams.get('industry') === '美甲');
+  await page.getByLabel('行业', { exact: true }).fill('美甲');
+  await poolQuery;
+  await page.getByRole('button', { name: /更多筛选/ }).click();
+  await expect(page.getByRole('button', { name: '更多筛选 · 1', exact: true })).toBeVisible();
+
+  await page.goto(`${baseUrl}/sales-leads`);
+  await expect(page.getByRole('heading', { name: '电话销售中心' })).toBeVisible();
+  await page.getByRole('button', { name: '筛选', exact: true }).click();
+  const leadQuery = page.waitForRequest(request => new URL(request.url()).pathname === '/api/v1/sales-leads' && new URL(request.url()).searchParams.get('contact_rule') === 'do_not_contact');
+  await page.getByLabel(/^联系规则/).selectOption('do_not_contact');
+  await leadQuery;
+  await page.getByRole('button', { name: '筛选 · 1', exact: true }).click();
+  await expect(page.getByLabel(/^联系规则/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '清空筛选', exact: true })).toBeVisible();
+  expect(writes).toEqual([]);
 });

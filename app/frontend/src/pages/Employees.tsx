@@ -1,3 +1,4 @@
+import './admin-workspace.css';
 import { useState, useEffect, useMemo } from 'react';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '../lib/tokenStore';
@@ -391,7 +392,7 @@ export default function Employees() {
   if (selectedEmp) {
     const e = selectedEmp;
     return (
-      <div className="t24-detail-page app-page space-y-4">
+      <div className="t24-detail-page calm-admin-page calm-employee-detail app-page space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           <Button variant="ghost" size="sm" onClick={() => setSelectedEmp(null)}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
           <h2 className="text-lg font-semibold">{e.name}</h2>
@@ -429,7 +430,7 @@ export default function Employees() {
                 <div className="flex gap-2 items-center"><Calendar className="w-3 h-3 text-slate-400" /><span className="text-slate-500 w-20 shrink-0">入职日期:</span><span>{e.hire_date || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">直属上级:</span><span>{e.supervisor || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">创建时间:</span><span>{e.created_at?.slice(0, 10) || '-'}</span></div>
-                {e.notes && <div className="col-span-2 mt-2 p-3 bg-slate-50 rounded text-slate-600">{e.notes}</div>}
+                {e.notes && <div className="md:col-span-2 mt-2 p-3 bg-slate-50 rounded text-slate-600">{e.notes}</div>}
               </div>
               {!isMobile && e.status !== 'resigned' && canDisable && (
                 <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4">
@@ -521,12 +522,12 @@ export default function Employees() {
 
   // ========== LIST VIEW ==========
   return (
-    <div className="t24-directory-page t24-employee-directory app-page space-y-5">
+    <div className="t24-directory-page t24-employee-directory calm-admin-page calm-employees-page app-page space-y-5">
       <div className="app-page-title flex items-start justify-between">
         <div>
           <p className="app-page-kicker">T24 Marketing · Team</p>
           <h2 className="app-page-heading">员工管理</h2>
-          <p className="app-page-description">统一查看员工身份、岗位、部门与工作状态，敏感账号操作集中在桌面端完成。</p>
+          <p className="app-page-description">查看在职员工，继续交接与团队管理。</p>
         </div>
         {!isMobile && canCreate && <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 添加员工</Button>}
       </div>
@@ -539,7 +540,7 @@ export default function Employees() {
         </div>
       </div>
 
-      <div className="t24-directory-metrics grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="t24-directory-metrics calm-employee-summary grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           { label: '总员工', value: loading || (loadError && employees.length === 0) ? '—' : employees.length, color: 'text-blue-600' },
           { label: '在职', value: loading || (loadError && employees.length === 0) ? '—' : employees.filter(e => e.status === 'active').length, color: 'text-green-600' },

@@ -25,6 +25,8 @@ import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import { useRole } from '../lib/role-context';
 import { buildReturnLink, getReturnLabel, getSafeInternalPath } from '../lib/navigation-state';
+import { useIsMobile } from '@/hooks/use-mobile';
+import './delivery-workspace.css';
 
 const priorityColors: Record<string, string> = {
   high: 'bg-red-100 text-red-700', medium: 'bg-amber-100 text-amber-700', low: 'bg-slate-100 text-slate-600',
@@ -69,6 +71,7 @@ const taskReminderMessages: Record<string, { title: string; description: string 
 };
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 const primaryViewLabels: Record<string, string> = {
+  unfinished: '未完成',
   all: '全部任务',
   mine: '我的任务',
   system: '系统提醒',
@@ -158,6 +161,7 @@ const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
 
 export default function Tasks() {
   const { employee, hasPermission, dataScope, canAccess } = useRole();
+  const isMobile = useIsMobile();
   const location = useLocation();
   const navigate = useNavigate();
   const taskScope = dataScope === 'all'
@@ -171,10 +175,10 @@ export default function Tasks() {
   const canEditTask = hasPermission('task_edit');
   const canDeleteTask = hasPermission('task_delete');
   const canOpenCustomers = canAccess('/customers');
-  const defaultPrimaryView = canViewAllTasks && !window.matchMedia('(max-width: 767px)').matches ? 'all' : 'mine';
+  const defaultPrimaryView = canViewAllTasks && !window.matchMedia('(max-width: 767px)').matches ? 'unfinished' : 'mine';
   const safePrimaryView = useCallback((value?: string | null) => {
     if (!value || !primaryViewLabels[value]) return defaultPrimaryView;
-    if (value === 'all' && !canViewAllTasks) return 'mine';
+    if (['all', 'unfinished'].includes(value) && !canViewAllTasks) return 'mine';
     if (value === 'team' && !canViewTeamTasks) return 'mine';
     return value;
   }, [canViewAllTasks, canViewTeamTasks, defaultPrimaryView]);
@@ -396,6 +400,7 @@ export default function Tasks() {
     const isMine = Boolean(employeeName) && (String(t.assignee_name || '').trim() === employeeName || collaborators.includes(employeeName));
     const source = getTaskSource(t);
     const matchPrimaryView = primaryView === 'all'
+      || (primaryView === 'unfinished' && !isClosedTask(t))
       || (primaryView === 'mine' && isMine && !isClosedTask(t))
       || (primaryView === 'system' && (source === 'system' || Boolean(t.automation_issue_id)) && !isClosedTask(t))
       || (primaryView === 'team' && !isClosedTask(t))
@@ -439,6 +444,7 @@ export default function Tasks() {
       );
     }).length;
     return [
+      { key: 'unfinished', label: '未完成', count: tasks.filter(task => !isClosedTask(task)).length, hint: '当前可见范围的未完成任务', icon: ClipboardList },
       { key: 'all', label: '全部任务', count: tasks.length, hint: '所有状态与来源', icon: ClipboardList },
       { key: 'mine', label: '我的任务', count: mineCount, hint: employeeName ? `${employeeName} 负责或协作` : '登录员工负责或协作', icon: UserCheck },
       { key: 'system', label: '系统提醒', count: tasks.filter(task => (getTaskSource(task) === 'system' || task.automation_issue_id) && !isClosedTask(task)).length, hint: '自动扫描产生', icon: Bot },
@@ -446,6 +452,7 @@ export default function Tasks() {
       { key: 'completed', label: '已完成', count: completedCount, hint: '查看处理结果', icon: CheckCircle2 },
     ].filter(view => (
       (view.key !== 'all' || canViewAllTasks)
+      && (view.key !== 'unfinished' || canViewAllTasks)
       && (view.key !== 'team' || canViewTeamTasks)
     ));
   }, [canViewAllTasks, canViewTeamTasks, completedCount, employee?.name, tasks]);
@@ -502,7 +509,7 @@ export default function Tasks() {
     if (paginated.total === 0) return null;
     return (
       <>
-        <div className="border-t border-slate-100 bg-slate-50/70 px-3 py-3 md:hidden">
+        {isMobile && <div className="border-t border-slate-100 bg-slate-50/70 px-3 py-3 md:hidden">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 text-xs text-slate-500">
               <span className="font-semibold text-slate-700">显示 {paginated.start}-{paginated.end} 条</span>
@@ -523,8 +530,8 @@ export default function Tasks() {
               <Button size="sm" variant="outline" className="min-h-11 rounded-xl" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
             </div>
           )}
-        </div>
-        <div className="hidden gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 md:flex md:items-center md:justify-between">
+        </div>}
+        {!isMobile && <div className="hidden gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 md:flex md:items-center md:justify-between">
           <div>
             显示 {paginated.start}-{paginated.end} 条 / 共 {paginated.total} 条
             {filtered.length !== tasks.length ? `（筛选自 ${tasks.length} 条）` : ''}
@@ -543,7 +550,7 @@ export default function Tasks() {
             <Button size="sm" variant="outline" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
             <Button size="sm" variant="outline" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
           </div>
-        </div>
+        </div>}
       </>
     );
   };
@@ -675,7 +682,7 @@ export default function Tasks() {
   }
 
   return (
-    <div className="t24-work-page delivery-center-ui dc-tasks app-page">
+    <div className="t24-work-page delivery-center-ui dc-tasks app-page calm-delivery-page">
       <div className="dc-heading flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           {returnTo && (
@@ -685,7 +692,7 @@ export default function Tasks() {
           )}
           <p className="app-page-kicker">T24 Marketing · Work</p>
           <h2 className="app-page-heading">任务协作</h2>
-          <p className="app-page-description">选择工作视角后直接处理；完成任务必须填写结果，系统会继续追踪闭环。</p>
+          <p className="app-page-description">先处理未完成事项，完成后留下结果；历史记录可在全部任务中查看。</p>
         </div>
         {canCreateTask && (
           <Button onClick={() => { setForm(emptyTaskForm); setEditingId(null); setShowForm(true); void loadTaskFormOptions(); }} className="bg-blue-600 hover:bg-blue-700">
@@ -761,6 +768,7 @@ export default function Tasks() {
           <details className="mt-3 rounded-xl border border-slate-200 bg-white md:hidden">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-slate-700">更多筛选<span className="text-xs font-normal text-slate-400">状态 · 优先级 · 来源</span></summary>
             <div className="grid gap-3 border-t border-slate-100 p-3">
+              <label className="dc-filter-label"><span className="sr-only">任务工作视角</span><NativeSelect value={primaryView} onChange={changePrimaryView} options={primaryViews.map(view => ({ value: view.key, label: `${view.label} (${view.count})` }))} /></label>
               <label className="dc-filter-label"><span className="sr-only">任务状态</span><NativeSelect value={filterStatus} onChange={setFilterStatus} options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
               <label className="dc-filter-label"><span className="sr-only">任务优先级</span><NativeSelect value={filterPriority} onChange={setFilterPriority} options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
               <label className="dc-filter-label"><span className="sr-only">任务来源</span><NativeSelect value={filterSource} onChange={setFilterSource} options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
@@ -799,7 +807,7 @@ export default function Tasks() {
                     id={`task-row-${t.id}`}
                     className={`dc-task-row overflow-hidden rounded-[22px] border p-0 transition-colors md:rounded-none md:border-0 md:p-4 ${t.id === focusTaskId ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-200' : 'border-slate-200 bg-white shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)] hover:bg-slate-50 md:shadow-none'}`}
                   >
-                    <div className="md:hidden">
+                    {isMobile && <div className="md:hidden">
                       <div className={`h-1 w-full ${completed ? 'bg-emerald-500' : overdue ? 'bg-rose-500' : dueToday ? 'bg-blue-500' : waitingClient ? 'bg-violet-500' : 'bg-slate-300'}`} />
                       <div className="p-4">
                         <div className="flex items-start gap-3">
@@ -898,9 +906,9 @@ export default function Tasks() {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </div>}
 
-                    <div className="dc-task-desktop hidden flex-col gap-3 md:flex lg:flex-row lg:items-start lg:justify-between">
+                    {!isMobile && <div className="dc-task-desktop hidden flex-col gap-3 md:flex lg:flex-row lg:items-start lg:justify-between">
                       <div className="flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className={`font-medium text-sm ${completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</span>
@@ -958,7 +966,7 @@ export default function Tasks() {
                         {canEditTask && <Button aria-label="编辑任务" title="编辑任务" size="sm" variant="ghost" className="min-h-11 w-full p-0 text-slate-500 hover:text-blue-600 md:h-8 md:min-h-0 md:w-8" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /><span className="md:hidden">编辑</span></Button>}
                         {canDeleteTask && !t.automation_issue_id && <Button aria-label="删除任务" title="删除任务" size="sm" variant="ghost" className="min-h-11 w-full p-0 text-slate-500 hover:text-red-600 md:h-8 md:min-h-0 md:w-8" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /><span className="md:hidden">删除</span></Button>}
                       </div>
-                    </div>
+                    </div>}
                   </div>
                 );
               })}

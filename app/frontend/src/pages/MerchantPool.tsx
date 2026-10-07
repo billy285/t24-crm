@@ -4,6 +4,7 @@ import { Archive, CheckSquare, ChevronDown, Database, Download, FileUp, Filter, 
 import { toast } from 'sonner';
 
 import '@/components/sales-center.css';
+import './sales-workspace.css';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -134,6 +135,7 @@ export default function MerchantPool() {
   const [regions, setRegions] = useState<string[]>([]);
   const [industry, setIndustry] = useState('');
   const [source, setSource] = useState('');
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
@@ -426,7 +428,7 @@ export default function MerchantPool() {
   };
 
   return (
-    <div className="merchant-pool-page sales-center-ui sc-directory app-page space-y-5">
+    <div className="merchant-pool-page sales-center-ui sc-directory calm-sales-page calm-merchant-page app-page space-y-5">
       <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} />
       <header className="sc-section-heading">
         <div>
@@ -453,10 +455,12 @@ export default function MerchantPool() {
       </div>
 
       <Card className="merchant-filter-card border-slate-200/80 bg-white"><CardContent className="space-y-4 p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3"><div><div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100"><Filter className="h-4 w-4" /></span>精准筛选</div><p className="mt-1 pl-10 text-xs text-slate-500">快速定位可分配、待补充或异常商家</p></div>{(search || poolStatus || regions.length > 0 || industry || source) && <Button variant="ghost" size="sm" className="text-slate-500" onClick={() => { setSearch(''); setPoolStatus(''); setRegions([]); setIndustry(''); setSource(''); setPage(1); }}>清空筛选</Button>}</div>
+        <div className="calm-pool-filter-heading"><p className="text-sm font-semibold text-slate-800">查找待分配商家</p><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" aria-expanded={filtersExpanded} aria-controls="merchant-pool-extra-filters" onClick={() => setFiltersExpanded(current => !current)}><Filter className="mr-1.5 h-4 w-4" />更多筛选{regions.length > 0 || industry || source ? ` · ${Number(regions.length > 0) + Number(Boolean(industry)) + Number(Boolean(source))}` : ''}</Button>{(search || poolStatus || regions.length > 0 || industry || source) && <Button variant="ghost" size="sm" className="text-slate-500" onClick={() => { setSearch(''); setPoolStatus(''); setRegions([]); setIndustry(''); setSource(''); setPage(1); }}>清空筛选</Button>}</div></div>
         <div className="sc-pool-filters">
           <label><span className="sc-filter-label">商家搜索</span><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input className="pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="商家、电话或网站" /></div></label>
           <label><span className="sc-filter-label">清洗状态</span><NativeSelect value={poolStatus} onChange={value => { setPoolStatus(value); setPage(1); }} options={[{ value: '', label: '全部清洗状态' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /></label>
+        </div>
+        {filtersExpanded && <div id="merchant-pool-extra-filters" className="calm-sales-extra-filters calm-pool-extra-filters">
           <div><span className="sc-filter-label">州 / 省</span><DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="h-10 w-full justify-between bg-white px-3 font-normal">
@@ -470,7 +474,7 @@ export default function MerchantPool() {
           </DropdownMenu></div>
           <label><span className="sc-filter-label">行业</span><Input value={industry} onChange={event => { setIndustry(event.target.value); setPage(1); }} placeholder="全部行业" /></label>
           <label><span className="sc-filter-label">资料来源</span><NativeSelect value={source} onChange={value => { setSource(value); setPage(1); }} options={sourceOptions} /></label>
-        </div>
+        </div>}
       </CardContent></Card>
 
       {canManagePool && selectedMerchantIds.length > 0 && (
@@ -487,13 +491,15 @@ export default function MerchantPool() {
                 <Button className="h-11" variant="outline" disabled={bulkAssigning} onClick={() => { setSelectedMerchantIds([]); setSelectedSalesId(''); }}>取消选择</Button>
               </div>
             </div> : <div className="flex flex-col gap-2 md:flex-row md:flex-wrap lg:justify-end">
+              <details className="calm-pool-bulk-tools"><summary>资料维护与删除<ChevronDown className="h-4 w-4" /></summary><div className="calm-pool-bulk-content">
               <NativeSelect className="md:w-52" value={bulkIndustry} onChange={setBulkIndustry} options={[{ value: '', label: '选择统一行业' }, ...industryOptions.map(value => ({ value, label: value }))]} />
               <Input className="md:w-52" value={bulkIndustry && !industryOptions.includes(bulkIndustry) ? bulkIndustry : ''} onChange={event => setBulkIndustry(event.target.value)} placeholder="或输入自定义行业" />
               <Button disabled={bulkUpdating || !bulkIndustry.trim()} onClick={() => void updateSelectedIndustry()}>{bulkUpdating ? '更新中...' : '批量设置行业'}</Button>
               <Button variant="outline" disabled={bulkUpdating || bulkAssigning || enrichmentLoading || selectedMerchantIds.length > 20} onClick={() => void suggestEnrichment()}><Sparkles className="mr-2 h-4 w-4" />{enrichmentLoading ? '分析中...' : 'AI 补充空白资料'}</Button>
+              {isAdmin && <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" disabled={bulkUpdating || bulkAssigning} onClick={() => void deleteSelectedMerchants()}><Trash2 className="mr-2 h-4 w-4" />批量删除</Button>}
+              </div></details>
               <NativeSelect className="md:w-52" value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售人员' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} />
               <Button disabled={bulkAssigning || bulkUpdating || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-2 h-4 w-4" />{bulkAssigning ? '分配中...' : '批量转线索并分配'}</Button>
-              {isAdmin && <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" disabled={bulkUpdating || bulkAssigning} onClick={() => void deleteSelectedMerchants()}><Trash2 className="mr-2 h-4 w-4" />批量删除</Button>}
               <Button variant="outline" disabled={bulkUpdating || bulkAssigning || enrichmentLoading} onClick={() => { setSelectedMerchantIds([]); setBulkIndustry(''); setSelectedSalesId(''); }}>取消选择</Button>
             </div>}
           </CardContent>

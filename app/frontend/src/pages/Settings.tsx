@@ -1,3 +1,4 @@
+import './admin-workspace.css';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '../lib/api';
@@ -416,23 +417,35 @@ export default function Settings() {
 
   return (
     <>
-      <div className="t24-settings-page app-page hidden space-y-5 md:block">
-      <div className="app-page-title"><p className="app-page-kicker">T24 Marketing · System</p><h2 className="app-page-heading flex items-center gap-2"><SettingsIcon className="h-5 w-5 text-blue-600" />系统设置</h2><p className="app-page-description">配置公司资料、业务规则、产品套餐、提醒、安全与导出规则。</p></div>
+      <div className="t24-settings-page calm-admin-page calm-system-settings app-page hidden space-y-5 md:block">
+      <div className="app-page-title"><div><p className="app-page-kicker">T24 Marketing · System</p><h2 className="app-page-heading flex items-center gap-2"><SettingsIcon className="h-5 w-5 text-blue-600" />系统设置</h2><p className="app-page-description">配置公司资料、业务规则、产品套餐、提醒、安全与导出规则。</p></div><Button asChild variant="outline"><a href="/settings/deduction">月度扣点比例设置</a></Button></div>
 
-      <Tabs defaultValue="company" className="w-full">
-        <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
-          <TabsTrigger value="ai" className="text-xs">AI配置</TabsTrigger>
-          <TabsTrigger value="env" className="text-xs">环境配置</TabsTrigger>
-          <TabsTrigger value="company" className="text-xs">公司信息</TabsTrigger>
-          <TabsTrigger value="dict" className="text-xs">字典配置</TabsTrigger>
-          <TabsTrigger value="products" className="text-xs">产品套餐</TabsTrigger>
-          <TabsTrigger value="code" className="text-xs">编号规则</TabsTrigger>
-          <TabsTrigger value="dashboard" className="text-xs">仪表盘</TabsTrigger>
-          <TabsTrigger value="reminder" className="text-xs">提醒规则</TabsTrigger>
-          <TabsTrigger value="security" className="text-xs">安全设置</TabsTrigger>
-          <TabsTrigger value="notification" className="text-xs">通知设置</TabsTrigger>
-          <TabsTrigger value="export" className="text-xs">导出配置</TabsTrigger>
-          <TabsTrigger value="logs" className="text-xs" onClick={loadLogs}>操作日志</TabsTrigger>
+      <Tabs defaultValue="company" orientation="vertical" className="calm-settings-tabs w-full">
+        <TabsList className="calm-settings-navigation" aria-label="系统设置分类">
+          <div className="calm-settings-group">
+            <p>企业与业务</p>
+            <TabsTrigger value="company">公司信息</TabsTrigger>
+            <TabsTrigger value="dict">字典配置</TabsTrigger>
+            <TabsTrigger value="products">产品套餐</TabsTrigger>
+            <TabsTrigger value="code">编号规则</TabsTrigger>
+          </div>
+          <div className="calm-settings-group">
+            <p>工作与提醒</p>
+            <TabsTrigger value="dashboard">仪表盘</TabsTrigger>
+            <TabsTrigger value="reminder">提醒规则</TabsTrigger>
+            <TabsTrigger value="notification">通知设置</TabsTrigger>
+          </div>
+          <div className="calm-settings-group">
+            <p>安全与维护</p>
+            <TabsTrigger value="security">安全设置</TabsTrigger>
+            <TabsTrigger value="export">导出配置</TabsTrigger>
+            <TabsTrigger value="logs" onClick={loadLogs}>操作日志</TabsTrigger>
+          </div>
+          <div className="calm-settings-group">
+            <p>集成与服务</p>
+            <TabsTrigger value="ai">AI配置</TabsTrigger>
+            <TabsTrigger value="env">环境配置</TabsTrigger>
+          </div>
         </TabsList>
 
         <TabsContent value="ai">
@@ -843,7 +856,7 @@ export default function Settings() {
         </TabsContent>
       </Tabs>
     
-<div className="mt-6"><a href="/settings/deduction" className="text-blue-600 hover:underline">月度扣点比例设置</a></div>
+
 </div>
     </>
   );
