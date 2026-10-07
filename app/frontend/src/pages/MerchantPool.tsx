@@ -131,6 +131,7 @@ export default function MerchantPool() {
   const [stats, setStats] = useState({ total: 0, pending: 0, isolated: 0, converted: 0, duplicates: 0, archived: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const previousSearchRef = useRef(search);
   const [poolStatus, setPoolStatus] = useState('');
   const [regions, setRegions] = useState<string[]>([]);
   const [industry, setIndustry] = useState('');
@@ -194,6 +195,8 @@ export default function MerchantPool() {
   }, [page, pageSize, poolStatus, regions, industry, source]);
 
   useEffect(() => {
+    if (previousSearchRef.current === search) return;
+    previousSearchRef.current = search;
     setPage(1);
     const timer = window.setTimeout(() => void loadData({ page: 1 }), 300);
     return () => window.clearTimeout(timer);
