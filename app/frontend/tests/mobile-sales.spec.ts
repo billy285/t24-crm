@@ -118,43 +118,42 @@ async function expectTouchTarget(locator: Locator) {
   await expect.poll(async () => (await locator.boundingBox())?.width || 0).toBeGreaterThanOrEqual(44);
 }
 
-test('390px 商家池以卡片完成补资料与待分配，不暴露手机高风险批量操作', async ({ page }) => {
+test('390px 商家池先核对资料再加入待分配，不暴露手机高风险批量操作', async ({ page }) => {
   await mockSalesApis(page);
   const dangerousRequests: string[] = [];
   page.on('request', request => {
     const path = new URL(request.url()).pathname;
-    if (request.method() === 'DELETE' || /\/merchant-pool\/(?:import|bulk-delete)/.test(path)) {
-      dangerousRequests.push(`${request.method()} ${path}`);
-    }
+    if (request.method() === 'DELETE' || /\/merchant-pool\/(?:import|bulk-delete)/.test(path)) dangerousRequests.push(`${request.method()} ${path}`);
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/merchant-pool`);
-
-  await expect(page.getByRole('heading', { name: '待清洗商家池' })).toBeVisible();
   await expect(page.getByTestId('merchant-pool-mobile-list')).toBeVisible();
   await expect(page.getByTestId('merchant-pool-desktop-table')).toHaveCount(0);
   const card = page.getByTestId('merchant-mobile-card');
   await expect(card).toContainText('Golden Dragon Restaurant');
   await expect(card).toContainText('+1 626-555-0123');
   await expect(card).toContainText('Los Angeles, CA');
-  await expect(card).toContainText('123 Main St, Los Angeles, CA 90012');
-  await expect(card).toContainText('manual');
+  await expect(card).not.toContainText('123 Main St');
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-pool-mobile-layout.png`, animations: 'disabled', fullPage: true });
-  await expect(page.getByText('批量导入、永久删除与批量资料管理请使用电脑端完成。')).toBeVisible();
   await expect(page.getByRole('button', { name: '导入商家数据' })).toHaveCount(0);
   await expect(page.locator('button').filter({ hasText: /批量设置行业|批量删除|永久删除/ })).toHaveCount(0);
   await expect(page.locator('input[type="file"]')).toHaveCount(0);
-
-  const queueButton = card.getByRole('button', { name: '加入待分配' });
+  const reviewButton = card.getByRole('button', { name: '核对资料：Golden Dragon Restaurant' });
+  await expectTouchTarget(reviewButton);
+  await reviewButton.click();
+  const review = page.getByRole('dialog', { name: '核对商家资料' });
+  await expect(review).toContainText('123 Main St, Los Angeles, CA 90012');
+  await expect(review).toContainText('手动录入');
+  const queueButton = review.getByRole('button', { name: '加入待分配', exact: true });
+  await expect(queueButton).toBeDisabled();
+  await review.getByRole('checkbox', { name: '已核对名称、电话和地区' }).check();
   await expectTouchTarget(queueButton);
   await queueButton.click();
-  await expect(page.getByText('已加入 1 条待分配商家')).toBeVisible();
-  await expect(page.getByRole('button', { name: '确认分配' })).toBeVisible();
-
-  await card.getByRole('button', { name: /更多商家操作/ }).click();
-  await expect(page.getByRole('menuitem', { name: '补充资料' })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: /销售智能分析/ })).toHaveCount(0);
-  await expect(page.getByRole('menuitem', { name: /删除/ })).toHaveCount(0);
+  await expect(review).toHaveCount(0);
+  await expect(page.getByText('已选择 1 家商家')).toBeVisible();
+  await expect(page.getByRole('button', { name: '确认分配' })).toBeDisabled();
+  await card.getByRole('button', { name: '移出待分配：Golden Dragon Restaurant', exact: true }).click();
+  await expect(page.getByRole('region', { name: '商家批量操作' })).toHaveCount(0);
   expect(dangerousRequests).toEqual([]);
   await expectNoDocumentOverflow(page);
 });
@@ -218,7 +217,7 @@ test('1440px 商家池与销售中心继续保留完整桌面表格', async ({ p
   await page.goto(`${baseUrl}/merchant-pool`);
   await expect(page.getByTestId('merchant-pool-desktop-table')).toBeVisible();
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-pool-desktop-layout.png`, animations: 'disabled', fullPage: true });
-  for (const header of ['商家名称', '商家电话', '商家位置', '地区', '来源', '操作']) {
+  for (const header of ['商家与地区', '电话', '当前状态', '操作']) {
     await expect(page.getByRole('columnheader', { name: header, exact: true })).toBeVisible();
   }
   await expect(page.getByRole('columnheader', { name: /Google评分|官网|行业|清洗结果/ })).toHaveCount(0);
@@ -270,7 +269,7 @@ test('快速切换搜索条件时商家池和销售线索只提交最新响应',
   });
 
   await page.goto(`${baseUrl}/merchant-pool`);
-  const merchantSearch = page.getByPlaceholder('商家、电话或网站');
+  const merchantSearch = page.getByRole('textbox', { name: '搜索商家' });
   await merchantSearch.fill('旧商家');
   await oldMerchantStarted;
   await merchantSearch.fill('新商家');

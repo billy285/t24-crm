@@ -1,10 +1,11 @@
 import SalesLeadDossier from '@/components/SalesLeadDossier';
 import { ChangeEvent, useEffect, useRef, useState } from 'react';
-import { Archive, CheckSquare, ChevronDown, Database, Download, FileUp, Filter, MoreHorizontal, RefreshCw, Search, Send, ShieldCheck, Sparkles, Trash2, Upload } from 'lucide-react';
+import { Archive, ArrowUpRight, CheckSquare, ChevronDown, Database, Download, FileUp, Filter, MoreHorizontal, RefreshCw, Search, Send, ShieldCheck, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import '@/components/sales-center.css';
 import './sales-workspace.css';
+import './merchant-pool.css';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -52,7 +53,7 @@ type Merchant = {
 };
 
 const statusLabels: Record<string, string> = {
-  pending: '待清洗', no_phone: '无电话隔离', duplicate: '重复隔离',
+  pending: '待核对', no_phone: '无电话隔离', duplicate: '重复隔离',
   existing_customer: '正式客户隔离', closed: '已关闭隔离', converted: '已转线索', archived: '已归档',
 };
 const statusClasses: Record<string, string> = {
@@ -132,7 +133,9 @@ export default function MerchantPool() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const previousSearchRef = useRef(search);
-  const [poolStatus, setPoolStatus] = useState('');
+  const [poolStatus, setPoolStatus] = useState('pending');
+  const [reviewing, setReviewing] = useState<Merchant | null>(null);
+  const [reviewedMerchantIds, setReviewedMerchantIds] = useState<number[]>([]);
   const [regions, setRegions] = useState<string[]>([]);
   const [industry, setIndustry] = useState('');
   const [source, setSource] = useState('');
@@ -195,6 +198,16 @@ export default function MerchantPool() {
   }, [page, pageSize, poolStatus, regions, industry, source]);
 
   useEffect(() => {
+    if (!loading && page > totalPages) setPage(totalPages);
+  }, [loading, page, totalPages]);
+
+  useEffect(() => {
+    if (!reviewing || loading) return;
+    const current = items.find(item => item.id === reviewing.id);
+    if (current !== reviewing) setReviewing(current || null);
+  }, [items, loading, reviewing]);
+
+  useEffect(() => {
     if (previousSearchRef.current === search) return;
     previousSearchRef.current = search;
     setPage(1);
@@ -210,7 +223,7 @@ export default function MerchantPool() {
       .catch(() => toast.error('电话销售人员列表加载失败'));
   }, [canManagePool]);
 
-  useAutoRefresh(loadData, { intervalMs: 30000, enabled: !importOpen && !editing });
+  useAutoRefresh(loadData, { intervalMs: 30000, enabled: !importOpen && !editing && !reviewing });
 
   const downloadImportTemplate = () => {
     const csv = `\uFEFF${importTemplateHeaders.join(',')}\r\n`;
@@ -252,6 +265,8 @@ export default function MerchantPool() {
   };
 
   const openEdit = (merchant: Merchant) => {
+    setReviewing(null);
+    setReviewedMerchantIds(current => current.filter(id => id !== merchant.id));
     setEditing(merchant);
     setEditForm({
       business_name: merchant.business_name || '', contact_name: merchant.contact_name || '', phone: merchant.phone || '',
@@ -430,65 +445,86 @@ export default function MerchantPool() {
     }
   };
 
+  const viewTitle = poolStatus === 'pending' ? '待核对商家' : poolStatus === 'converted' ? '已转销售线索' : poolStatus ? statusLabels[poolStatus] : '全部采集记录';
+  const extraFilterCount = Number(regions.length > 0) + Number(Boolean(industry)) + Number(Boolean(source)) + Number(Boolean(poolStatus && !['pending', 'converted'].includes(poolStatus)));
+  const changeView = (status: string) => {
+    setPoolStatus(status);
+    setSelectedMerchantIds([]);
+    setSelectedSalesId('');
+    setReviewing(null);
+    setPage(1);
+  };
+  const sourceLabel = (merchant: Merchant) => sourceOptions.find(option => option.value === merchant.data_source)?.label || merchant.data_source || '未记录';
+  const merchantMenu = (merchant: Merchant) => isAdmin && merchant.pool_status !== 'converted' && !(isMobile && merchant.pool_status === 'archived') && (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多商家操作：${merchant.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="sales-center-menu">
+        {merchant.pool_status !== 'archived' && <DropdownMenuItem onSelect={() => void archiveMerchant(merchant)}><Archive className="mr-2 h-4 w-4" />归档记录</DropdownMenuItem>}
+        {!isMobile && <DropdownMenuItem className="text-rose-600" onSelect={() => void deleteMerchant(merchant)}><Trash2 className="mr-2 h-4 w-4" />永久删除</DropdownMenuItem>}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const reviewDetails = reviewing && (
+    <>
+      <div className="mp-review-identity"><h3>{reviewing.business_name}</h3><p className="mp-merchant-meta">{formatRegion(reviewing)} · #{reviewing.id}</p><Badge className={statusClasses[reviewing.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[reviewing.pool_status] || reviewing.pool_status}</Badge></div>
+      <dl className="mp-review-fields">
+        {[
+          ['联系电话', reviewing.phone ? formatPhone(reviewing.phone) : '无电话'],
+          ['完整地址', reviewing.address || '未填写'],
+          ['资料来源', sourceLabel(reviewing)],
+        ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+        {reviewing.isolation_reason && <div><dt>隔离原因</dt><dd>{reviewing.isolation_reason}</dd></div>}
+        {reviewing.duplicate_of_id && <div><dt>重复记录</dt><dd>#{reviewing.duplicate_of_id}</dd></div>}
+        {reviewing.existing_customer_id && <div><dt>关联客户</dt><dd>#{reviewing.existing_customer_id}</dd></div>}
+      </dl>
+      <details className="mp-review-extra"><summary>更多采集资料</summary><dl className="mp-review-fields"><div><dt>联系人</dt><dd>{reviewing.contact_name || '未填写'}</dd></div><div><dt>行业</dt><dd>{reviewing.industry || '未填写'}</dd></div><div><dt>采集时间</dt><dd>{formatDate(reviewing.collected_at)}</dd></div>{reviewing.website && <div><dt>商家网站</dt><dd>{/^https?:\/\//i.test(reviewing.website) ? <a href={reviewing.website} target="_blank" rel="noopener noreferrer">{reviewing.website}</a> : reviewing.website}</dd></div>}</dl></details>
+      {canManagePool && reviewing.pool_status === 'pending' && <label className="mp-review-confirm"><input type="checkbox" aria-label="已核对名称、电话和地区" checked={reviewedMerchantIds.includes(reviewing.id)} onChange={event => setReviewedMerchantIds(current => event.target.checked ? Array.from(new Set([...current, reviewing.id])) : current.filter(id => id !== reviewing.id))} /><span>已人工核对商家名称、电话和地区</span></label>}
+      <div className="mp-review-actions">
+        {canManagePool && !['converted', 'archived'].includes(reviewing.pool_status) && <Button variant="outline" onClick={() => openEdit(reviewing)}>补充资料</Button>}
+        {canManagePool && reviewing.pool_status === 'pending' && <Button disabled={!reviewedMerchantIds.includes(reviewing.id) || selectedMerchantIds.includes(reviewing.id)} onClick={() => { toggleMerchantSelection(reviewing.id, true); setReviewing(null); }}>{selectedMerchantIds.includes(reviewing.id) ? '已加入待分配' : '加入待分配'}<ArrowUpRight className="ml-2 h-4 w-4" /></Button>}
+        {reviewing.converted_lead_id && <Button variant="outline" onClick={() => { setDossierId(reviewing.converted_lead_id!); setReviewing(null); }}>累计档案</Button>}
+      </div>
+      <p className="mp-review-note">{reviewing.pool_status === 'pending' ? '加入待分配后，选择销售负责人并确认，才会转入电话销售线索。' : ['converted', 'archived'].includes(reviewing.pool_status) ? '保留原始采集记录，此处仅查看资料。' : '补齐资料并重新清洗后，符合条件的商家才可分配。'}</p>
+    </>
+  );
+
   return (
-    <div className="merchant-pool-page sales-center-ui sc-directory calm-sales-page calm-merchant-page app-page space-y-5">
+    <div className="merchant-pool-page sales-center-ui sc-directory calm-sales-page calm-merchant-page merchant-review-page app-page space-y-5">
       <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} />
       <header className="sc-section-heading">
         <div>
           <p className="sc-eyebrow"><Database className="h-3.5 w-3.5" /> T24 MARKETING · SALES DATA</p>
           <h2>待清洗商家池</h2>
-          <p className="sc-description">导入资料 · 清洗核对 · 分配销售，让每一条线索准备就绪。</p>
+          <p className="sc-description">先核对资料，再交给销售跟进。</p>
         </div>
         {!isMobile && <Button onClick={() => setImportOpen(true)}><Upload className="mr-2 h-4 w-4" />导入商家数据</Button>}
       </header>
 
-      <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm leading-6 text-blue-900 md:hidden">
-        手机端用于补充单条资料和加入待分配列表。批量导入、永久删除与批量资料管理请使用电脑端完成。
+      <nav className="mp-work-views" aria-label="商家工作视图">
+        {[{ status: 'pending', label: '待核对', count: stats.pending }, { status: 'converted', label: '已转线索', count: stats.converted }, { status: '', label: '全部记录', count: stats.total }].map(view => <button type="button" key={view.label} aria-pressed={poolStatus === view.status} onClick={() => changeView(view.status)}>{view.label}<span>{view.count}</span></button>)}
+      </nav>
+      <div className="mp-search-toolbar">
+        <label className="mp-search-field"><Search className="h-4 w-4" /><Input aria-label="搜索商家" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索商家、电话或网站" /></label>
+        <Button variant="outline" aria-expanded={filtersExpanded} aria-controls="merchant-pool-extra-filters" onClick={() => setFiltersExpanded(current => !current)}><Filter className="mr-2 h-4 w-4" />更多筛选{extraFilterCount ? ` · ${extraFilterCount}` : ''}</Button>
+        {(search || regions.length > 0 || industry || source || (poolStatus && !['pending', 'converted'].includes(poolStatus))) && <Button variant="ghost" onClick={() => { setSearch(''); setRegions([]); setIndustry(''); setSource(''); if (!['pending', 'converted', ''].includes(poolStatus)) changeView('pending'); setPage(1); }}>清空筛选</Button>}
       </div>
-
-      <div className="merchant-kpi-grid sc-metrics grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {[
-          { label: '全部采集记录', value: stats.total, tone: 'text-slate-950', dot: 'bg-slate-900' },
-          { label: '待清洗可用', value: stats.pending, tone: 'text-blue-700', dot: 'bg-blue-500' },
-          { label: '自动隔离', value: stats.isolated, tone: 'text-amber-700', dot: 'bg-amber-500' },
-          { label: '重复记录', value: stats.duplicates, tone: 'text-orange-700', dot: 'bg-orange-500' },
-          { label: '已转电话线索', value: stats.converted, tone: 'text-emerald-700', dot: 'bg-emerald-500' },
-          { label: '已归档', value: stats.archived, tone: 'text-slate-500', dot: 'bg-slate-400' },
-        ].map(item => <Card key={item.label} className="merchant-kpi-card overflow-hidden border-slate-200/80 bg-white"><CardContent className="p-4"><div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${item.dot}`} /><p className="text-xs font-medium leading-4 text-slate-500">{item.label}</p></div><p className={`sc-metric-value mt-3 text-2xl font-bold tracking-tight sm:text-3xl ${item.tone}`}>{item.value}</p></CardContent></Card>)}
-      </div>
-
-      <Card className="merchant-filter-card border-slate-200/80 bg-white"><CardContent className="space-y-4 p-4 sm:p-5">
-        <div className="calm-pool-filter-heading"><p className="text-sm font-semibold text-slate-800">查找待分配商家</p><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" aria-expanded={filtersExpanded} aria-controls="merchant-pool-extra-filters" onClick={() => setFiltersExpanded(current => !current)}><Filter className="mr-1.5 h-4 w-4" />更多筛选{regions.length > 0 || industry || source ? ` · ${Number(regions.length > 0) + Number(Boolean(industry)) + Number(Boolean(source))}` : ''}</Button>{(search || poolStatus || regions.length > 0 || industry || source) && <Button variant="ghost" size="sm" className="text-slate-500" onClick={() => { setSearch(''); setPoolStatus(''); setRegions([]); setIndustry(''); setSource(''); setPage(1); }}>清空筛选</Button>}</div></div>
-        <div className="sc-pool-filters">
-          <label><span className="sc-filter-label">商家搜索</span><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input className="pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="商家、电话或网站" /></div></label>
-          <label><span className="sc-filter-label">清洗状态</span><NativeSelect value={poolStatus} onChange={value => { setPoolStatus(value); setPage(1); }} options={[{ value: '', label: '全部清洗状态' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /></label>
-        </div>
-        {filtersExpanded && <div id="merchant-pool-extra-filters" className="calm-sales-extra-filters calm-pool-extra-filters">
-          <div><span className="sc-filter-label">州 / 省</span><DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="h-10 w-full justify-between bg-white px-3 font-normal">
-                <span className="truncate">{regions.length ? regions.join(' / ') : '州/省（可多选）'}</span>
-                <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-h-72 w-64 overflow-y-auto">
-              {usStateOptions.map(state => <DropdownMenuCheckboxItem key={state} checked={regions.includes(state)} onCheckedChange={checked => { setRegions(previous => checked ? (previous.includes(state) ? previous : [...previous, state]) : previous.filter(item => item !== state)); setPage(1); }} onSelect={event => event.preventDefault()}>{state}</DropdownMenuCheckboxItem>)}
-            </DropdownMenuContent>
-          </DropdownMenu></div>
-          <label><span className="sc-filter-label">行业</span><Input value={industry} onChange={event => { setIndustry(event.target.value); setPage(1); }} placeholder="全部行业" /></label>
-          <label><span className="sc-filter-label">资料来源</span><NativeSelect value={source} onChange={value => { setSource(value); setPage(1); }} options={sourceOptions} /></label>
-        </div>}
-      </CardContent></Card>
+      {filtersExpanded && <div id="merchant-pool-extra-filters" className="mp-expanded-filters">
+        <label><span className="sc-filter-label">清洗状态</span><NativeSelect value={poolStatus} onChange={changeView} options={[{ value: '', label: '全部清洗状态' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /></label>
+        <div><span className="sc-filter-label">州 / 省</span><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" className="w-full justify-between font-normal"><span className="truncate">{regions.length ? regions.join(' / ') : '州/省（可多选）'}</span><ChevronDown className="h-4 w-4 shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent align="start" className="max-h-72 w-64 overflow-y-auto">{usStateOptions.map(state => <DropdownMenuCheckboxItem key={state} checked={regions.includes(state)} onCheckedChange={checked => { setRegions(previous => checked ? (previous.includes(state) ? previous : [...previous, state]) : previous.filter(item => item !== state)); setPage(1); }} onSelect={event => event.preventDefault()}>{state}</DropdownMenuCheckboxItem>)}</DropdownMenuContent></DropdownMenu></div>
+        <label><span className="sc-filter-label">行业</span><Input value={industry} onChange={event => { setIndustry(event.target.value); setPage(1); }} placeholder="全部行业" /></label>
+        <label><span className="sc-filter-label">资料来源</span><NativeSelect value={source} onChange={value => { setSource(value); setPage(1); }} options={sourceOptions} /></label>
+        <p className="mp-filter-summary">自动隔离 {stats.isolated} · 其中重复 {stats.duplicates} · 已归档 {stats.archived}</p>
+      </div>}
 
       {canManagePool && selectedMerchantIds.length > 0 && (
-        <Card className="border-indigo-200 bg-indigo-50/60 shadow-sm">
+        <Card className="mp-selection-bar border-indigo-200 bg-indigo-50/60 shadow-sm" role="region" aria-label="商家批量操作">
           <CardContent className="flex flex-col gap-3 p-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold text-indigo-950"><CheckSquare className="h-5 w-5 text-indigo-600" />已加入 {selectedMerchantIds.length} 条待分配商家</div>
-              <p className="text-xs text-indigo-700">选择负责人后，系统才会转入电话销售线索库。</p>
+              <div className="flex items-center gap-2 text-sm font-semibold text-indigo-950"><CheckSquare className="h-5 w-5 text-indigo-600" />已选择 {selectedMerchantIds.length} 家商家</div>
+              <div className="flex items-center gap-2"><Button variant="ghost" size="sm" onClick={() => setReviewing(items.find(item => selectedMerchantIds.includes(item.id)) || null)}>核对所选资料</Button><p className="text-xs text-indigo-700">确认分配后才会转入销售线索。</p></div>
             </div>
             {isMobile ? <div className="flex flex-col gap-2">
-              <NativeSelect value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售负责人' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} />
+              <label><span className="sr-only">选择销售负责人</span><NativeSelect value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售负责人' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /></label>
               <div className="grid grid-cols-2 gap-2">
                 <Button className="h-11" disabled={bulkAssigning || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-1.5 h-4 w-4" />{bulkAssigning ? '分配中...' : '确认分配'}</Button>
                 <Button className="h-11" variant="outline" disabled={bulkAssigning} onClick={() => { setSelectedMerchantIds([]); setSelectedSalesId(''); }}>取消选择</Button>
@@ -501,60 +537,39 @@ export default function MerchantPool() {
               <Button variant="outline" disabled={bulkUpdating || bulkAssigning || enrichmentLoading || selectedMerchantIds.length > 20} onClick={() => void suggestEnrichment()}><Sparkles className="mr-2 h-4 w-4" />{enrichmentLoading ? '分析中...' : 'AI 补充空白资料'}</Button>
               {isAdmin && <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" disabled={bulkUpdating || bulkAssigning} onClick={() => void deleteSelectedMerchants()}><Trash2 className="mr-2 h-4 w-4" />批量删除</Button>}
               </div></details>
-              <NativeSelect className="md:w-52" value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售人员' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} />
-              <Button disabled={bulkAssigning || bulkUpdating || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-2 h-4 w-4" />{bulkAssigning ? '分配中...' : '批量转线索并分配'}</Button>
+              <label><span className="sr-only">选择销售负责人</span><NativeSelect className="md:w-52" value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售负责人' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /></label>
+              <Button disabled={bulkAssigning || bulkUpdating || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-2 h-4 w-4" />{bulkAssigning ? '分配中...' : '确认分配'}</Button>
               <Button variant="outline" disabled={bulkUpdating || bulkAssigning || enrichmentLoading} onClick={() => { setSelectedMerchantIds([]); setBulkIndustry(''); setSelectedSalesId(''); }}>取消选择</Button>
             </div>}
           </CardContent>
         </Card>
       )}
 
-      <Card className="merchant-results-card sc-table-card overflow-hidden border-slate-200/80 bg-white"><CardContent className="p-0"><div className="sc-table-heading flex items-center justify-between border-b border-slate-200/80 bg-white px-4 py-4"><div><h3 className="text-sm font-semibold text-slate-900">商家数据结果</h3><p className="mt-0.5 text-xs text-slate-500">共 {total} 条记录，确认后再加入销售分配</p></div><Badge className="bg-slate-100 text-slate-600">第 {page}/{totalPages} 页</Badge></div>
-      {isMobile ? <div data-testid="merchant-pool-mobile-list" className="divide-y divide-slate-100">
-        {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载商家池...</p>
-          : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">暂无商家记录</p>
-          : items.map(merchant => {
-            const selected = selectedMerchantIds.includes(merchant.id);
-            const canQueue = canManagePool && merchant.pool_status === 'pending';
-            return (
-              <article key={merchant.id} data-testid="merchant-mobile-card" className={selected ? 'bg-indigo-50/70 p-4' : 'bg-white p-4'}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="break-words font-semibold leading-6 text-slate-950">{merchant.business_name}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">{merchant.contact_name || '未填写联系人'} · #{merchant.id}</p>
-                  </div>
-                  <Badge className={`shrink-0 ${statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}`}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge>
-                </div>
-                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                  <div><dt className="text-xs text-slate-400">电话</dt><dd className={merchant.phone ? 'mt-0.5 break-words font-medium text-slate-800' : 'mt-0.5 text-rose-600'}>{merchant.phone ? formatPhone(merchant.phone) : '无电话'}</dd></div>
-                  <div><dt className="text-xs text-slate-400">商家位置</dt><dd className="mt-0.5 break-words text-slate-700">{merchant.address || '-'}</dd></div>
-                  <div><dt className="text-xs text-slate-400">地区</dt><dd className="mt-0.5 break-words text-slate-700">{formatRegion(merchant)}</dd></div>
-                  <div><dt className="text-xs text-slate-400">来源</dt><dd className="mt-0.5 break-words text-slate-700">{merchant.data_source || '-'}</dd></div>
-                </dl>
-                <div className="mt-4 flex flex-wrap gap-2">{merchant.converted_lead_id && <Button variant="outline" onClick={() => setDossierId(merchant.converted_lead_id!)}>累计档案</Button>}
-                  {canQueue ? (
-                    <Button className="h-11 flex-1" variant={selected ? 'outline' : 'default'} onClick={() => toggleMerchantSelection(merchant.id, !selected)}>
-                      <Send className="mr-1.5 h-4 w-4" />{selected ? '移出待分配' : '加入待分配'}
-                    </Button>
-                  ) : (
-                    <Button className="h-11 flex-1" variant="outline" onClick={() => openEdit(merchant)}>补充资料</Button>
-                  )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild><Button className="h-11 w-11 shrink-0 p-0" variant="outline" aria-label={`更多商家操作：${merchant.business_name}`}><MoreHorizontal className="h-5 w-5" /></Button></DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      {canQueue && <DropdownMenuItem className="min-h-11" onSelect={() => openEdit(merchant)}>补充资料</DropdownMenuItem>}
-                      {isAdmin && merchant.pool_status !== 'converted' && merchant.pool_status !== 'archived' && <DropdownMenuItem className="min-h-11" onSelect={() => { void archiveMerchant(merchant); }}><Archive className="mr-2 h-4 w-4" />归档记录</DropdownMenuItem>}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </article>
-            );
-          })}
-      </div> : <div data-testid="merchant-pool-desktop-table" className="merchant-pool-table overflow-x-auto"><table className="w-full min-w-[980px] text-left text-sm"><thead className="sticky top-0 z-10 border-b bg-slate-50/95 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 backdrop-blur"><tr>{canManagePool && <th className="w-12 px-4 py-3"><input aria-label="选择本页可操作商家" type="checkbox" checked={items.filter(item => !['converted', 'archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted', 'archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></th>}<th className="px-4 py-3">商家名称</th><th className="px-4 py-3">商家电话</th><th className="px-4 py-3">商家位置</th><th className="px-4 py-3">地区</th><th className="px-4 py-3">来源</th><th className="px-4 py-3 text-right">操作</th></tr></thead><tbody className="divide-y divide-slate-100">
-        {loading ? <tr><td colSpan={canManagePool ? 7 : 6} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr>
-          : items.length === 0 ? <tr><td colSpan={canManagePool ? 7 : 6} className="py-12 text-center text-slate-400">暂无商家记录</td></tr>
-          : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) ? 'bg-indigo-50/60' : 'hover:bg-slate-50/70'}>{canManagePool && <td className="px-4 py-3"><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={['converted', 'archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></td>}<td className="px-4 py-3"><p className="font-semibold text-slate-900">{merchant.business_name}</p><div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge className={statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge><span className="text-xs text-slate-400">#{merchant.id}</span></div></td><td className="whitespace-nowrap px-4 py-3 tabular-nums">{merchant.phone ? formatPhone(merchant.phone) : <span className="text-rose-600">无电话</span>}</td><td className="px-4 py-3"><p className="max-w-72 break-words text-slate-700" title={merchant.address}>{merchant.address || '-'}</p></td><td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatRegion(merchant)}</td><td className="px-4 py-3 font-medium text-slate-700">{merchant.data_source || '-'}</td><td className="px-4 py-3"><div className="sc-row-tools">{merchant.converted_lead_id && <Button size="sm" variant="outline" onClick={() => setDossierId(merchant.converted_lead_id!)}>累计档案</Button>}<Button size="sm" variant="outline" onClick={() => openEdit(merchant)}>补充资料</Button>{merchant.pool_status === 'pending' && <Button size="sm" onClick={() => toggleMerchantSelection(merchant.id, true)}><Send className="mr-1 h-3.5 w-3.5" />加入分配</Button>}{isAdmin && merchant.pool_status !== 'converted' && <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多商家操作：${merchant.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu">{merchant.pool_status !== 'archived' && <DropdownMenuItem onSelect={() => void archiveMerchant(merchant)}><Archive className="mr-2 h-4 w-4" />归档记录</DropdownMenuItem>}<DropdownMenuItem className="text-rose-600" onSelect={() => void deleteMerchant(merchant)}><Trash2 className="mr-2 h-4 w-4" />永久删除</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}</div></td></tr>)}
-      </tbody></table></div>}<div className="flex flex-col gap-3 border-t bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-slate-500">共 {total} 条，第 {page}/{totalPages} 页</p><div className="flex items-center gap-2"><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>下一页</Button></div></div></CardContent></Card>
+      <div className={`mp-workspace${reviewing && !isMobile ? ' has-review' : ''}`}>
+        <Card className="merchant-results-card sc-table-card overflow-hidden border-slate-200/80 bg-white"><CardContent className="p-0">
+          <div className="sc-table-heading flex items-center justify-between border-b border-slate-200/80 bg-white px-5 py-5"><div><h3 className="text-sm font-semibold text-slate-900">{viewTitle}</h3><p className="mt-1 text-xs text-slate-500">{poolStatus === 'pending' ? '原始采集资料 · 核对后再加入分配' : poolStatus === 'converted' ? '已进入销售流程 · 可查看累计档案' : poolStatus ? '完整资料与管理操作按需打开' : '不含已归档记录 · 归档记录可在更多筛选中查看'}</p></div><span className="text-xs text-slate-500">{total} 家</span></div>
+          {isMobile ? <div data-testid="merchant-pool-mobile-list" className="divide-y divide-slate-100">
+            {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载商家池...</p> : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">暂无符合条件的商家</p> : items.map(merchant => <article key={merchant.id} data-testid="merchant-mobile-card" className={`mp-merchant-card${selectedMerchantIds.includes(merchant.id) ? ' is-selected' : ''}`}>
+              <div className="mp-merchant-identity"><strong>{merchant.business_name}</strong><p className="mp-merchant-meta">{formatRegion(merchant)} · #{merchant.id}</p></div>
+              <p className="mp-card-phone">{merchant.phone ? formatPhone(merchant.phone) : '无电话'}</p>
+              <Badge className={statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge>
+              <div className="mp-row-actions"><Button variant="outline" aria-label={`${merchant.pool_status === 'pending' ? '核对资料' : '查看资料'}：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.pool_status === 'pending' ? '核对资料' : '查看资料'}<ArrowUpRight className="ml-2 h-4 w-4" /></Button>{selectedMerchantIds.includes(merchant.id) && <Button variant="ghost" aria-label={`移出待分配：${merchant.business_name}`} onClick={() => toggleMerchantSelection(merchant.id, false)}>移出待分配</Button>}{merchantMenu(merchant)}</div>
+              {selectedMerchantIds.includes(merchant.id) && <p className="mp-merchant-meta">已加入本页待分配</p>}
+            </article>)}
+          </div> : <div data-testid="merchant-pool-desktop-table"><table className="mp-queue-table"><thead><tr>{canManagePool && <th className="mp-select-column"><label><input aria-label="选择本页可操作商家" type="checkbox" checked={items.filter(item => !['converted', 'archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted', 'archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></label></th>}<th>商家与地区</th><th className="mp-phone-column">电话</th><th className="mp-state-column">当前状态</th><th className="mp-action-column">操作</th></tr></thead><tbody>
+            {loading ? <tr><td colSpan={canManagePool ? 5 : 4} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr> : items.length === 0 ? <tr><td colSpan={canManagePool ? 5 : 4} className="py-12 text-center text-slate-400">暂无符合条件的商家</td></tr> : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) || reviewing?.id === merchant.id ? 'is-selected' : ''}>
+              {canManagePool && <td className="mp-select-column"><label><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={['converted', 'archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></label></td>}
+              <td><div className="mp-merchant-identity"><strong>{merchant.business_name}</strong><p className="mp-merchant-meta">{formatRegion(merchant)} · #{merchant.id}</p><p className="mp-inline-phone">{merchant.phone ? formatPhone(merchant.phone) : '无电话'}</p></div></td>
+              <td className="mp-phone-column">{merchant.phone ? formatPhone(merchant.phone) : <span className="text-rose-600">无电话</span>}</td>
+              <td className="mp-state-column"><Badge className={statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge></td>
+              <td className="mp-action-column"><div className="mp-row-actions"><Button size="sm" variant="outline" aria-label={`${merchant.pool_status === 'pending' ? '核对资料' : '查看资料'}：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.pool_status === 'pending' ? '核对资料' : '查看资料'}<ArrowUpRight className="ml-1.5 h-3.5 w-3.5" /></Button>{merchantMenu(merchant)}</div></td>
+            </tr>)}
+          </tbody></table></div>}
+          <div className="mp-list-pagination flex flex-col gap-3 border-t bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-slate-500">显示 {total ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, total)} 条 / 共 {total} 条</p><div className="flex flex-wrap items-center gap-2"><label><span className="sr-only">每页显示</span><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /></label><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button><span className="text-xs text-slate-500">{page}/{totalPages}</span><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>下一页</Button></div></div>
+        </CardContent></Card>
+        {reviewing && !isMobile && <aside className="mp-review-panel" aria-label="商家资料核对"><div className="mp-review-header"><span>核对商家资料</span><Button variant="ghost" size="sm" aria-label="关闭资料" onClick={() => setReviewing(null)}><X className="h-4 w-4" /></Button></div>{reviewDetails}</aside>}
+      </div>
+      {isMobile && <Dialog open={!!reviewing} onOpenChange={open => !open && setReviewing(null)}><DialogContent className="mp-review-dialog" aria-describedby={undefined}><DialogHeader><DialogTitle>核对商家资料</DialogTitle></DialogHeader>{reviewDetails}</DialogContent></Dialog>}
 
       {!isMobile && <Dialog open={importOpen} onOpenChange={setImportOpen}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>按固定模板导入商家</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-950"><p className="font-semibold">只接受固定五列表格</p><p className="mt-1 text-indigo-800">第一行必须依次为：商家名称、商家电话、商家位置、地区、来源。缺列、多列、改名或调整顺序都会停止导入并明确提示。</p></div><div className="grid grid-cols-5 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-center text-xs font-medium text-slate-700">{importTemplateHeaders.map((header, index) => <div key={header} className={index ? 'border-l px-2 py-3' : 'px-2 py-3'}>{index + 1}. {header}</div>)}</div><div className="rounded-xl border border-slate-200 p-4"><p className="text-sm font-medium text-slate-900">先下载模板，再填写并上传</p><p className="mt-1 text-xs leading-5 text-slate-500">“商家位置”填写完整街道地址；“地区”建议填写“城市, 州/省, 国家”；“来源”填写 Google Maps、名单采购或实际采集渠道。</p><div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={downloadImportTemplate}><Download className="mr-2 h-4 w-4" />下载固定模板</Button><input ref={fileRef} className="hidden" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={importCsv} /><Button disabled={importing} onClick={() => fileRef.current?.click()}><FileUp className="mr-2 h-4 w-4" />{importing ? '正在校验并导入...' : '选择填写好的文件'}</Button></div></div><div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">上传后仍会自动隔离无电话、正式客户重复或商家池重复的数据，不会直接进入电话销售线索库。</div></div></DialogContent></Dialog>}
 
