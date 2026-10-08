@@ -274,6 +274,75 @@ test('320、768、1024px 工作视图和详情无横向溢出，平板表格无�
   expect(writes).toEqual([]);
 });
 
+test('长列表仅在内容区滚动，分页后不出现外层空白页', async ({ page }) => {
+  const { writes } = await seedPool(page);
+  const records = Array.from({ length: 20 }, (_, index) => ({
+    ...pendingMerchant, id: 10001 + index, business_name: `长列表核对商家${index + 1}`,
+  }));
+  await page.route('**/api/v1/merchant-pool?*', route => {
+    const query = new URL(route.request().url()).searchParams;
+    const skip = Number(query.get('skip') || 0);
+    const limit = Number(query.get('limit') || 20);
+    return json(route, { items: records.slice(skip, skip + limit), total: records.length, skip, limit });
+  });
+  await page.route('**/api/v1/merchant-pool/stats', route => json(route, {
+    total: 20, pending: 20, converted: 0, isolated: 0, duplicates: 0, archived: 0,
+  }));
+
+  const assertScrollBoundary = async (tailAllowance: number) => {
+    const main = page.getByRole('main');
+    const pagination = page.locator('.mp-list-pagination');
+    await expect(pagination).toContainText('显示 1–20 条 / 共 20 条');
+    await main.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await expect.poll(() => main.evaluate(element => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(2);
+    const geometry = await pagination.evaluate(element => {
+      const main = element.closest('main')!;
+      const mainBox = main.getBoundingClientRect();
+      const pageBox = element.getBoundingClientRect();
+      return {
+        viewport: innerHeight,
+        documentHeight: document.documentElement.scrollHeight,
+        bodyHeight: document.body.scrollHeight,
+        mainTop: mainBox.top,
+        mainBottom: mainBox.bottom,
+        paginationTop: pageBox.top,
+        paginationBottom: pageBox.bottom,
+        mainClientHeight: main.clientHeight,
+        mainScrollHeight: main.scrollHeight,
+        tailGap: mainBox.bottom - pageBox.bottom,
+      };
+    });
+    // A full page must really scroll inside main. Its clipped accessibility
+    // labels must not create another scrollable page outside the app shell.
+    expect(geometry.mainScrollHeight).toBeGreaterThan(geometry.mainClientHeight + 100);
+    expect(geometry.documentHeight, JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.viewport + 1);
+    expect(geometry.bodyHeight).toBeLessThanOrEqual(geometry.viewport + 1);
+    expect(geometry.paginationTop).toBeGreaterThanOrEqual(geometry.mainTop - 1);
+    expect(geometry.paginationBottom).toBeLessThanOrEqual(geometry.mainBottom + 1);
+    expect(geometry.tailGap).toBeGreaterThanOrEqual(-1);
+    expect(geometry.tailGap).toBeLessThanOrEqual(tailAllowance);
+  };
+
+  await page.setViewportSize({ width: 1093, height: 824 });
+  await page.goto(`${baseUrl}/merchant-pool`);
+  await expect(page.getByTestId('merchant-pool-desktop-table').locator('tbody tr')).toHaveCount(20);
+  await assertScrollBoundary(48);
+  if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-scroll-desktop-collapsed.png`, fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: '展开功能导航', exact: true }).click();
+  await expect(page.getByRole('button', { name: '收起功能导航', exact: true })).toBeVisible();
+  await assertScrollBoundary(48);
+  if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-scroll-desktop-expanded.png`, fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: '收起功能导航', exact: true }).click();
+  await assertScrollBoundary(48);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId('merchant-mobile-card')).toHaveCount(20);
+  // Mobile keeps room for its fixed navigation and safe-area padding.
+  await assertScrollBoundary(224);
+  if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-scroll-mobile.png`, fullPage: true, animations: 'disabled' });
+  expect(writes).toEqual([]);
+});
+
 
 test('分配末页最后一条后回到有效页，不显示倒置范围或空末页', async ({ page }) => {
   await seedPool(page);

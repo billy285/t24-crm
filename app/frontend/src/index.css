@@ -713,6 +713,9 @@
   }
 
   .app-main {
+    /* Keep absolute accessibility labels inside this scroll container, so long
+       lists do not also extend the document beyond the viewport-sized shell. */
+    position: relative;
     background: #f6f8fb;
   }
 
