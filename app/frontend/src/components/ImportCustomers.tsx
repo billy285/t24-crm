@@ -7,12 +7,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, Download } from 'lucide-react';
+import { formatPhoneNumber, normalizePhoneCountry, parsePhoneNumber, phoneMatchKey } from '@/lib/phone-format';
 
 // Column mapping: Chinese header -> field key
 const HEADER_MAP: Record<string, string> = {
   '商家名称': 'business_name',
   '联系人': 'contact_name',
   '电话': 'phone',
+  '国家': 'country',
   '微信': 'wechat',
   '邮箱': 'email',
   '行业': 'industry',
@@ -88,7 +90,7 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
   const downloadTemplate = () => {
     const headers = Object.keys(HEADER_MAP);
     const exampleRow = [
-      'ABC餐厅', '张三', '626-123-4567', 'zhangsan_wx', 'zhang@email.com',
+      'ABC餐厅', '张三', '+1 202-555-0123', 'US', 'zhangsan_wx', 'zhang@email.com',
       '餐厅', '123 Main St', 'Alhambra', 'CA', '电话销售', '普通', '新线索',
       '李四', '无', '100', '否', 'www.abc.com', '潜在大客户',
     ];
@@ -108,7 +110,7 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
         const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '' });
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '', raw: false });
 
         if (jsonData.length === 0) {
           toast.error('文件中没有数据');
@@ -116,7 +118,7 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
         }
 
         // Build existing phone/business_name sets for duplicate detection
-        const existingPhones = new Set(existingCustomers.map(c => c.phone?.trim()).filter(Boolean));
+        const existingPhones = new Set(existingCustomers.map(c => phoneMatchKey(c.phone, c.country)).filter(Boolean));
         const existingNames = new Set(existingCustomers.map(c => c.business_name?.trim()).filter(Boolean));
 
         // Also track duplicates within the file itself
@@ -131,7 +133,7 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
           for (const [header, value] of Object.entries(row)) {
             const fieldKey = HEADER_MAP[header.trim()];
             if (fieldKey) {
-              mapped[fieldKey] = String(value).trim();
+              mapped[fieldKey] = fieldKey === 'phone' ? String(value) : String(value).trim();
             }
           }
 
@@ -139,6 +141,9 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
           if (!mapped.business_name) errors.push('缺少商家名称');
           if (!mapped.contact_name) errors.push('缺少联系人');
           if (!mapped.phone) errors.push('缺少电话');
+          const phoneResult = parsePhoneNumber(mapped.phone, mapped.country);
+          if (mapped.phone && !phoneResult.isValid) errors.push(phoneResult.reason);
+          mapped.country = normalizePhoneCountry(mapped.country) || mapped.country || null;
 
           // Convert Chinese labels to enum values
           if (mapped.industry) {
@@ -192,7 +197,7 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
           // Duplicate detection against existing data
           let isDuplicate = false;
           let duplicateField = '';
-          const phone = mapped.phone?.trim();
+          const phone = phoneResult.e164;
           const name = mapped.business_name?.trim();
 
           if (phone && existingPhones.has(phone)) {
@@ -351,6 +356,7 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
                 <h4 className="text-sm font-medium text-blue-800 mb-2">📋 导入说明</h4>
                 <ul className="text-xs text-blue-700 space-y-1">
                   <li>• 必填字段：<strong>商家名称</strong>、<strong>联系人</strong>、<strong>电话</strong></li>
+                  <li>• 本地号码请填写国家（如 US、CA）；国际号码以 + 国家码开头。电话列建议设为文本，分机可写为 ext 123。</li>
                   <li>• 行业可填：餐厅、美甲、按摩、美容、超市、其他</li>
                   <li>• 客户来源可填：电话销售、转介绍、广告、私域、老客户、其他</li>
                   <li>• 客户等级可填：高意向、普通、低意向、VIP</li>
@@ -434,7 +440,7 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
                           </td>
                           <td className="px-2 py-1.5">{row.data.business_name || '-'}</td>
                           <td className="px-2 py-1.5">{row.data.contact_name || '-'}</td>
-                          <td className="px-2 py-1.5">{row.data.phone || '-'}</td>
+                          <td className="px-2 py-1.5" title={row.data.phone}>{formatPhoneNumber(row.data.phone, row.data.country)}</td>
                           <td className="px-2 py-1.5">{row.data.city || '-'}</td>
                           <td className="px-2 py-1.5 text-red-600">
                             {row.errors.length > 0

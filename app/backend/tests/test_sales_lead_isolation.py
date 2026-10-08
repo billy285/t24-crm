@@ -68,12 +68,12 @@ async def test_sales_only_sees_assigned_leads_and_not_customer_api(sales_app_cli
     own = await sales_app_client.post(
         "/api/v1/sales-leads",
         headers=admin,
-        json={"business_name": "Own Cafe", "phone": "111", "assigned_sales_id": 11},
+        json={"business_name": "Own Cafe", "phone": "+12125550111", "assigned_sales_id": 11},
     )
     other = await sales_app_client.post(
         "/api/v1/sales-leads",
         headers=admin,
-        json={"business_name": "Other Cafe", "phone": "222", "assigned_sales_id": 12},
+        json={"business_name": "Other Cafe", "phone": "+12125550222", "assigned_sales_id": 12},
     )
     assert own.status_code == 201
     assert other.status_code == 201
@@ -96,22 +96,22 @@ async def test_manager_only_sees_and_assigns_direct_team(sales_app_client):
     await sales_app_client.post(
         "/api/v1/sales-leads",
         headers=admin,
-        json={"business_name": "Team Cafe", "phone": "333", "assigned_sales_id": 11},
+        json={"business_name": "Team Cafe", "phone": "+12125550333", "assigned_sales_id": 11},
     )
     await sales_app_client.post(
         "/api/v1/sales-leads",
         headers=admin,
-        json={"business_name": "Outside Cafe", "phone": "444", "assigned_sales_id": 12},
+        json={"business_name": "Outside Cafe", "phone": "+12125550444", "assigned_sales_id": 12},
     )
     manager_created = await sales_app_client.post(
         "/api/v1/sales-leads",
         headers=manager,
-        json={"business_name": "Manager Lead", "phone": "555", "assigned_sales_id": 11},
+        json={"business_name": "Manager Lead", "phone": "+12125550555", "assigned_sales_id": 11},
     )
     forbidden_assignment = await sales_app_client.post(
         "/api/v1/sales-leads",
         headers=manager,
-        json={"business_name": "Wrong Team", "phone": "666", "assigned_sales_id": 12},
+        json={"business_name": "Wrong Team", "phone": "+12125550666", "assigned_sales_id": 12},
     )
     manager_list = await sales_app_client.get("/api/v1/sales-leads", headers=manager)
     blocked_finance = await sales_app_client.get("/api/v1/entities/payments", headers=manager)
@@ -131,7 +131,7 @@ async def test_sales_recovery_requires_manager_confirmation_and_keeps_protected_
     created = await sales_app_client.post(
         "/api/v1/sales-leads",
         headers=admin,
-        json={"business_name": "Recovery Cafe", "phone": "555-2000", "assigned_sales_id": 11},
+        json={"business_name": "Recovery Cafe", "phone": "+12125552000", "assigned_sales_id": 11},
     )
     assert created.status_code == 201
     lead_id = created.json()["id"]
@@ -188,7 +188,7 @@ async def test_batch_reassign_keeps_protected_lead_audit_guard(sales_app_client)
     admin = _auth_headers("admin", 1, "Admin")
     created = await sales_app_client.post(
         "/api/v1/sales-leads", headers=admin,
-        json={"business_name": "Batch Protected Cafe", "phone": "555-2100", "assigned_sales_id": 11, "status": "interested"},
+        json={"business_name": "Batch Protected Cafe", "phone": "+12125552100", "assigned_sales_id": 11, "status": "interested"},
     )
     lead_id = created.json()["id"]
     blocked = await sales_app_client.post(
@@ -213,10 +213,12 @@ async def test_explainable_sales_performance_is_scoped_to_phone_sales_data(sales
     created = await sales_app_client.post(
         "/api/v1/sales-leads",
         headers=admin,
-        json={"business_name": "Performance Cafe", "phone": "555-3000", "assigned_sales_id": 11},
+        json={"business_name": "Performance Cafe", "phone": "+12125553000", "assigned_sales_id": 11},
     )
     assert created.status_code == 201
 
+    prepared = await sales_app_client.post("/api/v1/sales-leads/workbench/prepare", headers=sales_a)
+    assert prepared.status_code == 200
     workbench = await sales_app_client.get("/api/v1/sales-leads/workbench/today", headers=sales_a)
     assert workbench.status_code == 200
     task_id = workbench.json()["items"][0]["task_id"]
@@ -247,7 +249,7 @@ async def test_sales_can_mark_do_not_contact_but_cannot_reassign(sales_app_clien
     created = await sales_app_client.post(
         "/api/v1/sales-leads",
         headers=admin,
-        json={"business_name": "Protected Cafe", "phone": "777", "assigned_sales_id": 11},
+        json={"business_name": "Protected Cafe", "phone": "+12125550777", "assigned_sales_id": 11},
     )
     lead_id = created.json()["id"]
 
@@ -277,7 +279,7 @@ async def test_merchant_pool_isolates_bad_records_before_sales_leads(sales_app_c
     formal_customer = await sales_app_client.post(
         "/api/v1/entities/customers",
         headers=admin,
-        json={"business_name": "Formal Cafe", "contact_name": "Owner", "phone": "555-1000", "address": "1 Main St"},
+        json={"business_name": "Formal Cafe", "contact_name": "Owner", "phone": "+12125551000", "address": "1 Main St"},
     )
     assert formal_customer.status_code in {200, 201}
 
@@ -288,10 +290,10 @@ async def test_merchant_pool_isolates_bad_records_before_sales_leads(sales_app_c
             "data_source": "api",
             "records": [
                 {"business_name": "No Phone Cafe"},
-                {"business_name": "Closed Cafe", "phone": "555-2000", "business_status": "closed"},
-                {"business_name": "Formal Cafe Copy", "phone": "555-1000"},
-                {"business_name": "Clean Cafe", "phone": "555-3000", "address": "3 Main St"},
-                {"business_name": "Clean Cafe Again", "phone": "555-3000"},
+                {"business_name": "Closed Cafe", "phone": "+12125552000", "business_status": "closed"},
+                {"business_name": "Formal Cafe Copy", "phone": "+12125551000"},
+                {"business_name": "Clean Cafe", "phone": "+12125553000", "address": "3 Main St"},
+                {"business_name": "Clean Cafe Again", "phone": "+12125553000"},
             ],
         },
     )
@@ -342,6 +344,7 @@ async def test_reimport_detects_duplicates_across_formats_and_historical_statuse
                 {
                     "business_name": "Format Nails",
                     "phone": "(212) 555-0123 ext. 9",
+                    "country": "US",
                     "website": "https://www.formatnails.com/?utm_source=chatgpt.com",
                     "city": "New York",
                     "state": "NY",
@@ -352,7 +355,7 @@ async def test_reimport_detects_duplicates_across_formats_and_historical_statuse
                     "city": "New York",
                     "state": "NY",
                 },
-                {"business_name": "Archived Spa", "phone": "646-555-0199"},
+                {"business_name": "Archived Spa", "phone": "646-555-0199", "country": "US"},
             ],
         },
     )
@@ -410,9 +413,9 @@ async def test_manager_can_bulk_assign_clean_merchants_to_one_salesperson(sales_
         json={
             "data_source": "bulk",
             "records": [
-                {"business_name": "Bulk Cafe One", "phone": "555-8101"},
-                {"business_name": "Bulk Cafe Two", "phone": "555-8102"},
-                {"business_name": "Bulk Cafe Three", "phone": "555-8103"},
+                {"business_name": "Bulk Cafe One", "phone": "+12125558101"},
+                {"business_name": "Bulk Cafe Two", "phone": "+12125558102"},
+                {"business_name": "Bulk Cafe Three", "phone": "+12125558103"},
             ],
         },
     )
@@ -468,7 +471,7 @@ async def test_merchant_pool_import_requires_and_accepts_the_fixed_template(sale
     workbook = Workbook()
     sheet = workbook.active
     sheet.append(["商家名称", "商家电话", "商家位置", "地区", "来源"])
-    sheet.append(["Fixed Excel Cafe", "555-7001", "2 Main St", "Las Vegas, NV, US", "展会名单"])
+    sheet.append(["Fixed Excel Cafe", "+12125557001", "2 Main St", "Las Vegas, NV, US", "展会名单"])
     content = io.BytesIO()
     workbook.save(content)
     excel_response = await sales_app_client.post(
@@ -503,8 +506,8 @@ async def test_merchant_pool_import_rejects_non_template_headers(sales_app_clien
         json={
             "data_source": "bulk",
             "records": [
-                {"business_name": "Rating Symbol Cafe", "phone": "555-8000", "rating": "★4.6"},
-                {"business_name": "Unverified Rating Cafe", "phone": "555-8001", "rating": "待核验"},
+                {"business_name": "Rating Symbol Cafe", "phone": "+12125558000", "rating": "★4.6"},
+                {"business_name": "Unverified Rating Cafe", "phone": "+12125558001", "rating": "待核验"},
             ],
         },
     )
@@ -524,7 +527,7 @@ async def test_admin_can_archive_and_delete_useless_pool_records(sales_app_clien
             "data_source": "bulk",
             "records": [
                 {"business_name": "No Phone Archive"},
-                {"business_name": "Clean Archive", "phone": "555-9000"},
+                {"business_name": "Clean Archive", "phone": "+12125559000"},
             ],
         },
     )
@@ -580,9 +583,9 @@ async def test_pool_supports_bulk_industry_update_and_delete(sales_app_client):
         json={
             "data_source": "bulk",
             "records": [
-                {"business_name": "Batch Industry One", "phone": "555-9101"},
-                {"business_name": "Batch Industry Two", "phone": "555-9102"},
-                {"business_name": "Batch Industry Three", "phone": "555-9103"},
+                {"business_name": "Batch Industry One", "phone": "+12125559101"},
+                {"business_name": "Batch Industry Two", "phone": "+12125559102"},
+                {"business_name": "Batch Industry Three", "phone": "+12125559103"},
             ],
         },
     )

@@ -1,4 +1,3 @@
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -11,6 +10,7 @@ from models.ringcentral_connections import RingCentralConnections
 from models.sales_call_activities import SalesCallActivities
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
 from models.sales_leads import SalesLeads
+from services.phone_numbers import phone_match_key
 
 
 CONNECTED_CODES = {"answered", "connected", "established"}
@@ -18,11 +18,8 @@ TERMINAL_CODES = {"completed", "disconnected", "finished", "gone", "hangup", "te
 CALL_TASK_MATCH_WINDOW = timedelta(hours=12)
 
 
-def normalize_phone(value: Any) -> str:
-    digits = re.sub(r"\D", "", str(value or ""))
-    if len(digits) == 10:
-        return f"1{digits}"
-    return digits[-11:] if len(digits) > 11 and digits[-11:].startswith("1") else digits
+def normalize_phone(value: Any, country: str | None = None) -> str:
+    return phone_match_key(str(value or ""), country) or ""
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -38,7 +35,7 @@ def _parse_datetime(value: Any) -> datetime | None:
 
 def _party_phone(value: Any) -> str | None:
     if isinstance(value, dict):
-        return str(value.get("phoneNumber") or value.get("extensionNumber") or "").strip() or None
+        return str(value.get("phoneNumber") or "").strip() or None
     return str(value or "").strip() or None
 
 
@@ -101,9 +98,11 @@ async def _match_lead_and_task(
     leads = (
         await db.execute(select(SalesLeads).where(SalesLeads.assigned_sales_id == employee_id))
     ).scalars().all()
-    lead = next((candidate for candidate in leads if normalize_phone(candidate.phone) == normalized), None)
-    if not lead:
+    matches = [candidate for candidate in leads if normalize_phone(candidate.phone, candidate.country) == normalized]
+    # Shared business numbers must not attach a provider call to an arbitrary lead.
+    if len(matches) != 1:
         return None, None
+    lead = matches[0]
     tasks = (
         await db.execute(
             select(SalesDailyDialTasks)

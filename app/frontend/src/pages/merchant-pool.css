@@ -9,7 +9,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 26px;
+  gap: var(--t24-space-24);
   padding: 0;
   border-bottom: 1px solid var(--mp-border);
 }
@@ -17,113 +17,124 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 0 13px;
+  gap: var(--t24-space-8);
+  min-height: var(--t24-control-height);
+  padding: 0 0 var(--t24-space-12);
   border: 0;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
   color: #64748b;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--t24-body-size);
+  line-height: var(--t24-body-line);
+  font-weight: var(--t24-weight-medium);
   box-shadow: none;
   white-space: nowrap;
 }
 .t24-system .merchant-review-page .mp-work-views > button:hover { background: transparent; color: #334155; }
-.t24-system .merchant-review-page .mp-work-views > button[aria-pressed='true'] { background: transparent; border-bottom-color: #2f5beb; color: #2f5beb; font-weight: 600; }
-.t24-system .merchant-review-page .mp-work-views > button > span { font-size: 12px; font-variant-numeric: tabular-nums; }
-.t24-system .merchant-review-page .mp-search-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.t24-system .merchant-review-page .mp-work-views > button[aria-pressed='true'] { background: transparent; border-bottom-color: #2f5beb; color: #2f5beb; font-weight: var(--t24-weight-semibold); }
+.t24-system .merchant-review-page .mp-work-views > button > span { font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); font-variant-numeric: tabular-nums; }
+.t24-system .merchant-review-page .mp-search-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--t24-space-12); }
 .t24-system .merchant-review-page .mp-search-field { position: relative; display: block; flex: 1 1 280px; min-width: 0; }
-.t24-system .merchant-review-page .mp-search-field > svg { position: absolute; top: 50%; left: 13px; transform: translateY(-50%); width: 16px; height: 16px; color: #94a3b8; pointer-events: none; }
-.t24-system .merchant-review-page .mp-search-field input { min-height: 42px; padding-left: 39px; border-color: #dbe3ee; border-radius: 9px; background: white; font-size: 13px; }
-.t24-system .merchant-review-page .mp-search-toolbar > button { min-height: 42px; flex: 0 0 auto; font-size: 13px; box-shadow: none; }
-.t24-system .merchant-review-page .mp-expanded-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 14px; padding: 16px; border: 1px solid var(--mp-border); border-radius: 11px; background: #f8fafc; }
+.t24-system .merchant-review-page .mp-search-field > svg { position: absolute; top: 50%; left: 13px; transform: translateY(-50%); width: 16px; height: 16px; color: #64748b; pointer-events: none; }
+.t24-system .merchant-review-page .mp-search-field input { min-height: var(--t24-control-height); padding-left: 39px; border-color: #dbe3ee; border-radius: 9px; background: white; font-size: var(--t24-input-size); line-height: var(--t24-input-line); }
+.t24-system .merchant-review-page .mp-search-toolbar > button { min-height: var(--t24-control-height); flex: 0 0 auto; font-size: var(--t24-body-size); line-height: var(--t24-body-line); box-shadow: none; }
+.t24-system .merchant-review-page .mp-expanded-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: var(--t24-space-16); padding: var(--t24-space-16); border: 1px solid var(--mp-border); border-radius: 11px; background: #f8fafc; }
 .t24-system .merchant-review-page .mp-expanded-filters > * { min-width: 0; }
-.t24-system .merchant-review-page .mp-expanded-filters .sc-filter-label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--mp-muted); }
+.t24-system .merchant-review-page .mp-expanded-filters .sc-filter-label { display: block; margin-bottom: var(--t24-space-8); font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); color: var(--mp-muted); }
 .t24-system .merchant-review-page .mp-expanded-filters input,
 .t24-system .merchant-review-page .mp-expanded-filters select,
-.t24-system .merchant-review-page .mp-expanded-filters button { min-height: 40px; background: white; font-size: 13px; }
-.t24-system .merchant-review-page .mp-filter-summary { grid-column: 1 / -1; margin: 0; color: #94a3b8; font-size: 12px; }
-.t24-system .merchant-review-page .mp-workspace { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 20px; min-width: 0; }
+.t24-system .merchant-review-page .mp-expanded-filters button { min-height: var(--t24-control-height); background: white; font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+.t24-system .merchant-review-page .mp-expanded-filters input,
+.t24-system .merchant-review-page .mp-expanded-filters select {
+  font-size: var(--t24-input-size);
+  line-height: var(--t24-input-line);
+}
+.t24-system .merchant-review-page .mp-filter-summary { grid-column: 1 / -1; margin: 0; color: #64748b; font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); }
+.t24-system .merchant-review-page .mp-workspace { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: var(--t24-space-24); min-width: 0; }
 .t24-system .merchant-review-page .mp-workspace.has-review { grid-template-columns: minmax(0, 1fr) 340px; }
 .t24-system .merchant-review-page .merchant-results-card { min-width: 0; border-color: var(--mp-border); border-radius: 12px; background: white; box-shadow: none; }
 .t24-system .merchant-review-page .merchant-results-card > div { padding: 0; }
-.t24-system .merchant-review-page .sc-table-heading { gap: 12px; padding: 18px 20px; border-bottom-color: #edf1f6; }
-.t24-system .merchant-review-page .sc-table-heading h3 { font-size: 14px; font-weight: 600; color: var(--mp-ink); }
-.t24-system .merchant-review-page .sc-table-heading p { margin-top: 5px; font-size: 12px; line-height: 1.6; color: var(--mp-muted); }
+.t24-system .merchant-review-page .sc-table-heading { gap: var(--t24-space-12); padding: var(--t24-space-16) var(--t24-space-24); border-bottom-color: #edf1f6; }
+.t24-system .merchant-review-page .sc-table-heading h3 { font-size: var(--t24-section-size); line-height: var(--t24-section-line); font-weight: var(--t24-weight-semibold); color: var(--mp-ink); }
+.t24-system .merchant-review-page .sc-table-heading p { margin-top: var(--t24-space-4); font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); color: var(--mp-muted); }
 .t24-system .merchant-review-page .merchant-pool-table { min-width: 0; overflow-x: auto; }
 .t24-system .merchant-review-page .mp-queue-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; }
-.t24-system .merchant-review-page .mp-queue-table th { padding: 13px 16px; text-align: left; font-size: 11px; font-weight: 500; color: #64748b; letter-spacing: 0; text-transform: none; background: #fafbfd; white-space: nowrap; }
-.t24-system .merchant-review-page .mp-queue-table td { padding: 20px 16px; vertical-align: middle; font-size: 13px; border-top: 1px solid #edf1f6; }
+.t24-system .merchant-review-page .mp-queue-table th { padding: var(--t24-space-8) var(--t24-table-cell-x); text-align: left; font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); font-weight: var(--t24-weight-medium); color: #64748b; letter-spacing: 0; text-transform: none; background: #fafbfd; white-space: nowrap; }
+.t24-system .merchant-review-page .mp-queue-table td { padding: var(--t24-table-cell-y) var(--t24-table-cell-x); vertical-align: middle; font-size: var(--t24-body-size); line-height: var(--t24-body-line); border-top: 1px solid #edf1f6; }
 .t24-system .merchant-review-page .mp-queue-table tr.is-selected > td { background: #f4f7ff; }
-.t24-system .merchant-review-page .mp-queue-table .mp-select-column { width: 40px; padding-left: 16px; padding-right: 8px; }
+.t24-system .merchant-review-page .mp-queue-table .mp-select-column { width: 40px; padding-left: var(--t24-space-16); padding-right: var(--t24-space-8); }
 .t24-system .merchant-review-page .mp-queue-table .mp-phone-column { width: 154px; white-space: nowrap; font-variant-numeric: tabular-nums; color: #475569; }
 .t24-system .merchant-review-page .mp-queue-table .mp-state-column { width: 126px; }
 .t24-system .merchant-review-page .mp-queue-table .mp-action-column { width: 154px; text-align: right; }
 .t24-system .merchant-review-page .mp-queue-table input[type='checkbox'] { width: 16px; height: 16px; accent-color: #2563eb; cursor: pointer; }
 .t24-system .merchant-review-page .mp-merchant-identity { min-width: 0; }
-.t24-system .merchant-review-page .mp-merchant-identity strong { display: block; font-size: 14px; font-weight: 600; line-height: 1.6; color: var(--mp-ink); overflow-wrap: anywhere; }
-.t24-system .merchant-review-page .mp-merchant-meta { display: block; margin-top: 5px; color: #64748b; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
-.t24-system .merchant-review-page .mp-inline-phone { display: none; margin-top: 7px; color: #475569; font-size: 12px; font-variant-numeric: tabular-nums; }
-.t24-system .merchant-review-page .mp-row-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 6px; }
-.t24-system .merchant-review-page .mp-row-actions > button { min-height: 34px; padding-left: 10px; padding-right: 10px; font-size: 12px; box-shadow: none; }
+.t24-system .merchant-review-page .mp-merchant-identity strong { display: block; font-size: var(--t24-body-size); font-weight: var(--t24-weight-semibold); line-height: var(--t24-body-line); color: var(--mp-ink); overflow-wrap: anywhere; }
+.t24-system .merchant-review-page .mp-merchant-meta { display: block; margin-top: var(--t24-space-4); color: #64748b; font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); overflow-wrap: anywhere; }
+.t24-system .merchant-review-page .mp-inline-phone { display: none; margin-top: var(--t24-space-8); color: #475569; font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); font-variant-numeric: tabular-nums; }
+.t24-system .merchant-review-page .mp-row-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: var(--t24-space-8); }
+.t24-system .merchant-review-page .mp-row-actions > button { min-height: var(--t24-control-compact); padding-left: var(--t24-space-12); padding-right: var(--t24-space-12); font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); box-shadow: none; }
 .t24-system .merchant-review-page .mp-row-actions > button:has(svg):last-child { min-width: 32px; flex-shrink: 0; }
 .t24-system .merchant-review-page .mp-workspace.has-review .mp-phone-column,
 .t24-system .merchant-review-page .mp-workspace.has-review .mp-state-column { display: none; }
 .t24-system .merchant-review-page .mp-workspace.has-review .mp-inline-phone { display: block; }
-.t24-system .merchant-review-page .mp-selection-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 18px; border: 1px solid #dbeafe; border-radius: 11px; background: #f8fbff; color: #334155; box-shadow: none; }
+.t24-system .merchant-review-page .mp-selection-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--t24-space-12); padding: var(--t24-space-16) var(--t24-space-16); border: 1px solid #dbeafe; border-radius: 11px; background: #f8fbff; color: #334155; box-shadow: none; }
 .t24-system .merchant-review-page .mp-selection-bar > div { width: 100%; min-width: 0; padding: 0; }
 .t24-system .merchant-review-page .mp-selection-bar button,
-.t24-system .merchant-review-page .mp-selection-bar select { min-height: 40px; font-size: 13px; }
-.t24-system .merchant-review-page .mp-selection-bar .calm-pool-bulk-tools summary { background: white; font-weight: 500; }
-.t24-system .merchant-review-page .mp-review-panel { position: sticky; top: 12px; min-width: 0; padding: 20px; border: 1px solid var(--mp-border); border-radius: 12px; background: white; box-shadow: 0 8px 24px -22px #64748b; }
+.t24-system .merchant-review-page .mp-selection-bar select { min-height: var(--t24-control-height); font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+
+.t24-system .merchant-review-page .mp-selection-bar select {
+  font-size: var(--t24-input-size);
+  line-height: var(--t24-input-line);
+}
+.t24-system .merchant-review-page .mp-selection-bar .calm-pool-bulk-tools summary { background: white; font-weight: var(--t24-weight-medium); }
+.t24-system .merchant-review-page .mp-review-panel { position: sticky; top: 12px; min-width: 0; padding: var(--t24-space-24); border: 1px solid var(--mp-border); border-radius: 12px; background: white; box-shadow: 0 8px 24px -22px #64748b; }
 .merchant-review-page .mp-review-header,
-.mp-review-dialog .mp-review-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 18px; color: #64748b; font-size: 12px; }
+.mp-review-dialog .mp-review-header { display: flex; align-items: center; justify-content: space-between; gap: var(--t24-space-12); padding-bottom: var(--t24-space-16); color: #64748b; font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); }
 .merchant-review-page .mp-review-header > button,
-.mp-review-dialog .mp-review-header > button { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 7px; color: #94a3b8; background: transparent; box-shadow: none; }
+.mp-review-dialog .mp-review-header > button { width: 32px; height: var(--t24-control-height); padding: 0; border: 0; border-radius: 7px; color: #64748b; background: transparent; box-shadow: none; }
 .merchant-review-page .mp-review-header > button:hover,
 .mp-review-dialog .mp-review-header > button:hover { background: #f1f5f9; color: #475569; }
 .merchant-review-page .mp-review-identity,
-.mp-review-dialog .mp-review-identity { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-bottom: 20px; }
+.mp-review-dialog .mp-review-identity { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--t24-space-12); padding-bottom: var(--t24-space-24); }
 .merchant-review-page .mp-review-identity h3,
-.mp-review-dialog .mp-review-identity h3 { width: 100%; margin: 0; color: #0f172a; font-size: 21px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.mp-review-dialog .mp-review-identity h3 { width: 100%; margin: 0; color: #0f172a; font-size: var(--t24-detail-size); font-weight: var(--t24-weight-semibold); line-height: var(--t24-detail-line); overflow-wrap: anywhere; }
 .merchant-review-page .mp-review-fields,
 .mp-review-dialog .mp-review-fields { display: grid; gap: 0; margin: 0; }
 .merchant-review-page .mp-review-fields > div,
-.mp-review-dialog .mp-review-fields > div { min-width: 0; padding: 13px 0; border-top: 1px solid #edf1f6; }
+.mp-review-dialog .mp-review-fields > div { min-width: 0; padding: var(--t24-space-12) 0; border-top: 1px solid #edf1f6; }
 .merchant-review-page .mp-review-fields dt,
-.mp-review-dialog .mp-review-fields dt { margin-bottom: 5px; font-size: 12px; color: #94a3b8; }
+.mp-review-dialog .mp-review-fields dt { margin-bottom: var(--t24-space-4); font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); color: #64748b; }
 .merchant-review-page .mp-review-fields dd,
-.mp-review-dialog .mp-review-fields dd { margin: 0; color: #475569; font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
+.mp-review-dialog .mp-review-fields dd { margin: 0; color: #475569; font-size: var(--t24-body-size); line-height: var(--t24-body-line); overflow-wrap: anywhere; }
 .merchant-review-page .mp-review-fields dd a,
 .mp-review-dialog .mp-review-fields dd a { color: #2563eb; text-decoration: none; }
 .merchant-review-page .mp-review-fields dd a:hover,
 .mp-review-dialog .mp-review-fields dd a:hover { text-decoration: underline; }
 .merchant-review-page .mp-review-confirm,
-.mp-review-dialog .mp-review-confirm { display: flex; align-items: flex-start; gap: 9px; margin-top: 20px; padding: 13px; border: 1px solid #dbeafe; border-radius: 9px; background: #f8fbff; color: #475569; font-size: 12px; line-height: 1.8; cursor: pointer; }
+.mp-review-dialog .mp-review-confirm { display: flex; align-items: flex-start; gap: var(--t24-space-8); margin-top: var(--t24-space-24); padding: var(--t24-space-12); border: 1px solid #dbeafe; border-radius: 9px; background: #f8fbff; color: #475569; font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); cursor: pointer; }
 .merchant-review-page .mp-review-confirm input,
-.mp-review-dialog .mp-review-confirm input { width: 16px; height: 16px; flex: 0 0 16px; margin-top: 3px; accent-color: #2563eb; }
+.mp-review-dialog .mp-review-confirm input { width: 16px; height: 16px; flex: 0 0 16px; margin-top: var(--t24-space-4); accent-color: #2563eb; }
 .merchant-review-page .mp-review-actions,
-.mp-review-dialog .mp-review-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.mp-review-dialog .mp-review-actions { display: flex; flex-direction: column; gap: var(--t24-space-12); margin-top: var(--t24-space-16); }
 .merchant-review-page .mp-review-actions > button,
-.mp-review-dialog .mp-review-actions > button { width: 100%; min-height: 42px; height: auto; padding: 10px 14px; font-size: 13px; box-shadow: none; white-space: normal; }
+.mp-review-dialog .mp-review-actions > button { width: 100%; min-height: var(--t24-control-height); height: auto; padding: var(--t24-space-12) var(--t24-space-16); font-size: var(--t24-body-size); line-height: var(--t24-body-line); box-shadow: none; white-space: normal; }
 .merchant-review-page .mp-review-note,
-.mp-review-dialog .mp-review-note { margin-top: 14px; color: #94a3b8; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
-.mp-review-dialog { max-width: 480px; max-height: calc(100dvh - 36px); overflow-y: auto; border-radius: 16px; padding: 22px; background: white; text-align: left; }
+.mp-review-dialog .mp-review-note { margin-top: var(--t24-space-16); color: #64748b; font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); overflow-wrap: anywhere; }
+.mp-review-dialog { max-width: 480px; max-height: calc(100dvh - 36px); overflow-y: auto; border-radius: 16px; padding: var(--t24-space-24); background: white; text-align: left; }
 .mp-review-dialog > button:last-child { top: 16px; right: 16px; }
-.t24-system .merchant-review-page .mp-merchant-card { min-width: 0; padding: 20px; background: white; }
+.t24-system .merchant-review-page .mp-merchant-card { min-width: 0; padding: var(--t24-space-24); background: white; }
 .t24-system .merchant-review-page .mp-merchant-card.is-selected { background: #f4f7ff; }
 .t24-system .merchant-review-page .mp-merchant-card h3,
-.t24-system .merchant-review-page .mp-merchant-card strong { font-weight: 600; line-height: 1.6; color: #0f172a; overflow-wrap: anywhere; }
-.t24-system .merchant-review-page .mp-merchant-card .mp-merchant-meta { margin-top: 5px; }
-.t24-system .merchant-review-page .mp-merchant-card .mp-row-actions { justify-content: flex-start; margin-top: 16px; }
+.t24-system .merchant-review-page .mp-merchant-card strong { font-weight: var(--t24-weight-semibold); line-height: 1.6; color: #0f172a; overflow-wrap: anywhere; }
+.t24-system .merchant-review-page .mp-merchant-card .mp-merchant-meta { margin-top: var(--t24-space-4); }
+.t24-system .merchant-review-page .mp-merchant-card .mp-row-actions { justify-content: flex-start; margin-top: var(--t24-space-16); }
 
 @media (max-width: 1100px) {
   .t24-system .merchant-review-page .mp-workspace.has-review { grid-template-columns: minmax(0, 1fr); }
-  .t24-system .merchant-review-page .mp-review-panel { grid-row: 1; position: static; padding: 20px; }
-  .t24-system .merchant-review-page .mp-review-panel .mp-review-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
-  .t24-system .merchant-review-page .mp-review-panel .mp-review-identity h3 { width: auto; flex: 1 1 300px; }
+  .t24-system .merchant-review-page .mp-review-panel { grid-row: 1; position: static; padding: var(--t24-space-24); }
+  .t24-system .merchant-review-page .mp-review-panel .mp-review-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--t24-space-24); }
+  .t24-system .merchant-review-page .mp-review-panel .mp-review-identity h3 { width: auto; flex: 1 1 300px; font-size: var(--t24-detail-size); line-height: var(--t24-detail-line); }
   .t24-system .merchant-review-page .mp-review-panel .mp-review-actions { flex-direction: row; }
   .t24-system .merchant-review-page .mp-review-panel .mp-review-actions > button { flex: 1 1 0; }
   .t24-system .merchant-review-page .mp-workspace.has-review .mp-phone-column,
@@ -135,42 +146,52 @@
   .t24-system .merchant-review-page .mp-queue-table .mp-action-column { width: 146px; }
 }
 @media (max-width: 767px) {
-  .t24-system .merchant-review-page .mp-work-views { gap: 14px; padding-bottom: 0; }
-  .t24-system .merchant-review-page .mp-work-views > button { flex: 1 1 auto; min-height: 44px; padding: 10px 0; font-size: 12px; }
-  .t24-system .merchant-review-page .mp-search-toolbar { gap: 10px; }
+  .t24-system .merchant-review-page .mp-work-views { gap: var(--t24-space-16); padding-bottom: 0; }
+  .t24-system .merchant-review-page .mp-work-views > button { flex: 1 1 auto; min-height: var(--t24-control-height); padding: var(--t24-space-12) 0; font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); }
+  .t24-system .merchant-review-page .mp-search-toolbar { gap: var(--t24-space-12); }
   .t24-system .merchant-review-page .mp-search-field { flex-basis: 100%; }
-  .t24-system .merchant-review-page .mp-search-field input { min-height: 46px; font-size: 16px; }
-  .t24-system .merchant-review-page .mp-search-toolbar > button { min-height: 44px; min-width: 44px; padding: 10px 14px; }
-  .t24-system .merchant-review-page .mp-expanded-filters { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; }
+  .t24-system .merchant-review-page .mp-search-field input { min-height: var(--t24-control-height); font-size: var(--t24-input-size); line-height: var(--t24-input-line); }
+  .t24-system .merchant-review-page .mp-search-toolbar > button { min-height: var(--t24-control-height); min-width: 44px; padding: var(--t24-space-12) var(--t24-space-16); }
+  .t24-system .merchant-review-page .mp-expanded-filters { grid-template-columns: minmax(0, 1fr); gap: var(--t24-space-12); padding: var(--t24-space-16); }
   .t24-system .merchant-review-page .mp-expanded-filters input,
   .t24-system .merchant-review-page .mp-expanded-filters select,
-  .t24-system .merchant-review-page .mp-expanded-filters button { min-height: 44px; font-size: 16px; }
-  .t24-system .merchant-review-page .mp-workspace { gap: 14px; }
+  .t24-system .merchant-review-page .mp-expanded-filters button { min-height: var(--t24-control-height); font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+  .t24-system .merchant-review-page .mp-expanded-filters input,
+  .t24-system .merchant-review-page .mp-expanded-filters select {
+    font-size: var(--t24-input-size);
+    line-height: var(--t24-input-line);
+  }
+  .t24-system .merchant-review-page .mp-workspace { gap: var(--t24-space-16); }
   .t24-system .merchant-review-page .mp-review-panel { display: none; }
-  .t24-system .merchant-review-page .sc-table-heading { padding: 16px; align-items: flex-start; }
-  .t24-system .merchant-review-page .mp-merchant-card { padding: 17px 16px; }
-  .t24-system .merchant-review-page .mp-merchant-card .mp-row-actions { gap: 9px; margin-top: 16px; }
-  .t24-system .merchant-review-page .mp-merchant-card .mp-row-actions > button { min-height: 44px; min-width: 44px; font-size: 13px; }
+  .t24-system .merchant-review-page .sc-table-heading { padding: var(--t24-space-16); align-items: flex-start; }
+  .t24-system .merchant-review-page .mp-merchant-card { padding: var(--t24-space-16) var(--t24-space-16); }
+  .t24-system .merchant-review-page .mp-merchant-card .mp-row-actions { gap: var(--t24-space-8); margin-top: var(--t24-space-16); }
+  .t24-system .merchant-review-page .mp-merchant-card .mp-row-actions > button { min-height: var(--t24-control-compact); min-width: 44px; font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
   .t24-system .merchant-review-page .mp-merchant-card .mp-row-actions > button:first-child { flex: 1 1 180px; }
-  .t24-system .merchant-review-page .mp-selection-bar { padding: 15px; gap: 12px; }
+  .t24-system .merchant-review-page .mp-selection-bar { padding: var(--t24-space-16); gap: var(--t24-space-12); }
   .t24-system .merchant-review-page .mp-selection-bar button,
-  .t24-system .merchant-review-page .mp-selection-bar select { min-height: 44px; font-size: 14px; }
-  .mp-review-dialog { width: calc(100vw - 24px); max-width: 480px; max-height: calc(100dvh - 24px); padding: 20px; border-radius: 16px; }
+  .t24-system .merchant-review-page .mp-selection-bar select { min-height: var(--t24-control-height); font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+
+  .t24-system .merchant-review-page .mp-selection-bar select {
+    font-size: var(--t24-input-size);
+    line-height: var(--t24-input-line);
+  }
+  .mp-review-dialog { width: calc(100vw - 24px); max-width: 480px; max-height: calc(100dvh - 24px); padding: var(--t24-space-24); border-radius: 16px; }
   .mp-review-dialog .mp-review-header > button,
-  .mp-review-dialog > button:last-child { min-width: 44px; min-height: 44px; }
-  .mp-review-dialog .mp-review-identity h3 { padding-right: 18px; font-size: 21px; }
-  .mp-review-dialog .mp-review-fields dd { font-size: 14px; }
-  .mp-review-dialog .mp-review-confirm { min-height: 44px; font-size: 13px; }
-  .mp-review-dialog .mp-review-actions > button { min-height: 44px; font-size: 14px; }
+  .mp-review-dialog > button:last-child { min-width: 44px; min-height: var(--t24-control-height); }
+  .mp-review-dialog .mp-review-identity h3 { padding-right: var(--t24-space-16); font-size: var(--t24-detail-size); line-height: var(--t24-detail-line); }
+  .mp-review-dialog .mp-review-fields dd { font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+  .mp-review-dialog .mp-review-confirm { min-height: 44px; font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+  .mp-review-dialog .mp-review-actions > button { min-height: var(--t24-control-height); font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
 }
 
-.merchant-review-page .mp-review-extra, .mp-review-dialog .mp-review-extra { margin-top: 12px; border-top: 1px solid #edf1f6; }
-.merchant-review-page .mp-review-extra summary, .mp-review-dialog .mp-review-extra summary { padding: 12px 0; color: #64748b; font-size: 12px; cursor: pointer; }
+.merchant-review-page .mp-review-extra, .mp-review-dialog .mp-review-extra { margin-top: var(--t24-space-12); border-top: 1px solid #edf1f6; }
+.merchant-review-page .mp-review-extra summary, .mp-review-dialog .mp-review-extra summary { padding: var(--t24-space-12) 0; color: #64748b; font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); cursor: pointer; }
 .merchant-review-page .mp-review-identity .mp-merchant-meta, .mp-review-dialog .mp-review-identity .mp-merchant-meta { width: 100%; margin: 0; }
-.t24-system .merchant-review-page .mp-card-phone { margin: 10px 0; color: #334155; font-size: 14px; font-variant-numeric: tabular-nums; }
-.t24-system .merchant-review-page .mp-review-panel .mp-review-identity { padding-bottom: 12px; }
-.t24-system .merchant-review-page .mp-review-panel .mp-review-identity h3 { font-size: 18px; }
-.t24-system .merchant-review-page .mp-review-panel .mp-review-fields > div { padding: 10px 0; }
+.t24-system .merchant-review-page .mp-card-phone { margin: var(--t24-space-12) 0; color: #334155; font-size: var(--t24-body-size); line-height: var(--t24-body-line); font-variant-numeric: tabular-nums; }
+.t24-system .merchant-review-page .mp-review-panel .mp-review-identity { padding-bottom: var(--t24-space-12); }
+.t24-system .merchant-review-page .mp-review-panel .mp-review-identity h3 { font-size: var(--t24-detail-size); line-height: var(--t24-detail-line); }
+.t24-system .merchant-review-page .mp-review-panel .mp-review-fields > div { padding: var(--t24-space-12) 0; }
 .t24-system .merchant-review-page .mp-review-panel .mp-review-actions { flex-direction: row; flex-wrap: wrap; }
 .t24-system .merchant-review-page .mp-review-panel .mp-review-actions > button { width: auto; }
 .t24-system .merchant-review-page .mp-review-panel .mp-review-actions > button:last-child { flex: 1; }

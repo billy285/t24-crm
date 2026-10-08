@@ -20,6 +20,7 @@ import {
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import CustomerPhoneDial from '@/components/CustomerPhoneDial';
+import { formatPhoneNumber } from '@/lib/phone-format';
 import CustomerCombobox from '@/components/CustomerCombobox';
 import ExportButton from '@/components/ExportButton';
 import PageLoadState from '@/components/PageLoadState';
@@ -748,7 +749,7 @@ export default function Callbacks() {
                           {cust?.business_name || `客户#${cb.customer_id}`}
                           <ExternalLink className="w-3 h-3 opacity-50" />
                         </button>
-                        {cust?.phone && <CustomerPhoneDial phone={cust.phone} label={cust.phone} variant="ghost" />}
+                        {cust?.phone && <CustomerPhoneDial phone={cust.phone} country={cust.country} label={formatPhoneNumber(cust.phone, cust.country)} variant="ghost" />}
                         <span className="text-xs text-slate-400">
                           {cb.callback_date?.slice(0, 10)}
                         </span>

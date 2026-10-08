@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,8 @@ from models.sales_call_activities import SalesCallActivities
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
 from models.sales_lead_assignment_logs import SalesLeadAssignmentLogs
 from models.sales_leads import SalesLeads
+from services.sales_task_assignment import sync_pending_daily_tasks
+from services.sales_workflow_locks import lock_sales_workflow
 
 
 PROTECTED_STATUSES = {"follow_up", "interested", "appointment"}
@@ -35,8 +38,9 @@ def queue_category(lead: SalesLeads) -> str:
 
 async def run_sales_lead_cycle(db: AsyncSession, *, now: Optional[datetime] = None, commit: bool = True) -> dict:
     """Release expired/stale execution ownership without deleting or rewriting history."""
+    await lock_sales_workflow(db)
     now = now or datetime.now(timezone.utc)
-    leads = (await db.execute(select(SalesLeads))).scalars().all()
+    leads = (await db.execute(select(SalesLeads).execution_options(populate_existing=True))).scalars().all()
     released_cooldown = released_unstarted = protected = 0
     for lead in leads:
         lead.last_automation_at = now
@@ -80,6 +84,7 @@ async def run_sales_lead_cycle(db: AsyncSession, *, now: Optional[datetime] = No
                     from_sales_employee_id=old_id, from_sales_employee_name=old_name,
                     reason=lead.last_recycle_reason, operated_by_name="系统自动循环",
                 ))
+                await sync_pending_daily_tasks(db, lead, None, now=now)
                 released_unstarted += 1
     if commit:
         await db.commit()
@@ -100,6 +105,7 @@ async def ensure_daily_batch(
     existing = (await db.execute(select(SalesDailyDialTasks).where(
         SalesDailyDialTasks.sales_employee_id == sales_employee_id,
         SalesDailyDialTasks.task_date == target_date,
+        SalesDailyDialTasks.status.in_(["pending", "completed"]),
     ))).scalars().all()
     if len(existing) >= quota:
         if commit:
@@ -128,7 +134,7 @@ async def ensure_daily_batch(
         cooldown = aware(lead.cooldown_until)
         if cooldown and cooldown > now:
             return False
-        if follow_up and follow_up.date() > target_date:
+        if follow_up and follow_up.astimezone(ZoneInfo("Asia/Shanghai")).date() > target_date:
             return False
         if lead.last_contact_at and lead.status not in PROTECTED_STATUSES:
             last_contact = aware(lead.last_contact_at)

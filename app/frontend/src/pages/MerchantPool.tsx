@@ -1,11 +1,13 @@
 import SalesLeadDossier from '@/components/SalesLeadDossier';
-import { ChangeEvent, useEffect, useRef, useState } from 'react';
-import { Archive, ArrowUpRight, CheckSquare, ChevronDown, Database, Download, FileUp, Filter, MoreHorizontal, RefreshCw, Search, Send, ShieldCheck, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Archive, ArrowUpRight, CheckSquare, ChevronDown, Database, Filter, MoreHorizontal, RefreshCw, Search, Send, ShieldCheck, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import '@/components/sales-center.css';
 import './sales-workspace.css';
 import './merchant-pool.css';
+import MerchantImportDialog from '@/components/MerchantImportDialog';
+import { formatPhoneNumber } from '@/lib/phone-format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
-import { getToken, invokeWithAuth } from '@/lib/tokenStore';
+import { invokeWithAuth } from '@/lib/tokenStore';
 import { useAutoRefresh } from '@/lib/use-auto-refresh';
 import { useRole } from '@/lib/role-context';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -53,7 +55,7 @@ type Merchant = {
 };
 
 const statusLabels: Record<string, string> = {
-  pending: '待核对', no_phone: '无电话隔离', duplicate: '重复隔离',
+  pending: '待核对', no_phone: '电话待补齐', duplicate: '重复隔离',
   existing_customer: '正式客户隔离', closed: '已关闭隔离', converted: '已转线索', archived: '已归档',
 };
 const statusClasses: Record<string, string> = {
@@ -83,23 +85,14 @@ type EnrichmentSuggestion = { field: string; value: string | number; source_labe
 type EnrichmentResult = { merchant_id: number; business_name: string; status: string; suggestions: EnrichmentSuggestion[]; missing_fields: string[]; warning?: string | null; source_updated_at?: string | null };
 
 const emptyEdit = {
-  business_name: '', contact_name: '', phone: '', industry: '', country: 'US', state: '', city: '', address: '', website: '', rating: '', business_status: '',
+  business_name: '', contact_name: '', phone: '', industry: '', country: '', state: '', city: '', address: '', website: '', rating: '', business_status: '',
   google_business_url: '', google_rating: '', google_review_count: '', yelp_url: '', yelp_rating: '', yelp_review_count: '',
   social_profiles: '', recent_negative_reviews: '', content_update_summary: '', content_last_updated_at: '',
 };
 
-const importTemplateHeaders = ['商家名称', '商家电话', '商家位置', '地区', '来源'];
 
 function formatDate(value?: string) {
   return value ? value.slice(0, 16).replace('T', ' ') : '-';
-}
-
-function formatPhone(value?: string) {
-  if (!value) return '';
-  const digits = value.replace(/\D/g, '');
-  const nationalNumber = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
-  if (nationalNumber.length !== 10) return value.trim();
-  return `+1 ${nationalNumber.slice(0, 3)}-${nationalNumber.slice(3, 6)}-${nationalNumber.slice(6)}`;
 }
 
 function normalizeState(value?: string) {
@@ -144,7 +137,6 @@ export default function MerchantPool() {
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState<Merchant | null>(null);
   const [editForm, setEditForm] = useState(emptyEdit);
   const [enrichmentOpen, setEnrichmentOpen] = useState(false);
@@ -152,7 +144,6 @@ export default function MerchantPool() {
   const [enrichmentResults, setEnrichmentResults] = useState<EnrichmentResult[]>([]);
   const [enrichmentSelected, setEnrichmentSelected] = useState<Record<number, Record<string, boolean>>>({});
   const [applyingEnrichment, setApplyingEnrichment] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   const loadRequestSeqRef = useRef(0);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -224,45 +215,6 @@ export default function MerchantPool() {
   }, [canManagePool]);
 
   useAutoRefresh(loadData, { intervalMs: 30000, enabled: !importOpen && !editing && !reviewing });
-
-  const downloadImportTemplate = () => {
-    const csv = `\uFEFF${importTemplateHeaders.join(',')}\r\n`;
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'T24商家导入固定模板.csv';
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const importCsv = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.csv') && !file.name.toLowerCase().endsWith('.xlsx')) {
-      toast.error('请上传 CSV 或 Excel（.xlsx）文件');
-      return;
-    }
-    setImporting(true);
-    try {
-      const body = new FormData();
-      body.append('file', file);
-      const response = await fetch('/api/v1/merchant-pool/import-csv?data_source=csv', {
-        method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body,
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result?.detail || 'CSV 导入失败');
-      const importedCount = Object.values(result.counts || {}).reduce<number>((sum, value) => sum + Number(value || 0), 0);
-      toast.success(`已导入 ${result.total} 条；待清洗 ${result.counts?.pending || 0} 条，自动隔离 ${importedCount - Number(result.counts?.pending || 0)} 条`);
-      if (result.errors?.length) toast.warning(`${result.errors.length} 行格式有问题，未导入`);
-      setImportOpen(false);
-      await loadData();
-    } catch (error: any) {
-      toast.error(error?.message || 'CSV 导入失败');
-    } finally {
-      setImporting(false);
-      event.target.value = '';
-    }
-  };
 
   const openEdit = (merchant: Merchant) => {
     setReviewing(null);
@@ -469,7 +421,7 @@ export default function MerchantPool() {
       <div className="mp-review-identity"><h3>{reviewing.business_name}</h3><p className="mp-merchant-meta">{formatRegion(reviewing)} · #{reviewing.id}</p><Badge className={statusClasses[reviewing.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[reviewing.pool_status] || reviewing.pool_status}</Badge></div>
       <dl className="mp-review-fields">
         {[
-          ['联系电话', reviewing.phone ? formatPhone(reviewing.phone) : '无电话'],
+          ['联系电话', reviewing.phone ? formatPhoneNumber(reviewing.phone, reviewing.country) : '无电话'],
           ['完整地址', reviewing.address || '未填写'],
           ['资料来源', sourceLabel(reviewing)],
         ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
@@ -551,7 +503,7 @@ export default function MerchantPool() {
           {isMobile ? <div data-testid="merchant-pool-mobile-list" className="divide-y divide-slate-100">
             {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载商家池...</p> : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">暂无符合条件的商家</p> : items.map(merchant => <article key={merchant.id} data-testid="merchant-mobile-card" className={`mp-merchant-card${selectedMerchantIds.includes(merchant.id) ? ' is-selected' : ''}`}>
               <div className="mp-merchant-identity"><strong>{merchant.business_name}</strong><p className="mp-merchant-meta">{formatRegion(merchant)} · #{merchant.id}</p></div>
-              <p className="mp-card-phone">{merchant.phone ? formatPhone(merchant.phone) : '无电话'}</p>
+              <p className="mp-card-phone">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : '无电话'}</p>
               <Badge className={statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge>
               <div className="mp-row-actions"><Button variant="outline" aria-label={`${merchant.pool_status === 'pending' ? '核对资料' : '查看资料'}：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.pool_status === 'pending' ? '核对资料' : '查看资料'}<ArrowUpRight className="ml-2 h-4 w-4" /></Button>{selectedMerchantIds.includes(merchant.id) && <Button variant="ghost" aria-label={`移出待分配：${merchant.business_name}`} onClick={() => toggleMerchantSelection(merchant.id, false)}>移出待分配</Button>}{merchantMenu(merchant)}</div>
               {selectedMerchantIds.includes(merchant.id) && <p className="mp-merchant-meta">已加入本页待分配</p>}
@@ -559,8 +511,8 @@ export default function MerchantPool() {
           </div> : <div data-testid="merchant-pool-desktop-table"><table className="mp-queue-table"><thead><tr>{canManagePool && <th className="mp-select-column"><label><input aria-label="选择本页可操作商家" type="checkbox" checked={items.filter(item => !['converted', 'archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted', 'archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></label></th>}<th>商家与地区</th><th className="mp-phone-column">电话</th><th className="mp-state-column">当前状态</th><th className="mp-action-column">操作</th></tr></thead><tbody>
             {loading ? <tr><td colSpan={canManagePool ? 5 : 4} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr> : items.length === 0 ? <tr><td colSpan={canManagePool ? 5 : 4} className="py-12 text-center text-slate-400">暂无符合条件的商家</td></tr> : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) || reviewing?.id === merchant.id ? 'is-selected' : ''}>
               {canManagePool && <td className="mp-select-column"><label><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={['converted', 'archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></label></td>}
-              <td><div className="mp-merchant-identity"><strong>{merchant.business_name}</strong><p className="mp-merchant-meta">{formatRegion(merchant)} · #{merchant.id}</p><p className="mp-inline-phone">{merchant.phone ? formatPhone(merchant.phone) : '无电话'}</p></div></td>
-              <td className="mp-phone-column">{merchant.phone ? formatPhone(merchant.phone) : <span className="text-rose-600">无电话</span>}</td>
+              <td><div className="mp-merchant-identity"><strong>{merchant.business_name}</strong><p className="mp-merchant-meta">{formatRegion(merchant)} · #{merchant.id}</p><p className="mp-inline-phone">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : '无电话'}</p></div></td>
+              <td className="mp-phone-column">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : <span className="text-rose-600">无电话</span>}</td>
               <td className="mp-state-column"><Badge className={statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge></td>
               <td className="mp-action-column"><div className="mp-row-actions"><Button size="sm" variant="outline" aria-label={`${merchant.pool_status === 'pending' ? '核对资料' : '查看资料'}：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.pool_status === 'pending' ? '核对资料' : '查看资料'}<ArrowUpRight className="ml-1.5 h-3.5 w-3.5" /></Button>{merchantMenu(merchant)}</div></td>
             </tr>)}
@@ -571,7 +523,7 @@ export default function MerchantPool() {
       </div>
       {isMobile && <Dialog open={!!reviewing} onOpenChange={open => !open && setReviewing(null)}><DialogContent className="mp-review-dialog" aria-describedby={undefined}><DialogHeader><DialogTitle>核对商家资料</DialogTitle></DialogHeader>{reviewDetails}</DialogContent></Dialog>}
 
-      {!isMobile && <Dialog open={importOpen} onOpenChange={setImportOpen}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>按固定模板导入商家</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-950"><p className="font-semibold">只接受固定五列表格</p><p className="mt-1 text-indigo-800">第一行必须依次为：商家名称、商家电话、商家位置、地区、来源。缺列、多列、改名或调整顺序都会停止导入并明确提示。</p></div><div className="grid grid-cols-5 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-center text-xs font-medium text-slate-700">{importTemplateHeaders.map((header, index) => <div key={header} className={index ? 'border-l px-2 py-3' : 'px-2 py-3'}>{index + 1}. {header}</div>)}</div><div className="rounded-xl border border-slate-200 p-4"><p className="text-sm font-medium text-slate-900">先下载模板，再填写并上传</p><p className="mt-1 text-xs leading-5 text-slate-500">“商家位置”填写完整街道地址；“地区”建议填写“城市, 州/省, 国家”；“来源”填写 Google Maps、名单采购或实际采集渠道。</p><div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={downloadImportTemplate}><Download className="mr-2 h-4 w-4" />下载固定模板</Button><input ref={fileRef} className="hidden" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={importCsv} /><Button disabled={importing} onClick={() => fileRef.current?.click()}><FileUp className="mr-2 h-4 w-4" />{importing ? '正在校验并导入...' : '选择填写好的文件'}</Button></div></div><div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">上传后仍会自动隔离无电话、正式客户重复或商家池重复的数据，不会直接进入电话销售线索库。</div></div></DialogContent></Dialog>}
+      {!isMobile && <MerchantImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={() => loadData()} />}
 
       {!isMobile && <Dialog open={enrichmentOpen} onOpenChange={setEnrichmentOpen}><DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto"><DialogHeader><DialogTitle>AI 补充空白资料 · 人工确认</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-900"><p className="font-medium">安全补充规则</p><p className="mt-1 text-indigo-800">只使用原始导入资料中已有、但尚未写入标准字段的内容；不会覆盖已填写资料，也不会根据商家名称猜测。Google/Yelp 外部检索尚未接入，找不到来源的字段显示为“信息不足”。</p></div>{enrichmentResults.map(result => <Card key={result.merchant_id} className="border-slate-200"><CardContent className="space-y-3 p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-slate-900">{result.business_name}</p><Badge className={result.status === 'needs_review' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}>{result.status === 'needs_review' ? '有待确认建议' : '信息不足'}</Badge></div><p className="text-xs text-slate-500">原始资料时间：{formatDate(result.source_updated_at || undefined)}</p></div>{result.warning && <p className="rounded-lg bg-amber-50 p-2 text-xs leading-5 text-amber-900">{result.warning}</p>}{result.suggestions.length ? <div className="grid gap-2 md:grid-cols-2">{result.suggestions.map(suggestion => <label key={`${result.merchant_id}-${suggestion.field}`} className="flex cursor-pointer items-start gap-2 rounded-lg border bg-white p-3"><input type="checkbox" checked={Boolean(enrichmentSelected[result.merchant_id]?.[suggestion.field])} onChange={event => setEnrichmentSelected(previous => ({ ...previous, [result.merchant_id]: { ...previous[result.merchant_id], [suggestion.field]: event.target.checked } }))} /><span className="min-w-0 text-sm"><span className="font-medium text-slate-800">{suggestion.field}</span><span className="block break-words text-slate-700">{String(suggestion.value)}</span><span className="block text-xs text-slate-500">来源：{suggestion.source_label} · 可信度：{Math.round(suggestion.confidence * 100)}%</span></span></label>)}</div> : <div className="rounded-lg border border-dashed p-3 text-sm text-slate-500">信息不足：原始导入资料中没有可追溯的空白字段补充内容。</div>}{result.missing_fields.length > 0 && <p className="text-xs text-slate-500">仍缺少：{result.missing_fields.join('、')}</p>}</CardContent></Card>)}<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEnrichmentOpen(false)}>取消</Button><Button disabled={applyingEnrichment} onClick={() => void applyEnrichment()}>{applyingEnrichment ? '写入中...' : '确认写入已勾选资料'}</Button></div></div></DialogContent></Dialog>}
 

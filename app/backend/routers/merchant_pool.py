@@ -20,6 +20,8 @@ from models.merchant_ai_analyses import MerchantAiAnalyses
 from models.sales_leads import SalesLeads
 from models.employees import Employees
 from schemas.auth import UserResponse
+from services.phone_numbers import normalize_phone_country, parse_phone_number, phone_match_key
+from services.merchant_row_locks import lock_merchant_rows
 
 
 router = APIRouter(prefix="/api/v1/merchant-pool", tags=["merchant-pool"])
@@ -52,13 +54,8 @@ def _ensure_admin_role(user: UserResponse) -> None:
         raise HTTPException(status_code=403, detail="只有系统管理员可以清理商家池数据")
 
 
-def _normalize_phone(value: Optional[str]) -> str:
-    raw = re.sub(r"(?:ext\.?|extension|x|分机)\s*\d+\s*$", "", value or "", flags=re.I)
-    digits = re.sub(r"[^0-9]", "", raw)
-    # North American numbers are commonly imported both with and without +1.
-    if len(digits) == 11 and digits.startswith("1"):
-        return digits[1:]
-    return digits
+def _normalize_phone(value: Optional[str], country: Optional[str] = None) -> str:
+    return phone_match_key(value, country) or ""
 
 
 def _normalize_text(value: Optional[str]) -> str:
@@ -299,13 +296,17 @@ def _parse_import_values(mapped: dict[str, Any]) -> dict[str, Any]:
             mapped["website"] = url_match.group().rstrip(".,;:")
 
     if mapped.get("region"):
-        parts = [part.strip() for part in str(mapped.pop("region")).split(",") if part.strip()]
-        if parts and re.fullmatch(r"(?:US|USA|United States|美国)", parts[-1], re.I):
-            mapped.setdefault("country", "US")
+        parts = [part.strip() for part in re.split(r"[,，]", str(mapped.pop("region"))) if part.strip()]
+        # Resolve only an explicit country. A trailing two-letter token can be
+        # a state/province; never turn an international place into a US record.
+        country = None
+        if len(parts) >= 3 or (parts and len(parts[-1]) != 2) or (parts and parts[-1].upper() in {"US", "USA"}):
+            country = normalize_phone_country(parts[-1]) if parts else None
+        if country:
+            mapped.setdefault("country", country)
             parts.pop()
-        if parts and re.fullmatch(r"[A-Z]{2}", parts[-1], re.I):
+        if mapped.get("country") and len(parts) >= 2:
             mapped.setdefault("state", parts.pop().upper())
-            mapped.setdefault("country", "US")
         if parts:
             mapped.setdefault("city", ", ".join(parts))
 
@@ -407,12 +408,12 @@ async def _create_sales_lead_from_merchant(
 
 async def _match_customer(db: AsyncSession, record: MerchantRecord) -> tuple[Optional[int], Optional[str]]:
     customers = (await db.execute(select(Customers))).scalars().all()
-    phone = _normalize_phone(record.phone)
+    phone = _normalize_phone(record.phone, record.country)
     name = _normalize_text(record.business_name)
     address = _normalize_text(record.address)
     website = _normalize_website(record.website)
     for customer in customers:
-        if phone and phone == _normalize_phone(customer.phone):
+        if phone and phone == _normalize_phone(customer.phone, customer.country):
             return customer.id, "电话已存在于正式客户"
         if website and website == _normalize_website(customer.website):
             return customer.id, "网站已存在于正式客户"
@@ -430,17 +431,18 @@ async def _match_pool_duplicate(
     if exclude_id is not None:
         query = query.where(MerchantPool.id != exclude_id)
     rows = (await db.execute(query)).scalars().all()
-    phone = _normalize_phone(record.phone)
+    available_ids = {row.id for row in rows}
+    phone = _normalize_phone(record.phone, record.country)
     name = _normalize_text(record.business_name)
     address = _normalize_text(record.address)
     website = _normalize_website(record.website)
     for row in rows:
-        duplicate_id = row.duplicate_of_id or row.id
+        duplicate_id = row.duplicate_of_id if row.duplicate_of_id in available_ids else row.id
         status_hint = {
             "converted": "（该商家已转入电话销售线索）",
             ARCHIVED_STATUS: "（该商家已有归档记录）",
         }.get(row.pool_status, "")
-        if phone and phone == _normalize_phone(row.phone):
+        if phone and phone == _normalize_phone(row.phone, row.country):
             return duplicate_id, f"电话与商家池历史记录重复{status_hint}"
         if website and website == _normalize_website(row.website):
             return duplicate_id, f"网站与商家池历史记录重复{status_hint}"
@@ -458,11 +460,32 @@ async def _classify_record(
     duplicate_id, duplicate_reason = await _match_pool_duplicate(db, record, exclude_id)
     if duplicate_id:
         return "duplicate", duplicate_reason, duplicate_id, None
-    if not _normalize_phone(record.phone):
-        return "no_phone", "未提供可用电话，暂不进入线索库", None, None
+    phone = parse_phone_number(record.phone, record.country)
+    if not phone.is_valid:
+        return "no_phone", phone.reason or "电话需补齐后才能分配", None, None
     if _is_closed(record.business_status):
         return "closed", "商家状态为已关闭或停业", None, None
     return "pending", None, None, None
+
+
+async def _classify_record_with_reference_lock(
+    db: AsyncSession, record: MerchantRecord, exclude_id: Optional[int] = None
+) -> tuple[str, Optional[str], Optional[int], Optional[int]]:
+    # All classification writers serialize references with import undo. Do not
+    # flush pending edits before their new reference has been rechecked.
+    with db.no_autoflush:
+        await lock_merchant_rows(db, [])
+        classification = await _classify_record(db, record, exclude_id)
+        duplicate_id = classification[2]
+        if duplicate_id:
+            references = await lock_merchant_rows(db, [duplicate_id])
+            duplicate = references[0] if references else None
+            classification = await _classify_record(db, record, exclude_id)
+            current_reference = classification[2]
+            if current_reference and (not duplicate or duplicate.id != current_reference):
+                await db.rollback()
+                raise HTTPException(status_code=409, detail="商家资料刚被其他操作更新，本次操作尚未写入，请重试")
+    return classification
 
 
 async def _store_record(
@@ -472,7 +495,7 @@ async def _store_record(
     user: UserResponse,
     raw_record: Optional[dict[str, Any]] = None,
 ) -> MerchantPool:
-    pool_status, reason, duplicate_id, customer_id = await _classify_record(db, record)
+    pool_status, reason, duplicate_id, customer_id = await _classify_record_with_reference_lock(db, record)
     collected_at = record.collected_at or datetime.now(timezone.utc)
     merchant = MerchantPool(
         **record.model_dump(exclude={"collected_at"}),
@@ -658,6 +681,10 @@ async def import_merchant_csv(
             merchant = await _store_record(db, record, row_source, current_user, raw_record=row)
             created.append(merchant)
             counts[merchant.pool_status] = counts.get(merchant.pool_status, 0) + 1
+        except HTTPException:
+            # A reference-lock conflict rolls back the transaction. Do not
+            # report earlier in-memory rows as successfully imported.
+            raise
         except Exception as exc:
             errors.append({"row": index, "reason": str(exc)})
     if not created:
@@ -679,6 +706,7 @@ async def update_merchant_pool_record(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_pool_role(current_user)
+    await lock_merchant_rows(db, [])
     query = select(MerchantPool).where(MerchantPool.id == merchant_id)
     scope = await _manager_scope(db, current_user)
     if scope is not None:
@@ -701,7 +729,7 @@ async def update_merchant_pool_record(
         "source_record_id": merchant.source_record_id, "business_status": merchant.business_status,
         "collected_at": merchant.collected_at,
     })
-    merchant.pool_status, merchant.isolation_reason, merchant.duplicate_of_id, merchant.existing_customer_id = await _classify_record(
+    merchant.pool_status, merchant.isolation_reason, merchant.duplicate_of_id, merchant.existing_customer_id = await _classify_record_with_reference_lock(
         db, record, merchant.id
     )
     merchant.updated_at = datetime.now(timezone.utc)
@@ -761,11 +789,12 @@ async def convert_to_sales_lead(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_pool_role(current_user)
+    await lock_merchant_rows(db, [])
     query = select(MerchantPool).where(MerchantPool.id == merchant_id)
     scope = await _manager_scope(db, current_user)
     if scope is not None:
         query = query.where(scope)
-    merchant = (await db.execute(query)).scalar_one_or_none()
+    merchant = (await db.execute(query.with_for_update())).scalar_one_or_none()
     if not merchant:
         raise HTTPException(status_code=404, detail="商家池记录不存在或不在权限范围内")
     if merchant.pool_status != "pending":
@@ -789,6 +818,7 @@ async def bulk_convert_to_sales_leads(
 ):
     """Move a manager-approved batch into one salesperson's private lead library."""
     _ensure_pool_role(current_user)
+    await lock_merchant_rows(db, [])
     merchant_ids = list(dict.fromkeys(payload.merchant_ids))
     assigned_id, assigned_name, manager_id = await _resolve_sales_assignee(
         db, payload.assigned_sales_id, current_user
@@ -797,7 +827,7 @@ async def bulk_convert_to_sales_leads(
     scope = await _manager_scope(db, current_user)
     if scope is not None:
         query = query.where(scope)
-    merchants = (await db.execute(query)).scalars().all()
+    merchants = (await db.execute(query.with_for_update())).scalars().all()
     merchant_by_id = {merchant.id: merchant for merchant in merchants}
 
     missing_ids = [merchant_id for merchant_id in merchant_ids if merchant_id not in merchant_by_id]

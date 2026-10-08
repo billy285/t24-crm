@@ -35,6 +35,9 @@ from schemas.aihub import ChatMessage, GenTxtRequest
 from services.ai_config import humanize_ai_error, resolve_ai_runtime_config
 from services.aihub import AIHubService
 from services.deal_payment_sync import sync_payment_from_deal
+from services.sales_task_assignment import sync_pending_daily_tasks
+from services.sales_workflow_locks import lock_sales_workflow
+from services.phone_numbers import parse_phone_number, phone_match_key
 from services.sales_lead_cycle import (
     automation_overview as sales_automation_overview,
     ensure_daily_batch,
@@ -168,6 +171,15 @@ class SalesLeadCreate(BaseModel):
     status: str = "new"
     assigned_sales_id: Optional[int] = None
     notes: Optional[str] = None
+    next_follow_up_at: Optional[datetime] = None
+
+    @field_validator("next_follow_up_at")
+    @classmethod
+    def normalize_follow_up_timestamp(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
 
     @field_validator("business_name", "phone")
     @classmethod
@@ -193,6 +205,14 @@ class SalesLeadUpdate(BaseModel):
     do_not_contact_reason: Optional[str] = None
     notes: Optional[str] = None
     next_follow_up_at: Optional[datetime] = None
+
+    @field_validator("next_follow_up_at")
+    @classmethod
+    def normalize_follow_up_timestamp(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
     last_contact_at: Optional[datetime] = None
 
 
@@ -264,6 +284,14 @@ class SalesCallResultCreate(BaseModel):
     outcome: str
     notes: Optional[str] = Field(default=None, max_length=4000)
     next_follow_up_at: Optional[datetime] = None
+
+    @field_validator("next_follow_up_at")
+    @classmethod
+    def normalize_follow_up_timestamp(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
 
     @field_validator("outcome")
     @classmethod
@@ -386,7 +414,7 @@ async def _get_scoped_lead(db: AsyncSession, lead_id: int, user: UserResponse) -
     scope = await _scope_condition(db, user)
     if scope is not None:
         query = query.where(scope)
-    lead = (await db.execute(query)).scalar_one_or_none()
+    lead = (await db.execute(query.execution_options(populate_existing=True))).scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="线索不存在或不在您的权限范围内")
     return lead
@@ -738,11 +766,22 @@ async def list_sales_leads(
         conditions.append(scope)
     if search:
         term = f"%{search.strip()}%"
+        phone_ids = []
+        if re.fullmatch(r"[+0-9 ().-]+", search.strip()):
+            digits = re.sub(r"\D", "", search)
+            if digits:
+                phones = select(SalesLeads.id, SalesLeads.phone, SalesLeads.country)
+                if scope is not None:
+                    phones = phones.where(scope)
+                phone_ids = [lead_id for lead_id, raw, country in (await db.execute(phones)).all()
+                    if digits in re.sub(r"\D", "", phone_match_key(raw, country) or "")]
+
         conditions.append(
             or_(
                 SalesLeads.business_name.ilike(term),
                 SalesLeads.contact_name.ilike(term),
                 SalesLeads.phone.ilike(term),
+                SalesLeads.id.in_(phone_ids),
                 SalesLeads.city.ilike(term),
             )
         )
@@ -767,6 +806,25 @@ async def list_sales_leads(
     return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
+@router.post("/workbench/prepare")
+async def prepare_daily_call_workbench(
+    sales_employee_id: Optional[int] = None,
+    target_date: Optional[date] = None,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Explicitly prepare work; reading the dashboard must not assign/reclaim leads."""
+    _ensure_lead_role(current_user)
+    target_date = target_date or datetime.now(BUSINESS_TIMEZONE).date()
+    if target_date != datetime.now(BUSINESS_TIMEZONE).date():
+        raise HTTPException(status_code=400, detail="只能生成今天的任务；历史日期只供查看")
+    salesperson = await _resolve_workbench_salesperson(db, current_user, sales_employee_id)
+    await lock_sales_workflow(db, employee_ids=[salesperson.id])
+    quota = await _daily_quota(db, salesperson.id, target_date)
+    result = await ensure_daily_batch(db, salesperson.id, target_date, quota)
+    return {"message": f"今日任务已准备，新增 {result['created']} 条", **result}
+
+
 @router.get("/workbench/today")
 async def get_daily_call_workbench(
     sales_employee_id: Optional[int] = None,
@@ -774,18 +832,18 @@ async def get_daily_call_workbench(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return a fixed mixed daily batch generated from the reusable company lead pool."""
+    """Read the existing daily batch without changing assignment or task records."""
     _ensure_lead_role(current_user)
     target_date = target_date or datetime.now(BUSINESS_TIMEZONE).date()
     salesperson = await _resolve_workbench_salesperson(db, current_user, sales_employee_id)
     quota = await _daily_quota(db, salesperson.id, target_date)
-    await _ensure_daily_batch(db, salesperson.id, target_date, quota)
     tasks = (await db.execute(
         select(SalesDailyDialTasks, SalesLeads)
         .join(SalesLeads, SalesLeads.id == SalesDailyDialTasks.lead_id)
         .where(
             SalesDailyDialTasks.sales_employee_id == salesperson.id,
             SalesDailyDialTasks.task_date == target_date,
+            SalesDailyDialTasks.status.in_(["pending", "completed"]),
         )
         .order_by(SalesDailyDialTasks.status.asc(), SalesLeads.next_follow_up_at.is_(None), SalesLeads.next_follow_up_at.asc(), SalesDailyDialTasks.id.asc())
     )).all()
@@ -865,6 +923,7 @@ async def run_sales_automation_now(
     _ensure_lead_role(current_user)
     if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
         raise HTTPException(status_code=403, detail="只有主管或管理员可以执行线索自动扫描")
+    await lock_sales_workflow(db)
     result = await run_sales_lead_cycle(db)
     return {"message": "线索自动循环扫描完成；历史记录、成交归属和分润归属均未改动", **result}
 
@@ -975,6 +1034,7 @@ async def batch_update_lead_recovery(
     if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
         raise HTTPException(status_code=403, detail="只有销售主管或系统管理员可以批量处理线索归属")
     lead_ids = list(dict.fromkeys(payload.lead_ids))
+    await lock_sales_workflow(db, lead_ids=lead_ids)
     leads = [await _get_scoped_lead(db, lead_id, current_user) for lead_id in lead_ids]
     snapshot = {item["lead_id"]: item for item in await _load_recovery_snapshot(db, current_user)}
     target = None
@@ -1026,6 +1086,7 @@ async def batch_update_lead_recovery(
                 from_employee_id=old_id, from_employee_name=old_name,
                 to_employee_id=target.id, to_employee_name=target.name, reason=payload.reason.strip(),
             )
+        await sync_pending_daily_tasks(db, lead, lead.assigned_sales_id)
     await db.commit()
     verb = "回收至待分配" if payload.action == "reclaim" else f"重新分配给 {target.name}"
     return {"message": f"已将 {len(leads)} 条线索{verb}", "updated": len(leads)}
@@ -1099,6 +1160,7 @@ async def reclaim_sales_lead(
     _ensure_lead_role(current_user)
     if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
         raise HTTPException(status_code=403, detail="只有销售主管或系统管理员可以回收线索")
+    await lock_sales_workflow(db, lead_ids=[lead_id])
     lead = await _get_scoped_lead(db, lead_id, current_user)
     snapshot = {item["lead_id"]: item for item in await _load_recovery_snapshot(db, current_user)}.get(lead.id)
     if not snapshot or snapshot["state"] != "recoverable":
@@ -1114,6 +1176,7 @@ async def reclaim_sales_lead(
         from_employee_id=old_id, from_employee_name=old_name,
         reason=payload.reason.strip(),
     )
+    await sync_pending_daily_tasks(db, lead, None)
     await db.commit()
     return {"message": "线索已回收至主管待分配队列", "lead_id": lead.id}
 
@@ -1128,6 +1191,7 @@ async def reassign_sales_lead(
     _ensure_lead_role(current_user)
     if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
         raise HTTPException(status_code=403, detail="只有销售主管或系统管理员可以转交线索")
+    await lock_sales_workflow(db, lead_ids=[lead_id])
     lead = await _get_scoped_lead(db, lead_id, current_user)
     snapshot = {item["lead_id"]: item for item in await _load_recovery_snapshot(db, current_user)}.get(lead.id)
     if snapshot and snapshot["state"] == "protected" and not payload.confirm_protected_transfer:
@@ -1156,6 +1220,7 @@ async def reassign_sales_lead(
         to_employee_id=target.id, to_employee_name=target.name,
         reason=payload.reason.strip(),
     )
+    await sync_pending_daily_tasks(db, lead, target.id)
     await db.commit()
     return {"message": "线索已转交，原负责人及原因已保留在操作日志中", "lead_id": lead.id, "assigned_sales_name": target.name}
 
@@ -1314,13 +1379,13 @@ def _business_date(value: Optional[datetime]) -> Optional[date]:
 async def _find_customer_duplicates(db: AsyncSession, lead: SalesLeads) -> list[dict]:
     customers = (await db.execute(select(Customers))).scalars().all()
     matches = []
-    phone = _normalize_identity(lead.phone)
+    phone = phone_match_key(lead.phone, lead.country) or _normalize_identity(lead.phone)
     website = _normalize_identity(lead.website)
     business = _normalize_identity(lead.business_name)
     address = _normalize_identity(lead.address)
     for customer in customers:
         reasons = []
-        if phone and phone == _normalize_identity(customer.phone): reasons.append("电话相同")
+        if phone and phone == (phone_match_key(customer.phone, customer.country) or _normalize_identity(customer.phone)): reasons.append("电话相同")
         if website and website == _normalize_identity(customer.website): reasons.append("官网相同")
         if business and address and business == _normalize_identity(customer.business_name) and address == _normalize_identity(customer.address): reasons.append("商家名称和地址相同")
         if reasons:
@@ -1338,6 +1403,7 @@ async def convert_sales_lead_to_customer(
     _ensure_lead_role(current_user)
     if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
         raise HTTPException(status_code=403, detail="只有销售主管或系统管理员可以确认合作并转为正式客户")
+    await lock_sales_workflow(db, lead_ids=[lead_id])
     lead = await _get_scoped_lead(db, lead_id, current_user)
     if lead.converted_customer_id:
         raise HTTPException(status_code=409, detail=f"该线索已转为正式客户 #{lead.converted_customer_id}")
@@ -1363,6 +1429,8 @@ async def convert_sales_lead_to_customer(
         if not handoff.operations_group_created: blockers.append("请确认已建立运营对接群")
         payment_status = handoff.payment_status or ("paid" if handoff.finance_payment_confirmed else "pending")
         if payment_status != "paid": blockers.append("等待财务确认全额收款")
+        elif abs(float(handoff.amount_received or 0) - float(approved_quote.final_amount or 0)) > 0.005:
+            blockers.append("实收金额与已审批报价不一致，请由财务核对后再转客户")
         service_start = handoff.service_start_date or approved_quote.service_start_date
         service_end = handoff.service_end_date or approved_quote.service_end_date
         if approved_quote.billing_cycle != "one_time" and (not service_start or not service_end):
@@ -1391,7 +1459,7 @@ async def convert_sales_lead_to_customer(
         source=lead.source,
         sales_person=lead.assigned_sales_name,
         sales_employee_id=lead.assigned_sales_id,
-        status="已合作",
+        status="closed",
         notes=f"由电话销售线索 #{lead.id} 转入。确认说明：{payload.confirmation_notes}",
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
@@ -1498,12 +1566,12 @@ async def convert_sales_lead_to_customer(
     if generate_service_board:
         service_progress = Service_progresses(
             customer_id=customer.id, customer_name=customer.business_name, service_type=product_type, service_stage="deal_handover",
-            progress_percent=10, sales_person=lead.assigned_sales_name, industry=lead.industry, country=lead.country,
+            progress_percent=10, ops_person=handoff.operations_owner, sales_person=lead.assigned_sales_name, industry=lead.industry, country=lead.country,
             state=lead.state, city=lead.city, last_update_time=datetime.now(BUSINESS_TIMEZONE).strftime("%Y-%m-%d %H:%M"),
             package_name=approved_quote.package_name, package_platforms=approved_quote.selected_platforms,
             service_start_date=service_start.isoformat() if service_start else None, service_end_date=service_end.isoformat() if service_end else None,
             last_update_person=current_user.name, last_work_summary="报价、收款和成交交接已完成，进入运营交接阶段。",
-            issue_status="无", user_id=str(current_user.id), created_at=datetime.now(BUSINESS_TIMEZONE).isoformat(),
+            issue_status="none", issue_resolved=False, user_id=str(current_user.id), created_at=datetime.now(BUSINESS_TIMEZONE).isoformat(),
         )
         db.add(service_progress)
         await db.flush()
@@ -1536,8 +1604,11 @@ async def convert_sales_lead_to_customer(
     lead.converted_by_id = _employee_id(current_user)
     lead.converted_by_name = current_user.name
     lead.status = "won"
+    owner = await db.get(Employees, handoff.operations_owner_employee_id) if handoff.operations_owner_employee_id else None
+    access_status = "authorized" if owner and owner.role in {"admin", "super_admin", "finance"} else "pending"
     await db.commit()
     return {
+        "operations_owner": handoff.operations_owner, "operations_access_status": access_status,
         "message": "已转为正式客户，并自动生成成交、收款和订阅信息。",
         "customer_id": customer.id, "customer_code": customer_code, "deal_id": deal.id,
         "payment_id": payment.id, "engagement_id": engagement.id if engagement else None,
@@ -1561,7 +1632,7 @@ async def sales_management_dashboard(
     if scope is not None: lead_query = lead_query.where(scope)
     leads = (await db.execute(lead_query)).scalars().all()
     lead_ids = [lead.id for lead in leads]
-    tasks = [] if not lead_ids else (await db.execute(select(SalesDailyDialTasks).where(SalesDailyDialTasks.task_date == target_date, SalesDailyDialTasks.lead_id.in_(lead_ids)))).scalars().all()
+    tasks = [] if not lead_ids else (await db.execute(select(SalesDailyDialTasks).where(SalesDailyDialTasks.task_date == target_date, SalesDailyDialTasks.status.in_(["pending", "completed"]), SalesDailyDialTasks.lead_id.in_(lead_ids)))).scalars().all()
     activities = [] if not lead_ids else (await db.execute(select(SalesCallActivities).where(SalesCallActivities.lead_id.in_(lead_ids)))).scalars().all()
     today_activities = [item for item in activities if _business_date(item.called_at) == target_date]
     completed = sum(item.status == "completed" for item in tasks)
@@ -1699,6 +1770,7 @@ async def sales_call_report(
     tasks = (await db.execute(
         select(SalesDailyDialTasks).where(
             SalesDailyDialTasks.sales_employee_id.in_(salesperson_ids),
+            SalesDailyDialTasks.status.in_(["pending", "completed"]),
             SalesDailyDialTasks.task_date >= start_date,
             SalesDailyDialTasks.task_date <= today,
         )
@@ -1886,6 +1958,7 @@ async def sales_performance_dashboard(
     tasks = (await db.execute(
         select(SalesDailyDialTasks).where(
             SalesDailyDialTasks.sales_employee_id.in_(salesperson_ids),
+            SalesDailyDialTasks.status.in_(["pending", "completed"]),
             SalesDailyDialTasks.task_date >= start_date,
             SalesDailyDialTasks.task_date <= today,
         )
@@ -1997,8 +2070,12 @@ async def record_daily_call_result(
     if not task:
         raise HTTPException(status_code=404, detail="每日任务不存在")
     await _resolve_workbench_salesperson(db, current_user, task.sales_employee_id)
-    if task.status == "completed":
-        raise HTTPException(status_code=400, detail="该任务今日已完成；如需补充请在历史记录中由主管处理")
+    await lock_sales_workflow(db, lead_ids=[task.lead_id], employee_ids=[task.sales_employee_id])
+    task = (await db.execute(select(SalesDailyDialTasks).where(SalesDailyDialTasks.id == task_id).execution_options(populate_existing=True))).scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="每日任务不存在")
+    if task.status != "pending":
+        raise HTTPException(status_code=400, detail="该任务已完成或已转交，请刷新当前队列")
     lead = await _get_scoped_lead(db, task.lead_id, current_user)
     if lead.is_blacklisted or lead.do_not_contact:
         raise HTTPException(status_code=400, detail="该商家已被保护，禁止拨打")
@@ -2038,6 +2115,7 @@ async def record_daily_call_result(
     next_follow_up_at = _apply_automation_outcome(lead, payload.outcome, now, next_follow_up_at)
     activity.next_follow_up_at = next_follow_up_at
     if old_assignment[0] and lead.assigned_sales_id is None:
+        await sync_pending_daily_tasks(db, lead, None)
         db.add(SalesLeadAssignmentLogs(
             lead_id=lead.id, action="auto_cooling_released",
             from_sales_employee_id=old_assignment[0], from_sales_employee_name=old_assignment[1],
@@ -2053,10 +2131,12 @@ async def record_daily_call_result(
     task.completed_activity_id = activity.id
     task.completed_at = now
     await db.commit()
+    await db.refresh(lead)
     return {
         "message": "通话结果已记录",
         "task_id": task.id,
         "lead_id": lead.id,
+        "lead": SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
         "status": lead.status,
         "next_follow_up_at": next_follow_up_at,
         "next_action_label": next_action_label,
@@ -2074,6 +2154,7 @@ async def record_supplemental_follow_up(
     """Record another valid call without reopening or inflating a completed daily task."""
     _ensure_lead_role(current_user)
     _validate_manual_call_result(payload)
+    await lock_sales_workflow(db, lead_ids=[lead_id])
     lead = await _get_scoped_lead(db, lead_id, current_user)
     if _role(current_user) == "sales" and lead.assigned_sales_id != _employee_id(current_user):
         raise HTTPException(status_code=403, detail="只能追加本人负责线索的跟进")
@@ -2101,6 +2182,7 @@ async def record_supplemental_follow_up(
     next_follow_up_at = _apply_automation_outcome(lead, payload.outcome, now, next_follow_up_at)
     activity.next_follow_up_at = next_follow_up_at
     if old_assignment[0] and lead.assigned_sales_id is None:
+        await sync_pending_daily_tasks(db, lead, None)
         db.add(SalesLeadAssignmentLogs(
             lead_id=lead.id, action="auto_cooling_released",
             from_sales_employee_id=old_assignment[0], from_sales_employee_name=old_assignment[1],
@@ -2113,9 +2195,11 @@ async def record_supplemental_follow_up(
         lead.do_not_contact = True
         lead.do_not_contact_reason = payload.notes or "商家在追加跟进中明确要求不再联系"
     await db.commit()
+    await db.refresh(lead)
     return {
         "message": "追加跟进已记录并加入时间线，不会覆盖历史记录，也不会重复增加今日任务完成数",
         "lead_id": lead.id,
+        "lead": SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
         "status": lead.status,
         "next_follow_up_at": next_follow_up_at,
         "next_action_label": next_action_label,
@@ -2135,8 +2219,12 @@ async def record_ringcentral_dial_started(
     if not task:
         raise HTTPException(status_code=404, detail="每日任务不存在")
     await _resolve_workbench_salesperson(db, current_user, task.sales_employee_id)
-    if task.status == "completed":
-        raise HTTPException(status_code=400, detail="该任务今日已完成")
+    await lock_sales_workflow(db, lead_ids=[task.lead_id], employee_ids=[task.sales_employee_id])
+    task = (await db.execute(select(SalesDailyDialTasks).where(SalesDailyDialTasks.id == task_id).execution_options(populate_existing=True))).scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="每日任务不存在")
+    if task.status != "pending":
+        raise HTTPException(status_code=400, detail="该任务已完成或已转交，请刷新当前队列")
     lead = await _get_scoped_lead(db, task.lead_id, current_user)
     if lead.is_blacklisted or lead.do_not_contact:
         raise HTTPException(status_code=400, detail="该商家已被保护，禁止拨打")
@@ -2165,10 +2253,13 @@ async def create_sales_lead(
     if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
         raise HTTPException(status_code=403, detail="销售人员不能创建或导入线索")
 
-    comparable_phone = re.sub(r"[^0-9+]", "", payload.phone)
-    existing = await db.execute(select(SalesLeads.id, SalesLeads.phone))
-    for existing_id, existing_phone in existing.all():
-        if re.sub(r"[^0-9+]", "", existing_phone or "") == comparable_phone:
+    await lock_sales_workflow(db)
+    parsed = parse_phone_number(payload.phone, payload.country)
+    if not parsed.is_valid:
+        raise HTTPException(status_code=422, detail=parsed.reason)
+    existing = await db.execute(select(SalesLeads.id, SalesLeads.phone, SalesLeads.country))
+    for existing_id, existing_phone, existing_country in existing.all():
+        if phone_match_key(existing_phone, existing_country) == parsed.e164:
             raise HTTPException(status_code=409, detail=f"该电话号码已存在于线索库（编号 {existing_id}）")
 
     assigned_id, assigned_name, manager_id = await _resolve_assignee(
@@ -2199,9 +2290,21 @@ async def update_sales_lead(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_lead_role(current_user)
+    await lock_sales_workflow(db, lead_ids=[lead_id])
     lead = await _get_scoped_lead(db, lead_id, current_user)
     role = _role(current_user)
     updates = payload.model_dump(exclude_unset=True)
+    old_id, old_name = lead.assigned_sales_id, lead.assigned_sales_name
+    if "phone" in updates or "country" in updates:
+        changed_phone = updates.get("phone", lead.phone)
+        changed_country = updates.get("country", lead.country)
+        if changed_phone != lead.phone or changed_country != lead.country:
+            parsed = parse_phone_number(changed_phone, changed_country)
+            if not parsed.is_valid:
+                raise HTTPException(status_code=422, detail=parsed.reason)
+            others = (await db.execute(select(SalesLeads.id, SalesLeads.phone, SalesLeads.country).where(SalesLeads.id != lead.id))).all()
+            if any(phone_match_key(phone, country) == parsed.e164 for _, phone, country in others):
+                raise HTTPException(status_code=409, detail="该电话号码已存在于线索库")
 
     if role == "sales":
         forbidden = set(updates) - SALES_EDITABLE_FIELDS
@@ -2224,7 +2327,10 @@ async def update_sales_lead(
     for key, value in updates.items():
         if hasattr(lead, key):
             setattr(lead, key, value)
-    lead.updated_at = datetime.now().astimezone()
+    lead.updated_at = datetime.now(timezone.utc)
+    if old_id != lead.assigned_sales_id:
+        await sync_pending_daily_tasks(db, lead, lead.assigned_sales_id)
+        await _append_assignment_log(db, lead, "reassigned" if lead.assigned_sales_id else "reclaimed", current_user, from_employee_id=old_id, from_employee_name=old_name, to_employee_id=lead.assigned_sales_id, to_employee_name=lead.assigned_sales_name, reason="通过线索资料更新归属")
     await db.commit()
     await db.refresh(lead)
     return lead
@@ -2239,6 +2345,7 @@ async def delete_sales_lead(
     _ensure_lead_role(current_user)
     if _role(current_user) not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="仅管理员可以删除线索")
+    await lock_sales_workflow(db, lead_ids=[lead_id])
     lead = await _get_scoped_lead(db, lead_id, current_user)
     await db.delete(lead)
     await db.commit()

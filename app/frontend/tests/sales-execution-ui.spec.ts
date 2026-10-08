@@ -86,7 +86,7 @@ async function mockSalesApi(page: Page) {
         priority: 'high',
         next_action_label: '完成首次联系并记录客户真实反馈',
         queue_category: 'new',
-        lead: { id: 501, business_name: '示例商家', contact_name: '负责人', phone: '(555) 010-2026', industry: '餐饮', city: 'San Francisco', state: 'CA', status: 'new', do_not_contact: false, is_blacklisted: false },
+        lead: { id: 501, business_name: '示例商家', contact_name: '负责人', phone: '+1 (212) 555-0126', industry: '餐饮', city: 'San Francisco', state: 'CA', status: 'new', do_not_contact: false, is_blacklisted: false },
       }],
     };
     else if (path.endsWith('/sales-leads/recovery/my-alerts')) data = { items: [] };
@@ -169,7 +169,7 @@ test('390px 销售工作台使用拨打返回记录一体化手机流程', async
 
   const currentCustomer = mobileWorkbench.getByRole('region', { name: '当前拨打客户' });
   await expect(currentCustomer).toContainText('示例商家');
-  await expect(currentCustomer).toContainText('(555) 010-2026');
+  await expect(currentCustomer).toContainText('+1 212 555 0126');
   const dial = currentCustomer.getByRole('button', { name: 'RingCentral 网页拨号', exact: true });
   for (const target of [dial]) {
     const box = await target.boundingBox();
@@ -195,7 +195,7 @@ test('390px 销售工作台使用拨打返回记录一体化手机流程', async
     body: '<!doctype html><title>RingCentral test handoff</title>',
   }));
   await dial.click();
-  await expect(page).toHaveURL('https://app.ringcentral.com/r/call?number=15550102026');
+  await expect(page).toHaveURL('https://app.ringcentral.com/r/call?number=12125550126');
   await page.goBack();
   await expect(page).toHaveURL(`${baseUrl}/sales-workbench`);
   await expect(page.getByRole('dialog').getByRole('heading', { name: '通话结束后记录 · 示例商家' })).toBeVisible();

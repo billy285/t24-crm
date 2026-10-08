@@ -232,6 +232,7 @@ async def isolate_phone_sales_access(request: Request, call_next):
     role = _request_role(request)
     if path.startswith("/api/") and role in PHONE_SALES_ROLES:
         is_allowed = any(path.startswith(prefix) for prefix in PHONE_SALES_ALLOWED_API_PREFIXES)
+        is_allowed = is_allowed or (role == "sales_manager" and (path == "/api/v1/merchant-imports" or path.startswith("/api/v1/merchant-imports/")))
         is_invited_customer_read = request.method == "GET" and any(
             path.startswith(prefix) for prefix in PHONE_SALES_READONLY_CUSTOMER_API_PREFIXES
         )

@@ -86,6 +86,7 @@ export type LeadInsight = {
   id: number;
   business_name: string;
   phone: string;
+  country?: string;
   owner: string;
   owner_id?: number;
   source: string;

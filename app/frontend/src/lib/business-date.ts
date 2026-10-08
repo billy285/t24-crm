@@ -93,3 +93,28 @@ export function businessWeekRange(reference: Date | number = new Date()) {
     end: addBusinessDateDays(today, 7 - weekday),
   };
 }
+
+/** API timestamps without an offset come from the UTC database, not the device. */
+export function formatBusinessDateTimeInput(value?: string | null) {
+  if (!value) return '';
+  const timestamp = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value.replace(' ', 'T')}Z`;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: BUSINESS_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+/** datetime-local fields throughout the sales workflow use China business time. */
+export function parseBusinessDateTimeInput(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) || !parseBusinessDate(value.slice(0, 10))) {
+    throw new Error('请填写有效的跟进日期和时间（北京时间）');
+  }
+  const date = new Date(`${value}:00+08:00`);
+  if (Number.isNaN(date.getTime()) || formatBusinessDateTimeInput(date.toISOString()) !== value) {
+    throw new Error('请填写有效的跟进日期和时间（北京时间）');
+  }
+  return date.toISOString();
+}

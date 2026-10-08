@@ -1,23 +1,22 @@
+import { parsePhoneNumber } from './phone-format';
+
 export type CustomerDialTarget = {
   dialNumber: string;
   displayNumber: string;
 };
 
-export function getCustomerDialTarget(phone: string): CustomerDialTarget | null {
-  const digits = phone.replace(/\D/g, '');
-  if (!digits) return null;
-
-  const dialNumber = digits.length === 10 ? `1${digits}` : digits;
-  if (dialNumber.length < 10) return null;
-
-  return {
-    dialNumber,
-    displayNumber: `+${dialNumber}`,
-  };
+export function getCustomerDialValidation(phone: string, country?: string | null) {
+  return parsePhoneNumber(phone, country);
 }
 
-export function launchCustomerDial(phone: string): CustomerDialTarget | null {
-  const target = getCustomerDialTarget(phone);
+export function getCustomerDialTarget(phone: string, country?: string | null): CustomerDialTarget | null {
+  const parsed = getCustomerDialValidation(phone, country);
+  if (!parsed.isValid || !parsed.e164) return null;
+  return { dialNumber: parsed.e164.slice(1), displayNumber: parsed.e164 };
+}
+
+export function launchCustomerDial(phone: string, country?: string | null): CustomerDialTarget | null {
+  const target = getCustomerDialTarget(phone, country);
   if (!target) return null;
 
   // Keep this as a direct, same-tab navigation from the user's click. Mobile

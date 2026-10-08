@@ -28,6 +28,7 @@ import { useBusinessDicts } from '../lib/dict-config';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import { getLoadErrorMessage } from '../lib/load-utils';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { formatPhoneNumber, parsePhoneNumber, phoneSearchMatches } from '@/lib/phone-format';
 
 const allRoleOptions = Object.entries(systemRoleLabels).map(([k, v]) => ({ value: k, label: v }));
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
@@ -114,7 +115,7 @@ export default function Employees() {
 
   const filtered = useMemo(() => {
     return employees.filter(e => {
-      const ms = !search || [e.name, e.phone, e.email, e.employee_code, e.department, e.position, e.login_username].some(f => (f || '').toLowerCase().includes(search.toLowerCase()));
+      const ms = !search || [e.name, e.email, e.employee_code, e.department, e.position, e.login_username].some(f => (f || '').toLowerCase().includes(search.toLowerCase())) || phoneSearchMatches(e.phone, search);
       const mst = filterStatus === 'all' || e.status === filterStatus;
       const mr = filterRole === 'all' || e.role === filterRole;
       const md = filterDept === 'all' || e.department === filterDept;
@@ -144,6 +145,11 @@ export default function Employees() {
 
   const handleSave = async () => {
     if (!form.name || !form.role) { toast.error('请填写姓名和角色'); return; }
+    const originalEmployee = employees.find(employee => employee.id === editingId);
+    if (form.phone.trim() && form.phone !== originalEmployee?.phone) {
+      const phone = parsePhoneNumber(form.phone);
+      if (!phone.isValid) { toast.error(phone.reason); return; }
+    }
     if (form.initial_password && form.initial_password.length < 8) {
       toast.error('初始密码至少需要8个字符');
       return;
@@ -422,7 +428,7 @@ export default function Employees() {
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">工号:</span><span>{e.employee_code || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">角色:</span><span>{getRoleDisplay(e.role)}</span></div>
                 {!isMobile && <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">登录用户名:</span><span>{e.login_username || '-'}</span></div>}
-                <div className="flex gap-2 items-center"><Phone className="w-3 h-3 text-slate-400" /><span>{e.phone || '-'}</span></div>
+                <div className="flex gap-2 items-center"><Phone className="w-3 h-3 text-slate-400" /><span>{formatPhoneNumber(e.phone)}</span></div>
                 <div className="flex gap-2 items-center"><Mail className="w-3 h-3 text-slate-400" /><span>{e.email || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">部门:</span><span>{departmentLabels[e.department] || e.department || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">岗位:</span><span>{positionLabels[e.position] || e.position || '-'}</span></div>
@@ -471,7 +477,7 @@ export default function Employees() {
               {empCustomers.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无负责客户</p> : (
                 <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b bg-slate-50 text-left text-slate-500"><th className="px-3 py-2 font-medium">商家名称</th><th className="px-3 py-2 font-medium">联系人</th><th className="px-3 py-2 font-medium">电话</th><th className="px-3 py-2 font-medium">状态</th></tr></thead>
                 <tbody>{empCustomers.map((c: any) => (
-                  <tr key={c.id} className="border-b border-slate-100"><td className="px-3 py-2 font-medium text-blue-600">{c.business_name}</td><td className="px-3 py-2">{c.contact_name}</td><td className="px-3 py-2 text-slate-500">{c.phone}</td><td className="px-3 py-2"><Badge className={`text-xs ${c.status === 'closed' ? 'bg-green-100 text-green-700' : c.status === 'following' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{statusLabels[c.status] || c.status}</Badge></td></tr>
+                  <tr key={c.id} className="border-b border-slate-100"><td className="px-3 py-2 font-medium text-blue-600">{c.business_name}</td><td className="px-3 py-2">{c.contact_name}</td><td className="px-3 py-2 text-slate-500">{formatPhoneNumber(c.phone, c.country)}</td><td className="px-3 py-2"><Badge className={`text-xs ${c.status === 'closed' ? 'bg-green-100 text-green-700' : c.status === 'following' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{statusLabels[c.status] || c.status}</Badge></td></tr>
                 ))}</tbody></table></div>
               )}
             </CardContent></Card>
@@ -607,9 +613,14 @@ export default function Employees() {
                 </div>
                 <div className="mt-3 flex gap-2">
                   {e.phone ? (
-                    <a href={`tel:${e.phone}`} className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700">
+                    <Button variant="outline" className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700" onClick={() => {
+                      const phone = parsePhoneNumber(e.phone);
+                      if (!phone.isValid) { toast.error(phone.reason); return; }
+                      if (phone.extension) toast.info(`接通后请手动输入分机 ${phone.extension}`);
+                      window.location.assign(`tel:${phone.e164}`);
+                    }}>
                       <Phone className="h-4 w-4" /><span className="truncate">拨打电话</span>
-                    </a>
+                    </Button>
                   ) : null}
                   <Button type="button" variant="outline" className="min-h-11 flex-1 rounded-xl" onClick={() => openDetail(e)}>
                     查看概览<ChevronRight className="h-4 w-4" />
@@ -631,7 +642,7 @@ export default function Employees() {
               <td className="px-4 py-3" onClick={() => openDetail(e)}><Badge variant="secondary" className="text-xs">{getRoleDisplay(e.role)}</Badge></td>
               <td className="px-4 py-3 text-slate-500" onClick={() => openDetail(e)}>{departmentLabels[e.department] || e.department || '-'}</td>
               <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(e)}>{e.login_username || '-'}</td>
-              <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(e)}>{e.phone || '-'}</td>
+              <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(e)}>{formatPhoneNumber(e.phone)}</td>
               <td className="px-4 py-3" onClick={() => openDetail(e)}><Badge className={`text-xs ${empStatusColors[e.status]}`}>{empStatusLabels[e.status] || e.status}</Badge></td>
               <td className="px-4 py-3 text-right">
                 <DropdownMenu>
@@ -732,7 +743,7 @@ export default function Employees() {
             <div><Label>登录用户名</Label><Input value={form.login_username} onChange={e => setForm({ ...form, login_username: e.target.value })} placeholder="用于系统登录" /></div>
             <div><Label>入职日期</Label><Input type="date" value={form.hire_date} onChange={e => setForm({ ...form, hire_date: e.target.value })} /></div>
             <div><Label>直属上级</Label><NativeSelect value={form.supervisor} onChange={v => setForm({ ...form, supervisor: v })} options={[{ value: '', label: '无' }, ...employees.filter(emp => emp.id !== editingId).map(emp => ({ value: emp.name, label: `${emp.name} (${getRoleDisplay(emp.role)})` }))]} /></div>
-            <div><Label>电话</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
+            <div><Label>电话</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+ 国家码和电话号码" /><p className="mt-1 text-xs text-slate-500">请包含国际国家码，分机可写为 ext 123。</p></div>
             <div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
             {!editingId && (
               <div><Label>初始密码</Label><Input type="password" value={form.initial_password} onChange={e => setForm({ ...form, initial_password: e.target.value })} placeholder="可选，至少8位" /></div>

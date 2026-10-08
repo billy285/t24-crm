@@ -1,24 +1,25 @@
 .commission-page {
   max-width: 1120px;
   margin-inline: auto;
-  padding: 24px 28px 40px;
+  padding: var(--t24-space-24) var(--t24-space-24) 40px;
 }
 .commission-heading, .commission-record-heading, .commission-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: var(--t24-space-16);
 }
 .commission-heading { margin-bottom: 40px; }
+.commission-heading h1 { font-size: var(--t24-title-size); line-height: var(--t24-title-line); font-weight: var(--t24-weight-semibold); }
 .commission-priority {
   margin-bottom: 40px;
   border-radius: 16px;
   background: #f4f7fc;
-  padding: 30px 32px;
+  padding: var(--t24-space-32) var(--t24-space-32);
 }
-.commission-record-heading { margin-bottom: 18px; }
-.commission-toolbar { border-top: 1px solid #e7edf4; padding: 16px 0; }
+.commission-record-heading { margin-bottom: var(--t24-space-16); }
+.commission-toolbar { border-top: 1px solid #e7edf4; padding: var(--t24-space-16) 0; }
 .commission-page .commission-view-button {
   border-radius: 0;
   padding-inline: 0;
@@ -27,14 +28,14 @@
   border-bottom: 2px solid transparent;
 }
 .commission-page .commission-view-button[aria-pressed="true"] { color: #1e293b; border-bottom-color: #2563eb; }
-.commission-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
-.commission-empty { padding: 48px 24px 64px; text-align: center; }
-.commission-accounting { padding-top: 24px; margin-top: 24px; border-top: 1px solid #e7edf4; }
+.commission-filters { display: flex; flex-wrap: wrap; gap: var(--t24-space-12); margin-bottom: var(--t24-space-24); }
+.commission-empty { padding: 48px var(--t24-space-24) 64px; text-align: center; }
+.commission-accounting { padding-top: var(--t24-space-24); margin-top: var(--t24-space-24); border-top: 1px solid #e7edf4; }
 .commission-page [role="tabpanel"] > .bg-card { box-shadow: none; }
 @media (max-width: 767px) {
-  .commission-page { padding: 16px 4px 28px; }
-  .commission-heading { margin-bottom: 28px; }
-  .commission-priority { padding: 24px; margin-bottom: 28px; }
+  .commission-page { padding: var(--t24-space-16) var(--t24-space-4) var(--t24-space-24); }
+  .commission-heading { margin-bottom: var(--t24-space-24); }
+  .commission-priority { padding: var(--t24-space-24); margin-bottom: var(--t24-space-24); }
   .commission-filters { flex-direction: column; }
-  .commission-empty { padding: 40px 20px; }
+  .commission-empty { padding: 40px var(--t24-space-24); }
 }

@@ -131,7 +131,7 @@ test('390px 商家池先核对资料再加入待分配，不暴露手机高风�
   await expect(page.getByTestId('merchant-pool-desktop-table')).toHaveCount(0);
   const card = page.getByTestId('merchant-mobile-card');
   await expect(card).toContainText('Golden Dragon Restaurant');
-  await expect(card).toContainText('+1 626-555-0123');
+  await expect(card).toContainText('+1 626 555 0123');
   await expect(card).toContainText('Los Angeles, CA');
   await expect(card).not.toContainText('123 Main St');
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-pool-mobile-layout.png`, animations: 'disabled', fullPage: true });
@@ -204,7 +204,7 @@ test('390px 销售线索直接提供拨号复制跟进，并用卡片呈现绩�
   await expect(dialog).toBeVisible();
   await expect.poll(async () => (await dialog.boundingBox())?.width || 0).toBeGreaterThanOrEqual(389);
   await expect.poll(async () => (await dialog.boundingBox())?.height || 0).toBeGreaterThanOrEqual(843);
-  await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '保存资料', exact: true })).toBeVisible();
   await expectNoDocumentOverflow(page);
   await expect(page.locator('.vite-error-overlay, #webpack-dev-server-client-overlay')).toHaveCount(0);
   expect(consoleErrors).toEqual([]);

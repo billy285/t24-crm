@@ -1,3 +1,4 @@
+from services.merchant_row_locks import lock_merchant_rows
 import json
 import logging
 import re
@@ -111,10 +112,12 @@ def _fact(title: str, content: str, sources: list[dict[str, Any]]) -> dict[str, 
     return {"title": title, "kind": "fact", "content": content, "sources": sources}
 
 
-async def _get_scoped_merchant(db: AsyncSession, merchant_id: int, user: UserResponse) -> MerchantPool:
+async def _get_scoped_merchant(db: AsyncSession, merchant_id: int, user: UserResponse, *, lock: bool = False) -> MerchantPool:
     query = select(MerchantPool).where(MerchantPool.id == merchant_id)
     if _role(user) not in ADMIN_ROLES:
         query = query.where(MerchantPool.created_by_id == _employee_id(user))
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
     merchant = (await db.execute(query)).scalar_one_or_none()
     if not merchant:
         raise HTTPException(status_code=404, detail="商家池记录不存在或不在权限范围内")
@@ -531,7 +534,15 @@ async def generate_merchant_analysis(
     _ensure_pool_role(current_user)
     merchant = await _get_scoped_merchant(db, merchant_id, current_user)
     evidence, factual_cards = _build_evidence(merchant)
+    original_name = merchant.business_name
     recommendation_cards, ai_used, warning, _prompt, model = await _generate_ai_cards(merchant, evidence, db)
+    # The AI request can outlive an edit/undo; check existence and fresh evidence
+    # under the same row lock used by conversion and batch undo before persisting.
+    await lock_merchant_rows(db, [merchant_id])
+    merchant = await _get_scoped_merchant(db, merchant_id, current_user, lock=True)
+    current_evidence, _ = _build_evidence(merchant)
+    if current_evidence != evidence or merchant.business_name != original_name:
+        raise HTTPException(status_code=409, detail="商家资料已更新，请重新生成分析")
     generated_at = datetime.now(timezone.utc)
     analysis_data = {
         "merchant_name": merchant.business_name,

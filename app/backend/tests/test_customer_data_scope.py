@@ -336,7 +336,13 @@ async def test_read_only_customer_member_can_view_but_cannot_modify_linked_recor
 
 
 @pytest.mark.asyncio
-async def test_customer_write_permissions_reject_finance_and_sales_delete():
+async def test_customer_write_permissions_reject_finance_and_sales_delete(db_session):
+    from backend.routers import customers as customers_router
+
+    async def override_db():
+        yield db_session
+
+    app.dependency_overrides[customers_router.get_db] = override_db
     transport = ASGITransport(app=app)
     customer_payload = {
         "business_name": "Protected Cafe",
@@ -344,16 +350,19 @@ async def test_customer_write_permissions_reject_finance_and_sales_delete():
         "phone": "555",
     }
 
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        finance_create = await ac.post(
-            "/api/v1/entities/customers",
-            json=customer_payload,
-            headers=_auth_headers("finance", emp_id=7001, name="Finance"),
-        )
-        sales_delete = await ac.delete(
-            "/api/v1/entities/customers/1",
-            headers=_auth_headers("sales", emp_id=7002, name="Sales"),
-        )
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            finance_create = await ac.post(
+                "/api/v1/entities/customers",
+                json=customer_payload,
+                headers=_auth_headers("finance", emp_id=7001, name="Finance"),
+            )
+            sales_delete = await ac.delete(
+                "/api/v1/entities/customers/1",
+                headers=_auth_headers("sales", emp_id=7002, name="Sales"),
+            )
+    finally:
+        app.dependency_overrides.pop(customers_router.get_db, None)
 
     assert finance_create.status_code == 403
     assert sales_delete.status_code == 403

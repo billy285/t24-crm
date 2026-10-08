@@ -340,6 +340,7 @@ def summarize_lead(
         "id": lead.id,
         "business_name": lead.business_name,
         "phone": lead.phone,
+        "country": lead.country,
         "source": lead.source or "未标注",
         "industry": lead.industry or "未标注",
         "city": lead.city,

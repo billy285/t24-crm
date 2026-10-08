@@ -155,7 +155,7 @@ export default function OperationsWorkbench() {
   }), [callbacks, employee?.id, employeeName, usePersonalScope]);
 
   const scopedIssues = useMemo(() => progresses.filter(progress => {
-    if (progress.issue_resolved || !progress.issue_status || progress.issue_status === 'none') return false;
+    if (progress.issue_resolved || !progress.issue_status || ['none', '无'].includes(progress.issue_status)) return false;
     if (!usePersonalScope) return true;
     return progress.ops_person === employeeName || progress.issue_owner === employeeName;
   }), [employeeName, progresses, usePersonalScope]);

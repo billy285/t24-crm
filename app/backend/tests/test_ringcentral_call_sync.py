@@ -19,6 +19,38 @@ from routers.sales_leads import sales_call_report
 from schemas.auth import UserResponse
 from services import ringcentral as ringcentral_service
 from services.ringcentral_sync import process_telephony_event, upsert_call_log_record
+from services.ringcentral_sync import _match_lead_and_task, _party_phone, normalize_phone
+
+
+def test_remote_international_numbers_are_not_truncated_and_extensions_are_not_phones():
+    assert normalize_phone("+86 138 0013 8000") == "+8613800138000"
+    assert normalize_phone("+1 202 555 0123 ext 9") == "+12025550123"
+    assert normalize_phone("2025550123") == ""
+    assert normalize_phone("+12025550123 / +12125550123") == ""
+    assert _party_phone({"extensionNumber": "123"}) is None
+
+
+@pytest.mark.asyncio
+async def test_shared_phone_does_not_arbitrarily_link_a_call_and_other_owners_are_excluded():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=[SalesLeads.__table__, SalesDailyDialTasks.__table__]))
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_maker() as db:
+        first = SalesLeads(business_name="First", phone="202-555-0123 ext 1", country="US", assigned_sales_id=11)
+        second = SalesLeads(business_name="Second", phone="+1 202 555 0123 ext 2", assigned_sales_id=11)
+        other_owner = SalesLeads(business_name="Other owner", phone="+86 13800138000", assigned_sales_id=12)
+        china = SalesLeads(business_name="China", phone="13800138000", country="CN", assigned_sales_id=11)
+        db.add_all([first, second, other_owner, china])
+        await db.commit()
+        assert await _match_lead_and_task(db, 11, "+12025550123", None) == (None, None)
+        match, task = await _match_lead_and_task(db, 11, "+8613800138000", None)
+        assert match.id == china.id
+        assert task is None
+        match, task = await _match_lead_and_task(db, 12, "+8613800138000", None)
+        assert match.id == other_owner.id
+        assert task is None
+    await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -96,7 +128,7 @@ async def test_event_and_call_log_are_idempotent_and_match_employee_lead_task():
         )
         lead = SalesLeads(
             business_name="Test Salon",
-            phone="+1 (555) 222-3333",
+            phone="+1 (202) 555-0123",
             status="new",
             assigned_sales_id=11,
             assigned_sales_name="Billy Li",
@@ -124,8 +156,8 @@ async def test_event_and_call_log_are_idempotent_and_match_employee_lead_task():
                     "sessionId": "session-1",
                     "direction": "Outbound",
                     "status": {"code": "Answered"},
-                    "from": {"phoneNumber": "+15550001111"},
-                    "to": {"phoneNumber": "+15552223333"},
+                    "from": {"phoneNumber": "+12025550100"},
+                    "to": {"phoneNumber": "+12025550123"},
                 }],
             },
         }
@@ -143,8 +175,8 @@ async def test_event_and_call_log_are_idempotent_and_match_employee_lead_task():
             "telephonySessionId": "telephony-1",
             "sessionId": "session-1",
             "direction": "Outbound",
-            "from": {"phoneNumber": "+15550001111"},
-            "to": {"phoneNumber": "+15552223333"},
+            "from": {"phoneNumber": "+12025550100"},
+            "to": {"phoneNumber": "+12025550123"},
             "result": "Call connected",
             "duration": 86,
             "startTime": "2026-08-23T08:00:00Z",
@@ -167,7 +199,7 @@ async def test_event_and_call_log_are_idempotent_and_match_employee_lead_task():
 
         stale_lead = SalesLeads(
             business_name="Old Dial Salon",
-            phone="+1 555 444 5555",
+            phone="+1 212 555 0144",
             status="new",
             assigned_sales_id=11,
             assigned_sales_name="Billy Li",
@@ -187,8 +219,8 @@ async def test_event_and_call_log_are_idempotent_and_match_employee_lead_task():
         stale_call = await upsert_call_log_record(db, connection, {
             "id": "call-stale-task",
             "direction": "Outbound",
-            "from": {"phoneNumber": "+15550001111"},
-            "to": {"phoneNumber": "+15554445555"},
+            "from": {"phoneNumber": "+12025550100"},
+            "to": {"phoneNumber": "+12125550144"},
             "result": "Call connected",
             "duration": 42,
             "startTime": "2026-08-23T08:00:00Z",
@@ -258,7 +290,7 @@ async def test_sales_call_report_uses_verified_provider_calls_for_connection_met
     async with session_maker() as db:
         employee = Employees(id=21, user_id="21", name="Report Sales", role="sales", status="active")
         lead = SalesLeads(
-            business_name="Report Salon", phone="+15551112222", status="interested",
+            business_name="Report Salon", phone="+12025550112", status="interested",
             assigned_sales_id=21, assigned_sales_name="Report Sales",
         )
         db.add_all([employee, lead])

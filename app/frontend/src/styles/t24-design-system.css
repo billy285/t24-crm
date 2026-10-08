@@ -4,6 +4,110 @@
  * command center, directory and execution workbench.
  */
 
+:root {
+  /* Root scope keeps the same scale inside Radix portals mounted under body. */
+  --t24-body-size: 14px;
+  --t24-body-line: 22px;
+  --t24-aux-size: 12px;
+  --t24-aux-line: 18px;
+  --t24-section-size: 16px;
+  --t24-section-line: 24px;
+  --t24-detail-size: 20px;
+  --t24-detail-line: 28px;
+  --t24-title-size: 28px;
+  --t24-title-line: 36px;
+  --t24-metric-size: 24px;
+  --t24-metric-line: 32px;
+  --t24-input-size: 14px;
+  --t24-input-line: 22px;
+  --t24-weight-normal: 400;
+  --t24-weight-medium: 500;
+  --t24-weight-semibold: 600;
+  --t24-space-4: 4px;
+  --t24-space-8: 8px;
+  --t24-space-12: 12px;
+  --t24-space-16: 16px;
+  --t24-space-24: 24px;
+  --t24-space-32: 32px;
+  --t24-control-height: 40px;
+  --t24-control-compact: 36px;
+  --t24-control-large: 44px;
+  --t24-control-radius: 8px;
+  --t24-table-head-height: 40px;
+  --t24-table-row-height: 48px;
+  --t24-table-cell-y: 12px;
+  --t24-table-cell-y-compact: 8px;
+  --t24-table-cell-x: 16px;
+  --t24-badge-height: 24px;
+  --t24-dialog-radius: 16px;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --t24-title-size: 24px;
+    --t24-title-line: 32px;
+    --t24-metric-size: 22px;
+    --t24-metric-line: 30px;
+    --t24-input-size: 16px;
+    --t24-input-line: 24px;
+    --t24-control-height: 44px;
+    --t24-control-compact: 44px;
+    --t24-control-large: 48px;
+  }
+}
+
+.t24-system,
+.t24-ui-surface {
+  font-size: var(--t24-body-size);
+  line-height: var(--t24-body-line);
+}
+
+/* Shared components provide geometry; their variants retain existing meaning. */
+.t24-button {
+  min-height: var(--t24-control-height);
+  font-size: var(--t24-body-size);
+  line-height: var(--t24-body-line);
+  font-weight: var(--t24-weight-semibold);
+  border-radius: var(--t24-control-radius);
+}
+.t24-button-compact { min-height: var(--t24-control-compact); font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); }
+.t24-button-large { min-height: var(--t24-control-large); }
+.t24-button-icon { min-width: var(--t24-control-height); }
+.t24-button-link { min-height: 0; border-radius: 0; }
+.t24-button.font-normal { font-weight: var(--t24-weight-normal); }
+.t24-button.font-medium { font-weight: var(--t24-weight-medium); }
+.t24-input,
+.t24-native-select,
+.t24-select-trigger {
+  height: var(--t24-control-height);
+  min-height: var(--t24-control-height);
+  font-size: var(--t24-input-size);
+  line-height: var(--t24-input-line);
+  border-radius: var(--t24-control-radius);
+}
+.t24-textarea { min-height: 96px; font-size: var(--t24-input-size); line-height: var(--t24-body-line); border-radius: var(--t24-control-radius); }
+.t24-label { font-size: var(--t24-body-size); line-height: var(--t24-body-line); font-weight: var(--t24-weight-medium); }
+.t24-badge { min-height: var(--t24-badge-height); font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); font-weight: var(--t24-weight-medium); padding: 2px var(--t24-space-8); }
+.t24-table { font-size: var(--t24-body-size); line-height: var(--t24-body-line); font-variant-numeric: tabular-nums; }
+.t24-table-head { height: var(--t24-table-head-height); font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); font-weight: var(--t24-weight-medium); padding: var(--t24-space-8) var(--t24-table-cell-x); }
+.t24-table-cell { padding: var(--t24-table-cell-y) var(--t24-table-cell-x); }
+.t24-table-row { height: var(--t24-table-row-height); }
+.t24-dialog-title { font-size: var(--t24-detail-size); line-height: var(--t24-detail-line); font-weight: var(--t24-weight-semibold); }
+.t24-dialog-description { font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+.t24-dialog-content { gap: var(--t24-space-16); border-radius: var(--t24-dialog-radius); }
+.t24-menu-item { min-height: var(--t24-control-compact); font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+.t24-tab { min-height: var(--t24-control-height); font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+.t24-tab-list { height: auto; min-height: calc(var(--t24-control-height) + var(--t24-space-8)); }
+.t24-section-title { font-size: var(--t24-section-size); line-height: var(--t24-section-line); font-weight: var(--t24-weight-semibold); }
+
+/* Existing pages use utilities as well as semantic components. Both share one scale. */
+:is(.t24-system, .t24-ui-surface) .text-sm { font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+:is(.t24-system, .t24-ui-surface) :is(.text-xs, [class*="text-[9px]"], [class*="text-[10px]"], [class*="text-[11px]"]) { font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); }
+:is(.t24-system, .t24-ui-surface) :is([class*="text-[13px]"], [class*="text-[15px]"]) { font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+:is(.t24-system, .t24-ui-surface) .font-bold { font-weight: var(--t24-weight-semibold); }
+:is(.t24-system, .t24-ui-surface) :is(p, span, small, div, label).text-slate-400 { color: #64748b; }
+:is(.t24-system, .t24-ui-surface) :is(.t24-input, .t24-textarea, .t24-native-select, .t24-select-trigger) { font-size: var(--t24-input-size); line-height: var(--t24-input-line); }
+
 .t24-system {
   --t24-canvas: #f3f6fb;
   --t24-surface: #ffffff;
@@ -67,8 +171,9 @@
 .t24-system .app-page-title h1,
 .t24-system .app-page-title h2 {
   color: var(--t24-ink);
-  font-size: clamp(1.5rem, 2vw, 1.85rem);
-  font-weight: 720;
+  font-size: var(--t24-title-size);
+  line-height: var(--t24-title-line);
+  font-weight: var(--t24-weight-semibold);
   letter-spacing: -0.035em;
 }
 
@@ -149,8 +254,9 @@
 
 .t24-system .customer-360-hero-copy h2 {
   color: var(--t24-ink);
-  font-size: 1.6rem;
-  font-weight: 730;
+  font-size: var(--t24-title-size);
+  line-height: var(--t24-title-line);
+  font-weight: var(--t24-weight-semibold);
 }
 
 .t24-system .customer-360-hero-copy > p:last-child {
@@ -237,8 +343,9 @@
 
 .t24-system .customer-360-directory th {
   color: #475569;
-  font-size: 0.69rem;
-  font-weight: 700;
+  font-size: var(--t24-aux-size);
+  line-height: var(--t24-aux-line);
+  font-weight: var(--t24-weight-semibold);
   letter-spacing: 0.035em;
   text-transform: uppercase;
 }
@@ -361,11 +468,11 @@
   .t24-system .customer-360-hero,
   .t24-system .sales-v3-topbar {
     border-radius: var(--t24-radius-md);
-    padding-inline: 16px;
+    padding-inline: var(--t24-space-16);
   }
 
   .t24-system .customer-360-metrics {
-    gap: 8px;
+    gap: var(--t24-space-8);
   }
 
   .t24-system .customer-360-metrics > div:not(.customer-360-distribution) {
@@ -373,7 +480,7 @@
   }
 
   .t24-system .sales-v3-stats span {
-    padding-left: 8px;
+    padding-left: var(--t24-space-8);
   }
 }
 
@@ -437,7 +544,7 @@
 .t24-system .t24-record-page [role="tablist"],
 .t24-system .t24-settings-page [role="tablist"] {
   height: auto;
-  gap: 4px;
+  gap: var(--t24-space-4);
   padding: 5px;
   border: 1px solid var(--t24-border);
   border-radius: var(--t24-radius-md);
@@ -542,20 +649,21 @@
 
 .t24-system .t24-directory-metrics > div > div {
   min-height: 84px;
-  padding: 16px;
+  padding: var(--t24-space-16);
   text-align: left;
 }
 
 .t24-system .t24-directory-metrics p:first-child {
   color: var(--t24-ink-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: var(--t24-aux-size);
+  line-height: var(--t24-aux-line);
+  font-weight: var(--t24-weight-semibold);
 }
 
 .t24-system .t24-directory-metrics p:last-child {
   margin-top: 6px;
-  font-size: 1.65rem;
-  line-height: 1;
+  font-size: var(--t24-title-size);
+  line-height: var(--t24-title-line);
 }
 
 .t24-system .t24-directory-toolbar,
@@ -572,7 +680,8 @@
 .t24-system .t24-directory-results thead {
   background: #f8fafc;
   color: #475569;
-  font-size: 0.72rem;
+  font-size: var(--t24-aux-size);
+  line-height: var(--t24-aux-line);
 }
 
 .t24-system .t24-directory-results tbody tr:hover {
@@ -754,7 +863,7 @@
   }
 
   .t24-system .merchant-hero {
-    padding: 18px 16px;
+    padding: 18px var(--t24-space-16);
   }
 
   .t24-system .knowledge-v4-toolbar {
@@ -762,7 +871,7 @@
   }
 
   .t24-system .t24-finance-page .app-page-title {
-    padding: 16px;
+    padding: var(--t24-space-16);
   }
 
 }

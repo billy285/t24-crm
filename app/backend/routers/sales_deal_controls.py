@@ -131,6 +131,8 @@ def _blockers(quotes: list[SalesQuoteRequests], handoff: Optional[SalesHandoffCh
     if payment_status != "paid":
         payment_labels = {"pending": "等待收款", "deposit_paid": "已收订金，仍待尾款", "failed": "支付失败，等待处理", "refunded": "款项已退款"}
         result.append(payment_labels.get(payment_status, "等待财务确认全额收款"))
+    elif abs(float(handoff.amount_received or 0) - float(approved.final_amount or 0)) > 0.005:
+        result.append("实收金额与已审批报价不一致，请由财务核对后再转客户")
     start_date = handoff.service_start_date or approved.service_start_date
     end_date = handoff.service_end_date or approved.service_end_date
     if approved.billing_cycle != "one_time" and (not start_date or not end_date):
@@ -397,6 +399,8 @@ async def confirm_finance_payment(
     amount_received = float(payload.amount_received or 0)
     if payment_status == "paid":
         amount_received = amount_received or final_amount
+        if final_amount > 0 and amount_received > final_amount + 0.005:
+            raise HTTPException(status_code=400, detail="实收超过已审批报价，请先核对报价或单独处理差额，再确认全额收款")
         if final_amount > 0 and amount_received + 0.005 < final_amount:
             raise HTTPException(status_code=400, detail="实收金额不足，不能标记为已全额支付")
     elif payment_status == "deposit_paid":

@@ -22,6 +22,7 @@ from models.tasks import Tasks
 from schemas.auth import UserResponse
 from services.commissions import transfer_partner_attributions_to_direct
 from services.employees import EmployeesService
+from services.phone_numbers import parse_phone_number
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -44,6 +45,15 @@ EmployeeStatus = Literal["active", "probation", "disabled", "inactive", "resigne
 def _employee_update_payload(data: "EmployeesUpdateData") -> dict:
     """Preserve the existing partial-update contract while ignoring omitted/null fields."""
     return data.model_dump(exclude_unset=True, exclude_none=True)
+
+
+def _validate_employee_phone(payload: dict, existing: Employees | None = None) -> None:
+    phone = payload.get("phone", existing.phone if existing else None)
+    if not str(phone or "").strip() or (existing and phone == existing.phone):
+        return
+    result = parse_phone_number(phone)
+    if not result.is_valid:
+        raise HTTPException(status_code=400, detail=result.reason)
 
 
 async def _actor_employee_id(db: AsyncSession, admin: UserResponse) -> Optional[int]:
@@ -209,6 +219,7 @@ async def _preflight_employee_updates(
     for item in items:
         employee = by_id[item.id]
         update = _employee_update_payload(item.updates)
+        _validate_employee_phone(update, employee)
         target_role = update.get("role", employee.role)
         linked_partner = await _linked_external_partner(db, employee.id)
         managed_as_partner = employee.role == "sales_partner" or linked_partner is not None
@@ -575,6 +586,7 @@ async def create_employees(
     service = EmployeesService(db)
     try:
         payload = data.model_dump()
+        _validate_employee_phone(payload)
         if not payload.get("user_id"):
             payload["user_id"] = (
                 payload.get("login_username")
@@ -595,6 +607,9 @@ async def create_employees(
         
         logger.info(f"Employees created successfully with id: {result.id}")
         return result
+    except HTTPException:
+        await db.rollback()
+        raise
     except ValueError as e:
         await db.rollback()
         logger.error(f"Validation error creating employees: {str(e)}")
@@ -623,6 +638,8 @@ async def create_employeess_batch(
                 status_code=400,
                 detail="销售合伙人账号请使用单个新增，以确保登录账号与分润档案同步建立",
             )
+        for item_data in request.items:
+            _validate_employee_phone(item_data.model_dump())
         for index, item_data in enumerate(request.items):
             payload = item_data.model_dump()
             if not payload.get("user_id"):

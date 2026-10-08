@@ -28,6 +28,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import CustomerPhoneDial from '@/components/CustomerPhoneDial';
+import { formatPhoneNumber, parsePhoneNumber, phoneMatchKey, phoneSearchMatches } from '@/lib/phone-format';
 import MediaAccountsTab from '@/components/MediaAccountsTab';
 import OperationLogsTab from '@/components/OperationLogsTab';
 import CustomerAiCopyTab from '@/components/CustomerAiCopyTab';
@@ -59,6 +60,10 @@ import { getReturnLabel, getSafeInternalPath } from '../lib/navigation-state';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const ImportCustomers = lazy(() => import('@/components/ImportCustomers'));
+
+const displayCustomerStatus = (customer: any) => customer?.status === '已合作'
+  ? { ...customer, status: 'closed', __original_status: '已合作' }
+  : customer;
 
 const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', following: 'bg-amber-100 text-amber-700', closed: 'bg-green-100 text-green-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
 const levelColors: Record<string, string> = { high: 'bg-orange-100 text-orange-700', normal: 'bg-slate-100 text-slate-600', low: 'bg-gray-100 text-gray-500', vip: 'bg-purple-100 text-purple-700' };
@@ -1281,7 +1286,7 @@ export default function Customers() {
       const projectRes = readSettled(projectResult, emptyItems, 'projects');
       const catalogRes = readSettled(catalogResult, { data: { business_lines: [], products: [], plans: [] } }, 'catalog');
       const contactRes = readSettled(contactResult, emptyItems, 'contacts');
-      const latestCustomer = customerRes?.data?.items?.[0] || fallbackCustomer || null;
+      const latestCustomer = displayCustomerStatus(customerRes?.data?.items?.[0] || fallbackCustomer || null);
       if (!latestCustomer && customerResult.status === 'rejected') {
         setDetailLoadError(getLoadErrorMessage(customerResult.reason));
       }
@@ -1387,6 +1392,11 @@ export default function Customers() {
     }
     if (!contactForm.contact_name.trim()) { toast.error('请填写联系人姓名'); return; }
     if (!selectedCustomer) return;
+    const originalContact = contacts.find(contact => contact.id === editingContactId);
+    if (contactForm.contact_phone.trim() && contactForm.contact_phone !== originalContact?.contact_phone) {
+      const phone = parsePhoneNumber(contactForm.contact_phone, selectedCustomer.country);
+      if (!phone.isValid) { toast.error(phone.reason); return; }
+    }
     setSavingContact(true);
     try {
       if (editingContactId) {
@@ -1437,7 +1447,7 @@ export default function Customers() {
       const res = await loadWithRetry(
         () => client.entities.customers.query({ limit: 1000, sort: '-created_at' }),
       );
-      let items = res?.data?.items || [];
+      let items = (res?.data?.items || []).map(displayCustomerStatus);
       if (dataScope === 'self' && employee) items = items.filter((c: any) => c.sales_person === employee.name || c.sales_employee_id === employee.id);
       setCustomers(items);
       setLoadError(null);
@@ -1489,9 +1499,11 @@ export default function Customers() {
 
   const checkDuplicate = (name: string, phone: string) => {
     if (!name && !phone) { setDuplicateWarning(null); return; }
+    const candidateKey = phoneMatchKey(phone, form.country);
     const dupes = customers.filter(c => {
       if (editingId && c.id === editingId) return false;
-      return (name && c.business_name?.toLowerCase() === name.toLowerCase()) || (phone && c.phone === phone);
+      return (name && c.business_name?.toLowerCase() === name.toLowerCase())
+        || (phone && (candidateKey ? phoneMatchKey(c.phone, c.country) === candidateKey : c.phone === phone));
     });
     setDuplicateWarning(dupes.length > 0 ? `检测到可能重复: ${dupes.map((d: any) => d.business_name).join(', ')}` : null);
   };
@@ -1501,7 +1513,7 @@ export default function Customers() {
       let ms = true;
       if (search) {
         const q = search.toLowerCase().trim();
-        ms = [c.customer_code, c.business_name, c.contact_name, c.phone, c.city, c.email, c.wechat, c.address, c.sales_person, c.country, c.state].some(f => (f || '').toLowerCase().includes(q));
+        ms = [c.customer_code, c.business_name, c.contact_name, c.city, c.email, c.wechat, c.address, c.sales_person, c.country, c.state].some(f => (f || '').toLowerCase().includes(q)) || phoneSearchMatches(c.phone, q, c.country);
       }
       const mst = filterStatus === 'all' || c.status === filterStatus;
       const mi = filterIndustry === 'all' || c.industry === filterIndustry;
@@ -1511,7 +1523,7 @@ export default function Customers() {
       const ma = (!af.customer_code || (c.customer_code || '').toLowerCase().includes(af.customer_code.toLowerCase()))
         && (!af.business_name || (c.business_name || '').toLowerCase().includes(af.business_name.toLowerCase()))
         && (!af.contact_name || (c.contact_name || '').toLowerCase().includes(af.contact_name.toLowerCase()))
-        && (!af.phone || (c.phone || '').includes(af.phone))
+        && (!af.phone || phoneSearchMatches(c.phone, af.phone, c.country))
         && (!af.city || (c.city || '').toLowerCase().includes(af.city.toLowerCase()))
         && (!af.industry || c.industry === af.industry)
         && (!af.status || c.status === af.status)
@@ -1578,7 +1590,7 @@ export default function Customers() {
     interestedPackages.forEach(key => {
       if (!snapshot[key]) snapshot[key] = customerPackageLabels[key] || key;
     });
-    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || 'US', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', selected_platforms: parseMultiValue(c.selected_platforms), interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
+    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || '', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', selected_platforms: parseMultiValue(c.selected_platforms), interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
     setManualCityInput(false);
     setEditingId(c.id); setDuplicateWarning(null); setShowForm(true);
     setCustomerProjectsLoading(true);
@@ -1636,6 +1648,11 @@ export default function Customers() {
 
   const handleSave = async () => {
     if (!form.business_name || !form.contact_name || !form.phone) { toast.error('请填写必填字段'); return; }
+    const originalCustomer = customers.find(customer => customer.id === editingId);
+    if (!editingId || form.phone !== originalCustomer?.phone || (form.country || null) !== (originalCustomer?.country || null)) {
+      const phone = parsePhoneNumber(form.phone, form.country);
+      if (!phone.isValid) { toast.error(phone.reason); return; }
+    }
     if (new Set(customerProjectForms.map(row => row.business_line_code)).size !== customerProjectForms.length) { toast.error('同一业务项目只能添加一次'); return; }
     if (customerProjectForms.some(row => !row.package_name.trim())) { toast.error('请填写每个合作项目的套餐或项目名称'); return; }
     if (customerProjectForms.some(row => ['active_paid', 'reactivated'].includes(row.status) && !row.paid_started_at)) { toast.error('付费合作中的项目必须填写第一笔有效收款日期'); return; }
@@ -1651,6 +1668,8 @@ export default function Customers() {
       }, {});
       const payload = {
         ...form,
+        country: form.country || null,
+        status: originalCustomer?.__original_status === '已合作' && form.status === 'closed' ? '已合作' : form.status,
         selected_platforms: form.selected_platforms.join(','),
         interested_packages: form.interested_packages.join(','),
         interested_packages_snapshot: serializePackageSnapshot(selectedPackageSnapshot),
@@ -2084,7 +2103,7 @@ export default function Customers() {
             </div>
             <div><Label>商家名称 *</Label><Input value={form.business_name} onChange={e => { setForm({ ...form, business_name: e.target.value }); checkDuplicate(e.target.value, form.phone); }} /></div>
             <div><Label>联系人 *</Label><Input value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })} /></div>
-            <div><Label>电话 *</Label><Input value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
+            <div><Label htmlFor="customer-form-phone">电话 *</Label><Input id="customer-form-phone" placeholder="本地号码或 + 国家码" value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
             <div><Label>微信/WhatsApp</Label><Input value={form.wechat} onChange={e => setForm({ ...form, wechat: e.target.value })} /></div>
             <div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
             <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-2">
@@ -2108,7 +2127,7 @@ export default function Customers() {
                 </div>
               )}
             </div>
-            <div><Label>国家</Label><NativeSelect value={form.country} onChange={v => { setManualCityInput(false); setForm({ ...form, country: v, state: getStatesForCountry(v)[0]?.code || '', city: '' }); }} options={countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))} /></div>
+            <div><Label>国家</Label><NativeSelect value={form.country} onChange={v => { setManualCityInput(false); setForm({ ...form, country: v, state: getStatesForCountry(v)[0]?.code || '', city: '' }); }} options={[{ value: '', label: '待确认国家/地区' }, ...countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))]} /></div>
             <div><Label>州/省</Label><NativeSelect value={form.state} onChange={v => { setManualCityInput(false); setForm({ ...form, state: v, city: '' }); }} options={countryStates.length > 0 ? countryStates.map(s => ({ value: s.code, label: s.code })) : [{ value: '', label: '请先选择国家' }]} /></div>
             <div>
               <Label>城市</Label>
@@ -2657,7 +2676,7 @@ export default function Customers() {
           </div>
           </div>
           <div className="customer-detail-actions flex w-full items-center gap-2 md:w-auto md:justify-end">
-            {c.phone && <CustomerPhoneDial phone={c.phone} label="网页拨号" className="min-w-0 flex-[1.15] md:flex-none" buttonClassName="px-3" />}
+            {c.phone && <CustomerPhoneDial phone={c.phone} country={c.country} label="网页拨号" className="min-w-0 flex-[1.15] md:flex-none" buttonClassName="px-3" />}
             {canCreateFollowUp && <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0 md:flex-none" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
             {isAdmin && <Button variant="outline" size="sm" className="hidden md:inline-flex" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 管理团队成员</Button>}
             <Button aria-label="刷新客户数据" variant="outline" size="sm" className="h-11 w-11 shrink-0 px-0 md:h-8 md:w-auto md:px-3" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
@@ -2744,7 +2763,7 @@ export default function Customers() {
               <div className="space-y-4">
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <h3 className="text-base font-semibold text-slate-900">客户摘要</h3>
-                  <div className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{c.phone || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
+                  <div className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{formatPhoneNumber(c.phone, c.country)}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
                   <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}<Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>管理新商机</Button></div>
                 </CardContent></Card>
 
@@ -2794,7 +2813,7 @@ export default function Customers() {
               <div className="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">客户编号:</span><span>{c.customer_code}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">行业类型:</span><span>{industryLabels[c.industry] || c.industry}</span></div>
-                <div className="flex gap-2 items-center"><Phone className="w-3 h-3 text-slate-400" /><span>{c.phone}</span></div>
+                <div className="flex gap-2 items-center"><Phone className="w-3 h-3 text-slate-400" /><span>{formatPhoneNumber(c.phone, c.country)}</span></div>
                 <div className="flex gap-2 items-center"><Mail className="w-3 h-3 text-slate-400" /><span>{c.email || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">微信:</span><span>{c.wechat || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">来源:</span><span>{sourceLabels[c.source] || c.source}</span></div>
@@ -2836,7 +2855,7 @@ export default function Customers() {
                   <span className="text-sm font-medium text-blue-700">{editingContactId ? '编辑联系人' : '添加联系人'}</span>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div><Label className="text-xs">姓名 *</Label><Input value={contactForm.contact_name} onChange={e => setContactForm({ ...contactForm, contact_name: e.target.value })} placeholder="联系人姓名" /></div>
-                    <div><Label className="text-xs">手机号</Label><Input value={contactForm.contact_phone} onChange={e => setContactForm({ ...contactForm, contact_phone: e.target.value })} placeholder="手机号码" /></div>
+                    <div><Label className="text-xs" htmlFor="customer-contact-phone">电话</Label><Input id="customer-contact-phone" value={contactForm.contact_phone} onChange={e => setContactForm({ ...contactForm, contact_phone: e.target.value })} placeholder="本地号码或 + 国家码，分机 ext 123" /></div>
                     <div><Label className="text-xs">角色</Label><NativeSelect value={contactForm.contact_role} onChange={v => setContactForm({ ...contactForm, contact_role: v })} options={Object.entries(contactRoleLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
                     <div><Label className="text-xs">备注</Label><Input value={contactForm.notes} onChange={e => setContactForm({ ...contactForm, notes: e.target.value })} placeholder="备注信息" /></div>
                   </div>
@@ -2858,7 +2877,7 @@ export default function Customers() {
                             <Badge variant="secondary" className="text-xs">{contactRoleLabels[ct.contact_role] || ct.contact_role}</Badge>
                           </div>
                           <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
-                            {ct.contact_phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{ct.contact_phone}</span>}
+                            {ct.contact_phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{formatPhoneNumber(ct.contact_phone, c.country)}</span>}
                             {ct.notes && <span>{ct.notes}</span>}
                           </div>
                         </div>
@@ -3425,7 +3444,7 @@ export default function Customers() {
                   <p className="col-span-2 truncate text-slate-700"><span className="mr-1 text-slate-400">行业 / 地区</span>{industryLabels[c.industry] || c.industry || '-'} · {c.state || '-'}</p>
                 </div>
                 <div className="mt-2.5 flex items-center gap-2 border-t border-slate-100 pt-2.5">
-                  <div className="min-w-0 flex-1">{c.phone ? <CustomerPhoneDial phone={c.phone} label={c.phone} variant="outline" className="w-full min-w-0" buttonClassName="min-w-0 flex-1 justify-start px-3" /> : <span className="flex min-h-11 items-center px-3 text-xs text-slate-400">电话未填写</span>}</div>
+                  <div className="min-w-0 flex-1">{c.phone ? <CustomerPhoneDial phone={c.phone} country={c.country} label={formatPhoneNumber(c.phone, c.country)} variant="outline" className="w-full min-w-0" buttonClassName="min-w-0 flex-1 justify-start px-3" /> : <span className="flex min-h-11 items-center px-3 text-xs text-slate-400">电话未填写</span>}</div>
                   <Button size="sm" className="min-h-11 w-24 shrink-0 bg-blue-600 hover:bg-blue-700 md:min-h-0" onClick={() => openDetail(c)}>查看</Button>
                   {(isAdmin || hasPermission('customer_assign') || hasPermission('customer_edit') || hasPermission('customer_delete')) && (
                     <DropdownMenu>
@@ -3469,7 +3488,7 @@ export default function Customers() {
               {visibleCols.includes('customer_code') && <td className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
               {visibleCols.includes('business_name') && <td className="px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(c)}>{c.business_name}</td>}
               {visibleCols.includes('contact_name') && <td className="px-4 py-3" onClick={() => openDetail(c)}>{c.contact_name}</td>}
-              {visibleCols.includes('phone') && <td className="px-4 py-3 text-slate-500" onClick={() => openDetail(c)}>{c.phone}</td>}
+              {visibleCols.includes('phone') && <td className="px-4 py-3 text-slate-500" onClick={() => openDetail(c)}>{formatPhoneNumber(c.phone, c.country)}</td>}
               {visibleCols.includes('state') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.state || '-'}</td>}
               {visibleCols.includes('country') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.country || '-'}</td>}
               {visibleCols.includes('industry') && (
@@ -3638,7 +3657,7 @@ export default function Customers() {
           <dl className="my-6 space-y-3 text-sm">
             <div className="flex justify-between gap-3"><dt className="text-slate-500">负责人</dt><dd>{previewCustomer.sales_person || '待分配'}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-slate-500">联系人</dt><dd>{previewCustomer.contact_name || '待补充'}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-slate-500">联系电话</dt><dd>{previewCustomer.phone || '待补充'}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-slate-500">联系电话</dt><dd>{previewCustomer.phone ? formatPhoneNumber(previewCustomer.phone, previewCustomer.country) : '待补充'}</dd></div>
           </dl>
           <div className="rounded-xl bg-slate-50 p-4"><h4 className="text-sm font-semibold">继续处理</h4><p className="mt-2 text-sm leading-6 text-slate-500">打开客户 360，核对当前服务、跟进安排与下一步动作。</p></div>
           <Button className="mt-4 w-full bg-blue-600 hover:bg-blue-700" onClick={() => openDetail(previewCustomer)}>打开客户 360</Button>

@@ -1106,6 +1106,8 @@ export default function Deals() {
       toast.error('请填写必填字段');
       return;
     }
+    const original = editingId ? deals.find(deal => deal.id === editingId) : null;
+    if (form.is_paid && !original?.is_paid && !window.confirm('保存已付款会同步正式收款记录。请先确认实收金额、收款日期及付款凭证。确认继续吗？')) return;
     setSaving(true);
     try {
       const cust = customers.find(c => c.id === Number(form.customer_id));
@@ -1733,7 +1735,7 @@ export default function Deals() {
               </div>
             </div>
             <div className="flex flex-wrap gap-6">
-              <div className="flex items-center gap-2"><Switch checked={form.is_paid} onCheckedChange={v => setForm({ ...form, is_paid: v })} /><Label>已付款</Label></div>
+              <div className="flex items-center gap-2"><Switch checked={form.is_paid} onCheckedChange={v => setForm({ ...form, is_paid: v })} /><Label>已付款 · 保存后同步收款记录</Label></div>
               <div className="flex items-center gap-2"><Switch checked={form.auto_renew} onCheckedChange={v => setForm({ ...form, auto_renew: v })} /><Label>开启续费开关</Label></div>
               <div className="flex items-center gap-2"><Switch checked={form.needs_group} onCheckedChange={v => setForm({ ...form, needs_group: v })} /><Label>需要建群</Label></div>
               <div className="flex items-center gap-2"><Switch checked={form.is_handed_over} onCheckedChange={v => setForm({ ...form, is_handed_over: v })} /><Label>已交接</Label></div>

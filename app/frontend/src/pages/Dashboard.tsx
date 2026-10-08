@@ -1,3 +1,4 @@
+import { formatPhoneNumber } from '@/lib/phone-format';
 import './admin-workspace.css';
 import { useState, useEffect, useMemo } from 'react';
 import { client } from '../lib/api';
@@ -869,7 +870,7 @@ export default function Dashboard() {
             <div className="space-y-3">
               {recentCustomers.map((c: any) => (
                 <div key={c.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate('/customers')}>
-                  <div><p className="text-sm font-medium text-slate-800">{c.business_name}</p><p className="text-xs text-slate-500">{c.contact_name} · {c.phone}</p></div>
+                  <div><p className="text-sm font-medium text-slate-800">{c.business_name}</p><p className="text-xs text-slate-500">{c.contact_name} · {formatPhoneNumber(c.phone, c.country)}</p></div>
                   <Badge variant="secondary" className={`text-xs ${statusColors[c.status] || ''}`}>{statusLabels[c.status] || c.status}</Badge>
                 </div>
               ))}

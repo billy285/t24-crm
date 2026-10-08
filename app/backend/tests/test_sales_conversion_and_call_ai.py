@@ -17,6 +17,8 @@ async def test_post_call_analysis_and_manager_conversion_keep_lead_history(sales
     assert created.status_code == 201
     lead_id = created.json()["id"]
 
+    prepared = await sales_app_client.post("/api/v1/sales-leads/workbench/prepare", headers=sales)
+    assert prepared.status_code == 200
     workbench = await sales_app_client.get("/api/v1/sales-leads/workbench/today", headers=sales)
     task = next(item for item in workbench.json()["items"] if item["lead"]["id"] == lead_id)
     recorded = await sales_app_client.post(
@@ -73,6 +75,17 @@ async def test_post_call_analysis_and_manager_conversion_keep_lead_history(sales
     readiness = await sales_app_client.get(f"/api/v1/sales-deal-controls/{lead_id}/readiness", headers=manager)
     assert "已收订金，仍待尾款" in readiness.json()["blockers"]
 
+    for mismatched in (197, 200):
+        rejected = await sales_app_client.post(
+            f"/api/v1/sales-deal-controls/{lead_id}/handoff/finance-confirmation", headers=manager,
+            json={"payment_status": "paid", "amount_received": mismatched, "payment_date": "2026-07-01"},
+        )
+        assert rejected.status_code == 400
+    unchanged = await sales_app_client.get(f"/api/v1/sales-deal-controls/{lead_id}/readiness", headers=manager)
+    assert unchanged.json()["handoff"]["amount_received"] == 50
+    empty_payments = await sales_app_client.get("/api/v1/entities/payments/all", headers=admin)
+    assert empty_payments.json()["total"] == 0
+
     confirmed = await sales_app_client.post(
         f"/api/v1/sales-deal-controls/{lead_id}/handoff/finance-confirmation",
         headers=manager,
@@ -92,6 +105,12 @@ async def test_post_call_analysis_and_manager_conversion_keep_lead_history(sales
     assert converted.json()["payment_id"]
     assert converted.json()["subscription_id"]
     assert converted.json()["service_progress_id"]
+    customer = await sales_app_client.get(f"/api/v1/entities/customers/{converted.json()['customer_id']}", headers=admin)
+    assert customer.json()["status"] == "closed"
+    board = await sales_app_client.get(f"/api/v1/entities/service_progresses/{converted.json()['service_progress_id']}", headers=admin)
+    assert board.json()["issue_status"] == "none"
+    assert board.json()["ops_person"]
+    assert converted.json()["operations_access_status"] == "pending"
 
     deals = await sales_app_client.get(
         "/api/v1/entities/deals",
@@ -205,7 +224,7 @@ async def test_structured_quote_creates_quarterly_engagement_and_employee_handof
         f"/api/v1/sales-deal-controls/{lead_id}/handoff", headers=sales,
         json={
             "quote_id": quote_id, "customer_goal": "提升预约量", "key_contacts": "Owner / phone",
-            "operations_owner_employee_id": 13, "collaborator_employee_ids": [10], "operations_group_created": True,
+            "operations_owner_employee_id": 13, "collaborator_employee_ids": [10], "operations_group_created": True, "generate_service_board": True,
         },
     )
     assert handoff.status_code == 200
@@ -220,6 +239,14 @@ async def test_structured_quote_creates_quarterly_engagement_and_employee_handof
         json={"confirmation_notes": "结构化报价与交接确认完成"},
     )
     assert converted.status_code == 200
+    assert converted.json()["operations_owner"] == "Ops A"
+    assert converted.json()["operations_access_status"] == "pending"
+    board = await sales_app_client.get(f"/api/v1/entities/service_progresses/{converted.json()['service_progress_id']}", headers=admin)
+    assert board.json()["ops_person"] == "Ops A" and board.json()["issue_status"] == "none"
+    # Assigning a handoff owner does not silently grant access to customer/finance records.
+    ops = _auth_headers("operations", 13, "Ops A")
+    access = await sales_app_client.get(f"/api/v1/entities/customers/{converted.json()['customer_id']}", headers=ops)
+    assert access.status_code == 404
     assert converted.json()["engagement_id"]
     assert converted.json()["subscription_id"]
     subscriptions = await sales_app_client.get(

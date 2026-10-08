@@ -15,10 +15,12 @@ async def test_daily_workbench_fixed_batch_quota_and_call_history(sales_app_clie
         created = await sales_app_client.post(
             "/api/v1/sales-leads",
             headers=admin,
-            json={"business_name": f"Daily Cafe {index}", "phone": f"900-{index:03d}", "assigned_sales_id": 11},
+            json={"business_name": f"Daily Cafe {index}", "phone": f"+1212555{index:04d}", "assigned_sales_id": 11},
         )
         assert created.status_code == 201
 
+    prepared = await sales_app_client.post("/api/v1/sales-leads/workbench/prepare", headers=sales)
+    assert prepared.status_code == 200
     initial = await sales_app_client.get("/api/v1/sales-leads/workbench/today", headers=sales)
     assert initial.status_code == 200
     assert initial.json()["quota"] == 100
@@ -84,11 +86,13 @@ async def test_interested_lead_can_record_supplemental_follow_up_after_daily_tas
     created = await sales_app_client.post(
         "/api/v1/sales-leads",
         headers=admin,
-        json={"business_name": "Repeat Follow Up Cafe", "phone": "555-4400", "assigned_sales_id": 11},
+        json={"business_name": "Repeat Follow Up Cafe", "phone": "+12125554400", "assigned_sales_id": 11},
     )
     assert created.status_code == 201
     lead_id = created.json()["id"]
 
+    prepared = await sales_app_client.post("/api/v1/sales-leads/workbench/prepare", headers=sales)
+    assert prepared.status_code == 200
     workbench = await sales_app_client.get("/api/v1/sales-leads/workbench/today", headers=sales)
     task = next(item for item in workbench.json()["items"] if item["lead"]["id"] == lead_id)
     first_call = await sales_app_client.post(
@@ -124,9 +128,11 @@ async def test_three_no_answers_cool_down_and_release_execution_ownership(sales_
     sales = _auth_headers("sales", 11, "Sales A")
     created = await sales_app_client.post(
         "/api/v1/sales-leads", headers=admin,
-        json={"business_name": "Reusable Lead Cafe", "phone": "555-8800", "assigned_sales_id": 11},
+        json={"business_name": "Reusable Lead Cafe", "phone": "+12125558800", "assigned_sales_id": 11},
     )
     lead_id = created.json()["id"]
+    prepared = await sales_app_client.post("/api/v1/sales-leads/workbench/prepare", headers=sales)
+    assert prepared.status_code == 200
     workbench = await sales_app_client.get("/api/v1/sales-leads/workbench/today", headers=sales)
     task = next(item for item in workbench.json()["items"] if item["lead"]["id"] == lead_id)
 
@@ -163,8 +169,10 @@ async def test_soft_rejection_is_reusable_not_permanently_lost(sales_app_client)
     sales = _auth_headers("sales", 11, "Sales A")
     created = await sales_app_client.post(
         "/api/v1/sales-leads", headers=admin,
-        json={"business_name": "Not Now Cafe", "phone": "555-8801", "assigned_sales_id": 11},
+        json={"business_name": "Not Now Cafe", "phone": "+12125558801", "assigned_sales_id": 11},
     )
+    prepared = await sales_app_client.post("/api/v1/sales-leads/workbench/prepare", headers=sales)
+    assert prepared.status_code == 200
     workbench = await sales_app_client.get("/api/v1/sales-leads/workbench/today", headers=sales)
     task = next(item for item in workbench.json()["items"] if item["lead"]["id"] == created.json()["id"])
     result = await sales_app_client.post(

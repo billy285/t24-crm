@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 active:translate-y-px [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+  't24-button inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 active:translate-y-px [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -17,13 +17,13 @@ const buttonVariants = cva(
         secondary:
           'bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
-        link: 'text-primary underline-offset-4 hover:underline',
+        link: 't24-button-link text-primary underline-offset-4 hover:underline',
       },
       size: {
-        default: 'h-11 px-4 py-2 md:h-10',
-        sm: 'h-11 rounded-lg px-3 md:h-9',
-        lg: 'h-12 rounded-lg px-6 md:h-11',
-        icon: 'h-11 w-11 md:h-10 md:w-10',
+        default: 'px-4 py-2',
+        sm: 't24-button-compact px-3 py-2',
+        lg: 't24-button-large px-6 py-2',
+        icon: 't24-button-icon px-0',
       },
     },
     defaultVariants: {

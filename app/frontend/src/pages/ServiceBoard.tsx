@@ -177,7 +177,7 @@ const isLongNoUpdate = (sp: ServiceProgress) => {
   const now = new Date();
   return (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24) > 14;
 };
-const hasIssue = (sp: ServiceProgress) => sp.issue_status !== 'none' && !sp.issue_resolved;
+const hasIssue = (sp: ServiceProgress) => !!sp.issue_status && !['none', '无'].includes(sp.issue_status) && !sp.issue_resolved;
 const isWaitingForClientMaterial = (sp: ServiceProgress) => (
   !sp.issue_resolved && ['waiting_client', 'waiting_material'].includes(sp.issue_status)
 );

@@ -22,6 +22,7 @@ from services.commissions import auto_assign_new_customer
 from services.management_decision_workflow import save_customer_classification_review
 from services.operation_logs import Operation_logsService, build_server_operation_log_data
 from services.role_permissions import require_any_page_permission, require_button_permission
+from services.phone_numbers import parse_phone_number
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -30,6 +31,16 @@ router = APIRouter(prefix="/api/v1/entities/customers", tags=["customers"], depe
 
 CUSTOMER_OWNER_FIELDS = {"sales_person", "sales_employee_id"}
 ACTIVE_PROJECT_STATUSES = {"pending_setup", "trial", "active_paid", "at_risk", "paused", "pending_stop", "reactivated"}
+
+
+def _validate_customer_phone(payload: dict, existing: Customers | None = None) -> None:
+    phone = payload.get("phone", existing.phone if existing else None)
+    country = payload.get("country", existing.country if existing else None)
+    if existing and phone == existing.phone and country == existing.country:
+        return
+    result = parse_phone_number(phone, country)
+    if not result.is_valid:
+        raise HTTPException(status_code=400, detail=result.reason)
 
 
 class CustomerPayloadMixin(BaseModel):
@@ -686,6 +697,7 @@ async def create_customers(
     service = CustomersService(db)
     try:
         await _require_customer_write(db, current_user, "customer_create")
+        _validate_customer_phone(data.model_dump())
         result = await service.create(_assigned_to_current_user(data.model_dump(), current_user), commit=False)
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create customers")
@@ -718,6 +730,7 @@ async def create_customer_with_projects(
     service = CustomersService(db)
     try:
         _validate_customer_project_consistency(request.customer.status, request.projects)
+        _validate_customer_phone(request.customer.model_dump())
         customer = await service.create(
             _assigned_to_current_user(request.customer.model_dump(), current_user),
             commit=False,
@@ -768,6 +781,8 @@ async def create_customerss_batch(
     try:
         await _require_customer_write(db, current_user, "customer_create")
         for item_data in request.items:
+            _validate_customer_phone(item_data.model_dump())
+        for item_data in request.items:
             result = await service.create(_assigned_to_current_user(item_data.model_dump(), current_user), commit=False)
             if result:
                 await _ensure_owner_visibility_grant(db, result, current_user)
@@ -801,6 +816,9 @@ async def update_customerss_batch(
     
     try:
         await _require_customer_write(db, current_user, "customer_edit")
+        for item in request.items:
+            existing = await ensure_customer_access(db, current_user, item.id, write=True)
+            _validate_customer_phone(item.updates.model_dump(exclude_none=True), existing)
         for item in request.items:
             await ensure_customer_access(db, current_user, item.id, write=True)
             if item.updates.status == "lost":
@@ -840,7 +858,8 @@ async def update_customers(
     service = CustomersService(db)
     try:
         await _require_customer_write(db, current_user, "customer_edit")
-        await ensure_customer_access(db, current_user, id, write=True)
+        existing = await ensure_customer_access(db, current_user, id, write=True)
+        _validate_customer_phone(data.model_dump(exclude_none=True), existing)
         if data.status == "lost":
             await _ensure_no_active_projects_before_direct_loss(db, id)
         # Only include non-None values for partial updates
@@ -876,7 +895,8 @@ async def update_customer_with_projects(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_customer_write(db, current_user, "customer_edit")
-    await ensure_customer_access(db, current_user, id, write=True)
+    existing = await ensure_customer_access(db, current_user, id, write=True)
+    _validate_customer_phone(request.customer.model_dump(exclude_none=True), existing)
     if len(request.projects) > 12:
         raise HTTPException(status_code=400, detail="单个客户最多维护12个合作项目")
     service = CustomersService(db)

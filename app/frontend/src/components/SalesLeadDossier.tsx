@@ -1,3 +1,4 @@
+import { formatPhoneNumber } from '@/lib/phone-format';
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ArrowUpRight, History, Phone, Save, UserRound } from "lucide-react";
@@ -133,7 +134,7 @@ export default function SalesLeadDossier({
             <div className="si-dossier-meta">
               <span>
                 <Phone size={14} />
-                {data.phone}
+                {formatPhoneNumber(data.phone, data.country)}
               </span>
               <span>
                 <UserRound size={14} />

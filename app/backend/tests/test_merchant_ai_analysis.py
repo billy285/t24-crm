@@ -16,7 +16,7 @@ async def test_merchant_analysis_is_source_bound_and_sales_is_blocked(sales_app_
             "records": [
                 {
                     "business_name": "Evidence Cafe",
-                    "phone": "555-9876",
+                    "phone": "+12125559876",
                     "industry": "餐厅",
                     "city": "Los Angeles",
                     "state": "CA",
@@ -75,7 +75,7 @@ async def test_merchant_enrichment_keeps_raw_import_evidence_and_never_overwrite
             "data_source": "bulk",
             "records": [{
                 "business_name": "Raw Evidence Spa",
-                "phone": "555-1122",
+                "phone": "+12125551122",
                 "industry": "美业",
                 "Google Rating": 4.7,
                 "Yelp URL": "https://yelp.example/raw-evidence",

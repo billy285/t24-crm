@@ -34,7 +34,7 @@ async def create_lead(client, owner=11):
         headers=ADMIN,
         json={
             "business_name": f"Fixture shop {owner}",
-            "phone": f"555-01{owner}",
+            "phone": f"+12125550{owner:03d}",
             "assigned_sales_id": owner,
         },
     )
@@ -71,6 +71,8 @@ async def test_visible_lead_summaries_keep_owner_scope(sales_app_client):
 async def test_contact_details_persist_and_no_answer_rolls_back(sales_app_client):
     client = sales_app_client
     lead = await create_lead(client)
+    prepared = await client.post("/api/v1/sales-leads/workbench/prepare", headers=A)
+    assert prepared.status_code == 200, prepared.text
     work = (await client.get("/api/v1/sales-leads/workbench/today", headers=A)).json()
     task = next(x for x in work["items"] if x["lead"]["id"] == lead)
     url = f"/api/v1/sales-leads/workbench/tasks/{task['task_id']}/result"
@@ -171,6 +173,7 @@ def lead():
         id=1,
         business_name="Fixture",
         phone="555",
+        country=None,
         source="Fixture",
         industry="Beauty",
         city="",
