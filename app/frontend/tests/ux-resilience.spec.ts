@@ -51,13 +51,13 @@ test('销售任务加载完成前不显示假零值，并使用北京时间业�
   });
 
   await page.goto(`${baseUrl}/sales-workbench`);
-  await expect(page.getByRole('heading', { name: '销售今日工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今日拨打' })).toBeVisible();
   const progress = page.getByRole('region', { name: '今日执行进度' });
-  await expect(progress.locator('.sc-day-progress strong')).toHaveText('— / —');
-  await expect(progress.locator('.sc-day-progress strong')).not.toHaveText('0 / 100');
+  await expect(progress.locator('.sw-progress-value')).toHaveText('今日已记录 — / —');
+  await expect(progress.locator('.sw-progress-value')).not.toHaveText('今日已记录 0 / 100');
   await expect(page.getByLabel('任务日期（北京时间）')).toHaveValue('2026-08-16');
   await expect(page.getByRole('heading', { name: '待联系测试商家' })).toBeVisible();
-  await expect(progress.locator('.sc-day-progress strong')).toHaveText('0 / 100');
+  await expect(progress.locator('.sw-progress-value')).toHaveText('今日已记录 0 / 100');
   expect(requestedDate).toBe('2026-08-16');
 });
 
@@ -167,7 +167,7 @@ test('主管没有可用销售时结束加载并给出明确下一步', async ({
 
   await page.goto(`${baseUrl}/sales-workbench`);
   await expect(page.getByText('暂无可用销售人员，请先新增或启用销售员工。', { exact: true })).toBeVisible();
-  await expect(page.getByRole('region', { name: '今日执行进度' }).locator('.sc-day-progress strong')).toHaveText('— / —');
+  await expect(page.getByRole('region', { name: '今日执行进度' }).locator('.sw-progress-value')).toHaveText('今日已记录 — / —');
   await expect(page.getByText('正在加载今日任务')).toHaveCount(0);
 });
 

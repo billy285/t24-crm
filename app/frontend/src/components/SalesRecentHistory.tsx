@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button';
 import { invokeWithAuth } from '@/lib/tokenStore';
 
 type Item = { id: number; outcome_label: string; notes?: string; called_at: string; sales_employee_name?: string };
-type Props = { leadId: number; lastContactAt?: string; onOpenAll: () => void; formatDate: (value?: string) => string };
+type Props = { leadId: number; lastContactAt?: string; onOpenAll: () => void; formatDate: (value?: string) => string; compact?: boolean };
 
-export default function SalesRecentHistory({ leadId, lastContactAt, onOpenAll, formatDate }: Props) {
+export default function SalesRecentHistory({ leadId, lastContactAt, onOpenAll, formatDate, compact = false }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -20,6 +20,12 @@ export default function SalesRecentHistory({ leadId, lastContactAt, onOpenAll, f
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [leadId, lastContactAt, retry]);
+
+  if (compact) return <div className="sw-last-contact" aria-label="最近联系">
+    <History size={14} aria-hidden="true" />
+    {loading ? <span>正在读取…</span> : error ? <Button variant="ghost" size="sm" onClick={() => setRetry(value => value + 1)}>记录读取失败，重试</Button> : <span title={items[0]?.notes || undefined}>{items[0] ? `上次：${items[0].notes || items[0].outcome_label}` : '尚无联系记录'}</span>}
+    <Button variant="ghost" size="sm" onClick={onOpenAll}>历史</Button>
+  </div>;
 
   return <section className="sc-panel sc-history" aria-label="最近联系">
     <div className="sc-panel-heading"><h3><History size={15} />最近联系</h3><Button variant="ghost" size="sm" onClick={onOpenAll}>全部</Button></div>

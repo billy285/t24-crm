@@ -30,6 +30,7 @@ import { getToken } from '@/lib/tokenStore';
 import PwaInstallAction from '@/components/PwaInstallAction';
 import DesktopBusinessNavigation from '@/components/DesktopBusinessNavigation';
 import { getFinanceNavigationItem } from '@/lib/finance-navigation';
+import SalesCenterNavigation, { salesWorkspacePaths } from '@/components/SalesCenterNavigation';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -45,10 +46,12 @@ export default function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedWorkRoutes, setExpandedWorkRoutes] = useState<Record<string, boolean>>({});
   const isFocusedWorkspace = appNavigationItems.some(item => item.path === currentPath);
+  const isSalesWorkspace = salesWorkspacePaths.includes(currentPath);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
   );
-  const navigationCollapsed = isFocusedWorkspace ? !expandedWorkRoutes[currentPath] : sidebarCollapsed;
+  const navigationScope = isSalesWorkspace ? 'sales-center' : currentPath;
+  const navigationCollapsed = isSalesWorkspace || isFocusedWorkspace ? !expandedWorkRoutes[navigationScope] : sidebarCollapsed;
   const { employee, role, loading, isLoggedIn, isDisabled, logout, canAccess } = useRole();
 
   useEffect(() => {
@@ -223,7 +226,7 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}`}>
+    <div className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}`}>
       {/* Mobile overlay */}
       {sidebarOpen && (
         <button type="button" tabIndex={-1} aria-label="关闭业务导航遮罩" className="fixed inset-0 z-40 hidden bg-slate-950/40 md:block lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -240,7 +243,7 @@ export default function Layout({ children }: LayoutProps) {
         open={sidebarOpen}
         collapsed={navigationCollapsed}
         onClose={() => setSidebarOpen(false)}
-        onCollapsedChange={collapsed => isFocusedWorkspace ? setExpandedWorkRoutes(value => ({ ...value, [currentPath]: !collapsed })) : setSidebarCollapsed(collapsed)}
+        onCollapsedChange={collapsed => isSalesWorkspace || isFocusedWorkspace ? setExpandedWorkRoutes(value => ({ ...value, [navigationScope]: !collapsed })) : setSidebarCollapsed(collapsed)}
         onLogout={handleLogout}
       />}
 
@@ -266,20 +269,20 @@ export default function Layout({ children }: LayoutProps) {
                 : <T24AppMark decorative className="h-10 w-10 rounded-[14px]" />}
             </button>
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-blue-500">T24 OS</p>
-              <p className="truncate text-[15px] font-bold tracking-tight text-slate-900">{currentPageLabel}</p>
+              {!isSalesWorkspace && <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-blue-500">T24 OS</p>}
+              <p className="truncate text-[15px] font-bold tracking-tight text-slate-900">{isSalesWorkspace ? '销售中心' : currentPageLabel}</p>
             </div>
           </div>
           <button className="hidden text-slate-600 hover:text-slate-800 md:block lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="打开业务导航">
             <Menu className="w-5 h-5" />
           </button>
-          <nav aria-label="当前位置" className="hidden min-w-0 items-center gap-2 text-sm lg:flex">
+          {isSalesWorkspace ? <SalesCenterNavigation className="hidden flex-1 md:flex" /> : <nav aria-label="当前位置" className="hidden min-w-0 items-center gap-2 text-sm lg:flex">
             {activeNavSection && <>
               <span className="shrink-0 text-slate-400">{activeNavSection.label}</span>
               <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-300" />
             </>}
             <span className="truncate font-semibold text-slate-800">{desktopPageLabel || currentPageLabel}</span>
-          </nav>
+          </nav>}
           <div className="flex items-center gap-2">
             <MobileModuleMenu currentPath={currentPath} />
             <button
@@ -334,6 +337,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           </div>
         </header>
+        {isSalesWorkspace && <SalesCenterNavigation className="sales-center-mobile-navigation flex md:hidden" />}
 
         {/* Page content */}
         <main ref={mainScrollRef} className={`app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isAppLauncher ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>

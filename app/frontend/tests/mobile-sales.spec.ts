@@ -165,7 +165,11 @@ test('390px 销售线索直接提供拨号复制跟进，并用卡片呈现绩�
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/sales-leads`);
 
-  await expect(page.getByRole('heading', { name: '电话销售中心' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '联系进展', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: '销售数据一览' })).toBeHidden();
+  await page.locator('.slr-overview > summary').click();
+  await expect(page.getByRole('region', { name: '销售数据一览' })).toBeVisible();
+  await page.locator('.slr-overview > summary').click();
   await expect(page.getByTestId('sales-leads-mobile-list')).toBeVisible();
   await expect(page.getByTestId('sales-leads-desktop-table')).toHaveCount(0);
   const card = page.getByTestId('sales-lead-mobile-card').filter({ hasText: 'Happy Nails & Spa' });
@@ -174,23 +178,26 @@ test('390px 销售线索直接提供拨号复制跟进，并用卡片呈现绩�
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/sales-leads-mobile-layout.png`, animations: 'disabled', fullPage: true });
 
   const dial = card.getByRole('button', { name: 'RingCentral', exact: true });
-  const copy = card.getByRole('button', { name: '复制' });
   const followUp = card.getByRole('button', { name: '记录跟进' });
   await expectTouchTarget(dial);
-  await expectTouchTarget(copy);
   await expectTouchTarget(followUp);
   await expect(card.getByRole('button', { name: '选择其他拨号方式' })).toHaveCount(0);
+  await card.getByRole('button', { name: /更多线索操作/ }).click();
+  await expectTouchTarget(page.getByRole('menuitem', { name: '复制电话', exact: true }));
+  await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: '历史跟进参考' }).click();
   await expect(page.getByTestId('sales-performance-mobile-list')).toBeVisible();
   await expect(page.getByTestId('sales-performance-desktop-table')).toBeHidden();
   await expect(page.getByTestId('sales-performance-mobile-list')).toContainText('#1 手机销售测试主管');
   await expect(page.getByTestId('sales-performance-mobile-list')).toContainText('86');
-  await page.getByRole('navigation', { name: '电话销售中心视图' }).getByRole('button', { name: /销售线索/ }).click();
+  await page.getByRole('navigation', { name: '电话销售中心视图' }).getByRole('button', { name: '联系进展', exact: true }).click();
 
   const protectedCard = page.getByTestId('sales-lead-mobile-card').filter({ hasText: 'Do Not Call Test Merchant' });
   await expect(protectedCard.getByRole('button', { name: '拨号' })).toBeDisabled();
-  await expect(protectedCard.getByRole('button', { name: '复制' })).toBeDisabled();
+  await protectedCard.getByRole('button', { name: /更多线索操作/ }).click();
+  await expect(page.getByRole('menuitem', { name: '复制电话', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
   await expect(protectedCard.getByRole('button', { name: '查看保护' })).toBeVisible();
   await expect(page.getByRole('button', { name: /批量分配|批量重新分配|批量回收|查看并处理/ })).toHaveCount(0);
 
@@ -318,7 +325,7 @@ test('展开次要筛选保留原查询条件且不提交商家或收款变更',
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${baseUrl}/merchant-pool`);
-  await expect(page.getByRole('heading', { name: '待清洗商家池' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '商家池', exact: true })).toBeVisible();
   await expect(page.getByLabel('行业', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '更多筛选', exact: true }).click();
   const poolQuery = page.waitForRequest(request => new URL(request.url()).pathname === '/api/v1/merchant-pool' && new URL(request.url()).searchParams.get('industry') === '美甲');
@@ -328,7 +335,7 @@ test('展开次要筛选保留原查询条件且不提交商家或收款变更',
   await expect(page.getByRole('button', { name: '更多筛选 · 1', exact: true })).toBeVisible();
 
   await page.goto(`${baseUrl}/sales-leads`);
-  await expect(page.getByRole('heading', { name: '电话销售中心' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '联系进展', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '筛选', exact: true }).click();
   const leadQuery = page.waitForRequest(request => new URL(request.url()).pathname === '/api/v1/sales-leads' && new URL(request.url()).searchParams.get('contact_rule') === 'do_not_contact');
   await page.getByLabel(/^联系规则/).selectOption('do_not_contact');

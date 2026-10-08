@@ -135,25 +135,31 @@ test('销售知识库采用搜索优先三栏布局并支持短版与完整复�
   await expectNoHorizontalOverflow(page);
 });
 
-test('销售今日工作台内嵌真实知识助手并支持收起与展开', async ({ page }) => {
+test('销售今日工作台话术助手按需打开并提供真实知识内容', async ({ page }) => {
   await mockSalesApi(page);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto(`${baseUrl}/sales-workbench`);
 
-  const assistant = page.getByRole('complementary', { name: '销售知识助手' });
-  await expect(assistant.getByText('通话知识助手')).toBeVisible();
+  await expect(page.getByRole('complementary', { name: '销售知识助手' })).toHaveCount(0);
+  await page.getByRole('button', { name: '话术', exact: true }).click();
+  const assistant = page.getByRole('dialog').getByRole('complementary', { name: '销售知识助手' });
+  await expect(assistant.getByRole('textbox', { name: '搜索销售话术' })).toBeVisible();
   await assistant.getByRole('button', { name: '太贵' }).click();
   await expect(assistant.getByRole('heading', { name: '客户说太贵如何回复？' })).toBeVisible();
-  await assistant.getByRole('button', { name: '收起知识助手' }).click();
-  await expect(assistant.getByRole('button', { name: '展开知识助手' })).toBeVisible();
-  await assistant.getByRole('button', { name: '展开知识助手' }).click();
-  await expect(assistant.getByText('通话知识助手')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: '话术', exact: true }).click();
+  await expect(assistant.getByRole('textbox', { name: '搜索销售话术' })).toBeVisible();
 
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/sales-workbench-knowledge-assistant-local.png`, fullPage: true });
 
+  await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId('sales-workbench-mobile')).toBeVisible();
   await expect(page.getByRole('complementary', { name: '销售知识助手' })).toHaveCount(0);
+  await page.getByRole('button', { name: '话术', exact: true }).click();
+  await assistant.getByRole('button', { name: '太贵' }).click();
+  await expect(assistant.getByRole('heading', { name: '客户说太贵如何回复？' })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
 
@@ -164,31 +170,27 @@ test('390px 销售工作台使用拨打返回记录一体化手机流程', async
 
   const mobileWorkbench = page.getByTestId('sales-workbench-mobile');
   await expect(mobileWorkbench).toBeVisible();
-  await expect(mobileWorkbench.getByRole('heading', { name: '手机电话工作台' })).toBeVisible();
+  await expect(mobileWorkbench.getByRole('heading', { name: '今日拨打', exact: true })).toBeVisible();
   await expect(page.locator('.sales-v3-shell')).toHaveCount(0);
 
-  const currentCustomer = mobileWorkbench.getByRole('region', { name: '当前拨打客户' });
-  await expect(currentCustomer).toContainText('示例商家');
-  await expect(currentCustomer).toContainText('+1 212 555 0126');
-  const dial = currentCustomer.getByRole('button', { name: 'RingCentral 网页拨号', exact: true });
+  await expect(mobileWorkbench.getByRole('heading', { name: '示例商家', exact: true })).toBeVisible();
+  await expect(mobileWorkbench).toContainText('+1 212 555 0126');
+  const dial = mobileWorkbench.getByRole('button', { name: '拨打电话', exact: true });
   for (const target of [dial]) {
     const box = await target.boundingBox();
     expect(box?.height || 0).toBeGreaterThanOrEqual(44);
     expect(box?.width || 0).toBeGreaterThanOrEqual(44);
   }
-  await expect(currentCustomer.getByRole('button', { name: '选择其他拨号方式' })).toHaveCount(0);
+  await expect(mobileWorkbench.getByRole('button', { name: '选择其他拨号方式' })).toHaveCount(0);
 
   await mobileWorkbench.getByRole('button', { name: '待回访', exact: true }).click();
-  const resultDialog = page.getByRole('dialog');
-  await expect(resultDialog.getByRole('heading', { name: '通话结束后记录 · 示例商家' })).toBeVisible();
-  await expect(resultDialog.getByRole('button', { name: '待回访', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(resultDialog.getByRole('button', { name: '保存并进入下一位' })).toBeVisible();
-  await expect.poll(async () => (await resultDialog.boundingBox())?.width || 0).toBeGreaterThanOrEqual(389);
-  await expect.poll(async () => (await resultDialog.boundingBox())?.height || 0).toBeGreaterThanOrEqual(843);
+  await expect(mobileWorkbench.getByRole('button', { name: '待回访', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const notes = mobileWorkbench.getByLabel('沟通记录', { exact: true });
+  await notes.fill('已约定稍后回电，返回后继续记录');
+  await expect(mobileWorkbench.getByRole('button', { name: '保存并下一位', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
 
-  await page.keyboard.press('Escape');
-  await expect(resultDialog).toBeHidden();
   await page.route('https://app.ringcentral.com/**', route => route.fulfill({
     status: 200,
     contentType: 'text/html',
@@ -198,5 +200,7 @@ test('390px 销售工作台使用拨打返回记录一体化手机流程', async
   await expect(page).toHaveURL('https://app.ringcentral.com/r/call?number=12125550126');
   await page.goBack();
   await expect(page).toHaveURL(`${baseUrl}/sales-workbench`);
-  await expect(page.getByRole('dialog').getByRole('heading', { name: '通话结束后记录 · 示例商家' })).toBeVisible();
+  await expect(notes).toHaveValue('已约定稍后回电，返回后继续记录');
+  await expect(mobileWorkbench.getByRole('button', { name: '待回访', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 });

@@ -1,0 +1,25 @@
+.sales-center-navigation { align-items: center; gap: 26px; min-width: 0; }
+.sales-center-navigation-title { margin-right: 6px; font-size: 14px; font-weight: 500; color: #182942; white-space: nowrap; }
+.sales-center-navigation a { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 0; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 14px; line-height: 20px; color: #64748b; }
+.sales-center-navigation a[aria-current=page] { color: #245de8; border-bottom-color: #245de8; font-weight: 500; }
+.sales-center-navigation a:hover { color: #245de8; }
+.sales-center-mobile-navigation { padding: 0 16px; background: #fff; border-bottom: 1px solid #e7ebf2; flex-shrink: 0; }
+.sales-center-mobile-navigation .sales-center-navigation-title { display: none; }
+.app-sales-layout .app-topbar { box-shadow: none; }
+@media (min-width: 768px) {
+  .app-sales-layout .app-topbar { min-height: 60px; padding-top: 0; padding-bottom: 0; gap: 18px; }
+}
+@media (min-width: 1024px) {
+  .app-sales-layout .app-primary-rail { width: 76px; flex-basis: 76px; }
+  .app-sales-layout .app-sidebar.app-sidebar-collapsed { width: 76px; }
+  .app-sales-layout .app-primary-links { padding-left: 7px; padding-right: 7px; }
+  .app-sales-layout .app-primary-link { min-height: 64px; }
+}
+@media (max-width: 1023px) {
+  .sales-center-navigation { gap: 18px; }
+  .sales-center-navigation-title { display: none; }
+}
+@media (max-width: 767px) {
+  .sales-center-navigation { gap: 0; justify-content: space-between; }
+  .sales-center-navigation a { font-size: 13px; padding-left: 3px; padding-right: 3px; }
+}
