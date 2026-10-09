@@ -36,6 +36,7 @@ async function seed(page: Page) {
     else if (path.endsWith('/sales-deal-controls/options')) data = { employees: [] };
     else if (path.includes('/product-plans')) data = { business_lines: [], products: [], plans: [] };
     else if (path.endsWith('/sales-intelligence/views')) data = [];
+    else if (path.endsWith('/sales-intelligence/leads')) data = { items: leads.map(lead => ({ ...lead, calls: 0, connected: 0, records: 0, manual_records: 0, outcomes: {}, potential: 'unknown', potential_label: '待判断', rationale: ['需要先确认需求'], profile: {} })) };
     await route.fulfill({ json: data });
   });
   return writes;
@@ -48,6 +49,8 @@ for (const width of [320, 360, 390, 430]) test(`${width}px 新线索卡精简空
   const fresh = page.getByTestId('sales-lead-mobile-card').filter({ hasText: '新商家' });
   const opportunity = page.getByTestId('sales-lead-mobile-card').filter({ hasText: '意向商家' });
   await expect(fresh).toBeVisible();
+  await expect(opportunity.locator('.sl-call-numbers b').first()).toHaveText('0');
+  expect(await fresh.evaluate(card => Array.from(card.childNodes).filter(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim() === '0').length)).toBe(0);
   await expect(fresh).not.toContainText(/未填写联系人|地区未采集|暂无沟通摘要|尚无联系时间/);
   await expect(fresh.locator('.slr-card-name')).toHaveCSS('min-height', '44px');
   const actions = opportunity.locator('.slr-card-actions');
