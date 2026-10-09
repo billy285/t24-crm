@@ -64,3 +64,8 @@
   .mobile-finance-record-fields dt { color: #64748b; font-size: 12px; }
   .mobile-finance-record-fields dd { margin: 3px 0 0; overflow-wrap: anywhere; color: #0f172a; }
 }
+@media(max-width:767px) {
+ .mobile-finance-editor { padding-bottom:calc(112px + env(safe-area-inset-bottom)); }
+ .mobile-finance-editor>.flex:last-of-type { position:fixed; bottom:0; left:0; right:0; z-index:4; display:flex; gap:10px; margin:0; padding:12px 20px calc(12px + env(safe-area-inset-bottom)); background:white; box-shadow:0 -3px 16px #15233e08; }
+ .mobile-finance-editor>.flex:last-of-type>button { flex:1; min-width:0; }
+}

@@ -1,7 +1,11 @@
+import { useListScroll } from '@/lib/use-list-scroll';
+import { useRetainedView } from '@/lib/use-retained-view';
 import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
 import './delivery-workspace.css';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { buildReturnLink } from '@/lib/navigation-state';
+import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -84,21 +88,23 @@ export default function Callbacks() {
     callbackResults: resultLabels,
   } = useBusinessDicts();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [callbacks, setCallbacks] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  useListScroll('callbacks', !loading);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterType, setFilterType] = useState('all');
-  const [filterCustomerId, setFilterCustomerId] = useState('');
-  const [filterEmployeeId, setFilterEmployeeId] = useState('all');
-  const [filterSchedule, setFilterSchedule] = useState('all');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [search, setSearch] = useRetainedView('Callbacks:search', '');
+  const [filterStatus, setFilterStatus] = useRetainedView('Callbacks:filterStatus', 'all');
+  const [filterType, setFilterType] = useRetainedView('Callbacks:filterType', 'all');
+  const [filterCustomerId, setFilterCustomerId] = useRetainedView('Callbacks:filterCustomerId', '');
+  const [filterEmployeeId, setFilterEmployeeId] = useRetainedView('Callbacks:filterEmployeeId', 'all');
+  const [filterSchedule, setFilterSchedule] = useRetainedView('Callbacks:filterSchedule', 'all');
+  const [page, setPage] = useRetainedView('Callbacks:page', 1);
+  const [pageSize, setPageSize] = useRetainedView('Callbacks:pageSize', 20);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -120,6 +126,13 @@ export default function Callbacks() {
     notes: '',
   };
   const [form, setForm] = useState(emptyForm);
+  const saveInFlight = useRef(false);
+  const [pendingArrangement, setPendingArrangement] = useState<{ record: any; nextDate: string; error: string } | null>(null);
+  const formDraft = useDialogDraft(showForm && !pendingArrangement, form);
+  const arrangementTasks = useRef(new Set<number>());
+  const arrangementCallbacks = useRef(new Set<number>());
+  const handledFocus = useRef('');
+  const firstFilterRender = useRef(true);
 
   useEffect(() => { loadData(); }, []);
 
@@ -255,6 +268,7 @@ export default function Callbacks() {
   const paginated = useMemo(() => paginateList(filtered, page, pageSize), [filtered, page, pageSize]);
 
   useEffect(() => {
+    if (firstFilterRender.current) { firstFilterRender.current = false; return; }
     setPage(1);
   }, [search, filterStatus, filterType, filterCustomerId, filterEmployeeId, filterSchedule, pageSize]);
 
@@ -272,6 +286,7 @@ export default function Callbacks() {
 
   const openEdit = (cb: any) => {
     if (!canEditCallback) return;
+    if (pendingArrangement) { toast.error('请先补齐已保存回访的后续安排'); return; }
     setForm({
       customer_id: String(cb.customer_id || ''),
       employee_id: String(cb.employee_id || employee?.id || ''),
@@ -287,12 +302,21 @@ export default function Callbacks() {
     setShowForm(true);
   };
 
+  useEffect(() => {
+    const id = searchParams.get('callback_id');
+    if (loading || !id || handledFocus.current === id) return;
+    const record = callbacks.find(item => String(item.id) === id);
+    handledFocus.current = id;
+    if (record) openEdit(record);
+    else toast.error('这条回访不在当前可访问范围内');
+  }, [callbacks, loading, searchParams]);
+
   const ensureFollowUpTask = async (callbackRecord: any, nextDate: string) => {
-    if (!callbackRecord?.id || !['unsatisfied', 'need_followup'].includes(callbackRecord.result)) return;
+    if (!callbackRecord?.id || !['unsatisfied', 'need_followup'].includes(callbackRecord.result) || arrangementTasks.current.has(Number(callbackRecord.id))) return;
     const marker = `来源：电话回访 #${callbackRecord.id}`;
     if (tasks.some((task: any) => String(task.notes || '').includes(marker) && task.status !== 'cancelled')) return;
     const customer = customerMap[callbackRecord.customer_id];
-    await client.entities.tasks.create({
+    const response = await client.entities.tasks.create({
       data: {
         title: `回访跟进：${customer?.business_name || `客户 #${callbackRecord.customer_id}`}`,
         customer_id: callbackRecord.customer_id,
@@ -310,13 +334,15 @@ export default function Callbacks() {
         updated_at: new Date().toISOString(),
       },
     });
+    arrangementTasks.current.add(Number(callbackRecord.id));
+    if (response?.data?.id) setTasks(current => [response.data, ...current]);
   };
 
   const ensureNextCallback = async (callbackRecord: any, nextDate: string) => {
-    if (!callbackRecord?.id || !nextDate) return;
+    if (!callbackRecord?.id || !nextDate || arrangementCallbacks.current.has(Number(callbackRecord.id))) return;
     const marker = `自动安排：来自回访 #${callbackRecord.id}`;
     if (callbacks.some((item: any) => String(item.notes || '').includes(marker))) return;
-    await client.apiCall.invoke({
+    const response = await client.apiCall.invoke({
       url: '/api/v1/entities/customer_callbacks',
       method: 'POST',
       data: {
@@ -336,9 +362,33 @@ export default function Callbacks() {
         updated_at: new Date().toISOString(),
       },
     });
+    arrangementCallbacks.current.add(Number(callbackRecord.id));
+    if (response?.data?.id) setCallbacks(current => [response.data, ...current]);
+  };
+
+  const finishArrangement = async (record: any, nextDate: string) => {
+    await ensureFollowUpTask(record, nextDate);
+    if (canCreateCallback && (['no_answer', 'rescheduled'].includes(record.status) || ['unsatisfied', 'need_followup'].includes(record.result))) {
+      await ensureNextCallback(record, nextDate);
+    }
+  };
+  const retryArrangement = async () => {
+    if (!pendingArrangement || saveInFlight.current) return;
+    saveInFlight.current = true; setSaving(true);
+    try {
+      await finishArrangement(pendingArrangement.record, pendingArrangement.nextDate);
+      setPendingArrangement(null); formDraft.markSaved(); setShowForm(false); setEditingId(null); setForm(emptyForm);
+      toast.success('后续安排已补齐'); await loadData();
+    } catch (error: any) {
+      const message = error?.data?.detail || error?.message || '后续安排失败';
+      setPendingArrangement(current => current ? { ...current, error: message } : current);
+      toast.error('回访记录已经保存，请重试后续安排');
+    } finally { saveInFlight.current = false; setSaving(false); }
   };
 
   const handleSave = async () => {
+    if (saveInFlight.current) return;
+    if (pendingArrangement) { await retryArrangement(); return; }
     if (editingId ? !canEditCallback : !canCreateCallback) {
       toast.error('当前账号没有保存回访记录的权限');
       return;
@@ -359,11 +409,13 @@ export default function Callbacks() {
       toast.error('改期回访时，请填写下次回访日期');
       return;
     }
-    setSaving(true);
+    saveInFlight.current = true; setSaving(true);
+    let savedCallback: any = null;
+    let nextCallbackDate = '';
     try {
       const now = new Date().toISOString();
       const responsibleEmployee = employees.find((item: any) => Number(item.id) === Number(form.employee_id));
-      const nextCallbackDate = form.next_callback_date || (form.status === 'no_answer' ? addBusinessDateDays(businessToday, 1) : '');
+      nextCallbackDate = form.next_callback_date || (form.status === 'no_answer' ? addBusinessDateDays(businessToday, 1) : '');
       const payload: any = {
         customer_id: Number(form.customer_id),
         employee_id: Number(form.employee_id),
@@ -381,7 +433,6 @@ export default function Callbacks() {
         updated_at: now,
       };
 
-      let savedCallback: any = null;
       if (editingId) {
         const response = await client.apiCall.invoke({
           url: `/api/v1/entities/customer_callbacks/${editingId}`,
@@ -389,7 +440,7 @@ export default function Callbacks() {
           data: payload,
         });
         savedCallback = response?.data;
-        toast.success('回访记录已更新');
+
       } else {
         payload.created_by_employee_id = employee?.id || null;
         payload.created_by_employee_name = employee?.name || '';
@@ -400,25 +451,25 @@ export default function Callbacks() {
           data: payload,
         });
         savedCallback = response?.data;
-        toast.success('回访记录已添加');
+
       }
-      if (savedCallback) {
-        await ensureFollowUpTask(savedCallback, nextCallbackDate);
-        if (['no_answer', 'rescheduled'].includes(savedCallback.status)
-          || ['unsatisfied', 'need_followup'].includes(savedCallback.result)) {
-        if (canCreateCallback) await ensureNextCallback(savedCallback, nextCallbackDate);
-        }
-      }
+      if (!savedCallback?.id) throw new Error('回访保存结果缺少记录编号，请核对后再继续');
+      setEditingId(savedCallback.id);
+      setCallbacks(current => [savedCallback, ...current.filter(item => Number(item.id) !== Number(savedCallback.id))]);
+      await finishArrangement(savedCallback, nextCallbackDate);
+      toast.success('回访记录和后续安排已保存');
+      formDraft.markSaved();
       setShowForm(false);
       setEditingId(null);
       setForm(emptyForm);
       loadData();
-    } catch (err) {
-      toast.error('保存失败');
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
+    } catch (err: any) {
+      if (savedCallback?.id) {
+        formDraft.markSaved();
+        setPendingArrangement({ record: savedCallback, nextDate: nextCallbackDate, error: err?.data?.detail || err?.message || '后续安排失败' });
+        toast.error('回访记录已保存，后续安排尚未完成，请重试');
+      } else toast.error(err?.data?.detail || '保存失败');
+    } finally { saveInFlight.current = false; setSaving(false); }
   };
 
   const handleDelete = async () => {
@@ -441,7 +492,7 @@ export default function Callbacks() {
   };
 
   const goToCustomerDetail = (customerId: number) => {
-    navigate(`/customers?detail=${customerId}`);
+    navigate(buildReturnLink(`/customers?detail=${customerId}`, `${location.pathname}${location.search}`, 'callbacks'));
   };
 
   // Quick complete action
@@ -456,8 +507,9 @@ export default function Callbacks() {
     if (!callbackId || quickNoAnswerInFlightRef.current.has(callbackId)) return;
     quickNoAnswerInFlightRef.current.add(callbackId);
     setQuickNoAnswerBusyIds(current => new Set(current).add(callbackId));
+    let savedRecord: any = null;
+    const nextDate = addBusinessDateDays(businessToday, 1);
     try {
-      const nextDate = addBusinessDateDays(businessToday, 1);
       const response = await client.apiCall.invoke({
         url: `/api/v1/entities/customer_callbacks/${callbackId}`,
         method: 'PUT',
@@ -467,16 +519,21 @@ export default function Callbacks() {
           updated_at: new Date().toISOString(),
         },
       });
+      savedRecord = response?.data || { ...cb, status: 'no_answer' };
       if (canCreateCallback) {
-        await ensureNextCallback(response?.data || { ...cb, status: 'no_answer' }, nextDate);
+        await ensureNextCallback(savedRecord, nextDate);
       }
       toast.success('已标记为未接通，并自动安排明日回访');
       await loadData();
       setCallbacks(current => current.map(item => Number(item.id) === callbackId
         ? { ...item, status: 'no_answer', next_callback_date: new Date(nextDate).toISOString() }
         : item));
-    } catch (err) {
-      toast.error('操作失败');
+    } catch (err: any) {
+      if (savedRecord?.id) {
+        setPendingArrangement({ record: savedRecord, nextDate, error: err?.data?.detail || err?.message || '安排明日回访失败' });
+        await loadData();
+        toast.error('未接通已记录，明日回访尚未安排，请重试');
+      } else toast.error('操作失败');
     } finally {
       quickNoAnswerInFlightRef.current.delete(callbackId);
       setQuickNoAnswerBusyIds(current => {
@@ -575,6 +632,7 @@ export default function Callbacks() {
           </div>
           {canCreateCallback && <Button
             onClick={() => {
+              if (pendingArrangement) { toast.error('请先补齐已保存回访的后续安排'); return; }
               setForm({ ...emptyForm, employee_id: employee?.id ? String(employee.id) : '' });
               setEditingId(null);
               setShowForm(true);
@@ -843,6 +901,7 @@ export default function Callbacks() {
         </CardContent>
       </Card>
 
+      {pendingArrangement && !showForm && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><span>回访 #{pendingArrangement.record.id} 已保存，后续安排未完成。</span><Button variant="outline" disabled={saving} onClick={retryArrangement}>{saving ? '安排中…' : '重试后续安排'}</Button></div>}
       {/* Delete Confirm */}
       {canDeleteCallback && <ConfirmDialog
         open={!!deleteTarget}
@@ -854,12 +913,12 @@ export default function Callbacks() {
       />}
 
       {/* Add/Edit Dialog */}
-      {(canCreateCallback || canEditCallback) && <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setEditingId(null); setForm(emptyForm); } }}>
+      {(canCreateCallback || canEditCallback) && <Dialog open={showForm} onOpenChange={(v) => { if (!v && (saving || !formDraft.confirmDiscard())) return; setShowForm(v); if (!v) { setEditingId(null); setForm(emptyForm); } }}>
         <DialogContent className="delivery-dialog max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>{editingId ? '编辑回访记录' : '新增回访记录'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <fieldset disabled={saving || Boolean(pendingArrangement)} className="space-y-4">
             <div>
               <Label>选择客户（已成交） *</Label>
               <CustomerCombobox
@@ -959,15 +1018,16 @@ export default function Callbacks() {
                 placeholder="其他备注信息..."
               />
             </div>
-          </div>
+          </fieldset>
+          {pendingArrangement && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">回访 #{pendingArrangement.record.id} 已保存。后续安排未完成：{pendingArrangement.error}</div>}
           <div className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-4 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
-            <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setShowForm(false)}>取消</Button>
+            <Button variant="outline" className="flex-1 sm:flex-none" disabled={saving} onClick={() => { if (formDraft.confirmDiscard()) setShowForm(false); }}>关闭</Button>
             <Button
               onClick={handleSave}
               disabled={saving}
               className="flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none"
             >
-              {saving ? '保存中...' : '保存'}
+              {saving ? '保存中...' : pendingArrangement ? '重试后续安排' : '保存'}
             </Button>
           </div>
         </DialogContent>

@@ -1,3 +1,6 @@
+import { useDialogDraft } from '@/lib/use-dialog-draft';
+import { useRetainedView } from '@/lib/use-retained-view';
+import { useListScroll } from '@/lib/use-list-scroll';
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
@@ -47,7 +50,7 @@ import {
   useDictConfig,
 } from '../lib/dict-config';
 import { getPaymentMethodLabel, getPaymentModeLabel, inferPaymentModeKey, normalizePaymentMethodKey } from '../lib/payment-utils';
-import { businessDateKey } from '../lib/business-date';
+import { businessDateKey, formatBusinessDateTimeInput } from '../lib/business-date';
 import {
   computeSubscriptionStatus,
   decorateEffectiveSubscriptions,
@@ -79,6 +82,7 @@ const STRIPE_PLATFORM_FEE_RATE = 0.029;
 const STRIPE_PLATFORM_FEE_FIXED = 0.3;
 const CUSTOMER_PAGE_SIZE_OPTIONS = [20, 50, 100];
 const customerTimestampFormatter = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
   month: '2-digit',
   day: '2-digit',
   hour: '2-digit',
@@ -324,7 +328,8 @@ function getLevelColorClass(level?: string) {
 
 function formatCustomerTimestamp(value: string | null) {
   if (!value) return '尚未完成加载';
-  return customerTimestampFormatter.format(new Date(value));
+  const formatted = formatBusinessDateTimeInput(value);
+  return formatted ? formatted.replace('T', ' ') : '时间待核实';
 }
 
 function CustomerListLoadingState() {
@@ -708,15 +713,15 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [customersLoadedAt, setCustomersLoadedAt] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterIndustry, setFilterIndustry] = useState('all');
-  const [filterLevel, setFilterLevel] = useState('all');
-  const [filterSource, setFilterSource] = useState('all');
-  const [customerPage, setCustomerPage] = useState(1);
-  const [customerPageSize, setCustomerPageSize] = useState(20);
+  const [search, setSearch] = useRetainedView('Customers:search', '');
+  const [filterStatus, setFilterStatus] = useRetainedView('Customers:filterStatus', 'all');
+  const [filterIndustry, setFilterIndustry] = useRetainedView('Customers:filterIndustry', 'all');
+  const [filterLevel, setFilterLevel] = useRetainedView('Customers:filterLevel', 'all');
+  const [filterSource, setFilterSource] = useRetainedView('Customers:filterSource', 'all');
+  const [customerPage, setCustomerPage] = useRetainedView('Customers:customerPage', 1);
+  const [customerPageSize, setCustomerPageSize] = useRetainedView('Customers:customerPageSize', 20);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [advFilters, setAdvFilters] = useState(emptyAdvancedFilters);
+  const [advFilters, setAdvFilters] = useRetainedView('Customers:advFilters', emptyAdvancedFilters);
   const advFilterCount = Object.values(advFilters).filter(v => v.trim()).length;
   const primaryFilterCount = [filterStatus, filterIndustry, filterLevel, filterSource].filter(value => value !== 'all').length;
   const activeFilterCount = primaryFilterCount + advFilterCount;
@@ -790,6 +795,16 @@ export default function Customers() {
   const [deletingContact, setDeletingContact] = useState(false);
   const emptyContactForm = { contact_name: '', contact_phone: '', contact_role: 'boss', notes: '' };
   const [contactForm, setContactForm] = useState(emptyContactForm);
+  const customerDraft = useDialogDraft(showForm && !customerProjectsLoading, [form, customerProjectForms, commissionPartnerId, commissionEffectiveFrom]);
+  const followDraft = useDialogDraft(showFollowForm, followForm);
+  const contactDraft = useDialogDraft(showContactForm, contactForm);
+  const firstCustomerFilterRender = useRef(true);
+  useListScroll('customers', !loading && !selectedCustomer);
+  const leaveInlineForms = () => {
+    if (!followDraft.confirmDiscard() || !contactDraft.confirmDiscard()) return false;
+    setShowFollowForm(false); setShowContactForm(false);
+    return true;
+  };
 
   // Dynamic industry labels
   const [showAddIndustry, setShowAddIndustry] = useState(false);
@@ -1327,6 +1342,7 @@ export default function Customers() {
   };
 
   const handleSaveFollow = async () => {
+    if (savingFollow) return;
     if (editingFollowId ? !canEditFollowUp : !canCreateFollowUp) {
       toast.error('当前账号没有保存跟进记录的权限');
       return;
@@ -1346,7 +1362,7 @@ export default function Customers() {
         toast.success('跟进记录已添加');
         logOperation({ customerId: selectedCustomer.id, actionType: 'create_follow_up', actionDetail: '新增跟进记录', operatorName: op });
       }
-      setShowFollowForm(false); setEditingFollowId(null); setFollowForm(emptyFollowForm);
+      followDraft.markSaved(); setShowFollowForm(false); setEditingFollowId(null); setFollowForm(emptyFollowForm);
       const nextFollowUps = await reloadFollowUps(selectedCustomer.id);
       const followReminderType = searchParams.get('reminder') || '';
       if (['follow_up_today', 'follow_up_overdue', 'no_follow_7d'].includes(followReminderType)) {
@@ -1386,6 +1402,7 @@ export default function Customers() {
 
   // Contact CRUD
   const handleSaveContact = async () => {
+    if (savingContact) return;
     if (!canManageContacts) {
       toast.error('当前账号没有修改联系人的权限');
       return;
@@ -1406,7 +1423,7 @@ export default function Customers() {
         await client.entities.customer_contacts.create({ data: { customer_id: selectedCustomer.id, contact_name: contactForm.contact_name, contact_phone: contactForm.contact_phone, contact_role: contactForm.contact_role, notes: contactForm.notes, created_at: new Date().toISOString() } });
         toast.success('联系人已添加');
       }
-      setShowContactForm(false); setEditingContactId(null); setContactForm(emptyContactForm);
+      contactDraft.markSaved(); setShowContactForm(false); setEditingContactId(null); setContactForm(emptyContactForm);
       await reloadContacts(selectedCustomer.id);
     } catch (err) { console.error(err); toast.error('保存失败'); } finally { setSavingContact(false); }
   };
@@ -1552,6 +1569,7 @@ export default function Customers() {
   }, [businessToday, customers]);
   const attentionCustomerCount = (customerStatusCounts.paused || 0) + (customerStatusCounts.lost || 0);
   useEffect(() => {
+    if (firstCustomerFilterRender.current) { firstCustomerFilterRender.current = false; return; }
     setCustomerPage(1);
   }, [search, filterStatus, filterIndustry, filterLevel, filterSource, advFilters, customerPageSize]);
 
@@ -1647,6 +1665,7 @@ export default function Customers() {
   };
 
   const handleSave = async () => {
+    if (saving || customerProjectsLoading) return;
     if (!form.business_name || !form.contact_name || !form.phone) { toast.error('请填写必填字段'); return; }
     const originalCustomer = customers.find(customer => customer.id === editingId);
     if (!editingId || form.phone !== originalCustomer?.phone || (form.country || null) !== (originalCustomer?.country || null)) {
@@ -1708,6 +1727,7 @@ export default function Customers() {
         toast.success('客户创建成功');
         logOperation({ customerId: res?.data?.id, actionType: 'create_customer', actionDetail: `新增客户: ${form.business_name}`, operatorName: op });
       }
+      customerDraft.markSaved();
       setShowForm(false);
       await loadCustomers();
       if (editingId && selectedCustomer?.id === editingId) {
@@ -1973,6 +1993,7 @@ export default function Customers() {
   };
 
   const closeDetail = () => {
+    if (savingFollow || savingContact || !leaveInlineForms()) return;
     invalidateCustomerDetailRequests();
     clearCustomerDetailAssociations();
     setSelectedCustomer(null);
@@ -1999,6 +2020,7 @@ export default function Customers() {
   };
 
   const handleDetailTabChange = (nextTab: string) => {
+    if (nextTab !== selectedCustomerTab && (savingFollow || savingContact || !leaveInlineForms())) return;
     const safeTab = normalizeCustomerDetailTab(nextTab);
     setSelectedCustomerTab(safeTab);
     if (searchParams.get('detail')) {
@@ -2013,6 +2035,53 @@ export default function Customers() {
   const formCityLabels = new Set(formCities.map(city => city.label));
   const isCustomFormCity = Boolean(form.city && formCities.length > 0 && !formCityLabels.has(form.city));
   const showManualCityField = formCities.length === 0 || manualCityInput || isCustomFormCity;
+  const renderAdvancedFilters = () => (<div className="border-t border-slate-200 pt-3">
+            <div className="flex items-center justify-between mb-3"><span className="text-sm font-medium text-slate-600">精确筛选</span>{advFilterCount > 0 && <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-500 hover:text-red-600 gap-1" onClick={() => setAdvFilters(emptyAdvancedFilters)}><X className="w-3 h-3" /> 清除</Button>}</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div><label className="text-xs text-slate-500 mb-1 block">编号</label><Input placeholder="客户编号" value={advFilters.customer_code} onChange={e => setAdvFilters({ ...advFilters, customer_code: e.target.value })} className="h-9 text-sm" /></div>
+              <div><label className="text-xs text-slate-500 mb-1 block">商家名称</label><Input placeholder="商家名称" value={advFilters.business_name} onChange={e => setAdvFilters({ ...advFilters, business_name: e.target.value })} className="h-9 text-sm" /></div>
+              <div><label className="text-xs text-slate-500 mb-1 block">联系人</label><Input placeholder="联系人" value={advFilters.contact_name} onChange={e => setAdvFilters({ ...advFilters, contact_name: e.target.value })} className="h-9 text-sm" /></div>
+              <div><label className="text-xs text-slate-500 mb-1 block">电话</label><Input placeholder="电话" value={advFilters.phone} onChange={e => setAdvFilters({ ...advFilters, phone: e.target.value })} className="h-9 text-sm" /></div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">行业</label>
+                <NativeSelect value={advFilters.industry} onChange={v => setAdvFilters({ ...advFilters, industry: v })} options={[{ value: '', label: '全部行业' }, ...Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">状态</label>
+                <NativeSelect value={advFilters.status} onChange={v => setAdvFilters({ ...advFilters, status: v })} options={[{ value: '', label: '全部状态' }, ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">等级</label>
+                <NativeSelect value={advFilters.level} onChange={v => setAdvFilters({ ...advFilters, level: v })} options={[{ value: '', label: '全部等级' }, ...Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">负责人</label>
+                <NativeSelect value={advFilters.sales_person} onChange={v => setAdvFilters({ ...advFilters, sales_person: v })} options={[{ value: '', label: '全部负责人' }, ...salesPersonOptions]} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">来源</label>
+                <NativeSelect value={advFilters.source} onChange={v => setAdvFilters({ ...advFilters, source: v })} options={[{ value: '', label: '全部来源' }, ...Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+              </div>
+              <div><label className="text-xs text-slate-500 mb-1 block">微信</label><Input placeholder="微信" value={advFilters.wechat} onChange={e => setAdvFilters({ ...advFilters, wechat: e.target.value })} className="h-9 text-sm" /></div>
+              <div><label className="text-xs text-slate-500 mb-1 block">邮箱</label><Input placeholder="邮箱" value={advFilters.email} onChange={e => setAdvFilters({ ...advFilters, email: e.target.value })} className="h-9 text-sm" /></div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">国家</label>
+                <NativeSelect value={advFilters.country} onChange={v => setAdvFilters({ ...advFilters, country: v, state: '', city: '' })} options={[{ value: '', label: '全部国家' }, ...countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))]} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">州/省</label>
+                <NativeSelect value={advFilters.state} onChange={v => setAdvFilters({ ...advFilters, state: v, city: '' })} options={[{ value: '', label: advFilters.country ? '全部州/省' : '请先选择国家' }, ...advStates.map(s => ({ value: s.code, label: s.code }))]} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">城市</label>
+                {advCities.length > 0 ? (
+                  <NativeSelect value={advFilters.city} onChange={v => setAdvFilters({ ...advFilters, city: v })} options={[{ value: '', label: '全部城市' }, ...advCities.map(ct => ({ value: ct.label, label: ct.label }))]} />
+                ) : (
+                  <Input placeholder={advFilters.state ? '输入城市名' : '请先选择州/省'} value={advFilters.city} onChange={e => setAdvFilters({ ...advFilters, city: e.target.value })} className="h-9 text-sm" />
+                )}
+              </div>
+            </div>
+          </div>);
   const sharedCustomerDialogs = (
     <>
       <ConfirmDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }} title="确认删除客户" description={`确定要删除「${deleteTarget?.business_name}」吗？`} onConfirm={handleDelete} loading={deleting} />
@@ -2085,7 +2154,7 @@ export default function Customers() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showForm} onOpenChange={setShowForm}>
+      <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && customerDraft.confirmDiscard())) setShowForm(open); }}>
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl overflow-y-auto sm:max-h-[90vh]">
           <DialogHeader className="sticky top-0 z-20 -mx-6 -mt-6 border-b border-slate-200 bg-white px-6 py-4 sm:static sm:m-0 sm:border-0 sm:bg-transparent sm:p-0"><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle></DialogHeader>
           {duplicateWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><AlertCircle className="w-4 h-4 flex-shrink-0" />{duplicateWarning}</div>}
@@ -2417,7 +2486,7 @@ export default function Customers() {
             <div className="sm:col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
           </div>
           <div data-testid="customer-form-actions" className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-5 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
-            <Button variant="outline" onClick={() => setShowForm(false)} className="min-h-11 flex-1 sm:flex-none">取消</Button>
+            <Button variant="outline" disabled={saving} onClick={() => { if (customerDraft.confirmDiscard()) setShowForm(false); }} className="min-h-11 flex-1 sm:flex-none">取消</Button>
             <Button onClick={handleSave} disabled={saving} className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none">{saving ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>
@@ -2588,8 +2657,8 @@ export default function Customers() {
     const autoRenewCount = renewalRows.filter(item => item.auto_renew).length;
     const timelineEvents = [
       ...followUps.map((item: any) => ({ type: '跟进', title: item.follow_up_type || item.content || '客户跟进', detail: item.content || item.notes || '', date: item.follow_up_date || item.created_at, tone: 'blue' })),
-      ...deals.map((item: any) => ({ type: '成交', title: item.package_name || item.deal_name || '成交记录', detail: item.amount ? `${item.amount} ${item.currency || 'USD'}` : '', date: item.deal_date || item.created_at, tone: 'emerald' })),
-      ...payments.map((item: any) => ({ type: '收款', title: item.payment_type || '收款记录', detail: item.amount ? `${item.amount} ${item.currency || 'USD'}` : '', date: item.payment_date || item.created_at, tone: 'cyan' })),
+      ...deals.map((item: any) => ({ type: '成交', title: item.package_name || item.deal_name || '成交记录', detail: canViewFinance && item.deal_amount != null ? `${item.deal_amount} ${item.currency || 'USD'}` : '', date: item.deal_date || item.created_at, tone: 'emerald' })),
+      ...payments.map((item: any) => ({ type: '收款', title: item.payment_type || '收款记录', detail: canViewFinance && item.amount_paid != null ? `${item.amount_paid} ${item.currency || 'USD'}` : '', date: item.payment_date || item.created_at, tone: 'cyan' })),
       ...subscriptions.map((item: any) => ({ type: '服务/续费', title: item.package_name || '套餐服务', detail: `${item.start_date || '-'} 至 ${item.end_date || '-'}`, date: item.start_date || item.created_at, tone: 'amber' })),
       ...(lifecycleDetail?.events || []).map((item: any) => ({
         type: '生命周期',
@@ -2860,7 +2929,7 @@ export default function Customers() {
                     <div><Label className="text-xs">备注</Label><Input value={contactForm.notes} onChange={e => setContactForm({ ...contactForm, notes: e.target.value })} placeholder="备注信息" /></div>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => { setShowContactForm(false); setEditingContactId(null); }}>取消</Button>
+                    <Button variant="outline" size="sm" disabled={savingContact} onClick={() => { if (contactDraft.confirmDiscard()) { setShowContactForm(false); setEditingContactId(null); } }}>取消</Button>
                     <Button size="sm" onClick={handleSaveContact} disabled={savingContact} className="bg-blue-600 hover:bg-blue-700">{savingContact ? '保存中...' : '保存'}</Button>
                   </div>
                 </div>
@@ -2907,20 +2976,22 @@ export default function Customers() {
                     <div><Label className="text-xs">阶段</Label><NativeSelect value={followForm.stage} onChange={v => setFollowForm({ ...followForm, stage: v })} options={Object.entries(stageLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
                   </div>
                   <div><Label className="text-xs">内容 *</Label><Textarea value={followForm.content} onChange={e => setFollowForm({ ...followForm, content: e.target.value })} rows={3} placeholder="跟进详情..." /></div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div><Label className="text-xs">下次跟进日期 · 北京时间</Label><Input type="date" value={followForm.next_follow_date} onChange={e => setFollowForm({ ...followForm, next_follow_date: e.target.value })} /></div>
+                  <details className="rounded-lg border border-slate-200 p-3"><summary className="cursor-pointer text-sm text-slate-600">需求与报价详情</summary><div className="mt-3 space-y-3">                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div><Label className="text-xs">需求</Label><Input value={followForm.customer_needs} onChange={e => setFollowForm({ ...followForm, customer_needs: e.target.value })} /></div>
                     <div><Label className="text-xs">痛点</Label><Input value={followForm.customer_pain_points} onChange={e => setFollowForm({ ...followForm, customer_pain_points: e.target.value })} /></div>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div><Label className="text-xs">成交概率 ({followForm.close_probability}%)</Label><Input type="range" min={0} max={100} step={10} value={followForm.close_probability} onChange={e => setFollowForm({ ...followForm, close_probability: Number(e.target.value) })} /></div>
-                    <div><Label className="text-xs">下次跟进</Label><Input type="date" value={followForm.next_follow_date} onChange={e => setFollowForm({ ...followForm, next_follow_date: e.target.value })} /></div>
+
                   </div>
                   <div className="flex items-center gap-3">
                     <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={followForm.has_quoted} onChange={e => setFollowForm({ ...followForm, has_quoted: e.target.checked })} className="rounded" />已报价</label>
                     {followForm.has_quoted && <Input placeholder="报价方案" value={followForm.quote_plan} onChange={e => setFollowForm({ ...followForm, quote_plan: e.target.value })} className="flex-1 h-8 text-sm" />}
                   </div>
+</div></details>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => { setShowFollowForm(false); setEditingFollowId(null); }}>取消</Button>
+                    <Button variant="outline" size="sm" disabled={savingFollow} onClick={() => { if (followDraft.confirmDiscard()) { setShowFollowForm(false); setEditingFollowId(null); } }}>取消</Button>
                     <Button size="sm" onClick={handleSaveFollow} disabled={savingFollow} className="bg-blue-600 hover:bg-blue-700">{savingFollow ? '保存中...' : '保存'}</Button>
                   </div>
                 </div>
@@ -2930,7 +3001,7 @@ export default function Customers() {
                   <div className="space-y-4">{paginatedFollowUps.items.map((f: any) => (
                     <div key={f.id} className="border-l-2 border-blue-300 pl-4 py-2 group">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs text-slate-500">{f.created_at?.slice(0, 16)}</span>
+                        <span className="text-xs text-slate-500">{formatCustomerTimestamp(f.created_at)} · 北京时间</span>
                         <Badge variant="secondary" className="text-xs">{stageLabels[f.stage] || f.stage}</Badge>
                         <span className="text-xs text-slate-400">{f.employee_name} · {methodLabels[f.contact_method] || f.contact_method}</span>
                         {(canEditFollowUp || canDeleteFollowUp) && <div className="ml-auto flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
@@ -3342,55 +3413,7 @@ export default function Customers() {
             <SlidersHorizontal className="w-4 h-4" /> 高级{advFilterCount > 0 && <Badge className="ml-1 bg-white text-blue-600 hover:bg-white h-5 min-w-[20px] px-1.5 text-xs">{advFilterCount}</Badge>}
           </Button>
         </div>
-        {showAdvanced && (
-          <div className="border-t border-slate-200 pt-3">
-            <div className="flex items-center justify-between mb-3"><span className="text-sm font-medium text-slate-600">精确筛选</span>{advFilterCount > 0 && <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-500 hover:text-red-600 gap-1" onClick={() => setAdvFilters(emptyAdvancedFilters)}><X className="w-3 h-3" /> 清除</Button>}</div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              <div><label className="text-xs text-slate-500 mb-1 block">编号</label><Input placeholder="客户编号" value={advFilters.customer_code} onChange={e => setAdvFilters({ ...advFilters, customer_code: e.target.value })} className="h-9 text-sm" /></div>
-              <div><label className="text-xs text-slate-500 mb-1 block">商家名称</label><Input placeholder="商家名称" value={advFilters.business_name} onChange={e => setAdvFilters({ ...advFilters, business_name: e.target.value })} className="h-9 text-sm" /></div>
-              <div><label className="text-xs text-slate-500 mb-1 block">联系人</label><Input placeholder="联系人" value={advFilters.contact_name} onChange={e => setAdvFilters({ ...advFilters, contact_name: e.target.value })} className="h-9 text-sm" /></div>
-              <div><label className="text-xs text-slate-500 mb-1 block">电话</label><Input placeholder="电话" value={advFilters.phone} onChange={e => setAdvFilters({ ...advFilters, phone: e.target.value })} className="h-9 text-sm" /></div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">行业</label>
-                <NativeSelect value={advFilters.industry} onChange={v => setAdvFilters({ ...advFilters, industry: v })} options={[{ value: '', label: '全部行业' }, ...Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">状态</label>
-                <NativeSelect value={advFilters.status} onChange={v => setAdvFilters({ ...advFilters, status: v })} options={[{ value: '', label: '全部状态' }, ...Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">等级</label>
-                <NativeSelect value={advFilters.level} onChange={v => setAdvFilters({ ...advFilters, level: v })} options={[{ value: '', label: '全部等级' }, ...Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">负责人</label>
-                <NativeSelect value={advFilters.sales_person} onChange={v => setAdvFilters({ ...advFilters, sales_person: v })} options={[{ value: '', label: '全部负责人' }, ...salesPersonOptions]} />
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">来源</label>
-                <NativeSelect value={advFilters.source} onChange={v => setAdvFilters({ ...advFilters, source: v })} options={[{ value: '', label: '全部来源' }, ...Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-              </div>
-              <div><label className="text-xs text-slate-500 mb-1 block">微信</label><Input placeholder="微信" value={advFilters.wechat} onChange={e => setAdvFilters({ ...advFilters, wechat: e.target.value })} className="h-9 text-sm" /></div>
-              <div><label className="text-xs text-slate-500 mb-1 block">邮箱</label><Input placeholder="邮箱" value={advFilters.email} onChange={e => setAdvFilters({ ...advFilters, email: e.target.value })} className="h-9 text-sm" /></div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">国家</label>
-                <NativeSelect value={advFilters.country} onChange={v => setAdvFilters({ ...advFilters, country: v, state: '', city: '' })} options={[{ value: '', label: '全部国家' }, ...countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))]} />
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">州/省</label>
-                <NativeSelect value={advFilters.state} onChange={v => setAdvFilters({ ...advFilters, state: v, city: '' })} options={[{ value: '', label: advFilters.country ? '全部州/省' : '请先选择国家' }, ...advStates.map(s => ({ value: s.code, label: s.code }))]} />
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">城市</label>
-                {advCities.length > 0 ? (
-                  <NativeSelect value={advFilters.city} onChange={v => setAdvFilters({ ...advFilters, city: v })} options={[{ value: '', label: '全部城市' }, ...advCities.map(ct => ({ value: ct.label, label: ct.label }))]} />
-                ) : (
-                  <Input placeholder={advFilters.state ? '输入城市名' : '请先选择州/省'} value={advFilters.city} onChange={e => setAdvFilters({ ...advFilters, city: e.target.value })} className="h-9 text-sm" />
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        {!isMobile && showAdvanced && renderAdvancedFilters()}
       </div>
 
       <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
@@ -3406,7 +3429,7 @@ export default function Customers() {
               <div><Label className="text-xs text-slate-500">等级</Label><NativeSelect value={filterLevel} onChange={setFilterLevel} className="mt-1 w-full" options={[{ value: 'all', label: '全部等级' }, ...Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
               <div><Label className="text-xs text-slate-500">来源</Label><NativeSelect value={filterSource} onChange={setFilterSource} className="mt-1 w-full" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
             </div>
-            <Button variant="outline" onClick={() => { setShowAdvanced(true); setMobileFiltersOpen(false); }}><SlidersHorizontal className="mr-2 h-4 w-4" />打开精确筛选{advFilterCount > 0 ? `（${advFilterCount}）` : ''}</Button>
+            <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-medium">精确筛选{advFilterCount > 0 ? `（${advFilterCount}）` : ''}</summary><div className="mt-3">{renderAdvancedFilters()}</div></details>
             {activeFilterCount > 0 && <Button variant="ghost" className="text-slate-600" onClick={() => { setFilterStatus('all'); setFilterIndustry('all'); setFilterLevel('all'); setFilterSource('all'); setAdvFilters(emptyAdvancedFilters); }}>清除全部筛选</Button>}
             <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => setMobileFiltersOpen(false)}>查看 {filtered.length} 位客户</Button>
           </div>

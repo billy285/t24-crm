@@ -119,10 +119,12 @@ test('320px 管理员扣点编辑和默认设置保留原接口及百分比换�
   const dialog = page.getByRole('dialog', { name: '编辑月份' });
   await dialog.getByLabel('扣点比例 (%)', { exact: true }).fill('17.5');
   await expectFits(page);
+  page.once('dialog', confirmation => confirmation.accept());
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toBeHidden();
   expect(writes[0]).toEqual({ path: '/api/v1/deductions-monthly/2026-08', method: 'PUT', body: { rate: 0.175 } });
   await page.getByLabel('默认扣点 (%)').fill('20');
+  page.once('dialog', confirmation => confirmation.accept());
   await page.getByRole('button', { name: '保存默认' }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1]).toEqual({ path: '/api/v1/deductions-monthly/default', method: 'PUT', body: { rate: 0.2 } });

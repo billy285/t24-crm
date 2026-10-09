@@ -93,3 +93,5 @@
   .t24-system .calm-admin-dashboard .calm-owner-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .t24-system .calm-roadmap-goal .grid { gap: var(--t24-space-12); }
 }
+
+.t24-system .calm-admin-dashboard .calm-owner-priority{display:flex;justify-content:space-between;align-items:center;gap:16px;width:100%;margin-top:16px;padding:14px 16px;min-height:56px;border:1px solid #f3dfba;border-radius:12px;background:#fffaf1;color:#7b521c;text-align:left}.calm-owner-priority small{display:block;font-size:13px;margin-bottom:4px}.calm-owner-priority strong{display:block;font-size:16px}.calm-owner-priority>span:last-child{display:flex;align-items:center;gap:8px;font-size:14px;white-space:nowrap}.calm-owner-priority svg{width:16px;height:16px}@media(max-width:430px){.calm-owner-priority>span:last-child{font-size:13px}.calm-owner-priority strong{font-size:15px}}

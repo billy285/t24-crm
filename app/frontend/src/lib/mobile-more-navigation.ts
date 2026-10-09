@@ -24,9 +24,6 @@ export interface MobileMoreGroup {
   sections: MobileMoreSection[];
 }
 
-// These administrative tools remain on desktop, matching the mobile launcher.
-// Listing them here makes the directory complete without enabling new actions.
-const desktopOnlyPaths = new Set(['/settings', '/permissions']);
 const labels: Record<string, string> = {
   '/': '今日经营',
   '/company-roadmap': '公司战略',
@@ -42,7 +39,6 @@ function page(path: string): MobileMoreItem {
     path,
     href: path,
     label: labels[path] || navigationByPath.get(path)!.label,
-    ...(desktopOnlyPaths.has(path) ? { desktopOnly: true } : {}),
   };
 }
 

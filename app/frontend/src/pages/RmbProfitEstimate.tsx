@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   CalendarRange,
@@ -11,6 +11,7 @@ import {
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
 
+import './rmb-profit-experience.css';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -89,8 +90,10 @@ export default function RmbProfitEstimate() {
   const [payload, setPayload] = useState<ProfitPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestSequence = useRef(0);
 
   const loadData = async () => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -102,12 +105,14 @@ export default function RmbProfitEstimate() {
         url: `/api/v1/reports/rmb-profit-estimate?${params.toString()}`,
         method: 'GET',
       });
+      if (sequence !== requestSequence.current) return;
       setPayload(response.data as ProfitPayload);
       setError(null);
     } catch (requestError: any) {
+      if (sequence !== requestSequence.current) return;
       setError(requestError?.data?.detail || requestError?.message || '人民币利润预估读取失败');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   };
 
@@ -177,7 +182,7 @@ export default function RmbProfitEstimate() {
         </Button>
       </div>
 
-      <Card className="border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50">
+      <details className="rmb-query-panel"><summary>筛选与预估汇率 · {appliedRange.start} 至 {appliedRange.end}</summary><Card className="border-blue-100 bg-white">
         <CardContent className="p-5">
           <div className="flex flex-col items-stretch gap-3 md:flex-row md:flex-wrap md:items-end">
             <div className="flex flex-wrap gap-2">
@@ -202,20 +207,21 @@ export default function RmbProfitEstimate() {
           </div>
           <p className="mt-3 text-xs text-slate-500">已保存的月均汇率优先使用；只有缺少汇率的月份才使用上面的预估值。页面仅供经营预估，不改变任何原始收支记录。</p>
         </CardContent>
-      </Card>
-
+      </Card></details>
+      {loading && payload && <p role="status" className="text-sm text-slate-500">正在查询新范围，当前结果仍为 {payload.start_date} 至 {payload.end_date}…</p>}
       {error ? (
         <Card className="border-red-200 bg-red-50"><CardContent className="p-8 text-center"><p className="font-medium text-red-700">{error}</p><Button className="mt-4" variant="outline" onClick={() => void loadData()}>重新加载</Button></CardContent></Card>
       ) : loading && !payload ? (
         <div className="app-loading">正在计算人民币利润预估...</div>
       ) : payload && summary ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Card className={summary.estimated_profit_cny >= 0 ? 'border-emerald-200 bg-emerald-50/60' : 'border-red-200 bg-red-50/60'}><CardContent className="p-4"><div className="flex items-center justify-between"><p className="text-sm text-slate-500">预估人民币净利润</p>{summary.estimated_profit_cny >= 0 ? <TrendingUp className="h-5 w-5 text-emerald-600" /> : <TrendingDown className="h-5 w-5 text-red-600" />}</div><p className={`mt-2 text-2xl font-bold ${summary.estimated_profit_cny >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{cny(summary.estimated_profit_cny)}</p><p className="mt-1 text-xs text-slate-500">预估利润率 {(profitMargin * 100).toFixed(1)}%</p></CardContent></Card>
+          <p className="text-sm text-slate-500">账期 {payload.start_date} 至 {payload.end_date} · 缺失汇率按 {payload.fallback_exchange_rate} 预估</p>
+          <details className="rmb-calculation-details"><summary>查看收入、换算与支出</summary><div className="grid gap-3 sm:grid-cols-3">
             <Card><CardContent className="p-4"><div className="flex items-center justify-between"><p className="text-sm text-slate-500">美元经营结余</p><CircleDollarSign className="h-5 w-5 text-blue-600" /></div><p className="mt-2 text-2xl font-bold text-blue-700">{usd(summary.usd_operating_balance)}</p><p className="mt-1 text-xs text-slate-400">美元收入扣完美元端全部成本</p></CardContent></Card>
             <Card><CardContent className="p-4"><div className="flex items-center justify-between"><p className="text-sm text-slate-500">折合人民币</p><ArrowRight className="h-5 w-5 text-indigo-600" /></div><p className="mt-2 text-2xl font-bold text-indigo-700">{cny(summary.usd_converted_cny)}</p><p className="mt-1 text-xs text-slate-400">各月分别按对应月均汇率换算</p></CardContent></Card>
             <Card><CardContent className="p-4"><div className="flex items-center justify-between"><p className="text-sm text-slate-500">人民币实际支出</p><WalletCards className="h-5 w-5 text-amber-600" /></div><p className="mt-2 text-2xl font-bold text-amber-700">{cny(summary.cny_actual_expense)}</p><p className="mt-1 text-xs text-slate-400">工资如已录入运营支出，只在这里扣一次</p></CardContent></Card>
-            <Card className={summary.estimated_profit_cny >= 0 ? 'border-emerald-200 bg-emerald-50/60' : 'border-red-200 bg-red-50/60'}><CardContent className="p-4"><div className="flex items-center justify-between"><p className="text-sm text-slate-500">预估人民币净利润</p>{summary.estimated_profit_cny >= 0 ? <TrendingUp className="h-5 w-5 text-emerald-600" /> : <TrendingDown className="h-5 w-5 text-red-600" />}</div><p className={`mt-2 text-2xl font-bold ${summary.estimated_profit_cny >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{cny(summary.estimated_profit_cny)}</p><p className="mt-1 text-xs text-slate-500">预估利润率 {(profitMargin * 100).toFixed(1)}%</p></CardContent></Card>
-          </div>
+          </div></details>
 
           <Card>
             <CardHeader className="pb-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="text-base">利润趋势</CardTitle><p className="mt-1 text-xs text-slate-500">绿色为盈利，红色为亏损。</p></div><div className="flex rounded-lg border bg-slate-50 p-1">{([['month', '按月'], ['quarter', '按季度'], ['year', '按年']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => setViewMode(key)} className={`min-h-11 rounded-md px-3 text-sm md:min-h-9 ${viewMode === key ? 'bg-white font-medium text-blue-700 shadow-sm' : 'text-slate-500'}`}>{label}</button>)}</div></div></CardHeader>
@@ -263,7 +269,7 @@ export default function RmbProfitEstimate() {
                   const period = monthly ? item.year_month : item.period;
                   const profit = Number(item.estimated_profit_cny || 0);
                   return <article key={period} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-slate-950">{period}</h3><p className="mt-1 text-xs text-slate-500">{monthly ? `月均汇率 ${Number(item.exchange_rate).toFixed(4)}` : '各月分别换算后汇总'}</p></div><Badge className={profit > 0 ? 'bg-emerald-100 text-emerald-700' : profit < 0 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}>{profit > 0 ? '盈利' : profit < 0 ? '亏损' : '持平'}</Badge></div>
+                    <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-slate-950">{period}</h3><p className="mt-1 text-xs text-slate-500">{monthly ? `月均汇率 ${Number(item.exchange_rate).toFixed(4)} · ${item.exchange_rate_source || '来源待确认'}` : '各月分别换算后汇总'}</p></div><Badge className={profit > 0 ? 'bg-emerald-100 text-emerald-700' : profit < 0 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}>{profit > 0 ? '盈利' : profit < 0 ? '亏损' : '持平'}</Badge></div>
                     <p className={`mt-3 text-xl font-bold ${profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{cny(profit)}</p>
                     <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-xs"><div><p className="text-slate-400">美元经营结余</p><p className="mt-1 font-semibold text-blue-700">{usd(item.usd_operating_balance)}</p></div><div><p className="text-slate-400">折合人民币</p><p className="mt-1 font-semibold text-indigo-700">{cny(item.usd_converted_cny)}</p></div><div><p className="text-slate-400">人民币收入</p><p className="mt-1 font-semibold text-emerald-700">{cny(item.cny_operating_income)}</p></div><div><p className="text-slate-400">人民币实际支出</p><p className="mt-1 font-semibold text-amber-700">{cny(item.cny_actual_expense)}</p></div></div>
                     {monthly ? <details className="mt-3 text-xs text-slate-500"><summary className="min-h-11 cursor-pointer py-3 font-medium text-blue-700">查看美元结余公式</summary><p className="leading-5">收入 {usd(item.usd_revenue)} − 管理扣点 {usd(item.usd_management_deduction)} − 美元成本 {usd(item.usd_cost)} = {usd(item.usd_operating_balance)}</p></details> : null}
@@ -273,7 +279,7 @@ export default function RmbProfitEstimate() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 bg-slate-50"><CardContent className="p-4 text-xs leading-6 text-slate-600"><p className="font-semibold text-slate-800">计算口径</p><p>{payload.definition}</p><p>{payload.usd_definition}</p><p className="text-blue-700">{payload.payroll_note}</p></CardContent></Card>
+          <details className="rmb-calculation-details"><summary>计算口径</summary><Card className="border-slate-200 bg-slate-50"><CardContent className="p-4 text-xs leading-6 text-slate-600"><p>{payload.definition}</p><p>{payload.usd_definition}</p><p className="text-blue-700">{payload.payroll_note}</p></CardContent></Card></details>
         </>
       ) : null}
     </div>

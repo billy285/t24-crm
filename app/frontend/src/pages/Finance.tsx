@@ -50,6 +50,9 @@ import {
   findMatchingSubscription,
   getSubscriptionRemainingDays,
 } from '../lib/subscription-utils';
+import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
+import { useListScroll } from '@/lib/use-list-scroll';
+import './finance-experience.css';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import { useSessionViewState } from '@/hooks/use-session-view-state';
 import { getFinanceNavigationItem, normalizeFinanceTab } from '@/lib/finance-navigation';
@@ -120,7 +123,7 @@ const getEffectiveSubscriptionStatus = (subscription: any) => (
 
 const PIE_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1'];
 type DateFilterMode = 'all' | 'today' | 'this_month' | 'last_month' | 'custom';
-type FinancePageKey = 'customer_profit' | 'receivables' | 'income' | 'customer_expense' | 'company_expense' | 'subscriptions' | 'monthly_detail';
+type FinancePageKey = 'customer_profit' | 'receivables' | 'income' | 'customer_expense' | 'company_expense' | 'subscriptions' | 'monthly_detail' | 'refunds' | 'ad_funds';
 type SubscriptionGroupKey = 'pending' | 'risk' | 'active_auto' | 'manual' | 'stopped';
 type PaginationResult<T> = {
   items: T[];
@@ -139,7 +142,7 @@ const defaultFinancePages: Record<FinancePageKey, number> = {
   customer_expense: 1,
   company_expense: 1,
   subscriptions: 1,
-  monthly_detail: 1,
+  monthly_detail: 1, refunds: 1, ad_funds: 1,
 };
 const financeViewDefaults = {
   dateFilterMode: 'this_month' as DateFilterMode,
@@ -150,7 +153,7 @@ const financeViewDefaults = {
   pageSize: 20,
   financePages: { ...defaultFinancePages },
   subscriptionGroupKey: '' as SubscriptionGroupKey | '',
-  incomeSearch: '', subscriptionSearch: '',
+  incomeSearch: '', subscriptionSearch: '', mobileRenewalGroup: 'all', receivableSearch: '', receivableOverdueOnly: false, refundSearch: '', refundStatus: 'all', settlementSearch: '', settlementStatus: 'all', expandedLedgerIds: [] as string[],
 };
 const matchesFinanceSearch = (query: string, values: unknown[]) => {
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
@@ -626,7 +629,7 @@ export default function Finance() {
   const [viewState, setViewField] = useSessionViewState(workspaceKey, financeViewDefaults);
   const { dateFilterMode, filterStartDate, filterEndDate, expenseMonth, companyExpenseMonth,
     companyExpenseCurrencyFilter, financeIssueFilter, pageSize, financePages,
-    subscriptionGroupKey, incomeSearch, subscriptionSearch } = viewState;
+    subscriptionGroupKey, incomeSearch, subscriptionSearch, mobileRenewalGroup, receivableSearch, receivableOverdueOnly, refundSearch, refundStatus, settlementSearch, settlementStatus, expandedLedgerIds } = viewState;
   const setDateFilterMode = (value: DateFilterMode) => setViewField('dateFilterMode', value);
   const setFilterStartDate = (value: string) => setViewField('filterStartDate', value);
   const setFilterEndDate = (value: string) => setViewField('filterEndDate', value);
@@ -697,6 +700,15 @@ export default function Finance() {
   });
   const [mobileVisibleLimit, setMobileVisibleLimit] = useState(15);
   const [mobileAllSubscriptions, setMobileAllSubscriptions] = useState(false);
+  const setMobileRenewalGroup = (value: string) => setViewField('mobileRenewalGroup', value);
+  const setReceivableSearch = (value: string) => setViewField('receivableSearch', value);
+  const setReceivableOverdueOnly = (value: React.SetStateAction<boolean>) => setViewField('receivableOverdueOnly', value);
+  const setRefundSearch = (value: string) => setViewField('refundSearch', value);
+  const setRefundStatus = (value: string) => setViewField('refundStatus', value);
+  const setSettlementSearch = (value: string) => setViewField('settlementSearch', value);
+  const setSettlementStatus = (value: string) => setViewField('settlementStatus', value);
+  const contextCustomerId = /^\d+$/.test(searchParams.get('customer_id') || '') ? Number(searchParams.get('customer_id')) : null;
+  const contextReturnTo = searchParams.get('returnTo');
   const [mobileMonthConfirmation, setMobileMonthConfirmation] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const blockMobileFinanceMutation = (_allowCreate = false) => {
@@ -774,6 +786,7 @@ export default function Finance() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastSuccessfulLoadAt, setLastSuccessfulLoadAt] = useState<Date | null>(null);
+  useListScroll(`${workspaceKey}:${requestedFinanceTab}`, Boolean(lastSuccessfulLoadAt) && !loading);
   const loadRequestSeqRef = useRef(0);
 
   // Payment form
@@ -880,6 +893,43 @@ export default function Finance() {
   const [deletingExpense, setDeletingExpense] = useState(false);
   const [deleteCompanyExpenseTarget, setDeleteCompanyExpenseTarget] = useState<any>(null);
   const [deletingCompanyExpense, setDeletingCompanyExpense] = useState(false);
+
+  const financeDraftBaselines = useRef<Record<string, { id: string; value: string }>>({});
+  const financeDrafts = {
+    payment: showPaymentForm ? { id: String(editingPayId || 'new'), value: JSON.stringify(payForm) } : null,
+    expense: showExpenseForm ? { id: String(editingExpenseId || 'new'), value: JSON.stringify(expenseForm) } : null,
+    company: showCompanyExpenseForm ? { id: String(editingCompanyExpenseId || 'new'), value: JSON.stringify(companyExpenseForm) } : null,
+    refund: refundTarget ? { id: String(refundTarget.id), value: JSON.stringify(refundForm) } : null,
+    settlement: showAdSettlementForm ? { id: String(editingAdSettlementId || 'new'), value: JSON.stringify(adSettlementForm) } : null,
+    renewal: subscriptionRenewalTarget ? { id: String(subscriptionRenewalTarget.id), value: JSON.stringify([renewalPaymentDate, renewalPaymentMethod, renewalTransactionReference]) } : null,
+    package: subscriptionChangeTarget ? { id: String(subscriptionChangeTarget.id), value: JSON.stringify([subscriptionChangeReplacementIds, subscriptionChangeEffectiveDate, subscriptionChangeReason]) } : null,
+    incomeTypes: showIncomeTypeManager ? { id: 'types', value: JSON.stringify([incomeTypeDrafts, newIncomeTypeName]) } : null,
+    packages: showPaymentPackageManager ? { id: 'packages', value: JSON.stringify([paymentPackageDrafts, newPaymentPackageName]) } : null,
+    expenseTypes: showCustomerExpenseTypeManager ? { id: 'types', value: JSON.stringify([customerExpenseTypeDrafts, newCustomerExpenseTypeName]) } : null,
+    companyTypes: showCompanyExpenseTypeManager ? { id: 'types', value: JSON.stringify([companyExpenseTypeDrafts, newCompanyExpenseTypeName]) } : null,
+  };
+  const financeDraftIdentity = JSON.stringify(Object.entries(financeDrafts).map(([key, value]) => [key, value?.id]));
+  useEffect(() => {
+    for (const [key, value] of Object.entries(financeDrafts)) {
+      if (!value) delete financeDraftBaselines.current[key];
+      else if (financeDraftBaselines.current[key]?.id !== value.id) financeDraftBaselines.current[key] = value;
+    }
+  }, [financeDraftIdentity]);
+  const isFinanceDraftDirty = (key: keyof typeof financeDrafts) => {
+    const value = financeDrafts[key];
+    return Boolean(value && financeDraftBaselines.current[key]?.id === value.id && financeDraftBaselines.current[key]?.value !== value.value);
+  };
+  // Dictionary managers can open on top of a payment or expense draft; each must keep its own navigation guard.
+  const { confirmDiscard } = useUnsavedChanges((['payment', 'expense', 'company', 'refund', 'settlement', 'renewal', 'package'] as const).some(isFinanceDraftDirty));
+  const incomeTypesGuard = useUnsavedChanges(isFinanceDraftDirty('incomeTypes'));
+  const packagesGuard = useUnsavedChanges(isFinanceDraftDirty('packages'));
+  const expenseTypesGuard = useUnsavedChanges(isFinanceDraftDirty('expenseTypes'));
+  const companyTypesGuard = useUnsavedChanges(isFinanceDraftDirty('companyTypes'));
+  const financeSaving = saving || savingRefund || savingAdSettlement || confirmingRenewalId !== null || changingSubscriptionPackage || savingIncomeTypes || savingPaymentPackages || savingCustomerExpenseTypes || savingCompanyExpenseTypes || savingExpense || savingCompanyExpense;
+  const allowFinanceClose = (manager?: 'incomeTypes' | 'packages' | 'expenseTypes' | 'companyTypes') => {
+    const guard = manager ? { incomeTypes: incomeTypesGuard, packages: packagesGuard, expenseTypes: expenseTypesGuard, companyTypes: companyTypesGuard }[manager] : { confirmDiscard };
+    return !financeSaving && guard.confirmDiscard();
+  };
 
   // Date filter
   const [dateAnchor, setDateAnchor] = useState(() => new Date());
@@ -1564,10 +1614,14 @@ export default function Finance() {
   // Search narrows the displayed ledger only; reporting and accounting inputs stay intact.
   const visiblePayments = useMemo(() => filteredPayments.filter(payment => {
     const customer = customers.find(item => Number(item.id) === Number(payment.customer_id));
-    return matchesFinanceSearch(incomeSearch, [payment.customer_name, customer?.business_name,
+    return (!contextCustomerId || Number(payment.customer_id) === contextCustomerId) && matchesFinanceSearch(incomeSearch, [payment.customer_name, customer?.business_name,
       customer?.customer_code, payment.product_name, payment.transaction_reference,
       payment.payment_date, payMethodLabels[payment.payment_method]]);
-  }), [filteredPayments, customers, incomeSearch, payMethodLabels]);
+  }), [filteredPayments, customers, incomeSearch, payMethodLabels, contextCustomerId]);
+  const visibleRefunds = filteredRefunds.filter(row => (refundStatus === 'all' || row.status === refundStatus) && matchesFinanceSearch(refundSearch, [row.customer_name, row.id, row.payment_id, row.provider_refund_id, row.reason]));
+  const visibleSettlements = filteredAdFundSettlements.filter(row => (settlementStatus === 'all' || row.status === settlementStatus) && matchesFinanceSearch(settlementSearch, [row.customer_name, row.customer_id, row.year_month, row.notes]));
+  const paginatedRefunds = paginateList(visibleRefunds, financePages.refunds, pageSize);
+  const paginatedSettlements = paginateList(visibleSettlements, financePages.ad_funds, pageSize);
   const paginatedPayments = useMemo(
     () => paginateList(visiblePayments, financePages.income, pageSize),
     [visiblePayments, financePages.income, pageSize],
@@ -2653,10 +2707,35 @@ export default function Finance() {
     () => paginateList(customerProfitRows, financePages.customer_profit, pageSize),
     [customerProfitRows, financePages.customer_profit, pageSize],
   );
-  const paginatedReceivableRows = useMemo(
-    () => paginateList(receivableRows, financePages.receivables, pageSize),
-    [receivableRows, financePages.receivables, pageSize],
-  );
+  const visibleReceivables = receivableRows.filter(row => (!receivableOverdueOnly || row.overdueDays > 0) && matchesFinanceSearch(receivableSearch, [row.customerName, row.salesPerson, row.customer_id]));
+  const paginatedReceivableRows = paginateList(visibleReceivables, financePages.receivables, pageSize);
+  useEffect(() => { setFinancePages(current => ({ ...current, refunds: 1, ad_funds: 1, receivables: 1 })); }, [refundSearch, refundStatus, settlementSearch, settlementStatus, receivableSearch, receivableOverdueOnly]);
+  const [receivableFollowups, setReceivableFollowups] = useState<Record<number, { state: 'loading' | 'ready' | 'error'; record?: any }>>({});
+  const visibleFollowupCustomers = (isMobile ? visibleReceivables.slice(0, mobileVisibleLimit) : paginatedReceivableRows.items).map(row => Number(row.customer_id)).filter(id => Number.isSafeInteger(id) && id > 0);
+  const followupCustomerKey = Array.from(new Set(visibleFollowupCustomers)).sort((a, b) => a - b).join(',');
+  const canReadCustomerFollowups = canAccess('/customers');
+  useEffect(() => {
+    if (requestedFinanceTab !== 'receivables' || !canReadCustomerFollowups || !followupCustomerKey) return;
+    let cancelled = false;
+    const ids = followupCustomerKey.split(',').map(Number);
+    setReceivableFollowups(current => ({ ...current, ...Object.fromEntries(ids.map(id => [id, { state: 'loading' }])) }));
+    void Promise.all(ids.map(async id => {
+      try {
+        const response = await client.entities.follow_ups.query({ query: { customer_id: id }, sort: '-created_at', limit: 1 });
+        return [id, { state: 'ready', record: response.data?.items?.[0] }] as const;
+      } catch { return [id, { state: 'error' }] as const; }
+    })).then(rows => { if (!cancelled) setReceivableFollowups(current => ({ ...current, ...Object.fromEntries(rows) })); });
+    return () => { cancelled = true; };
+  }, [requestedFinanceTab, canReadCustomerFollowups, followupCustomerKey]);
+  const renderReceivableFollowup = (customerId: number) => {
+    if (!canReadCustomerFollowups) return null;
+    const followup = receivableFollowups[Number(customerId)];
+    if (!followup || followup.state === 'loading') return <p className="finance-receivable-followup text-slate-500">最近跟进：读取中…</p>;
+    if (followup.state === 'error') return <p className="finance-receivable-followup text-amber-700">最近跟进：暂未读取</p>;
+    if (!followup.record) return <p className="finance-receivable-followup text-slate-500">最近跟进：暂无记录</p>;
+    const date = new Date(followup.record.created_at);
+    return <div className="finance-receivable-followup"><p className="text-slate-500">最近跟进 · {Number.isNaN(date.getTime()) ? '日期待补充' : date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) + '（北京时间）'}</p><p className="mt-1 break-words text-slate-700">{followup.record.content || '内容待补充'}</p></div>;
+  };
 
   useEffect(() => {
     const requestedTab = normalizeFinanceTab(searchParams.get('tab'));
@@ -2668,56 +2747,6 @@ export default function Finance() {
   }, [isMobile, searchParams]);
   useEffect(() => { setSnapshotExpanded(activeFinanceTab === 'overview'); }, [activeFinanceTab]);
 
-  useEffect(() => {
-    if (!isMobile) return;
-
-    // A desktop dialog can still be open when the viewport is narrowed. Clear
-    // every desktop mutation target and draft, then expose only the three
-    // purpose-built mobile entry flows below.
-    setShowPaymentForm(false);
-    setEditingPayId(null);
-    setPayForm(emptyPayForm);
-    setShowPaymentPackageManager(false);
-    setPaymentPackageDrafts([]);
-    setNewPaymentPackageName('');
-    setShowIncomeTypeManager(false);
-    setIncomeTypeDrafts([]);
-    setNewIncomeTypeName('');
-    setRefundTarget(null);
-    setRefundForm({
-      refund_amount: '', refund_date: getTodayDateInput(), provider_refund_id: '',
-      stripe_fee_refunded_amount: '0', reason: '重复扣款', notes: '',
-    });
-    setShowAdSettlementForm(false);
-    setEditingAdSettlementId(null);
-    setAdSettlementForm({
-      customer_id: '', year_month: getTodayDateInput().slice(0, 7), currency: 'USD',
-      opening_balance: '0', actual_ad_spend: '', customer_refund_amount: '0',
-      recognized_spread_amount: '0', adjustment_amount: '0', status: 'draft', notes: '',
-    });
-    setShowExpenseForm(false);
-    setEditingExpenseId(null);
-    setExpenseForm(emptyExpenseForm);
-    setShowCustomerExpenseTypeManager(false);
-    setCustomerExpenseTypeDrafts([]);
-    setNewCustomerExpenseTypeName('');
-    setShowCompanyExpenseForm(false);
-    setEditingCompanyExpenseId(null);
-    setCompanyExpenseForm(emptyCompanyExpenseForm);
-    setShowCompanyExpenseTypeManager(false);
-    setCompanyExpenseTypeDrafts([]);
-    setNewCompanyExpenseTypeName('');
-    setSubscriptionRenewalTarget(null);
-    setRenewalPaymentDate('');
-    setRenewalTransactionReference('');
-    setSubscriptionChangeTarget(null);
-    setSubscriptionChangeReplacementIds([]);
-    setSubscriptionChangeReason('');
-    setDeleteTarget(null);
-    setDeleteExpenseTarget(null);
-    setDeleteCompanyExpenseTarget(null);
-    setFinanceIssueFilter(null);
-  }, [isMobile]);
 
   const handleFinanceTabChange = (nextTab: string) => {
     const safeTab = normalizeFinanceTab(nextTab);
@@ -2739,6 +2768,14 @@ export default function Finance() {
     }
     setFinanceIssueFilter(issueKey);
     handleFinanceTabChange(tab);
+  };
+
+  const openClosingIssue = (item: { issueKey: string; tab: string }, month: string) => {
+    setFinanceIssueFilter(item.issueKey || null);
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', item.tab); params.set('month', month);
+    if (item.issueKey) params.set('issue', item.issueKey); else params.delete('issue');
+    navigate(buildReturnLink(`/finance?${params}`, `/finance?tab=monthly_detail&month=${month}`, 'finance'));
   };
 
   const getFallbackOtherIncomeType = () => (
@@ -2773,7 +2810,7 @@ export default function Finance() {
       toast.error('这条记录没有绑定客户，无法跳转');
       return;
     }
-    navigate(`/customers?detail=${id}&tab=${tab}&from=finance&financeTab=${returnFinanceTab}`);
+    navigate(buildReturnLink(`/customers?detail=${id}&tab=${tab}&from=finance&financeTab=${returnFinanceTab}`, `/finance?${searchParams}`, 'finance'));
   };
 
   const handleToggleMonthClose = async (monthValue = closingMonth, shouldClose?: boolean) => {
@@ -3877,6 +3914,7 @@ export default function Finance() {
   const mobileLedgerRows = useMemo(() => {
     const rows: Array<{
       id: string;
+      customerId?: number;
       kind: 'income' | 'customer_expense' | 'company_expense';
       title: string;
       subtitle: string;
@@ -3885,7 +3923,7 @@ export default function Finance() {
       date: string;
     }> = [];
     filteredPayments.forEach((payment: any) => rows.push({
-      id: `payment-${payment.id}`,
+      id: `payment-${payment.id}`, customerId: Number(payment.customer_id),
       kind: 'income',
       title: payment.customer_name || customerMap[payment.customer_id]?.business_name || '未关联客户',
       subtitle: `${incomeTypeLabels[getPaymentDisplayIncomeType(payment)] || '收款'} · ${getPaymentMethodLabel(payment, payMethodLabels)}`,
@@ -3894,7 +3932,7 @@ export default function Finance() {
       date: payment.payment_date?.slice(0, 10) || payment.created_at?.slice(0, 10) || '',
     }));
     activeCustomerExpenses.forEach((expense: any) => rows.push({
-      id: `customer-expense-${expense.id}`,
+      id: `customer-expense-${expense.id}`, customerId: Number(expense.customer_id),
       kind: 'customer_expense',
       title: expense.customer_name || customerMap[expense.customer_id]?.business_name || '未关联客户',
       subtitle: customerExpenseTypeLabels[expense.expense_type] || expense.expense_type || '客户支出',
@@ -3911,15 +3949,17 @@ export default function Finance() {
       currency: getCompanyExpenseCurrency(expense),
       date: expense.expense_date?.slice(0, 10) || (expense.expense_month ? `${expense.expense_month}-01` : ''),
     }));
-    return rows.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-  }, [activeCustomerExpenses, companyExpenseTypeLabels, customerExpenseTypeLabels, customerMap, filteredCompanyExpenses, filteredPayments, incomeTypeLabels, payMethodLabels]);
+    return rows.filter(row => !contextCustomerId || row.customerId === contextCustomerId).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  }, [activeCustomerExpenses, companyExpenseTypeLabels, customerExpenseTypeLabels, customerMap, filteredCompanyExpenses, filteredPayments, incomeTypeLabels, payMethodLabels, contextCustomerId]);
 
   useEffect(() => {
     setMobileVisibleLimit(15);
   }, [mobileFinanceView, pageFilterKey, currentMonthKey, workspaceKey, incomeSearch]);
 
   useEffect(() => {
-    if (!isMobile) return;
+    const issue = searchParams.get('issue');
+    if (issue && financeIssueCopy[issue]) setFinanceIssueFilter(issue);
+    else if (requestedFinanceTab === 'monthly_detail') setFinanceIssueFilter(null);
     const month = searchParams.get('month');
     if (month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
       const range = getMonthRange(new Date(`${month}-01T00:00:00`));
@@ -3927,7 +3967,10 @@ export default function Finance() {
       setExpenseMonth(''); setCompanyExpenseMonth('');
     }
     const customer = searchParams.get('customer');
-    if (customer) { setIncomeSearch(customer); setDateFilterMode('all'); setExpenseMonth(''); setCompanyExpenseMonth(''); }
+    if (customer) setIncomeSearch(customer);
+    const start = searchParams.get('start'); const end = searchParams.get('end');
+    if (start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end)) { setFilterStartDate(start); setFilterEndDate(end); setDateFilterMode('custom'); }
+    else if (searchParams.get('range') === 'all') setDateFilterMode('all');
   }, [isMobile, searchParams, workspaceKey]);
 
   const changeMobileFinanceView = (view: typeof mobileFinanceView) => {
@@ -4022,10 +4065,14 @@ export default function Finance() {
       return <div className="mobile-finance-record-actions">
         <Button variant="outline" onClick={() => navigate(`/finance?tab=income&month=${record.month}`)}>查看本月收支</Button>
         {isAdmin && <Button variant="outline" disabled={mobileWriteUnavailable || savingMonthClose || (!locked && checklist.blockerCount > 0)} onClick={() => setMobileMonthConfirmation(record.month)}>{locked ? '重新打开月份' : '确认关账'}</Button>}
-        {!locked && checklist.blockerCount > 0 && <p className="w-full text-xs text-amber-700">关账前需处理 {checklist.blockerCount} 项：{checklist.items?.filter((item: any) => item.level === 'blocker' && item.count > 0).map((item: any) => item.label).join('、')}</p>}
+        {!locked && checklist.totalIssueCount > 0 && <div className="finance-closing-issues"><p>关账前需处理 {checklist.blockerCount} 项</p>{checklist.items.filter(item => item.count > 0).map(item => <Button key={item.key} variant="outline" aria-label={`处理${item.label}：${item.count}项`} onClick={() => openClosingIssue(item, record.month)}>{item.label} · {item.count}<ArrowUpRight className="ml-1 h-4 w-4" /></Button>)}</div>}
       </div>;
     }
-    if (kind === 'customer_profit') return <div className="mobile-finance-record-actions"><Button variant="outline" onClick={() => navigate(`/finance?tab=income&customer=${encodeURIComponent(record.customerName || '')}`)}>查看并编辑原始收支</Button></div>;
+    if (kind === 'customer_profit') return <div className="mobile-finance-record-actions"><Button variant="outline" disabled={!record.customerId} onClick={() => {
+      const params = new URLSearchParams({ tab: 'income', customer_id: String(record.customerId) });
+      if (activeDateRange) { params.set('start', activeDateRange.start); params.set('end', activeDateRange.end); } else params.set('range', 'all');
+      navigate(buildReturnLink(`/finance?${params}`, `/finance?${searchParams}`, 'finance'));
+    }}>查看并编辑原始收支</Button></div>;
     return null;
   };
 
@@ -4116,8 +4163,8 @@ export default function Finance() {
     const mobileEntryDisabled = closedFinanceMonths.has(currentMonthKey);
     const searchedMobileLedgerRows = mobileLedgerRows.filter(row => !incomeSearch.trim() || `${row.title} ${row.subtitle} ${row.date}`.toLowerCase().includes(incomeSearch.trim().toLowerCase()));
     const visibleLedgerRows = searchedMobileLedgerRows.slice(0, mobileFinanceView === 'overview' ? 5 : mobileVisibleLimit);
-    const visibleReceivableRows = receivableRows.slice(0, mobileVisibleLimit);
-    const mobileRenewalRisks = subscriptions.filter(subscription => (mobileAllSubscriptions || ACTIONABLE_SUBSCRIPTION_STATUSES.has(getEffectiveSubscriptionStatus(subscription))) && (!subscriptionSearch.trim() || `${subscription.customer_name} ${subscription.package_name}`.toLowerCase().includes(subscriptionSearch.trim().toLowerCase())));
+    const visibleReceivableRows = visibleReceivables.slice(0, mobileVisibleLimit);
+    const mobileRenewalRisks = subscriptions.filter(subscription => (mobileAllSubscriptions || ACTIONABLE_SUBSCRIPTION_STATUSES.has(getEffectiveSubscriptionStatus(subscription))) && (mobileAllSubscriptions || mobileRenewalGroup === 'all' || getEffectiveSubscriptionStatus(subscription) === mobileRenewalGroup) && (!subscriptionSearch.trim() || `${subscription.customer_name} ${subscription.package_name}`.toLowerCase().includes(subscriptionSearch.trim().toLowerCase())));
     const renderLedgerCard = (row: typeof mobileLedgerRows[number]) => {
       const isIncome = row.kind === 'income';
       const rawId = Number(row.id.split('-').at(-1));
@@ -4133,7 +4180,7 @@ export default function Finance() {
         ['账目编号', record?.id], ['备注', record?.notes],
       ] : [['归属月份', record?.expense_month], ['币种', row.currency], ['账目编号', record?.id], ['备注', record?.notes]];
       return (
-        <details key={row.id} className="rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <details key={row.id} open={expandedLedgerIds.includes(row.id)} onToggle={event => { const open = event.currentTarget.open; setViewField('expandedLedgerIds', ids => open ? ids.includes(row.id) ? ids : [...ids, row.id] : ids.filter(id => id !== row.id)); }} className="rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <summary aria-label={`查看账目：${row.title}`} className="flex min-h-20 cursor-pointer list-none items-center gap-3 p-3.5">
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isIncome ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Icon className="h-5 w-5" /></div>
             <div className="min-w-0 flex-1">
@@ -4154,7 +4201,7 @@ export default function Finance() {
     mobileFinanceContent = (
       <>
         <div className="app-page min-h-full space-y-4">
-          <section className="overflow-hidden rounded-[28px] bg-slate-950 p-5 text-white shadow-[0_18px_50px_rgba(15,23,42,0.2)]">
+          <section className="overflow-hidden rounded-[28px] finance-mobile-hero p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-medium tracking-[0.16em] text-cyan-300">T24 FINANCE</p>
@@ -4195,7 +4242,7 @@ export default function Finance() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900">快速记一笔</h2>
-                <p className="mt-0.5 text-xs text-slate-500">只保留手机最常用的三个入口</p>
+
               </div>
               <Receipt className="h-5 w-5 text-blue-600" />
             </div>
@@ -4250,6 +4297,8 @@ export default function Finance() {
             </div>
           </div>
 
+          {mobileFinanceView === 'overview' && <section className="finance-mobile-todos" aria-label="财务主要待办"><h2>待处理</h2><button type="button" onClick={() => changeMobileFinanceView('receivables')}><span>待收款</span><strong>{receivableRows.length} 笔</strong><ArrowUpRight className="h-4 w-4" /></button><button type="button" onClick={() => { setMobileAllSubscriptions(false); setMobileRenewalGroup('renewal_pending'); changeMobileFinanceView('renewals'); }}><span>续费待确认</span><strong>{subscriptions.filter(subscription => getEffectiveSubscriptionStatus(subscription) === 'renewal_pending').length} 笔</strong><ArrowUpRight className="h-4 w-4" /></button><button type="button" onClick={() => navigate('/finance?tab=ad_funds')}><span>投流待月结</span><strong>{unsettledAdFundRows.length} 笔</strong><ArrowUpRight className="h-4 w-4" /></button></section>}
+
           <nav aria-label="财务手机视图" className="grid grid-cols-4 rounded-2xl bg-slate-200/70 p-1">
             {([
               ['overview', '总览'],
@@ -4276,6 +4325,7 @@ export default function Finance() {
                 <span className="text-xs text-slate-500">{mobileRenewalRisks.length} 个套餐</span>
               </div>
               <div className="flex gap-2"><Button variant={mobileAllSubscriptions ? 'outline' : 'default'} onClick={() => setMobileAllSubscriptions(false)}>待处理</Button><Button variant={mobileAllSubscriptions ? 'default' : 'outline'} onClick={() => setMobileAllSubscriptions(true)}>全部套餐</Button></div>
+              {!mobileAllSubscriptions && <div className="finance-segments">{[['all', '全部待处理'], ['renewal_pending', '待确认'], ['expired', '已到期'], ['expiring_soon', '即将到期']].map(([key, label]) => <button key={key} type="button" aria-pressed={mobileRenewalGroup === key} onClick={() => setMobileRenewalGroup(key)}>{label}</button>)}</div>}
               <Input aria-label="搜索续费套餐" placeholder="搜索客户或套餐" value={subscriptionSearch} onChange={event => setSubscriptionSearch(event.target.value)} />
               {mobileRenewalRisks.length > 0 ? mobileRenewalRisks.map(subscription => {
                 const status = getEffectiveSubscriptionStatus(subscription);
@@ -4312,7 +4362,7 @@ export default function Finance() {
                   </article>
                 );
               }) : (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">当前没有续费风险提醒</div>
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">{subscriptionSearch || mobileRenewalGroup !== 'all' ? '没有匹配的续费套餐' : mobileAllSubscriptions ? '暂无套餐记录' : '当前没有续费风险提醒'}</div>
               )}
             </section>
           ) : mobileFinanceView !== 'receivables' ? (
@@ -4333,7 +4383,7 @@ export default function Finance() {
               ) : mobileFinanceView === 'ledger' && visibleLedgerRows.length < searchedMobileLedgerRows.length ? <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setMobileVisibleLimit(limit => limit + 15)}>加载更多流水</Button> : null}
             </section>
           ) : (
-            <section aria-label="应收列表" className="space-y-3">
+            <section aria-label="应收列表" className="space-y-3"><div className="finance-list-filters"><Input aria-label="搜索应收客户或负责人" placeholder="搜索客户或负责人" value={receivableSearch} onChange={event => setReceivableSearch(event.target.value)} /><Button aria-pressed={receivableOverdueOnly} variant={receivableOverdueOnly ? 'default' : 'outline'} onClick={() => setReceivableOverdueOnly(value => !value)}>仅逾期</Button></div>
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-base font-bold text-slate-900">待收款客户</h2>
                 <span className="text-xs text-slate-500">合计 {fmt(ownerOverview.outstanding)}</span>
@@ -4342,24 +4392,26 @@ export default function Finance() {
                 <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">{row.customerName}</p>
+                      <p className="break-words text-sm font-semibold text-slate-900">{row.customerName}</p>
                       <p className="mt-1 text-xs text-slate-500">负责人 {row.salesPerson} · {row.paymentDate || '日期待补充'}</p>
                     </div>
                     <p className="shrink-0 text-base font-bold tabular-nums text-amber-600">{fmt(row.outstanding)}</p>
                   </div>
                   {row.overdueDays > 0 && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">已逾期 {row.overdueDays} 天</p>}
+                  {renderReceivableFollowup(row.customer_id)}
                   {mobilePaymentActions(payments.find(payment => Number(payment.id) === Number(row.id)))}
                   {canOpenMobileCustomer(row.customer_id) && <Button type="button" variant="outline" className="mt-3 min-h-11 w-full" aria-label={`查看客户详情：${row.customerName}`} onClick={() => openMobileCustomerDetail(row.customer_id)}>查看客户详情</Button>}
                 </div>
               )) : (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">目前没有待收款</div>
               )}
-              {receivableRows.length > 0 && <p aria-live="polite" className="text-center text-xs text-slate-500">已显示 {visibleReceivableRows.length} / 共 {receivableRows.length} 条</p>}
-              {visibleReceivableRows.length < receivableRows.length && <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setMobileVisibleLimit(limit => limit + 15)}>加载更多应收</Button>}
+              {receivableRows.length > 0 && <p aria-live="polite" className="text-center text-xs text-slate-500">已显示 {visibleReceivableRows.length} / 共 {visibleReceivables.length} 条</p>}
+              {visibleReceivableRows.length < visibleReceivables.length && <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setMobileVisibleLimit(limit => limit + 15)}>加载更多应收</Button>}
             </section>
           )}
 
           <Button variant="outline" className="min-h-11 w-full" onClick={() => navigate('/more?group=finance')}>全部财务功能</Button>
+          {['overview', 'ledger'].includes(mobileFinanceView) && <div className="finance-mobile-quick-toolbar" aria-label="固定财务操作"><Button disabled={mobileEntryDisabled || !canCreatePayment} onClick={openPaymentForm}>记一笔收款</Button><Button variant="outline" onClick={() => changeMobileFinanceView('ledger')}>查看流水</Button></div>}
         </div>
 
       </>
@@ -4368,6 +4420,9 @@ export default function Finance() {
 
   return (
     <div className={isMobile ? 'min-w-0' : `t24-command-page t24-finance-page calm-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
+      {contextCustomerId && <div className="finance-context-bar"><span>客户：{customerMap[contextCustomerId]?.business_name || `#${contextCustomerId}`} · 原始收支</span><div>{contextReturnTo?.startsWith('/finance') && <Button variant="outline" onClick={() => navigate(contextReturnTo)}>返回客户利润</Button>}<Button variant="ghost" onClick={() => { const params = new URLSearchParams(searchParams); params.delete('customer_id'); params.delete('returnTo'); setSearchParams(params); }}>查看全部客户</Button></div></div>}
+      {isMobile && !contextCustomerId && contextReturnTo?.startsWith('/finance') && <Button variant="outline" className="mb-3" onClick={() => navigate(contextReturnTo)}>返回月度检查</Button>}
+      {isMobile && financeIssueFilter && <div className="finance-context-bar"><span>正在查看：{financeIssueCopy[financeIssueFilter]?.label || '待处理明细'}</span><Button variant="ghost" onClick={() => { setFinanceIssueFilter(null); const params = new URLSearchParams(searchParams); params.delete('issue'); setSearchParams(params, { replace: true }); }}>清除检查条件</Button></div>}
       {isMobile ? mobileFinanceContent : <>
       {/* Header */}
       <div className="app-page-title flex-col gap-4 sm:flex-row sm:items-center">
@@ -4698,7 +4753,7 @@ export default function Finance() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="receivables">
+        <TabsContent value="receivables"><div className="finance-list-filters"><Input aria-label="搜索应收客户或负责人" placeholder="搜索客户或负责人" value={receivableSearch} onChange={event => setReceivableSearch(event.target.value)} /><Button aria-pressed={receivableOverdueOnly} variant={receivableOverdueOnly ? 'default' : 'outline'} onClick={() => setReceivableOverdueOnly(value => !value)}>仅逾期</Button></div>
           <Card className="border-slate-200">
             <CardContent className="p-0">
               {receivableRows.length === 0 ? (
@@ -4713,7 +4768,7 @@ export default function Finance() {
                       <th className="px-3 py-2.5 font-medium">实收</th>
                       <th className="px-3 py-2.5 font-medium">欠款</th>
                       <th className="px-3 py-2.5 font-medium">欠款天数</th>
-                      <th className="px-3 py-2.5 font-medium hidden md:table-cell">负责人</th>
+                      <th className="px-3 py-2.5 font-medium hidden md:table-cell">负责人 / 最近跟进</th>
                       <th className="px-3 py-2.5 font-medium hidden md:table-cell">日期</th>
                     </tr></thead>
                     <tbody>
@@ -4733,7 +4788,7 @@ export default function Finance() {
                               {row.overdueDays} 天
                             </Badge>
                           </td>
-                          <td className="px-3 py-2.5 hidden md:table-cell">{row.salesPerson}</td>
+                          <td className="px-3 py-2.5 hidden md:table-cell"><p>{row.salesPerson}</p>{renderReceivableFollowup(row.customer_id)}</td>
                           <td className="px-3 py-2.5 hidden md:table-cell text-slate-500">{row.paymentDate || '-'}</td>
                         </tr>
                       ))}
@@ -4853,14 +4908,14 @@ export default function Finance() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="refunds">
+        <TabsContent value="refunds"><div className="finance-list-filters"><Input aria-label="搜索退款记录" placeholder="搜索客户、退款编号或凭证" value={refundSearch} onChange={event => setRefundSearch(event.target.value)} /><NativeSelect value={refundStatus} onChange={setRefundStatus} options={[{value: 'all', label: '全部状态'}, {value: 'completed', label: '已完成'}, {value: 'pending', label: '处理中'}, {value: 'failed', label: '失败'}]} /></div>
           <Card className="border-slate-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">退款台账</CardTitle>
               <p className="text-xs text-slate-500">退款单独冲减净收款与对应服务收入；Stripe 未退回的手续费继续由公司承担。</p>
             </CardHeader>
             <CardContent className="p-0">
-              {filteredRefunds.length === 0 ? (
+              {visibleRefunds.length === 0 ? (
                 <p className="py-12 text-center text-sm text-slate-400">当前范围暂无退款。请在「收入管理」对应收款右侧点击退款。</p>
               ) : (
                 <div className="overflow-x-auto">
@@ -4870,7 +4925,7 @@ export default function Finance() {
                       <th className="px-4 py-3 font-medium">退款金额</th><th className="px-4 py-3 font-medium">手续费退回</th>
                       <th className="px-4 py-3 font-medium">原因</th><th className="px-4 py-3 font-medium">凭证</th><th className="px-4 py-3 font-medium">状态</th>
                     </tr></thead>
-                    <tbody>{filteredRefunds.map((refund: any) => (
+                    <tbody>{paginatedRefunds.items.map((refund: any) => (
                       <tr key={refund.id} className="border-b border-slate-100">
                         <td className="px-4 py-3 text-slate-500">{refund.refund_date?.slice(0, 10) || '-'}</td>
                         <td className="px-4 py-3 font-medium">{refund.customer_name || customerMap[refund.customer_id]?.business_name || '-'}</td>
@@ -4885,9 +4940,11 @@ export default function Finance() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="ad_funds">
+          {visibleRefunds.length > 0 && <PaginationFooter pageKey="refunds" data={paginatedRefunds} />}
+</TabsContent>
+
+        <TabsContent value="ad_funds"><div className="finance-list-filters"><Input aria-label="搜索投流月结" placeholder="搜索客户、月份或备注" value={settlementSearch} onChange={event => setSettlementSearch(event.target.value)} /><NativeSelect value={settlementStatus} onChange={setSettlementStatus} options={[{value: 'all', label: '全部结算状态'}, {value: 'draft', label: '草稿'}, {value: 'closed', label: '已结算'}]} /></div>
           <Card className="border-slate-200">
             <CardHeader className="pb-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -4913,7 +4970,7 @@ export default function Finance() {
                   </div>
                 </div>
               )}
-              {filteredAdFundSettlements.length === 0 ? (
+              {visibleSettlements.length === 0 ? (
                 <div className="px-6 py-12 text-center"><p className="text-sm text-slate-500">当前范围尚未建立投流月结。</p><p className="mt-2 text-xs text-amber-600">未月结前，投流充值不会被当作公司收入或利润。</p></div>
               ) : (
                 <div className="overflow-x-auto"><table className="w-full text-sm">
@@ -4922,7 +4979,7 @@ export default function Finance() {
                     <th className="px-4 py-3 font-medium">广告实支</th><th className="px-4 py-3 font-medium">退客户</th><th className="px-4 py-3 font-medium">确认差价</th>
                     <th className="px-4 py-3 font-medium">结余</th><th className="px-4 py-3 font-medium">状态</th><th className="px-4 py-3 font-medium">操作</th>
                   </tr></thead>
-                  <tbody>{filteredAdFundSettlements.map((item: any) => {
+                  <tbody>{paginatedSettlements.items.map((item: any) => {
                     const currency = normalizeCurrency(item.currency, 'USD');
                     return <tr key={item.id} className="border-b border-slate-100">
                       <td className="px-4 py-3"><p className="font-medium">{item.year_month}</p><p className="text-xs text-slate-500">{item.customer_name || customerMap[item.customer_id]?.business_name || '-'}</p></td>
@@ -4937,7 +4994,9 @@ export default function Finance() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+
+          {visibleSettlements.length > 0 && <PaginationFooter pageKey="ad_funds" data={paginatedSettlements} />}
+</TabsContent>
 
         {/* ── Customer Expense Tab ── */}
         <TabsContent value="customer_expense">
@@ -5851,13 +5910,7 @@ export default function Finance() {
                             size="sm"
                             variant="outline"
                             className="bg-white"
-                            onClick={() => {
-                              if (item.issueKey) {
-                                handleFinanceIssueClick(item.issueKey, item.tab, item.count);
-                              } else {
-                                handleFinanceTabChange(item.tab);
-                              }
-                            }}
+                            onClick={() => openClosingIssue(item, selectedClosingChecklist.month)}
                           >
                             去处理
                           </Button>
@@ -5983,7 +6036,7 @@ export default function Finance() {
                           <td className="px-3 py-2.5 text-emerald-600">{fmt(r.recognized_ad_spread || 0)}</td>
                           <td className="px-3 py-2.5 text-amber-600">{fmt(r.actual_ad_spend || 0)}</td>
                           <td className="px-3 py-2.5">{fmt(r.ad_closing_balance || 0)}</td>
-                          <td className="px-3 py-2.5">{r.management_rate > 0 ? `${Math.round(r.management_rate * 100)}%` : '-'}</td>
+                          <td className="px-3 py-2.5">{r.management_rate > 0 ? `${Number((r.management_rate * 100).toFixed(6))}%` : '-'}</td>
                           <td className="px-3 py-2.5">{fmt(r.management_deduction_amount)}</td>
                           <td className="px-3 py-2.5">{fmt(r.stripe_platform_fee || 0)}</td>
                           <td className="px-3 py-2.5">{fmt(r.deduction_amount)}</td>
@@ -6016,6 +6069,7 @@ export default function Finance() {
       <Dialog
         open={!!subscriptionRenewalTarget}
         onOpenChange={(v) => {
+          if (!v && !allowFinanceClose()) return;
           if (!v) {
             setSubscriptionRenewalTarget(null);
             setRenewalPaymentDate('');
@@ -6108,6 +6162,7 @@ export default function Finance() {
                     type="button"
                     variant="outline"
                     onClick={() => {
+                      if (!allowFinanceClose()) return;
                       setSubscriptionRenewalTarget(null);
                       setRenewalPaymentDate('');
                       setRenewalTransactionReference('');
@@ -6141,7 +6196,7 @@ export default function Finance() {
       <Dialog
         open={!!subscriptionChangeTarget}
         onOpenChange={(v) => {
-          if (!v && !changingSubscriptionPackage) {
+          if (!v && allowFinanceClose()) {
             setSubscriptionChangeTarget(null);
             setSubscriptionChangeReplacementIds([]);
             setSubscriptionChangeReason('');
@@ -6203,6 +6258,7 @@ export default function Finance() {
                 )}
               </div>
 
+              <div className="finance-package-comparison"><div><span>当前套餐</span><strong>{subscriptionChangeTarget.package_name || '未填写'}</strong></div><span aria-hidden="true">→</span><div><span>替代套餐</span><strong>{subscriptionChangeReplacementOptions.filter(item => subscriptionChangeReplacementIds.includes(Number(item.id))).map(item => item.package_name).join('、') || '尚未选择'}</strong></div></div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>变更生效日期 *</Label>
@@ -6231,7 +6287,7 @@ export default function Finance() {
                   type="button"
                   variant="outline"
                   disabled={changingSubscriptionPackage}
-                  onClick={() => setSubscriptionChangeTarget(null)}
+                  onClick={() => { if (allowFinanceClose()) setSubscriptionChangeTarget(null); }}
                 >
                   取消
                 </Button>
@@ -6442,11 +6498,11 @@ export default function Finance() {
 
       <>
       {/* Payment Form */}
-      <Dialog open={showPaymentForm} onOpenChange={(v) => { setShowPaymentForm(v); if (!v) { setEditingPayId(null); setPayForm(emptyPayForm); } }}>
+      <Dialog open={showPaymentForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowPaymentForm(v); if (!v) { setEditingPayId(null); setPayForm(emptyPayForm); } }}>
         <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingPayId ? '编辑收款记录' : '录入收款'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingPayId ? '编辑收款记录' : '录入收款'}</DialogTitle><p className="finance-editor-context">{customerMap[Number(payForm.customer_id)]?.business_name || '请选择客户'} · {paymentFormCurrency} · {payForm.payment_date || '到账日期待填写'}</p></DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-slate-500">本笔币种：{paymentFormCurrency === 'CNY' ? '人民币 CNY' : '美元 USD'}</p>
+            <h3 className="finance-form-section">收款信息</h3><p className="text-sm text-slate-500">本笔币种：{paymentFormCurrency === 'CNY' ? '人民币 CNY' : '美元 USD'}</p>
             <div>
               <Label>选择客户 *</Label>
               {customers.length === 0 ? (
@@ -6539,7 +6595,7 @@ export default function Finance() {
                 </p>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <h3 className="finance-form-section">金额与到账日期</h3><div className="grid grid-cols-2 gap-4">
               <div><Label>应收金额 *</Label><Input type="number" value={payForm.amount_due} onChange={e => setPayForm({ ...payForm, amount_due: e.target.value })} placeholder="0.00" /></div>
               <div><Label>实收金额 *</Label><Input type="number" value={payForm.amount_paid} onChange={e => setPayForm({ ...payForm, amount_paid: e.target.value })} placeholder="0.00" /></div>
             </div>
@@ -6598,7 +6654,7 @@ export default function Finance() {
                 );
               })()}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <h3 className="finance-form-section">收款方式</h3><div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>收款模式</Label>
                 <div className="mb-2 rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2">
@@ -6638,7 +6694,7 @@ export default function Finance() {
                 />
               </div>
             </div>
-            <div>
+            <h3 className="finance-form-section">凭证</h3><div>
               <Label>流水 / 支票 / Stripe 编号</Label>
               <Input
                 value={payForm.transaction_reference}
@@ -6673,20 +6729,20 @@ export default function Finance() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <h3 className="finance-form-section">服务周期</h3><div className="grid grid-cols-2 gap-4">
               <div><Label>覆盖开始</Label><Input type="date" value={payForm.coverage_start} onChange={e => setPayForm({ ...payForm, coverage_start: e.target.value })} /></div>
               <div><Label>覆盖结束</Label><Input type="date" value={payForm.coverage_end} onChange={e => setPayForm({ ...payForm, coverage_end: e.target.value })} /></div>
             </div>
-            <div><Label>备注</Label><Textarea value={payForm.notes} onChange={e => setPayForm({ ...payForm, notes: e.target.value })} rows={2} /></div>
+            <h3 className="finance-form-section">备注</h3><div><Label>备注</Label><Textarea value={payForm.notes} onChange={e => setPayForm({ ...payForm, notes: e.target.value })} rows={2} /></div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowPaymentForm(false)}>取消</Button>
+            <Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowPaymentForm(false); }}>取消</Button>
             <Button onClick={handleSavePayment} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showIncomeTypeManager} onOpenChange={(v) => { setShowIncomeTypeManager(v); if (!v) setNewIncomeTypeName(''); }}>
+      <Dialog open={showIncomeTypeManager} onOpenChange={(v) => { if (!v && !allowFinanceClose('incomeTypes')) return; setShowIncomeTypeManager(v); if (!v) setNewIncomeTypeName(''); }}>
         <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>管理收入类型</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -6739,7 +6795,7 @@ export default function Finance() {
             </p>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowIncomeTypeManager(false)}>取消</Button>
+            <Button variant="outline" onClick={() => { if (allowFinanceClose('incomeTypes')) setShowIncomeTypeManager(false); }}>取消</Button>
             <Button onClick={handleSaveIncomeTypes} disabled={savingIncomeTypes} className="bg-blue-600 hover:bg-blue-700">
               {savingIncomeTypes ? '保存中...' : '保存类型'}
             </Button>
@@ -6747,7 +6803,7 @@ export default function Finance() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showPaymentPackageManager} onOpenChange={(v) => { setShowPaymentPackageManager(v); if (!v) setNewPaymentPackageName(''); }}>
+      <Dialog open={showPaymentPackageManager} onOpenChange={(v) => { if (!v && !allowFinanceClose('packages')) return; setShowPaymentPackageManager(v); if (!v) setNewPaymentPackageName(''); }}>
         <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>管理收款套餐</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -6783,7 +6839,7 @@ export default function Finance() {
             <p className="text-xs text-slate-500">这里维护的套餐会同步用于客户意向套餐、成交录入和财务收款选择。</p>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowPaymentPackageManager(false)}>取消</Button>
+            <Button variant="outline" onClick={() => { if (allowFinanceClose('packages')) setShowPaymentPackageManager(false); }}>取消</Button>
             <Button onClick={handleSavePaymentPackages} disabled={savingPaymentPackages} className="bg-blue-600 hover:bg-blue-700">
               {savingPaymentPackages ? '保存中...' : '保存套餐'}
             </Button>
@@ -6791,7 +6847,7 @@ export default function Finance() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showCustomerExpenseTypeManager} onOpenChange={(v) => { setShowCustomerExpenseTypeManager(v); if (!v) setNewCustomerExpenseTypeName(''); }}>
+      <Dialog open={showCustomerExpenseTypeManager} onOpenChange={(v) => { if (!v && !allowFinanceClose('expenseTypes')) return; setShowCustomerExpenseTypeManager(v); if (!v) setNewCustomerExpenseTypeName(''); }}>
         <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>管理客户支出类型</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -6831,7 +6887,7 @@ export default function Finance() {
             <p className="text-xs text-slate-500">客户支出类型用于绑定网站、域名、主机/服务器、设计制作等客户专属成本。投流成本统一在「投流月结」处理。</p>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowCustomerExpenseTypeManager(false)}>取消</Button>
+            <Button variant="outline" onClick={() => { if (allowFinanceClose('expenseTypes')) setShowCustomerExpenseTypeManager(false); }}>取消</Button>
             <Button onClick={handleSaveCustomerExpenseTypes} disabled={savingCustomerExpenseTypes} className="bg-blue-600 hover:bg-blue-700">
               {savingCustomerExpenseTypes ? '保存中...' : '保存'}
             </Button>
@@ -6840,7 +6896,7 @@ export default function Finance() {
       </Dialog>
 
       {/* Customer Expense Form */}
-      <Dialog open={showExpenseForm} onOpenChange={(v) => { setShowExpenseForm(v); if (!v) { setEditingExpenseId(null); setExpenseForm(emptyExpenseForm); } }}>
+      <Dialog open={showExpenseForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowExpenseForm(v); if (!v) { setEditingExpenseId(null); setExpenseForm(emptyExpenseForm); } }}>
         <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingExpenseId ? '编辑客户支出' : '录入客户支出'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -6902,14 +6958,14 @@ export default function Finance() {
             <div><Label>备注</Label><Textarea value={expenseForm.notes} onChange={e => setExpenseForm({ ...expenseForm, notes: e.target.value })} rows={2} /></div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowExpenseForm(false)}>取消</Button>
+            <Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowExpenseForm(false); }}>取消</Button>
             <Button onClick={handleSaveExpense} disabled={savingExpense} className="bg-blue-600 hover:bg-blue-700">{savingExpense ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Company Expense Form */}
-      <Dialog open={showCompanyExpenseForm} onOpenChange={(v) => { setShowCompanyExpenseForm(v); if (!v) { setEditingCompanyExpenseId(null); setCompanyExpenseForm(emptyCompanyExpenseForm); } }}>
+      <Dialog open={showCompanyExpenseForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowCompanyExpenseForm(v); if (!v) { setEditingCompanyExpenseId(null); setCompanyExpenseForm(emptyCompanyExpenseForm); } }}>
         <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingCompanyExpenseId ? '编辑运营支出' : '录入运营支出'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -6958,13 +7014,13 @@ export default function Finance() {
             <div><Label>备注</Label><Textarea value={companyExpenseForm.notes} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, notes: e.target.value })} rows={2} /></div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowCompanyExpenseForm(false)}>取消</Button>
+            <Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowCompanyExpenseForm(false); }}>取消</Button>
             <Button onClick={handleSaveCompanyExpense} disabled={savingCompanyExpense} className="bg-blue-600 hover:bg-blue-700">{savingCompanyExpense ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showCompanyExpenseTypeManager} onOpenChange={(v) => { setShowCompanyExpenseTypeManager(v); if (!v) setNewCompanyExpenseTypeName(''); }}>
+      <Dialog open={showCompanyExpenseTypeManager} onOpenChange={(v) => { if (!v && !allowFinanceClose('companyTypes')) return; setShowCompanyExpenseTypeManager(v); if (!v) setNewCompanyExpenseTypeName(''); }}>
         <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>管理运营支出类型</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -6999,7 +7055,7 @@ export default function Finance() {
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowCompanyExpenseTypeManager(false)}>取消</Button>
+            <Button variant="outline" onClick={() => { if (allowFinanceClose('companyTypes')) setShowCompanyExpenseTypeManager(false); }}>取消</Button>
             <Button onClick={handleSaveCompanyExpenseTypes} disabled={savingCompanyExpenseTypes} className="bg-blue-600 hover:bg-blue-700">
               {savingCompanyExpenseTypes ? '保存中...' : '保存'}
             </Button>
@@ -7007,13 +7063,13 @@ export default function Finance() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!refundTarget} onOpenChange={(open) => { if (!open) setRefundTarget(null); }}>
+      <Dialog open={!!refundTarget} onOpenChange={(open) => { if (!open && allowFinanceClose()) setRefundTarget(null); }}>
         <DialogContent className="mobile-finance-editor max-w-lg">
           <DialogHeader><DialogTitle>记录退款</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
               <p className="font-medium text-slate-800">{refundTarget?.customer_name || '-'}</p>
-              <p className="mt-1 text-xs text-slate-500">原收款 {fmt(toMoneyNumber(refundTarget?.amount_paid))} · {refundTarget?.payment_date?.slice(0, 10) || '-'}</p>
+              <p className="mt-1 text-xs text-slate-500">原收款 {formatMoney(toMoneyNumber(refundTarget?.amount_paid), normalizeCurrency(refundTarget?.currency, 'USD'))} · {normalizeCurrency(refundTarget?.currency, 'USD')} · {refundTarget?.payment_date?.slice(0, 10) || '-'}</p>
             </div>
             <div className="grid grid-cols-2 gap-4"><div><Label>退款金额 *</Label><Input type="number" min="0" step="0.01" value={refundForm.refund_amount} onChange={e => setRefundForm({ ...refundForm, refund_amount: e.target.value })} /></div><div><Label>退款日期 *</Label><Input type="date" value={refundForm.refund_date} onChange={e => setRefundForm({ ...refundForm, refund_date: e.target.value })} /></div></div>
             <div><Label>Stripe 退款编号</Label><Input value={refundForm.provider_refund_id} onChange={e => setRefundForm({ ...refundForm, provider_refund_id: e.target.value })} placeholder="re_...（可后补）" /></div>
@@ -7021,23 +7077,23 @@ export default function Finance() {
             <div><Label>退款原因</Label><Input value={refundForm.reason} onChange={e => setRefundForm({ ...refundForm, reason: e.target.value })} /></div>
             <div><Label>备注</Label><Textarea value={refundForm.notes} onChange={e => setRefundForm({ ...refundForm, notes: e.target.value })} rows={2} /></div>
           </div>
-          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setRefundTarget(null)}>取消</Button><Button onClick={handleSaveRefund} disabled={savingRefund} className="bg-red-600 hover:bg-red-700">{savingRefund ? '保存中...' : '确认退款入账'}</Button></div>
+          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => { if (allowFinanceClose()) setRefundTarget(null); }}>取消</Button><Button onClick={handleSaveRefund} disabled={savingRefund} className="bg-red-600 hover:bg-red-700">{savingRefund ? '保存中...' : '确认退款入账'}</Button></div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showAdSettlementForm} onOpenChange={(open) => { setShowAdSettlementForm(open); if (!open) setEditingAdSettlementId(null); }}>
+      <Dialog open={showAdSettlementForm} onOpenChange={(open) => { if (!open && !allowFinanceClose()) return; setShowAdSettlementForm(open); if (!open) setEditingAdSettlementId(null); }}>
         <DialogContent className="mobile-finance-editor max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingAdSettlementId ? '编辑投流月结' : '新增投流月结'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingAdSettlementId ? '编辑投流月结' : '新增投流月结'}</DialogTitle><p className="finance-editor-context">{customerMap[Number(adSettlementForm.customer_id)]?.business_name || '请选择客户'} · {adSettlementForm.year_month || '月份待填写'} · {adSettlementForm.currency}</p></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4"><div><Label>客户 *</Label><select disabled={!!editingAdSettlementId} value={adSettlementForm.customer_id} onChange={e => setAdSettlementForm({ ...adSettlementForm, customer_id: e.target.value })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"><option value="">请选择客户</option>{customerOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div><div><Label>结算月份 *</Label><Input disabled={!!editingAdSettlementId} type="month" value={adSettlementForm.year_month} onChange={e => setAdSettlementForm({ ...adSettlementForm, year_month: e.target.value })} /></div></div>
-            <div className="grid grid-cols-2 gap-4"><div><Label>币种</Label><NativeSelect disabled={!!editingAdSettlementId} value={adSettlementForm.currency} onChange={value => setAdSettlementForm({ ...adSettlementForm, currency: normalizeCurrency(value, 'USD') })} options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))} /></div><div><Label>期初结余（自动结转）</Label><Input disabled type="number" min="0" step="0.01" value={adSettlementForm.opening_balance} /><p className="mt-1 text-xs text-slate-500">{adSettlementCarrySource ? `自动承接 ${adSettlementCarrySource.year_month} 结余 ${formatMoney(automaticAdOpeningBalance, adSettlementForm.currency)}` : '没有更早的月结，从 0 开始；首次导入余额可填写调整金额。'}</p></div></div>
+            <h3 className="finance-form-section">资金来源</h3><div className="grid grid-cols-2 gap-4"><div><Label>币种</Label><NativeSelect disabled={!!editingAdSettlementId} value={adSettlementForm.currency} onChange={value => setAdSettlementForm({ ...adSettlementForm, currency: normalizeCurrency(value, 'USD') })} options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))} /></div><div><Label>期初结余（自动结转）</Label><Input disabled type="number" min="0" step="0.01" value={adSettlementForm.opening_balance} /><p className="mt-1 text-xs text-slate-500">{adSettlementCarrySource ? `自动承接 ${adSettlementCarrySource.year_month} 结余 ${formatMoney(automaticAdOpeningBalance, adSettlementForm.currency)}` : '没有更早的月结，从 0 开始；首次导入余额可填写调整金额。'}</p></div></div>
             <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">期初结余自动承接上一期，净充值按收款与退款自动计算；修改上月后，系统会同步重算后续月份。</div>
-            <div className="grid grid-cols-2 gap-4"><div><Label>本月广告实际支出 *</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.actual_ad_spend} onChange={e => setAdSettlementForm({ ...adSettlementForm, actual_ad_spend: e.target.value })} /></div><div><Label>退回客户</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.customer_refund_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, customer_refund_amount: e.target.value })} /></div></div>
-            <div className="grid grid-cols-2 gap-4"><div><Label>确认公司差价收入</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.recognized_spread_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, recognized_spread_amount: e.target.value })} /><p className="mt-1 text-xs text-slate-500">只有这里确认的金额才进入利润。</p></div><div><Label>调整金额</Label><Input type="number" step="0.01" value={adSettlementForm.adjustment_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, adjustment_amount: e.target.value })} /><p className="mt-1 text-xs text-slate-500">用于银行差异等，负数会减少可用资金。</p></div></div>
+            <h3 className="finance-form-section">实际支出与退款</h3><div className="grid grid-cols-2 gap-4"><div><Label>本月广告实际支出 *</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.actual_ad_spend} onChange={e => setAdSettlementForm({ ...adSettlementForm, actual_ad_spend: e.target.value })} /></div><div><Label>退回客户</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.customer_refund_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, customer_refund_amount: e.target.value })} /></div></div>
+            <h3 className="finance-form-section">差价与结算</h3><div className="grid grid-cols-2 gap-4"><div><Label>确认公司差价收入</Label><Input type="number" min="0" step="0.01" value={adSettlementForm.recognized_spread_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, recognized_spread_amount: e.target.value })} /><p className="mt-1 text-xs text-slate-500">只有这里确认的金额才进入利润。</p></div><div><Label>调整金额</Label><Input type="number" step="0.01" value={adSettlementForm.adjustment_amount} onChange={e => setAdSettlementForm({ ...adSettlementForm, adjustment_amount: e.target.value })} /><p className="mt-1 text-xs text-slate-500">用于银行差异等，负数会减少可用资金。</p></div></div>
             <div><Label>状态</Label><NativeSelect value={adSettlementForm.status} onChange={value => setAdSettlementForm({ ...adSettlementForm, status: value })} options={[{ value: 'draft', label: '草稿（可继续核对）' }, { value: 'closed', label: '已结算（差价计入收入）' }]} /></div>
             <div><Label>备注</Label><Textarea value={adSettlementForm.notes} onChange={e => setAdSettlementForm({ ...adSettlementForm, notes: e.target.value })} rows={2} /></div>
           </div>
-          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setShowAdSettlementForm(false)}>取消</Button><Button onClick={handleSaveAdSettlement} disabled={savingAdSettlement} className="bg-blue-600 hover:bg-blue-700">{savingAdSettlement ? '保存中...' : '保存月结'}</Button></div>
+          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowAdSettlementForm(false); }}>取消</Button><Button onClick={handleSaveAdSettlement} disabled={savingAdSettlement} className="bg-blue-600 hover:bg-blue-700">{savingAdSettlement ? '保存中...' : '保存月结'}</Button></div>
         </DialogContent>
       </Dialog>
 

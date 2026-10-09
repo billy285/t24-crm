@@ -132,6 +132,7 @@ FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 PWA_NO_CACHE_MEDIA_TYPES = {
     "manifest.webmanifest": "application/manifest+json",
     "sw.js": "application/javascript",
+    "app-version.json": "application/json",
     "offline.html": "text/html",
     "robots.txt": "text/plain",
 }

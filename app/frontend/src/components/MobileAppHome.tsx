@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { useFavoriteFunctions } from '@/lib/favorite-functions';
 import {
   appNavigationItems,
   getRolePendingPath,
@@ -68,6 +69,7 @@ export interface MobileAppHomeProps {
   notificationCount?: number;
   loading?: boolean;
   loadError?: string;
+  updatedAt?: string | null;
   onRetry?: () => void;
   onOpenProfile: () => void;
   onOpenNotifications?: () => void;
@@ -154,6 +156,7 @@ export default function MobileAppHome({
   notificationCount = 0,
   loading = false,
   loadError = '',
+  updatedAt,
   onRetry,
   onOpenProfile,
   onOpenNotifications,
@@ -163,6 +166,7 @@ export default function MobileAppHome({
 }: MobileAppHomeProps) {
   const navigate = useNavigate();
   const { employee, role, canAccess } = useRole();
+  const { favorites } = useFavoriteFunctions(`${employee?.id || 'unknown'}:${role}`, canAccess);
 
   const canOpen = (path?: string) => {
     const pathname = pathNameOf(path);
@@ -269,6 +273,8 @@ export default function MobileAppHome({
           </div>
         ) : null}
 
+        {updatedAt && !loading && <div className="home-update-time"><time dateTime={updatedAt}>更新于 {new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(updatedAt))} · 北京时间</time>{onRetry && <button type="button" onClick={onRetry}>刷新</button>}</div>}
+
         <div className={cn('home-work-grid', !showRecentSection && 'home-work-grid-single')}>
           <section aria-label="今日重点" className="home-panel home-priority-panel">
             <h2 id="mobile-today-heading">今日重点</h2>
@@ -310,6 +316,7 @@ export default function MobileAppHome({
           </section> : null}
         </div>
 
+        {favorites.length > 0 && <section aria-label="个人常用功能" className="home-apps-section"><h2>常用功能</h2><div className="home-favorite-grid">{favorites.map(item => <button key={item.href} type="button" onClick={() => openPath(item.href)}>{item.label}<ArrowRight aria-hidden="true" /></button>)}</div></section>}
         <section aria-label="工作应用" className="home-apps-section">
           <h2 id="mobile-apps-heading">常用应用</h2>
           <div className={cn('home-app-grid', availableApps.length === 1 && 'home-app-grid-one', availableApps.length === 2 && 'home-app-grid-two')}>

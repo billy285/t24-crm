@@ -376,7 +376,7 @@ test('服务看板保留主请求成功数据，详情与完成弹窗都拒绝�
 
   await page.getByText('慢服务 A', { exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '慢服务 A' })).toBeVisible();
-  await page.getByRole('button', { name: '返回看板' }).click();
+  await page.getByRole('button', { name: '返回服务列表' }).click();
   await page.getByText('快服务 B', { exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '快服务 B' })).toBeVisible();
   await page.getByRole('tab', { name: /任务清单/ }).click();

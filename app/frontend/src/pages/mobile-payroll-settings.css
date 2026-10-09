@@ -1,5 +1,10 @@
 /* Mobile presentation only; shared financial values and actions stay in the pages. */
+.payroll-form-section { grid-column:1 / -1; margin-top:8px; padding:12px 0 4px; border-top:1px solid #e2e8f0; font-size:15px; font-weight:600; color:#1d3557; }
 @media (max-width: 767px) {
+  .payroll-responsive-table tr[data-expanded=false] td:not([data-label="员工"]):not([data-label="实发"]):not([data-label="发放状态"]):not([data-label="操作"]) { display:none; }
+  .payroll-page .text-xs { font-size:13px; }
+  .payroll-dialog-layer .payroll-editor-grid { grid-template-columns:minmax(0,1fr); }
+  .payroll-editor-grid>.col-span-2 { grid-column:auto; }
   .payroll-page,
   .deduction-settings-page {
     min-width: 0;

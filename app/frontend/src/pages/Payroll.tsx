@@ -15,6 +15,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { useRole } from '@/lib/role-context';
 import './mobile-payroll-settings.css';
+import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
+import PageLoadState from '@/components/PageLoadState';
 
 type PayrollStatus = 'draft' | 'confirmed' | 'paid';
 type PaymentStatus = 'pending' | 'partial' | 'paid' | 'failed' | 'returned' | 'supplemental';
@@ -94,7 +96,7 @@ function MetricCard({ label, value, detail, tone = 'slate' }: { label: string; v
 export default function Payroll() {
   const { role, isAdmin } = useRole();
   const today = new Date();
-  const currentMonth = today.toISOString().slice(0, 7);
+  const currentMonth = beijingToday().slice(0, 7);
   const currentYear = today.getFullYear();
   const [view, setView] = useState<PayrollView>('processing');
   const [month, setMonth] = useState(currentMonth);
@@ -108,6 +110,20 @@ export default function Payroll() {
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const sheetRequest = useRef(0);
+  const reportRequest = useRef(0);
+  const [expandedEmployees, setExpandedEmployees] = useState<number[]>([]);
+  const [copyPreview, setCopyPreview] = useState<{ source: string; target: string; items: PayrollItem[] } | null>(null);
+  const [copying, setCopying] = useState(false);
+  const [editingBaseline, setEditingBaseline] = useState('');
+  const editingKey = editing ? String(editing.id || 'new') : '';
+  useEffect(() => { setEditingBaseline(JSON.stringify(editing)); }, [editingKey]);
+  const { confirmDiscard } = useUnsavedChanges(Boolean(editing && editingBaseline && JSON.stringify(editing) !== editingBaseline));
+  const closeEditor = () => { if (!saving && confirmDiscard()) setEditing(null); };
+  const validSheet = Boolean(data && data.sheet.month === month);
+  const sheetUnavailable = loading || Boolean(loadError) || !validSheet;
   const [saving, setSaving] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [showMarkPaid, setShowMarkPaid] = useState(false);
@@ -116,32 +132,42 @@ export default function Payroll() {
   const canAdmin = isAdmin || role === 'super_admin';
 
   const load = async () => {
+    const requestId = ++sheetRequest.current;
+    const requestedMonth = month;
     setLoading(true);
     try {
       const [sheetRes, employeeRes] = await Promise.all([
-        invokeWithAuth({ url: `/api/v1/payroll?month=${month}`, method: 'GET' }),
+        invokeWithAuth({ url: `/api/v1/payroll?month=${requestedMonth}`, method: 'GET' }),
         invokeWithAuth({ url: '/api/v1/payroll/employees', method: 'GET' }),
       ]);
-      setData(sheetRes.data);
-      setEmployees(employeeRes.data || []);
+      if (requestId !== sheetRequest.current) return;
+      if (sheetRes.data?.sheet?.month !== requestedMonth) throw new Error('返回的工资月份与所选月份不一致，请重新读取');
+      setData(sheetRes.data); setEmployees(employeeRes.data || []); setLoadError(null);
     } catch (error: any) {
-      toast.error(errorMessage(error, '工资表读取失败'));
+      if (requestId !== sheetRequest.current) return;
+      setData(null); setLoadError(errorMessage(error, '工资表读取失败'));
     } finally {
-      setLoading(false);
+      if (requestId === sheetRequest.current) setLoading(false);
     }
   };
 
   const loadReport = async () => {
+    const requestId = ++reportRequest.current;
     setReportLoading(true);
     try {
       const response = await invokeWithAuth({ url: `/api/v1/payroll/reports?year=${reportYear}`, method: 'GET' });
-      setReport(response.data);
+      if (requestId !== reportRequest.current) return;
+      setReport(response.data); setReportError(null);
     } catch (error: any) {
-      setReport(null);
-      toast.error(errorMessage(error, '工资报表读取失败'));
+      if (requestId !== reportRequest.current) return;
+      setReport(null); setReportError(errorMessage(error, '工资报表读取失败'));
     } finally {
-      setReportLoading(false);
+      if (requestId === reportRequest.current) setReportLoading(false);
     }
+  };
+  const canWriteCurrentMonth = () => {
+    if (sheetUnavailable) { toast.error('请先成功读取所选月份的工资表'); return false; }
+    return true;
   };
 
   useEffect(() => {
@@ -170,11 +196,11 @@ export default function Payroll() {
     };
   }, [showMarkPaid, transitioning]);
 
-  const rows = data?.items || [];
+  const rows = validSheet ? data?.items || [] : [];
   const locked = data?.sheet.status === 'paid';
   const pendingRows = rows.filter(row => row.payment_status === 'pending');
   const blockingRows = rows.filter(row => !['pending', 'paid'].includes(row.payment_status));
-  const totals = data?.totals || { gross: 0, deductions: 0, net: 0 };
+  const totals = validSheet ? data?.totals || { gross: 0, deductions: 0, net: 0 } : { gross: 0, deductions: 0, net: 0 };
   const additions = useMemo(() => rows.reduce((sum, row) => sum + row.commission + row.bonus + row.allowance + row.reimbursement, 0), [rows]);
   const reportMonths = useMemo(() => report?.monthly.filter(item => item.headcount > 0) || [], [report]);
   const maxMonthlyNet = Math.max(1, ...reportMonths.map(item => Math.max(0, item.net)));
@@ -200,6 +226,7 @@ export default function Payroll() {
   }, [report, reportMonths]);
 
   const saveItem = async () => {
+    if (!canWriteCurrentMonth()) return;
     if (!editing?.employee_name.trim()) return toast.error('请选择员工或填写员工姓名');
     setSaving(true);
     try {
@@ -216,6 +243,7 @@ export default function Payroll() {
   };
 
   const removeItem = async (item: PayrollItem) => {
+    if (!canWriteCurrentMonth()) return;
     if (!item.id || !window.confirm(`确认删除 ${item.employee_name} 的本月工资明细？`)) return;
     try {
       await invokeWithAuth({ url: `/api/v1/payroll/${month}/items/${item.id}`, method: 'DELETE' });
@@ -227,7 +255,7 @@ export default function Payroll() {
   };
 
   const transition = async (action: 'confirm' | 'mark_paid' | 'reopen', options?: { paymentDate?: string; confirmAllPending?: boolean }) => {
-    if (transitioning) return;
+    if (transitioning || !canWriteCurrentMonth()) return;
     let reason: string | null = null;
     if (action === 'reopen') {
       reason = window.prompt('请输入重新打开并修改已发放工资表的原因：');
@@ -257,22 +285,32 @@ export default function Payroll() {
   };
 
   const copyPrevious = async () => {
-    const date = new Date(`${month}-01T00:00:00`);
-    date.setMonth(date.getMonth() - 1);
-    const previousMonth = date.toISOString().slice(0, 7);
+    if (!canWriteCurrentMonth() || rows.length || copying) return;
+    const [year, monthNumber] = month.split('-').map(Number);
+    const previous = new Date(Date.UTC(year, monthNumber - 2, 1));
+    const previousMonth = `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, '0')}`;
+    setCopying(true);
     try {
       const response = await invokeWithAuth({ url: `/api/v1/payroll?month=${previousMonth}`, method: 'GET' });
-      const previous: PayrollItem[] = response.data?.items || [];
-      if (!previous.length) return toast.error('上月没有可复制的工资明细');
-      for (const row of previous) {
+      if (response.data?.sheet?.month !== previousMonth) throw new Error('上月数据的月份不匹配，请重新读取');
+      const previousItems: PayrollItem[] = response.data?.items || [];
+      if (!previousItems.length) return toast.error('上月没有可复制的工资明细');
+      setCopyPreview({ source: previousMonth, target: month, items: previousItems });
+    } catch (error: any) { toast.error(errorMessage(error, '上月工资读取失败')); }
+    finally { setCopying(false); }
+  };
+  const confirmCopyPrevious = async () => {
+    if (!copyPreview || copying || !canWriteCurrentMonth() || copyPreview.target !== month || rows.length) return;
+    setCopying(true);
+    let copied = 0;
+    try {
+      for (const row of copyPreview.items) {
         const payload = { ...row, id: undefined, payment_account: undefined, commission: 0, bonus: 0, allowance: 0, reimbursement: 0, absence_deduction: 0, performance_deduction: 0, salary_advance_deduction: 0, other_deduction: 0, payment_status: 'pending', payment_date: undefined, payment_reference: undefined, receipt_url: undefined };
-        await invokeWithAuth({ url: `/api/v1/payroll/${month}/items`, method: 'POST', data: payload });
+        await invokeWithAuth({ url: `/api/v1/payroll/${copyPreview.target}/items`, method: 'POST', data: payload }); copied += 1;
       }
-      toast.success('已复制上月人员和固定工资，动态项目已清零');
-      await load();
-    } catch (error: any) {
-      toast.error(errorMessage(error, '复制失败，请检查本月是否已有相同员工'));
-    }
+      toast.success('已复制上月人员和固定工资，动态项目已清零'); setCopyPreview(null);
+    } catch (error: any) { toast.error(`已复制 ${copied} 人，${errorMessage(error, '其余复制失败，请核对本月明细后再操作')}`); setCopyPreview(null); }
+    finally { setCopying(false); await load(); }
   };
 
   const showAuditLog = async () => {
@@ -305,7 +343,7 @@ export default function Payroll() {
   const field = (label: string, key: keyof PayrollItem, type = 'number') => <div><Label htmlFor={`payroll-${key}`} className="text-xs text-slate-500">{label}</Label><Input id={`payroll-${key}`} className="mt-1" type={type} value={String(editing?.[key] ?? '')} onChange={event => setEditing(current => current ? { ...current, [key]: type === 'number' ? Math.max(0, Number(event.target.value) || 0) : event.target.value } : current)} /></div>;
 
 
-  if (loading && !data) return <div className="app-page"><div className="app-loading">正在读取工资表...</div></div>;
+  if (loading && !data && !loadError) return <div className="app-page"><div className="app-loading">正在读取工资表...</div></div>;
 
   return <>
     <div className="payroll-page t24-command-page calm-report-page app-page space-y-5">
@@ -331,14 +369,14 @@ export default function Payroll() {
       <TabsContent value="processing" className="mt-5 space-y-5">
         <Card className="border-blue-100 bg-blue-50/40">
           <CardContent className="flex flex-wrap items-end gap-4 p-4">
-            <div><Label htmlFor="payroll-month">工资月份</Label><Input id="payroll-month" type="month" value={month} onChange={event => setMonth(event.target.value)} className="mt-1 w-44 bg-white" /></div>
-            <div><Label>流程状态</Label><div className="mt-2"><Badge className={data?.sheet.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : data?.sheet.status === 'confirmed' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'}>{data ? statusLabels[data.sheet.status] : '-'}</Badge></div></div>
+            <div><Label htmlFor="payroll-month">工资月份</Label><Input id="payroll-month" type="month" value={month} onChange={event => { if (confirmDiscard()) { setEditing(null); setCopyPreview(null); setMonth(event.target.value); } }} disabled={saving || copying || transitioning} className="mt-1 w-44 bg-white" /></div>
+            <div><Label>流程状态</Label><div className="mt-2"><Badge className={data?.sheet.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : data?.sheet.status === 'confirmed' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'}>{validSheet && data ? statusLabels[data.sheet.status] : '待读取'}</Badge></div></div>
             <p className="text-xs text-slate-500">录入：财务/管理员 · 确认：管理员 · 发放：财务/管理员</p>
             <div className="ml-auto flex flex-wrap gap-2">
-              <Button variant="outline" onClick={copyPrevious} disabled={locked || rows.length > 0}><Copy className="mr-1 h-4 w-4" />复制上月</Button>
-              {data?.sheet.status === 'draft' && canAdmin && <Button onClick={() => transition('confirm')} disabled={!rows.length || transitioning}><Lock className="mr-1 h-4 w-4" />{transitioning ? '处理中...' : '确认工资表'}</Button>}
-              {data?.sheet.status === 'confirmed' && <Button onClick={() => { setBulkPaymentDate(beijingToday()); setShowMarkPaid(true); }} disabled={transitioning}><WalletCards className="mr-1 h-4 w-4" />{blockingRows.length ? `${blockingRows.length} 人需先处理` : pendingRows.length ? `登记 ${pendingRows.length} 人并锁定` : '完成并锁定整表'}</Button>}
-              {data?.sheet.status === 'paid' && canAdmin && <Button variant="outline" onClick={() => transition('reopen')} disabled={transitioning}><Unlock className="mr-1 h-4 w-4" />{transitioning ? '处理中...' : '带原因重新打开'}</Button>}
+              <Button variant="outline" onClick={copyPrevious} disabled={sheetUnavailable || locked || rows.length > 0 || copying}><Copy className="mr-1 h-4 w-4" />复制上月</Button>
+              {data?.sheet.status === 'draft' && canAdmin && <Button onClick={() => transition('confirm')} disabled={sheetUnavailable || !rows.length || transitioning}><Lock className="mr-1 h-4 w-4" />{transitioning ? '处理中...' : '确认工资表'}</Button>}
+              {data?.sheet.status === 'confirmed' && <Button onClick={() => { setBulkPaymentDate(beijingToday()); setShowMarkPaid(true); }} disabled={sheetUnavailable || transitioning}><WalletCards className="mr-1 h-4 w-4" />{blockingRows.length ? `${blockingRows.length} 人需先处理` : pendingRows.length ? `登记 ${pendingRows.length} 人并锁定` : '完成并锁定整表'}</Button>}
+              {data?.sheet.status === 'paid' && canAdmin && <Button variant="outline" onClick={() => transition('reopen')} disabled={sheetUnavailable || transitioning}><Unlock className="mr-1 h-4 w-4" />{transitioning ? '处理中...' : '带原因重新打开'}</Button>}
             </div>
           </CardContent>
         </Card>
@@ -349,25 +387,27 @@ export default function Payroll() {
             : `当前有 ${pendingRows.length} 人待登记发放。确认实际发放日期后，可一次完成登记并锁定整表。`}
         </div>}
 
+        {loadError && <PageLoadState error={`${month} 工资表读取失败：${loadError}`} onRetry={() => void load()} />}
+        {!validSheet && loading && <p role="status">正在读取 {month} 工资表，操作暂不可用…</p>}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <MetricCard label="应发工资" value={money(totals.gross)} />
-          <MetricCard label="动态应发" value={money(additions)} tone="blue" />
-          <MetricCard label="应扣项目" value={money(totals.deductions)} tone="rose" />
-          <MetricCard label="实发工资" value={money(totals.net)} tone="emerald" />
+          <MetricCard label="应发工资" value={validSheet ? money(totals.gross) : '—'} />
+          <MetricCard label="动态应发" value={validSheet ? money(additions) : '—'} tone="blue" />
+          <MetricCard label="应扣项目" value={validSheet ? money(totals.deductions) : '—'} tone="rose" />
+          <MetricCard label="实发工资" value={validSheet ? money(totals.net) : '—'} tone="emerald" />
         </div>
 
         <Card><CardContent className="p-4">
           <div className="payroll-list-heading mb-4 flex items-center justify-between">
             <div><h2 className="font-semibold text-slate-800">员工工资明细</h2><p className="mt-1 text-xs text-slate-500">账号仅显示末四位；发放完成后整表锁定，修改会留下审计记录</p></div>
-            <Button onClick={() => setEditing(blankItem())} disabled={locked}><Plus className="mr-1 h-4 w-4" />新增员工</Button>
+            <Button onClick={() => setEditing(blankItem())} disabled={sheetUnavailable || locked}><Plus className="mr-1 h-4 w-4" />新增员工</Button>
           </div>
-          {!rows.length ? <div className="app-empty">本月暂无工资明细</div> : <div className="app-table-wrap"><table className="payroll-responsive-table w-full min-w-[1040px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">员工</th><th className="px-3 py-3">应发</th><th className="px-3 py-3">应扣</th><th className="px-3 py-3">实发</th><th className="px-3 py-3">发放账户</th><th className="px-3 py-3">发放状态</th><th className="px-3 py-3">凭证</th><th className="px-3 py-3">操作</th></tr></thead><tbody>{rows.map(row => <tr key={row.id} className="border-b border-slate-100"><td data-label="员工" className="px-3 py-3"><p className="font-medium text-slate-900">{row.employee_name}</p><p className="text-xs text-slate-500">{row.employee_code || '无编号'} · {row.department || '未设置部门'}</p></td><td data-label="应发" className="px-3 py-3">{money(row.gross_amount)}</td><td data-label="应扣" className="px-3 py-3 text-rose-600">{money(row.deduction_amount)}</td><td data-label="实发" className="px-3 py-3 font-semibold text-emerald-600">{money(row.net_amount)}</td><td data-label="发放账户" className="px-3 py-3"><p>{methodLabels[row.payment_method] || row.payment_method}</p><p className="text-xs text-slate-500">{row.payment_account_masked || '未填写'}</p></td><td data-label="发放状态" className="px-3 py-3"><Badge variant="outline">{paymentLabels[row.payment_status]}</Badge><p className="mt-1 text-xs text-slate-500">{row.payment_date || '-'}</p></td><td data-label="凭证" className="px-3 py-3 text-xs">{row.payment_reference || '-'}</td><td data-label="操作" className="px-3 py-3"><div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => setEditing({ ...row, payment_account: '' })} disabled={locked}>编辑</Button><Button size="sm" variant="ghost" onClick={() => removeItem(row)} disabled={data?.sheet.status !== 'draft'}><Trash2 className="h-4 w-4 text-rose-500" /></Button></div></td></tr>)}</tbody></table></div>}
+          {!rows.length ? <div className="app-empty">{loadError ? "所选工资月份尚未读取成功" : loading ? "正在读取所选月份…" : "本月暂无工资明细"}</div> : <div className="app-table-wrap"><table className="payroll-responsive-table w-full min-w-[1040px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">员工</th><th className="px-3 py-3">应发</th><th className="px-3 py-3">应扣</th><th className="px-3 py-3">实发</th><th className="px-3 py-3">发放账户</th><th className="px-3 py-3">发放状态</th><th className="px-3 py-3">凭证</th><th className="px-3 py-3">操作</th></tr></thead><tbody>{rows.map(row => <tr key={row.id} data-expanded={expandedEmployees.includes(row.id || 0)} className="border-b border-slate-100"><td data-label="员工" className="px-3 py-3"><p className="font-medium text-slate-900">{row.employee_name}</p><p className="text-xs text-slate-500">{row.employee_code || '无编号'} · {row.department || '未设置部门'}</p></td><td data-label="应发" className="px-3 py-3">{money(row.gross_amount)}</td><td data-label="应扣" className="px-3 py-3 text-rose-600">{money(row.deduction_amount)}</td><td data-label="实发" className="px-3 py-3 font-semibold text-emerald-600">{money(row.net_amount)}</td><td data-label="发放账户" className="px-3 py-3"><p>{methodLabels[row.payment_method] || row.payment_method}</p><p className="text-xs text-slate-500">{row.payment_account_masked || '未填写'}</p></td><td data-label="发放状态" className="px-3 py-3"><Badge variant="outline">{paymentLabels[row.payment_status]}</Badge><p className="mt-1 text-xs text-slate-500">{row.payment_date || '-'}</p></td><td data-label="凭证" className="px-3 py-3 text-xs">{row.payment_reference || '-'}</td><td data-label="操作" className="px-3 py-3"><div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" className="md:hidden" aria-expanded={expandedEmployees.includes(row.id || 0)} onClick={() => setExpandedEmployees(current => current.includes(row.id || 0) ? current.filter(id => id !== row.id) : [...current, row.id || 0])}>{expandedEmployees.includes(row.id || 0) ? '收起明细' : '展开明细'}</Button><Button size="sm" variant="outline" onClick={() => setEditing({ ...row, payment_account: '' })} disabled={sheetUnavailable || locked}>编辑</Button><Button size="sm" variant="ghost" onClick={() => removeItem(row)} disabled={sheetUnavailable || data?.sheet.status !== 'draft'}><Trash2 className="h-4 w-4 text-rose-500" /></Button></div></td></tr>)}</tbody></table></div>}
         </CardContent></Card>
       </TabsContent>
 
       <TabsContent value="analytics" className="mt-5 space-y-5">
         <Card className="border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-blue-50"><CardContent className="flex flex-wrap items-center gap-4 p-4"><div className="flex items-center gap-3"><TrendingUp className="h-8 w-8 text-indigo-600" /><div><p className="font-semibold text-slate-900">老板人力成本报表</p><p className="text-xs text-slate-500">只汇总工资表，不写入财务经营利润。</p></div></div><div className="ml-auto flex items-center gap-2"><Label>统计年度</Label><NativeSelect value={String(reportYear)} onChange={value => setReportYear(Number(value))} options={Array.from({ length: 5 }, (_, index) => currentYear - index).map(year => ({ value: String(year), label: `${year} 年` }))} className="w-32 bg-white" /></div></CardContent></Card>
-        {reportLoading ? <div className="app-loading">正在生成工资报表...</div> : !report?.has_data ? <Card><CardContent className="p-10 text-center"><BarChart3 className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-3 font-medium text-slate-700">{reportYear} 年暂无工资数据</p><p className="mt-1 text-sm text-slate-500">完成任意月份工资录入后，趋势、部门成本和发放状态会自动生成。</p></CardContent></Card> : <>
+        {reportError ? <PageLoadState error={reportError} onRetry={() => void loadReport()} /> : reportLoading ? <div className="app-loading">正在生成工资报表...</div> : !report?.has_data ? <Card><CardContent className="p-10 text-center"><BarChart3 className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-3 font-medium text-slate-700">{reportYear} 年暂无工资数据</p><p className="mt-1 text-sm text-slate-500">完成任意月份工资录入后，趋势、部门成本和发放状态会自动生成。</p></CardContent></Card> : <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <MetricCard label="年度实发工资" value={money(report.totals.net)} detail={`应发 ${money(report.totals.gross)} · 扣款 ${money(report.totals.deductions)}`} tone="emerald" />
             <MetricCard label="覆盖员工" value={`${report.totals.headcount} 人`} detail={`${report.totals.active_months} 个有工资月份`} tone="blue" />
@@ -391,21 +431,22 @@ export default function Payroll() {
 
       <TabsContent value="ledger" className="mt-5 space-y-5">
         <Card className="border-blue-100 bg-blue-50/40"><CardContent className="flex flex-wrap items-center gap-4 p-4"><div className="flex items-center gap-3"><Users className="h-8 w-8 text-blue-600" /><div><p className="font-semibold text-slate-900">员工年度工资台账</p><p className="text-xs text-slate-500">按员工汇总全年工资、提成、奖金、扣款与发放状态。</p></div></div><div className="ml-auto flex flex-wrap items-center gap-2"><NativeSelect value={String(reportYear)} onChange={value => setReportYear(Number(value))} options={Array.from({ length: 5 }, (_, index) => currentYear - index).map(year => ({ value: String(year), label: `${year} 年` }))} className="w-32 bg-white" /><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={ledgerSearch} onChange={event => setLedgerSearch(event.target.value)} placeholder="搜索姓名、编号或部门" className="w-64 bg-white pl-9" /></div></div></CardContent></Card>
-        {reportLoading ? <div className="app-loading">正在生成年度台账...</div> : !report?.has_data ? <Card><CardContent className="p-10 text-center"><CalendarRange className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-3 font-medium text-slate-700">{reportYear} 年暂无员工工资台账</p><p className="mt-1 text-sm text-slate-500">工资录入后会自动按员工归集，无需重复填写。</p></CardContent></Card> : <>
+        {reportError ? <PageLoadState error={reportError} onRetry={() => void loadReport()} /> : reportLoading ? <div className="app-loading">正在生成年度台账...</div> : !report?.has_data ? <Card><CardContent className="p-10 text-center"><CalendarRange className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-3 font-medium text-slate-700">{reportYear} 年暂无员工工资台账</p><p className="mt-1 text-sm text-slate-500">工资录入后会自动按员工归集，无需重复填写。</p></CardContent></Card> : <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MetricCard label="台账员工" value={`${report.totals.headcount} 人`} tone="blue" /><MetricCard label="员工年度人均" value={money(report.totals.average_per_employee)} /><MetricCard label="年度已发" value={money(report.totals.paid_amount)} tone="emerald" /><MetricCard label="仍需处理" value={money(report.totals.pending_amount)} tone={report.totals.pending_amount > 0 ? 'amber' : 'emerald'} /></div>
           <Card><CardContent className="p-5"><div className="mb-4"><h2 className="font-semibold text-slate-900">员工年度明细</h2><p className="mt-1 text-xs text-slate-500">显示累计金额，不展示完整收款账号；可导出年度台账核对。</p></div><div className="app-table-wrap"><table className="payroll-responsive-table w-full min-w-[1120px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">员工</th><th className="px-3 py-3">月份</th><th className="px-3 py-3">基本工资</th><th className="px-3 py-3">固定绩效</th><th className="px-3 py-3">提成</th><th className="px-3 py-3">奖金/补贴/报销</th><th className="px-3 py-3">扣款</th><th className="px-3 py-3">实发</th><th className="px-3 py-3">已发/待发</th><th className="px-3 py-3">最近状态</th></tr></thead><tbody>{filteredLedger.map(item => <tr key={`${item.employee_id || 'legacy'}-${item.employee_name}`} className="border-b border-slate-100"><td data-label="员工" className="px-3 py-3"><p className="font-medium text-slate-900">{item.employee_name}</p><p className="text-xs text-slate-500">{item.employee_code || '无编号'} · {item.department}</p></td><td data-label="月份" className="px-3 py-3">{item.months}</td><td data-label="基本工资" className="px-3 py-3">{money(item.base_salary)}</td><td data-label="固定绩效" className="px-3 py-3">{money(item.fixed_performance)}</td><td data-label="提成" className="px-3 py-3 text-blue-700">{money(item.commission)}</td><td data-label="奖金/补贴/报销" className="px-3 py-3">{money(item.bonus + item.allowance + item.reimbursement)}</td><td data-label="扣款" className="px-3 py-3 text-rose-600">{money(item.deductions)}</td><td data-label="实发" className="px-3 py-3 font-semibold text-emerald-700">{money(item.net)}</td><td data-label="已发/待发" className="px-3 py-3"><p className="text-emerald-700">{money(item.paid_amount)}</p><p className="text-xs text-amber-700">待 {money(item.pending_amount)}</p></td><td data-label="最近状态" className="px-3 py-3"><Badge variant="outline">{paymentLabels[item.latest_payment_status]}</Badge><p className="mt-1 text-xs text-slate-500">{item.latest_month}</p></td></tr>)}{!filteredLedger.length && <tr><td colSpan={10} className="py-10 text-center text-slate-500">没有匹配的员工台账</td></tr>}</tbody></table></div></CardContent></Card>
         </>}
       </TabsContent>
     </Tabs>
 
-    {editing && <div className="payroll-dialog-layer fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"><Card role="dialog" aria-modal="true" aria-labelledby="payroll-editor-title" className="max-h-[92vh] w-full max-w-4xl overflow-auto"><CardContent className="p-5"><div className="mb-4 flex items-start justify-between"><div><h2 id="payroll-editor-title" className="text-lg font-semibold">{editing.id ? '编辑工资明细' : '新增工资明细'}</h2><p className="text-xs text-slate-500">选择员工后自动带出编号、部门和入职日期</p></div><Button variant="ghost" onClick={() => setEditing(null)}>关闭</Button></div><div className="payroll-editor-grid grid grid-cols-2 gap-3 md:grid-cols-4"><div className="col-span-2"><Label htmlFor="payroll-employee" className="text-xs text-slate-500">关联员工 *</Label><NativeSelect id="payroll-employee" className="mt-1" value={String(editing.employee_id || '')} onChange={chooseEmployee} options={[{ value: '', label: '手动填写 / 选择员工' }, ...employees.map(employee => ({ value: String(employee.id), label: `${employee.employee_code ? `${employee.employee_code} · ` : ''}${employee.name} · ${employee.department || '未分部门'}` }))]} /></div>{field('姓名 *', 'employee_name', 'text')}{field('员工编号', 'employee_code', 'text')}{field('部门', 'department', 'text')}{field('入职日期', 'hire_date', 'date')}<div><Label className="text-xs text-slate-500">发放方式</Label><NativeSelect className="mt-1" value={editing.payment_method} onChange={value => setEditing(current => current ? { ...current, payment_method: value } : current)} options={Object.entries(methodLabels).map(([value, label]) => ({ value, label }))} /></div>{field(editing.payment_account_masked ? `发放账号（留空保留 ${editing.payment_account_masked}）` : '发放账号', 'payment_account', 'text')}{field('基本工资', 'base_salary')}{field('固定绩效', 'fixed_performance')}{field('提成', 'commission')}{field('奖金', 'bonus')}{field('补贴', 'allowance')}{field('报销', 'reimbursement')}{field('缺勤扣款', 'absence_deduction')}{field('绩效扣款', 'performance_deduction')}{field('借支扣款', 'salary_advance_deduction')}{field('其他扣款', 'other_deduction')}<div><Label className="text-xs text-slate-500">发放状态</Label><NativeSelect className="mt-1" value={editing.payment_status} onChange={value => setEditing(current => current ? { ...current, payment_status: value as PaymentStatus } : current)} options={Object.entries(paymentLabels).map(([value, label]) => ({ value, label }))} /></div>{field('发放日期', 'payment_date', 'date')}{field('交易流水号 / 参考号', 'payment_reference', 'text')}{field('凭证链接', 'receipt_url', 'url')}</div><div className="mt-3"><Label className="text-xs text-slate-500">备注</Label><Textarea className="mt-1" value={editing.notes || ''} onChange={event => setEditing(current => current ? { ...current, notes: event.target.value } : current)} /></div><div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(null)}>取消</Button><Button onClick={saveItem} disabled={saving}>{saving ? '保存中...' : '保存明细'}</Button></div></CardContent></Card></div>}
+    {editing && <div className="payroll-dialog-layer fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"><Card role="dialog" aria-modal="true" aria-labelledby="payroll-editor-title" className="max-h-[92vh] w-full max-w-4xl overflow-auto"><CardContent className="p-5"><div className="mb-4 flex items-start justify-between"><div><h2 id="payroll-editor-title" className="text-lg font-semibold">{editing.id ? '编辑工资明细' : '新增工资明细'}</h2><p className="text-xs text-slate-500">选择员工后自动带出编号、部门和入职日期</p></div><Button variant="ghost" onClick={closeEditor}>关闭</Button></div><div className="payroll-editor-grid grid grid-cols-2 gap-3 md:grid-cols-4"><div className="col-span-2"><Label htmlFor="payroll-employee" className="text-xs text-slate-500">关联员工 *</Label><NativeSelect id="payroll-employee" className="mt-1" value={String(editing.employee_id || '')} onChange={chooseEmployee} options={[{ value: '', label: '手动填写 / 选择员工' }, ...employees.map(employee => ({ value: String(employee.id), label: `${employee.employee_code ? `${employee.employee_code} · ` : ''}${employee.name} · ${employee.department || '未分部门'}` }))]} /></div>{field('姓名 *', 'employee_name', 'text')}{field('员工编号', 'employee_code', 'text')}{field('部门', 'department', 'text')}{field('入职日期', 'hire_date', 'date')}<div><Label className="text-xs text-slate-500">发放方式</Label><NativeSelect className="mt-1" value={editing.payment_method} onChange={value => setEditing(current => current ? { ...current, payment_method: value } : current)} options={Object.entries(methodLabels).map(([value, label]) => ({ value, label }))} /></div>{field(editing.payment_account_masked ? `发放账号（留空保留 ${editing.payment_account_masked}）` : '发放账号', 'payment_account', 'text')}<h3 className="payroll-form-section">应发项目</h3>{field('基本工资', 'base_salary')}{field('固定绩效', 'fixed_performance')}{field('提成', 'commission')}{field('奖金', 'bonus')}{field('补贴', 'allowance')}{field('报销', 'reimbursement')}<h3 className="payroll-form-section">扣款项目</h3>{field('缺勤扣款', 'absence_deduction')}{field('绩效扣款', 'performance_deduction')}{field('借支扣款', 'salary_advance_deduction')}{field('其他扣款', 'other_deduction')}<h3 className="payroll-form-section">发放与凭证</h3><div><Label className="text-xs text-slate-500">发放状态</Label><NativeSelect className="mt-1" value={editing.payment_status} onChange={value => setEditing(current => current ? { ...current, payment_status: value as PaymentStatus } : current)} options={Object.entries(paymentLabels).map(([value, label]) => ({ value, label }))} /></div>{field('发放日期', 'payment_date', 'date')}{field('交易流水号 / 参考号', 'payment_reference', 'text')}{field('凭证链接', 'receipt_url', 'url')}</div><div className="mt-3"><Label className="text-xs text-slate-500">备注</Label><Textarea className="mt-1" value={editing.notes || ''} onChange={event => setEditing(current => current ? { ...current, notes: event.target.value } : current)} /></div><div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={closeEditor}>取消</Button><Button onClick={saveItem} disabled={saving}>{saving ? '保存中...' : '保存明细'}</Button></div></CardContent></Card></div>}
 
+    {copyPreview && <div className="payroll-dialog-layer fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"><Card role="dialog" aria-modal="true" aria-labelledby="payroll-copy-title" className="w-full max-w-lg"><CardContent className="p-5"><h2 id="payroll-copy-title" className="text-lg font-semibold">确认复制上月工资</h2><p className="mt-3">来源 {copyPreview.source} → 目标 {copyPreview.target}</p><p className="mt-2">复制 {copyPreview.items.length} 位员工的人员信息、基本工资和固定绩效。</p><p className="mt-2 text-sm text-slate-500">提成、奖金、补贴、报销及扣款清零；发放状态恢复待发放。</p><div className="mt-4 flex gap-2"><Button variant="outline" disabled={copying} onClick={() => setCopyPreview(null)}>取消</Button><Button disabled={copying || sheetUnavailable || copyPreview.target !== month} onClick={confirmCopyPrevious}>{copying ? '复制中…' : '确认复制'}</Button></div></CardContent></Card></div>}
     {showMarkPaid && <div className="payroll-dialog-layer fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
       <Card ref={markPaidDialogRef} role="dialog" aria-modal="true" aria-labelledby="mark-paid-title" tabIndex={-1} className="max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto outline-none">
         <CardContent className="p-5">
           <div className="flex items-start justify-between gap-4">
             <div><h2 id="mark-paid-title" className="text-lg font-semibold text-slate-900">确认整表发放完成</h2><p className="mt-1 text-sm text-slate-500">{month} · 共 {rows.length} 人 · 实发 {money(totals.net)}</p></div>
-            <Button variant="ghost" onClick={() => setShowMarkPaid(false)} disabled={transitioning}>关闭</Button>
+            <Button variant="ghost" onClick={() => setShowMarkPaid(false)} disabled={sheetUnavailable || transitioning}>关闭</Button>
           </div>
 
           {blockingRows.length > 0 ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
@@ -423,7 +464,7 @@ export default function Payroll() {
           </>}
 
           <div className="mt-5 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowMarkPaid(false)} disabled={transitioning}>取消</Button>
+            <Button variant="outline" onClick={() => setShowMarkPaid(false)} disabled={sheetUnavailable || transitioning}>取消</Button>
             {!blockingRows.length && <Button aria-label="确认发放并锁定" onClick={() => transition('mark_paid', { paymentDate: bulkPaymentDate, confirmAllPending: true })} disabled={transitioning || !bulkPaymentDate}><WalletCards className="mr-1 h-4 w-4" />{transitioning ? '正在登记并锁定...' : '确认发放并锁定'}</Button>}
           </div>
         </CardContent>

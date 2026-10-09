@@ -159,3 +159,8 @@
  .t24-system .calm-sales-knowledge .knowledge-v4-categories nav { padding: 0; }
  .t24-system .calm-sales-knowledge .knowledge-v4-list-item { padding: var(--t24-space-16) var(--t24-space-16); }
 }
+
+.sales-local-time { margin:10px 0; font-size:14px; line-height:22px; color:#64748b; }
+.sales-followup-quick { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.sales-followup-quick button { min-height:40px; padding-inline:10px; }
+.sales-followup-quick small { width:100%; color:#64748b; font-size:13px; }

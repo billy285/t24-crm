@@ -6,6 +6,7 @@ import MobileAppHome, {
   type MobileHomeTodayItem,
 } from '@/components/MobileAppHome';
 import { client } from '@/lib/api';
+import { readCompleteCollection } from '@/lib/complete-collection';
 import type { MobileBusinessAppKey } from '@/lib/app-navigation';
 import { BUSINESS_DATA_REFRESH_EVENT } from '@/lib/data-refresh';
 import { useRole } from '@/lib/role-context';
@@ -64,6 +65,7 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
   const [snapshot, setSnapshot] = useState<LauncherSnapshot>(emptySnapshot);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const requestSequence = useRef(0);
   const identityKey = `${employee?.id || 'unknown'}:${role || 'unknown'}`;
 
@@ -81,16 +83,16 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
 
     const [tasksResult, customersResult, subscriptionsResult, paymentsResult, salesResult, partnerResult] = await Promise.allSettled([
       canReadTasks
-        ? client.entities.tasks.query({ limit: 200, sort: '-updated_at' })
+        ? readCompleteCollection<AnyRecord>(params => client.entities.tasks.query(params))
         : Promise.resolve({ data: { items: [] } }),
       canReadCustomers
-        ? client.entities.customers.query({ limit: 100, sort: '-updated_at' })
+        ? readCompleteCollection<AnyRecord>(params => client.entities.customers.query(params))
         : Promise.resolve({ data: { items: [] } }),
       canReadFinance
-        ? client.entities.subscriptions.query({ limit: 200, sort: 'end_date' })
+        ? readCompleteCollection<AnyRecord>(params => client.entities.subscriptions.query(params))
         : Promise.resolve({ data: { items: [] } }),
       canReadFinance
-        ? client.entities.payments.queryAll({ limit: 200, sort: '-payment_date' })
+        ? readCompleteCollection<AnyRecord>(params => client.entities.payments.queryAll(params))
         : Promise.resolve({ data: { items: [] } }),
       isSales
         ? invokeWithAuth({ url: `/api/v1/sales-leads/workbench/today?target_date=${today}`, method: 'GET' })
@@ -123,8 +125,8 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
       return;
     }
 
-    let tasks = itemsOf(tasksResult);
-    let customers = itemsOf(customersResult);
+    let tasks = itemsOf(tasksResult).sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+    let customers = itemsOf(customersResult).sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
     const subscriptions = decorateEffectiveSubscriptions(itemsOf(subscriptionsResult));
     const payments = itemsOf(paymentsResult);
     const salesData = dataOf(salesResult) || {};
@@ -322,12 +324,14 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
     }
 
     setSnapshot({ todayItems, priorityItems, appBadges, recentItems, notificationCount });
+    setUpdatedAt(allFailed ? null : new Date().toISOString());
     setLoadError(allFailed ? '首页数字暂时无法更新，应用入口仍可正常使用。' : partiallyFailed ? '部分首页数字暂未更新，已显示当前可用数据。' : '');
     setLoading(false);
   }, [canAccess, employee?.id, employee?.name, isAdmin, role]);
 
   useEffect(() => {
     setSnapshot(emptySnapshot);
+    setUpdatedAt(null);
     setLoadError('');
     void loadSnapshot();
     return () => { requestSequence.current += 1; };
@@ -348,6 +352,7 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
       {...snapshot}
       priorityItems={['super_admin', 'admin'].includes(role) ? snapshot.priorityItems : undefined}
       loading={loading}
+      updatedAt={updatedAt}
       loadError={loadError}
       onRetry={retry}
       onOpenProfile={onOpenProfile}

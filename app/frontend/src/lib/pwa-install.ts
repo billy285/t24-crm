@@ -1,3 +1,5 @@
+import { hasUnsavedChanges } from './use-unsaved-changes';
+
 export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
@@ -81,6 +83,10 @@ export function installViteChunkRecovery(): void {
 
     if (shouldReload) {
       event.preventDefault();
+      if (hasUnsavedChanges()) {
+        window.dispatchEvent(new Event('t24:reload-required'));
+        return;
+      }
       window.location.reload();
     }
   });

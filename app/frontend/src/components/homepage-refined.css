@@ -179,3 +179,10 @@
   .homepage-refined .home-more-entry svg { width: 18px; height: 18px; color: #94a3b8; }
   .homepage-refined .home-all-functions { display: none; }
 }
+
+.homepage-refined .home-favorite-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.homepage-refined .home-favorite-grid button { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border: 1px solid #e6ebf2; border-radius: 12px; background: #fff; color: #334155; font-size: 15px; overflow-wrap: anywhere; }
+.homepage-refined .home-favorite-grid svg { width: 17px; flex-shrink: 0; }
+@media(max-width: 767px) { .homepage-refined .home-favorite-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.home-update-time{display:flex;align-items:center;justify-content:flex-end;gap:12px;color:var(--t24-text-muted,#697a94);font-size:13px;margin:-8px 0 14px}.home-update-time button{color:var(--t24-primary,#2563eb);min-height:44px;padding:0 10px}

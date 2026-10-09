@@ -112,28 +112,26 @@ function managementDecisionPayloads() {
   };
 }
 
-test('手机直接访问系统设置和权限时保留安全说明', async ({ page }) => {
+test('手机设置与权限提供只读业务摘要，不读取运行密钥、不挂载编辑操作', async ({ page }) => {
   await seedAdmin(page, 'super_admin');
-  const sensitiveRequests: string[] = [];
+  const forbiddenRequests: string[] = [];
   page.on('request', request => {
     const path = new URL(request.url()).pathname;
-    if (/\/api\/v1\/(?:payroll(?:\/|$)|admin\/(?:settings|ai-settings)$|app-config\/(?:customer_code_settings|company_info|dict_config|dashboard_config|reminder_config|security_config|notification_config|export_config|role_permissions)$)/.test(path)) {
-      sensitiveRequests.push(path);
-    }
+    if (/\/api\/v1\/(?:admin\/(?:settings|ai-settings)$|app-config\/security_config$)/.test(path) || ['POST', 'PUT', 'DELETE'].includes(request.method())) forbiddenRequests.push(path);
   });
-  for (const [path, title] of [
-    ['/settings', '全局设置请在电脑端处理'],
-    ['/permissions', '权限管理请在电脑端处理'],
-  ] as const) {
+  for (const [path, testId] of [['/settings', 'mobile-settings-summary'], ['/permissions', 'mobile-permission-summary']] as const) {
     await page.goto(`${baseUrl}${path}`);
-    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('button', { name: /保存权限配置|确认工资表|确认发放并锁定/ })).toHaveCount(0);
+    await expect(page.getByTestId(testId)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('只读摘要', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /保存|恢复默认|确认/ })).toHaveCount(0);
     await expect(page.getByRole('switch')).toHaveCount(0);
-    await expect(page.getByText('工资表与人力成本')).toHaveCount(0);
+    await expect(page.getByRole('textbox')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
   }
-  await page.waitForTimeout(100);
-  expect(sensitiveRequests).toEqual([]);
+  await page.getByRole('combobox', { name: '查看角色' }).selectOption('ops');
+  await expect(page.getByText('查看财务信息')).toBeVisible();
+  await expect(page.getByText('禁止', { exact: true }).first()).toBeVisible();
+  expect(forbiddenRequests).toEqual([]);
 });
 
 test('员工手机版只展示目录与概览，不暴露账号高风险操作', async ({ page }) => {
@@ -155,9 +153,14 @@ test('员工手机版只展示目录与概览，不暴露账号高风险操作',
   await expectNoHorizontalOverflow(page);
 });
 
-test('分润中心手机版只加载结算摘要且不挂载任何变更控件', async ({ page }) => {
+test('分润中心手机版完整查看只读台账与结算且不挂载任何变更控件', async ({ page }) => {
   await seedAdmin(page, 'super_admin');
   let optionsRequests = 0;
+  const nonGetRequests: string[] = [];
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/') && request.method() !== 'GET') nonGetRequests.push(`${request.method()} ${path}`);
+  });
   await page.route(/\/api\/v1\/commissions\/options/, async route => {
     optionsRequests += 1;
     await fulfillJson(route, { employees: [], customers: [], business_lines: [], products: [], engagements: [] });
@@ -180,11 +183,22 @@ test('分润中心手机版只加载结算摘要且不挂载任何变更控件',
 
   await page.goto(`${baseUrl}/commissions`);
   await expect(page.getByRole('heading', { name: '渠道与分润' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '手机版为只读结算摘要' })).toBeVisible();
-  await expect(page.getByRole('tab')).toHaveCount(0);
+  const records = page.getByRole('region', { name: '手机分润明细' });
+  await expect(records).toContainText('手机只读查看');
+  await expect(records.getByRole('button', { name: '佣金台账', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(records).toContainText('手机客户');
+  await records.locator('details summary').click();
+  await expect(records).toContainText('计佣基数');
+  await expect(records).toContainText('$100.00 USD');
+  await expect(records).toContainText('$10.00 USD');
+  await records.getByRole('button', { name: '月度结算', exact: true }).click();
+  await expect(records.getByRole('button', { name: '月度结算', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(records).toContainText('手机渠道');
+  await expect(records).toContainText('待确认');
   await expect(page.getByRole('button', { name: /新增渠道|新增协议版本|客户归属|扫描实收与退款|一键补齐归属|确认|转应付|已发放|作废|暂停结算|停止合作|恢复合作/ })).toHaveCount(0);
   await expect(page.locator('button').filter({ hasText: /新增渠道|新增协议版本|客户归属|扫描实收与退款|一键补齐归属|确认|转应付|已发放|作废|暂停结算|停止合作|恢复合作/ })).toHaveCount(0);
   expect(optionsRequests).toBe(0);
+  expect(nonGetRequests).toEqual([]);
   await expectNoHorizontalOverflow(page);
 });
 
@@ -268,11 +282,49 @@ test('财务手机新增表单适配全屏且打开关闭不写入', async ({ pa
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${baseUrl}/finance?tab=company_expense`);
   await page.getByRole('button', { name: '录入运营支出' }).click();
-  await expect(page.getByRole('dialog').getByRole('heading', { name: '录入运营支出' })).toBeVisible();
+  const retainedDialog = page.getByRole('dialog', { name: '录入运营支出' });
+  await expect(retainedDialog).toBeVisible();
+  await retainedDialog.getByRole('spinbutton').fill('123.45');
+  await retainedDialog.locator('textarea').fill('宽屏录入后保留的未保存草稿');
+  const currencyBeforeResize = await retainedDialog.getByRole('combobox').nth(1).inputValue();
   nonGetRequests.length = 0;
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('dialog').getByRole('heading', { name: '录入运营支出' })).toHaveCount(0);
+  await expect(retainedDialog).toBeVisible();
+  await expect(retainedDialog.getByRole('spinbutton')).toHaveValue('123.45');
+  await expect(retainedDialog.locator('textarea')).toHaveValue('宽屏录入后保留的未保存草稿');
+  await expect(retainedDialog.getByRole('combobox').nth(1)).toHaveValue(currencyBeforeResize);
+  // Wait for the responsive layout and the dialog's opening transition to settle,
+  // rather than accepting the desktop width merely because it exceeds 389px.
+  await expect.poll(async () => {
+    const bounds = await retainedDialog.boundingBox();
+    return Boolean(bounds && bounds.width >= 389 && bounds.x >= -1 && bounds.x + bounds.width <= 391
+      && bounds.y >= -1 && bounds.y + bounds.height <= 845);
+  }).toBe(true);
+  const retainedBounds = await retainedDialog.boundingBox();
+  expect(retainedBounds).not.toBeNull();
+  expect(retainedBounds!.x).toBeGreaterThanOrEqual(-1);
+  expect(retainedBounds!.x + retainedBounds!.width).toBeLessThanOrEqual(391);
+  expect(retainedBounds!.y).toBeGreaterThanOrEqual(-1);
+  expect(retainedBounds!.y + retainedBounds!.height).toBeLessThanOrEqual(845);
+  const dialogWidths = await retainedDialog.evaluate(element => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+  expect(dialogWidths.scroll).toBeLessThanOrEqual(dialogWidths.client);
+  await expectNoHorizontalOverflow(page);
+  expect(nonGetRequests).toEqual([]);
+
+  const discardMessages: string[] = [];
+  page.once('dialog', dialog => { discardMessages.push(dialog.message()); return dialog.dismiss(); });
+  await retainedDialog.getByRole('button', { name: '取消', exact: true }).click();
+  expect(discardMessages).toHaveLength(1);
+  expect(discardMessages[0]).toContain('尚未保存');
+  await expect(retainedDialog).toBeVisible();
+  await expect(retainedDialog.getByRole('spinbutton')).toHaveValue('123.45');
+  await expect(retainedDialog.locator('textarea')).toHaveValue('宽屏录入后保留的未保存草稿');
+  expect(nonGetRequests).toEqual([]);
+  page.once('dialog', dialog => { discardMessages.push(dialog.message()); return dialog.accept(); });
+  await retainedDialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(retainedDialog).toHaveCount(0);
+  expect(discardMessages).toHaveLength(2);
   await expect(page.getByRole('heading', { name: '运营支出', exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole('button', { name: '新增支出', exact: true })).toBeVisible();
   await page.waitForTimeout(100);
@@ -460,8 +512,8 @@ test('430px 安全页面保持只读提示且无横向溢出', async ({ page }) 
   await page.setViewportSize({ width: 430, height: 932 });
 
   for (const [path, title] of [
-    ['/settings', '全局设置请在电脑端处理'],
-    ['/permissions', '权限管理请在电脑端处理'],
+    ['/settings', '系统设置'],
+    ['/permissions', '权限管理'],
   ] as const) {
     await page.goto(`${baseUrl}${path}`);
     await expect(page.getByRole('heading', { name: title })).toBeVisible();

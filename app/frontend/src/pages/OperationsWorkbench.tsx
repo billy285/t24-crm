@@ -1,6 +1,10 @@
+import { useDialogDraft } from '@/lib/use-dialog-draft';
+import { buildReturnLink } from '@/lib/navigation-state';
+import { Input } from '@/components/ui/input';
+import { useListScroll } from '@/lib/use-list-scroll';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -28,6 +32,7 @@ type WorkbenchTask = {
   customer_id?: number;
   customer_name?: string;
   assignee_name?: string;
+  assignee_id?: number;
   collaborator_names?: string;
   status?: string;
   priority?: string;
@@ -95,7 +100,8 @@ export default function OperationsWorkbench() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
-  const { role, employee, isAdmin } = useRole();
+  const { role, employee, isAdmin, hasPermission } = useRole();
+  const canCreateNextTask = isAdmin || hasPermission('task_create');
   const [tasks, setTasks] = useState<WorkbenchTask[]>([]);
   const [callbacks, setCallbacks] = useState<CallbackRecord[]>([]);
   const [progresses, setProgresses] = useState<ServiceProgress[]>([]);
@@ -108,14 +114,26 @@ export default function OperationsWorkbench() {
   const [completeTarget, setCompleteTarget] = useState<ActionItem | null>(null);
   const [completionNote, setCompletionNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [createNextTask, setCreateNextTask] = useState(false);
+  const [nextTaskTitle, setNextTaskTitle] = useState('');
+  const [nextTaskDate, setNextTaskDate] = useState('');
+  const [arrangementError, setArrangementError] = useState('');
+  const [pendingWorkArrangement, setPendingWorkArrangement] = useState<{ target: ActionItem; note: string; title: string; date: string } | null>(null);
+  const primarySavedIds = useRef(new Set<string>());
+  const saveInFlight = useRef(false);
+  const workDraft = useDialogDraft(Boolean(completeTarget) && !arrangementError, [completionNote, createNextTask, nextTaskTitle, nextTaskDate]);
+  const loadSequence = useRef(0);
+  useListScroll('operations-workbench', !loading);
 
   const loadData = async () => {
+    const request = ++loadSequence.current;
     const results = await Promise.allSettled([
       client.entities.tasks.query({ limit: 1000, sort: '-created_at' }),
       client.apiCall.invoke({ url: '/api/v1/entities/customer_callbacks', method: 'GET', data: { limit: 1000, sort: '-callback_date' } }),
       client.entities.service_progresses.queryAll({ limit: 1000, sort: '-last_update_time' }),
       client.entities.customers.query({ limit: 1000 }),
     ]);
+    if (request !== loadSequence.current) return;
     const succeeded = results.filter(result => result.status === 'fulfilled').length;
     if (succeeded === 0) {
       setLoadError('运营数据暂时无法读取，请稍后重试。');
@@ -131,7 +149,7 @@ export default function OperationsWorkbench() {
     setLoading(false);
   };
 
-  useEffect(() => { void loadData(); }, []);
+  useEffect(() => { void loadData(); return () => { loadSequence.current += 1; }; }, []);
   useAutoRefresh(loadData, { intervalMs: 30000, enabled: !completeTarget });
 
   const customerMap = useMemo(
@@ -236,22 +254,24 @@ export default function OperationsWorkbench() {
   const openAction = (action: ActionItem) => {
     if (action.kind === 'callback') {
       const schedule = action.urgency === 'overdue' ? 'overdue' : action.urgency === 'today' ? 'today' : 'all';
-      navigate(`/callbacks?customer_id=${action.customerId || ''}&schedule=${schedule}`);
+      navigate(buildReturnLink(`/callbacks?callback_id=${action.sourceId}&customer_id=${action.customerId || ''}&schedule=${schedule}`, currentReturnPath, 'operations-workbench'));
       return;
     }
-    setCompletionNote('');
+    setCompletionNote(''); setCreateNextTask(false); setNextTaskTitle(''); setNextTaskDate(''); setArrangementError('');
     setCompleteTarget(action);
   };
 
   const completeAction = async () => {
+    if (saveInFlight.current) return;
     if (!completeTarget || !completionNote.trim()) {
       toast.error('请填写处理结果，方便后续追踪。');
       return;
     }
-    setSaving(true);
+    if (createNextTask && canCreateNextTask && (!nextTaskTitle.trim() || !nextTaskDate)) { toast.error('请填写下一步任务和截止日期'); return; }
+    saveInFlight.current = true; setSaving(true);
     try {
       const now = new Date();
-      if (completeTarget.kind === 'task') {
+      if (!primarySavedIds.current.has(completeTarget.id) && completeTarget.kind === 'task') {
         const task = completeTarget.raw as WorkbenchTask;
         const existingNotes = String(task.notes || '').trim();
         await client.entities.tasks.update({
@@ -263,8 +283,8 @@ export default function OperationsWorkbench() {
             updated_at: now.toISOString(),
           },
         });
-        toast.success('任务已完成并记录结果');
-      } else if (completeTarget.kind === 'issue') {
+
+      } else if (!primarySavedIds.current.has(completeTarget.id) && completeTarget.kind === 'issue') {
         const progress = completeTarget.raw as ServiceProgress;
         await client.entities.service_progresses.update({
           id: String(progress.id),
@@ -276,16 +296,33 @@ export default function OperationsWorkbench() {
             notes: [String(progress.notes || '').trim(), `问题处理结果：${completionNote.trim()}`].filter(Boolean).join('\n\n'),
           },
         });
-        toast.success('服务问题已解决并记录结果');
+
       }
-      setCompleteTarget(null);
+      primarySavedIds.current.add(completeTarget.id);
+      if (createNextTask && canCreateNextTask) {
+        const marker = `来源：运营工作台 ${completeTarget.id}`;
+        if (!tasks.some(task => String(task.notes || '').includes(marker) && task.status !== 'cancelled')) {
+          const raw = completeTarget.raw as WorkbenchTask & ServiceProgress;
+          const owner = raw.assignee_name || raw.issue_owner || raw.ops_person || employeeName;
+          const response = await client.entities.tasks.create({ data: {
+            title: nextTaskTitle.trim(), customer_id: completeTarget.customerId || null, customer_name: completeTarget.customerName,
+            assignee_id: raw.assignee_id || (owner === employeeName ? employee?.id : null) || null,
+            assignee_name: owner, collaborator_names: '', task_type: 'follow_up', priority: 'medium', status: 'pending', due_date: nextTaskDate,
+            notes: `${marker}\n处理结果：${completionNote.trim()}`, created_at: now.toISOString(), updated_at: now.toISOString(),
+          } });
+          if (response?.data?.id) setTasks(current => [response.data, ...current]);
+        }
+      }
+      toast.success(createNextTask ? '处理结果和下一步任务已保存' : '处理结果已保存');
+      workDraft.markSaved(); setCompleteTarget(null); setArrangementError(''); setPendingWorkArrangement(null);
       setCompletionNote('');
       await loadData();
     } catch (error) {
       console.error(error);
-      toast.error('保存处理结果失败');
+      if (completeTarget && primarySavedIds.current.has(completeTarget.id)) { setPendingWorkArrangement({ target: completeTarget, note: completionNote, title: nextTaskTitle, date: nextTaskDate }); setArrangementError('处理结果已保存，下一步任务未创建。请重试补齐安排。'); workDraft.markSaved(); toast.error('处理已完成，下一步任务尚未安排'); }
+      else toast.error('保存处理结果失败');
     } finally {
-      setSaving(false);
+      saveInFlight.current = false; setSaving(false);
     }
   };
 
@@ -303,6 +340,7 @@ export default function OperationsWorkbench() {
 
   return (
     <div className="t24-work-page delivery-center-ui dc-today calm-operations-page app-page">
+      {pendingWorkArrangement && !completeTarget && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>{pendingWorkArrangement.target.title}已完成，下一步任务待补齐。</span><Button variant="outline" onClick={() => { setCompleteTarget(pendingWorkArrangement.target); setCompletionNote(pendingWorkArrangement.note); setCreateNextTask(true); setNextTaskTitle(pendingWorkArrangement.title); setNextTaskDate(pendingWorkArrangement.date); setArrangementError('处理结果已保存，下一步任务未创建。请重试补齐安排。'); }}>补齐下一步安排</Button></div>}
       <div className="dc-heading">
         <div>
           <p className="app-page-kicker">T24 Marketing · Operations Today</p>
@@ -417,13 +455,15 @@ export default function OperationsWorkbench() {
       </aside>}
       </div>
 
-      <Dialog open={!!completeTarget} onOpenChange={open => { if (!open) setCompleteTarget(null); }}>
+      <Dialog open={!!completeTarget} onOpenChange={open => { if (!open && !saving && workDraft.confirmDiscard()) setCompleteTarget(null); }}>
         <DialogContent className="delivery-dialog">
           <DialogHeader><DialogTitle>{completeTarget?.kind === 'issue' ? '解决服务问题' : '完成任务'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="rounded-lg bg-slate-50 p-3"><p className="font-medium text-slate-900">{completeTarget?.customerName}</p><p className="mt-1 text-sm text-slate-600">{completeTarget?.title}</p></div>
-            <div><p className="mb-2 text-sm font-medium text-slate-700">处理结果 *</p><Textarea rows={4} value={completionNote} onChange={event => setCompletionNote(event.target.value)} placeholder="写清楚做了什么、结果是什么、是否还需要下一步" /></div>
-            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setCompleteTarget(null)}>取消</Button><Button disabled={saving} onClick={() => void completeAction()}>{saving ? '保存中…' : '完成并记录'}</Button></div>
+            <div><p className="mb-2 text-sm font-medium text-slate-700">处理结果 *</p><Textarea rows={4} disabled={saving || Boolean(arrangementError)} value={completionNote} onChange={event => setCompletionNote(event.target.value)} placeholder="写清楚做了什么、结果是什么、是否还需要下一步" /></div>
+            {canCreateNextTask && <fieldset disabled={saving || Boolean(arrangementError)} className="space-y-3 rounded-xl border border-slate-200 p-3"><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={createNextTask} onChange={event => setCreateNextTask(event.target.checked)} />安排下一步任务</label>{createNextTask && <><label className="block text-sm">下一步事项<Input value={nextTaskTitle} onChange={event => setNextTaskTitle(event.target.value)} placeholder="下一步要完成什么" /></label><label className="block text-sm">截止日期 · 北京时间<Input type="date" value={nextTaskDate} onChange={event => setNextTaskDate(event.target.value)} /></label><p className="text-sm text-slate-500">负责人沿用当前事项的负责人。</p></>}</fieldset>}
+            {arrangementError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{arrangementError}</p>}
+            <div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => { if (workDraft.confirmDiscard()) setCompleteTarget(null); }}>关闭</Button><Button disabled={saving} onClick={() => void completeAction()}>{saving ? '保存中…' : arrangementError ? '重试下一步安排' : '完成并记录'}</Button></div>
           </div>
         </DialogContent>
       </Dialog>

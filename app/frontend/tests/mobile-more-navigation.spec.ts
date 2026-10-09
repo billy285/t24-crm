@@ -189,7 +189,7 @@ test('销售合作渠道只见自己的客户分润，显式财务分组也不�
   expectReadOnly(requests);
 });
 
-test('账户仍可访问，电脑端设置保留说明并不能从手机直接打开', async ({ page }) => {
+test('账户可访问，手机设置与权限入口打开只读摘要', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const requests = await installApi(page, 'admin');
   await page.goto(`${baseUrl}/more`);
@@ -201,15 +201,21 @@ test('账户仍可访问，电脑端设置保留说明并不能从手机直接�
   await groupLink(page, '组织设置').click();
   await expect(leafLink(page, '员工管理')).toHaveAttribute('href', '/employees');
   for (const label of ['系统设置', '权限设置']) {
-    await expect(more(page).getByText(label, { exact: true })).toBeVisible();
-    await expect(leafLink(page, label)).toHaveCount(0);
+    await expectTouchable(leafLink(page, label));
   }
-  await expect(more(page).getByText('电脑端', { exact: true })).toHaveCount(2);
+  await expect(more(page).getByText('电脑端', { exact: true })).toHaveCount(0);
+  await leafLink(page, '系统设置').click();
+  await expect(page.getByTestId('mobile-settings-summary')).toBeVisible();
+  await expect(page.getByRole('button', {name: /保存|修改|恢复默认/})).toHaveCount(0);
+  await page.goto(`${baseUrl}/more?group=organization`);
+  await leafLink(page, '权限设置').click();
+  await expect(page.getByTestId('mobile-permission-summary')).toBeVisible();
+  await expect(page.getByRole('switch')).toHaveCount(0);
   await page.goto(`${baseUrl}/more?group=finance`);
   await expect(more(page).getByText('月度扣点比例', { exact: true })).toBeVisible();
   await expect(leafLink(page, '月度扣点比例')).toHaveAttribute('href', '/settings/deduction');
   await expect(more(page).getByText('工资表', { exact: true })).toBeVisible();
   await expect(leafLink(page, '工资表')).toHaveAttribute('href', '/payroll');
-  expect(requests.some(request => /\/settings|\/permissions/.test(request.path))).toBe(false);
+  expect(requests.some(request => /\/settings\/(env|ai)|secrets/.test(request.path))).toBe(false);
   expectReadOnly(requests);
 });

@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
+import { useSessionViewState } from '@/hooks/use-session-view-state';
+import { useRole } from '@/lib/role-context';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { ChevronDown, Search } from 'lucide-react';
 import { getFinanceNavigationItem } from '@/lib/finance-navigation';
 import './mobile-finance-details.css';
@@ -96,6 +99,7 @@ type RecordCard = MobileFinanceRecordAction & {
   fields: Field[];
 };
 
+const detailViewDefaults = { query: '', visibleLimit: 20, currency: 'all', category: 'all', status: 'all', chartView: 'trend', expandedIds: [] as string[] };
 const present = (value: unknown) => value !== undefined && value !== null && String(value).trim() !== '';
 const text = (value: unknown, fallback = '未填写') => present(value) ? String(value) : fallback;
 const shortDate = (value: unknown) => present(value) ? String(value).slice(0, 10) : '日期待补充';
@@ -104,19 +108,21 @@ const currencyOf = (value: unknown, fallback: Currency = 'USD'): Currency => val
 
 export default function MobileFinanceDetails(props: MobileFinanceDetailsProps) {
   const { tab, dateFilter, periodLabel, loading, error, hasLoaded, lastUpdated, onRetry, calculationNote, calculationWarning, data, formatMoney, customerExpenseCurrency, companyExpenseCurrency, actions, renderRecordActions } = props;
-  const [query, setQuery] = useState('');
-  const [visibleLimit, setVisibleLimit] = useState(20);
+  const { employee } = useRole();
+  const [view, setView] = useSessionViewState(`t24:finance-detail-view:${employee?.id || 'guest'}:${tab}`, detailViewDefaults);
+  const { query, visibleLimit, currency, category, status, chartView, expandedIds } = view;
+  const setQuery = (value: string) => setView('query', value);
+  const setVisibleLimit = (value: number | ((current: number) => number)) => setView('visibleLimit', value);
   const money = (value: unknown, currency: Currency = 'USD') => {
     const amount = finiteAmount(value);
     return amount === null ? '待补充' : formatMoney(amount, currency);
   };
   const amountField = (label: string, value: unknown, currency: Currency = 'USD'): Field => ({ label: `${label} · ${currency}`, value: money(value, currency) });
   const field = (label: string, value: unknown, wide = false): Field => ({ label, value: text(value), wide });
-  const percent = (value: unknown) => finiteAmount(value) === null ? '待补充' : `${(Number(value) * 100).toFixed(1)}%`;
+  const percent = (value: unknown) => finiteAmount(value) === null ? '待补充' : `${Number((Number(value) * 100).toFixed(6))}%`;
   const customerName = (row: any) => row.customer_name || data.customerMap[row.customer_id]?.business_name || '未关联客户';
 
-  useEffect(() => { setQuery(''); setVisibleLimit(20); }, [tab]);
-  useEffect(() => { setVisibleLimit(20); }, [query, tab, periodLabel]);
+  useEffect(() => { setVisibleLimit(20); }, [query, tab, periodLabel, currency, category, status, chartView]);
 
   // Presentation only: rows and monetary totals are supplied by Finance's
   // existing calculations. Never derive a new profit or combine currencies here.
@@ -235,8 +241,13 @@ export default function MobileFinanceDetails(props: MobileFinanceDetailsProps) {
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   const filteredRecords = records.filter(row => {
     const haystack = [row.title, row.subtitle, row.badge, row.section, row.primary.value, row.secondary?.value, ...row.fields.flatMap(item => [item.label, item.value])].join(' ').toLocaleLowerCase();
-    return words.every(word => haystack.includes(word));
+    const recordCurrency = row.kind === 'company_expense' ? companyExpenseCurrency(row.record) : row.kind === 'customer_expense' ? customerExpenseCurrency(row.record) : currencyOf(row.record.currency);
+    const recordCategory = row.fields.find(item => item.label === '费用类型')?.value;
+    const recordStatus = row.kind === 'ad_funds_unsettled' ? 'unsettled' : row.record.status;
+    const chartMatches = tab !== 'charts' || query || (chartView === 'trend' ? row.section.startsWith('美元经营趋势') : chartView === 'expense' ? row.section === '运营支出分类' : !row.section.startsWith('美元经营趋势') && row.section !== '运营支出分类');
+    return words.every(word => haystack.includes(word)) && (currency === 'all' || recordCurrency === currency) && (category === 'all' || recordCategory === category) && (status === 'all' || recordStatus === status) && Boolean(chartMatches);
   });
+  const expenseCategories = [...new Set(records.map(row => row.fields.find(item => item.label === '费用类型')?.value).filter(Boolean))];
   const shownRecords = filteredRecords.slice(0, visibleLimit);
   const pending = !hasLoaded;
 
@@ -244,22 +255,24 @@ export default function MobileFinanceDetails(props: MobileFinanceDetailsProps) {
     <section className="mobile-finance-details" aria-label="手机财务明细">
       <header className="mfd-header"><div><h1>{getFinanceNavigationItem(tab).label}</h1><p>{periodLabel}</p></div>{actions && <div className="mfd-actions">{actions}</div>}</header>
       <MobileFinanceDateFilter {...dateFilter} />
-      {error && <div className="mfd-alert" role="alert"><strong>{hasLoaded ? '读取失败，当前显示上次同步数据' : '数据暂时无法加载'}</strong><p>{error}</p>{hasLoaded && lastUpdated && <p>上次同步：{lastUpdated.toLocaleString('zh-CN')}</p>}<button type="button" disabled={loading} onClick={onRetry}>重新加载</button></div>}
+      {error && <div className="mfd-alert" role="alert"><strong>{hasLoaded ? '读取失败，当前显示上次同步数据' : '数据暂时无法加载'}</strong><p>{error}</p>{hasLoaded && lastUpdated && <p>上次同步：{lastUpdated.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) + '（北京时间）'}</p>}<button type="button" disabled={loading} onClick={onRetry}>重新加载</button></div>}
       {pending && !error ? <div className="mfd-empty" role="status">正在读取财务明细…</div> : !pending && <>
         {calculationWarning && <p className="mfd-data-notice" role="status">{calculationWarning}</p>}
         {missingAmounts > 0 && <p className="mfd-data-notice" role="status">{missingAmounts} 条记录的金额待补充，当前汇总需核对。</p>}
         <div className="mfd-summaries" aria-label="当前范围概要">{summaries.map(item => <div className="mfd-summary" key={item.label}><span>{item.label}</span><strong>{missingAmounts > 0 && / · (USD|CNY)$/.test(item.label) ? '待核对' : item.value}</strong></div>)}</div>
+        {tab === 'charts' && <><div className="mfd-segments" aria-label="分析分组">{[['trend', '经营趋势'], ['income', '收入结构'], ['expense', '支出结构']].map(([key, label]) => <button type="button" key={key} aria-pressed={chartView === key} onClick={() => setView('chartView', key)}>{label}</button>)}</div>{chartView === 'trend' && <div className="mfd-trend" aria-label="美元经营利润趋势"><h2>经营利润 · USD</h2><ResponsiveContainer width="100%" height={168}><BarChart data={data.monthlyTrend}><XAxis dataKey="key" tick={{ fontSize: 12 }} /><Tooltip formatter={(value: number) => [formatMoney(value, 'USD'), '经营利润']} /><Bar dataKey="profitUsd" radius={[4, 4, 0, 0]}>{data.monthlyTrend.map(row => <Cell key={row.key} fill={row.profitUsd < 0 ? '#b45309' : '#2563eb'} />)}</Bar></BarChart></ResponsiveContainer></div>}</>}
+        {(['customer_expense', 'company_expense', 'refunds', 'ad_funds'].includes(tab)) && <div className="mfd-filters"><select aria-label="明细币种" value={currency} onChange={event => setView('currency', event.target.value)}><option value="all">全部币种</option><option value="USD">USD · 美元</option><option value="CNY">CNY · 人民币</option></select>{expenseCategories.length > 0 && <select aria-label="费用类型筛选" value={category} onChange={event => setView('category', event.target.value)}><option value="all">全部费用类型</option>{expenseCategories.map(value => <option key={value} value={value}>{value}</option>)}</select>}{(tab === 'refunds' || tab === 'ad_funds') && <select aria-label="明细状态" value={status} onChange={event => setView('status', event.target.value)}><option value="all">全部状态</option>{(tab === 'refunds' ? [['completed', '已完成'], ['pending', '处理中'], ['failed', '失败']] : [['unsettled', '待月结'], ['draft', '草稿'], ['closed', '已结算']]).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>}</div>}
         <label className="mfd-search"><Search aria-hidden="true" /><input type="search" aria-label="搜索当前明细" placeholder="搜索当前明细" value={query} onChange={event => setQuery(event.target.value)} /></label>
         <div className="mfd-list-meta" role="status"><span>{query ? `找到 ${filteredRecords.length} 条` : `共 ${records.length} 条`}</span><span>已显示 {shownRecords.length} 条</span></div>
-        {shownRecords.length === 0 ? <div className="mfd-empty"><p>{query ? '没有匹配的明细' : '当前时间范围暂无明细'}</p>{query && <button type="button" onClick={() => setQuery('')}>清除搜索</button>}{dateFilter.mode !== 'all' && <button type="button" onClick={() => dateFilter.onModeChange('all')}>查看全部时间</button>}</div> : <div className="mfd-records">{shownRecords.map((row, index) => <div key={row.id}>
+        {shownRecords.length === 0 ? <div className="mfd-empty"><p>{query || currency !== 'all' || category !== 'all' || status !== 'all' ? '没有匹配的明细' : '当前时间范围暂无明细'}</p>{(currency !== 'all' || category !== 'all' || status !== 'all') && <button type="button" onClick={() => { setView('currency', 'all'); setView('category', 'all'); setView('status', 'all'); }}>清除明细筛选</button>}{query && <button type="button" onClick={() => setQuery('')}>清除搜索</button>}{dateFilter.mode !== 'all' && <button type="button" onClick={() => dateFilter.onModeChange('all')}>查看全部时间</button>}</div> : <div className="mfd-records">{shownRecords.map((row, index) => <div key={row.id}>
           {(index === 0 || row.section !== shownRecords[index - 1].section) && <h2 className="mfd-section-title">{row.section}</h2>}
-          <details className="mfd-record" data-record-kind={row.kind} data-record-id={row.id}>
+          <details open={expandedIds.includes(row.id)} onToggle={event => { const open = event.currentTarget.open; setView('expandedIds', ids => open ? ids.includes(row.id) ? ids : [...ids, row.id] : ids.filter(id => id !== row.id)); }} className="mfd-record" data-record-kind={row.kind} data-record-id={row.id}>
             <summary aria-label={`展开${row.title}明细`}>
               <div className="mfd-record-head"><div><h3>{row.title}</h3><p>{row.subtitle}</p></div><ChevronDown aria-hidden="true" /></div>
               {row.badge && <span className={`mfd-badge ${row.tone || ''}`}>{row.badge}</span>}
               <div className="mfd-card-amounts"><div><span>{row.primary.label}</span><strong className={row.tone === 'warning' ? 'mfd-warning-amount' : ''}>{row.primary.value}</strong></div>{row.secondary && <div><span>{row.secondary.label}</span><strong>{row.secondary.value}</strong></div>}</div>
             </summary>
-            <div className="mfd-record-body"><dl>{row.fields.map((item, fieldIndex) => <div className={item.wide ? 'mfd-field-wide' : ''} key={`${item.label}-${fieldIndex}`}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>{renderRecordActions && <div className="mfd-actions">{renderRecordActions({ kind: row.kind, record: row.record })}</div>}</div>
+            <div className="mfd-record-body"><dl>{row.fields.flatMap((item, fieldIndex) => { const group = row.kind === 'monthly_detail' ? ({2: '资金往来', 5: '收入与投流', 11: '费用与利润'} as Record<number, string>)[fieldIndex] : undefined; return [group && <div className="mfd-group-heading" key={`group-${fieldIndex}`}><dt>{group}</dt><dd /></div>, <div className={item.wide ? 'mfd-field-wide' : ''} key={`${item.label}-${fieldIndex}`}><dt>{item.label}</dt><dd>{item.value}</dd></div>]; })}</dl>{renderRecordActions && <div className="mfd-actions">{renderRecordActions({ kind: row.kind, record: row.record })}</div>}</div>
           </details>
         </div>)}</div>}
         {filteredRecords.length > visibleLimit && <button type="button" className="mfd-load-more" onClick={() => setVisibleLimit(limit => limit + 20)}>加载更多<span>还有 {filteredRecords.length - shownRecords.length} 条</span></button>}

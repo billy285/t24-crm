@@ -37,6 +37,10 @@ import PageLoadState from '@/components/PageLoadState';
 import CustomerCombobox from '@/components/CustomerCombobox';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
+import { useSalesListPosition } from '@/lib/use-sales-list-position';
+import { invokeWithAuth } from '@/lib/tokenStore';
+import './deal-editor-refined.css';
 import { businessDateKey } from '@/lib/business-date';
 import './delivery-workspace.css';
 
@@ -441,16 +445,18 @@ export default function Deals() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [filterProduct, setFilterProduct] = useState('all');
-  const [filterPaid, setFilterPaid] = useState('all');
-  const [filterCycle, setFilterCycle] = useState('all');
-  const [filterDateFrom, setFilterDateFrom] = useState('');
-  const [filterDateTo, setFilterDateTo] = useState('');
-  const [filterDatePreset, setFilterDatePreset] = useState('all');
-  const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [listParams] = useState(() => new URLSearchParams(window.location.search));
+  const [search, setSearch] = useState(() => (listParams.get('search') || '').slice(0, 200));
+  const [filterProduct, setFilterProduct] = useState(() => (listParams.get('product') || 'all').slice(0, 30));
+  const [filterPaid, setFilterPaid] = useState(() => (listParams.get('paid') || 'all').slice(0, 30));
+  const [filterCycle, setFilterCycle] = useState(() => (listParams.get('cycle') || 'all').slice(0, 30));
+  const [filterDateFrom, setFilterDateFrom] = useState(() => /^\d{4}-\d{2}-\d{2}$/.test(listParams.get('date_from') || '') ? listParams.get('date_from')! : '');
+  const [filterDateTo, setFilterDateTo] = useState(() => /^\d{4}-\d{2}-\d{2}$/.test(listParams.get('date_to') || '') ? listParams.get('date_to')! : '');
+  const [filterDatePreset, setFilterDatePreset] = useState(() => (listParams.get('date_preset') || 'all').slice(0, 30));
+  const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(() => listParams.get('duplicates') === '1');
+  const [page, setPage] = useState(() => Math.max(1, Math.min(100000, Number(listParams.get('page')) || 1)));
+  const [pageSize, setPageSize] = useState(() => [20,50,100].includes(Number(listParams.get('page_size'))) ? Number(listParams.get('page_size')) : 20);
+  const filterMounted = useRef(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -462,6 +468,17 @@ export default function Deals() {
   const [savingPackages, setSavingPackages] = useState(false);
   const [packageOverrideLabels, setPackageOverrideLabels] = useState<Record<string, string>>({});
   const [generatingBoardId, setGeneratingBoardId] = useState<number | null>(null);
+  const [serviceProgresses, setServiceProgresses] = useState<any[]>([]);
+  const [boardsError, setBoardsError] = useState(false);
+  const [boardsLoading, setBoardsLoading] = useState(true);
+  const boardsRequestSeq = useRef(0);
+  const [handoffDeal, setHandoffDeal] = useState<any>(null);
+  const [handoffForm, setHandoffForm] = useState({ needs_group: false, is_handed_over: false, is_transferred_ops: false, notes: '' });
+  const [handoffSaving, setHandoffSaving] = useState(false);
+  const [handoffError, setHandoffError] = useState('');
+  const handoffSubmitting = useRef(false);
+  const handoffBaseline = useRef('');
+  const formBaseline = useRef('');
   const [pendingFinalizations, setPendingFinalizations] = useState<Record<number, PendingDealFinalize>>({});
   const [finalizingDealIds, setFinalizingDealIds] = useState<Set<number>>(() => new Set());
   const loadRequestSeqRef = useRef(0);
@@ -470,6 +487,14 @@ export default function Deals() {
   const pendingStorageHydratingRef = useRef(false);
   const emptyDealForm = buildEmptyDealForm();
   const [form, setForm] = useState(emptyDealForm);
+  useSalesListPosition(`${employee?.id}:${dataScope}`, !loading);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    for (const [name,value] of Object.entries({ search, product: filterProduct, paid: filterPaid, cycle: filterCycle, date_from: filterDateFrom, date_to: filterDateTo, date_preset: filterDatePreset, duplicates: showDuplicatesOnly ? '1' : '', page: page > 1 ? String(page) : '', page_size: pageSize !== 20 ? String(pageSize) : '' })) { if (value && value !== 'all') params.set(name, value); else params.delete(name); }
+    window.history.replaceState(window.history.state, '', `/deals${params.toString() ? `?${params}` : ''}`);
+  }, [search, filterProduct, filterPaid, filterCycle, filterDateFrom, filterDateTo, filterDatePreset, showDuplicatesOnly, page, pageSize]);
+  const formGuard = useUnsavedChanges(showForm && JSON.stringify(form) !== formBaseline.current);
+  const handoffGuard = useUnsavedChanges(Boolean(handoffDeal) && JSON.stringify(handoffForm) !== handoffBaseline.current);
   const dealPackageLabels = { ...customerPackageLabels, ...packageOverrideLabels };
   const dealPackageOptions = Object.entries(dealPackageLabels).map(([value, label]) => ({ value, label }));
   const getPackageClassification = (packageName?: string | null) => (
@@ -516,6 +541,42 @@ export default function Deals() {
     setLoading(true);
     void loadData();
   }, [dataScope, employee?.id, employee?.name]);
+
+  const loadBoards = async () => {
+    const requestSeq = ++boardsRequestSeq.current;
+    setBoardsLoading(true);
+    try {
+      const results: any[] = [];
+      for (let skip = 0; ; skip += 200) {
+        const response = await client.entities.service_progresses.query({ skip, limit: 200, sort: '-id' });
+        const items = response?.data?.items || [];
+        results.push(...items);
+        if (items.length < 200 || results.length >= Number(response?.data?.total || 0)) break;
+      }
+      if (requestSeq !== boardsRequestSeq.current) return;
+      setServiceProgresses(results); setBoardsError(false);
+    } catch { if (requestSeq === boardsRequestSeq.current) setBoardsError(true); } finally { if (requestSeq === boardsRequestSeq.current) setBoardsLoading(false); }
+  };
+  useEffect(() => { void loadBoards(); }, [employee?.id, dataScope]);
+  const existingBoard = (deal: any) => serviceProgresses.find(board => Number(board.customer_id) === Number(deal.customer_id) && (new RegExp(`成交记录 #${Number(deal.id)}(?![0-9])`).test(String(board.notes || '')) || board.service_stage !== 'ended' && !String(board.notes || '').includes('成交记录 #') && normalizeSearchText(board.package_name) === normalizeSearchText(deal.package_name)));
+  const openBoard = (deal: any) => { const board = existingBoard(deal); if (board) navigate(`/service-board?progress_id=${board.id}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`); else void handleGenerateServiceBoardForDeal(deal); };
+  const openHandoff = (deal: any) => {
+    const next = { needs_group: Boolean(deal.needs_group), is_handed_over: Boolean(deal.is_handed_over), is_transferred_ops: Boolean(deal.is_transferred_ops), notes: deal.notes || '' };
+    handoffBaseline.current = JSON.stringify(next); setHandoffForm(next); setHandoffError(''); setHandoffDeal(deal);
+  };
+  const saveHandoff = async () => {
+    if (!handoffDeal || handoffSubmitting.current || !hasPermission('deal_edit')) return;
+    handoffSubmitting.current = true; setHandoffSaving(true); setHandoffError('');
+    try {
+      const response = await invokeWithAuth({ url: `/api/v1/entities/deals/${handoffDeal.id}/handoff`, method: 'PATCH', data: handoffForm });
+      setDeals(current => current.map(deal => deal.id === handoffDeal.id ? { ...deal, ...response.data } : deal));
+      handoffGuard.markSaved(); setHandoffDeal(null); toast.success('交接安排已保存');
+    } catch (error: any) { const message = error?.response?.data?.detail || error?.data?.detail || error?.message || '交接保存失败，内容已保留'; setHandoffError(String(message)); toast.error(String(message)); }
+    finally { handoffSubmitting.current = false; setHandoffSaving(false); }
+  };
+  const closeFullEditor = (open: boolean) => { if (open || saving || !formGuard.confirmDiscard()) return; setShowForm(false); setPackageOverrideLabels({}); setEditingId(null); setForm(buildEmptyDealForm()); };
+  const closeHandoff = (open: boolean) => { if (!open && !handoffSaving && handoffGuard.confirmDiscard()) setHandoffDeal(null); };
+
 
   useEffect(() => () => {
     loadRequestSeqRef.current += 1;
@@ -788,6 +849,7 @@ export default function Deals() {
       } else {
         toast.warning('当前套餐没有配置可生成的平台流程，请先在套餐管理里选择平台');
       }
+      await loadBoards();
     } catch (err) {
       console.error('Generate service board error:', err);
       toast.error('生成服务看板失败，请稍后重试');
@@ -833,6 +895,7 @@ export default function Deals() {
   const paginated = paginateList(filtered, page, pageSize);
 
   useEffect(() => {
+    if (!filterMounted.current) { filterMounted.current = true; return; }
     setPage(1);
   }, [search, filterProduct, filterPaid, filterCycle, filterDateFrom, filterDateTo, filterDatePreset, showDuplicatesOnly, pageSize]);
 
@@ -1079,7 +1142,7 @@ export default function Deals() {
       return tempKey;
     });
     setPackageOverrideLabels(customLabels);
-    setForm({
+    const nextForm = {
       customer_id: String(d.customer_id || ''),
       product_type: d.product_type || 'ordering_system',
       package_name: d.package_name || '',
@@ -1096,18 +1159,32 @@ export default function Deals() {
       is_handed_over: d.is_handed_over || false,
       is_transferred_ops: d.is_transferred_ops || false,
       notes: d.notes || '',
-    });
+    };
+    formBaseline.current = JSON.stringify(nextForm);
+    setForm(nextForm);
     setEditingId(d.id);
     setShowForm(true);
   };
 
   const handleSave = async () => {
+    if (saving || !hasPermission(editingId ? 'deal_edit' : 'deal_create')) return;
     if (!form.customer_id || form.package_keys.length === 0 || !form.deal_amount) {
       toast.error('请填写必填字段');
       return;
     }
     const original = editingId ? deals.find(deal => deal.id === editingId) : null;
-    if (form.is_paid && !original?.is_paid && !window.confirm('保存已付款会同步正式收款记录。请先确认实收金额、收款日期及付款凭证。确认继续吗？')) return;
+    const financialChanges = original ? [
+      ['客户', String(original.customer_id), form.customer_id],
+      ['产品', original.product_type || '', form.product_type],
+      ['套餐', original.package_name || '', form.package_keys.map(key => dealPackageLabels[key] || key).join('、')],
+      ['周期', original.billing_cycle || 'monthly', form.billing_cycle],
+      ['成交金额', String(Number(original.deal_amount || 0)), String(Number(form.deal_amount))],
+      ['成交日期', original.deal_date?.slice(0,10) || '', form.deal_date],
+      ['服务开始', original.service_start_date?.slice(0,10) || '', form.service_start_date],
+      ['服务结束', original.service_end_date?.slice(0,10) || '', form.service_end_date],
+      ['付款标记', original.is_paid ? '已付' : '未付', form.is_paid ? '已付' : '未付'],
+    ].filter(([,before,after]) => before !== after) : [];
+    if ((financialChanges.length || form.is_paid && !original?.is_paid) && !window.confirm(`请核对本次成交变更：\n${financialChanges.map(([label,before,after]) => `${label}：${before || '未填写'} → ${after || '未填写'}`).join('\n') || `新增已付款成交：${form.deal_amount}`}\n保存将按现有规则同步收款记录。确认继续吗？`)) return;
     setSaving(true);
     try {
       const cust = customers.find(c => c.id === Number(form.customer_id));
@@ -1230,6 +1307,7 @@ export default function Deals() {
           create_service_board: form.create_service_board,
         });
       }
+      formGuard.markSaved();
       setPackageOverrideLabels({});
       setShowForm(false);
       setEditingId(null);
@@ -1300,7 +1378,7 @@ export default function Deals() {
             filename={`成交记录_${businessDateKey()}`}
             sheetName="成交记录"
           />
-          <Button onClick={() => { setPackageOverrideLabels({}); setForm(buildEmptyDealForm()); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={() => { setPackageOverrideLabels({}); const next = buildEmptyDealForm(); formBaseline.current = JSON.stringify(next); setForm(next); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
             <Plus className="w-4 h-4 mr-1" /> 录入成交
           </Button>
         </div>
@@ -1484,7 +1562,7 @@ export default function Deals() {
                 return (
                 <div key={d.id} className={`rounded-xl border bg-white p-4 shadow-sm ${isDuplicate ? 'border-orange-200 ring-1 ring-orange-100' : 'border-slate-200'}`}>
                   <div className="flex items-start justify-between gap-3">
-                    <button type="button" className="min-w-0 text-left" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals`)}>
+                    <button type="button" className="min-w-0 text-left" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>
                       <p className="truncate font-semibold text-blue-700">{d.customer_name}</p>
                       <p className="mt-1 text-xs text-slate-400">{d.deal_date?.slice(0, 10) || '-'} · {d.sales_name || '未分配销售'}</p>
                     </button>
@@ -1503,9 +1581,10 @@ export default function Deals() {
                     <div><p className="text-xs text-slate-400">运营</p><p className="mt-1 text-slate-700">{d.is_transferred_ops ? '已转运营' : '待转运营'}</p></div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals`)}><ExternalLink className="mr-1 h-3.5 w-3.5" />客户详情</Button>
-                    {hasPermission('deal_edit') && <Button size="sm" variant="outline" className="h-11 flex-1 border-emerald-200 text-emerald-700" disabled={generatingBoardId === d.id} onClick={() => void handleGenerateServiceBoardForDeal(d)}><ClipboardCheck className="mr-1 h-4 w-4" />{generatingBoardId === d.id ? '生成中' : '生成看板'}</Button>}
-                    {hasPermission('deal_edit') && <Button size="sm" variant="outline" className="h-11 flex-1" onClick={() => openEditDeal(d)}><Edit className="mr-1 h-4 w-4" />编辑交接</Button>}
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}><ExternalLink className="mr-1 h-3.5 w-3.5" />客户详情</Button>
+                    {hasPermission('deal_edit') && <Button size="sm" variant="outline" className="h-11 flex-1 border-emerald-200 text-emerald-700" disabled={generatingBoardId === d.id || boardsLoading || boardsError} onClick={() => openBoard(d)}><ClipboardCheck className="mr-1 h-4 w-4" />{generatingBoardId === d.id ? '生成中' : boardsLoading ? '查看中' : boardsError ? '看板暂不可用' : existingBoard(d) ? '查看看板' : '生成看板'}</Button>}
+                    {hasPermission('deal_edit') && <Button size="sm" variant="outline" className="h-11 flex-1" onClick={() => openHandoff(d)}><Edit className="mr-1 h-4 w-4" />编辑交接</Button>}
+                    {hasPermission('deal_edit') && <Button size="sm" variant="ghost" onClick={() => openEditDeal(d)}>编辑成交</Button>}
                   </div>
                 </div>
                 );
@@ -1530,7 +1609,7 @@ export default function Deals() {
                   {paginated.items.map(d => (
                     <tr key={d.id} className={`border-b hover:bg-slate-50 ${duplicateDealIds.has(d.id) ? 'border-orange-100 bg-orange-50/50' : 'border-slate-100'}`}>
                       <td className="px-4 py-3 font-medium">
-                        <button type="button" className="text-left text-blue-700 hover:underline" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals`)}>{d.customer_name}</button>
+                        <button type="button" className="text-left text-blue-700 hover:underline" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>{d.customer_name}</button>
                         {duplicateDealIds.has(d.id) && <div className="mt-1 text-xs font-medium text-orange-600">疑似重复记录</div>}
                       </td>
                       <td className="px-4 py-3">
@@ -1549,13 +1628,14 @@ export default function Deals() {
                             size="sm"
                             variant="ghost"
                             className="h-7 px-2 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                            disabled={generatingBoardId === d.id}
-                            onClick={() => void handleGenerateServiceBoardForDeal(d)}
+                            disabled={generatingBoardId === d.id || boardsLoading || boardsError}
+                            onClick={() => openBoard(d)}
                             title="按这条成交记录生成或补齐服务看板"
                           >
                             <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
-                            {generatingBoardId === d.id ? '生成中' : '看板'}
+                            {generatingBoardId === d.id ? '生成中' : boardsLoading ? '查看中' : boardsError ? '暂不可用' : existingBoard(d) ? '查看看板' : '生成看板'}
                           </Button>
+                          <Button size="sm" variant="ghost" onClick={() => openHandoff(d)}>交接</Button>
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" title="编辑成交" aria-label={`编辑 ${d.customer_name} 的成交记录`} onClick={() => openEditDeal(d)}><Edit className="w-3.5 h-3.5" /></Button>
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" title="删除成交" aria-label={`删除 ${d.customer_name} 的成交记录`} onClick={() => setDeleteTarget(d)}><Trash2 className="w-3.5 h-3.5" /></Button>
                         </div>
@@ -1649,11 +1729,13 @@ export default function Deals() {
         loading={deleting}
       />}
 
+      {boardsError && <div role="alert" className="deal-board-error">服务看板暂不可用<Button variant="ghost" size="sm" onClick={() => void loadBoards()}>重新加载看板</Button></div>}
+      <Dialog open={Boolean(handoffDeal)} onOpenChange={closeHandoff}><DialogContent className="deal-editor-dialog deal-handoff-dialog"><DialogHeader><DialogTitle>交接安排 · {handoffDeal?.customer_name}</DialogTitle></DialogHeader><fieldset disabled={handoffSaving} className="deal-handoff-fields">{handoffError && <p role="alert" className="text-sm text-rose-700">{handoffError}</p>}<div className="deal-handoff-summary">{handoffDeal?.package_name}<span>成交金额 ${Number(handoffDeal?.deal_amount || 0).toLocaleString()}</span></div>{[{ field: 'needs_group' as const, label: '需要建群' }, { field: 'is_handed_over' as const, label: '已完成交接' }, { field: 'is_transferred_ops' as const, label: '已转运营' }].map(item => <label key={item.field}><span>{item.label}</span><Switch checked={handoffForm[item.field]} onCheckedChange={value => setHandoffForm(current => ({ ...current, [item.field]: value }))} /></label>)}<div><Label htmlFor="deal-handoff-notes">交接备注</Label><Textarea id="deal-handoff-notes" rows={5} maxLength={20000} value={handoffForm.notes} onChange={event => setHandoffForm(current => ({ ...current, notes: event.target.value }))} /></div></fieldset><div className="deal-editor-actions"><Button variant="outline" disabled={handoffSaving} onClick={() => closeHandoff(false)}>取消</Button><Button disabled={handoffSaving} onClick={() => void saveHandoff()}>{handoffSaving ? '保存中…' : '保存交接'}</Button></div></DialogContent></Dialog>
       {/* Add/Edit deal dialog */}
-      <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setPackageOverrideLabels({}); setEditingId(null); setForm(buildEmptyDealForm()); } }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <Dialog open={showForm} onOpenChange={closeFullEditor}>
+        <DialogContent className="deal-editor-dialog max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingId ? '编辑成交记录' : '录入成交'}</DialogTitle></DialogHeader>
-          <div className="space-y-4">
+          <fieldset disabled={saving} className="deal-editor-fields space-y-4">
             <div>
               <Label>选择客户 *</Label>
               <CustomerCombobox
@@ -1742,9 +1824,9 @@ export default function Deals() {
               <div className="flex items-center gap-2"><Switch checked={form.is_transferred_ops} onCheckedChange={v => setForm({ ...form, is_transferred_ops: v })} /><Label>已转运营</Label></div>
             </div>
             <div><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowForm(false)}>取消</Button>
+          </fieldset>
+          <div className="deal-editor-actions flex justify-end gap-2 mt-4">
+            <Button variant="outline" disabled={saving} onClick={() => closeFullEditor(false)}>取消</Button>
             <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>

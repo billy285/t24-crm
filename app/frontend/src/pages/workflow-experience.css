@@ -1,0 +1,11 @@
+.workflow-data-cards { display: grid; gap: 12px; min-width: 0; }
+.workflow-data-card { min-width: 0; border: 1px solid #e2e8f0; border-radius: 16px; padding: 16px; background: white; overflow-wrap: anywhere; }
+.workflow-data-fields { display: grid; gap: 10px; font-size: 14px; }
+.workflow-data-fields > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.workflow-data-fields dt { min-width: 0; color: #64748b; }
+.workflow-data-fields dd { min-width: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.workflow-data-total { border-top: 1px dashed #e2e8f0; margin-top: 2px; padding-top: 12px; }
+@media (max-width: 767px) {
+  .workflow-data-card { padding: 14px; }
+  #decision-economics, #decision-health, #decision-capacity { scroll-margin-top: 90px; }
+}

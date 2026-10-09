@@ -39,3 +39,17 @@
   .commission-filters { flex-direction: column; }
   .commission-empty { padding: 40px var(--t24-space-24); }
 }
+
+.mobile-commission-records { display:grid; gap:12px; }
+.commission-mobile-tabs { display:grid; grid-template-columns:1fr 1fr; padding:4px; border-radius:12px; background:#eef2f7; }
+.commission-mobile-tabs button { min-height:44px; border-radius:9px; font-size:14px; color:#64748b; }
+.commission-mobile-tabs button[aria-pressed=true] { background:#fff; color:#2563eb; font-weight:600; }
+.commission-mobile-card { border:1px solid #e2e8f0; border-radius:16px; background:#fff; overflow:hidden; }
+.commission-mobile-card summary { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; padding:16px; min-height:64px; cursor:pointer; list-style:none; }
+.commission-mobile-card summary div { min-width:0; flex:1 1 160px; }
+.commission-mobile-card summary p { margin-top:4px; font-size:13px; color:#64748b; }
+.commission-mobile-card dl { padding:14px 16px; border-top:1px dashed #e2e8f0; display:grid; gap:12px; font-size:14px; }
+.commission-mobile-card dl div { display:flex; justify-content:space-between; gap:12px; }
+.commission-mobile-card dt, .commission-mobile-amounts dt { color:#64748b; font-size:13px; }
+.commission-mobile-amounts { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:18px; }
+.commission-mobile-amounts dd { margin-top:4px; font-size:16px; font-weight:600; }

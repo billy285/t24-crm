@@ -1,3 +1,8 @@
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { getSafeInternalPath, getReturnLabel } from '@/lib/navigation-state';
+import { useDialogDraft } from '@/lib/use-dialog-draft';
+import { useRetainedView } from '@/lib/use-retained-view';
+import { useListScroll } from '@/lib/use-list-scroll';
 import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
 import './delivery-workspace.css';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -493,6 +498,11 @@ export default function ServiceBoard() {
   const { role, employee, isAdmin, dataScope, hasPermission } = useRole();
   const isMobile = useIsMobile();
   const businessToday = businessDateKey();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sourceReturnPath = getSafeInternalPath(searchParams.get('returnTo'));
+  const focusedProgress = useRef('');
 
   // Core data
   const [progresses, setProgresses] = useState<ServiceProgress[]>([]);
@@ -509,12 +519,12 @@ export default function ServiceBoard() {
 
   // Views
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'employee'>('list');
-  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
-  const [search, setSearch] = useState('');
+  const [quickFilter, setQuickFilter] = useRetainedView<QuickFilter>('ServiceBoard:quickFilter', 'all');
+  const [search, setSearch] = useRetainedView('ServiceBoard:search', '');
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({ industry: 'all', service_type: 'all', service_stage: 'all', ops_person: '', sales_person: '', issue_status: 'all' });
-  const [progressPage, setProgressPage] = useState(1);
-  const [progressPageSize, setProgressPageSize] = useState(20);
+  const [progressPage, setProgressPage] = useRetainedView('ServiceBoard:progressPage', 1);
+  const [progressPageSize, setProgressPageSize] = useRetainedView('ServiceBoard:progressPageSize', 20);
   const [showStats, setShowStats] = useState(false);
 
   // Detail
@@ -562,6 +572,17 @@ export default function ServiceBoard() {
 
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'progress' | 'task'; item: any } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const progressDraft = useDialogDraft(showProgressForm, progressForm);
+  const taskDraft = useDialogDraft(showTaskForm, taskForm);
+  const summaryDraft = useDialogDraft(showQuickUpdate, quickUpdateSummary);
+  const completionDraft = useDialogDraft(Boolean(completeTaskTarget), completionForm);
+  const [advanceTarget, setAdvanceTarget] = useState<ServiceProgress | null>(null);
+  const [advancing, setAdvancing] = useState(false);
+  const stageInFlight = useRef(new Set<number>());
+  const materialInFlight = useRef(new Set<number>());
+  const [materialBusyIds, setMaterialBusyIds] = useState<Set<number>>(new Set());
+  const firstProgressFilterRender = useRef(true);
+  useListScroll('service-board', !loading && !selectedProgress);
 
   // ==================== Data Loading ====================
   useEffect(() => {
@@ -739,6 +760,7 @@ export default function ServiceBoard() {
   );
 
   useEffect(() => {
+    if (firstProgressFilterRender.current) { firstProgressFilterRender.current = false; return; }
     setProgressPage(1);
   }, [search, quickFilter, filters, progressPageSize]);
 
@@ -903,6 +925,7 @@ export default function ServiceBoard() {
   };
 
   const handleSaveProgress = async () => {
+    if (savingProgress) return;
     if (!progressForm.customer_name.trim()) { toast.error('请先选择客户'); return; }
     if (!progressForm.customer_id) { toast.error('请从下拉列表中选择已有客户'); return; }
     if (progressForm.service_end_date && progressForm.service_start_date && progressForm.service_end_date < progressForm.service_start_date) {
@@ -981,7 +1004,7 @@ export default function ServiceBoard() {
           logOperation({ customerId: progressForm.customer_id, actionType: 'create_customer', actionDetail: `新增服务进度: ${progressForm.customer_name}, 类型=${serviceTypeLabels[progressForm.service_type]}, 阶段=${allStageLabels[effectiveStage]}`, operatorName: op });
         } catch { /* ignore log errors */ }
       }
-      setShowProgressForm(false);
+      progressDraft.markSaved(); setShowProgressForm(false);
       await loadData();
       // Refresh detail view if we were editing the currently selected progress
       if (editingProgressId && activeDetailProgressIdRef.current === editingProgressId) {
@@ -995,9 +1018,16 @@ export default function ServiceBoard() {
   };
 
   // Quick advance to next stage
-  const handleAdvanceStage = async (sp: ServiceProgress) => {
+  const handleAdvanceStage = (sp: ServiceProgress) => {
+    if (!canEdit) return;
+    if (!getNextStage(sp.service_type, sp.service_stage)) { toast.info('已经是最后一个阶段'); return; }
+    setAdvanceTarget(sp);
+  };
+  const confirmAdvanceStage = async (sp: ServiceProgress) => {
+    if (!canEdit || stageInFlight.current.has(sp.id)) return;
     const nextStage = getNextStage(sp.service_type, sp.service_stage);
     if (!nextStage) { toast.info('已经是最后一个阶段'); return; }
+    stageInFlight.current.add(sp.id); setAdvancing(true);
     const defaultProg = getDefaultProgress(sp.service_type, nextStage);
     try {
       const now = new Date().toISOString();
@@ -1009,6 +1039,7 @@ export default function ServiceBoard() {
         last_update_person: op,
       });
       toast.success(`已推进到: ${allStageLabels[nextStage] || nextStage}`);
+      setAdvanceTarget(null);
       logOperation({ customerId: sp.customer_id, actionType: 'edit_customer', actionDetail: `推进服务阶段: ${sp.customer_name} ${allStageLabels[sp.service_stage]} → ${allStageLabels[nextStage]}`, operatorName: op });
       await loadData();
       if (activeDetailProgressIdRef.current === sp.id) {
@@ -1017,10 +1048,12 @@ export default function ServiceBoard() {
     } catch (err) {
       console.error('Advance service stage error:', err);
       toast.error(getErrorMessage(err, '推进失败'));
-    }
+    } finally { stageInFlight.current.delete(sp.id); setAdvancing(false); }
   };
 
   const handleClientMaterialReceived = async (sp: ServiceProgress) => {
+    if (!canEdit || materialInFlight.current.has(sp.id)) return;
+    materialInFlight.current.add(sp.id); setMaterialBusyIds(new Set(materialInFlight.current));
     try {
       const now = new Date().toISOString();
       const op = employee?.name || '管理员';
@@ -1059,7 +1092,7 @@ export default function ServiceBoard() {
     } catch (err) {
       console.error('Resolve waiting material error:', err);
       toast.error(`推进失败: ${getErrorMessage(err, '未知错误')}`);
-    }
+    } finally { materialInFlight.current.delete(sp.id); setMaterialBusyIds(new Set(materialInFlight.current)); }
   };
 
   // Quick update work summary
@@ -1089,7 +1122,7 @@ export default function ServiceBoard() {
         });
       } catch { /* operation log failure must not block the update */ }
       toast.success('工作摘要已更新');
-      setShowQuickUpdate(false);
+      summaryDraft.markSaved(); setShowQuickUpdate(false);
       await loadData();
       if (activeDetailProgressIdRef.current === quickUpdateSp.id) {
         await refreshProgressDetail(quickUpdateSp.id);
@@ -1118,7 +1151,9 @@ export default function ServiceBoard() {
     if (tasksResult.status === 'fulfilled') setDetailTasks(tasksResult.value);
   };
 
-  const closeCompleteTaskDialog = () => {
+  const closeCompleteTaskDialog = (saved = false) => {
+    if (!saved && (savingCompletion || !completionDraft.confirmDiscard())) return;
+    if (saved) completionDraft.markSaved();
     completionReferenceSeqRef.current += 1;
     completionSaveSeqRef.current += 1;
     activeCompletionTaskIdRef.current = null;
@@ -1132,12 +1167,15 @@ export default function ServiceBoard() {
   };
 
   const closeProgressDetail = () => {
+    if (savingCompletion || !completionDraft.confirmDiscard()) return;
     detailRequestSeqRef.current += 1;
     activeDetailProgressIdRef.current = null;
     setSelectedProgress(null);
     setDetailTasks([]);
     setDetailTab('overview');
-    closeCompleteTaskDialog();
+    closeCompleteTaskDialog(true);
+    if (sourceReturnPath) navigate(sourceReturnPath);
+    else if (searchParams.has('progress_id')) { const params = new URLSearchParams(searchParams); params.delete('progress_id'); params.delete('returnTo'); setSearchParams(params, { replace: true }); }
   };
 
   const openCompleteTask = async (task: ServiceTask) => {
@@ -1214,7 +1252,7 @@ export default function ServiceBoard() {
       const isLowQuality = completedTask?.completion_quality === 'low_quality';
       toast.success(isLowQuality ? '任务已完成，但系统标记为低质量完成' : '任务已完成，并已同步文案/素材使用记录');
       if (activeCompletionTaskIdRef.current === task.id && completionSaveSeqRef.current === saveSeq) {
-        closeCompleteTaskDialog();
+        closeCompleteTaskDialog(true);
       }
       await loadData();
       if (detailProgressId && activeDetailProgressIdRef.current === detailProgressId) {
@@ -1318,6 +1356,7 @@ export default function ServiceBoard() {
   };
 
   const handleSaveTask = async () => {
+    if (savingTask) return;
     if (!taskForm.task_name.trim()) { toast.error('请填写任务名称'); return; }
     if (!taskForm.customer_id) { toast.error('任务缺少关联客户信息'); return; }
     if (taskForm.status === 'completed') {
@@ -1355,7 +1394,7 @@ export default function ServiceBoard() {
         });
         toast.success('任务已创建');
       }
-      setShowTaskForm(false);
+      taskDraft.markSaved(); setShowTaskForm(false);
       await loadData();
       if (detailProgressId && activeDetailProgressIdRef.current === detailProgressId) {
         await refreshProgressDetail(detailProgressId);
@@ -1495,6 +1534,15 @@ export default function ServiceBoard() {
     }
   };
 
+  useEffect(() => {
+    const id = searchParams.get('progress_id');
+    if (loading || !id || focusedProgress.current === id) return;
+    const progress = progresses.find(item => String(item.id) === id);
+    focusedProgress.current = id;
+    if (progress) { void openDetail(progress); setDetailTab('tasks'); }
+    else toast.error('该服务记录不在当前可访问范围内');
+  }, [loading, progresses, searchParams]);
+
   // ==================== Export data preparation ====================
   const exportData = useMemo(() => {
     return filtered.map(sp => {
@@ -1563,6 +1611,16 @@ export default function ServiceBoard() {
     const remainDays = getServiceRemainingDays(sp);
     const weekly = getWeeklyPlatformProgress(sp, allTasks);
     const onboarding = getOnboardingProgress(sp, allTasks);
+
+    if (isMobile) {
+      const nextTask = onboarding.nextStep?.task || allTasks.find(task => task.service_progress_id === sp.id && !['completed', 'cancelled'].includes(task.status));
+      return <article className={`dc-progress-card rounded-2xl border bg-white p-4 ${issue || overdue ? 'border-rose-200' : 'border-slate-200'}`}>
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-base font-semibold text-slate-900">{sp.customer_name}</h3><p className="mt-1 text-sm text-slate-500">{allStageLabels[sp.service_stage] || sp.service_stage} · {sp.ops_person || '待分配运营'}</p></div><Badge className={issue || overdue ? 'shrink-0 bg-rose-100 text-rose-700' : 'shrink-0 bg-blue-100 text-blue-700'}>{issue ? '有卡点' : overdue ? '已逾期' : expiring ? '即将到期' : sp.service_stage === 'ended' ? '已结束' : '进行中'}</Badge></div>
+        <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">{issue ? sp.issue_description || '需要先处理服务卡点' : nextTask ? `下一步：${nextTask.task_name}` : sp.last_work_summary || '查看服务记录，确认下一步安排'}</p>
+        <Button className="mt-3 min-h-11 w-full" onClick={() => { void openDetail(sp); setDetailTab('tasks'); }}>{issue ? '处理服务卡点' : nextTask ? '继续任务' : '查看服务详情'}</Button>
+        <details className="mt-3 border-t border-dashed border-slate-200 pt-3"><summary className="cursor-pointer text-sm text-slate-500">服务详情与更多操作</summary><div className="mt-3 space-y-3 text-sm"><p>{serviceTypeLabels[sp.service_type] || sp.service_type} · {sp.package_name || '未填写套餐'}</p><p>进度 {sp.progress_percent}% · 待办 {ts.pending} · 已完成 {ts.completed}</p><p>销售 {sp.sales_person || '未分配'} · 到期 {sp.service_end_date?.slice(0, 10) || '未设置'}</p>{canEdit && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openQuickUpdate(sp)}>更新摘要</Button><Button variant="outline" onClick={() => openEditProgress(sp)}>编辑服务</Button>{nextStage && <Button variant="outline" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</div>}</div></details>
+      </article>;
+    }
 
     return (
       <div
@@ -1710,8 +1768,9 @@ export default function ServiceBoard() {
 
   const renderProgressActionDialogs = () => (
     <>
+      <Dialog open={Boolean(advanceTarget)} onOpenChange={open => { if (!open && !advancing) setAdvanceTarget(null); }}><DialogContent className="delivery-dialog"><DialogHeader><DialogTitle>确认推进服务阶段</DialogTitle></DialogHeader>{advanceTarget && <div className="space-y-4"><p className="font-semibold">{advanceTarget.customer_name}</p><div className="rounded-xl bg-slate-50 p-4 text-sm">{allStageLabels[advanceTarget.service_stage]} → {allStageLabels[getNextStage(advanceTarget.service_type, advanceTarget.service_stage) || '']}</div><p className="text-sm text-slate-600">当前仍有 {allTasks.filter(task => task.service_progress_id === advanceTarget.id && !['completed', 'cancelled'].includes(task.status)).length} 项未完成任务。推进阶段会更新服务阶段和默认进度，任务保持原状态。</p>{hasIssue(advanceTarget) && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">这项服务仍有未解决卡点：{advanceTarget.issue_description || issueStatusLabels[advanceTarget.issue_status]}</p>}<div className="flex justify-end gap-2"><Button variant="outline" disabled={advancing} onClick={() => setAdvanceTarget(null)}>取消</Button><Button disabled={advancing} onClick={() => void confirmAdvanceStage(advanceTarget)}>{advancing ? '推进中…' : '确认推进'}</Button></div></div>}</DialogContent></Dialog>
       {/* Quick Update Work Summary Dialog */}
-      <Dialog open={showQuickUpdate} onOpenChange={v => { if (!v) setShowQuickUpdate(false); }}>
+      <Dialog open={showQuickUpdate} onOpenChange={v => { if (!v && !savingQuickUpdate && summaryDraft.confirmDiscard()) setShowQuickUpdate(false); }}>
         <DialogContent className="delivery-dialog max-w-md">
           <DialogHeader><DialogTitle>更新工作摘要 - {quickUpdateSp?.customer_name}</DialogTitle></DialogHeader>
           <div className="space-y-3">
@@ -1726,14 +1785,14 @@ export default function ServiceBoard() {
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowQuickUpdate(false)}>取消</Button>
+            <Button variant="outline" disabled={savingQuickUpdate} onClick={() => { if (summaryDraft.confirmDiscard()) setShowQuickUpdate(false); }}>取消</Button>
             <Button onClick={handleQuickUpdateSave} disabled={savingQuickUpdate} className="bg-blue-600 hover:bg-blue-700">{savingQuickUpdate ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* ==================== SMART Progress Form Dialog ==================== */}
-      <Dialog open={showProgressForm} onOpenChange={setShowProgressForm}>
+      <Dialog open={showProgressForm} onOpenChange={open => { if (open || (!savingProgress && progressDraft.confirmDiscard())) setShowProgressForm(open); }}>
         <DialogContent className="delivery-dialog max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingProgressId ? '编辑服务进度' : '新增服务进度'}</DialogTitle></DialogHeader>
 
@@ -1961,7 +2020,7 @@ export default function ServiceBoard() {
           </div>
 
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowProgressForm(false)}>取消</Button>
+            <Button variant="outline" disabled={savingProgress} onClick={() => { if (progressDraft.confirmDiscard()) setShowProgressForm(false); }}>取消</Button>
             <Button onClick={handleSaveProgress} disabled={savingProgress} className="bg-blue-600 hover:bg-blue-700">{savingProgress ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>
@@ -2114,7 +2173,7 @@ export default function ServiceBoard() {
             </div>
           )}
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={closeCompleteTaskDialog}>取消</Button>
+            <Button variant="outline" onClick={() => closeCompleteTaskDialog()}>取消</Button>
             <Button onClick={handleCompleteTask} disabled={savingCompletion || loadingCompletionRefs} className="bg-green-600 hover:bg-green-700">
               {savingCompletion ? '保存中...' : '确认完成'}
             </Button>
@@ -2122,7 +2181,7 @@ export default function ServiceBoard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showTaskForm} onOpenChange={setShowTaskForm}>
+      <Dialog open={showTaskForm} onOpenChange={open => { if (open || (!savingTask && taskDraft.confirmDiscard())) setShowTaskForm(open); }}>
         <DialogContent className="delivery-dialog max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingTaskId ? '编辑任务' : '新增任务'} - {taskForm.customer_name}</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -2165,7 +2224,7 @@ export default function ServiceBoard() {
             <div><Label>备注</Label><Textarea value={taskForm.notes} onChange={e => setTaskForm({ ...taskForm, notes: e.target.value })} rows={2} placeholder="补充说明..." /></div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowTaskForm(false)}>取消</Button>
+            <Button variant="outline" disabled={savingTask} onClick={() => { if (taskDraft.confirmDiscard()) setShowTaskForm(false); }}>取消</Button>
             <Button onClick={handleSaveTask} disabled={savingTask} className="bg-blue-600 hover:bg-blue-700">{savingTask ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>
@@ -2248,12 +2307,12 @@ export default function ServiceBoard() {
       ...(sp.issue_resolved && sp.issue_resolved_date ? [{ time: sp.issue_resolved_date, label: '问题已解决', type: 'done' as const }] : []),
       ...(sp.last_update_time ? [{ time: sp.last_update_time, label: `最近更新: ${sp.last_work_summary || '无描述'} (${sp.last_update_person || '-'})`, type: 'update' as const }] : []),
       ...(sp.service_end_date ? [{ time: sp.service_end_date, label: '服务到期', type: isOverdue(sp) ? 'issue' as const : 'info' as const }] : []),
-    ].sort((a, b) => a.time.localeCompare(b.time));
+    ].filter(item => Boolean(item.time)).sort((a, b) => String(a.time).localeCompare(String(b.time)));
 
     return (
       <div className="delivery-center-ui dc-service dc-service-detail calm-delivery-page">
         <div className="flex items-center gap-3 flex-wrap">
-          <Button variant="ghost" size="sm" onClick={closeProgressDetail}><ArrowLeft className="w-4 h-4 mr-1" /> 返回看板</Button>
+          <Button variant="ghost" size="sm" onClick={closeProgressDetail}><ArrowLeft className="w-4 h-4 mr-1" /> {sourceReturnPath ? getReturnLabel(sourceReturnPath) : '返回服务列表'}</Button>
           <h2 className="text-lg font-semibold">{sp.customer_name}</h2>
           <Badge className="bg-blue-100 text-blue-700">{serviceTypeLabels[sp.service_type]}</Badge>
           <Badge className={issueStatusColors[sp.issue_status]}>{issueStatusLabels[sp.issue_status]}</Badge>
@@ -2272,7 +2331,7 @@ export default function ServiceBoard() {
               </Button>
             )}
             {isWaitingForClientMaterial(sp) && (
-              <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100" onClick={() => handleClientMaterialReceived(sp)}>
+              <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100" disabled={materialBusyIds.has(sp.id)} onClick={() => handleClientMaterialReceived(sp)}>
                 <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> 资料已收到并继续
               </Button>
             )}
@@ -2434,7 +2493,7 @@ export default function ServiceBoard() {
                         size="sm"
                         variant="outline"
                         className="w-full border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                        onClick={() => handleClientMaterialReceived(sp)}
+                        disabled={materialBusyIds.has(sp.id)} onClick={() => handleClientMaterialReceived(sp)}
                       >
                         <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> 客户资料已收到，解除卡点并推进
                       </Button>
@@ -3231,7 +3290,7 @@ export default function ServiceBoard() {
             </div>
           )}
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={closeCompleteTaskDialog}>取消</Button>
+            <Button variant="outline" onClick={() => closeCompleteTaskDialog()}>取消</Button>
             <Button onClick={handleCompleteTask} disabled={savingCompletion || loadingCompletionRefs} className="bg-green-600 hover:bg-green-700">
               {savingCompletion ? '保存中...' : '确认完成'}
             </Button>
@@ -3239,7 +3298,7 @@ export default function ServiceBoard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showTaskForm} onOpenChange={setShowTaskForm}>
+      <Dialog open={showTaskForm} onOpenChange={open => { if (open || (!savingTask && taskDraft.confirmDiscard())) setShowTaskForm(open); }}>
         <DialogContent className="delivery-dialog max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingTaskId ? '编辑任务' : '新增任务'} - {taskForm.customer_name}</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -3282,7 +3341,7 @@ export default function ServiceBoard() {
             <div><Label>备注</Label><Textarea value={taskForm.notes} onChange={e => setTaskForm({ ...taskForm, notes: e.target.value })} rows={2} placeholder="补充说明..." /></div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowTaskForm(false)}>取消</Button>
+            <Button variant="outline" disabled={savingTask} onClick={() => { if (taskDraft.confirmDiscard()) setShowTaskForm(false); }}>取消</Button>
             <Button onClick={handleSaveTask} disabled={savingTask} className="bg-blue-600 hover:bg-blue-700">{savingTask ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>

@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useListScroll } from '@/lib/use-list-scroll';
+import { useRetainedView } from '@/lib/use-retained-view';
+import { useEffect, useState, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { buildReturnLink } from '@/lib/navigation-state';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
 import { getCountryLabel, getStateLabel } from '../lib/country-state-data';
@@ -127,16 +130,18 @@ export default function Sales() {
     subscriptionStatuses: subStatusLabels,
   } = useBusinessDicts();
   const navigate = useNavigate();
+  const location = useLocation();
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  useListScroll('sales', !loading);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [filterCustomerId, setFilterCustomerId] = useState('all');
-  const [filterServiceStatus, setFilterServiceStatus] = useState('all');
-  const [filterSalesPerson, setFilterSalesPerson] = useState('all');
-  const [filterCountry, setFilterCountry] = useState('all');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [search, setSearch] = useRetainedView('Sales:search', '');
+  const [filterCustomerId, setFilterCustomerId] = useRetainedView('Sales:filterCustomerId', 'all');
+  const [filterServiceStatus, setFilterServiceStatus] = useRetainedView('Sales:filterServiceStatus', 'all');
+  const [filterSalesPerson, setFilterSalesPerson] = useRetainedView('Sales:filterSalesPerson', 'all');
+  const [filterCountry, setFilterCountry] = useRetainedView('Sales:filterCountry', 'all');
+  const [page, setPage] = useRetainedView('Sales:page', 1);
+  const [pageSize, setPageSize] = useRetainedView('Sales:pageSize', 20);
   const [showAllColumns, setShowAllColumns] = useState(false);
 
   useEffect(() => { loadData(); }, []);
@@ -345,7 +350,9 @@ export default function Sales() {
   });
   const paginated = paginateList(filtered, page, pageSize);
 
+  const firstFilterRender = useRef(true);
   useEffect(() => {
+    if (firstFilterRender.current) { firstFilterRender.current = false; return; }
     setPage(1);
   }, [search, filterCustomerId, filterServiceStatus, filterSalesPerson, filterCountry, pageSize]);
 
@@ -385,7 +392,7 @@ export default function Sales() {
   }));
 
   const openCustomerDetail = (customerId: number) => {
-    navigate(`/customers?detail=${customerId}`);
+    navigate(buildReturnLink(`/customers?detail=${customerId}`, `${location.pathname}${location.search}`, 'sales'));
   };
 
   const PaginationFooter = () => {

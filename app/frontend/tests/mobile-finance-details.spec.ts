@@ -181,7 +181,7 @@ test('投流显示未结资金、原币种月结和草稿，全部时间不把�
   const { requests } = await fixture(page);
   await page.goto(`${baseUrl}/finance?tab=ad_funds`);
   const region = detailsRegion(page);
-  await expect(region.getByText('待月结', { exact: true }).first()).toBeVisible();
+  await expect(region.getByRole('heading', { name: '待月结', exact: true })).toBeVisible();
   await expect(record(page, '模拟待结算客户丙').locator('summary')).toContainText('$200');
   const cny = record(page, '模拟人民币已结算');
   await openRecord(cny);

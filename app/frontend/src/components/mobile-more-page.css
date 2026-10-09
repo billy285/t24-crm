@@ -170,3 +170,16 @@
     padding-top: env(safe-area-inset-top);
   }
 }
+
+.mobile-more-search { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 10px 14px; border: 1px solid #e5eaf2; border-radius: 12px; background: #fff; color: #8391a7; }
+.mobile-more-search svg { width: 18px; height: 18px; flex-shrink: 0; }
+.mobile-more-search input { min-width: 0; width: 100%; font-size: 16px; outline: none; color: #18243a; background: transparent; }
+.mobile-more-favorite-tools { display: flex; justify-content: flex-end; margin-top: 5px; }
+.mobile-more-favorite-tools button { min-height: 44px; padding: 6px 5px; color: #2563eb; font-size: 13px; }
+.mobile-more-feature-wrap { display: flex; align-items: stretch; border-bottom: 1px solid #edf0f5; }
+.mobile-more-feature-wrap:last-child { border-bottom: 0; }
+.mobile-more-feature-wrap > .mobile-more-row { flex: 1; min-width: 0; border: 0; }
+.mobile-more-favorite-button { display: flex; justify-content: center; align-items: center; min-width: 48px; color: #6b7890; }
+.mobile-more-favorite-button[aria-pressed="true"] { color: #2563eb; }
+.mobile-more-favorite-button svg { width: 19px; height: 19px; }
+.mobile-more-row-label small { display: block; font-size: 13px; line-height: 1.5; font-weight: 400; color: #788291; overflow-wrap: anywhere; }

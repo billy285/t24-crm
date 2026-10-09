@@ -109,9 +109,11 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole('heading', { name: '甲商家2', exact: true })).toBeVisible();
     await expect(notes(page)).toHaveValue('甲商家2尚未提交的沟通');
     await expect(page.getByRole('status').filter({ hasText: '已恢复草稿' })).toBeVisible();
-    await page.getByRole('navigation', { name: '销售中心导航' }).getByRole('link', { name: '知识库', exact: true }).click();
+    if (width < 768) { await page.getByRole('button', { name: '打开销售中心功能菜单' }).click(); await page.getByRole('dialog').getByRole('button', { name: '知识库', exact: true }).click(); }
+    else await page.getByRole('navigation', { name: '销售中心导航' }).getByRole('link', { name: '知识库', exact: true }).click();
     await expect(page).toHaveURL(/sales-knowledge/);
-    await page.getByRole('navigation', { name: '销售中心导航' }).getByRole('link', { name: '今日拨打', exact: true }).click();
+    if (width < 768) { await page.getByRole('button', { name: '打开销售中心功能菜单' }).click(); await page.getByRole('dialog').getByRole('button', { name: '今日拨打', exact: true }).click(); }
+    else await page.getByRole('navigation', { name: '销售中心导航' }).getByRole('link', { name: '今日拨打', exact: true }).click();
     await expect(notes(page)).toHaveValue('甲商家2尚未提交的沟通');
     await page.getByRole('button', { name: '上一位客户', exact: true }).click();
     await expect(notes(page)).toHaveValue('甲商家1尚未提交的沟通');
@@ -293,9 +295,9 @@ test('保存失败保留，成功后下一位与回访入口对应已保存的le
     await page.screenshot({ path: `${screenshots}/workbench-save-local-390.png` });
   }
   expect(await page.evaluate(key => sessionStorage.getItem(key), key())).toBeNull();
-  await page.route(`${base}/sales-leads?lead_id=501&action=followup`, route => route.fulfill({ contentType: 'text/html', body: '<title>本地跟进入口</title>' }));
+  await page.route(`${base}/sales-leads?lead_id=501&action=followup&returnTo=*`, route => route.fulfill({ contentType: 'text/html', body: '<title>本地跟进入口</title>' }));
   await receipt.getByRole('button', { name: '查看跟进', exact: true }).click();
-  await expect(page).toHaveURL(`${base}/sales-leads?lead_id=501&action=followup`);
+  await expect(page).toHaveURL(`${base}/sales-leads?lead_id=501&action=followup&returnTo=${encodeURIComponent('/sales-workbench?sales_employee_id=27')}`);
   expect(data.writes.map(write => write.path)).toEqual(['/api/v1/sales-leads/workbench/tasks/901/result', '/api/v1/sales-leads/workbench/tasks/901/result']);
 });
 
@@ -312,9 +314,9 @@ test('有意向成功后报价入口对应已保存客户，报价导航不产�
     await page.locator('.app-main').evaluate(element => { element.scrollTop = 0; });
     await page.screenshot({ path: `${screenshots}/workbench-save-local-1440.png` });
   }
-  await page.route(`${base}/sales-leads?lead_id=501&action=quote`, route => route.fulfill({ contentType: 'text/html', body: '<title>本地报价入口</title>' }));
+  await page.route(`${base}/sales-leads?lead_id=501&action=quote&returnTo=*`, route => route.fulfill({ contentType: 'text/html', body: '<title>本地报价入口</title>' }));
   await receipt.getByRole('button', { name: '准备报价', exact: true }).click();
-  await expect(page).toHaveURL(`${base}/sales-leads?lead_id=501&action=quote`);
+  await expect(page).toHaveURL(`${base}/sales-leads?lead_id=501&action=quote&returnTo=${encodeURIComponent('/sales-workbench?sales_employee_id=27')}`);
   expect(data.writes).toHaveLength(1);
   expect(data.writes[0].body).toMatchObject({ outcome: 'interested', notes: '已讨论服务范围', next_follow_up_at: '2026-10-15T02:30:00.000Z' });
 });

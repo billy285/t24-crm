@@ -342,3 +342,6 @@
 @media (max-width: 767px) and (max-height: 600px) {
   .sw-queue-sheet { height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); }
 }
+
+.sw-queue-search { display:block; padding:10px 12px; border-bottom:1px solid #eef2f7; }
+.sw-queue-search input { width:100%; min-width:0; font-size:14px; }

@@ -1,6 +1,27 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+
+function sourceVersion(root: string): string {
+  const digest = crypto.createHash('sha256');
+  const visit = (directory: string) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(file);
+      else if (entry.isFile()) { digest.update(path.relative(root, file)); digest.update(fs.readFileSync(file)); }
+    }
+  };
+  visit(root);
+  return digest.digest('hex').slice(0, 12);
+}
+const buildVersion = sourceVersion(path.resolve(__dirname, 'src'));
+const versionAsset = {
+  name: 't24-app-version',
+  generateBundle() { this.emitFile({ type: 'asset', fileName: 'app-version.json', source: JSON.stringify({ version: buildVersion }) }); },
+  configureServer(server: any) { server.middlewares.use('/app-version.json', (_request: any, response: any) => { response.setHeader('Content-Type', 'application/json'); response.setHeader('Cache-Control', 'no-store'); response.end(JSON.stringify({ version: buildVersion })); }); },
+};
 import { viteSourceLocator } from '@metagptx/vite-plugin-source-locator';
 import { atoms } from '@metagptx/web-sdk/plugins';
 
@@ -9,7 +30,9 @@ export default defineConfig(({ mode }) => ({
   // Default to root so the built SPA can be served directly by FastAPI on one origin.
   // Can still be overridden for subpath deployments.
   base: process.env.VITE_BASE || '/',
+  define: { __T24_BUILD_VERSION__: JSON.stringify(buildVersion) },
   plugins: [
+    versionAsset,
     viteSourceLocator({
       prefix: 'mgx', // 前缀用于标识源代码位置，不能修改
     }),

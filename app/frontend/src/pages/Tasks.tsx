@@ -1,3 +1,5 @@
+import { useListScroll } from '@/lib/use-list-scroll';
+import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { DeliveryEmpty } from '@/components/DeliveryUI';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -219,6 +221,7 @@ export default function Tasks() {
   const [formOptionsLoading, setFormOptionsLoading] = useState(false);
   const [formOptionsLoaded, setFormOptionsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
+  useListScroll('tasks', !loading);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [filterStatus, setFilterStatus] = useState(() => {
@@ -269,6 +272,10 @@ export default function Tasks() {
     due_date: '', notes: '', attachment_link: '',
   };
   const [form, setForm] = useState(emptyTaskForm);
+  const taskDraft = useDialogDraft(showForm, form);
+  const completeDraft = useDialogDraft(Boolean(completeTarget), completionNote);
+  const statusInFlight = useRef(new Set<number>());
+  const [statusBusyIds, setStatusBusyIds] = useState<Set<number>>(new Set());
 
   const scopedEmployees = useMemo(() => employees
     .filter((item: any) => !item.status || ['active', 'probation'].includes(item.status)), [employees]);
@@ -595,6 +602,7 @@ export default function Tasks() {
   };
 
   const handleSave = async () => {
+    if (saving) return;
     if (editingId ? !canEditTask : !canCreateTask) {
       toast.error('当前账号没有此任务操作权限');
       return;
@@ -628,6 +636,7 @@ export default function Tasks() {
         await client.entities.tasks.create({ data: { ...payload, created_at: now } });
         toast.success('任务已创建');
       }
+      taskDraft.markSaved();
       setShowForm(false);
       setEditingId(null);
       setForm(emptyTaskForm);
@@ -649,16 +658,18 @@ export default function Tasks() {
   };
 
   const handleStatusChange = async (taskId: number, newStatus: string) => {
-    if (!canEditTask) return;
+    if (!canEditTask || statusInFlight.current.has(taskId)) return;
+    statusInFlight.current.add(taskId); setStatusBusyIds(new Set(statusInFlight.current));
     try {
       await client.entities.tasks.update({ id: String(taskId), data: { status: newStatus, updated_at: new Date().toISOString() } });
       toast.success('状态已更新');
       loadData();
     } catch (err) { toast.error('更新失败'); console.error(err); }
+    finally { statusInFlight.current.delete(taskId); setStatusBusyIds(new Set(statusInFlight.current)); }
   };
 
   const handleCompleteTask = async () => {
-    if (!completeTarget || !canEditTask) return;
+    if (!completeTarget || !canEditTask || completing) return;
     if (!completionNote.trim()) {
       toast.error('请填写完成结果，方便后续追踪');
       return;
@@ -666,7 +677,7 @@ export default function Tasks() {
     setCompleting(true);
     try {
       const now = new Date();
-      const stamp = now.toLocaleString('zh-CN', { hour12: false });
+      const stamp = now.toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' }) + ' 北京时间';
       const existingNotes = String(completeTarget.notes || '').trim();
       const nextNotes = [
         existingNotes,
@@ -682,6 +693,7 @@ export default function Tasks() {
         },
       });
       toast.success('任务已完成并记录结果');
+      completeDraft.markSaved();
       setCompleteTarget(null);
       setCompletionNote('');
       loadData();
@@ -874,19 +886,20 @@ export default function Tasks() {
 
                         <div className="mt-4 border-t border-slate-100 pt-3">
                           {canEditTask && t.status === 'pending' && (
-                            <Button className="min-h-12 w-full rounded-2xl bg-blue-600 font-bold hover:bg-blue-700" onClick={() => handleStatusChange(t.id, 'in_progress')}>开始处理</Button>
+                            <Button className="min-h-12 w-full rounded-2xl bg-blue-600 font-bold hover:bg-blue-700" disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'in_progress')}>开始处理</Button>
                           )}
-                          {canEditTask && !completed && t.status !== 'pending' && (
+                          {canEditTask && !completed && !['pending', 'waiting_client'].includes(t.status) && (
                             <Button className="min-h-12 w-full rounded-2xl bg-emerald-600 font-bold hover:bg-emerald-700" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
                               <CheckCircle2 className="mr-1.5 h-4 w-4" />完成并记录
                             </Button>
                           )}
+                          {canEditTask && t.status === 'waiting_client' && <Button className="min-h-12 w-full rounded-2xl bg-blue-600 font-bold hover:bg-blue-700" disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'in_progress')}>客户已回复，继续处理</Button>}
                           <div className="mt-2 flex gap-2">
                             {canEditTask && !completed && t.status !== 'waiting_client' && (
-                              <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs text-violet-700" onClick={() => handleStatusChange(t.id, 'waiting_client')}>等客户</Button>
+                              <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs text-violet-700" disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'waiting_client')}>等客户</Button>
                             )}
                             {canEditTask && t.status === 'waiting_client' && (
-                              <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs text-blue-700" onClick={() => handleStatusChange(t.id, 'in_progress')}>继续处理</Button>
+                              <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs text-blue-700" disabled={statusBusyIds.has(t.id)} onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>完成并记录</Button>
                             )}
                             {canOpenCustomers && t.customer_id && (
                               <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs" onClick={() => navigate(buildReturnLink(`/customers?detail=${t.customer_id}`, getCurrentTaskPath(t.id), 'tasks'))}>
@@ -931,7 +944,7 @@ export default function Tasks() {
                       </div>
                       <div className="grid shrink-0 grid-cols-2 gap-2 md:flex md:flex-wrap md:justify-end md:gap-1">
                         {canEditTask && t.status === 'pending' && (
-                          <Button size="sm" className="min-h-11 w-full bg-blue-600 px-3 text-xs hover:bg-blue-700 md:h-8 md:min-h-0 md:w-auto" onClick={() => handleStatusChange(t.id, 'in_progress')}>
+                          <Button size="sm" className="min-h-11 w-full bg-blue-600 px-3 text-xs hover:bg-blue-700 md:h-8 md:min-h-0 md:w-auto" disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'in_progress')}>
                             开始处理
                           </Button>
                         )}
@@ -941,12 +954,12 @@ export default function Tasks() {
                           </Button>
                         )}
                         {canEditTask && !completed && t.status !== 'waiting_client' && (
-                          <Button size="sm" variant="ghost" className="min-h-11 w-full px-2 text-xs text-purple-600 hover:bg-purple-50 hover:text-purple-700 md:h-8 md:min-h-0 md:w-auto" onClick={() => handleStatusChange(t.id, 'waiting_client')}>
+                          <Button size="sm" variant="ghost" className="min-h-11 w-full px-2 text-xs text-purple-600 hover:bg-purple-50 hover:text-purple-700 md:h-8 md:min-h-0 md:w-auto" disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'waiting_client')}>
                             等客户
                           </Button>
                         )}
                         {canEditTask && t.status === 'waiting_client' && (
-                          <Button size="sm" variant="ghost" className="min-h-11 w-full px-2 text-xs text-blue-600 hover:bg-blue-50 hover:text-blue-700 md:h-8 md:min-h-0 md:w-auto" onClick={() => handleStatusChange(t.id, 'in_progress')}>
+                          <Button size="sm" variant="ghost" className="min-h-11 w-full px-2 text-xs text-blue-600 hover:bg-blue-50 hover:text-blue-700 md:h-8 md:min-h-0 md:w-auto" disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'in_progress')}>
                             继续
                           </Button>
                         )}
@@ -979,7 +992,7 @@ export default function Tasks() {
         />
       )}
 
-      {canEditTask && <Dialog open={!!completeTarget} onOpenChange={(v) => { if (!v) { setCompleteTarget(null); setCompletionNote(''); } }}>
+      {canEditTask && <Dialog open={!!completeTarget} onOpenChange={(v) => { if (!v && !completing && completeDraft.confirmDiscard()) { setCompleteTarget(null); setCompletionNote(''); } }}>
         <DialogContent className="delivery-dialog max-w-md">
           <DialogHeader><DialogTitle>填写处理结果并完成</DialogTitle></DialogHeader>
           <div className="space-y-3">
@@ -999,7 +1012,7 @@ export default function Tasks() {
             </div>
           </div>
           <div className="mt-4 flex gap-2 sm:justify-end">
-            <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => { setCompleteTarget(null); setCompletionNote(''); }}>取消</Button>
+            <Button variant="outline" className="flex-1 sm:flex-none" disabled={completing} onClick={() => { if (completeDraft.confirmDiscard()) { setCompleteTarget(null); setCompletionNote(''); } }}>取消</Button>
             <Button onClick={handleCompleteTask} disabled={completing} className="flex-1 bg-green-600 hover:bg-green-700 sm:flex-none">
               {completing ? '提交中...' : '确认完成'}
             </Button>
@@ -1008,7 +1021,7 @@ export default function Tasks() {
       </Dialog>}
 
       {/* Add/Edit task dialog */}
-      {(canCreateTask || (canEditTask && editingId !== null)) && <Dialog open={showForm} onOpenChange={(v) => { setShowForm(v); if (!v) { setEditingId(null); setForm(emptyTaskForm); } }}>
+      {(canCreateTask || (canEditTask && editingId !== null)) && <Dialog open={showForm} onOpenChange={(v) => { if (!v && (saving || !taskDraft.confirmDiscard())) return; setShowForm(v); if (!v) { setEditingId(null); setForm(emptyTaskForm); } }}>
         <DialogContent className="delivery-dialog max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto sm:max-h-[85vh]">
           <DialogHeader><DialogTitle>{editingId ? '编辑任务' : '新建任务'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -1099,7 +1112,7 @@ export default function Tasks() {
             <div><Label>附件链接</Label><Input value={form.attachment_link} onChange={e => setForm({ ...form, attachment_link: e.target.value })} placeholder="https://..." /></div>
           </div>
           <div className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-4 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
-            <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setShowForm(false)}>取消</Button>
+            <Button variant="outline" className="flex-1 sm:flex-none" disabled={saving} onClick={() => { if (taskDraft.confirmDiscard()) setShowForm(false); }}>取消</Button>
             <Button onClick={handleSave} disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none">{saving ? '保存中...' : '保存'}</Button>
           </div>
         </DialogContent>

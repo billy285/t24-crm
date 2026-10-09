@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import SalesFollowUpQuick from '@/components/SalesFollowUpQuick';
 import { emptyContact, type ContactDetails } from '@/lib/sales-intelligence';
 import { ArrowRight, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,11 +23,12 @@ type Props = {
   onSave: (values: SalesCallValues) => Promise<boolean>;
   onOpenKnowledge?: () => void;
   submitLabel?: string;
+  timezone?: string;
 };
 
 // The mounting key scopes drafts to employee, salesperson, lead, workday and task.
 // A draft never writes a business record.
-export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disabledReason, providerCall, options, suggestedFollowUp, onSave, onOpenKnowledge, submitLabel = '保存并下一位' }: Props) {
+export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disabledReason, providerCall, options, suggestedFollowUp, onSave, onOpenKnowledge, submitLabel = '保存并下一位', timezone }: Props) {
   const [initialDraft] = useState<SalesCallDraft>(() => disabledReason ? { values: emptySalesCallValues(), restored: false, persistence: 'session' as DraftPersistence } : readSalesCallDraft(draftKey, options, legacyDraftKey));
   const [values, setValues] = useState(initialDraft.values);
   const [persistence, setPersistence] = useState(initialDraft.persistence);
@@ -97,7 +99,7 @@ export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disa
         <div className="sc-outcomes" aria-label="选择通话结果">{options.slice(0, 4).map(option => <button key={option.value} type="button" aria-pressed={values.outcome === option.value} onClick={() => changeOutcome(option.value)}>{option.label}</button>)}</div>
         <label className="sw-other-result"><span className="sr-only">其他通话结果</span><NativeSelect value={options.slice(4).some(item => item.value === values.outcome) ? values.outcome : ''} onChange={value => value && changeOutcome(value)} options={[{ value: '', label: '其他结果' }, ...options.slice(4)]} /></label>
       </div>
-      {Boolean(values.outcome) && !hidesFollowUp && <div className="sw-followup"><Label htmlFor={`${fieldId}-followup`}>下次跟进<span> · 北京时间{requiresFollowUp ? ' *' : ''}</span></Label><Input id={`${fieldId}-followup`} type="datetime-local" value={values.nextFollowUpAt} onChange={event => update({ nextFollowUpAt: event.target.value })} /></div>}
+      {Boolean(values.outcome) && !hidesFollowUp && <div className="sw-followup"><Label htmlFor={`${fieldId}-followup`}>下次跟进<span> · 北京时间{requiresFollowUp ? ' *' : ''}</span></Label><Input id={`${fieldId}-followup`} type="datetime-local" value={values.nextFollowUpAt} onChange={event => update({ nextFollowUpAt: event.target.value })} /><SalesFollowUpQuick value={values.nextFollowUpAt} timezone={timezone} onChange={nextFollowUpAt => update({ nextFollowUpAt })} /></div>}
       {values.outcome && values.outcome !== 'no_answer' && <details className="si-contact-extra"><summary>更多信息</summary><div className="si-form-grid"><label>沟通对象<NativeSelect value={values.contactDetails?.reached_person || 'unknown'} onChange={reached_person => update({ contactDetails: { ...emptyContact, ...values.contactDetails, reached_person } })} options={[{ value: 'unknown', label: '尚未确认' }, { value: 'gatekeeper', label: '前台／其他人员' }, { value: 'decision_maker', label: '老板／决策人' }]} /></label><label>拒绝／暂缓原因<Input maxLength={2000} value={values.contactDetails?.rejection_reason || ''} onChange={event => update({ contactDetails: { ...emptyContact, ...values.contactDetails, rejection_reason: event.target.value } })} /></label><label>真实需求<Input maxLength={2000} value={values.contactDetails?.need_summary || ''} onChange={event => update({ contactDetails: { ...emptyContact, ...values.contactDetails, need_summary: event.target.value } })} /></label><label>下一步<Input maxLength={2000} value={values.contactDetails?.next_step || ''} onChange={event => update({ contactDetails: { ...emptyContact, ...values.contactDetails, next_step: event.target.value } })} /></label></div></details>}
     </fieldset>
     {disabledReason && <p className="sc-record-message">{disabledReason}</p>}

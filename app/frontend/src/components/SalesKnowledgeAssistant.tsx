@@ -13,6 +13,7 @@ import { invokeWithAuth } from '@/lib/tokenStore';
 type SalesKnowledgeAssistantProps = {
   collapsed?: boolean;
   contextLabel?: string;
+  contextCategory?: string;
   onToggle?: () => void;
 };
 
@@ -27,7 +28,7 @@ async function copyText(content: string, successMessage: string) {
   }
 }
 
-export default function SalesKnowledgeAssistant({ collapsed = false, contextLabel, onToggle }: SalesKnowledgeAssistantProps) {
+export default function SalesKnowledgeAssistant({ collapsed = false, contextLabel, contextCategory, onToggle }: SalesKnowledgeAssistantProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [articles, setArticles] = useState<SalesKnowledgeArticle[]>([]);
@@ -45,6 +46,7 @@ export default function SalesKnowledgeAssistant({ collapsed = false, contextLabe
       try {
         const params = new URLSearchParams();
         if (query.trim()) params.set('query', query.trim());
+        else if (contextCategory) params.set('category', contextCategory);
         const response = await invokeWithAuth({ url: `/api/v1/sales-knowledge/articles?${params}`, method: 'GET' });
         if (cancelled) return;
         const items = (response.data?.items || []) as SalesKnowledgeArticle[];
@@ -60,7 +62,7 @@ export default function SalesKnowledgeAssistant({ collapsed = false, contextLabe
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [collapsed, query, retry]);
+  }, [collapsed, query, retry, contextCategory]);
 
   const selectedArticle = useMemo(
     () => articles.find(article => article.id === selectedId) || articles[0] || null,
@@ -84,7 +86,7 @@ export default function SalesKnowledgeAssistant({ collapsed = false, contextLabe
       <div className="sales-v3-assistant-head">
         <div>
           <p><BookOpen className="h-4 w-4" /> 通话知识助手</p>
-          <span>{contextLabel ? `当前：${contextLabel}` : '搜索客户原话，直接复制使用'}</span>
+          <span>{query.trim() ? '全部场景搜索' : contextCategory || '全部场景'}{contextLabel ? ` · ${contextLabel}` : ''}</span>
         </div>
         {onToggle ? (
           <Button type="button" variant="ghost" size="icon" title="收起知识助手" onClick={onToggle}>

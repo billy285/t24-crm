@@ -542,6 +542,7 @@ async def list_merchant_pool(
     region: Optional[str] = None,
     industry: Optional[str] = None,
     source: Optional[str] = None,
+    batch_id: Optional[str] = Query(None, min_length=1, max_length=36),
     rating_min: Optional[float] = Query(None, ge=0, le=5),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200),
@@ -553,6 +554,16 @@ async def list_merchant_pool(
     scope = await _manager_scope(db, current_user)
     if scope is not None:
         conditions.append(scope)
+    if batch_id:
+        # Reuse the import receipt's authorization; membership is never inferred
+        # from filenames or supplied by the client. This only narrows a read.
+        from services.merchant_imports import get_batch
+        batch = await get_batch(db, current_user, batch_id)
+        if batch.status != "committed":
+            raise HTTPException(409, "该导入批次尚未入池或已撤销")
+        batch_ids = [row["merchant_id"] for row in json.loads(batch.result_json)
+                     if isinstance(row, dict) and isinstance(row.get("merchant_id"), int)]
+        conditions.append(MerchantPool.id.in_(batch_ids))
     if search:
         term = f"%{search.strip()}%"
         conditions.append(or_(MerchantPool.business_name.ilike(term), MerchantPool.phone.ilike(term), MerchantPool.website.ilike(term)))

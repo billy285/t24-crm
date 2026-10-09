@@ -119,6 +119,7 @@ test('无结果提交保留搜索原话和分类，失败及取消保留已补�
   await dialog.getByRole('button', { name: '提交问题', exact: true }).click();
   await expect(dialog.getByRole('alert')).toHaveText('测试提交失败，请重试');
   await expect(dialog.getByLabel('客户问了什么？')).toHaveValue(original);
+  page.once('dialog', confirmation => confirmation.accept());
   await dialog.getByRole('button', { name: '取消' }).click();
   await page.getByRole('button', { name: '提交这个问题' }).click();
   await expect(dialog.getByLabel('补充场景（可选）')).toHaveValue('客户在异地，正在讨论套餐范围');

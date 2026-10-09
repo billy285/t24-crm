@@ -1129,3 +1129,6 @@
     }
   }
 }
+
+.app-version-notice { position: fixed; z-index: 70; top: max(8px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 16px; max-width: calc(100% - 24px); padding: 5px 8px 5px 16px; border: 1px solid #dbe5f5; border-radius: 12px; background: #fff; box-shadow: 0 8px 28px #15243d16; color: #334155; font-size: 14px; }
+.app-version-notice button { min-height: 44px; padding: 8px 14px; color: #2563eb; font-weight: 600; }

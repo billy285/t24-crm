@@ -26,6 +26,11 @@ export const getReturnLabel = (path?: string | null) => {
     if (target.searchParams.get('section') === 'insights') return '返回经营健康与决策';
     return '返回经营分类与项目';
   }
+  if (safePath.startsWith('/sales-leads')) return '返回联系进展';
+  if (safePath.startsWith('/sales')) return '返回成交客户';
+  if (safePath.startsWith('/callbacks')) return '返回电话回访';
+  if (safePath.startsWith('/operations-workbench')) return '返回运营今日工作台';
+  if (safePath.startsWith('/company-roadmap')) return '返回公司经营路线';
   if (safePath.startsWith('/tasks')) return '返回任务协作';
   if (safePath.startsWith('/finance')) return '返回财务管理';
   if (safePath.startsWith('/service-board')) return '返回服务进度看板';

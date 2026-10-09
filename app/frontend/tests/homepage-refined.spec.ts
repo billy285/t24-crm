@@ -105,7 +105,7 @@ async function expectReachableControl(page: Page, control: Locator) {
   expect(hit.reachable).toBe(true);
 }
 
-for (const width of [320, 390, 430, 768, 1093, 1440]) {
+for (const width of [320, 390, 430, 768, 1024, 1093, 1440, 1920]) {
   test(`首页在 ${width}px 保留工作优先顺序、三列应用与可达末项（本地模拟）`, async ({ page }) => {
     await page.setViewportSize({ width, height: width < 768 ? 900 : 960 });
     const requests = await seed(page, 'admin', { entities: riskFixtures() });
@@ -144,15 +144,21 @@ for (const width of [320, 390, 430, 768, 1093, 1440]) {
       expect(control.height, String(control.name)).toBeGreaterThanOrEqual(44);
       expect(control.font, String(control.name)).toBeGreaterThanOrEqual(12);
     }
-    const summaryBounds = await functionsSummary(page).boundingBox();
+    const summaryBounds = await (width < 768 ? home(page).getByRole('button', { name: '全部功能', exact: true }) : functionsSummary(page)).boundingBox();
     expect(summaryBounds!.height).toBeGreaterThanOrEqual(44);
     await expect(page.getByRole('button', { name: '打开知识库', exact: true })).toBeHidden();
     await expectNoOverflow(page);
     if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/local-mock-homepage-admin-${width}.png`, fullPage: true });
-    await functionsSummary(page).click();
-    const lastFunction = page.getByRole('region', { name: '组织设置', exact: true }).getByRole('button').last();
-    await expect(lastFunction).toHaveAccessibleName('打开员工管理');
-    await expectReachableControl(page, lastFunction);
+    if (width < 768) {
+      await home(page).getByRole('button', { name: '全部功能', exact: true }).click();
+      await expect(page).toHaveURL(/\/more$/);
+      await expectReachableControl(page, page.getByRole('link', { name: '组织设置，查看全部功能', exact: true }));
+    } else {
+      await functionsSummary(page).click();
+      const lastFunction = page.getByRole('region', { name: '组织设置', exact: true }).getByRole('button').last();
+      await expect(lastFunction).toHaveAccessibleName('打开员工管理');
+      await expectReachableControl(page, lastFunction);
+    }
     await expectNoOverflow(page);
     expectReadOnly(requests);
   });

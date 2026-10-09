@@ -1,5 +1,6 @@
+import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import './admin-workspace.css';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRole } from '../lib/role-context';
 import {
   type SystemRole, type ButtonPermission, type DataScope, type RolePermissionConfig,
@@ -15,7 +16,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { ShieldCheck, Save, RotateCcw, Eye, MousePointerClick, Database, Lock } from 'lucide-react';
 import { logOperation } from '../lib/operation-log-helper';
-import MobileDesktopOnlyNotice from '@/components/mobile/MobileDesktopOnlyNotice';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const allPages = Object.entries(pageLabels).map(([path, label]) => ({ path, label }));
@@ -41,12 +41,30 @@ export default function Permissions() {
   const [selectedRole, setSelectedRole] = useState<SystemRole>('sales');
   const [changed, setChanged] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const saveLock = useRef(false);
+  const [baseline, setBaseline] = useState(defaultRolePermissions);
+  const [configLoadError, setConfigLoadError] = useState(false);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const changeSummary = useMemo(() => roles.flatMap(role => {
+    const before = baseline[role]; const after = config[role];
+    if (JSON.stringify(before) === JSON.stringify(after)) return [];
+    const pagesAdded = after.pages.filter(item => !before.pages.includes(item));
+    const pagesRemoved = before.pages.filter(item => !after.pages.includes(item));
+    const buttonsAdded = after.buttons.filter(item => !before.buttons.includes(item));
+    const buttonsRemoved = before.buttons.filter(item => !after.buttons.includes(item));
+    const details = [
+      ...pagesAdded.map(item => `允许访问：${pageLabels[item] || item}`), ...pagesRemoved.map(item => `取消访问：${pageLabels[item] || item}`),
+      ...buttonsAdded.map(item => `允许操作：${buttonPermissionLabels[item] || item}`), ...buttonsRemoved.map(item => `取消操作：${buttonPermissionLabels[item] || item}`),
+      ...(before.dataScope !== after.dataScope ? [`数据范围：${dataScopeLabels[before.dataScope]} → ${dataScopeLabels[after.dataScope]}`] : []),
+      ...Object.keys(after.sensitiveFields).filter(key => before.sensitiveFields[key as keyof typeof before.sensitiveFields] !== after.sensitiveFields[key as keyof typeof after.sensitiveFields]).map(key => `${({ viewPassword: '查看媒体密码', copyPassword: '复制媒体密码', viewFinance: '查看财务信息' } as Record<string, string>)[key] || key}：${after.sensitiveFields[key as keyof typeof after.sensitiveFields] ? '允许' : '禁止'}`),
+    ];
+    return [{ role, details }];
+  }), [baseline, config]);
+  const permissionDraft = useUnsavedChanges(changeSummary.length > 0);
 
   useEffect(() => {
-    if (isMobile) {
-      setLoading(false);
-      return;
-    }
+    if (!isAdmin) { setLoading(false); return; }
 
     let active = true;
     const loadConfig = async () => {
@@ -54,11 +72,11 @@ export default function Permissions() {
       try {
         const remote = await loadRemoteAppConfig('role_permissions', defaultRolePermissions);
         if (active) {
-          setConfig(normalizeRolePermissions(remote));
+          const next = normalizeRolePermissions(remote); setConfig(next); setBaseline(next); setConfigLoadError(false);
         }
       } catch {
         if (active) {
-          setConfig(loadRolePermissions());
+          const cached = loadRolePermissions(); setConfig(cached); setBaseline(cached); setConfigLoadError(true);
           toast.error('加载权限配置失败，已回退到本地缓存');
         }
       } finally {
@@ -72,16 +90,7 @@ export default function Permissions() {
     return () => {
       active = false;
     };
-  }, [isMobile]);
-
-  if (isMobile) {
-    return (
-      <MobileDesktopOnlyNotice
-        title="权限管理请在电脑端处理"
-        description="角色、数据范围和敏感信息权限属于高风险全局配置，手机版不提供修改入口。"
-      />
-    );
-  }
+  }, [isAdmin, reloadVersion]);
 
   if (!isAdmin) {
     return (
@@ -97,6 +106,16 @@ export default function Permissions() {
   }
 
   const currentPerms = config[selectedRole];
+  if (isMobile) return <div className="app-page space-y-4" data-testid="mobile-permission-summary">
+    <div className="flex items-center justify-between gap-3"><h2 className="app-page-heading">权限管理</h2><Badge variant="secondary">只读摘要</Badge></div>
+    {configLoadError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">当前为缓存摘要，尚未核实最新权限。<Button variant="outline" className="mt-2" onClick={() => setReloadVersion(value => value + 1)}>重新读取</Button></div>}
+    <p className="text-sm text-slate-500">按角色查看访问范围；权限调整在电脑端完成。</p>
+    <label className="block text-sm text-slate-600">查看角色<select aria-label="查看角色" value={selectedRole} onChange={event => setSelectedRole(event.target.value as SystemRole)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900">{roles.map(role => <option key={role} value={role}>{systemRoleLabels[role]}</option>)}</select></label>
+    <Card><CardHeader><CardTitle className="text-base">数据与敏感信息</CardTitle></CardHeader><CardContent><dl className="space-y-3 text-sm">{[['数据范围', dataScopeLabels[currentPerms.dataScope]], ['查看媒体密码', currentPerms.sensitiveFields.viewPassword ? '允许' : '禁止'], ['复制媒体密码', currentPerms.sensitiveFields.copyPassword ? '允许' : '禁止'], ['查看财务信息', currentPerms.sensitiveFields.viewFinance ? '允许' : '禁止']].map(([label,value]) => <div key={label} className="flex justify-between gap-3 border-b border-dashed border-slate-100 pb-2"><dt className="text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl></CardContent></Card>
+    <Card><CardHeader><CardTitle className="text-base">可访问页面 · {currentPerms.pages.length}</CardTitle></CardHeader><CardContent><ul className="divide-y divide-slate-100 text-sm">{currentPerms.pages.map(path => <li key={path} className="min-h-11 py-3">{pageLabels[path] || path}</li>)}{!currentPerms.pages.length && <li className="text-slate-500">未开放页面</li>}</ul></CardContent></Card>
+    <Card><CardHeader><CardTitle className="text-base">允许操作 · {currentPerms.buttons.length}</CardTitle></CardHeader><CardContent><ul className="divide-y divide-slate-100 text-sm">{currentPerms.buttons.map(key => <li key={key} className="min-h-11 py-3">{buttonPermissionLabels[key] || key}</li>)}{!currentPerms.buttons.length && <li className="text-slate-500">未开放操作</li>}</ul></CardContent></Card>
+  </div>;
+
 
   const togglePage = (path: string) => {
     const pages = currentPerms.pages.includes(path)
@@ -131,20 +150,23 @@ export default function Permissions() {
   };
 
   const handleSave = async () => {
+    if (saveLock.current || configLoadError) return;
+    saveLock.current = true; setSaving(true);
     try {
       const normalized = normalizeRolePermissions(config);
       await saveRemoteAppConfig('role_permissions', normalized);
-      setConfig(normalized);
+      setConfig(normalized); setBaseline(normalized); permissionDraft.markSaved();
       setChanged(false);
       toast.success('权限配置已保存');
       const op = employee?.name || '管理员';
-      logOperation({ actionType: 'other', actionDetail: `修改角色权限: ${systemRoleLabels[selectedRole]}`, operatorName: op });
+      logOperation({ actionType: 'other', actionDetail: `修改角色权限: ${changeSummary.map(item => systemRoleLabels[item.role]).join("、")}；${changeSummary.reduce((count, item) => count + item.details.length, 0)} 项调整`, operatorName: op });
     } catch {
       toast.error('保存权限配置失败');
-    }
+    } finally { saveLock.current = false; setSaving(false); }
   };
 
   const handleReset = () => {
+    if (saving || !window.confirm('恢复默认会替换所有角色的当前草稿。保存前可以在变更摘要中核对，是否继续？')) return;
     setConfig(normalizeRolePermissions(defaultRolePermissions));
     setChanged(true);
     toast.info('已恢复默认权限配置，请保存');
@@ -161,6 +183,8 @@ export default function Permissions() {
         <p className="app-page-description">配置不同角色的页面、按钮、数据和敏感信息权限。</p>
       </div></div>
 
+      {configLoadError && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>当前显示缓存配置，重新读取成功后才能保存。</span><Button variant="outline" onClick={() => setReloadVersion(value => value + 1)}>重新读取</Button></div>}
+      <fieldset disabled={saving || configLoadError} className="min-w-0 space-y-5 border-0 p-0">
       <div className="calm-permission-role">
         <label htmlFor="permission-role" className="text-sm font-medium text-slate-700">当前配置角色</label>
         <select id="permission-role" value={selectedRole} onChange={event => setSelectedRole(event.target.value as SystemRole)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm sm:w-56">{roles.map(role => <option key={role} value={role}>{systemRoleLabels[role]}</option>)}</select>
@@ -275,15 +299,15 @@ export default function Permissions() {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                 <div><p className="text-sm font-medium">查看媒体账号密码</p><p className="text-xs text-slate-500">允许查看媒体账号的密码信息</p></div>
-                <Switch checked={currentPerms.sensitiveFields.viewPassword} onCheckedChange={() => toggleSensitive('viewPassword')} />
+                <Switch aria-label="查看媒体账号密码" checked={currentPerms.sensitiveFields.viewPassword} onCheckedChange={() => toggleSensitive('viewPassword')} />
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                 <div><p className="text-sm font-medium">复制媒体账号密码</p><p className="text-xs text-slate-500">允许复制密码到剪贴板</p></div>
-                <Switch checked={currentPerms.sensitiveFields.copyPassword} onCheckedChange={() => toggleSensitive('copyPassword')} />
+                <Switch aria-label="复制媒体账号密码" checked={currentPerms.sensitiveFields.copyPassword} onCheckedChange={() => toggleSensitive('copyPassword')} />
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                 <div><p className="text-sm font-medium">查看财务信息</p><p className="text-xs text-slate-500">仅老板、管理员和财务可查看；销售、运营、设计与合伙人固定隔离</p></div>
-                <Switch checked={currentPerms.sensitiveFields.viewFinance} disabled={['sales', 'sales_manager', 'sales_partner', 'ops', 'design'].includes(selectedRole)} onCheckedChange={() => toggleSensitive('viewFinance')} />
+                <Switch aria-label="查看财务信息" checked={currentPerms.sensitiveFields.viewFinance} disabled={['sales', 'sales_manager', 'sales_partner', 'ops', 'design'].includes(selectedRole)} onCheckedChange={() => toggleSensitive('viewFinance')} />
               </div>
               <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <p className="text-xs text-amber-700">
@@ -295,14 +319,16 @@ export default function Permissions() {
         </TabsContent>
       </Tabs>
 
+      </fieldset>
+      {changeSummary.length > 0 && <details open className="rounded-xl border border-amber-200 bg-amber-50 p-4"><summary className="cursor-pointer text-sm font-semibold text-amber-900">保存前核对 · {changeSummary.length} 个角色 · {changeSummary.reduce((count, item) => count + item.details.length, 0)} 项变更</summary><div className="mt-3 space-y-3">{changeSummary.map(item => <section key={item.role}><h3 className="text-sm font-semibold">{systemRoleLabels[item.role]}</h3><ul className="mt-1 space-y-1 text-sm text-slate-600">{item.details.map(detail => <li key={detail}>{detail}</li>)}</ul></section>)}</div></details>}
       {/* Save / Reset */}
       <div className="calm-permission-savebar">
-        <p className="text-xs text-slate-500" role="status">{changed ? '有未保存的权限调整' : '权限调整将在点击保存后生效'}</p>
-        <Button variant="outline" size="sm" onClick={handleReset}>
+        <p className="text-xs text-slate-500" role="status">{changeSummary.length > 0 ? '有未保存的权限调整' : '权限调整将在点击保存后生效'}</p>
+        <Button variant="outline" size="sm" disabled={saving || configLoadError} onClick={handleReset}>
           <RotateCcw className="w-3.5 h-3.5 mr-1" /> 恢复默认
         </Button>
-        <Button onClick={handleSave} disabled={!changed} className="bg-blue-600 hover:bg-blue-700">
-          <Save className="w-4 h-4 mr-1" /> 保存权限配置
+        <Button onClick={handleSave} disabled={changeSummary.length === 0 || saving || configLoadError} className="bg-blue-600 hover:bg-blue-700">
+          <Save className="w-4 h-4 mr-1" /> {saving ? '保存中…' : '保存权限配置'}
         </Button>
       </div>
       </div>

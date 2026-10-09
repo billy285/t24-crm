@@ -771,6 +771,9 @@ def build_os_paid_customer_evidence(base: dict[str, Any]) -> dict[str, Any]:
         "by_business_line": {
             code: len(verified_customers[code]) for code in sorted(os_codes)
         },
+        "verified_customer_ids_by_business_line": {
+            code: sorted(verified_customers[code]) for code in sorted(os_codes)
+        },
         "valid_receipt_count": valid_receipt_count,
         "unverified_active_paid_customers": unverified_by_line,
         "excluded_unlinked_receipts": excluded_unlinked_receipts,

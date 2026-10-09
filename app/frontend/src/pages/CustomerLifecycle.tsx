@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useDialogDraft } from '@/lib/use-dialog-draft';
+import { useRetainedView } from '@/lib/use-retained-view';
+import { buildReturnLink } from '@/lib/navigation-state';
+import { useListScroll } from '@/lib/use-list-scroll';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Activity, AlertTriangle, ArrowRight, CalendarDays, CheckCircle2,
   History, Layers3, MoreHorizontal, PauseCircle, RefreshCw, Search, ShieldAlert,
@@ -143,29 +147,35 @@ export default function CustomerLifecycle() {
   const { isAdmin } = useRole();
   const isMobile = useIsMobile();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const retainedScope = `lifecycle:${searchParams.get('customer') || 'all'}:${searchParams.get('status') || 'all'}`;
   const today = businessDateKey();
-  const [startDate, setStartDate] = useState('2026-01-01');
-  const [asOf, setAsOf] = useState(today);
+  const [startDate, setStartDate] = useRetainedView(`${retainedScope}:startDate`, '2026-01-01');
+  const [asOf, setAsOf] = useRetainedView(`${retainedScope}:asOf`, today);
   const [data, setData] = useState<LifecycleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState(searchParams.get('customer') || '');
+  const [search, setSearch] = useRetainedView(`${retainedScope}:search`, searchParams.get('customer') || '');
   const initialStatus = searchParams.get('status') || 'all';
-  const [activeSection, setActiveSection] = useState<'overview' | 'retention' | 'customers' | 'review'>(
+  const [activeSection, setActiveSection] = useRetainedView<'overview' | 'retention' | 'customers' | 'review'>(`${retainedScope}:section`,
     searchParams.get('customer') ? 'customers' : initialStatus === 'at_risk' ? 'review' : 'overview',
   );
-  const [statusFilter, setStatusFilter] = useState(statusLabels[initialStatus] ? initialStatus : 'all');
-  const [drilldownFilter, setDrilldownFilter] = useState<'all' | 'started30' | 'stopped30' | 'review'>('all');
-  const [stopReasonFilter, setStopReasonFilter] = useState('');
-  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useRetainedView(`${retainedScope}:statusFilter`, statusLabels[initialStatus] ? initialStatus : 'all');
+  const [drilldownFilter, setDrilldownFilter] = useRetainedView<'all' | 'started30' | 'stopped30' | 'review'>(`${retainedScope}:drilldown`, 'all');
+  const [stopReasonFilter, setStopReasonFilter] = useRetainedView(`${retainedScope}:stopReasonFilter`, '');
+  const [page, setPage] = useRetainedView(`${retainedScope}:page`, 1);
   const [actionTarget, setActionTarget] = useState<LifecycleCustomer | null>(null);
   const [actionType, setActionType] = useState('');
   const [actionDate, setActionDate] = useState(today);
   const [actionReason, setActionReason] = useState('');
   const [actionNote, setActionNote] = useState('');
   const [actionSaving, setActionSaving] = useState(false);
+  const actionDraft = useDialogDraft(Boolean(actionTarget), [actionDate, actionReason, actionNote]);
   const [detail, setDetail] = useState<DetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const detailSequence = useRef(0);
+  const firstFilterRender = useRef(true);
+  useListScroll('customer-lifecycle', !loading && !detail);
 
   const loadData = async () => {
     setLoading(true);
@@ -185,7 +195,7 @@ export default function CustomerLifecycle() {
   };
 
   useEffect(() => { void loadData(); }, []);
-  useEffect(() => { setPage(1); }, [search, statusFilter, drilldownFilter, stopReasonFilter]);
+  useEffect(() => { if (firstFilterRender.current) { firstFilterRender.current = false; return; } setPage(1); }, [search, statusFilter, drilldownFilter, stopReasonFilter]);
   useEffect(() => {
     if (isMobile && activeSection === 'overview') setActiveSection('customers');
   }, [activeSection, isMobile]);
@@ -267,7 +277,7 @@ export default function CustomerLifecycle() {
   };
 
   const submitAction = async () => {
-    if (!actionTarget || !actionType) return;
+    if (!actionTarget || !actionType || actionSaving) return;
     if (actionType === 'stop' && !actionReason) {
       toast.error('请选择停止合作原因');
       return;
@@ -290,7 +300,7 @@ export default function CustomerLifecycle() {
         options: authOptions(),
       });
       toast.success(`${actionTarget.business_name}：${actionLabels[actionType]}完成`);
-      setActionTarget(null);
+      actionDraft.markSaved(); setActionTarget(null);
       await loadData();
     } catch (err: any) {
       toast.error(getErrorMessage(err));
@@ -333,6 +343,7 @@ export default function CustomerLifecycle() {
   };
 
   const openDetail = async (customer: LifecycleCustomer) => {
+    const request = ++detailSequence.current;
     setDetailLoading(true);
     setDetail({ customer: { id: customer.customer_id, business_name: customer.business_name, customer_code: customer.customer_code }, cycles: [], events: [] });
     try {
@@ -340,12 +351,13 @@ export default function CustomerLifecycle() {
         url: `/api/v1/customer-lifecycle/customers/${customer.customer_id}`,
         method: 'GET', options: authOptions(),
       });
-      setDetail(response.data);
+      if (request === detailSequence.current) setDetail(response.data);
     } catch (err: any) {
+      if (request !== detailSequence.current) return;
       toast.error(getErrorMessage(err, '客户生命周期加载失败'));
       setDetail(null);
     } finally {
-      setDetailLoading(false);
+      if (request === detailSequence.current) setDetailLoading(false);
     }
   };
 
@@ -410,7 +422,7 @@ export default function CustomerLifecycle() {
         </div>
         <div className="flex flex-wrap gap-2">
           {!isMobile && <details className="calm-maintenance-tools"><summary>更多工具<MoreHorizontal className="h-4 w-4" /></summary><div>
-            <Button asChild variant="ghost"><Link to="/management-decisions"><Layers3 className="mr-2 h-4 w-4" />经营分类与项目</Link></Button>
+            <Button asChild variant="ghost"><Link to={buildReturnLink('/management-decisions', `${location.pathname}${location.search}`, 'customer-lifecycle')}><Layers3 className="mr-2 h-4 w-4" />经营分类与项目</Link></Button>
             {isAdmin && <Button variant="ghost" onClick={() => void runBackfill()} disabled={loading}><History className="mr-2 h-4 w-4" />回溯历史</Button>}
           </div></details>}
           <Button variant="outline" onClick={() => void loadData()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新数据</Button>
@@ -615,12 +627,12 @@ export default function CustomerLifecycle() {
         </CardContent>
       </Card>}
 
-      {!isMobile && <Dialog open={!!actionTarget} onOpenChange={open => !open && setActionTarget(null)}>
-        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{actionLabels[actionType] || '生命周期操作'}</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-semibold">{actionTarget?.business_name}</p><p className="mt-1 text-xs text-slate-500">当前状态：{statusLabels[actionTarget?.status || ''] || '-'}</p></div>{actionType === 'stop' && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700"><strong>停止合作将同步完成状态闭环：</strong>所有仍在合作的项目会停止，关联续费会关闭自动续费和未来扣款；历史成交、收款和服务记录全部保留。</div>}<div><Label>{actionType === 'adjust_start' ? '新的合作开始日期' : '生效日期'}</Label><Input type="date" value={actionDate} max={today} onChange={event => setActionDate(event.target.value)} className="mt-1" /></div>{actionType === 'stop' && <div><Label>停止合作原因 *</Label><select value={actionReason} onChange={event => setActionReason(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"><option value="">请选择原因</option>{stopReasonOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>}<div><Label>{actionType === 'adjust_start' ? '修正原因 *' : '备注'}</Label><Textarea value={actionNote} onChange={event => setActionNote(event.target.value)} rows={3} className="mt-1" placeholder={actionType === 'reactivate' ? '系统将使用停止合作后的第一笔有效收款作为新周期起点' : '填写业务背景，方便以后复盘'} /></div>{actionType === 'reactivate' && <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">重新合作必须已经存在停止日期之后的新收款；新周期开始日期自动取该笔收款日期。</p>}</div><DialogFooter><Button variant="outline" onClick={() => setActionTarget(null)}>取消</Button><Button onClick={() => void submitAction()} disabled={actionSaving}>{actionSaving ? '处理中…' : '确认'}</Button></DialogFooter></DialogContent>
+      {!isMobile && <Dialog open={!!actionTarget} onOpenChange={open => { if (!open && !actionSaving && actionDraft.confirmDiscard()) setActionTarget(null); }}>
+        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{actionLabels[actionType] || '生命周期操作'}</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-semibold">{actionTarget?.business_name}</p><p className="mt-1 text-xs text-slate-500">当前状态：{statusLabels[actionTarget?.status || ''] || '-'}</p></div>{actionType === 'stop' && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700"><strong>停止合作将同步完成状态闭环：</strong>所有仍在合作的项目会停止，关联续费会关闭自动续费和未来扣款；历史成交、收款和服务记录全部保留。</div>}<div><Label>{actionType === 'adjust_start' ? '新的合作开始日期' : '生效日期'} · 北京时间</Label><Input type="date" value={actionDate} max={today} onChange={event => setActionDate(event.target.value)} className="mt-1" /></div>{actionType === 'stop' && <div><Label>停止合作原因 *</Label><select value={actionReason} onChange={event => setActionReason(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"><option value="">请选择原因</option>{stopReasonOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>}<div><Label>{actionType === 'adjust_start' ? '修正原因 *' : '备注'}</Label><Textarea value={actionNote} onChange={event => setActionNote(event.target.value)} rows={3} className="mt-1" placeholder={actionType === 'reactivate' ? '系统将使用停止合作后的第一笔有效收款作为新周期起点' : '填写业务背景，方便以后复盘'} /></div>{actionType === 'reactivate' && <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">重新合作必须已经存在停止日期之后的新收款；新周期开始日期自动取该笔收款日期。</p>}</div><DialogFooter><Button variant="outline" disabled={actionSaving} onClick={() => { if (actionDraft.confirmDiscard()) setActionTarget(null); }}>取消</Button><Button onClick={() => void submitAction()} disabled={actionSaving}>{actionSaving ? '处理中…' : '确认'}</Button></DialogFooter></DialogContent>
       </Dialog>}
 
-      <Dialog open={!!detail} onOpenChange={open => !open && setDetail(null)}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{detail?.customer.business_name || '客户'} · 生命周期轨迹</DialogTitle></DialogHeader>{detailLoading ? <div className="py-12 text-center text-sm text-slate-400">正在加载…</div> : <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-2">{(detail?.cycles || []).map(cycle => <div key={cycle.id} className="rounded-xl border border-slate-200 p-4"><div className="flex items-center justify-between"><p className="font-semibold">第{cycle.cycle_number}段合作</p><Badge className={statusClasses[cycle.status]}>{statusLabels[cycle.status]}</Badge></div><p className="mt-3 text-sm text-slate-600">{formatDate(cycle.started_at)} 至 {formatDate(cycle.ended_at)}</p><p className="mt-1 text-xs text-slate-400">起点：{cycle.first_payment_id ? `记账 #${cycle.first_payment_id}` : '管理员修正'} · {cycle.stop_reason_label || '暂无停止原因'}</p></div>)}</div><div><h3 className="mb-3 text-sm font-semibold text-slate-800">事件记录</h3><div className="relative space-y-3 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-slate-200">{(detail?.events || []).map(event => <div key={event.id} className="relative flex gap-3"><span className="z-10 mt-2 h-3.5 w-3.5 rounded-full border-2 border-white bg-blue-500 ring-1 ring-blue-200" /><div className="flex-1 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="flex flex-wrap justify-between gap-2"><p className="text-sm font-semibold">{eventLabels[event.event_type] || event.event_type}</p><span className="text-xs text-slate-400">{formatDate(event.effective_at)}</span></div><p className="mt-1 text-xs text-slate-500">{event.reason_label || event.note || (event.source_id ? `${event.source_type} #${event.source_id}` : '无备注')} {event.actor_name ? `· ${event.actor_name}` : ''}</p></div></div>)}</div></div></div>}</DialogContent>
+      <Dialog open={!!detail} onOpenChange={open => { if (!open) { detailSequence.current++; setDetail(null); } }}>
+        <DialogContent className={isMobile ? "left-0 top-0 h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-none border-0 px-4 pb-8" : "max-h-[85vh] overflow-y-auto sm:max-w-3xl"}><DialogHeader className="sticky top-0 z-10 bg-white pb-3"><DialogTitle>{detail?.customer.business_name || '客户'} · 生命周期轨迹</DialogTitle></DialogHeader>{detailLoading ? <div className="py-12 text-center text-sm text-slate-400">正在加载…</div> : <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-2">{(detail?.cycles || []).map(cycle => <div key={cycle.id} className="rounded-xl border border-slate-200 p-4"><div className="flex items-center justify-between"><p className="font-semibold">第{cycle.cycle_number}段合作</p><Badge className={statusClasses[cycle.status]}>{statusLabels[cycle.status]}</Badge></div><p className="mt-3 text-sm text-slate-600">{formatDate(cycle.started_at)} 至 {formatDate(cycle.ended_at)}</p><p className="mt-1 text-xs text-slate-400">起点：{cycle.first_payment_id ? `记账 #${cycle.first_payment_id}` : '管理员修正'} · {cycle.stop_reason_label || '暂无停止原因'}</p></div>)}</div><div><h3 className="mb-3 text-sm font-semibold text-slate-800">事件记录</h3><div className="relative space-y-3 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-slate-200">{(detail?.events || []).map(event => <div key={event.id} className="relative flex gap-3"><span className="z-10 mt-2 h-3.5 w-3.5 rounded-full border-2 border-white bg-blue-500 ring-1 ring-blue-200" /><div className="flex-1 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="flex flex-wrap justify-between gap-2"><p className="text-sm font-semibold">{eventLabels[event.event_type] || event.event_type}</p><span className="text-xs text-slate-400">{formatDate(event.effective_at)}</span></div><p className="mt-1 text-xs text-slate-500">{event.reason_label || event.note || (event.source_id ? `${event.source_type} #${event.source_id}` : '无备注')} {event.actor_name ? `· ${event.actor_name}` : ''}</p></div></div>)}</div></div></div>}</DialogContent>
       </Dialog>
     </div>
   );

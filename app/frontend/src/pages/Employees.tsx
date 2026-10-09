@@ -1,5 +1,7 @@
+import EmployeeHandoffDialog, { readAllHandoffRows } from '@/components/EmployeeHandoffDialog';
+import { useDialogDraft } from '@/lib/use-dialog-draft';
 import './admin-workspace.css';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '../lib/tokenStore';
 import { useRole, roleLabels, empStatusLabels, empStatusColors, departmentLabels, positionLabels } from '../lib/role-context';
@@ -71,6 +73,9 @@ export default function Employees() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const employeeSaveLock = useRef(false);
+  const [pendingCreatedId, setPendingCreatedId] = useState<number | null>(null);
+  const [passwordSetupError, setPasswordSetupError] = useState('');
   const [selectedEmp, setSelectedEmp] = useState<any>(null);
   const [empCustomers, setEmpCustomers] = useState<any[]>([]);
   const [empTasks, setEmpTasks] = useState<any[]>([]);
@@ -79,8 +84,6 @@ export default function Employees() {
 
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferFrom, setTransferFrom] = useState<any>(null);
-  const [transferTo, setTransferTo] = useState('');
-  const [transferring, setTransferring] = useState(false);
 
   const [resignTarget, setResignTarget] = useState<any>(null);
   const [resigning, setResigning] = useState(false);
@@ -93,6 +96,12 @@ export default function Employees() {
   const [deleting, setDeleting] = useState(false);
   const [disableTarget, setDisableTarget] = useState<any>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const detailSequence = useRef(0);
+  const employeeDraft = useDialogDraft(showForm && !pendingCreatedId, form);
+  const passwordDraft = useDialogDraft(Boolean(resetPwdTarget), newPassword);
+  const failureDetail = (error: any) => error?.data?.detail || error?.response?.data?.detail || error?.message || '操作失败';
 
   useEffect(() => { loadEmployees(); }, []);
 
@@ -131,8 +140,9 @@ export default function Employees() {
 
   const activeEmployees = employees.filter(e => e.status === 'active' || e.status === 'probation');
 
-  const openCreate = () => { setForm(emptyForm); setEditingId(null); setShowForm(true); };
+  const openCreate = () => { setPendingCreatedId(null); setPasswordSetupError(''); setForm(emptyForm); setEditingId(null); setShowForm(true); };
   const openEdit = (e: any) => {
+    setPendingCreatedId(null); setPasswordSetupError('');
     setForm({
       name: e.name || '', role: e.role || 'sales', phone: e.phone || '', email: e.email || '',
       status: e.status || 'active', department: e.department || 'sales', position: e.position || 'specialist',
@@ -144,6 +154,7 @@ export default function Employees() {
   };
 
   const handleSave = async () => {
+    if (employeeSaveLock.current) return;
     if (!form.name || !form.role) { toast.error('请填写姓名和角色'); return; }
     const originalEmployee = employees.find(employee => employee.id === editingId);
     if (form.phone.trim() && form.phone !== originalEmployee?.phone) {
@@ -154,15 +165,16 @@ export default function Employees() {
       toast.error('初始密码至少需要8个字符');
       return;
     }
-    if (form.email && employees.some(emp => emp.id !== editingId && (emp.email || '').trim().toLowerCase() === form.email.trim().toLowerCase())) {
+    if (!pendingCreatedId && form.email && employees.some(emp => emp.id !== editingId && (emp.email || '').trim().toLowerCase() === form.email.trim().toLowerCase())) {
       toast.error('该邮箱已被其他员工使用');
       return;
     }
-    if (form.login_username && employees.some(emp => emp.id !== editingId && (emp.login_username || '').trim().toLowerCase() === form.login_username.trim().toLowerCase())) {
+    if (!pendingCreatedId && form.login_username && employees.some(emp => emp.id !== editingId && (emp.login_username || '').trim().toLowerCase() === form.login_username.trim().toLowerCase())) {
       toast.error('该登录用户名已存在');
       return;
     }
-    setSaving(true);
+    employeeSaveLock.current = true; setSaving(true);
+    let createdId = pendingCreatedId;
     try {
       const now = new Date().toISOString();
       const op = currentEmp?.name || '管理员';
@@ -190,33 +202,25 @@ export default function Employees() {
         toast.success('员工信息已更新');
         logOperation({ actionType: 'other', actionDetail: `编辑员工: ${form.name}`, operatorName: op });
       } else {
-        const created = await client.entities.employees.create({
-          data: {
-            ...payload,
-            created_at: now,
-          },
-        });
-        if (form.initial_password && created?.data?.id) {
-          await invokeWithAuth({
-            url: '/api/v1/emp-auth/set-password',
-            method: 'POST',
-            data: {
-              employee_id: created.data.id,
-              new_password: form.initial_password,
-            },
-          });
-          toast.success('员工已添加并设置初始密码');
-        } else {
-          toast.success('员工已添加，请为该员工设置登录密码');
+        if (!createdId) {
+          const created = await client.entities.employees.create({ data: { ...payload, created_at: now } });
+          createdId = Number(created?.data?.id) || null;
+          if (!createdId) throw new Error('员工创建结果未返回，请刷新目录核实后再操作');
+          setPendingCreatedId(createdId); employeeDraft.markSaved();
         }
+        if (form.initial_password) {
+          await invokeWithAuth({ url: '/api/v1/emp-auth/set-password', method: 'POST', data: { employee_id: createdId, new_password: form.initial_password } });
+          toast.success('员工已添加并设置初始密码');
+        } else toast.success('员工已添加，请为该员工设置登录密码');
         if (form.role === 'sales_partner') toast.success('销售合伙人账号及分润档案已同时建立');
         logOperation({ actionType: 'other', actionDetail: `新增员工: ${form.name}`, operatorName: op });
       }
-      setShowForm(false); loadEmployees();
+      employeeDraft.markSaved(); setShowForm(false); setPendingCreatedId(null); setPasswordSetupError(''); loadEmployees();
     } catch (err: any) {
       const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '保存失败';
+      if (createdId && !editingId) { setPasswordSetupError(`员工已经创建，初始密码尚未设置：${detail}。重试只会设置密码。`); void loadEmployees(); }
       toast.error(detail);
-    } finally { setSaving(false); }
+    } finally { employeeSaveLock.current = false; setSaving(false); }
   };
 
   const toggleStatus = async (emp: any, newStatus: string) => {
@@ -228,8 +232,8 @@ export default function Employees() {
       loadEmployees();
       if (selectedEmp?.id === emp.id) setSelectedEmp({ ...selectedEmp, status: newStatus });
       return true;
-    } catch {
-      toast.error('操作失败');
+    } catch (error) {
+      toast.error(failureDetail(error), { duration: 10000 });
       return false;
     }
   };
@@ -256,27 +260,9 @@ export default function Employees() {
       toast.success('员工已标记为离职');
       logOperation({ actionType: 'other', actionDetail: `员工离职: ${resignTarget.name}`, operatorName: currentEmp?.name || '管理员' });
       setResignTarget(null); loadEmployees();
-    } catch { toast.error('操作失败'); } finally { setResigning(false); }
+    } catch (error) { toast.error(failureDetail(error), { duration: 10000 }); } finally { setResigning(false); }
   };
 
-  const handleTransfer = async () => {
-    if (!transferFrom || !transferTo) { toast.error('请选择接收员工'); return; }
-    setTransferring(true);
-    try {
-      const toEmp = employees.find(e => String(e.id) === transferTo);
-      if (!toEmp) { toast.error('目标员工不存在'); setTransferring(false); return; }
-      const custRes = await client.entities.customers.query({ query: { sales_person: transferFrom.name }, limit: 200 });
-      const custs = custRes?.data?.items || [];
-      let count = 0;
-      for (const c of custs) {
-        await client.entities.customers.update({ id: String(c.id), data: { sales_person: toEmp.name, sales_employee_id: toEmp.id, updated_at: new Date().toISOString() } });
-        count++;
-      }
-      toast.success(`已将 ${count} 个客户从 ${transferFrom.name} 转交给 ${toEmp.name}`);
-      logOperation({ actionType: 'other', actionDetail: `客户交接: ${transferFrom.name} -> ${toEmp.name} (${count}个客户)`, operatorName: currentEmp?.name || '管理员' });
-      setShowTransfer(false); setTransferFrom(null); setTransferTo('');
-    } catch { toast.error('交接失败'); } finally { setTransferring(false); }
-  };
 
   const handleResetPassword = async () => {
     if (!resetPwdTarget) return;
@@ -292,7 +278,7 @@ export default function Employees() {
       });
       toast.success(`已重置 ${resetPwdTarget.name} 的登录密码`);
       logOperation({ actionType: 'other', actionDetail: `重置员工密码: ${resetPwdTarget.name}`, operatorName: currentEmp?.name || '管理员' });
-      setResetPwdTarget(null);
+      passwordDraft.markSaved(); setResetPwdTarget(null);
       setNewPassword('');
     } catch (err: any) {
       const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '重置密码失败';
@@ -318,31 +304,26 @@ export default function Employees() {
       logOperation({ actionType: 'other', actionDetail: `删除员工: ${deleteTarget.name}`, operatorName: currentEmp?.name || '管理员' });
       setDeleteTarget(null);
       loadEmployees();
-    } catch { toast.error('删除失败'); } finally { setDeleting(false); }
+    } catch (error) { toast.error(failureDetail(error), { duration: 10000 }); } finally { setDeleting(false); }
   };
 
   const openDetail = async (emp: any) => {
-    setSelectedEmp(emp);
+    const sequence = ++detailSequence.current;
+    setSelectedEmp(emp); setEmpCustomers([]); setEmpTasks([]); setEmpDeals([]); setEmpLogs([]);
+    setDetailLoading(true); setDetailError('');
     try {
-      const [custRes, taskRes, dealRes, logRes] = await Promise.all([
-        client.entities.customers.query({ query: { sales_person: emp.name }, limit: 100, sort: '-created_at' }),
-        client.entities.tasks.query({ query: { assignee_name: emp.name }, limit: 100, sort: '-created_at' }),
-        client.entities.deals.query({ query: { sales_name: emp.name }, limit: 100, sort: '-deal_date' }),
-        invokeWithAuth({
-          url: '/api/v1/entities/operation_logs/all',
-          method: 'GET',
-          data: {
-            query: JSON.stringify({ operator_name: emp.name }),
-            limit: 50,
-            sort: '-created_at',
-          },
-        }),
+      const [customers, tasks, deals, logs] = await Promise.all([
+        readAllHandoffRows('customers'),
+        readAllHandoffRows('tasks'),
+        readAllHandoffRows('deals'),
+        invokeWithAuth({ url: '/api/v1/entities/operation_logs/all', method: 'GET', data: { query: JSON.stringify({ operator_name: emp.name }), limit: 50, sort: '-created_at' } }),
       ]);
-      setEmpCustomers(custRes?.data?.items || []);
-      setEmpTasks(taskRes?.data?.items || []);
-      setEmpDeals(dealRes?.data?.items || []);
-      setEmpLogs(logRes?.data?.items || []);
-    } catch (err) { console.error(err); }
+      if (sequence !== detailSequence.current) return;
+      setEmpCustomers(customers.filter(row => Number(row.sales_employee_id) === emp.id || (row.sales_employee_id == null && row.sales_person === emp.name)));
+      setEmpTasks(tasks.filter(row => Number(row.assignee_id) === emp.id || (row.assignee_id == null && row.assignee_name === emp.name)));
+      setEmpDeals(deals.filter(row => Number(row.sales_employee_id) === emp.id || (row.sales_employee_id == null && row.sales_name === emp.name))); setEmpLogs(logs.data?.items || []);
+    } catch (error) { if (sequence === detailSequence.current) setDetailError(failureDetail(error)); }
+    finally { if (sequence === detailSequence.current) setDetailLoading(false); }
   };
 
   const empStats = useMemo(() => {
@@ -394,26 +375,98 @@ export default function Employees() {
     );
   };
 
+  const employeeDialogs = !isMobile ? <>
+      {/* Transfer Dialog */}
+      {showTransfer && transferFrom && <EmployeeHandoffDialog source={transferFrom} employees={employees} actor={currentEmp?.name || '管理员'} onClose={() => { setShowTransfer(false); setTransferFrom(null); }} onComplete={() => { void loadEmployees(); if (selectedEmp) void openDetail(selectedEmp); }} />}
+
+      {/* Resign Confirm */}
+      <ConfirmDialog open={!!resignTarget} onOpenChange={v => { if (!v) setResignTarget(null); }} title="确认办理离职"
+        description={`确定要将「${resignTarget?.name}」标记为离职吗？离职后账号将被停用，但记录不会被删除。客户、待办、交付任务、服务进度和在办项目需全部交接。`}
+        onConfirm={handleResign} loading={resigning} confirmLabel="确认办理离职" loadingLabel="办理中..." />
+
+      <ConfirmDialog open={!!disableTarget} onOpenChange={v => { if (!v) setDisableTarget(null); }} title="确认停用账号"
+        description={`确定要停用「${disableTarget?.name}」的账号吗？停用后该员工将无法登录，但员工资料和历史记录会继续保留。`}
+        onConfirm={handleDisable} loading={statusUpdating} confirmLabel="确认停用" loadingLabel="停用中..." />
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!resetPwdTarget} onOpenChange={v => { if (!v && !resettingPassword && passwordDraft.confirmDiscard()) { setResetPwdTarget(null); setNewPassword(''); setResettingPassword(false); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>重置密码</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">即将重置 <strong>{resetPwdTarget?.name}</strong> 的登录密码</p>
+            <div>
+              <Label>新密码</Label>
+              <Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="输入新密码（至少8位）" />
+            </div>
+            <p className="text-xs text-amber-600">请让员工本人安全接收并尽快在“我的账户”修改；不要通过微信群发送密码。</p>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => { if (!resettingPassword && passwordDraft.confirmDiscard()) { setResetPwdTarget(null); setNewPassword(''); } }}>取消</Button>
+            <Button onClick={handleResetPassword} disabled={resettingPassword || !newPassword || newPassword.length < 8} className="bg-blue-600 hover:bg-blue-700">
+              {resettingPassword ? '重置中...' : '确认重置'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm */}
+      <ConfirmDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }} title="确认删除员工"
+        description={`确定要删除员工「${deleteTarget?.name}」吗？此操作不可恢复。客户、待办、交付任务、服务进度和在办项目需全部交接。`}
+        onConfirm={handleDelete} loading={deleting} confirmLabel="确认删除员工" loadingLabel="删除中..." />
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && employeeDraft.confirmDiscard())) setShowForm(open); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editingId ? '编辑员工' : pendingCreatedId ? '补齐初始密码' : '添加员工'}</DialogTitle></DialogHeader>
+          {passwordSetupError && <div role="alert" className="space-y-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800"><p>{passwordSetupError}</p><label className="block">初始密码<Input type="password" disabled={saving} value={form.initial_password} onChange={event => setForm({ ...form, initial_password: event.target.value })} /></label></div>}
+          {!pendingCreatedId && <fieldset disabled={saving} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div><Label>工号</Label><Input value={form.employee_code} onChange={e => setForm({ ...form, employee_code: e.target.value })} placeholder="如 EMP001" className="font-mono" /></div>
+            <div><Label>姓名 *</Label><Input disabled={Boolean(pendingCreatedId)} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>角色 *</Label><NativeSelect value={form.role} onChange={v => setForm({ ...form, role: v })} options={allRoleOptions} /></div>
+            <div><Label>部门</Label><NativeSelect value={form.department} onChange={v => setForm({ ...form, department: v })} options={Object.entries(departmentLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div><Label>岗位</Label><NativeSelect value={form.position} onChange={v => setForm({ ...form, position: v })} options={Object.entries(positionLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(empStatusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div><Label>登录用户名</Label><Input value={form.login_username} onChange={e => setForm({ ...form, login_username: e.target.value })} placeholder="用于系统登录" /></div>
+            <div><Label>入职日期</Label><Input type="date" value={form.hire_date} onChange={e => setForm({ ...form, hire_date: e.target.value })} /></div>
+            <div><Label>直属上级</Label><NativeSelect value={form.supervisor} onChange={v => setForm({ ...form, supervisor: v })} options={[{ value: '', label: '无' }, ...employees.filter(emp => emp.id !== editingId).map(emp => ({ value: emp.name, label: `${emp.name} (${getRoleDisplay(emp.role)})` }))]} /></div>
+            <div><Label>电话</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+ 国家码和电话号码" /><p className="mt-1 text-xs text-slate-500">请包含国际国家码，分机可写为 ext 123。</p></div>
+            <div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+            {!editingId && (
+              <div><Label>初始密码</Label><Input type="password" value={form.initial_password} onChange={e => setForm({ ...form, initial_password: e.target.value })} placeholder="可选，至少8位" /></div>
+            )}
+            <div className="md:col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
+          </fieldset>}
+          {!editingId && <p className="text-xs text-slate-500 mt-3">建议不在此填写，由员工本人在安全环境下设置；第一阶段尚未开放邮件邀请流程。</p>}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => { if (!saving && employeeDraft.confirmDiscard()) setShowForm(false); }}>取消</Button>
+            <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : pendingCreatedId ? '重试设置密码' : '保存'}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+  </> : null;
+
   // ========== DETAIL VIEW ==========
   if (selectedEmp) {
     const e = selectedEmp;
     return (
       <div className="t24-detail-page calm-admin-page calm-employee-detail app-page space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
-          <Button variant="ghost" size="sm" onClick={() => setSelectedEmp(null)}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
+          <Button variant="ghost" size="sm" onClick={() => { detailSequence.current++; setSelectedEmp(null); }}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
           <h2 className="text-lg font-semibold">{e.name}</h2>
           <Badge variant="secondary">{getRoleDisplay(e.role)}</Badge>
           <Badge className={empStatusColors[e.status]}>{empStatusLabels[e.status] || e.status}</Badge>
         </div>
 
+        {detailLoading && <p role="status" className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">正在读取 {e.name} 的工作资料…</p>}
+        {detailError && <div role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800"><p>{detailError}</p><Button variant="outline" className="mt-2" onClick={() => void openDetail(e)}>重新读取工作资料</Button></div>}
         <Tabs defaultValue="info" className="w-full">
           <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="info" className="text-xs">基本信息</TabsTrigger>
-            <TabsTrigger value="stats" className="text-xs">工作统计</TabsTrigger>
-            <TabsTrigger value="customers" className="hidden text-xs md:inline-flex">负责客户 ({empCustomers.length})</TabsTrigger>
-            <TabsTrigger value="tasks" className="text-xs">任务 ({empTasks.length})</TabsTrigger>
-            <TabsTrigger value="deals" className="hidden text-xs md:inline-flex">成交 ({empDeals.length})</TabsTrigger>
-            <TabsTrigger value="logs" className="hidden text-xs md:inline-flex">操作日志</TabsTrigger>
+            <TabsTrigger value="stats" disabled={detailLoading || Boolean(detailError)} className="text-xs">工作统计</TabsTrigger>
+            <TabsTrigger value="customers" disabled={detailLoading || Boolean(detailError)} className="hidden text-xs md:inline-flex">负责客户 ({empCustomers.length})</TabsTrigger>
+            <TabsTrigger value="tasks" disabled={detailLoading || Boolean(detailError)} className="text-xs">任务 ({empTasks.length})</TabsTrigger>
+            <TabsTrigger value="deals" disabled={detailLoading || Boolean(detailError)} className="hidden text-xs md:inline-flex">成交 ({empDeals.length})</TabsTrigger>
+            <TabsTrigger value="logs" disabled={detailLoading || Boolean(detailError)} className="hidden text-xs md:inline-flex">操作日志 · 最近50条</TabsTrigger>
           </TabsList>
 
           <TabsContent value="info">
@@ -450,6 +503,7 @@ export default function Employees() {
           </TabsContent>
 
           <TabsContent value="stats">
+            <p className="mb-3 text-sm text-slate-500">统计包含当前归属的全部客户、任务与成交；历史日志另显示最近50条。</p>
             <Card className="border-slate-200"><CardContent className="p-5">
               {empStats && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -522,6 +576,7 @@ export default function Employees() {
             </CardContent></Card>
           </TabsContent>
         </Tabs>
+        {employeeDialogs}
       </div>
     );
   }
@@ -675,89 +730,7 @@ export default function Employees() {
         {!loading && filtered.length > 0 && <PaginationFooter />}
       </CardContent></Card>
 
-      {!isMobile && <>
-      {/* Transfer Dialog */}
-      <Dialog open={showTransfer} onOpenChange={v => { if (!v) { setShowTransfer(false); setTransferFrom(null); setTransferTo(''); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>客户交接</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div><Label>转出员工</Label><Input value={transferFrom?.name || ''} disabled className="bg-slate-50" /></div>
-            <div><Label>转入员工 *</Label>
-              <NativeSelect value={transferTo} onChange={setTransferTo} options={[{ value: '', label: '请选择接收员工' }, ...activeEmployees.filter(e => e.id !== transferFrom?.id).map(e => ({ value: String(e.id), label: `${e.name} (${getRoleDisplay(e.role)})` }))]} />
-            </div>
-            <p className="text-xs text-slate-500">将 {transferFrom?.name} 名下所有客户转交给选定员工</p>
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => { setShowTransfer(false); setTransferFrom(null); }}>取消</Button>
-            <Button onClick={handleTransfer} disabled={transferring || !transferTo} className="bg-blue-600 hover:bg-blue-700">{transferring ? '交接中...' : '确认交接'}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Resign Confirm */}
-      <ConfirmDialog open={!!resignTarget} onOpenChange={v => { if (!v) setResignTarget(null); }} title="确认办理离职"
-        description={`确定要将「${resignTarget?.name}」标记为离职吗？离职后账号将被停用，但记录不会被删除。如果该员工名下仍有客户，需先完成客户交接。`}
-        onConfirm={handleResign} loading={resigning} confirmLabel="确认办理离职" loadingLabel="办理中..." />
-
-      <ConfirmDialog open={!!disableTarget} onOpenChange={v => { if (!v) setDisableTarget(null); }} title="确认停用账号"
-        description={`确定要停用「${disableTarget?.name}」的账号吗？停用后该员工将无法登录，但员工资料和历史记录会继续保留。`}
-        onConfirm={handleDisable} loading={statusUpdating} confirmLabel="确认停用" loadingLabel="停用中..." />
-
-      {/* Reset Password Dialog */}
-      <Dialog open={!!resetPwdTarget} onOpenChange={v => { if (!v) { setResetPwdTarget(null); setNewPassword(''); setResettingPassword(false); } }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>重置密码</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">即将重置 <strong>{resetPwdTarget?.name}</strong> 的登录密码</p>
-            <div>
-              <Label>新密码</Label>
-              <Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="输入新密码（至少8位）" />
-            </div>
-            <p className="text-xs text-amber-600">请让员工本人安全接收并尽快在“我的账户”修改；不要通过微信群发送密码。</p>
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => { setResetPwdTarget(null); setNewPassword(''); setResettingPassword(false); }}>取消</Button>
-            <Button onClick={handleResetPassword} disabled={resettingPassword || !newPassword || newPassword.length < 8} className="bg-blue-600 hover:bg-blue-700">
-              {resettingPassword ? '重置中...' : '确认重置'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirm */}
-      <ConfirmDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }} title="确认删除员工"
-        description={`确定要删除员工「${deleteTarget?.name}」吗？此操作不可恢复。如果该员工名下仍有客户，需先完成客户交接。`}
-        onConfirm={handleDelete} loading={deleting} confirmLabel="确认删除员工" loadingLabel="删除中..." />
-
-      {/* Add/Edit Dialog */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingId ? '编辑员工' : '添加员工'}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div><Label>工号</Label><Input value={form.employee_code} onChange={e => setForm({ ...form, employee_code: e.target.value })} placeholder="如 EMP001" className="font-mono" /></div>
-            <div><Label>姓名 *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-            <div><Label>角色 *</Label><NativeSelect value={form.role} onChange={v => setForm({ ...form, role: v })} options={allRoleOptions} /></div>
-            <div><Label>部门</Label><NativeSelect value={form.department} onChange={v => setForm({ ...form, department: v })} options={Object.entries(departmentLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            <div><Label>岗位</Label><NativeSelect value={form.position} onChange={v => setForm({ ...form, position: v })} options={Object.entries(positionLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(empStatusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            <div><Label>登录用户名</Label><Input value={form.login_username} onChange={e => setForm({ ...form, login_username: e.target.value })} placeholder="用于系统登录" /></div>
-            <div><Label>入职日期</Label><Input type="date" value={form.hire_date} onChange={e => setForm({ ...form, hire_date: e.target.value })} /></div>
-            <div><Label>直属上级</Label><NativeSelect value={form.supervisor} onChange={v => setForm({ ...form, supervisor: v })} options={[{ value: '', label: '无' }, ...employees.filter(emp => emp.id !== editingId).map(emp => ({ value: emp.name, label: `${emp.name} (${getRoleDisplay(emp.role)})` }))]} /></div>
-            <div><Label>电话</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+ 国家码和电话号码" /><p className="mt-1 text-xs text-slate-500">请包含国际国家码，分机可写为 ext 123。</p></div>
-            <div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
-            {!editingId && (
-              <div><Label>初始密码</Label><Input type="password" value={form.initial_password} onChange={e => setForm({ ...form, initial_password: e.target.value })} placeholder="可选，至少8位" /></div>
-            )}
-            <div className="md:col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
-          </div>
-          {!editingId && <p className="text-xs text-slate-500 mt-3">建议不在此填写，由员工本人在安全环境下设置；第一阶段尚未开放邮件邀请流程。</p>}
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setShowForm(false)}>取消</Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-      </>}
+      {employeeDialogs}
     </div>
   );
 }

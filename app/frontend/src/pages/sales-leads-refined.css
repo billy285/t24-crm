@@ -227,3 +227,7 @@
   .t24-system .slr-page .sl-mobile-next { margin-top: 12px; padding-top: 12px; }
   .slr-active-filters button { min-height: 44px; }
 }
+
+.sl-due-views { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+.sl-due-views button { min-height:44px; padding:8px 12px; border-radius:9px; color:#64748b; }
+.sl-due-views button[aria-pressed=true] { color:#1d4ed8; background:#eff6ff; font-weight:600; }

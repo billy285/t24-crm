@@ -1,0 +1,3 @@
+.rmb-query-panel>summary, .rmb-calculation-details>summary { display:flex; align-items:center; min-height:44px; padding:12px 14px; font-size:14px; color:#52627a; cursor:pointer; border:1px solid #e2e8f0; border-radius:12px; background:#fff; }
+.rmb-query-panel[open]>summary, .rmb-calculation-details[open]>summary { margin-bottom:12px; }
+@media(max-width:767px) { .rmb-query-panel .text-xs, .rmb-calculation-details .text-xs { font-size:13px; } }

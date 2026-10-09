@@ -170,6 +170,7 @@ def test_os_stage_counts_linked_receipts_by_business_line_and_distinct_customer(
     })
 
     assert evidence["by_business_line"] == {"beauty_os": 1, "restaurant_os": 2}
+    assert evidence["verified_customer_ids_by_business_line"] == {"beauty_os": [3], "restaurant_os": [1, 2]}
     assert evidence["unverified_active_paid_customers"] == {"beauty_os": 2, "restaurant_os": 0}
     assert evidence["excluded_unlinked_receipts"] == 1
     assert evidence["excluded_mismatched_receipts"] == 1

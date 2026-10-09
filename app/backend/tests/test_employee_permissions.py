@@ -16,6 +16,8 @@ from models.employees import Employees
 from models.service_progresses import Service_progresses
 from models.service_tasks import Service_tasks
 from models.tasks import Tasks
+from models.management_decisions import CustomerEngagement
+from models.operation_logs import Operation_logs
 from backend.services.emp_auth import create_access_token
 
 
@@ -460,3 +462,82 @@ async def test_batch_rejects_sales_partner_role_change_before_any_write(employee
     assert (await db.get(Employees, 2003)).name == "Safe Employee"
     assert (await db.get(Employees, 2021)).role == "sales_partner"
     assert (await db.get(SalesPartner, 602)).status == "active"
+
+
+@pytest.mark.asyncio
+async def test_project_handoff_all_owned_rows_only_and_idempotent(employee_integrity_api):
+    client, session = employee_integrity_api
+    rows = [CustomerEngagement(id=9000+i, customer_id=302, business_line_id=1,
+        product_id=1, engagement_code=f"HANDOFF-{i}", status="active_paid",
+        owner_employee_id=2010, sales_employee_id=2011, billing_cycle="annual",
+        collection_method="stripe_auto", currency="USD", selected_platforms='["google"]',
+        external_system="proof", external_merchant_id="original-merchant") for i in range(205)]
+    rows += [CustomerEngagement(id=9300, customer_id=302, business_line_id=1,
+        product_id=1, engagement_code="CLOSED", status="completed", owner_employee_id=2010),
+        CustomerEngagement(id=9301, customer_id=302, business_line_id=1,
+        product_id=1, engagement_code="STOPPED", status="stopped", sales_employee_id=2010),
+        CustomerEngagement(id=9302, customer_id=302, business_line_id=1,
+        product_id=1, engagement_code="BOTH", status="paused", owner_employee_id=2010, sales_employee_id=2010)]
+    session.add_all(rows)
+    await session.commit()
+    columns = [column.name for column in CustomerEngagement.__table__.columns if column.name not in {"updated_at", "owner_employee_id", "sales_employee_id"}]
+    before = {row.id: {name: getattr(row, name) for name in columns} for row in rows}
+    response = await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("admin"), json={"target_employee_id": 2003})
+    assert response.status_code == 200, response.text
+    assert response.json() == {"transferred_count": 206, "remaining_count": 0}
+    for row in rows:
+        await session.refresh(row)
+        assert {name: getattr(row, name) for name in columns} == before[row.id]
+        if row.status in {"completed", "stopped"}:
+            assert 2010 in {row.owner_employee_id, row.sales_employee_id}
+        else:
+            assert row.owner_employee_id == 2003
+            assert row.sales_employee_id == (2003 if row.id == 9302 else 2011)
+    audits = (await session.scalars(select(Operation_logs))).all()
+    assert len(audits) == 1
+    second = await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("admin"), json={"target_employee_id": 2003})
+    assert second.json() == {"transferred_count": 0, "remaining_count": 0}
+    assert len((await session.scalars(select(Operation_logs))).all()) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role,payload,status", [
+    ("sales", {"target_employee_id": 2003}, 403),
+    ("admin", {"target_employee_id": 2010}, 400),
+    ("admin", {"target_employee_id": 999999}, 404),
+    ("admin", {"target_employee_id": 2020}, 409),
+    ("admin", {"target_employee_id": 2003, "currency": "CNY"}, 422),
+])
+async def test_project_handoff_keeps_permission_and_field_boundaries(employee_integrity_api, role, payload, status):
+    client, session = employee_integrity_api
+    response = await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers(role), json=payload)
+    assert response.status_code == status, response.text
+    assert (await session.scalars(select(Operation_logs))).all() == []
+
+
+@pytest.mark.asyncio
+async def test_project_handoff_rejects_inactive_recipient(employee_integrity_api):
+    client, session = employee_integrity_api
+    target = await session.get(Employees, 2003)
+    target.status = "resigned"
+    await session.commit()
+    response = await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("admin"), json={"target_employee_id":2003})
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_project_handoff_audit_failure_rolls_back_ownership(employee_integrity_api, monkeypatch):
+    client, session = employee_integrity_api
+    project = CustomerEngagement(id=9400, customer_id=302, business_line_id=1, product_id=1,
+        engagement_code="ROLLBACK", status="active_paid", owner_employee_id=2010, sales_employee_id=2010,
+        billing_cycle="monthly", currency="USD")
+    session.add(project)
+    await session.commit()
+    async def fail_audit(*args, **kwargs):
+        raise RuntimeError("isolated audit failure")
+    monkeypatch.setattr(employees_router.Operation_logsService, "create", fail_audit)
+    with pytest.raises(RuntimeError, match="isolated audit failure"):
+        await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("admin"), json={"target_employee_id":2003})
+    await session.refresh(project)
+    assert project.owner_employee_id == project.sales_employee_id == 2010
+    assert project.currency == "USD" and project.billing_cycle == "monthly" and project.status == "active_paid"

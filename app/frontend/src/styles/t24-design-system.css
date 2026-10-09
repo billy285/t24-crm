@@ -6,11 +6,11 @@
 
 :root {
   /* Root scope keeps the same scale inside Radix portals mounted under body. */
-  --t24-body-size: 14px;
+  --t24-body-size: 15px;
   --t24-body-line: 22px;
-  --t24-aux-size: 12px;
+  --t24-aux-size: 13px;
   --t24-aux-line: 18px;
-  --t24-section-size: 16px;
+  --t24-section-size: 18px;
   --t24-section-line: 24px;
   --t24-detail-size: 20px;
   --t24-detail-line: 28px;
@@ -18,7 +18,7 @@
   --t24-title-line: 36px;
   --t24-metric-size: 24px;
   --t24-metric-line: 32px;
-  --t24-input-size: 14px;
+  --t24-input-size: 16px;
   --t24-input-line: 22px;
   --t24-weight-normal: 400;
   --t24-weight-medium: 500;

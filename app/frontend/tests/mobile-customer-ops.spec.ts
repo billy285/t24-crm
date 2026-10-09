@@ -210,7 +210,9 @@ test('回访和服务看板手机卡片的核心操作至少为 44px', async ({ 
 
   await page.goto(`${baseUrl}/service-board`);
   await expect(page.getByText(customer.business_name).first()).toBeVisible();
-  await assertTouchTarget(page.getByRole('button', { name: '编辑', exact: true }).first());
+  await assertTouchTarget(page.getByRole('button', { name: '查看服务详情', exact: true }).first());
+  await page.getByText('服务详情与更多操作', { exact: true }).first().click();
+  await assertTouchTarget(page.getByRole('button', { name: '编辑服务', exact: true }).first());
   await assertTouchTarget(page.getByRole('button', { name: '更新摘要', exact: true }).first());
   await expectNoHorizontalOverflow(page);
 });
@@ -245,7 +247,7 @@ test('快速重复点击未接只更新一次并只生成一条明日回访', as
   expect(nextCallbackCount).toBe(1);
 });
 
-test('成交手机版保留编辑交接与生成看板闭环但不挂载删除和套餐管理', async ({ page }) => {
+test('成交手机版查看既有看板并独立编辑交接，不挂载删除与套餐管理', async ({ page }) => {
   await page.route(/\/api\/v1\/entities\/deals/, route => fulfillJson(route, {
     items: [{
       id: 91,
@@ -266,7 +268,8 @@ test('成交手机版保留编辑交接与生成看板闭环但不挂载删除�
 
   await page.goto(`${baseUrl}/deals`);
   await expect(page.getByRole('heading', { name: '成交管理' })).toBeVisible();
-  const generateBoard = page.getByRole('button', { name: '生成看板' });
+  // This fixture already has an authorized service board: reuse it rather than duplicate it.
+  const generateBoard = page.getByRole('button', { name: '查看看板' });
   const editHandoff = page.getByRole('button', { name: '编辑交接' });
   await assertTouchTarget(generateBoard);
   await assertTouchTarget(editHandoff);
@@ -274,9 +277,14 @@ test('成交手机版保留编辑交接与生成看板闭环但不挂载删除�
   await expect(page.locator('button').filter({ hasText: /删除成交|管理套餐/ })).toHaveCount(0);
 
   await editHandoff.click();
-  const dialog = page.getByRole('dialog', { name: '编辑成交记录' });
+  const dialog = page.getByRole('dialog', { name: `交接安排 · ${customer.business_name}` });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText('生成服务看板')).toBeVisible();
+  await expect(dialog.getByRole('switch', { name: '需要建群' })).toBeVisible();
+  await expect(dialog.getByRole('switch', { name: '已完成交接' })).toBeVisible();
+  await expect(dialog.getByRole('switch', { name: '已转运营' })).toBeVisible();
+  await expect(dialog.getByText('成交金额 $198')).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: /金额/ })).toHaveCount(0);
+  await assertTouchTarget(dialog.getByRole('button', { name: '保存交接', exact: true }));
   await expect(dialog.getByRole('button', { name: '管理套餐' })).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
 });

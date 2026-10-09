@@ -1,3 +1,8 @@
+import { useDialogDraft } from '@/lib/use-dialog-draft';
+import { useListScroll } from '@/lib/use-list-scroll';
+import { getSafeInternalPath, getReturnLabel } from '@/lib/navigation-state';
+import { useNavigate } from 'react-router-dom';
+import './workflow-experience.css';
 import './admin-workspace.css';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
@@ -381,6 +386,7 @@ export default function ManagementDecisions() {
   const { isAdmin } = useRole();
   const isMobile = useIsMobile();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const today = businessDateKey();
   const [startDate, setStartDate] = useState('2026-01-01');
@@ -404,14 +410,14 @@ export default function ManagementDecisions() {
   const [reviewFilter, setReviewFilter] = useState('pending');
   const [section, setSection] = useState<Section>(() => {
     const requested = querySectionValues[searchParams.get('section') || ''] || 'overview';
-    return typeof window !== 'undefined' && window.innerWidth < 768 && !['overview', 'insights'].includes(requested)
+    return typeof window !== 'undefined' && window.innerWidth < 768 && !['overview', 'insights', 'projects'].includes(requested)
       ? 'overview'
       : requested;
   });
-  const [projectSearch, setProjectSearch] = useState('');
-  const [projectLineFilter, setProjectLineFilter] = useState('all');
-  const [projectStatusFilter, setProjectStatusFilter] = useState('all');
-  const [projectIndustryFilter, setProjectIndustryFilter] = useState('all');
+  const [projectSearch, setProjectSearch] = useState(searchParams.get('projectSearch') || '');
+  const [projectLineFilter, setProjectLineFilter] = useState(searchParams.get('businessLine') || 'all');
+  const [projectStatusFilter, setProjectStatusFilter] = useState(searchParams.get('projectStatus') || 'all');
+  const [projectIndustryFilter, setProjectIndustryFilter] = useState(searchParams.get('industry') || 'all');
   const [qualityStatusFilter, setQualityStatusFilter] = useState(searchParams.get('qualityStatus') || 'active');
   const [qualityCategoryFilter, setQualityCategoryFilter] = useState(searchParams.get('qualityCategory') || 'all');
   const [reviewing, setReviewing] = useState<ReviewItem | null>(null);
@@ -422,6 +428,18 @@ export default function ManagementDecisions() {
   const [nextStatus, setNextStatus] = useState('active_paid');
   const [statusDate, setStatusDate] = useState(today);
   const [statusReason, setStatusReason] = useState('');
+  const reviewDraft = useDialogDraft(Boolean(reviewing), [projectForms, reviewNote]);
+  const statusDraft = useDialogDraft(Boolean(statusProject), [nextStatus, statusDate, statusReason]);
+  const reopenDraft = useDialogDraft(Boolean(reopenProfitMonth), reopenReason);
+  const [projectPage, setProjectPage] = useState(Number(searchParams.get('projectPage')) || 1);
+  const [economicsVisibleCount, setEconomicsVisibleCount] = useState(30);
+  const [healthVisibleCount, setHealthVisibleCount] = useState(20);
+  const sourceReturn = getSafeInternalPath(searchParams.get('returnTo'));
+  const paidOnly = searchParams.get('paidOnly') === '1';
+  const activeOnly = searchParams.get('activeOnly') === '1';
+  const verifiedOs = (growth as any)?.os_paid_customer_evidence?.verified_customer_ids_by_business_line;
+  useListScroll('management-decisions', !loading);
+
 
   const loadData = async () => {
     setLoading(true);
@@ -486,13 +504,21 @@ export default function ManagementDecisions() {
 
   useEffect(() => {
     const requestedSection = querySectionValues[searchParams.get('section') || ''];
-    const nextSection = isMobile && requestedSection && !['overview', 'insights'].includes(requestedSection) ? 'overview' : requestedSection;
+    const nextSection = isMobile && requestedSection && !['overview', 'insights', 'projects'].includes(requestedSection) ? 'overview' : requestedSection;
     if (nextSection && nextSection !== section) setSection(nextSection);
     const nextStatus = searchParams.get('qualityStatus');
     if (nextStatus && nextStatus !== qualityStatusFilter) setQualityStatusFilter(nextStatus);
     const nextCategory = searchParams.get('qualityCategory');
     if (nextCategory && nextCategory !== qualityCategoryFilter) setQualityCategoryFilter(nextCategory);
   }, [isMobile, qualityCategoryFilter, qualityStatusFilter, searchParams, section]);
+
+  useEffect(() => {
+    setProjectSearch(searchParams.get('projectSearch') || '');
+    setProjectLineFilter(searchParams.get('businessLine') || 'all');
+    setProjectStatusFilter(searchParams.get('projectStatus') || 'all');
+    setProjectIndustryFilter(searchParams.get('industry') || 'all');
+    setProjectPage(Math.max(1, Number(searchParams.get('projectPage')) || 1));
+  }, [searchParams]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -559,7 +585,7 @@ export default function ManagementDecisions() {
         method: 'PUT', data: { action, reason }, options: authOptions(),
       });
       toast.success(action === 'close' ? `${yearMonth} 已完成月结，历史利润已锁定` : `${yearMonth} 已重新打开`);
-      setReopenProfitMonth('');
+      reopenDraft.markSaved(); setReopenProfitMonth('');
       setReopenReason('');
       await loadGrowth();
     } catch (error: any) {
@@ -572,6 +598,9 @@ export default function ManagementDecisions() {
   const currentDecisionPath = () => {
     const next = new URLSearchParams(location.search);
     next.set('section', sectionQueryValues[section]);
+    if (section === 'projects') {
+      next.set('businessLine', projectLineFilter); next.set('projectStatus', projectStatusFilter); next.set('industry', projectIndustryFilter); next.set('projectSearch', projectSearch); next.set('projectPage', String(projectPage));
+    }
     if (section === 'exceptions') {
       if (qualityStatusFilter !== 'active') next.set('qualityStatus', qualityStatusFilter);
       else next.delete('qualityStatus');
@@ -595,14 +624,30 @@ export default function ManagementDecisions() {
   const visibleProjects = useMemo(() => {
     const keyword = projectSearch.trim().toLowerCase();
     return (data?.projects || []).filter(project => {
-      if (projectLineFilter !== 'all' && project.business_line.code !== projectLineFilter) return false;
+      if (projectLineFilter === 'os' && !['restaurant_os', 'beauty_os'].includes(project.business_line.code)) return false;
+      if (!['all', 'os'].includes(projectLineFilter) && project.business_line.code !== projectLineFilter) return false;
+      if (activeOnly && !['pending_setup', 'trial', 'active_paid', 'at_risk', 'paused', 'pending_stop', 'reactivated'].includes(project.status)) return false;
+      if (paidOnly && (!['active_paid', 'reactivated'].includes(project.status) || !Array.isArray(verifiedOs?.[project.business_line.code]) || !verifiedOs[project.business_line.code].some((id: number) => Number(id) === Number(project.customer_id)))) return false;
       if (projectStatusFilter !== 'all' && project.status !== projectStatusFilter) return false;
       if (projectIndustryFilter !== 'all' && project.industry !== projectIndustryFilter) return false;
       if (!keyword) return true;
       return [project.customer_name, project.customer_code, project.package_name, project.sales_person]
         .filter(Boolean).some(value => String(value).toLowerCase().includes(keyword));
     });
-  }, [data, projectIndustryFilter, projectLineFilter, projectSearch, projectStatusFilter]);
+  }, [data, projectIndustryFilter, projectLineFilter, projectSearch, projectStatusFilter, paidOnly, activeOnly, verifiedOs]);
+
+  const projectPageCount = Math.max(1, Math.ceil(visibleProjects.length / 20));
+  const safeProjectPage = Math.min(Math.max(1, projectPage), projectPageCount);
+  const paginatedProjects = visibleProjects.slice((safeProjectPage - 1) * 20, safeProjectPage * 20);
+  const changeProjectFilter = (key: 'businessLine' | 'projectStatus' | 'industry' | 'projectSearch', value: string) => {
+    ({ businessLine: setProjectLineFilter, projectStatus: setProjectStatusFilter, industry: setProjectIndustryFilter, projectSearch: setProjectSearch }[key])(value);
+    setProjectPage(1); const params = new URLSearchParams(searchParams); params.set(key, value); params.delete('projectPage');
+    if (key === 'businessLine') { params.delete('paidOnly'); params.delete('activeOnly'); }
+    setSearchParams(params, { replace: true });
+  };
+  const changeProjectPage = (value: number) => { setProjectPage(value); const params = new URLSearchParams(searchParams); params.set('projectPage', String(value)); setSearchParams(params, { replace: true }); };
+  useEffect(() => { setEconomicsVisibleCount(30); setHealthVisibleCount(20); }, [growth]);
+  useEffect(() => { const focus = searchParams.get('focus'); if (!loading && section === 'insights' && ['health', 'capacity'].includes(focus || '')) requestAnimationFrame(() => document.getElementById(`decision-${focus}`)?.scrollIntoView({ block: 'start' })); }, [loading, section]);
 
   const visibleQualityIssues = useMemo(() => (automation?.items || []).filter(row => {
     const statusMatches = qualityStatusFilter === 'all'
@@ -701,7 +746,7 @@ export default function ManagementDecisions() {
   };
 
   const saveReview = async (decision: 'confirmed' | 'needs_follow_up') => {
-    if (!reviewing) return;
+    if (!reviewing || saving) return;
     if (decision === 'confirmed' && projectForms.some(row => !row.package_name.trim())) {
       toast.error('请填写每个项目的套餐或项目名称');
       return;
@@ -727,7 +772,7 @@ export default function ManagementDecisions() {
         options: authOptions(),
       });
       toast.success(decision === 'confirmed' ? '客户分类与独立项目已确认' : '已标记为稍后核对');
-      setReviewing(null);
+      reviewDraft.markSaved(); setReviewing(null);
       await loadData();
     } catch (error: any) {
       toast.error(errorMessage(error));
@@ -744,7 +789,7 @@ export default function ManagementDecisions() {
   };
 
   const saveStatus = async () => {
-    if (!statusProject) return;
+    if (!statusProject || saving) return;
     setSaving(true);
     try {
       await client.apiCall.invoke({
@@ -754,7 +799,7 @@ export default function ManagementDecisions() {
         options: authOptions(),
       });
       toast.success('项目状态已更新；客户整体合作状态未改变');
-      setStatusProject(null);
+      statusDraft.markSaved(); setStatusProject(null);
       await loadData();
     } catch (error: any) {
       toast.error(errorMessage(error));
@@ -768,7 +813,7 @@ export default function ManagementDecisions() {
   const followUpCount = summary?.review_counts?.needs_follow_up || 0;
   const warningTotal = Object.values(summary?.warning_counts || {}).reduce((total, value) => total + value, 0);
   const economicsTotals = Object.entries(growth?.unit_economics.totals || {});
-  const riskyHealth = (growth?.customer_health.items || []).filter(row => row.level !== 'healthy');
+  const riskyHealth = (growth?.customer_health.items || []).filter(row => searchParams.get('health') === 'risk' ? ['risk', 'critical'].includes(row.level) : row.level !== 'healthy');
   const salesCapacitySummary = growth?.team_capacity.sales_lead_capacity || {};
   const isFinancialInsights = section === 'insights';
   const profitCenter = growth?.formal_monthly_profit;
@@ -784,6 +829,7 @@ export default function ManagementDecisions() {
           <p className="app-page-description">{isFinancialInsights ? '集中查看项目效益、客户健康与团队产能；公司人民币利润使用独立报表。' : '先处理风险和分类，再看项目规模与业务线留存；客户合作状态与独立项目继续分别管理。'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {sourceReturn && <Button variant="outline" onClick={() => navigate(sourceReturn)}>{getReturnLabel(sourceReturn)}</Button>}
           <Button asChild variant="outline"><Link to={isFinancialInsights ? '/finance' : '/customer-lifecycle'}><ArrowLeft className="mr-2 h-4 w-4" />{isFinancialInsights ? '财务管理' : '客户生命周期'}</Link></Button>
           <Button onClick={() => void loadData()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新数据</Button>
         </div>
@@ -814,7 +860,7 @@ export default function ManagementDecisions() {
             ['overview', '经营总览', BarChart3],
             ...(isAdmin ? [['insights', '项目效益·健康·产能', Gauge]] : []),
             ['projects', '项目客户明细', BriefcaseBusiness],
-          ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" className={value === 'projects' ? 'hidden md:inline-flex' : ''} variant={section === value ? 'default' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
+          ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" className="min-h-11" variant={section === value ? 'default' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
           <div className="ml-auto hidden items-center gap-1 border-l border-slate-200 pl-2 md:flex" aria-label="辅助管理入口">
             {[
               ['exceptions', `数据质量 ${activeQualityCount || summary?.anomaly_count || 0}`, Database],
@@ -824,7 +870,7 @@ export default function ManagementDecisions() {
         </CardContent>
       </Card>
 
-      {!['overview', 'insights'].includes(section) && <MobileDesktopOnlyNotice title="该管理流程请在电脑端处理" description="手机版保留经营总览和老板决策摘要；项目状态、数据质量批处理和历史补录需要完整影响预览，因此仅在电脑端开放。" />}
+      {!['overview', 'insights', 'projects'].includes(section) && <MobileDesktopOnlyNotice title="该管理流程请在电脑端处理" description="手机版保留经营总览和老板决策摘要；项目状态、数据质量批处理和历史补录需要完整影响预览，因此仅在电脑端开放。" />}
 
       {section === 'overview' && <div className="space-y-5">
         <Card className="overflow-hidden border-blue-200 shadow-sm">
@@ -959,8 +1005,10 @@ export default function ManagementDecisions() {
               </div>
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800"><p className="font-semibold">核算护栏</p><p className="mt-1 leading-5">{growth.unit_economics.guardrails.join('；')}</p><div className="mt-2 flex flex-wrap gap-3">{Object.entries(growth.unit_economics.unallocated).flatMap(([name, currencies]) => Object.entries(currencies).filter(([, value]) => Number(value) !== 0).map(([currency, value]) => <span key={`${name}-${currency}`}>待分摊 {name}：{money(value, currency)}</span>))}</div></div>
               <div><p className="mb-2 text-sm font-semibold text-slate-800">业务线单位经济</p><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{growth.unit_economics.business_lines.map(row => <div key={`${row.business_line_code}-${row.currency}`} className="rounded-xl border border-slate-200 p-4"><div className="flex items-center justify-between"><p className="font-semibold">{row.business_line}</p><Badge variant="outline">{row.project_count} 项 · {row.currency}</Badge></div><p className={`mt-3 text-xl font-bold ${row.contribution_profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(row.contribution_profit, row.currency)}</p><div className="mt-2 space-y-1 text-xs text-slate-500"><p>单项目平均贡献 {money(row.average_project_contribution, row.currency)}</p><p>贡献利润率 {row.contribution_margin == null ? '-' : `${(row.contribution_margin * 100).toFixed(1)}%`}</p></div></div>)}</div></div>
-              <details className="calm-admin-disclosure"><summary><span>项目收支明细</span><span className="text-xs font-normal text-slate-500">展开完整记录</span></summary>
-              <div className="overflow-x-auto"><table className="w-full min-w-[1000px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户/项目</th><th className="px-3 py-3">业务线</th><th className="px-3 py-3">服务收入</th><th className="px-3 py-3">投流差价</th><th className="px-3 py-3">退款及手续费</th><th className="px-3 py-3">成本及分润</th><th className="px-3 py-3">贡献利润</th><th className="px-3 py-3">可信度</th></tr></thead><tbody>{growth.unit_economics.projects.slice(0, 30).flatMap(project => project.metrics.map((metric, index) => { const currency = String(metric.currency); const profit = Number(metric.contribution_profit || 0); return <tr key={`${project.project_id}-${currency}`} className="border-b border-slate-100"><td className="px-3 py-3"><Link className="font-medium text-blue-700 hover:underline" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="text-xs text-slate-400">{project.product_name}</p></td><td className="px-3 py-3">{project.business_line}</td><td className="px-3 py-3">{money(Number(metric.service_revenue), currency)}</td><td className="px-3 py-3">{money(Number(metric.ad_spread), currency)}</td><td className="px-3 py-3">{money(Number(metric.service_refunds) + Number(metric.stripe_fee_burden), currency)}</td><td className="px-3 py-3">{money(Number(metric.customer_cost) + Number(metric.channel_commission), currency)}</td><td className={`px-3 py-3 font-semibold ${profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(profit, currency)}<p className="text-[11px] font-normal text-slate-400">利润率 {metric.contribution_margin == null ? '-' : `${(Number(metric.contribution_margin) * 100).toFixed(1)}%`}</p></td><td className="px-3 py-3"><Badge variant="outline">{project.confidence === 'direct' ? '直接关联' : project.confidence === 'single_project_inferred' ? '单项目推断' : '待关联'}</Badge></td></tr>; }))}</tbody></table></div>
+      <details className="calm-admin-disclosure"><summary><span>项目收支明细</span><span className="text-xs font-normal text-slate-500">展开完整记录</span></summary>
+              {!isMobile && <div className="overflow-x-auto"><table className="w-full min-w-[1000px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户/项目</th><th className="px-3 py-3">业务线</th><th className="px-3 py-3">服务收入</th><th className="px-3 py-3">投流差价</th><th className="px-3 py-3">退款及手续费</th><th className="px-3 py-3">成本及分润</th><th className="px-3 py-3">贡献利润</th><th className="px-3 py-3">可信度</th></tr></thead><tbody>{growth.unit_economics.projects.slice(0, economicsVisibleCount).flatMap(project => project.metrics.map((metric, index) => { const currency = String(metric.currency); const profit = Number(metric.contribution_profit || 0); return <tr key={`${project.project_id}-${currency}`} className="border-b border-slate-100"><td className="px-3 py-3"><Link className="font-medium text-blue-700 hover:underline" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="text-xs text-slate-400">{project.product_name}</p></td><td className="px-3 py-3">{project.business_line}</td><td className="px-3 py-3">{money(Number(metric.service_revenue), currency)}</td><td className="px-3 py-3">{money(Number(metric.ad_spread), currency)}</td><td className="px-3 py-3">{money(Number(metric.service_refunds) + Number(metric.stripe_fee_burden), currency)}</td><td className="px-3 py-3">{money(Number(metric.customer_cost) + Number(metric.channel_commission), currency)}</td><td className={`px-3 py-3 font-semibold ${profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(profit, currency)}<p className="text-[11px] font-normal text-slate-400">利润率 {metric.contribution_margin == null ? '-' : `${(Number(metric.contribution_margin) * 100).toFixed(1)}%`}</p></td><td className="px-3 py-3"><Badge variant="outline">{project.confidence === 'direct' ? '直接关联' : project.confidence === 'single_project_inferred' ? '单项目推断' : '待关联'}</Badge></td></tr>; }))}</tbody></table></div>}
+              {isMobile && <div className="workflow-data-cards" data-testid="mobile-project-economics">{growth.unit_economics.projects.slice(0, economicsVisibleCount).map(project => <article key={project.project_id} className="workflow-data-card"><Link className="text-base font-semibold text-blue-700" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="mt-1 text-sm text-slate-500">{project.business_line} · {project.product_name}</p>{project.metrics.map(metric => <div key={String(metric.currency)} className="mt-3 border-t border-dashed border-slate-200 pt-3"><dl className="workflow-data-fields">{[['服务收入', metric.service_revenue], ['投流差价', metric.ad_spread], ['服务退款', metric.service_refunds], ['手续费', metric.stripe_fee_burden], ['客户成本', metric.customer_cost], ['渠道分润', metric.channel_commission]].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><dd>{money(Number(value), String(metric.currency))}</dd></div>)}<div className="workflow-data-total"><dt>贡献利润</dt><dd className={Number(metric.contribution_profit) >= 0 ? 'text-emerald-700' : 'text-rose-700'}>{money(Number(metric.contribution_profit), String(metric.currency))}</dd></div><div><dt>利润率</dt><dd>{metric.contribution_margin == null ? '-' : `${(Number(metric.contribution_margin) * 100).toFixed(1)}%`}</dd></div></dl></div>)}<p className="mt-3 text-sm text-slate-500">数据关联：{project.confidence === 'direct' ? '直接关联' : project.confidence === 'single_project_inferred' ? '单项目推断' : '待关联'}</p></article>)}</div>}
+              {growth.unit_economics.projects.length > economicsVisibleCount && <Button variant="outline" className="w-full" onClick={() => setEconomicsVisibleCount(value => value + 30)}>继续显示项目（剩余 {growth.unit_economics.projects.length - economicsVisibleCount}）</Button>}
               </details>
             </CardContent>
           </Card>
@@ -969,7 +1017,8 @@ export default function ManagementDecisions() {
             <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-5 w-5 text-orange-600" />客户健康度与流失预警</CardTitle><p className="mt-1 text-xs text-slate-500">收款、续费、退款、任务、交付和回访共同评分；每日自动更新，只提醒不自动停止。</p></div><Badge variant="outline">更新至 {growth.customer_health.updated_through}</Badge></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-4">{[['healthy', '健康'], ['watch', '需关注'], ['risk', '有风险'], ['critical', '高风险']].map(([level, label]) => <div key={level} className="rounded-xl border border-slate-200 p-4"><Badge className={healthClasses[level]}>{label}</Badge><p className="mt-3 text-2xl font-bold">{growth.customer_health.summary[level] || 0}</p><p className="mt-1 text-xs text-slate-400">个项目</p></div>)}</div>
-              <div className="grid gap-3 lg:grid-cols-2">{riskyHealth.slice(0, 20).map(row => <div key={row.project_id} className={`rounded-xl border p-4 ${row.level === 'critical' ? 'border-red-200 bg-red-50' : row.level === 'risk' ? 'border-orange-200 bg-orange-50' : 'border-amber-200 bg-amber-50'}`}><div className="flex items-start justify-between gap-3"><div><Link className="font-semibold text-slate-900 hover:text-blue-700" to={buildReturnLink(`/customers?detail=${row.customer_id}`, currentDecisionPath(), 'management-decisions')}>{row.customer_name}</Link><p className="mt-1 text-xs text-slate-500">{row.business_line} · {row.product_name || '项目'} · {row.owner_name || '负责人待分配'}</p></div><div className="text-right"><Badge className={healthClasses[row.level]}>{healthLabels[row.level]}</Badge><p className="mt-1 text-xl font-bold">{row.score}</p></div></div><div className="mt-3 space-y-1 text-xs text-slate-700">{row.reasons.slice(0, 3).map(reason => <p key={reason.code}>- {reason.message}</p>)}</div><p className="mt-3 rounded-lg bg-white/70 px-3 py-2 text-xs text-slate-600">下一步：{row.recommended_action}</p></div>)}{riskyHealth.length === 0 && <div className="col-span-full rounded-xl border border-dashed p-8 text-center text-sm text-emerald-600"><CheckCircle2 className="mx-auto mb-2 h-6 w-6" />当前没有需要关注的客户项目</div>}</div>
+              <div className="grid gap-3 lg:grid-cols-2">{riskyHealth.slice(0, healthVisibleCount).map(row => <div key={row.project_id} className={`rounded-xl border p-4 ${row.level === 'critical' ? 'border-red-200 bg-red-50' : row.level === 'risk' ? 'border-orange-200 bg-orange-50' : 'border-amber-200 bg-amber-50'}`}><div className="flex items-start justify-between gap-3"><div><Link className="font-semibold text-slate-900 hover:text-blue-700" to={buildReturnLink(`/customers?detail=${row.customer_id}`, currentDecisionPath(), 'management-decisions')}>{row.customer_name}</Link><p className="mt-1 text-xs text-slate-500">{row.business_line} · {row.product_name || '项目'} · {row.owner_name || '负责人待分配'}</p></div><div className="text-right"><Badge className={healthClasses[row.level]}>{healthLabels[row.level]}</Badge><p className="mt-1 text-xl font-bold">{row.score}</p></div></div><div className="mt-3 space-y-1 text-xs text-slate-700">{row.reasons.slice(0, 3).map(reason => <p key={reason.code}>- {reason.message}</p>)}</div><p className="mt-3 rounded-lg bg-white/70 px-3 py-2 text-xs text-slate-600">下一步：{row.recommended_action}</p></div>)}{riskyHealth.length === 0 && <div className="col-span-full rounded-xl border border-dashed p-8 text-center text-sm text-emerald-600"><CheckCircle2 className="mx-auto mb-2 h-6 w-6" />当前没有需要关注的客户项目</div>}</div>
+              {riskyHealth.length > healthVisibleCount && <Button variant="outline" className="mt-4 w-full" onClick={() => setHealthVisibleCount(value => value + 20)}>继续显示风险项目（剩余 {riskyHealth.length - healthVisibleCount}）</Button>}
             </CardContent>
           </Card>
 
@@ -981,16 +1030,20 @@ export default function ManagementDecisions() {
               ].map(([label, value]) => <div key={String(label)} className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold">{value}</p></div>)}</div>
               <div className="grid gap-3 lg:grid-cols-2">{growth.team_capacity.recommendations.map(row => <div key={row.title} className={`rounded-xl p-4 ${row.level === 'hire' ? 'bg-red-50 text-red-800' : row.level === 'hold' || row.level === 'process' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800'}`}><p className="font-semibold">{row.title}</p><p className="mt-1 text-xs leading-5">{row.message}</p></div>)}</div>
               <details className="calm-admin-disclosure"><summary><span>员工产能明细</span><span className="text-xs font-normal text-slate-500">展开完整记录</span></summary>
-              <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">员工</th><th className="px-3 py-3">在管项目</th><th className="px-3 py-3">容量使用</th><th className="px-3 py-3">协作任务</th><th className="px-3 py-3">交付任务</th><th className="px-3 py-3">判断</th></tr></thead><tbody>{growth.team_capacity.employees.map(row => <tr key={row.employee_id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium">{row.employee_name}<p className="text-xs font-normal text-slate-400">{row.role}</p></td><td className="px-3 py-3">{row.active_projects} / {row.capacity_target}</td><td className="px-3 py-3"><div className="h-2 w-32 overflow-hidden rounded-full bg-slate-100"><div className={`h-full ${row.utilization >= 1 ? 'bg-red-500' : row.utilization >= .85 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, row.utilization * 100)}%` }} /></div><p className="mt-1 text-xs text-slate-400">{(row.utilization * 100).toFixed(0)}%</p></td><td className="px-3 py-3">{row.open_tasks} 待办<p className="text-xs text-red-500">{row.overdue_tasks} 逾期</p></td><td className="px-3 py-3">{row.open_delivery_tasks} 待办<p className="text-xs text-red-500">{row.overdue_delivery_tasks} 逾期</p></td><td className="px-3 py-3"><Badge className={row.capacity_level === 'overloaded' ? 'bg-red-100 text-red-700' : row.capacity_level === 'near_limit' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}>{row.capacity_level === 'overloaded' ? '超负荷' : row.capacity_level === 'near_limit' ? '接近上限' : '仍有余量'}</Badge></td></tr>)}</tbody></table></div>
+              {!isMobile && <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">员工</th><th className="px-3 py-3">在管项目</th><th className="px-3 py-3">容量使用</th><th className="px-3 py-3">协作任务</th><th className="px-3 py-3">交付任务</th><th className="px-3 py-3">判断</th></tr></thead><tbody>{growth.team_capacity.employees.map(row => <tr key={row.employee_id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium">{row.employee_name}<p className="text-xs font-normal text-slate-400">{row.role}</p></td><td className="px-3 py-3">{row.active_projects} / {row.capacity_target}</td><td className="px-3 py-3"><div className="h-2 w-32 overflow-hidden rounded-full bg-slate-100"><div className={`h-full ${row.utilization >= 1 ? 'bg-red-500' : row.utilization >= .85 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, row.utilization * 100)}%` }} /></div><p className="mt-1 text-xs text-slate-400">{(row.utilization * 100).toFixed(0)}%</p></td><td className="px-3 py-3">{row.open_tasks} 待办<p className="text-xs text-red-500">{row.overdue_tasks} 逾期</p></td><td className="px-3 py-3">{row.open_delivery_tasks} 待办<p className="text-xs text-red-500">{row.overdue_delivery_tasks} 逾期</p></td><td className="px-3 py-3"><Badge className={row.capacity_level === 'overloaded' ? 'bg-red-100 text-red-700' : row.capacity_level === 'near_limit' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}>{row.capacity_level === 'overloaded' ? '超负荷' : row.capacity_level === 'near_limit' ? '接近上限' : '仍有余量'}</Badge></td></tr>)}</tbody></table></div>}
+{isMobile && <div className="workflow-data-cards" data-testid="mobile-employee-capacity">{growth.team_capacity.employees.map(row => <article key={row.employee_id} className="workflow-data-card"><div className="flex items-center justify-between gap-3"><h3 className="text-base font-semibold">{row.employee_name}</h3><Badge className={row.capacity_level === 'overloaded' ? 'bg-rose-100 text-rose-700' : row.capacity_level === 'near_limit' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}>{row.capacity_level === 'overloaded' ? '超负荷' : row.capacity_level === 'near_limit' ? '接近上限' : '仍有余量'}</Badge></div><dl className="workflow-data-fields mt-3"><div><dt>在管项目</dt><dd>{row.active_projects} / {row.capacity_target}</dd></div><div><dt>容量使用</dt><dd>{(row.utilization * 100).toFixed(0)}%</dd></div><div><dt>协作待办 / 逾期</dt><dd>{row.open_tasks} / {row.overdue_tasks}</dd></div><div><dt>交付待办 / 逾期</dt><dd>{row.open_delivery_tasks} / {row.overdue_delivery_tasks}</dd></div></dl></article>)}</div>}
               </details>
             </CardContent>
           </Card>
         </>}
       </div>}
 
-      {section === 'projects' && <Card className="hidden border-slate-200 md:block">
-        <CardHeader className="gap-3"><div><CardTitle className="text-base">项目客户明细</CardTitle><p className="mt-1 text-xs text-slate-500">日常项目维护从客户管理进入；本页用于筛选、观察和调整状态。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="客户、编号、套餐或负责人" className="w-64 pl-9" /></div><select value={projectLineFilter} onChange={event => setProjectLineFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部业务</option>{Object.entries(lineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectStatusFilter} onChange={event => setProjectStatusFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部状态</option>{Object.entries(projectStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectIndustryFilter} onChange={event => setProjectIndustryFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部行业</option>{industries.map(value => <option key={value} value={value}>{value}</option>)}</select></div></CardHeader>
-        <CardContent className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户</th><th className="px-3 py-3">业务项目</th><th className="px-3 py-3">套餐/项目名称</th><th className="px-3 py-3">行业/负责人</th><th className="px-3 py-3">首次有效收款</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">收费</th><th className="px-3 py-3 text-right">操作</th></tr></thead><tbody>{visibleProjects.map(project => <tr key={project.id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium"><Link className="text-blue-700 hover:underline" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="text-xs font-normal text-slate-400">{project.customer_code || '-'}</p></td><td className="px-3 py-3">{project.business_line.name}</td><td className="px-3 py-3">{project.package_name || project.product.name}</td><td className="px-3 py-3">{project.industry || '-'}<p className="text-xs text-slate-400">{project.sales_person || '销售待分配'}</p></td><td className="px-3 py-3">{dateValue(project.paid_started_at) || '待首笔收款'}</td><td className="px-3 py-3"><Badge className={projectStatusClasses[project.status] || 'bg-slate-100 text-slate-700'}>{projectStatusLabels[project.status] || project.status}</Badge></td><td className="px-3 py-3">{project.billing_cycle || '-'} · {project.currency}</td><td className="px-3 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openStatus(project)} disabled={!isAdmin}>更改状态</Button></td></tr>)}</tbody></table>{!loading && visibleProjects.length === 0 && <div className="py-12 text-center text-sm text-slate-400">当前筛选下没有项目</div>}</CardContent>
+      {section === 'projects' && <Card className="border-slate-200">
+        <CardHeader className="gap-3"><div><CardTitle className="text-base">项目客户明细</CardTitle><p className="mt-1 text-xs text-slate-500">日常项目维护从客户管理进入；本页用于筛选、观察和调整状态。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={projectSearch} onChange={event => changeProjectFilter('projectSearch', event.target.value)} placeholder="客户、编号、套餐或负责人" className="w-64 pl-9" /></div><select value={projectLineFilter} onChange={event => changeProjectFilter('businessLine', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部业务</option><option value="os">餐饮与美业 OS</option>{Object.entries(lineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectStatusFilter} onChange={event => changeProjectFilter('projectStatus', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部状态</option>{Object.entries(projectStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectIndustryFilter} onChange={event => changeProjectFilter('industry', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部行业</option>{industries.map(value => <option key={value} value={value}>{value}</option>)}</select></div></CardHeader>
+        <CardContent className="overflow-x-auto">{!isMobile && <table className="w-full min-w-[1050px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户</th><th className="px-3 py-3">业务项目</th><th className="px-3 py-3">套餐/项目名称</th><th className="px-3 py-3">行业/负责人</th><th className="px-3 py-3">首次有效收款</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">收费</th><th className="px-3 py-3 text-right">操作</th></tr></thead><tbody>{paginatedProjects.map(project => <tr key={project.id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium"><Link className="text-blue-700 hover:underline" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="text-xs font-normal text-slate-400">{project.customer_code || '-'}</p></td><td className="px-3 py-3">{project.business_line.name}</td><td className="px-3 py-3">{project.package_name || project.product.name}</td><td className="px-3 py-3">{project.industry || '-'}<p className="text-xs text-slate-400">{project.sales_person || '销售待分配'}</p></td><td className="px-3 py-3">{dateValue(project.paid_started_at) || '待首笔收款'}</td><td className="px-3 py-3"><Badge className={projectStatusClasses[project.status] || 'bg-slate-100 text-slate-700'}>{projectStatusLabels[project.status] || project.status}</Badge></td><td className="px-3 py-3">{project.billing_cycle || '-'} · {project.currency}</td><td className="px-3 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openStatus(project)} disabled={!isAdmin}>更改状态</Button></td></tr>)}</tbody></table>}
+{isMobile && <div className="workflow-data-cards" data-testid="mobile-management-projects">{paginatedProjects.map(project => <article key={project.id} className="workflow-data-card"><div className="flex items-start justify-between gap-3"><Link className="min-w-0 break-words text-base font-semibold text-blue-700" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><Badge className={`shrink-0 ${projectStatusClasses[project.status] || ''}`}>{projectStatusLabels[project.status] || project.status}</Badge></div><p className="mt-1 text-sm text-slate-500">{project.business_line.name} · {project.package_name || project.product.name}</p><dl className="workflow-data-fields mt-3"><div><dt>负责人</dt><dd>{project.sales_person || '待分配'}</dd></div><div><dt>首次有效收款</dt><dd>{dateValue(project.paid_started_at) || '待首笔收款'}</dd></div><div><dt>行业</dt><dd>{project.industry || '未填写'}</dd></div><div><dt>收费</dt><dd>{project.billing_cycle || '-'} · {project.currency}</dd></div></dl><Button variant="outline" className="mt-3 min-h-11 w-full" onClick={() => navigate(buildReturnLink(`/customers?detail=${project.customer_id}&tab=service`, currentDecisionPath(), 'management-decisions'))}>查看客户与服务</Button></article>)}</div>}
+          {paidOnly && !verifiedOs && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">核验客户名单尚未读取完成，无法用项目状态代替实收证据。请更新数据后重试。</p>}
+          {visibleProjects.length > 0 && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4 text-sm"><span>共 {visibleProjects.length} 个项目 · 第 {safeProjectPage}/{projectPageCount} 页</span><div className="flex gap-2"><Button variant="outline" disabled={safeProjectPage <= 1} onClick={() => changeProjectPage(safeProjectPage - 1)}>上一页</Button><Button variant="outline" disabled={safeProjectPage >= projectPageCount} onClick={() => changeProjectPage(safeProjectPage + 1)}>下一页</Button></div></div>}{!loading && visibleProjects.length === 0 && <div className="py-12 text-center text-sm text-slate-400">当前筛选下没有项目</div>}</CardContent>
       </Card>}
 
       {section === 'exceptions' && <div className="hidden space-y-4 md:block">
@@ -1053,16 +1106,16 @@ export default function ManagementDecisions() {
 
       {section === 'history' && <Card className="border-slate-200"><CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle className="text-base">历史客户一次性补录</CardTitle><p className="mt-1 text-xs text-slate-500">新客户已改为在客户管理首次录入；这里只处理历史资料。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索客户名称或编号" className="w-64 pl-9" /></div><select value={reviewFilter} onChange={event => setReviewFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="pending">待审核</option><option value="needs_follow_up">稍后核对</option><option value="confirmed">已确认</option><option value="all">全部</option></select></div></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{visibleItems.map(item => <div key={item.customer_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.customer_name}</p><p className="mt-1 text-xs text-slate-400">{item.customer_code || `客户 #${item.customer_id}`} · {item.industry || '行业待补充'}</p></div><Badge className={item.review_status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : item.review_status === 'needs_follow_up' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'}>{reviewLabels[item.review_status]}</Badge></div><div className="mt-3 flex flex-wrap gap-1.5">{item.suggestions.map(suggestion => <Badge key={suggestion.business_line} variant="outline">建议：{lineLabels[suggestion.business_line]}</Badge>)}{item.projects.map(project => <Badge key={project.id} className="bg-blue-100 text-blue-700">已建：{project.business_line.name}</Badge>)}</div>{item.warnings.length > 0 && <div className="mt-3 rounded-xl bg-orange-50 p-3 text-xs text-orange-700"><p className="font-semibold">{item.warnings.length} 项需要确认</p><p className="mt-1 line-clamp-2">{item.warnings.slice(0, 2).map(row => row.message).join('；')}</p></div>}<div className="mt-4 flex items-center justify-between"><p className="text-xs text-slate-400">客户状态：{item.customer_lifecycle?.status === 'active' ? '合作中' : item.customer_lifecycle?.status || '待确认'}</p><Button size="sm" variant={item.review_status === 'confirmed' ? 'outline' : 'default'} onClick={() => openReview(item)} disabled={!isAdmin}>{item.review_status === 'confirmed' ? '重新核对' : '开始审核'}</Button></div></div>)}{!loading && visibleItems.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">当前筛选下没有历史客户</div>}</CardContent></Card>}
 
-      {!isMobile && <Dialog open={!!reviewing} onOpenChange={open => !open && setReviewing(null)}>
+      {!isMobile && <Dialog open={!!reviewing} onOpenChange={open => { if (!open && !saving && reviewDraft.confirmDiscard()) setReviewing(null); }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>{reviewing?.customer_name} · 分类与项目确认</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"><strong>客户整体状态保持不变：</strong>当前为 {reviewing?.customer_lifecycle?.status === 'active' ? '合作中' : reviewing?.customer_lifecycle?.status || '待确认'}。这里只确认该客户购买了哪些项目。</div>{reviewing?.warnings.map((warning, index) => <div key={`${warning.code}-${warning.source_id || index}`} className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">{warning.message}{warning.source_id ? `（${warning.scope} #${warning.source_id}）` : ''}</div>)}<div className="space-y-3">{projectForms.map((project, index) => <div key={`${project.engagement_id || 'new'}-${index}`} className="rounded-2xl border border-slate-200 p-4"><div className="mb-3 flex items-center justify-between"><p className="font-semibold">项目 {index + 1}</p><Button size="sm" variant="ghost" className="text-red-600" onClick={() => setProjectForms(rows => rows.filter((_row, rowIndex) => rowIndex !== index))} disabled={projectForms.length <= 1}>移除</Button></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div><Label>业务板块 *</Label><select value={project.business_line_code} onChange={event => updateProjectForm(index, { business_line_code: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(lineLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>项目状态 *</Label><select value={project.status} onChange={event => updateProjectForm(index, { status: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>开始日期 *</Label><Input type="date" value={project.paid_started_at} max={today} onChange={event => updateProjectForm(index, { paid_started_at: event.target.value })} className="mt-1" /></div><div><Label>结束日期</Label><Input type="date" value={project.stopped_at} max={today} onChange={event => updateProjectForm(index, { stopped_at: event.target.value })} className="mt-1" /></div><div><Label>收费周期</Label><select value={project.billing_cycle} onChange={event => updateProjectForm(index, { billing_cycle: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"><option value="">待确认</option><option value="monthly">月付</option><option value="quarterly">季付</option><option value="annual">年付</option><option value="one_time">一次性</option></select></div><div><Label>收款方式</Label><select value={project.collection_method} onChange={event => updateProjectForm(index, { collection_method: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(collectionLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateProjectForm(index, { currency: event.target.value.toUpperCase() })} className="mt-1" /></div><div><Label>产品名称</Label><Input value={project.product_name} onChange={event => updateProjectForm(index, { product_name: event.target.value })} className="mt-1" /></div></div><p className="mt-3 text-xs text-slate-400">关联收款 {project.source_payment_ids.length} 笔 · 关联订阅 {project.source_subscription_ids.length} 条</p></div>)}</div><Button variant="outline" onClick={() => setProjectForms(rows => [...rows, suggestionToForm({ business_line: 'managed_service', product_code: 'managed_service_legacy', product_name: '代运营历史套餐', currency: 'USD', source_payment_ids: [], source_subscription_ids: [], basis: [] })])}><Layers3 className="mr-2 h-4 w-4" />增加一个项目</Button><div><Label>审核备注</Label><Textarea value={reviewNote} onChange={event => setReviewNote(event.target.value)} rows={3} className="mt-1" placeholder="记录为什么这样分类，方便以后复盘" /></div></div><DialogFooter className="gap-2"><Button variant="outline" onClick={() => void saveReview('needs_follow_up')} disabled={saving}>资料不足，稍后核对</Button><Button onClick={() => void saveReview('confirmed')} disabled={saving}>{saving ? '保存中…' : '确认分类并建立项目'}</Button></DialogFooter></DialogContent>
       </Dialog>}
 
-      {!isMobile && <Dialog open={!!statusProject} onOpenChange={open => !open && setStatusProject(null)}>
-        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>更改项目状态</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl bg-slate-50 p-3 text-sm"><p className="font-semibold">{statusProject?.customer_name}</p><p className="mt-1 text-xs text-slate-500">{statusProject?.business_line.name} · 只更改项目，不更改客户整体合作状态</p></div><div><Label>项目状态</Label><select value={nextStatus} onChange={event => setNextStatus(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>生效日期</Label><Input type="date" value={statusDate} max={today} onChange={event => setStatusDate(event.target.value)} className="mt-1" /></div><div><Label>原因与备注</Label><Textarea value={statusReason} onChange={event => setStatusReason(event.target.value)} rows={3} className="mt-1" /></div></div><DialogFooter><Button variant="outline" onClick={() => setStatusProject(null)}>取消</Button><Button onClick={() => void saveStatus()} disabled={saving}>{saving ? '保存中…' : '确认更新'}</Button></DialogFooter></DialogContent>
+      {!isMobile && <Dialog open={!!statusProject} onOpenChange={open => { if (!open && !saving && statusDraft.confirmDiscard()) setStatusProject(null); }}>
+        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>更改项目状态</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl bg-slate-50 p-3 text-sm"><p className="font-semibold">{statusProject?.customer_name}</p><p className="mt-1 text-xs text-slate-500">{statusProject?.business_line.name} · 只更改项目，不更改客户整体合作状态</p></div><div><Label>项目状态</Label><select value={nextStatus} onChange={event => setNextStatus(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>生效日期</Label><Input type="date" value={statusDate} max={today} onChange={event => setStatusDate(event.target.value)} className="mt-1" /></div><div><Label>原因与备注</Label><Textarea value={statusReason} onChange={event => setStatusReason(event.target.value)} rows={3} className="mt-1" /></div></div><DialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (statusDraft.confirmDiscard()) setStatusProject(null); }}>取消</Button><Button onClick={() => void saveStatus()} disabled={saving}>{saving ? '保存中…' : '确认更新'}</Button></DialogFooter></DialogContent>
       </Dialog>}
 
-      {!isMobile && <Dialog open={!!reopenProfitMonth} onOpenChange={open => !open && setReopenProfitMonth('')}>
-        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>重新打开 {reopenProfitMonth} 月结</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">重新打开后，该月利润会恢复实时计算。修正数据并重新核对后，需要再次确认月结。</div><div><Label>重新打开原因 *</Label><Textarea value={reopenReason} onChange={event => setReopenReason(event.target.value)} rows={3} className="mt-1" placeholder="例如：补录一笔人民币运营支出" /></div></div><DialogFooter><Button variant="outline" onClick={() => setReopenProfitMonth('')}>取消</Button><Button variant="destructive" disabled={reopenReason.trim().length < 3 || profitCloseLoading === reopenProfitMonth} onClick={() => void updateProfitClose(reopenProfitMonth, 'reopen', reopenReason.trim())}>{profitCloseLoading === reopenProfitMonth ? '处理中…' : '确认重新打开'}</Button></DialogFooter></DialogContent>
+      {!isMobile && <Dialog open={!!reopenProfitMonth} onOpenChange={open => { if (!open && !profitCloseLoading && reopenDraft.confirmDiscard()) setReopenProfitMonth(''); }}>
+        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>重新打开 {reopenProfitMonth} 月结</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">重新打开后，该月利润会恢复实时计算。修正数据并重新核对后，需要再次确认月结。</div><div><Label>重新打开原因 *</Label><Textarea value={reopenReason} onChange={event => setReopenReason(event.target.value)} rows={3} className="mt-1" placeholder="例如：补录一笔人民币运营支出" /></div></div><DialogFooter><Button variant="outline" disabled={Boolean(profitCloseLoading)} onClick={() => { if (reopenDraft.confirmDiscard()) setReopenProfitMonth(''); }}>取消</Button><Button variant="destructive" disabled={reopenReason.trim().length < 3 || profitCloseLoading === reopenProfitMonth} onClick={() => void updateProfitClose(reopenProfitMonth, 'reopen', reopenReason.trim())}>{profitCloseLoading === reopenProfitMonth ? '处理中…' : '确认重新打开'}</Button></DialogFooter></DialogContent>
       </Dialog>}
     </div>
   );

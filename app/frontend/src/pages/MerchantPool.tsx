@@ -7,7 +7,8 @@ import '@/components/sales-center.css';
 import './sales-workspace.css';
 import './merchant-pool.css';
 import './merchant-pool-refined.css';
-import MerchantImportDialog from '@/components/MerchantImportDialog';
+import MerchantImportDialog, { type MerchantImportReceipt } from '@/components/MerchantImportDialog';
+import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import { formatPhoneNumber } from '@/lib/phone-format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -119,12 +120,16 @@ export default function MerchantPool() {
   const [items, setItems] = useState<Merchant[]>([]);
   const [assignees, setAssignees] = useState<{ id: number; name: string }[]>([]);
   const [selectedMerchantIds, setSelectedMerchantIds] = useState<number[]>([]);
+  const selectionStatuses = useRef<Record<number,string>>({});
   const [selectedSalesId, setSelectedSalesId] = useState('');
   const [bulkIndustry, setBulkIndustry] = useState('');
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [stats, setStats] = useState({ total: 0, pending: 0, isolated: 0, converted: 0, duplicates: 0, archived: 0 });
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState(false);
+  const [batchScope, setBatchScope] = useState<MerchantImportReceipt | null>(() => { const id = new URLSearchParams(window.location.search).get('batch_id'); return id && /^[a-zA-Z0-9-]{1,36}$/.test(id) ? { id, filename: '本批导入' } : null; });
+  const [assignmentReceipt, setAssignmentReceipt] = useState<{ name: string; id: number; count: number } | null>(null);
   const [search, setSearch] = useState('');
   const previousSearchRef = useRef(search);
   const [poolStatus, setPoolStatus] = useState('pending');
@@ -139,12 +144,16 @@ export default function MerchantPool() {
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Merchant | null>(null);
   const [editForm, setEditForm] = useState(emptyEdit);
+  const [editSaving, setEditSaving] = useState(false);
+  const editSubmitting = useRef(false);
   const [enrichmentOpen, setEnrichmentOpen] = useState(false);
   const [enrichmentLoading, setEnrichmentLoading] = useState(false);
   const [enrichmentResults, setEnrichmentResults] = useState<EnrichmentResult[]>([]);
   const [enrichmentSelected, setEnrichmentSelected] = useState<Record<number, Record<string, boolean>>>({});
   const [applyingEnrichment, setApplyingEnrichment] = useState(false);
   const loadRequestSeqRef = useRef(0);
+  const editBaseline = useRef('');
+  const editGuard = useUnsavedChanges(Boolean(editing) && JSON.stringify(editForm) !== editBaseline.current);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -158,6 +167,7 @@ export default function MerchantPool() {
     if (regions.length) params.set('region', regions.join(','));
     if (industry.trim()) params.set('industry', industry.trim());
     if (source) params.set('source', source);
+    if (batchScope) params.set('batch_id', batchScope.id);
     try {
       const [listResult, statsResult] = await Promise.allSettled([
         invokeWithAuth({ url: `/api/v1/merchant-pool?${params.toString()}`, method: 'GET' }),
@@ -169,8 +179,11 @@ export default function MerchantPool() {
         const nextItems = listResult.value.data?.items || [];
         setItems(nextItems);
         setTotal(listResult.value.data?.total || 0);
-        setSelectedMerchantIds(current => current.filter(id => nextItems.some((item: Merchant) => item.id === id)));
+        setListError(false);
+        nextItems.forEach((item: Merchant) => { selectionStatuses.current[item.id] = item.pool_status; });
+        setSelectedMerchantIds(current => current.filter(id => !nextItems.some((item: Merchant) => item.id === id && ['converted','archived'].includes(item.pool_status))));
       } else {
+        setListError(true);
         failedSections.push('商家列表');
       }
       if (statsResult.status === 'fulfilled') setStats(statsResult.value.data || stats);
@@ -186,7 +199,7 @@ export default function MerchantPool() {
   useEffect(() => {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, poolStatus, regions, industry, source]);
+  }, [page, pageSize, poolStatus, regions, industry, source, batchScope?.id]);
 
   useEffect(() => {
     if (!loading && page > totalPages) setPage(totalPages);
@@ -217,9 +230,10 @@ export default function MerchantPool() {
   useAutoRefresh(loadData, { intervalMs: 30000, enabled: !importOpen && !editing && !reviewing });
 
   const openEdit = (merchant: Merchant) => {
+    if (listError || loading) { toast.error('请重新加载商家列表后再操作'); return; }
     setReviewing(null);
     setEditing(merchant);
-    setEditForm({
+    const nextForm = {
       business_name: merchant.business_name || '', contact_name: merchant.contact_name || '', phone: merchant.phone || '',
       industry: merchant.industry || '', country: merchant.country || '', state: merchant.state || '', city: merchant.city || '',
       address: merchant.address || '', website: merchant.website || '', rating: merchant.rating?.toString() || '', business_status: merchant.business_status || '',
@@ -227,11 +241,14 @@ export default function MerchantPool() {
       yelp_url: merchant.yelp_url || '', yelp_rating: merchant.yelp_rating?.toString() || '', yelp_review_count: merchant.yelp_review_count?.toString() || '',
       social_profiles: merchant.social_profiles || '', recent_negative_reviews: merchant.recent_negative_reviews || '',
       content_update_summary: merchant.content_update_summary || '', content_last_updated_at: merchant.content_last_updated_at ? merchant.content_last_updated_at.slice(0, 16) : '',
-    });
+    };
+    editBaseline.current = JSON.stringify(nextForm);
+    setEditForm(nextForm);
   };
 
   const saveEdit = async () => {
-    if (!editing || !editForm.business_name.trim()) return;
+    if (!editing || !editForm.business_name.trim() || editSubmitting.current) return;
+    editSubmitting.current = true; setEditSaving(true);
     try {
       await invokeWithAuth({
         url: `/api/v1/merchant-pool/${editing.id}`,
@@ -247,14 +264,15 @@ export default function MerchantPool() {
         },
       });
       toast.success('已重新清洗该商家记录');
-      setEditing(null);
+      editGuard.markSaved(); setEditing(null);
       await loadData();
     } catch (error: any) {
       toast.error(error?.data?.detail || error?.message || '保存失败');
-    }
+    } finally { editSubmitting.current = false; setEditSaving(false); }
   };
 
   const suggestEnrichment = async () => {
+    if (listError || loading) { toast.error('请重新加载商家列表后再操作'); return; }
     if (!selectedMerchantIds.length) return;
     if (selectedMerchantIds.length > 20) {
       toast.error('AI 补充一次最多选择 20 条商家');
@@ -275,6 +293,7 @@ export default function MerchantPool() {
   };
 
   const applyEnrichment = async () => {
+    if (listError || loading) { toast.error('请重新加载商家列表后再操作'); return; }
     const items = enrichmentResults.map(result => ({
       merchant_id: result.merchant_id,
       suggestions: result.suggestions.filter(suggestion => enrichmentSelected[result.merchant_id]?.[suggestion.field]),
@@ -298,22 +317,25 @@ export default function MerchantPool() {
   };
 
   const toggleMerchantSelection = (merchantId: number, checked?: boolean) => {
+    if (listError || loading) return;
+    const item = items.find(item => item.id === merchantId); if (item) selectionStatuses.current[merchantId] = item.pool_status;
     setSelectedMerchantIds(current => {
       const selected = current.includes(merchantId);
-      if (checked === true || (checked === undefined && !selected)) return [...current, merchantId];
+      if (checked === true || (checked === undefined && !selected)) { if (current.length >= 200) { toast.error('一次最多选择200家商家'); return current; } return [...current, merchantId]; }
       return current.filter(id => id !== merchantId);
     });
   };
 
   const toggleCurrentPageSelection = (checked: boolean) => {
-    const selectableIds = items.filter(item => !['converted', 'archived'].includes(item.pool_status)).map(item => item.id);
+    const selectableIds = items.filter(item => !['converted','archived'].includes(item.pool_status)).map(item => { selectionStatuses.current[item.id] = item.pool_status; return item.id; });
     setSelectedMerchantIds(current => checked
-      ? Array.from(new Set([...current, ...selectableIds]))
+      ? Array.from(new Set([...current, ...selectableIds])).slice(0, 200)
       : current.filter(id => !selectableIds.includes(id)));
   };
 
   const assignSelectedMerchants = async () => {
-    if (!selectedMerchantIds.length) return;
+    if (!selectedMerchantIds.length || listError || bulkAssigning) return;
+    if (selectedMerchantIds.some(id => selectionStatuses.current[id] !== 'pending')) { toast.error('所选包含隔离记录，请补齐资料后再分配'); return; }
     if (!selectedSalesId) { toast.error('请先选择要分配的电话销售'); return; }
     const assignee = assignees.find(item => item.id === Number(selectedSalesId));
     if (!window.confirm(`确认将选中的 ${selectedMerchantIds.length} 条商家转入电话销售线索库，并分配给「${assignee?.name || '该销售'}」？`)) return;
@@ -324,6 +346,7 @@ export default function MerchantPool() {
         data: { merchant_ids: selectedMerchantIds, assigned_sales_id: Number(selectedSalesId) },
       });
       toast.success(`已将 ${result.data?.converted_count || selectedMerchantIds.length} 条商家分配给 ${result.data?.assigned_sales_name || assignee?.name}`);
+      setAssignmentReceipt({ name: result.data?.assigned_sales_name || assignee?.name || '销售', id: Number(selectedSalesId), count: result.data?.converted_count || selectedMerchantIds.length });
       setSelectedMerchantIds([]);
       setSelectedSalesId('');
       await loadData();
@@ -335,6 +358,7 @@ export default function MerchantPool() {
   };
 
   const updateSelectedIndustry = async () => {
+    if (listError || loading) { toast.error('请重新加载商家列表后再操作'); return; }
     if (!selectedMerchantIds.length) return;
     if (!bulkIndustry.trim()) { toast.error('请先选择或填写行业'); return; }
     if (!window.confirm(`确认将选中的 ${selectedMerchantIds.length} 条商家行业统一设置为“${bulkIndustry.trim()}”？`)) return;
@@ -356,6 +380,7 @@ export default function MerchantPool() {
   };
 
   const deleteSelectedMerchants = async () => {
+    if (listError || loading) { toast.error('请重新加载商家列表后再操作'); return; }
     if (!isAdmin || !selectedMerchantIds.length) return;
     if (!window.confirm(`确认永久删除选中的 ${selectedMerchantIds.length} 条商家池记录？已转入电话销售线索的记录不会被删除。`)) return;
     setBulkUpdating(true);
@@ -375,6 +400,7 @@ export default function MerchantPool() {
   };
 
   const archiveMerchant = async (merchant: Merchant) => {
+    if (listError || loading) { toast.error('请重新加载商家列表后再操作'); return; }
     if (!window.confirm(`确认将「${merchant.business_name}」归档？归档后默认列表不会显示，但可在“已归档”筛选中查看。`)) return;
     try {
       await invokeWithAuth({ url: `/api/v1/merchant-pool/${merchant.id}/archive`, method: 'POST', data: {} });
@@ -386,6 +412,7 @@ export default function MerchantPool() {
   };
 
   const deleteMerchant = async (merchant: Merchant) => {
+    if (listError || loading) { toast.error('请重新加载商家列表后再操作'); return; }
     if (!window.confirm(`确认永久删除「${merchant.business_name}」？此操作只删除待清洗商家池记录，不会影响正式客户。`)) return;
     try {
       await invokeWithAuth({ url: `/api/v1/merchant-pool/${merchant.id}`, method: 'DELETE' });
@@ -410,7 +437,7 @@ export default function MerchantPool() {
   const sourceLabel = (merchant: Merchant) => sourceOptions.find(option => option.value === merchant.data_source)?.label || merchant.data_source || '未记录';
   const merchantMenu = (merchant: Merchant) => isAdmin && merchant.pool_status !== 'converted' && !(isMobile && merchant.pool_status === 'archived') && (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多商家操作：${merchant.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button size="sm" variant="ghost" disabled={listError || loading} aria-label={`更多商家操作：${merchant.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="sales-center-menu">
         {merchant.pool_status !== 'archived' && <DropdownMenuItem onSelect={() => void archiveMerchant(merchant)}><Archive className="mr-2 h-4 w-4" />归档记录</DropdownMenuItem>}
         {!isMobile && <DropdownMenuItem className="text-rose-600" onSelect={() => void deleteMerchant(merchant)}><Trash2 className="mr-2 h-4 w-4" />永久删除</DropdownMenuItem>}
@@ -418,7 +445,7 @@ export default function MerchantPool() {
     </DropdownMenu>
   );
   const merchantAction = (merchant: Merchant) => canManagePool && merchant.pool_status === 'pending' ? (
-    <Button size="sm" variant="ghost" className="mp-inspect-action" aria-label={`${selectedMerchantIds.includes(merchant.id) ? '移出待分配' : '分配'}：${merchant.business_name}`} aria-pressed={selectedMerchantIds.includes(merchant.id)} onClick={() => toggleMerchantSelection(merchant.id)}>{selectedMerchantIds.includes(merchant.id) ? '已选择' : '选择'}</Button>
+    <Button size="sm" variant="ghost" className="mp-inspect-action" disabled={listError || loading} aria-label={`${selectedMerchantIds.includes(merchant.id) ? '移出待分配' : '分配'}：${merchant.business_name}`} aria-pressed={selectedMerchantIds.includes(merchant.id)} onClick={() => toggleMerchantSelection(merchant.id)}>{selectedMerchantIds.includes(merchant.id) ? '已选择' : '选择'}</Button>
   ) : (
     <Button size="sm" variant="ghost" className="mp-inspect-action" aria-label={`商家详情：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>详情<ArrowUpRight className="ml-1.5 h-3.5 w-3.5" /></Button>
   );
@@ -437,8 +464,8 @@ export default function MerchantPool() {
       </dl>
       <details className="mp-review-extra"><summary>更多采集资料</summary><dl className="mp-review-fields">{reviewing.phone && formatPhoneNumber(reviewing.phone, reviewing.country) !== reviewing.phone && <div><dt>原始电话</dt><dd>{reviewing.phone}</dd></div>}<div><dt>联系人</dt><dd>{reviewing.contact_name || '未填写'}</dd></div><div><dt>行业</dt><dd>{reviewing.industry || '未填写'}</dd></div><div><dt>采集时间</dt><dd>{formatDate(reviewing.collected_at)}</dd></div>{reviewing.website && <div><dt>商家网站</dt><dd>{/^https?:\/\//i.test(reviewing.website) ? <a href={reviewing.website} target="_blank" rel="noopener noreferrer">{reviewing.website}</a> : reviewing.website}</dd></div>}</dl></details>
       <div className="mp-review-actions">
-        {canManagePool && !['converted', 'archived'].includes(reviewing.pool_status) && <Button variant="outline" onClick={() => openEdit(reviewing)}>补充资料</Button>}
-        {canManagePool && reviewing.pool_status === 'pending' && <Button disabled={selectedMerchantIds.includes(reviewing.id)} onClick={() => { toggleMerchantSelection(reviewing.id, true); setReviewing(null); }}>{selectedMerchantIds.includes(reviewing.id) ? '已加入待分配' : '加入待分配'}<ArrowUpRight className="ml-2 h-4 w-4" /></Button>}
+        {canManagePool && !['converted', 'archived'].includes(reviewing.pool_status) && <Button variant="outline" disabled={listError || loading} onClick={() => openEdit(reviewing)}>补充资料</Button>}
+        {canManagePool && reviewing.pool_status === 'pending' && <Button disabled={listError || loading || selectedMerchantIds.includes(reviewing.id)} onClick={() => { toggleMerchantSelection(reviewing.id, true); setReviewing(null); }}>{selectedMerchantIds.includes(reviewing.id) ? '已加入待分配' : '加入待分配'}<ArrowUpRight className="ml-2 h-4 w-4" /></Button>}
         {reviewing.converted_lead_id && <Button variant="outline" onClick={() => { setDossierId(reviewing.converted_lead_id!); setReviewing(null); }}>累计档案</Button>}
       </div>
       <p className="mp-review-note">{reviewing.pool_status === 'pending' ? '选择销售负责人后即可分配。' : ['converted', 'archived'].includes(reviewing.pool_status) ? '保留原始采集记录，此处仅查看资料。' : '补齐资料并重新清洗后，符合条件的商家才可分配。'}</p>
@@ -449,13 +476,13 @@ export default function MerchantPool() {
         <Card className="mp-selection-bar" role="region" aria-label="商家批量操作">
           <CardContent className="mp-selection-content">
             <div className="mp-selection-main">
-              <div className="mp-selection-context"><div className="mp-selection-count"><CheckSquare className="h-5 w-5" />已选择 {selectedMerchantIds.length} 家商家</div>{isMobile && <div className="mp-selection-mobile-tools"><Button variant="ghost" size="icon" aria-label="查看所选资料" title="查看所选资料" onClick={() => setReviewing(items.find(item => selectedMerchantIds.includes(item.id)) || null)}><ArrowUpRight className="h-4 w-4" /></Button><Button variant="ghost" aria-label="取消选择" disabled={bulkAssigning} onClick={() => { setSelectedMerchantIds([]); setSelectedSalesId(''); }}>取消</Button></div>}</div>
+              <div className="mp-selection-context"><div className="mp-selection-count"><CheckSquare className="h-5 w-5" />跨页已选 {selectedMerchantIds.length} 家商家</div>{isMobile && <div className="mp-selection-mobile-tools"><Button variant="ghost" size="icon" aria-label="查看所选资料" title="查看所选资料" onClick={() => setReviewing(items.find(item => selectedMerchantIds.includes(item.id)) || null)}><ArrowUpRight className="h-4 w-4" /></Button><Button variant="ghost" aria-label="取消选择" disabled={bulkAssigning} onClick={() => { setSelectedMerchantIds([]); setSelectedSalesId(''); }}>取消</Button></div>}</div>
               <div className="mp-assignment-controls">
                 <div className="mp-assignee-field"><span className="mp-assignee-label">销售</span><label><span className="sr-only">选择销售负责人</span><NativeSelect value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: isMobile ? '选择销售' : '选择销售负责人' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /></label></div>
                 {isMobile ? <>
-                  <Button disabled={bulkAssigning || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-1.5 h-4 w-4" />{bulkAssigning ? '分配中...' : '确认分配'}</Button>
+                  <Button disabled={bulkAssigning || listError || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-1.5 h-4 w-4" />{bulkAssigning ? '分配中...' : '确认分配'}</Button>
                 </> : <>
-                  <Button disabled={bulkAssigning || bulkUpdating || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-2 h-4 w-4" />{bulkAssigning ? '分配中...' : '确认分配'}</Button>
+                  <Button disabled={bulkAssigning || bulkUpdating || listError || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-2 h-4 w-4" />{bulkAssigning ? '分配中...' : '确认分配'}</Button>
                   <Button variant="ghost" disabled={bulkUpdating || bulkAssigning || enrichmentLoading} onClick={() => { setSelectedMerchantIds([]); setBulkIndustry(''); setSelectedSalesId(''); }}>取消选择</Button>
                 </>}
               </div>
@@ -464,9 +491,9 @@ export default function MerchantPool() {
               <Button variant="ghost" size="sm" onClick={() => setReviewing(items.find(item => selectedMerchantIds.includes(item.id)) || null)}>查看所选资料</Button>
               <NativeSelect className="md:w-52" value={bulkIndustry} onChange={setBulkIndustry} options={[{ value: '', label: '选择统一行业' }, ...industryOptions.map(value => ({ value, label: value }))]} />
               <Input className="md:w-52" value={bulkIndustry && !industryOptions.includes(bulkIndustry) ? bulkIndustry : ''} onChange={event => setBulkIndustry(event.target.value)} placeholder="或输入自定义行业" />
-              <Button disabled={bulkUpdating || !bulkIndustry.trim()} onClick={() => void updateSelectedIndustry()}>{bulkUpdating ? '更新中...' : '批量设置行业'}</Button>
-              <Button variant="outline" disabled={bulkUpdating || bulkAssigning || enrichmentLoading || selectedMerchantIds.length > 20} onClick={() => void suggestEnrichment()}><Sparkles className="mr-2 h-4 w-4" />{enrichmentLoading ? '分析中...' : 'AI 补充空白资料'}</Button>
-              {isAdmin && <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" disabled={bulkUpdating || bulkAssigning} onClick={() => void deleteSelectedMerchants()}><Trash2 className="mr-2 h-4 w-4" />批量删除</Button>}
+              <Button disabled={listError || loading || bulkUpdating || !bulkIndustry.trim()} onClick={() => void updateSelectedIndustry()}>{bulkUpdating ? '更新中...' : '批量设置行业'}</Button>
+              <Button variant="outline" disabled={listError || loading || bulkUpdating || bulkAssigning || enrichmentLoading || selectedMerchantIds.length > 20} onClick={() => void suggestEnrichment()}><Sparkles className="mr-2 h-4 w-4" />{enrichmentLoading ? '分析中...' : 'AI 补充空白资料'}</Button>
+              {isAdmin && <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" disabled={listError || loading || bulkUpdating || bulkAssigning} onClick={() => void deleteSelectedMerchants()}><Trash2 className="mr-2 h-4 w-4" />批量删除</Button>}
             </div></details>}
           </CardContent>
         </Card>
@@ -477,12 +504,14 @@ export default function MerchantPool() {
       <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} />
       <header className="sc-section-heading mp-page-heading">
         <h2>商家池</h2>
-        {!isMobile && <Button variant="outline" aria-label="导入商家数据" onClick={() => setImportOpen(true)}><Upload className="mr-2 h-4 w-4" />导入商家</Button>}
+        {canManagePool && <Button variant="outline" aria-label="导入商家数据" onClick={() => setImportOpen(true)}><Upload className="mr-2 h-4 w-4" />导入商家</Button>}
       </header>
 
       <div className="mp-list-tools">
+        {batchScope && <div className="mp-batch-scope" role="status"><span>本批导入 · {batchScope.filename}</span><Button size="sm" variant="ghost" onClick={() => { setBatchScope(null); setSelectedMerchantIds([]); setPage(1); window.history.replaceState(window.history.state, '', '/merchant-pool'); }}>查看全部商家</Button></div>}
+        {assignmentReceipt && <div className="mp-batch-scope" role="status"><span>已分配 {assignmentReceipt.count} 家给 {assignmentReceipt.name}</span><Button size="sm" variant="ghost" onClick={() => window.location.assign(`/sales-workbench?sales_employee_id=${assignmentReceipt.id}`)}>查看销售任务</Button></div>}
         <nav className="mp-work-views" aria-label="商家工作视图">
-          {[{ status: 'pending', label: '未分配', count: stats.pending }, { status: 'converted', label: '已转线索', count: stats.converted }, { status: '', label: '全部记录', count: stats.total }].map(view => <button type="button" key={view.label} aria-pressed={poolStatus === view.status} onClick={() => changeView(view.status)}>{view.label}<span>{view.count}</span></button>)}
+          {[{ status: 'pending', label: '未分配', count: stats.pending }, { status: 'converted', label: '已转线索', count: stats.converted }, { status: '', label: '全部记录', count: stats.total }].map(view => <button type="button" key={view.label} aria-pressed={poolStatus === view.status} onClick={() => changeView(view.status)}>{view.label}{!batchScope && <span>{view.count}</span>}</button>)}
         </nav>
         <div className="mp-search-toolbar">
           <label className="mp-search-field"><Search className="h-4 w-4" /><Input aria-label="搜索商家" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索商家、电话或网站" /></label>
@@ -503,17 +532,18 @@ export default function MerchantPool() {
       <div className={`mp-workspace${reviewing && !isMobile ? ' has-review' : ''}`}>
         <Card className="merchant-results-card sc-table-card overflow-hidden border-slate-200/80 bg-white"><CardContent className="p-0">
           {poolStatus && !['pending', 'converted'].includes(poolStatus) && <div className="mp-active-status">当前筛选：{viewTitle}</div>}
+          {listError && <div className="mp-list-error" role="alert">商家列表暂不可用，分配已暂停<Button size="sm" variant="ghost" onClick={() => void loadData()}>重新加载</Button></div>}
           {isMobile ? <div data-testid="merchant-pool-mobile-list" aria-label={viewTitle} className="divide-y divide-slate-100">
             {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载商家池...</p> : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">暂无符合条件的商家</p> : items.map(merchant => <article key={merchant.id} data-testid="merchant-mobile-card" className={`mp-merchant-card${selectedMerchantIds.includes(merchant.id) ? ' is-selected' : ''}`}>
               <div className="mp-merchant-identity"><button type="button" className="mp-merchant-name" aria-label={`查看资料：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.business_name}</button><p className="mp-merchant-meta">{merchant.industry && <span>{merchant.industry} · </span>}{formatRegion(merchant)}</p></div>
               <p className="mp-card-phone">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : '无电话'}</p>
               {merchant.pool_status !== 'pending' && <Badge className={`mp-pool-status ${statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}`}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge>}
               <div className="mp-row-actions">{merchantAction(merchant)}{merchantMenu(merchant)}</div>
-              {selectedMerchantIds.includes(merchant.id) && <p className="mp-merchant-meta">已加入本页待分配</p>}
+              {selectedMerchantIds.includes(merchant.id) && <p className="mp-merchant-meta">已加入待分配</p>}
             </article>)}
-          </div> : <div data-testid="merchant-pool-desktop-table"><table className="mp-queue-table"><caption className="sr-only">{viewTitle}</caption><thead><tr>{canManagePool && <th className="mp-select-column"><label><input aria-label="选择本页可操作商家" type="checkbox" checked={items.filter(item => !['converted', 'archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted', 'archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></label></th>}<th aria-label="商家与地区">商家</th><th className="mp-phone-column">电话</th><th className="mp-region-column">地区</th>{showStatusColumn && <th className="mp-state-column" aria-label="当前状态">状态</th>}<th className="mp-action-column">操作</th></tr></thead><tbody>
+          </div> : <div data-testid="merchant-pool-desktop-table"><table className="mp-queue-table"><caption className="sr-only">{viewTitle}</caption><thead><tr>{canManagePool && <th className="mp-select-column"><label><input aria-label="选择本页可操作商家" type="checkbox" disabled={listError || loading} checked={items.filter(item => !['converted','archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted','archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></label></th>}<th aria-label="商家与地区">商家</th><th className="mp-phone-column">电话</th><th className="mp-region-column">地区</th>{showStatusColumn && <th className="mp-state-column" aria-label="当前状态">状态</th>}<th className="mp-action-column">操作</th></tr></thead><tbody>
             {loading ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr> : items.length === 0 ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-400">暂无符合条件的商家</td></tr> : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) || reviewing?.id === merchant.id ? 'is-selected' : ''}>
-              {canManagePool && <td className="mp-select-column"><label><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={['converted', 'archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></label></td>}
+              {canManagePool && <td className="mp-select-column"><label><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={listError || loading || ['converted','archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></label></td>}
               <td><div className="mp-merchant-identity"><button type="button" className="mp-merchant-name" aria-label={`查看资料：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.business_name}</button><p className="mp-merchant-meta">{merchant.industry && <span>{merchant.industry}</span>}<span className="mp-inline-region">{merchant.industry && ' · '}{formatRegion(merchant)}</span></p><p className="mp-inline-phone">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : '无电话'}</p></div></td>
               <td className="mp-phone-column">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : <span className="text-rose-600">无电话</span>}</td>
               <td className="mp-region-column">{formatRegion(merchant)}</td>
@@ -529,11 +559,11 @@ export default function MerchantPool() {
 
       {isMobile && <Dialog open={!!reviewing} onOpenChange={open => !open && setReviewing(null)}><DialogContent className="mp-review-dialog" aria-describedby={undefined}><DialogHeader><DialogTitle>商家资料</DialogTitle></DialogHeader>{reviewDetails}</DialogContent></Dialog>}
 
-      {!isMobile && <MerchantImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={() => loadData()} />}
+      <MerchantImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={() => loadData()} onAssignBatch={batch => { setImportOpen(false); setBatchScope(batch); setSelectedMerchantIds([]); setSearch(''); setRegions([]); setIndustry(''); setSource(''); changeView('pending'); window.history.replaceState(window.history.state, '', `/merchant-pool?batch_id=${encodeURIComponent(batch.id)}`); }} />
 
       {!isMobile && <Dialog open={enrichmentOpen} onOpenChange={setEnrichmentOpen}><DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto"><DialogHeader><DialogTitle>AI 补充空白资料 · 人工确认</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-900"><p className="font-medium">安全补充规则</p><p className="mt-1 text-indigo-800">只使用原始导入资料中已有、但尚未写入标准字段的内容；不会覆盖已填写资料，也不会根据商家名称猜测。Google/Yelp 外部检索尚未接入，找不到来源的字段显示为“信息不足”。</p></div>{enrichmentResults.map(result => <Card key={result.merchant_id} className="border-slate-200"><CardContent className="space-y-3 p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-slate-900">{result.business_name}</p><Badge className={result.status === 'needs_review' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}>{result.status === 'needs_review' ? '有待确认建议' : '信息不足'}</Badge></div><p className="text-xs text-slate-500">原始资料时间：{formatDate(result.source_updated_at || undefined)}</p></div>{result.warning && <p className="rounded-lg bg-amber-50 p-2 text-xs leading-5 text-amber-900">{result.warning}</p>}{result.suggestions.length ? <div className="grid gap-2 md:grid-cols-2">{result.suggestions.map(suggestion => <label key={`${result.merchant_id}-${suggestion.field}`} className="flex cursor-pointer items-start gap-2 rounded-lg border bg-white p-3"><input type="checkbox" checked={Boolean(enrichmentSelected[result.merchant_id]?.[suggestion.field])} onChange={event => setEnrichmentSelected(previous => ({ ...previous, [result.merchant_id]: { ...previous[result.merchant_id], [suggestion.field]: event.target.checked } }))} /><span className="min-w-0 text-sm"><span className="font-medium text-slate-800">{suggestion.field}</span><span className="block break-words text-slate-700">{String(suggestion.value)}</span><span className="block text-xs text-slate-500">来源：{suggestion.source_label} · 可信度：{Math.round(suggestion.confidence * 100)}%</span></span></label>)}</div> : <div className="rounded-lg border border-dashed p-3 text-sm text-slate-500">信息不足：原始导入资料中没有可追溯的空白字段补充内容。</div>}{result.missing_fields.length > 0 && <p className="text-xs text-slate-500">仍缺少：{result.missing_fields.join('、')}</p>}</CardContent></Card>)}<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEnrichmentOpen(false)}>取消</Button><Button disabled={applyingEnrichment} onClick={() => void applyEnrichment()}>{applyingEnrichment ? '写入中...' : '确认写入已勾选资料'}</Button></div></div></DialogContent></Dialog>}
 
-      <Dialog open={!!editing} onOpenChange={open => !open && setEditing(null)}><DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>补充商家资料并重新清洗</DialogTitle></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><div><Label>商家名称 *</Label><Input value={editForm.business_name} onChange={event => setEditForm({ ...editForm, business_name: event.target.value })} /></div><div><Label>电话</Label><Input value={editForm.phone} onChange={event => setEditForm({ ...editForm, phone: event.target.value })} /></div><div><Label>联系人</Label><Input value={editForm.contact_name} onChange={event => setEditForm({ ...editForm, contact_name: event.target.value })} /></div><div><Label>行业</Label><Input value={editForm.industry} onChange={event => setEditForm({ ...editForm, industry: event.target.value })} /></div><div><Label>国家</Label><Input value={editForm.country} onChange={event => setEditForm({ ...editForm, country: event.target.value })} /></div><div><Label>州/省</Label><Input value={editForm.state} onChange={event => setEditForm({ ...editForm, state: event.target.value })} /></div><div><Label>城市</Label><Input value={editForm.city} onChange={event => setEditForm({ ...editForm, city: event.target.value })} /></div><div className="sm:col-span-2"><Label>地址</Label><Input value={editForm.address} onChange={event => setEditForm({ ...editForm, address: event.target.value })} /></div><div className="sm:col-span-2"><Label>官网</Label><Input value={editForm.website} onChange={event => setEditForm({ ...editForm, website: event.target.value })} /></div></div><div className="mt-5 flex justify-end gap-2 border-t pt-4"><Button variant="outline" onClick={() => setEditing(null)}>取消</Button><Button onClick={saveEdit}><RefreshCw className="mr-2 h-4 w-4" />保存并重新清洗</Button></div></DialogContent></Dialog>
+      <Dialog open={!!editing} onOpenChange={open => !open && !editSaving && editGuard.confirmDiscard() && setEditing(null)}><DialogContent className="mp-edit-dialog max-h-[92vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>补充商家资料并重新清洗</DialogTitle></DialogHeader><fieldset disabled={editSaving} className="grid gap-4 sm:grid-cols-2"><div><Label>商家名称 *</Label><Input value={editForm.business_name} onChange={event => setEditForm({ ...editForm, business_name: event.target.value })} /></div><div><Label>电话</Label><Input value={editForm.phone} onChange={event => setEditForm({ ...editForm, phone: event.target.value })} /></div><div><Label>联系人</Label><Input value={editForm.contact_name} onChange={event => setEditForm({ ...editForm, contact_name: event.target.value })} /></div><div><Label>行业</Label><Input value={editForm.industry} onChange={event => setEditForm({ ...editForm, industry: event.target.value })} /></div><div><Label>国家</Label><Input value={editForm.country} onChange={event => setEditForm({ ...editForm, country: event.target.value })} /></div><div><Label>州/省</Label><Input value={editForm.state} onChange={event => setEditForm({ ...editForm, state: event.target.value })} /></div><div><Label>城市</Label><Input value={editForm.city} onChange={event => setEditForm({ ...editForm, city: event.target.value })} /></div><div className="sm:col-span-2"><Label>地址</Label><Input value={editForm.address} onChange={event => setEditForm({ ...editForm, address: event.target.value })} /></div><div className="sm:col-span-2"><Label>官网</Label><Input value={editForm.website} onChange={event => setEditForm({ ...editForm, website: event.target.value })} /></div></fieldset><div className="mp-edit-actions mt-5 flex justify-end gap-2 border-t pt-4"><Button variant="outline" disabled={editSaving} onClick={() => { if (editGuard.confirmDiscard()) setEditing(null); }}>取消</Button><Button disabled={editSaving} onClick={saveEdit}><RefreshCw className="mr-2 h-4 w-4" />{editSaving ? '保存中…' : '保存并重新清洗'}</Button></div></DialogContent></Dialog>
     </div>
   );
 }

@@ -752,6 +752,7 @@ async def list_sales_leads(
     search: Optional[str] = None,
     lead_status: Optional[str] = Query(None, alias="status"),
     contact_rule: Optional[str] = None,
+    due_range: Optional[str] = Query(None, pattern="^(today|overdue)$"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200),
     current_user: UserResponse = Depends(get_current_user),
@@ -764,6 +765,19 @@ async def list_sales_leads(
     scope = await _scope_condition(db, current_user)
     if scope is not None:
         conditions.append(scope)
+    if due_range:
+        day_start = datetime.now(BUSINESS_TIMEZONE).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_utc = day_start.astimezone(timezone.utc).replace(tzinfo=None)
+        end_utc = (day_start + timedelta(days=1)).astimezone(timezone.utc).replace(tzinfo=None)
+        conditions.extend([
+            SalesLeads.do_not_contact.is_(False),
+            SalesLeads.is_blacklisted.is_(False),
+            SalesLeads.converted_customer_id.is_(None),
+            SalesLeads.status.notin_(["lost", "blocked"]),
+            SalesLeads.next_follow_up_at < (start_utc if due_range == "overdue" else end_utc),
+        ])
+        if due_range == "today":
+            conditions.append(SalesLeads.next_follow_up_at >= start_utc)
     if search:
         term = f"%{search.strip()}%"
         phone_ids = []

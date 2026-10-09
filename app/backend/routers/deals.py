@@ -5,7 +5,7 @@ from typing import List, Literal, Optional
 from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -74,6 +74,15 @@ class DealsUpdateData(BaseModel):
     notes: Optional[str] = None
     deal_date: Optional[datetime] = None
     created_at: Optional[datetime] = None
+
+
+class DealHandoffUpdate(BaseModel):
+    """Non-financial handoff updates must never enter payment synchronization."""
+    model_config = ConfigDict(extra="forbid")
+    needs_group: Optional[bool] = None
+    is_handed_over: Optional[bool] = None
+    is_transferred_ops: Optional[bool] = None
+    notes: Optional[str] = Field(None, max_length=20000)
 
 
 class DealsResponse(BaseModel):
@@ -511,6 +520,34 @@ async def update_dealss_batch(
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Batch update failed: {str(e)}")
+
+
+@router.patch("/{id}/handoff", response_model=DealsResponse)
+async def update_deal_handoff(
+    id: int,
+    data: DealHandoffUpdate,
+    current_user: UserResponse = Depends(get_finance_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = DealsService(db)
+    # Use the existing finance role boundary and customer data scope. Financial
+    # dates, amounts, links, payment state and subscriptions are not accepted.
+    existing = await service.get_by_id(id, scope_user=current_user)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Deals not found")
+    changes = data.model_dump(exclude_unset=True, exclude_none=True)
+    if not changes:
+        return existing
+    try:
+        result = await service.update(id, changes, commit=False)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Deals not found")
+        await db.commit()
+        await db.refresh(result)
+        return result
+    except Exception:
+        await db.rollback()
+        raise
 
 
 @router.put("/{id}", response_model=DealsResponse)

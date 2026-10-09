@@ -1,5 +1,6 @@
+import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import './admin-workspace.css';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '../lib/tokenStore';
@@ -22,7 +23,6 @@ import { type CustomerCodeSettings, defaultSettings, defaultIndustryPrefixes, lo
 import { type BusinessDictConfig, defaultBusinessDictConfig, normalizeDictConfig } from '../lib/dict-config';
 import { settingsApi, type AiSettings, type EnvConfig } from '../api/settings';
 import ProductPlanSettings from '@/components/ProductPlanSettings';
-import MobileDesktopOnlyNotice from '@/components/mobile/MobileDesktopOnlyNotice';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const industryLabels: Record<string, string> = { restaurant: '餐厅', nail: '美甲', massage: '按摩', beauty: '美容', supermarket: '超市', other: '其他' };
@@ -111,6 +111,9 @@ export default function Settings() {
   const [envConfig, setEnvConfig] = useState<EnvConfig>({ backend_vars: {}, frontend_vars: {} });
   const [envLoading, setEnvLoading] = useState(false);
   const [envSavingKey, setEnvSavingKey] = useState<string | null>(null);
+  const [envChangedKeys, setEnvChangedKeys] = useState<string[]>([]);
+  const envBaseline = useRef<EnvConfig>({ backend_vars: {}, frontend_vars: {} });
+  const runtimeSettingsRead = useRef(false);
 
   // AI config
   const [aiSettings, setAiSettings] = useState<AiSettings>(defaultAiSettings);
@@ -124,7 +127,7 @@ export default function Settings() {
     setEnvLoading(true);
     try {
       const data = await settingsApi.getConfig();
-      setEnvConfig(data);
+      setEnvConfig(data); envBaseline.current = data; setEnvChangedKeys([]);
     } catch (err: any) {
       const detail = err?.data?.detail || err?.message || '加载环境配置失败';
       toast.error(detail);
@@ -148,11 +151,15 @@ export default function Settings() {
     }
   };
 
+  const [settingsSaving, setSettingsSaving] = useState('');
+  const settingsSaveLock = useRef(false);
+  const [settingsLoadError, setSettingsLoadError] = useState(false);
+  const [settingsReload, setSettingsReload] = useState(0);
+  const changedCategories = [companyChanged && '公司信息', codeChanged && '编号规则', dictChanged && '字典配置', dashChanged && '仪表盘', reminderChanged && '提醒规则', notifChanged && '通知设置', exportChanged && '导出配置', aiChanged && 'AI配置', envChangedKeys.length > 0 && `环境配置（${envChangedKeys.length}项）`].filter(Boolean);
+  useUnsavedChanges(changedCategories.length > 0);
+
   useEffect(() => {
-    if (isMobile) {
-      setSettingsLoading(false);
-      return;
-    }
+    if (!canEditSettings) { setSettingsLoading(false); return; }
 
     let active = true;
 
@@ -179,6 +186,7 @@ export default function Settings() {
 
         if (!active) return;
 
+        setSettingsLoadError(false);
         setCodeSettings(remoteCode);
         setCompany(remoteCompany);
         setDictConfig(normalizeDictConfig(remoteDict));
@@ -188,6 +196,7 @@ export default function Settings() {
         setExportConfig(remoteExport);
       } catch {
         if (!active) return;
+        setSettingsLoadError(true);
         setCodeSettings(loadSettings());
         setCompany(readCachedAppConfig('company_info', defaultCompany));
         setDictConfig(normalizeDictConfig(readCachedAppConfig('dict_config', defaultBusinessDictConfig)));
@@ -202,9 +211,6 @@ export default function Settings() {
         }
       }
 
-      if (canEditSettings) {
-        await Promise.all([loadEnvConfig(), loadAiSettings()]);
-      }
     };
 
     void loadSettingsData();
@@ -212,7 +218,14 @@ export default function Settings() {
     return () => {
       active = false;
     };
-  }, [canEditSettings, isMobile]);
+  }, [canEditSettings, settingsReload]);
+
+  useEffect(() => {
+    // The first mobile render can precede useIsMobile's media-query update.
+    if (!isAdmin || isMobile || window.innerWidth < 768 || runtimeSettingsRead.current) return;
+    runtimeSettingsRead.current = true;
+    void Promise.all([loadEnvConfig(), loadAiSettings()]);
+  }, [isAdmin, isMobile]);
 
   const loadLogs = async () => {
     setLogsLoading(true);
@@ -241,7 +254,7 @@ export default function Settings() {
     setCodeChanged(true);
   };
 
-  const saveCodeSettings = async () => {
+  const persistCodeSettings = async () => {
     if (!codeSettings.defaultPrefix.trim()) { toast.error('默认前缀不能为空'); return; }
     try {
       const saved = await saveRemoteAppConfig('customer_code_settings', codeSettings);
@@ -254,7 +267,7 @@ export default function Settings() {
     }
   };
 
-  const saveCompany = async () => {
+  const persistCompany = async () => {
     try {
       const saved = await saveRemoteAppConfig('company_info', company);
       setCompany(saved);
@@ -264,7 +277,7 @@ export default function Settings() {
       toast.error('保存公司信息失败');
     }
   };
-  const saveDict = async () => {
+  const persistDict = async () => {
     try {
       const saved = normalizeDictConfig(await saveRemoteAppConfig('dict_config', dictConfig));
       setDictConfig(saved);
@@ -274,7 +287,7 @@ export default function Settings() {
       toast.error('保存字典配置失败');
     }
   };
-  const saveDash = async () => {
+  const persistDash = async () => {
     try {
       const saved = await saveRemoteAppConfig('dashboard_config', dashboardConfig);
       setDashboardConfig(saved);
@@ -284,7 +297,7 @@ export default function Settings() {
       toast.error('保存仪表盘配置失败');
     }
   };
-  const saveReminder = async () => {
+  const persistReminder = async () => {
     try {
       const saved = await saveRemoteAppConfig('reminder_config', reminderConfig);
       setReminderConfig(saved);
@@ -294,7 +307,7 @@ export default function Settings() {
       toast.error('保存提醒规则失败');
     }
   };
-  const saveNotif = async () => {
+  const persistNotif = async () => {
     try {
       const saved = await saveRemoteAppConfig('notification_config', notifConfig);
       setNotifConfig(saved);
@@ -304,7 +317,7 @@ export default function Settings() {
       toast.error('保存通知设置失败');
     }
   };
-  const saveExport = async () => {
+  const persistExport = async () => {
     try {
       const saved = await saveRemoteAppConfig('export_config', exportConfig);
       setExportConfig(saved);
@@ -315,7 +328,20 @@ export default function Settings() {
     }
   };
 
+  const runSettingsSave = async (key: string, save: () => Promise<void>) => {
+    if (!canEditSettings || settingsSaveLock.current || settingsLoadError) return;
+    settingsSaveLock.current = true; setSettingsSaving(key);
+    try { await save(); } finally { settingsSaveLock.current = false; setSettingsSaving(''); }
+  };
+  const saveCodeSettings = () => runSettingsSave('saveCodeSettings', persistCodeSettings);
+  const saveCompany = () => runSettingsSave('saveCompany', persistCompany);
+  const saveDict = () => runSettingsSave('saveDict', persistDict);
+  const saveDash = () => runSettingsSave('saveDash', persistDash);
+  const saveReminder = () => runSettingsSave('saveReminder', persistReminder);
+  const saveNotif = () => runSettingsSave('saveNotif', persistNotif);
+  const saveExport = () => runSettingsSave('saveExport', persistExport);
   const updateEnvValue = (scope: EnvScope, key: string, value: string) => {
+    const identity = `${scope}:${key}`; setEnvChangedKeys(current => value === (envBaseline.current[scope][key]?.value ?? '') ? current.filter(item => item !== identity) : [...new Set([...current, identity])]);
     setEnvConfig(prev => ({
       ...prev,
       [scope]: {
@@ -329,6 +355,7 @@ export default function Settings() {
   };
 
   const saveEnvValue = async (scope: EnvScope, key: string) => {
+    if (envSavingKey) return;
     const savingKey = `${scope}:${key}`;
     setEnvSavingKey(savingKey);
     try {
@@ -338,7 +365,12 @@ export default function Settings() {
         : settingsApi.updateFrontendConfig(key, value);
       const response = await action;
       toast.success(response.message || '配置已保存');
-      await loadEnvConfig();
+      const remaining = envChangedKeys.filter(item => item !== savingKey);
+      const fresh = await settingsApi.getConfig();
+      envBaseline.current = fresh;
+      const next: EnvConfig = { backend_vars: { ...fresh.backend_vars }, frontend_vars: { ...fresh.frontend_vars } };
+      remaining.forEach(item => { const [itemScope, itemKey] = item.split(':') as [EnvScope, string]; if (envConfig[itemScope][itemKey] && next[itemScope][itemKey]) next[itemScope][itemKey] = { ...next[itemScope][itemKey], value: envConfig[itemScope][itemKey].value }; });
+      setEnvConfig(next); setEnvChangedKeys(remaining);
     } catch (err: any) {
       const detail = err?.data?.detail || err?.message || '保存失败';
       toast.error(detail);
@@ -353,6 +385,7 @@ export default function Settings() {
   };
 
   const saveAiSettings = async (options?: { clearApiKey?: boolean }) => {
+    if (aiSaving) return;
     setAiSaving(true);
     try {
       const saved = await settingsApi.updateAiSettings({
@@ -392,27 +425,28 @@ export default function Settings() {
     }
   };
 
-  if (isMobile) {
-    return (
-      <MobileDesktopOnlyNotice
-        title="全局设置请在电脑端处理"
-        description="环境、权限、安全和导出规则会影响整个系统。手机版仅保留个人账户与安装入口，避免误触全局配置。"
-      />
-    );
-  }
-
   if (!canEditSettings) {
     return <div className="flex items-center justify-center h-64"><p className="text-slate-400">仅管理员可访问系统设置</p></div>;
   }
 
-  if (settingsLoading) {
-    return (
-      <>
-        <div className="hidden h-64 items-center justify-center md:flex">
-          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
-        </div>
-      </>
-    );
+  if (settingsLoading) return <div className="flex h-48 items-center justify-center" role="status">正在读取系统设置…</div>;
+
+  if (isMobile) {
+    const booleanText = (value: boolean | undefined) => value == null ? '未设置' : value ? '已开启' : '未开启';
+    const exportRoles = Array.isArray(exportConfig.exportRoles) ? exportConfig.exportRoles : [];
+    const prefixRows = Array.isArray(codeSettings.industryPrefixes) ? codeSettings.industryPrefixes : [];
+    const codePreview = typeof codeSettings.defaultPrefix === 'string' ? previewCode({ ...defaultSettings, ...codeSettings, industryPrefixes: prefixRows }, 'other') : '未设置';
+    return <div className="app-page space-y-4" data-testid="mobile-settings-summary">
+      <div className="flex items-center justify-between gap-3"><h2 className="app-page-heading">系统设置</h2><Badge variant="secondary">只读摘要</Badge></div>
+      {settingsLoadError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">当前为缓存摘要，尚未核实最新配置。<Button variant="outline" className="mt-2" onClick={() => setSettingsReload(value => value + 1)}>重新读取</Button></div>}
+      <p className="text-sm text-slate-500">手机可查看业务规则；全局配置在电脑端调整。</p>
+      {changedCategories.length > 0 && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">有未保存的修改，草稿已保留。请回到电脑布局继续保存。</p>}
+      <Card><CardHeader><CardTitle className="text-base">公司资料</CardTitle></CardHeader><CardContent><dl className="space-y-3 text-sm">{[['名称', company.name], ['电话', company.phone], ['邮箱', company.email], ['地址', company.address], ['网站', company.website]].map(([label, value]) => <div key={label} className="grid grid-cols-[4rem_1fr] gap-3"><dt className="text-slate-500">{label}</dt><dd className="break-words text-slate-900">{value || '未设置'}</dd></div>)}</dl></CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-base">客户编号</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><p>按行业区分前缀：{booleanText(codeSettings.useIndustryPrefix)}</p><div className="rounded-lg bg-slate-50 p-3 font-mono">{codePreview}</div><details><summary className="min-h-11 cursor-pointer py-3 text-slate-600">查看行业前缀</summary><dl className="space-y-2">{prefixRows.map(item => <div key={item.industry} className="flex justify-between gap-3"><dt>{item.label || industryLabels[item.industry] || item.industry}</dt><dd>{item.prefix}</dd></div>)}</dl></details></CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-base">提醒规则</CardTitle></CardHeader><CardContent><dl className="space-y-3 text-sm">{[['跟进提醒', booleanText(reminderConfig.enableFollowUpReminder)], ['到期提醒', reminderConfig.enableExpiryReminder == null ? '未设置' : reminderConfig.enableExpiryReminder ? `提前 ${reminderConfig.expiryDaysBefore ?? '-'} 天` : '未开启'], ['长期未跟进', reminderConfig.enableNoFollowReminder == null ? '未设置' : reminderConfig.enableNoFollowReminder ? `${reminderConfig.noFollowDays ?? '-'} 天后提醒` : '未开启'], ['欠费提醒', booleanText(reminderConfig.enableOverduePayment)], ['任务延期', booleanText(reminderConfig.enableDelayedTask)]].map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-dashed border-slate-100 pb-2"><dt className="text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl></CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-base">通知与导出</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><p>浏览器通知：{booleanText(notifConfig.enableBrowserNotif)}</p><p>邮件通知：{booleanText(notifConfig.enableEmailNotif)}</p><p>默认导出：{typeof exportConfig.defaultFormat === 'string' ? exportConfig.defaultFormat.toUpperCase() : '未设置'}</p><details><summary className="min-h-11 cursor-pointer py-3 text-slate-600">可导出的角色</summary><p className="leading-7">{exportRoles.map(role => systemRoleLabels[role as keyof typeof systemRoleLabels] || role).join('、') || '未设置'}</p></details></CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-base">业务字典</CardTitle></CardHeader><CardContent className="space-y-2">{Object.entries(dictConfig).map(([key, value]) => <details key={key} className="rounded-lg border border-slate-100 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm">{({ customerStatuses:'客户状态', customerLevels:'客户等级', sources:'客户来源', industries:'行业', platforms:'平台', serviceTypes:'服务类型', paymentMethods:'支付方式', paymentModes:'支付模式', callbackTypes:'回访类型', callbackStatuses:'回访状态', callbackResults:'回访结果', taskTypes:'任务类型', taskPriorities:'任务优先级', taskStatuses:'任务状态', statuses:'客户状态', levels:'客户等级', incomeTypes:'收入类型', customerPackages:'客户套餐', customerPackagePlatforms:'套餐平台', countries:'国家', billingCycles:'收费周期', customerExpenseTypes:'客户支出类型', companyExpenseTypes:'运营支出类型', subscriptionStatuses:'续费状态', followUpStages:'跟进阶段', followUpMethods:'跟进方式' } as Record<string,string>)[key] || key}</summary><p className="break-words whitespace-pre-wrap pb-3 text-sm leading-6 text-slate-500">{String(value || '未设置')}</p></details>)}</CardContent></Card>
+    </div>;
   }
 
   return (
@@ -420,6 +454,10 @@ export default function Settings() {
       <div className="t24-settings-page calm-admin-page calm-system-settings app-page hidden space-y-5 md:block">
       <div className="app-page-title"><div><p className="app-page-kicker">T24 Marketing · System</p><h2 className="app-page-heading flex items-center gap-2"><SettingsIcon className="h-5 w-5 text-blue-600" />系统设置</h2><p className="app-page-description">配置公司资料、业务规则、产品套餐、提醒、安全与导出规则。</p></div><Button asChild variant="outline"><a href="/settings/deduction">月度扣点比例设置</a></Button></div>
 
+      {settingsLoadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>当前显示缓存配置，重新读取成功后才能保存。</span><Button variant="outline" onClick={() => setSettingsReload(value => value + 1)}>重新读取</Button></div>}
+      {changedCategories.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">未保存：{changedCategories.join('、')}。切换分类可以继续编辑，各分类分别保存。</div>}
+      {settingsSaving && <p role="status" className="text-sm text-blue-700">正在保存，请稍候…</p>}
+      <fieldset disabled={Boolean(settingsSaving) || settingsLoading || settingsLoadError || aiSaving || Boolean(envSavingKey)} className="min-w-0 border-0 p-0">
       <Tabs defaultValue="company" orientation="vertical" className="calm-settings-tabs w-full">
         <TabsList className="calm-settings-navigation" aria-label="系统设置分类">
           <div className="calm-settings-group">
@@ -554,7 +592,7 @@ export default function Settings() {
                       )}
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" onClick={loadAiSettings} disabled={aiLoading || aiSaving}>
+                      <Button variant="outline" onClick={() => { if (!aiChanged || window.confirm('AI 配置有未保存的修改，刷新会放弃这些修改。继续刷新吗？')) void loadAiSettings(); }} disabled={aiLoading || aiSaving}>
                         刷新
                       </Button>
                       <Button variant="outline" onClick={testAiSettings} disabled={aiTesting || aiSaving || !aiSettings.enabled || !aiSettings.api_key_set}>
@@ -586,7 +624,7 @@ export default function Settings() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={loadEnvConfig} disabled={envLoading}>
+                <Button variant="outline" size="sm" onClick={() => { if (!envChangedKeys.length || window.confirm('环境配置有未保存的修改，刷新会放弃这些修改。继续刷新吗？')) void loadEnvConfig(); }} disabled={envLoading}>
                   刷新配置
                 </Button>
               </CardContent>
@@ -855,6 +893,7 @@ export default function Settings() {
           </CardContent></Card>
         </TabsContent>
       </Tabs>
+      </fieldset>
     
 
 </div>

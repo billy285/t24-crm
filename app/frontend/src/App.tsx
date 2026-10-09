@@ -2,11 +2,13 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Outlet, Routes, Route } from 'react-router-dom';
+import { createBrowserRouter, createRoutesFromElements, RouterProvider, Outlet, Route, useRouteError } from 'react-router-dom';
 import { RoleProvider } from './lib/role-context';
 import Layout from './components/Layout';
 import PageLoadState from './components/PageLoadState';
 import AppErrorBoundary from './components/AppErrorBoundary';
+import UnsavedNavigationGuard from './components/UnsavedNavigationGuard';
+import AppVersionNotice from './components/AppVersionNotice';
 
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const AuthError = lazy(() => import('./pages/AuthError'));
@@ -52,13 +54,21 @@ function PublicPage({ children }: { children: ReactNode }) {
   return <Suspense fallback={<PageFallback />}>{children}</Suspense>;
 }
 
+function RouteFailure(): never {
+  throw useRouteError();
+}
+
 function ProtectedAppShell() {
   return (
+    <>
+      <UnsavedNavigationGuard />
+      <AppVersionNotice />
     <Layout>
       <Suspense fallback={<PageLoadState loading message="正在加载当前页面…" />}>
         <Outlet />
       </Suspense>
     </Layout>
+    </>
   );
 }
 
@@ -74,18 +84,12 @@ const queryClient = new QueryClient({
   },
 });
 
-const App = () => (
-  <AppErrorBoundary>
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <RoleProvider>
-        <BrowserRouter>
-          <Routes>
+const router = createBrowserRouter(createRoutesFromElements(
+          <>
             <Route path="/login" element={<PublicPage><LoginPage /></PublicPage>} />
             <Route path="/auth/callback" element={<PublicPage><AuthCallback /></PublicPage>} />
             <Route path="/auth/error" element={<PublicPage><AuthError /></PublicPage>} />
-            <Route element={<ProtectedAppShell />}>
+            <Route element={<ProtectedAppShell />} errorElement={<AppErrorBoundary><RouteFailure /></AppErrorBoundary>}>
               <Route path="/apps" element={<div />} />
               <Route path="/more" element={<div />} />
               <Route path="/" element={<Dashboard />} />
@@ -114,8 +118,16 @@ const App = () => (
               <Route path="/settings/deduction" element={<MonthlyDeduction />} />
             </Route>
             <Route path="*" element={<PublicPage><NotFound /></PublicPage>} />
-          </Routes>
-        </BrowserRouter>
+          </>
+));
+
+const App = () => (
+  <AppErrorBoundary>
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <RoleProvider>
+          <RouterProvider router={router} />
       </RoleProvider>
     </TooltipProvider>
   </QueryClientProvider>

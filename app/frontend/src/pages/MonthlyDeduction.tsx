@@ -11,13 +11,23 @@ import { invokeWithAuth } from '@/lib/tokenStore';
 import { getDefaultDeduction, updateDefaultDeduction, importMonthlyDeductions } from '@/lib/api';
 import { useRole } from '@/lib/role-context';
 import './mobile-payroll-settings.css';
+import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
+import PageLoadState from '@/components/PageLoadState';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
+const displayRate = (rate: number) => String(Number((rate * 100).toFixed(6)));
 type RateItem = { year_month: string; rate: number; created_at?: string; updated_at?: string };
 
 export default function MonthlyDeduction() {
   const { isAdmin } = useRole();
   const [items, setItems] = useState<RateItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [defaultBaseline, setDefaultBaseline] = useState('');
+  const [editBaseline, setEditBaseline] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<RateItem | null>(null);
   const [ym, setYm] = useState<string>('');
@@ -31,18 +41,23 @@ export default function MonthlyDeduction() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [overwrite, setOverwrite] = useState<boolean>(true);
   const [importing, setImporting] = useState(false);
+  const unavailable = loading || Boolean(loadError) || !hasLoaded;
+  const { confirmDiscard } = useUnsavedChanges((hasLoaded && defaultBaseline !== defaultRatePct) || (open && editBaseline !== JSON.stringify([ym, ratePct])) || Boolean(importFile));
+  const closeEditor = (next: boolean) => { if (!next && (saving || !confirmDiscard())) return; setOpen(next); };
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await invokeWithAuth({ url: '/api/v1/deductions-monthly', method: 'GET' });
-      setItems(res.data || []);
-      const def = await getDefaultDeduction();
-      const rate = Number(def?.data?.rate ?? 0.15);
-      setDefaultRatePct(String(Math.round(rate * 100)));
+      const [res, def] = await Promise.all([
+        invokeWithAuth({ url: '/api/v1/deductions-monthly', method: 'GET' }), getDefaultDeduction(),
+      ]);
+      const rate = Number(def?.data?.rate);
+      if (!Number.isFinite(rate)) throw new Error('默认扣点未读取，请重新加载');
+      const value = displayRate(rate);
+      setItems(res.data || []); setDefaultRatePct(value); setDefaultBaseline(value); setHasLoaded(true); setLoadError(null);
     } catch (e: any) {
       const detail = e?.data?.detail || e?.message || '加载失败';
-      toast.error(detail);
+      setLoadError(detail);
     } finally {
       setLoading(false);
     }
@@ -56,22 +71,29 @@ export default function MonthlyDeduction() {
     setEditTarget(null);
     setYm('');
     setRatePct('15');
+    setEditBaseline(JSON.stringify(['', '15']));
     setOpen(true);
   };
 
   const openEdit = (item: RateItem) => {
     setEditTarget(item);
     setYm(item.year_month);
-    setRatePct(String(Math.round((item.rate || 0) * 100)));
+    const percent = displayRate(item.rate || 0);
+    setRatePct(percent); setEditBaseline(JSON.stringify([item.year_month, percent]));
     setOpen(true);
   };
 
   const save = async () => {
-    if (!/^\d{4}-\d{2}$/.test(ym)) {
+    if (!isAdmin || unavailable || saving) return;
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) {
       toast.error('月份格式为 YYYY-MM');
       return;
     }
-    const rate = Math.max(0, Math.min(100, Number(ratePct))) / 100;
+    const percent = Number(ratePct);
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100 || !ratePct.trim()) return toast.error('请输入 0 至 100 的扣点比例');
+    const rate = Math.max(0, Math.min(100, percent)) / 100;
+    if (editTarget && rate !== editTarget.rate && !window.confirm(`将 ${ym} 扣点从 ${displayRate(editTarget.rate)}% 改为 ${ratePct}%。这会影响该月份财务展示，确认保存？`)) return;
+    setSaving(true);
     try {
       if (editTarget) {
         await invokeWithAuth({ url: `/api/v1/deductions-monthly/${ym}`, method: 'PUT', data: { rate } });
@@ -85,10 +107,11 @@ export default function MonthlyDeduction() {
     } catch (e: any) {
       const detail = e?.data?.detail || e?.message || '保存失败';
       toast.error(detail);
-    }
+    } finally { setSaving(false); }
   };
 
   const del = async (ymStr: string) => {
+    if (!isAdmin || unavailable) return;
     try {
       await invokeWithAuth({ url: `/api/v1/deductions-monthly/${ymStr}`, method: 'DELETE' });
       toast.success('已删除');
@@ -100,11 +123,15 @@ export default function MonthlyDeduction() {
   };
 
   const saveDefault = async () => {
+    if (!isAdmin || unavailable || savingDefault) return;
+    const percent = Number(defaultRatePct);
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100 || !defaultRatePct.trim()) return toast.error('请输入 0 至 100 的扣点比例');
+    if (defaultBaseline !== defaultRatePct && !window.confirm(`默认扣点从 ${defaultBaseline}% 改为 ${defaultRatePct}%。未单独设置比例的月份将使用新默认值，确认保存？`)) return;
     setSavingDefault(true);
     try {
       const val = Math.max(0, Math.min(100, Number(defaultRatePct))) / 100;
       await updateDefaultDeduction(val);
-      toast.success('默认扣点已更新');
+      toast.success('默认扣点已更新'); setDefaultBaseline(defaultRatePct);
     } catch (e: any) {
       const detail = e?.data?.detail || e?.message || '更新失败';
       toast.error(detail);
@@ -114,10 +141,12 @@ export default function MonthlyDeduction() {
   };
 
   const doImport = async () => {
+    if (!isAdmin || unavailable || importing) return;
     if (!importFile) {
       toast.error('请选择 CSV 文件');
       return;
     }
+    if (!window.confirm(`导入 ${importFile.name}，${overwrite ? '会覆盖 CSV 中同月份现有比例' : '保留同月份现有比例'}。请确认月份和比例已核对。`)) return;
     setImporting(true);
     try {
       const res = await importMonthlyDeductions(importFile, overwrite);
@@ -137,12 +166,12 @@ export default function MonthlyDeduction() {
       <div className="app-page-title flex items-center justify-between">
         <div><p className="app-page-kicker">T24 Marketing · Finance Settings</p><h1 className="app-page-heading">月度扣点比例</h1><p className="app-page-description">统一管理每月平台扣点比例，修改后影响对应月份财务口径。</p></div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={load} disabled={loading}>
+          <Button variant="outline" onClick={() => { if (confirmDiscard()) void load(); }} disabled={loading || saving || savingDefault}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             刷新
           </Button>
           {isAdmin && (
-            <Button onClick={openCreate}>
+            <Button onClick={openCreate} disabled={unavailable}>
               <Plus className="w-4 h-4 mr-2" />
               新增月份
             </Button>
@@ -150,6 +179,8 @@ export default function MonthlyDeduction() {
         </div>
       </div>
 
+      {loadError && <PageLoadState error={`扣点设置读取失败：${loadError}`} onRetry={() => void load()} />}
+      {!hasLoaded && loading && <p role="status">正在读取扣点设置…</p>}
       <Card>
         <CardHeader className="deduction-card-heading flex flex-row items-center justify-between">
           <CardTitle>默认扣点（全局）</CardTitle>
@@ -159,10 +190,10 @@ export default function MonthlyDeduction() {
           <div className="deduction-default-form flex items-end gap-3">
             <div>
               <Label htmlFor="default-deduction-rate">默认扣点 (%)</Label>
-              <Input id="default-deduction-rate" type="number" min={0} max={100} value={defaultRatePct} onChange={(e) => setDefaultRatePct(e.target.value)} disabled={!isAdmin} />
+              <Input id="default-deduction-rate" type="number" min={0} max={100} value={hasLoaded ? defaultRatePct : ''} onChange={(e) => setDefaultRatePct(e.target.value)} disabled={!isAdmin || unavailable} />
             </div>
             {isAdmin && (
-              <Button onClick={saveDefault} disabled={savingDefault}>
+              <Button onClick={saveDefault} disabled={savingDefault || unavailable || defaultBaseline === defaultRatePct}>
                 保存默认
               </Button>
             )}
@@ -188,15 +219,15 @@ export default function MonthlyDeduction() {
               {items.map((it) => (
                 <TableRow key={it.year_month}>
                   <TableCell data-label="月份">{it.year_month}</TableCell>
-                  <TableCell data-label="扣点比例">{Math.round((it.rate || 0) * 100)}%</TableCell>
+                  <TableCell data-label="扣点比例">{displayRate(it.rate || 0)}%</TableCell>
                   <TableCell data-label="更新时间">{it.updated_at ? String(it.updated_at).slice(0, 19).replace('T', ' ') : '-'}</TableCell>
                   <TableCell data-label="操作" className="text-right space-x-2">
                     {isAdmin && (
                       <>
-                        <Button size="sm" variant="outline" onClick={() => openEdit(it)}>
+                        <Button size="sm" variant="outline" disabled={unavailable} onClick={() => openEdit(it)}>
                           <Edit className="w-4 h-4 mr-1" /> 编辑
                         </Button>
-                        <Button size="sm" variant="destructive" onClick={() => del(it.year_month)}>
+                        <Button size="sm" variant="destructive" disabled={unavailable} onClick={() => setDeleteTarget(it.year_month)}>
                           <Trash2 className="w-4 h-4 mr-1" /> 删除
                         </Button>
                       </>
@@ -204,7 +235,7 @@ export default function MonthlyDeduction() {
                   </TableCell>
                 </TableRow>
               ))}
-              {items.length === 0 && (
+              {hasLoaded && !loading && !loadError && items.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-slate-500">暂无数据</TableCell>
                 </TableRow>
@@ -231,7 +262,7 @@ export default function MonthlyDeduction() {
                 <input type="checkbox" id="overwrite" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />
                 <Label htmlFor="overwrite">覆盖同月</Label>
               </div>
-              <Button onClick={doImport} disabled={importing || !importFile}>
+              <Button onClick={doImport} disabled={importing || unavailable || !importFile}>
                 <Upload className="w-4 h-4 mr-2" />
                 导入
               </Button>
@@ -242,7 +273,7 @@ export default function MonthlyDeduction() {
         </details>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={closeEditor}>
         <DialogContent className="deduction-editor">
           <DialogHeader>
             <DialogTitle>{editTarget ? '编辑月份' : '新增月份'}</DialogTitle>
@@ -250,7 +281,7 @@ export default function MonthlyDeduction() {
           <div className="space-y-4">
             <div>
               <Label htmlFor="deduction-month">月份 (YYYY-MM)</Label>
-              <Input id="deduction-month" value={ym} onChange={(e) => setYm(e.target.value)} placeholder="例如 2026-03" />
+              <Input id="deduction-month" type="month" disabled={Boolean(editTarget)} value={ym} onChange={(e) => setYm(e.target.value)} placeholder="例如 2026-03" />
             </div>
             <div>
               <Label htmlFor="deduction-rate">扣点比例 (%)</Label>
@@ -265,12 +296,13 @@ export default function MonthlyDeduction() {
               />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
-              <Button onClick={save} disabled={!isAdmin}>保存</Button>
+              <Button variant="outline" onClick={() => closeEditor(false)}>取消</Button>
+              <Button onClick={save} disabled={!isAdmin || unavailable || saving}>{saving ? '保存中…' : '保存'}</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog open={Boolean(deleteTarget)} onOpenChange={next => { if (!next) setDeleteTarget(null); }} title="确认删除月度扣点配置" description={`删除 ${deleteTarget || ''} 的专属扣点后，该月份将使用全局默认比例。确认已核对影响？`} onConfirm={async () => { if (deleteTarget) await del(deleteTarget); setDeleteTarget(null); }} />
     </div>
   );
 }

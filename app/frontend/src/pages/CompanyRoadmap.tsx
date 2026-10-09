@@ -1,3 +1,8 @@
+import { formatBusinessDateTimeInput } from '@/lib/business-date';
+import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
+import { useDialogDraft } from '@/lib/use-dialog-draft';
+import { buildReturnLink } from '@/lib/navigation-state';
+import { useLocation } from 'react-router-dom';
 import './admin-workspace.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -302,6 +307,8 @@ const taskStatusLabels: Record<string, string> = {
 
 export default function CompanyRoadmap() {
   const { isAdmin } = useRole();
+  const location = useLocation();
+  const roadmapPath = `${location.pathname}${location.search}`;
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -338,6 +345,13 @@ export default function CompanyRoadmap() {
   const [createTask, setCreateTask] = useState(true);
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditRows, setAuditRows] = useState<Array<{ id: number; action: string; actor_name: string; actor_role: string; reason?: string | null; created_at: string }>>([]);
+
+  const cashDraft = useUnsavedChanges(cashDirty);
+  const targetDraft = useDialogDraft(settingsOpen, settingsForm);
+  const accountDraft = useDialogDraft(accountOpen, accountForm);
+  const restrictionFormDraft = useDialogDraft(restrictionOpen, restrictionDraft);
+  const reopenDraft = useDialogDraft(reopenOpen, reopenReason);
+  const decisionDraft = useDialogDraft(decisionOpen, [decisionStatus, decisionNote, nextReviewDate, createTask]);
 
   const hydrateEditor = useCallback((data: Overview, month: string) => {
     const period = data.cash_period;
@@ -400,34 +414,7 @@ export default function CompanyRoadmap() {
     void loadOverview();
   }, [loadOverview]);
 
-  useEffect(() => {
-    if (!cashDirty) return;
-    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-    const warnBeforeLinkNavigation = (event: MouseEvent) => {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const target = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
-      if (!target || target.target === '_blank' || target.hasAttribute('download')) return;
-      const href = target.getAttribute('href');
-      if (!href || href.startsWith('#')) return;
-      const destination = new URL(href, window.location.href);
-      if (destination.href === window.location.href) return;
-      if (!window.confirm('当前月份还有未保存的现金修改。离开页面会放弃这些修改，是否继续？')) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      setCashDirty(false);
-    };
-    window.addEventListener('beforeunload', warnBeforeLeaving);
-    document.addEventListener('click', warnBeforeLinkNavigation, true);
-    return () => {
-      window.removeEventListener('beforeunload', warnBeforeLeaving);
-      document.removeEventListener('click', warnBeforeLinkNavigation, true);
-    };
-  }, [cashDirty]);
+
 
   const editorAccounts = useMemo(() => {
     const periodAccountIds = new Set((overview?.cash_period?.balances || []).map(row => row.account_id));
@@ -512,6 +499,7 @@ export default function CompanyRoadmap() {
   };
 
   const saveSettings = async () => {
+    if (saving) return;
     if (!settingsForm) return;
     setSaving(true);
     try {
@@ -542,7 +530,7 @@ export default function CompanyRoadmap() {
         },
       } : current);
       toast.success('公司目标与现金安全参数已保存');
-      setSettingsOpen(false);
+      targetDraft.markSaved(); setSettingsOpen(false);
       await loadOverview(selectedMonth, false, true, !cashDirty);
     } catch (error) {
       toast.error(errorMessage(error, '目标设置保存失败'));
@@ -579,6 +567,7 @@ export default function CompanyRoadmap() {
   };
 
   const saveAccount = async () => {
+    if (saving) return;
     if (!selectedMonthReady || loading) {
       setAccountFormError('所选月份仍在读取，请读取完成后再保存账户。');
       return;
@@ -636,7 +625,7 @@ export default function CompanyRoadmap() {
       });
       markCashDirty();
       toast.success(accountForm.id ? '账户已更新' : '账户已新增');
-      setAccountOpen(false);
+      accountDraft.markSaved(); setAccountOpen(false);
       const refreshed = await loadOverview(selectedMonth, false, true, false);
       if (!refreshed) toast.warning('账户已经保存并显示；其他经营数据暂时没有同步，请稍后点“刷新”。');
     } catch (error) {
@@ -674,11 +663,12 @@ export default function CompanyRoadmap() {
     }
     setRestrictions(current => [...current, { ...restrictionDraft, description: restrictionDraft.description.trim() }]);
     markCashDirty();
-    setRestrictionOpen(false);
+    restrictionFormDraft.markSaved(); setRestrictionOpen(false);
     setRestrictionDraft({ category: 'tax_reserve', description: '', currency: 'CNY', amount: 0, notes: '' });
   };
 
   const saveCashPeriod = async () => {
+    if (saving) return;
     if (!selectedMonthReady || loading) {
       toast.error('所选月份尚未读取完成，不能保存现金快照');
       return;
@@ -728,7 +718,7 @@ export default function CompanyRoadmap() {
       if (response.data?.id) {
         setOverview(current => current ? { ...current, cash_period: response.data as CashPeriod } : current);
       }
-      setCashDirty(false);
+      cashDraft.markSaved(); setCashDirty(false);
       toast.success('现金快照草稿已保存；锁定后才会进入经营决策');
       await loadOverview(selectedMonth, false, true, true);
     } catch (error) {
@@ -739,6 +729,7 @@ export default function CompanyRoadmap() {
   };
 
   const transitionCashPeriod = async (action: 'lock' | 'reopen', reason?: string) => {
+    if (saving) return;
     if (!selectedMonthReady || loading || !overview?.cash_period) {
       toast.error('所选月份尚未读取完成，请刷新后再操作');
       return;
@@ -757,9 +748,9 @@ export default function CompanyRoadmap() {
       if (response.data?.id) {
         setOverview(current => current ? { ...current, cash_period: response.data as CashPeriod } : current);
       }
-      setCashDirty(false);
+      cashDraft.markSaved(); setCashDirty(false);
       toast.success(action === 'lock' ? '现金快照已确认并锁定' : '现金快照已重新打开');
-      setReopenOpen(false);
+      reopenDraft.markSaved(); setReopenOpen(false);
       setReopenReason('');
       await loadOverview(selectedMonth, false, true, true);
     } catch (error) {
@@ -784,6 +775,7 @@ export default function CompanyRoadmap() {
   };
 
   const saveDecision = async () => {
+    if (saving) return;
     if (!overview) return;
     setSaving(true);
     try {
@@ -812,7 +804,7 @@ export default function CompanyRoadmap() {
           },
         },
       } : current);
-      setDecisionOpen(false);
+      decisionDraft.markSaved(); setDecisionOpen(false);
       await loadOverview(selectedMonth, false, true, false);
     } catch (error) {
       toast.error(errorMessage(error, '经营决策保存失败'));
@@ -974,7 +966,7 @@ export default function CompanyRoadmap() {
                 {accountOpen ? <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-sm sm:p-5">
                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div><h4 className="font-semibold text-slate-900">{accountForm.id ? '编辑现金账户' : '新增现金账户'}</h4><p className="mt-1 text-xs leading-5 text-slate-500">账户建立后，再在下方填写本月核对余额。不要录完整银行卡号、登录信息或密码。</p></div>
-                    <Button size="sm" variant="ghost" onClick={() => { setAccountFormError(''); setAccountOpen(false); }}>取消</Button>
+                    <Button size="sm" variant="ghost" disabled={saving} onClick={() => { if (accountDraft.confirmDiscard()) { setAccountFormError(''); setAccountOpen(false); } }}>取消</Button>
                   </div>
                   {accountFormError ? <div role="alert" className="mb-4 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{accountFormError}</span></div> : null}
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -986,7 +978,7 @@ export default function CompanyRoadmap() {
                     <div className="sm:col-span-2"><Label htmlFor="cash-account-notes">备注</Label><Input id="cash-account-notes" className="mt-1 bg-white" value={accountForm.notes} onChange={event => setAccountForm(current => ({ ...current, notes: event.target.value }))} placeholder="可选，例如账户用途或核对负责人" /></div>
                     {accountForm.id ? <label className="sm:col-span-2 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={accountForm.is_active} onChange={event => setAccountForm(current => ({ ...current, is_active: event.target.checked }))} />继续用于后续现金快照</label> : null}
                   </div>
-                  <div className="mt-4 flex flex-col-reverse gap-2 border-t border-blue-100 pt-4 sm:flex-row sm:justify-end"><Button variant="outline" onClick={() => { setAccountFormError(''); setAccountOpen(false); }}>取消</Button><Button onClick={() => void saveAccount()} disabled={saving}>{saving ? '保存中…' : '保存账户'}</Button></div>
+                  <div className="mt-4 flex flex-col-reverse gap-2 border-t border-blue-100 pt-4 sm:flex-row sm:justify-end"><Button variant="outline" disabled={saving} onClick={() => { if (accountDraft.confirmDiscard()) { setAccountFormError(''); setAccountOpen(false); } }}>取消</Button><Button onClick={() => void saveAccount()} disabled={saving}>{saving ? '保存中…' : '保存账户'}</Button></div>
                 </div> : null}
                 {editorAccounts.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{editorAccounts.map(account => {
                   const rawBalance = balances[account.id]?.trim() || '';
@@ -1033,18 +1025,18 @@ export default function CompanyRoadmap() {
             <Link to="/rmb-profit" className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
               <Card className="h-full transition group-hover:-translate-y-0.5 group-hover:border-emerald-300 group-hover:shadow-md"><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><p className="text-sm text-slate-500">近 3 月平均净利润</p><ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-emerald-600" /></div><p className="mt-2 text-2xl font-bold text-emerald-700">{cny(overview.operating_signals.three_month_average_profit_cny)}</p><p className="mt-1 text-xs text-slate-400">有效样本 {overview.operating_signals.profit_sample_months} 个月 · 查看利润明细</p></CardContent></Card>
             </Link>
-            <Link to="/management-decisions?section=projects" className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            <Link to={buildReturnLink('/management-decisions?section=projects&businessLine=managed_service&activeOnly=1', roadmapPath, 'company-roadmap')} className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
               <Card className="h-full transition group-hover:-translate-y-0.5 group-hover:border-blue-300 group-hover:shadow-md"><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><p className="text-sm text-slate-500">在合作代运营项目</p><ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600" /></div><p className="mt-2 text-2xl font-bold text-blue-700">{overview.operating_signals.active_managed_service_projects}</p><p className="mt-1 text-xs text-slate-400">当前主要现金引擎 · 查看项目分类</p></CardContent></Card>
             </Link>
-            <Link to="/management-decisions?section=projects" className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            <Link to={buildReturnLink('/management-decisions?section=projects&businessLine=os&paidOnly=1', roadmapPath, 'company-roadmap')} className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
               <Card className="h-full transition group-hover:-translate-y-0.5 group-hover:border-violet-300 group-hover:shadow-md"><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><p className="text-sm text-slate-500">付费 OS 客户</p><ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-violet-600" /></div><p className="mt-2 text-2xl font-bold text-violet-700">{paidOsCustomers}</p><p className="mt-1 text-xs text-slate-400">餐饮 {paidRestaurantOsCustomers} · 美业 {paidBeautyOsCustomers}</p><p className="mt-1 text-xs font-medium text-violet-600">只按真实实收关联后的去重客户计算</p></CardContent></Card>
             </Link>
-            <Link to="/management-decisions?section=projects" className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            <Link to={buildReturnLink('/management-decisions?section=insights&health=risk&focus=health#decision-health', roadmapPath, 'company-roadmap')} className="group rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
               <Card className="h-full transition group-hover:-translate-y-0.5 group-hover:border-rose-300 group-hover:shadow-md"><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><p className="text-sm text-slate-500">高风险项目占比</p><ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-rose-600" /></div><p className={`mt-2 text-2xl font-bold ${overview.operating_signals.high_risk_ratio >= 0.2 ? 'text-rose-700' : 'text-emerald-700'}`}>{(overview.operating_signals.high_risk_ratio * 100).toFixed(1)}%</p><p className="mt-1 text-xs text-slate-400">{overview.operating_signals.high_risk_project_count}/{overview.operating_signals.health_project_count} 个项目 · 查看风险客户</p></CardContent></Card>
             </Link>
           </div>
           <Card>
-            <CardHeader className="gap-3 pb-3 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="text-base">团队产能与招聘门</CardTitle><p className="mt-1 text-xs text-slate-500">系统只提出招聘验证，不会因为客户数量增加就自动建议扩编。</p></div><Button asChild size="sm" variant="outline"><Link to="/management-decisions?section=insights">查看产能依据<ArrowRight className="ml-1 h-4 w-4" /></Link></Button></CardHeader>
+            <CardHeader className="gap-3 pb-3 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="text-base">团队产能与招聘门</CardTitle><p className="mt-1 text-xs text-slate-500">系统只提出招聘验证，不会因为客户数量增加就自动建议扩编。</p></div><Button asChild size="sm" variant="outline"><Link to={buildReturnLink('/management-decisions?section=insights&focus=capacity#decision-capacity', roadmapPath, 'company-roadmap')}>查看产能依据<ArrowRight className="ml-1 h-4 w-4" /></Link></Button></CardHeader>
             <CardContent><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">在职/试用员工</p><p className="mt-2 text-xl font-bold text-slate-900">{overview.operating_signals.active_employee_count ?? 0}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">合作中项目</p><p className="mt-2 text-xl font-bold text-slate-900">{teamCapacity.active_projects}</p><p className="mt-1 text-xs text-slate-400">未分配 {teamCapacity.unassigned_projects}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">达到产能预警线</p><p className={`mt-2 text-xl font-bold ${teamCapacity.near_or_over_capacity ? 'text-amber-700' : 'text-emerald-700'}`}>{teamCapacity.near_or_over_capacity} 人</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">任务逾期率</p><p className={`mt-2 text-xl font-bold ${teamCapacity.overdue_rate >= 0.15 ? 'text-rose-700' : 'text-emerald-700'}`}>{(teamCapacity.overdue_rate * 100).toFixed(1)}%</p></div></div><div className={`mt-3 rounded-xl p-4 ${teamCapacity.hiring_level === 'hire' ? 'bg-rose-50 text-rose-800' : teamCapacity.hiring_level === 'process' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800'}`}><p className="font-semibold">{teamCapacity.hiring_title}</p><p className="mt-1 text-xs leading-5">{teamCapacity.hiring_message}</p>{teamCapacity.hiring_gate_ready === false ? <p className="mt-2 text-xs font-medium">观察数据 {teamCapacity.history_weeks ?? 0}/{teamCapacity.observation_required_weeks ?? 4} 周；未达到门槛前不据此招聘。</p> : null}</div></CardContent>
           </Card>
           <Card>
@@ -1056,7 +1048,7 @@ export default function CompanyRoadmap() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+      <Dialog open={settingsOpen} onOpenChange={open => { if (open || (!saving && targetDraft.confirmDiscard())) setSettingsOpen(open); }}>
         <DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>公司目标与现金安全参数</DialogTitle></DialogHeader>{settingsForm ? <div className="grid gap-4 py-2 sm:grid-cols-2">
           <div><Label>目标开始日期</Label><Input className="mt-1" type="date" value={settingsForm.target_start_date} onChange={event => setSettingsForm(current => current ? { ...current, target_start_date: event.target.value } : current)} /></div>
           <div><Label>目标结束日期</Label><Input className="mt-1" type="date" value={settingsForm.target_end_date} onChange={event => setSettingsForm(current => current ? { ...current, target_end_date: event.target.value } : current)} /></div>
@@ -1066,10 +1058,10 @@ export default function CompanyRoadmap() {
           <div><Label>缺失月份默认预估汇率</Label><Input className="mt-1" type="number" min="0.1" max="20" step="0.0001" value={settingsForm.default_usd_cny_rate} onChange={event => setSettingsForm(current => current ? { ...current, default_usd_cny_rate: event.target.value } : current)} /></div>
           <div className="sm:col-span-2"><Label>老板补充边界（可选）</Label><Input className="mt-1" value={settingsForm.current_focus} onChange={event => setSettingsForm(current => current ? { ...current, current_focus: event.target.value } : current)} placeholder="例如：现金安全线达标前，不新增固定人力" /><p className="mt-1 text-xs text-slate-500">系统建议仍是唯一经营焦点；这里只记录老板确认的约束条件。</p></div>
           <p className="sm:col-span-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">月固定支出用于安全线和现金跑道，不会自动写入财务支出。正式利润仍沿用现有财务数据。</p>
-        </div> : null}<DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>取消</Button><Button onClick={() => void saveSettings()} disabled={saving}>保存设置</Button></DialogFooter></DialogContent>
+        </div> : null}<DialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (targetDraft.confirmDiscard()) setSettingsOpen(false); }}>取消</Button><Button onClick={() => void saveSettings()} disabled={saving}>保存设置</Button></DialogFooter></DialogContent>
       </Dialog>
 
-      <Dialog open={restrictionOpen} onOpenChange={setRestrictionOpen}>
+      <Dialog open={restrictionOpen} onOpenChange={open => { if (open || (restrictionFormDraft.confirmDiscard())) setRestrictionOpen(open); }}>
         <DialogContent><DialogHeader><DialogTitle>新增受限资金</DialogTitle></DialogHeader><div className="grid gap-4 py-2 sm:grid-cols-2">
           <div><Label>类别</Label><NativeSelect className="mt-1" value={restrictionDraft.category} onChange={value => setRestrictionDraft(current => ({ ...current, category: value }))} options={overview.restriction_categories} /></div>
           <div><Label>币种</Label><NativeSelect className="mt-1" value={restrictionDraft.currency} onChange={value => setRestrictionDraft(current => ({ ...current, currency: value as 'USD' | 'CNY' }))} options={[{ value: 'CNY', label: 'CNY' }, { value: 'USD', label: 'USD' }]} /></div>
@@ -1077,25 +1069,25 @@ export default function CompanyRoadmap() {
           <div><Label>金额 *</Label><Input className="mt-1" type="number" min="0.01" step="0.01" value={restrictionDraft.amount || ''} onChange={event => setRestrictionDraft(current => ({ ...current, amount: Number(event.target.value) }))} /></div>
           <div><Label>折合人民币</Label><Input className="mt-1" disabled value={cny(Number(restrictionDraft.amount || 0) * (restrictionDraft.currency === 'USD' ? numericRate : 1))} /></div>
           <div className="sm:col-span-2"><Label>备注</Label><Input className="mt-1" value={restrictionDraft.notes || ''} onChange={event => setRestrictionDraft(current => ({ ...current, notes: event.target.value }))} /></div>
-        </div><DialogFooter><Button variant="outline" onClick={() => setRestrictionOpen(false)}>取消</Button><Button onClick={saveRestriction}>加入待核对</Button></DialogFooter></DialogContent>
+        </div><DialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (restrictionFormDraft.confirmDiscard()) setRestrictionOpen(false); }}>取消</Button><Button onClick={saveRestriction}>加入待核对</Button></DialogFooter></DialogContent>
       </Dialog>
 
-      <Dialog open={reopenOpen} onOpenChange={setReopenOpen}>
-        <DialogContent><DialogHeader><DialogTitle>重新打开已确认快照</DialogTitle></DialogHeader><div className="py-2"><Label>修改原因 *</Label><Textarea className="mt-1" value={reopenReason} onChange={event => setReopenReason(event.target.value)} placeholder="说明为什么需要修改已确认的账户余额或受限资金" /></div><DialogFooter><Button variant="outline" onClick={() => setReopenOpen(false)}>取消</Button><Button onClick={() => void transitionCashPeriod('reopen', reopenReason)} disabled={saving || loading || !reopenReason.trim()}>确认重新打开</Button></DialogFooter></DialogContent>
+      <Dialog open={reopenOpen} onOpenChange={open => { if (open || (!saving && reopenDraft.confirmDiscard())) setReopenOpen(open); }}>
+        <DialogContent><DialogHeader><DialogTitle>重新打开已确认快照</DialogTitle></DialogHeader><div className="py-2"><Label>修改原因 *</Label><Textarea className="mt-1" value={reopenReason} onChange={event => setReopenReason(event.target.value)} placeholder="说明为什么需要修改已确认的账户余额或受限资金" /></div><DialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (reopenDraft.confirmDiscard()) setReopenOpen(false); }}>取消</Button><Button onClick={() => void transitionCashPeriod('reopen', reopenReason)} disabled={saving || loading || !reopenReason.trim()}>确认重新打开</Button></DialogFooter></DialogContent>
       </Dialog>
 
-      <Dialog open={decisionOpen} onOpenChange={setDecisionOpen}>
+      <Dialog open={decisionOpen} onOpenChange={open => { if (open || (!saving && decisionDraft.confirmDiscard())) setDecisionOpen(open); }}>
         <DialogContent className="max-w-xl"><DialogHeader><DialogTitle>记录老板经营决策</DialogTitle></DialogHeader><div className="space-y-4 py-2">
           <div className="rounded-xl bg-slate-50 p-4"><p className="font-semibold text-slate-900">{recommendation.title}</p><p className="mt-2 text-xs leading-5 text-slate-600">{recommendation.action}</p></div>
           <div><Label>决定</Label><NativeSelect className="mt-1" value={decisionStatus} onChange={value => setDecisionStatus(value as typeof decisionStatus)} options={[{ value: 'accepted', label: '采纳并执行' }, { value: 'deferred', label: '暂缓' }, { value: 'rejected', label: '不采纳' }, { value: 'completed', label: '已完成' }]} /></div>
           <div><Label>决定说明{decisionStatus === 'deferred' || decisionStatus === 'rejected' ? ' *' : ''}</Label><Textarea className="mt-1" value={decisionNote} onChange={event => setDecisionNote(event.target.value)} placeholder="为什么这样决定，后续复盘时可追溯" /></div>
           <div><Label>下次复盘日期</Label><Input className="mt-1" type="date" value={nextReviewDate} onChange={event => setNextReviewDate(event.target.value)} /></div>
           {decisionStatus === 'accepted' ? <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={createTask} onChange={event => setCreateTask(event.target.checked)} />同时生成一条任务，进入任务协作闭环</label> : null}
-        </div><DialogFooter><Button variant="outline" onClick={() => setDecisionOpen(false)}>取消</Button><Button onClick={() => void saveDecision()} disabled={saving}>保存决定</Button></DialogFooter></DialogContent>
+        </div><DialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (decisionDraft.confirmDiscard()) setDecisionOpen(false); }}>取消</Button><Button onClick={() => void saveDecision()} disabled={saving}>保存决定</Button></DialogFooter></DialogContent>
       </Dialog>
 
       <Dialog open={auditOpen} onOpenChange={setAuditOpen}>
-        <DialogContent className="max-w-xl"><DialogHeader><DialogTitle>{selectedMonth} 现金快照操作记录</DialogTitle></DialogHeader><div className="max-h-[55vh] space-y-2 overflow-y-auto py-2">{auditRows.map(row => <div key={row.id} className="rounded-xl border p-3"><div className="flex items-center justify-between"><p className="font-medium text-slate-900">{row.action === 'saved' ? '保存草稿' : row.action === 'lock' ? '确认锁定' : row.action === 'reopen' ? '重新打开' : row.action}</p><span className="text-xs text-slate-400">{new Date(row.created_at).toLocaleString('zh-CN', { hour12: false })}</span></div><p className="mt-1 text-xs text-slate-500">{row.actor_name} · {row.actor_role}</p>{row.reason ? <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{row.reason}</p> : null}</div>)}{!auditRows.length ? <p className="py-8 text-center text-sm text-slate-400">暂无操作记录</p> : null}</div></DialogContent>
+        <DialogContent className="max-w-xl"><DialogHeader><DialogTitle>{selectedMonth} 现金快照操作记录</DialogTitle></DialogHeader><div className="max-h-[55vh] space-y-2 overflow-y-auto py-2">{auditRows.map(row => <div key={row.id} className="rounded-xl border p-3"><div className="flex items-center justify-between"><p className="font-medium text-slate-900">{row.action === 'saved' ? '保存草稿' : row.action === 'lock' ? '确认锁定' : row.action === 'reopen' ? '重新打开' : row.action}</p><span className="text-xs text-slate-400">{formatBusinessDateTimeInput(row.created_at).replace('T', ' ')} · 北京时间</span></div><p className="mt-1 text-xs text-slate-500">{row.actor_name} · {row.actor_role}</p>{row.reason ? <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{row.reason}</p> : null}</div>)}{!auditRows.length ? <p className="py-8 text-center text-sm text-slate-400">暂无操作记录</p> : null}</div></DialogContent>
       </Dialog>
     </div>
   );

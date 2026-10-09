@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, CircleHelp, Copy, MessageSquareText, Pencil, Plus, Search, Send, ShieldAlert, X } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import '@/components/sales-center.css';
 import './sales-workspace.css';
 import './sales-knowledge-refined.css';
@@ -120,12 +121,16 @@ function KnowledgeArticleDetail({
 }
 
 export default function SalesKnowledge() {
-  const { role, isAdmin } = useRole();
+  const { role, isAdmin, employee } = useRole();
   const isMobile = useIsMobile();
   const canManage = isAdmin || role === 'sales_manager';
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [questions, setQuestions] = useState<KnowledgeQuestion[]>([]);
+  const [questionsError, setQuestionsError] = useState(false);
+  const recentKey = `t24:knowledge-recent:${employee?.id}:${role}`;
+  const [recentIds, setRecentIds] = useState<number[]>([]);
+  useEffect(() => { try { const value = JSON.parse(sessionStorage.getItem(recentKey) || '[]'); setRecentIds(Array.isArray(value) ? value.filter(id => Number.isSafeInteger(id) && id > 0).slice(0,5) : []); } catch { setRecentIds([]); } }, [recentKey]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const knowledgeRequestRef = useRef(0);
@@ -142,13 +147,17 @@ export default function SalesKnowledge() {
   const [questionError, setQuestionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const editorBaseline = useRef('');
+  const questionBaseline = useRef('');
+  const editorGuard = useUnsavedChanges(editorOpen && JSON.stringify({ articleForm, customCategory, publishNow }) !== editorBaseline.current);
+  const questionGuard = useUnsavedChanges(questionOpen && JSON.stringify(questionForm) !== questionBaseline.current);
+  const rememberArticle = (id: number) => { const next = [id, ...recentIds.filter(value => value !== id)].slice(0,5); setRecentIds(next); try { sessionStorage.setItem(recentKey, JSON.stringify(next)); } catch { /* Recent article identifiers are optional. */ } };
 
   const openQuestion = () => {
     setQuestionError(null);
-    setQuestionForm(current => ({
-      question: current.question || query.trim(),
-      context: current.context || (category !== '全部' ? `知识分类：${category}` : ''),
-    }));
+    const initial = { question: questionForm.question || query.trim(), context: questionForm.context || (category !== '全部' ? `知识分类：${category}` : '') };
+    questionBaseline.current = JSON.stringify(initial);
+    setQuestionForm(initial);
     setQuestionOpen(true);
   };
 
@@ -177,8 +186,9 @@ export default function SalesKnowledge() {
     try {
       const response = await invokeWithAuth({ url: '/api/v1/sales-knowledge/questions', method: 'GET' });
       setQuestions(response.data?.items || []);
+      setQuestionsError(false);
     } catch {
-      setQuestions([]);
+      setQuestionsError(true);
     }
   };
 
@@ -194,7 +204,7 @@ export default function SalesKnowledge() {
   const openEditor = (article?: Article) => {
     setEditorArticle(article || null);
     setPublishNow(article ? article.status === 'published' : true);
-    setArticleForm(article ? {
+    const initialForm = article ? {
       category: article.category,
       title: article.title,
       customer_question: article.customer_question || '',
@@ -204,7 +214,9 @@ export default function SalesKnowledge() {
       tags: article.tags.join('，'),
       is_sensitive: article.is_sensitive,
       sort_order: String(article.sort_order || 200),
-    } : emptyArticleForm());
+    } : emptyArticleForm();
+    setArticleForm(initialForm);
+    editorBaseline.current = JSON.stringify({ articleForm: initialForm, customCategory: '', publishNow: article ? article.status === 'published' : true });
     setCustomCategory('');
     setEditorOpen(true);
   };
@@ -213,17 +225,19 @@ export default function SalesKnowledge() {
     try {
       await navigator.clipboard.writeText(content);
       toast.success(successMessage);
+      return true;
     } catch {
       toast.error('复制失败，请手动选择内容复制');
+      return false;
     }
   };
 
   const copyAnswer = async (article: Article) => {
-    await copyText(getFullKnowledgeAnswer(article), '完整答复已复制，可按实际情况调整后发送');
+    if (await copyText(getFullKnowledgeAnswer(article), '完整答复已复制，可按实际情况调整后发送')) rememberArticle(article.id);
   };
 
   const copyShortAnswer = async (article: Article) => {
-    await copyText(getShortKnowledgeAnswer(article.standard_answer), '电话短版话术已复制');
+    if (await copyText(getShortKnowledgeAnswer(article.standard_answer), '电话短版话术已复制')) rememberArticle(article.id);
   };
 
   const saveArticle = async () => {
@@ -255,6 +269,7 @@ export default function SalesKnowledge() {
         await invokeWithAuth({ url: `/api/v1/sales-knowledge/articles?publish_now=${publishNow}`, method: 'POST', data: payload });
         toast.success(publishNow ? '知识卡已发布' : '草稿已保存');
       }
+      editorGuard.markSaved();
       setEditorOpen(false);
       await Promise.all([loadKnowledge(false), loadQuestions()]);
     } catch (error: any) {
@@ -276,6 +291,7 @@ export default function SalesKnowledge() {
       await invokeWithAuth({ url: '/api/v1/sales-knowledge/questions', method: 'POST', data: { question: questionForm.question.trim(), context: questionForm.context.trim() || null } });
       toast.success('问题已提交给销售主管，后续会补充为标准知识卡');
       setQuestionForm({ question: '', context: '' });
+      questionGuard.markSaved();
       setQuestionOpen(false);
       await loadQuestions();
     } catch (error: any) {
@@ -330,6 +346,7 @@ export default function SalesKnowledge() {
         </div>
       </div>
 
+      {query === '' && category === '全部' && recentIds.some(id => articles.some(article => article.id === id)) && <div className="sk-recent" aria-label="最近使用话术"><span>最近使用</span>{recentIds.map(id => articles.find(article => article.id === id)).filter(Boolean).map(article => <Button key={article!.id} variant="ghost" size="sm" onClick={() => { setSelectedArticle(article!); if (isMobile) setMobileDetailOpen(true); }}>{article!.title}</Button>)}</div>}
       <aside className="knowledge-v4-categories" aria-label="知识分类">
           <nav aria-label="按销售场景筛选">
             {['全部', ...allCategories].map(item => (
@@ -418,6 +435,7 @@ export default function SalesKnowledge() {
         </Sheet>
       ) : null}
 
+      {canManage && questionsError && <div role="alert" className="sk-question-load-error">待解答问题暂不可用<Button size="sm" variant="ghost" onClick={() => void loadQuestions()}>重新加载问题</Button></div>}
       {canManage && openQuestions.length > 0 ? (
         <details className="sk-open-questions">
           <summary><CircleHelp className="h-4 w-4" /><span>销售待解答问题</span><Badge>{openQuestions.length}</Badge></summary>
@@ -433,10 +451,10 @@ export default function SalesKnowledge() {
         </details>
       ) : null}
 
-      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="knowledge-refined-portal sales-center-ui max-h-[88dvh] max-w-3xl overflow-y-auto">
+      <Dialog open={editorOpen} onOpenChange={open => { if (!open && !saving && editorGuard.confirmDiscard()) setEditorOpen(false); }}>
+        <DialogContent className="knowledge-refined-portal sk-editor-dialog sales-center-ui max-h-[88dvh] max-w-3xl">
           <DialogHeader><DialogTitle>{editorArticle ? '编辑知识卡' : '新建知识卡'}</DialogTitle></DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <fieldset disabled={saving} className="sk-editor-fields grid gap-4 sm:grid-cols-2">
             <div><Label htmlFor="knowledge-category">销售过程分类</Label><select id="knowledge-category" className="t24-native-select w-full rounded-lg border border-input bg-white px-3 py-2" value={articleForm.category} onChange={event => { setArticleForm(current => ({ ...current, category: event.target.value })); setCustomCategory(''); }}>{allCategories.map(item => <option key={item} value={item}>{item}</option>)}</select></div>
             <div><Label htmlFor="knowledge-new-category">新分类名称（选填）</Label><Input id="knowledge-new-category" value={customCategory} onChange={event => setCustomCategory(event.target.value)} placeholder="没有合适分类时直接输入" /></div>
             <div><Label htmlFor="knowledge-sort-order">排序数字</Label><Input id="knowledge-sort-order" type="number" value={articleForm.sort_order} onChange={event => setArticleForm(current => ({ ...current, sort_order: event.target.value }))} /></div>
@@ -449,21 +467,20 @@ export default function SalesKnowledge() {
             <div><Label htmlFor="knowledge-tags">标签（用逗号分隔）</Label><Input id="knowledge-tags" value={articleForm.tags} onChange={event => setArticleForm(current => ({ ...current, tags: event.target.value }))} placeholder="付款，Stripe，收款" /></div>
             <label className="mt-6 flex min-h-11 items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={articleForm.is_sensitive} onChange={event => setArticleForm(current => ({ ...current, is_sensitive: event.target.checked }))} />内部敏感信息</label>
             <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700 sm:col-span-2"><input type="checkbox" checked={publishNow} onChange={event => setPublishNow(event.target.checked)} />保存后立即发布给销售查看</label>
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setEditorOpen(false)}>取消</Button><Button disabled={saving} onClick={() => void saveArticle()}>{saving ? '保存中...' : '保存知识卡'}</Button></DialogFooter>
+          </fieldset>
+          <DialogFooter className="sk-editor-actions"><Button variant="outline" onClick={() => { if (!saving && editorGuard.confirmDiscard()) setEditorOpen(false); }}>取消</Button><Button disabled={saving} onClick={() => void saveArticle()}>{saving ? '保存中...' : '保存知识卡'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={questionOpen} onOpenChange={setQuestionOpen}>
-        <DialogContent className="knowledge-refined-portal sales-center-ui">
+      <Dialog open={questionOpen} onOpenChange={open => { if (!open && !saving && questionGuard.confirmDiscard()) setQuestionOpen(false); }}>
+        <DialogContent className="knowledge-refined-portal sk-question-dialog sales-center-ui">
           <DialogHeader><DialogTitle>提交销售新问题</DialogTitle></DialogHeader>
-          <div className="space-y-4">
+          <fieldset disabled={saving} className="sk-editor-fields space-y-4">
             <p className="text-sm text-slate-500">把客户的原话和具体场景留下来，销售主管会整理为统一的标准答复。</p>
             <div><Label htmlFor="knowledge-question">客户问了什么？</Label><Textarea id="knowledge-question" rows={4} value={questionForm.question} onChange={event => setQuestionForm(current => ({ ...current, question: event.target.value }))} placeholder="例如：客户问广告费是否包含在代运营套餐中？" /></div>
             <div><Label htmlFor="knowledge-question-context">补充场景（可选）</Label><Textarea id="knowledge-question-context" rows={3} value={questionForm.context} onChange={event => setQuestionForm(current => ({ ...current, context: event.target.value }))} placeholder="客户行业、正在讨论的套餐、已承诺内容等" /></div>
             {questionError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{questionError}</p>}
-            <DialogFooter><Button variant="outline" onClick={() => setQuestionOpen(false)}>取消</Button><Button disabled={saving} onClick={() => void submitQuestion()}><Send className="mr-1.5 h-4 w-4" />提交问题</Button></DialogFooter>
-          </div>
+          </fieldset><DialogFooter className="sk-editor-actions"><Button variant="outline" disabled={saving} onClick={() => { if (!saving && questionGuard.confirmDiscard()) setQuestionOpen(false); }}>取消</Button><Button disabled={saving} onClick={() => void submitQuestion()}><Send className="mr-1.5 h-4 w-4" />提交问题</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

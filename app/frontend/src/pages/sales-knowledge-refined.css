@@ -431,3 +431,15 @@
   .knowledge-refined-portal .knowledge-v4-short-answer button,
   .knowledge-refined-portal .knowledge-v4-full-answer button { width: 100%; }
 }
+
+.sk-recent { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:14px; color:#64748b; }
+.sk-recent button { max-width:100%; white-space:normal; }
+@media(max-width:767px) {
+  .knowledge-refined-portal:not(.knowledge-v4-mobile-sheet) { width:100vw!important; max-width:none!important; max-height:100dvh!important; border-radius:0!important; padding:24px 20px max(20px,env(safe-area-inset-bottom)); }
+  .knowledge-refined-portal footer { position:sticky; bottom:0; background:white; padding-top:14px; border-top:1px solid #e2e8f0; }
+}
+
+.sk-editor-dialog,.sk-question-dialog { grid-template-rows:auto minmax(0,1fr) auto; overflow:hidden; }
+.sk-editor-fields { border:0; min-width:0; overflow:auto; padding:0 2px; }
+.sk-editor-actions { border-top:1px solid #e2e8f0; padding-top:14px; }
+@media(max-width:767px) { .sk-editor-dialog,.sk-question-dialog { height:100dvh!important; } .sk-editor-actions { flex-direction:row; gap:12px; } .sk-editor-actions button { flex:1; min-height:48px; } }

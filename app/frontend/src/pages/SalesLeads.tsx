@@ -9,6 +9,10 @@ import './sales-workspace.css';
 import './sales-leads-refined.css';
 import SalesIntelligenceCenter from '@/components/SalesIntelligenceCenter';
 import SalesLeadDossier from '@/components/SalesLeadDossier';
+import SalesFollowUpQuick from '@/components/SalesFollowUpQuick';
+import SalesLocalTime, { useSalesContactWindow } from '@/components/SalesLocalTime';
+import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
+import { useSalesListPosition } from '@/lib/use-sales-list-position';
 import { SalesLeadPulse, LeadContactSnapshot, LeadProgressSnapshot, LeadNextStep } from '@/components/SalesLeadSnapshot';
 import { salesApi, type LeadInsight } from '@/lib/sales-intelligence';
 import { Badge } from '@/components/ui/badge';
@@ -164,15 +168,17 @@ export default function SalesLeads() {
   const [compactRows, setCompactRows] = useState(false);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState(false);
-  const [view, setView] = useState<'leads' | 'calls' | 'performance' | 'intelligence'>(()=>new URLSearchParams(window.location.search).get('view')==='intelligence'?'intelligence':'leads');
+  const [initialParams] = useState(() => new URLSearchParams(window.location.search));
+  const [view, setView] = useState<'leads' | 'calls' | 'performance' | 'intelligence'>(() => ['calls', 'performance', 'intelligence'].includes(initialParams.get('view') || '') ? initialParams.get('view') as 'calls' | 'performance' | 'intelligence' : 'leads');
   const [dossierId, setDossierId] = useState<number | null>(null);
   const requestedQuoteRef = useRef(false);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [contactFilter, setContactFilter] = useState('');
+  const [search, setSearch] = useState(() => initialParams.get('search')?.slice(0,200) || '');
+  const [statusFilter, setStatusFilter] = useState(() => statusOptions.some(item => item.value === initialParams.get('status')) ? initialParams.get('status')! : '');
+  const [dueRange, setDueRange] = useState(() => ['today', 'overdue'].includes(initialParams.get('due_range') || '') ? initialParams.get('due_range')! : '');
+  const [contactFilter, setContactFilter] = useState(() => ['contactable', 'do_not_contact', 'blacklisted'].includes(initialParams.get('contact_rule') || '') ? initialParams.get('contact_rule')! : '');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(() => Math.max(1, Math.min(100000, Number(initialParams.get('page')) || 1)));
+  const [pageSize, setPageSize] = useState(() => [20,50,100].includes(Number(initialParams.get('page_size'))) ? Number(initialParams.get('page_size')) : 20);
   const [total, setTotal] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [followUpOnly, setFollowUpOnly] = useState(false);
@@ -215,6 +221,18 @@ export default function SalesLeads() {
   const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>([]);
   const [bulkAssigneeId, setBulkAssigneeId] = useState('');
   const loadRequestSeqRef = useRef(0);
+  const formBaseline = useRef(JSON.stringify(emptyForm));
+  useSalesListPosition(`${employee?.id}:${role}`, !loading);
+  const formGuard = useUnsavedChanges(showForm && !followUpOnly && JSON.stringify(form) !== formBaseline.current);
+  const contactWindow = useSalesContactWindow(followUpOnly && showForm ? editing?.id : null);
+  const sourceReturn = initialParams.get('returnTo') || '';
+  const safeReturn = /^\/(sales-workbench|sales-leads|merchant-pool)(?:\?|$)/.test(sourceReturn) && !sourceReturn.includes('\\') ? sourceReturn : '';
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fields = { view: view === 'leads' ? '' : view, search, status: statusFilter, contact_rule: contactFilter, due_range: dueRange, page: page > 1 ? String(page) : '', page_size: pageSize !== 20 ? String(pageSize) : '' };
+    Object.entries(fields).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key));
+    window.history.replaceState(window.history.state, '', `/sales-leads${params.size ? `?${params}` : ''}`);
+  }, [view, search, statusFilter, contactFilter, dueRange, page, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const quoteProducts = useMemo(() => products.filter(item => String(item.business_line_id) === quoteForm.business_line_id), [products, quoteForm.business_line_id]);
@@ -230,6 +248,7 @@ export default function SalesLeads() {
     if (search.trim()) params.set('search', search.trim());
     if (statusFilter) params.set('status', statusFilter);
     if (contactFilter) params.set('contact_rule', contactFilter);
+    if (dueRange) params.set('due_range', dueRange);
     try {
       const coreRequests = [
         invokeWithAuth({ url: `/api/v1/sales-leads?${params.toString()}`, method: 'GET' }),
@@ -289,7 +308,7 @@ export default function SalesLeads() {
     const timer = window.setTimeout(() => void loadData(), search.trim() ? 300 : 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, search, statusFilter, contactFilter, performanceDays, callReportDays]);
+  }, [page, pageSize, search, statusFilter, contactFilter, dueRange, performanceDays, callReportDays]);
 
   useAutoRefresh(loadData, { intervalMs: 30000, enabled: !showForm });
 
@@ -346,6 +365,7 @@ export default function SalesLeads() {
   const openCreate = () => {
     setEditing(null);
     setFollowUpOnly(false);
+    formBaseline.current = JSON.stringify(emptyForm);
     setForm(emptyForm);
     setShowForm(true);
   };
@@ -368,14 +388,16 @@ export default function SalesLeads() {
   const openEdit = (lead: SalesLead, followUp = false) => {
     setFollowUpOnly(followUp);
     setEditing(lead);
-    setForm({
+    const nextForm = {
       business_name: lead.business_name || '', contact_name: lead.contact_name || '', phone: lead.phone || '',
       industry: lead.industry || '', country: lead.country || '', state: lead.state || '', city: lead.city || '',
       address: lead.address || '', website: lead.website || '', source: lead.source || '', status: lead.status || 'new',
       assigned_sales_id: lead.assigned_sales_id ? String(lead.assigned_sales_id) : '', notes: lead.notes || '',
       is_blacklisted: !!lead.is_blacklisted, do_not_contact: !!lead.do_not_contact,
       do_not_contact_reason: lead.do_not_contact_reason || '', next_follow_up_at: formatBusinessDateTimeInput(lead.next_follow_up_at),
-    });
+    };
+    formBaseline.current = JSON.stringify(nextForm);
+    setForm(nextForm);
     setCallHistory([]);
     const initial = { outcome: lead.status === 'appointment' ? 'appointment' : lead.status === 'interested' ? 'interested' : 'callback', notes: '', next_follow_up_at: formatBusinessDateTimeInput(lead.next_follow_up_at) };
     followUpBaseline.current = JSON.stringify(initial);
@@ -410,6 +432,7 @@ export default function SalesLeads() {
   };
   const closeForm = (open: boolean) => {
     if (!open && (saving || followUpSaving)) return;
+    if (!open && !followUpOnly && !formGuard.confirmDiscard()) return;
     if (!open) historyRequestRef.current += 1;
     setShowForm(open);
   };
@@ -509,6 +532,7 @@ export default function SalesLeads() {
         await invokeWithAuth({ url: '/api/v1/sales-leads', method: 'POST', data: managerPayload });
         toast.success('线索已加入独立销售线索库');
       }
+      formGuard.markSaved();
       setShowForm(false);
       await loadData();
     } catch (error: any) {
@@ -611,20 +635,14 @@ export default function SalesLeads() {
 
   const hasDealDraft = () => !!dealLead && !dealLoading && !dealError && (JSON.stringify(quoteForm) !== JSON.stringify(emptyQuoteForm) || JSON.stringify(handoffForm) !== dealBaselinesRef.current.handoff || JSON.stringify(paymentForm) !== dealBaselinesRef.current.payment);
   const canEditDeal = !!dealLead && !dealSaving && !dealLoading && !dealError && !!dealReadiness && dealReadiness.lead.id === dealLead.id && !dealReadiness.lead.converted_customer_id && !dealReadiness.lead.do_not_contact && !dealReadiness.lead.is_blacklisted;
+  const dealGuard = useUnsavedChanges(hasDealDraft());
   const closeDealControl = (open: boolean) => {
     if (open || dealSaving || convertingId !== null) return;
-    if (hasDealDraft() && !window.confirm('报价或交接有未保存内容，确认放弃并关闭吗？')) return;
+    if (!dealGuard.confirmDiscard()) return;
     dealRequestRef.current += 1;
     setDealLead(null);
     setDealReadiness(null);
   };
-  useEffect(() => {
-    if (!hasDealDraft()) return;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dealLead, quoteForm, handoffForm, paymentForm]);
 
   const submitQuote = async () => {
     if (!canEditDeal) return;
@@ -784,7 +802,7 @@ export default function SalesLeads() {
     const protectedLead = lead.is_blacklisted || lead.do_not_contact;
     if (protectedLead) return <Button size="sm" variant="outline" onClick={() => openEdit(lead)}>查看保护</Button>;
     if (lead.converted_customer_id) return <Button size="sm" variant="outline" onClick={() => window.location.assign(customerDetailPath(lead.converted_customer_id!))}>查看客户</Button>;
-    if (lead.status === 'new') return <Button size="sm" variant="outline" onClick={() => window.location.assign(`/sales-workbench?lead_id=${lead.id}${lead.assigned_sales_id ? `&sales_employee_id=${lead.assigned_sales_id}` : ''}`)}>首次拨打</Button>;
+    if (lead.status === 'new') return <Button size="sm" variant="outline" onClick={() => window.location.assign(`/sales-workbench?lead_id=${lead.id}${lead.assigned_sales_id ? `&sales_employee_id=${lead.assigned_sales_id}` : ''}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>首次拨打</Button>;
     if (['interested', 'appointment'].includes(lead.status)) return isMobile
       ? <Button size="sm" variant="outline" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}>继续跟进</Button>
       : <><Button size="sm" variant="outline" onClick={() => void openDealControl(lead)}>准备报价</Button><Button size="sm" variant="ghost" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}><MessageSquarePlus size={16} /></Button></>;
@@ -794,7 +812,7 @@ export default function SalesLeads() {
   return (
     <div className={`t24-directory-page t24-sales-leads-page sales-center-ui sc-directory sl-clarity calm-sales-page calm-leads-page app-page slr-page slr-view-${view}`}>
       <div className="sc-section-heading slr-page-heading">
-        <h2>{view === 'leads' ? '联系进展' : view === 'calls' ? '通话数据' : view === 'intelligence' ? '经营中心' : '历史跟进参考'}</h2>
+        <div>{safeReturn && <Button size="sm" variant="ghost" onClick={() => window.location.assign(safeReturn)}>返回拨打位置</Button>}<h2>{view === 'leads' ? '联系进展' : view === 'calls' ? '通话数据' : view === 'intelligence' ? '经营中心' : '历史跟进参考'}</h2></div>
         <div className="slr-heading-tools"><span className="slr-scope">{scopeText}</span><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost">更多视图<ChevronDown size={15} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setView('leads')}>联系进展</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('calls')}>通话数据</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('intelligence')}>经营中心</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => setView('performance')}>历史跟进参考</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>{canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新增线索</Button>}</div>
       </div>
 
@@ -928,7 +946,7 @@ export default function SalesLeads() {
       <Card className={`sc-table-card sl-lead-table ${compactRows ? 'sl-compact' : ''} overflow-hidden border-slate-200 shadow-sm`}>
         <CardContent className="p-0">
           <div className="sl-table-toolbar">
-            <div className="slr-list-tools">
+            <div className="slr-list-tools"><nav className="sl-due-views" aria-label="回访时间范围">{[{ value: '', label: '全部进展' }, { value: 'today', label: '今天需跟进' }, { value: 'overdue', label: '逾期' }].map(item => <Button key={item.label} variant="ghost" size="sm" aria-pressed={dueRange === item.value} onClick={() => { setDueRange(item.value); setPage(1); }}>{item.label}</Button>)}</nav>
               <div className="sl-quick-filters" aria-label="快捷线索状态">{[{ value: 'follow_up', label: '待回访' }, { value: 'interested', label: '有意向' }, { value: 'appointment', label: '已预约' }, { value: '', label: '全部' }].map(option => <button key={option.value} type="button" aria-pressed={statusFilter === option.value} onClick={() => { setStatusFilter(option.value); setPage(1); }}>{option.label}</button>)}</div>
               <div className="sl-search-row">
               <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input aria-label="搜索销售线索" className="pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索商家、联系人、电话或城市" /></div>
@@ -940,7 +958,7 @@ export default function SalesLeads() {
               <label><span className="sc-filter-label">联系规则</span><NativeSelect value={contactFilter} onChange={value => { setContactFilter(value); setPage(1); }} options={[{ value: '', label: '全部联系规则' }, { value: 'contactable', label: '允许联系' }, { value: 'do_not_contact', label: '禁止再联系' }, { value: 'blacklisted', label: '黑名单' }]} /></label>
               {!isMobile && <div><span className="sc-filter-label">列表密度</span><div className="sl-density"><button type="button" aria-pressed={!compactRows} onClick={() => setCompactRows(false)}>标准</button><button type="button" aria-pressed={compactRows} onClick={() => setCompactRows(true)}>紧凑</button></div></div>}
             </div>}
-            {(search || statusFilter || contactFilter) && <div className="slr-active-filters"><span>{statusFilter ? statusLabels[statusFilter] || statusFilter : '全部状态'}{contactFilter ? ` · ${contactFilter === 'contactable' ? '允许联系' : contactFilter === 'do_not_contact' ? '禁止再联系' : '黑名单'}` : ''}{search && ` · “${search}”`}</span><button type="button" onClick={() => { setSearch(''); setStatusFilter(''); setContactFilter(''); setPage(1); }}>清空筛选</button></div>}
+            {(search || statusFilter || contactFilter || dueRange) && <div className="slr-active-filters"><span>{dueRange ? dueRange === 'today' ? '今天需跟进 · ' : '逾期 · ' : ''}{statusFilter ? statusLabels[statusFilter] || statusFilter : '全部状态'}{contactFilter ? ` · ${contactFilter === 'contactable' ? '允许联系' : contactFilter === 'do_not_contact' ? '禁止再联系' : '黑名单'}` : ''}{search && ` · “${search}”`}</span><button type="button" onClick={() => { setSearch(''); setStatusFilter(''); setContactFilter(''); setDueRange(''); setPage(1); }}>清空筛选</button></div>}
           </div>
           {insightsError && <div className="sl-inline-error" role="alert">累计联系数据暂时未能加载，商家资料仍可查看。<Button size="sm" variant="ghost" onClick={() => setInsightRetry(value => value + 1)}>重试</Button></div>}
           {canManage && !isMobile && selectedLeadIds.length > 0 && <div className="sc-bulk-bar flex flex-col gap-3 border-b bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center"><p className="flex-1 text-sm font-medium text-slate-700">当前页已选 {selectedLeadIds.length} 条，可批量补齐待分配线索或调整负责人</p><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择目标销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button size="sm" variant="outline" disabled={!selectedLeadIds.length || !bulkAssigneeId || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign', selectedLeadIds)}>批量分配 / 改派</Button></div>}
@@ -1015,13 +1033,13 @@ export default function SalesLeads() {
             <SheetDescription id="slr-followup-description">{formatPhoneNumber(editing?.phone, editing?.country)}</SheetDescription>
           </SheetHeader>
           {editing && <>
-            <div className="slr-followup-tools"><Badge className={statusColors[editing.status] || statusColors.new}>{statusLabels[editing.status] || editing.status}</Badge><CustomerPhoneDial country={editing.country} phone={editing.phone} label="拨打电话" disabled={saving || followUpSaving || editing.do_not_contact || editing.is_blacklisted || !!editing.converted_customer_id} /></div>
+            <SalesLocalTime {...contactWindow} /><div className="slr-followup-tools"><Badge className={statusColors[editing.status] || statusColors.new}>{statusLabels[editing.status] || editing.status}</Badge><CustomerPhoneDial country={editing.country} phone={editing.phone} label="拨打电话" disabled={saving || followUpSaving || editing.do_not_contact || editing.is_blacklisted || !!editing.converted_customer_id} /></div>
             {editing.do_not_contact || editing.is_blacklisted || editing.converted_customer_id
               ? <div role="status" className="slr-protection-note">{editing.converted_customer_id ? '已转正式客户' : '已停止联系'}{editing.do_not_contact_reason && <p>{editing.do_not_contact_reason}</p>}</div>
               : <fieldset disabled={saving || followUpSaving} className="slr-followup-form">
                   <div><Label htmlFor="slr-followup-outcome">本次结果</Label><NativeSelect id="slr-followup-outcome" value={followUpForm.outcome} onChange={value => setFollowUpForm(current => ({ ...current, outcome: value }))} options={followUpOutcomeOptions} /></div>
                   <div><Label htmlFor="slr-followup-notes">沟通记录 *</Label><Textarea id="slr-followup-notes" maxLength={20000} rows={7} value={followUpForm.notes} onChange={event => setFollowUpForm(current => ({ ...current, notes: event.target.value }))} placeholder="记录客户反馈和约定的下一步…" /></div>
-                  {!['not_interested', 'do_not_contact'].includes(followUpForm.outcome) && <div><Label htmlFor="slr-followup-time">下次回访 · 北京时间</Label><Input id="slr-followup-time" type="datetime-local" value={followUpForm.next_follow_up_at} onChange={event => setFollowUpForm(current => ({ ...current, next_follow_up_at: event.target.value }))} /></div>}
+                  {!['not_interested', 'do_not_contact'].includes(followUpForm.outcome) && <div><Label htmlFor="slr-followup-time">下次回访 · 北京时间</Label><Input id="slr-followup-time" type="datetime-local" value={followUpForm.next_follow_up_at} onChange={event => setFollowUpForm(current => ({ ...current, next_follow_up_at: event.target.value }))} /><SalesFollowUpQuick value={followUpForm.next_follow_up_at} timezone={contactWindow.timezone} onChange={next_follow_up_at => setFollowUpForm(current => ({ ...current, next_follow_up_at }))} /></div>}
                   {hasFollowUpDraft() && <div className="slr-draft-state"><span role="status">{followUpPersistence === 'session' ? '草稿已暂存' : '草稿仅保留在当前页面'}</span><Button type="button" size="sm" variant="ghost" aria-label="清空跟进草稿" onClick={discardFollowUpDraft}><Trash2 size={14} /></Button></div>}
                   <div className="slr-followup-save-row"><Button type="button" className="slr-followup-save" disabled={followUpSaving || editing.status === 'new'} onClick={() => void recordFollowUp()}>{followUpSaving ? '保存中…' : '保存跟进'}</Button>{['interested', 'appointment'].includes(followUpForm.outcome) && <Button type="button" variant="outline" className="slr-followup-save" disabled={followUpSaving || editing.status === 'new'} onClick={() => void recordFollowUp('quote')}>保存并准备报价</Button>}</div>
                 </fieldset>}

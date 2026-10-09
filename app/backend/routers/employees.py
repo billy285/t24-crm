@@ -5,8 +5,8 @@ from zoneinfo import ZoneInfo
 
 from datetime import datetime, date
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,7 @@ from schemas.auth import UserResponse
 from services.commissions import transfer_partner_attributions_to_direct
 from services.employees import EmployeesService
 from services.phone_numbers import parse_phone_number
+from services.operation_logs import Operation_logsService, build_server_operation_log_data
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -325,6 +326,57 @@ async def _ensure_sales_partner_profile(
 
 
 # ---------- Pydantic Schemas ----------
+class ProjectOwnershipHandoff(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target_employee_id: int
+
+
+@router.post("/{source_id}/handoff-projects")
+async def handoff_employee_projects(
+    source_id: int,
+    data: ProjectOwnershipHandoff,
+    request: Request,
+    admin: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Transfer only active project ownership; never edit a financial linkage."""
+    if source_id == data.target_employee_id:
+        raise HTTPException(status_code=400, detail="交接员工和接收员工不能相同")
+    targets = await _load_employee_targets(db, [source_id, data.target_employee_id])
+    source, target = targets[source_id], targets[data.target_employee_id]
+    if target.status not in ACTIVE_EMPLOYEE_STATUSES:
+        raise HTTPException(status_code=409, detail="接收员工必须在职或试用")
+    for employee in (source, target):
+        if employee.role == "sales_partner" or await _linked_external_partner(db, employee.id):
+            raise HTTPException(status_code=409, detail="外部合伙人归属需走渠道交接流程，不能通过员工项目交接更改")
+    projects = list((await db.scalars(select(CustomerEngagement).where(
+        ~CustomerEngagement.status.in_({"stopped", "completed"}),
+        or_(CustomerEngagement.owner_employee_id == source_id, CustomerEngagement.sales_employee_id == source_id),
+    ))).all())
+    try:
+        for project in projects:
+            if project.owner_employee_id == source_id:
+                project.owner_employee_id = target.id
+            if project.sales_employee_id == source_id:
+                project.sales_employee_id = target.id
+        if projects:
+            await Operation_logsService(db).create(
+                build_server_operation_log_data(
+                    request=request, current_user=admin, action_type="other",
+                    action_detail=f"员工在办项目归属交接: {source.id} {source.name} → {target.id} {target.name}，{len(projects)} 项",
+                ), user_id=str(admin.id), commit=False,
+            )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    remaining = int(await db.scalar(select(func.count(CustomerEngagement.id)).where(
+        ~CustomerEngagement.status.in_({"stopped", "completed"}),
+        or_(CustomerEngagement.owner_employee_id == source_id, CustomerEngagement.sales_employee_id == source_id),
+    )) or 0)
+    return {"transferred_count": len(projects), "remaining_count": remaining}
+
+
 class EmployeesData(BaseModel):
     """Entity data schema (for create/update)"""
     user_id: Optional[str] = None

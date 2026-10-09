@@ -677,9 +677,10 @@ export default function Dashboard() {
               </div>
               <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${ownerCockpit.decision_state === 'healthy' ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-300/30 bg-amber-300/10'}`}>
                 {ownerCockpit.decision_state === 'healthy' ? <CheckCircle2 className="h-5 w-5 text-emerald-300" /> : <ShieldAlert className="h-5 w-5 text-amber-300" />}
-                <div><p className="text-sm font-semibold">{ownerCockpit.decision_state === 'healthy' ? '当前经营闭环正常' : `${ownerCockpit.decisions.length} 类事项需要关注`}</p><p className="mt-0.5 text-[11px] text-slate-300">数据截至 {new Date(ownerCockpit.as_of).toLocaleString('zh-CN', { hour12: false })}</p></div>
+                <div><p className="text-sm font-semibold">{ownerCockpit.decision_state === 'healthy' ? '当前经营闭环正常' : `${ownerCockpit.decisions.length} 类事项需要关注`}</p><p className="mt-0.5 text-[11px] text-slate-300">数据截至 {new Date(ownerCockpit.as_of).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) + '（北京时间）'}</p></div>
               </div>
             </div>
+            {ownerCockpit.decisions[0] && <button type="button" className="calm-owner-priority" onClick={() => navigate(ownerCockpit.decisions[0].link)}><span><small>优先推动</small><strong>{ownerCockpit.decisions[0].title} · {ownerCockpit.decisions[0].count}</strong></span><span>查看事项 <ArrowRight aria-hidden="true" /></span></button>}
             <div className="calm-owner-metrics mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
               {topMetrics.map(item => {
                 const Icon = item.icon;

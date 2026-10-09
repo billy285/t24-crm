@@ -63,3 +63,14 @@
 .mfd-basis p { margin: 0 3px 10px; line-height: 1.8; }
 .mobile-finance-details button:focus-visible, .mobile-finance-details summary:focus-visible, .mobile-finance-date-filter button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 @media (max-width: 359px) { .mobile-finance-date-filter { gap: 6px; flex-wrap: wrap; } .mfd-date-shortcuts { flex: 1; } .mfd-date-shortcuts button { flex: 1; } .mfd-month { flex-basis: 100%; flex-direction: row; align-items: center; min-height: 46px; gap: 12px; } .mfd-month span { flex-shrink: 0; } .mfd-month input { flex: 1; width: 0; min-height: 38px; font-size: 16px; } .mfd-record > summary, .mfd-record-body { padding-inline: 13px; } }
+.mfd-filters { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.mfd-filters select { flex:1; min-width:0; min-height:44px; padding:9px 10px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; font-size:16px; }
+.mfd-segments { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:4px; background:#edf1f7; border-radius:12px; margin-bottom:14px; }
+.mfd-segments button { min-height:44px; font-size:14px; border-radius:9px; color:#64748b; }
+.mfd-segments button[aria-pressed=true] { background:#fff; color:#2563eb; font-weight:600; }
+.mfd-trend { padding:16px 6px 8px; background:#fff; border:1px solid #e2e8f0; border-radius:16px; margin-bottom:16px; }
+.mfd-trend h2 { margin:0 10px 12px; font-size:15px; font-weight:600; }
+.mfd-record-body dl>.mfd-group-heading { display:block; padding:10px 0 0; border-top:1px solid #edf1f6; }
+.mfd-group-heading dt { color:#30466a; font-weight:600; font-size:14px; }
+.mfd-month span, .mfd-badge, .mfd-card-amounts span, .mfd-record-head p, .mfd-summary span { font-size:13px; }
+.mfd-record-body dl>div { font-size:14px; }
