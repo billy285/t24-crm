@@ -89,7 +89,10 @@ export default function SalesIntelligenceCenter() {
   });
   const [overview, setOverview] = useState<Overview | null>(null);
   const [items, setItems] = useState<LeadInsight[]>([]);
-  const [filters, setFilters] = useState(emptyFilters);
+  const [filters, setFilters] = useState(() => {
+    const signal = new URLSearchParams(window.location.search).get("signal") || "";
+    return { ...emptyFilters, signal: ["overdue", "no_next_step"].includes(signal) ? signal : "" };
+  });
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);

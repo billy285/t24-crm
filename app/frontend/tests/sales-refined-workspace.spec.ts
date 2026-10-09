@@ -143,7 +143,7 @@ function workbench(page: Page, width: number) {
 
 async function openWorkbench(page: Page, width: number, completed = 0) {
   await page.setViewportSize({ width, height: width < 768 ? 844 : 1000 });
-  await page.goto(`${baseUrl}/sales-workbench`);
+  await page.goto(`${baseUrl}/sales-workbench?sales_employee_id=27`);
   const surface = workbench(page, width);
   await expect(surface).toBeVisible();
   await expect(surface.getByRole('heading', { name: '今日拨打', exact: true })).toBeVisible();
@@ -237,7 +237,7 @@ for (const width of [390, 1440]) {
       }
       await expect(surface.getByRole('button', { name: '保存并下一位', exact: true })).toBeDisabled();
     }
-    expect(page.url()).toBe(`${baseUrl}/sales-workbench`);
+    expect(page.url()).toBe(`${baseUrl}/sales-workbench?sales_employee_id=27`);
     expect(fixture.writes).toHaveLength(0);
     expect(fixture.successfulResults.size).toBe(0);
   });
@@ -266,7 +266,7 @@ test('手机全队列可切换，RingCentral 返回保留内联草稿且不虚�
   expect(fixture.successfulResults.size).toBe(0);
 
   await page.goBack();
-  await expect(page).toHaveURL(`${baseUrl}/sales-workbench`);
+  await expect(page).toHaveURL(`${baseUrl}/sales-workbench?sales_employee_id=27`);
   await expect(customerSelect).toHaveValue('915');
   await expect(surface.getByLabel('沟通记录', { exact: true })).toHaveValue('第15位商家约定明天回电，不要丢失');
   await expect(surface.getByRole('button', { name: '待回访', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -361,7 +361,7 @@ test('已完成任务可追加拨号跟进，官方状态独立且禁止联系�
   expect(fixture.successfulResults.size).toBe(3);
 
   await page.goBack();
-  await expect(page).toHaveURL(`${baseUrl}/sales-workbench`);
+  await expect(page).toHaveURL(`${baseUrl}/sales-workbench?sales_employee_id=27`);
   await expect(progress).toHaveAttribute('aria-valuenow', '3');
   await surface.getByRole('button', { name: '更多客户操作', exact: true }).click();
   await page.getByRole('menuitem', { name: '追加跟进', exact: true }).click();
@@ -385,7 +385,10 @@ test('已完成任务可追加拨号跟进，官方状态独立且禁止联系�
     await chooseTask(surface, 390, taskId);
     await surface.getByRole('button', { name: '更多客户操作', exact: true }).click();
     await expect(page.getByRole('menuitem', { name: '追加跟进', exact: true })).toHaveCount(0);
-    await page.keyboard.press('Escape');
+    const menu = page.getByRole('menu', { name: '更多客户操作' });
+    await expect(menu).toBeVisible();
+    await menu.press('Escape');
+    await expect(menu).toHaveCount(0);
     await expect(surface.getByRole('button', { name: '拨打电话', exact: true })).toBeDisabled();
     await expect(surface.getByLabel('沟通记录', { exact: true })).toBeDisabled();
   }

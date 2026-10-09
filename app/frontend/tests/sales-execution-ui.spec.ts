@@ -109,7 +109,7 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(widths.body).toBeLessThanOrEqual(widths.viewport);
 }
 
-test('销售知识库采用搜索优先三栏布局并支持短版与完整复制', async ({ page, context }) => {
+test('销售知识库采用搜索优先两栏布局并支持短版与完整复制', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl });
   await mockSalesApi(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -122,6 +122,8 @@ test('销售知识库采用搜索优先三栏布局并支持短版与完整复�
   await expect(page.getByText('需要升级确认')).toBeVisible();
   await page.getByRole('button', { name: '复制短版话术' }).click();
   await expect(page.getByText('电话短版话术已复制')).toBeVisible();
+  await page.getByRole('tab', { name: '完整答复', exact: true }).click();
+  await expect(page.getByRole('button', { name: '复制完整答复' })).toBeVisible();
 
   const search = page.getByRole('textbox', { name: '搜索销售知识库' });
   await search.fill('付款');
@@ -153,7 +155,8 @@ test('销售今日工作台话术助手按需打开并提供真实知识内容',
 
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/sales-workbench-knowledge-assistant-local.png`, fullPage: true });
 
-  await page.keyboard.press('Escape');
+  await page.getByRole('dialog', { name: '销售话术', exact: true }).getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId('sales-workbench-mobile')).toBeVisible();
   await expect(page.getByRole('complementary', { name: '销售知识助手' })).toHaveCount(0);

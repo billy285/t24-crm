@@ -95,6 +95,7 @@ test('未分配为默认工作视图且省略重复状态，切换视图查询�
   await expect(page.getByRole('columnheader', { name: '当前状态', exact: true })).toHaveCount(0);
   await expect(page.locator('.mp-pool-status')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '分配：Golden Dragon Restaurant', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '分配：Golden Dragon Restaurant', exact: true })).toHaveText('选择');
   await expect(page.getByRole('button', { name: '查看资料：Golden Dragon Restaurant', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '查看资料：已转入销售的商家', exact: true })).toHaveCount(0);
   expect(listQueries.length).toBeGreaterThan(0);
@@ -126,7 +127,9 @@ for (const width of [1440, 390]) {
     const batch = page.getByRole('region', { name: '商家批量操作' });
     await expect(batch).toBeVisible();
     await expect(batch).toContainText('1');
+    await batch.getByRole('button', { name: '确认分配', exact: true }).scrollIntoViewIfNeeded();
     await expect(batch.getByRole('button', { name: '确认分配', exact: true })).toBeDisabled();
+    if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-selected-${width}px.png`, fullPage: true, animations: 'disabled' });
     expect(writes).toEqual([]);
     await expect(page.getByRole('navigation', { name: '商家工作视图' }).getByRole('button', { name: /^未分配\s*2$/ })).toBeVisible();
 
@@ -162,6 +165,56 @@ test('已转线索详情只读，不能重新保存或分配', async ({ page }) 
   await expect(detail.getByRole('checkbox')).toHaveCount(0);
   await expect(detail.getByRole('button', { name: /加入待分配|编辑|补充资料|保存/ })).toHaveCount(0);
   await expect(detail.getByRole('button', { name: '累计档案', exact: true })).toBeVisible();
+  expect(writes).toEqual([]);
+});
+
+test('桌面视图与搜索各占一行，独立地区和虚线边界清楚，电话及分配栏在窄幅可读', async ({ page }) => {
+  const { writes } = await seedPool(page, { ...manager, role: 'admin' });
+  for (const width of [1440, 1093, 768, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${baseUrl}/merchant-pool`);
+    const views = page.getByRole('navigation', { name: '商家工作视图' });
+    const search = page.getByRole('textbox', { name: '搜索商家', exact: true });
+    await expect(search).toBeVisible();
+    const viewBox = (await views.boundingBox())!;
+    const searchBox = (await search.boundingBox())!;
+    expect(searchBox.y).toBeGreaterThanOrEqual(viewBox.y + viewBox.height);
+    if (width >= 768) {
+      const row = page.getByTestId('merchant-pool-desktop-table').locator('tbody tr').first();
+      await expect(row.getByRole('button', { name: '查看资料：Golden Dragon Restaurant', exact: true })).toBeVisible();
+      const phone = row.locator('.mp-phone-column');
+      const phoneStyle = await phone.evaluate(element => {
+        const style = getComputedStyle(element);
+        return { whiteSpace: style.whiteSpace, borderStyle: style.borderTopStyle, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
+      });
+      expect(phoneStyle.whiteSpace).toBe('nowrap');
+      expect(phoneStyle.borderStyle).toBe('dashed');
+      expect(phoneStyle.scrollWidth).toBeLessThanOrEqual(phoneStyle.clientWidth + 1);
+      if (width >= 1093) {
+        await expect(page.getByRole('columnheader', { name: '地区', exact: true })).toBeVisible();
+        await expect(row.locator('.mp-region-column')).toHaveText('Los Angeles, CA');
+      } else {
+        await expect(row.locator('.mp-inline-region')).toContainText('Los Angeles, CA');
+      }
+    }
+    await page.getByRole('button', { name: '分配：Golden Dragon Restaurant', exact: true }).click();
+    const batch = page.getByRole('region', { name: '商家批量操作' });
+    await expect(batch).toBeVisible();
+    await expect(batch.getByLabel(/^选择销售负责人/)).toBeVisible();
+    await expect(batch.getByRole('button', { name: '确认分配', exact: true })).toBeDisabled();
+    await batch.getByRole('button', { name: '确认分配', exact: true }).scrollIntoViewIfNeeded();
+    const batchBox = (await batch.boundingBox())!;
+    expect(batchBox.y).toBeGreaterThanOrEqual(0);
+    expect(batchBox.y + batchBox.height).toBeLessThanOrEqual(900);
+    if (width >= 768) {
+      await batch.getByText('其他批量操作', { exact: true }).click();
+      await expect(batch.getByRole('button', { name: '批量设置行业', exact: true })).toBeVisible();
+      await expect(batch.getByRole('button', { name: 'AI 补充空白资料', exact: true })).toBeVisible();
+      await expect(batch.getByRole('button', { name: '批量删除', exact: true })).toBeVisible();
+      await expect(batch.getByRole('button', { name: '查看所选资料', exact: true })).toBeVisible();
+    }
+    await noOverflow(page);
+  }
   expect(writes).toEqual([]);
 });
 
@@ -345,6 +398,23 @@ test('长列表仅在内容区滚动，分页后不出现外层空白页', async
   // Mobile keeps room for its fixed navigation and safe-area padding.
   await assertScrollBoundary(224);
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-scroll-mobile.png`, fullPage: true, animations: 'disabled' });
+  await page.getByRole('button', { name: '分配：长列表核对商家20', exact: true }).click();
+  const batch = page.getByRole('region', { name: '商家批量操作' });
+  await expect(batch).toHaveCSS('position', 'sticky');
+  await expect(batch.getByLabel(/^选择销售负责人/)).toBeInViewport();
+  await expect(batch.getByRole('button', { name: '确认分配', exact: true })).toBeInViewport();
+  const lastCard = page.getByTestId('merchant-mobile-card').last();
+  const lastAction = lastCard.getByRole('button', { name: '移出待分配：长列表核对商家20', exact: true });
+  await lastAction.scrollIntoViewIfNeeded();
+  await expect(lastAction).toBeInViewport();
+  const lastBox = (await lastCard.boundingBox())!;
+  const batchBox = (await batch.boundingBox())!;
+  expect(lastBox.y).toBeGreaterThanOrEqual(batchBox.y + batchBox.height);
+  await batch.getByRole('button', { name: '确认分配', exact: true }).scrollIntoViewIfNeeded();
+  await expect(batch.getByRole('button', { name: '确认分配', exact: true })).toBeInViewport();
+  await expect(batch.getByRole('button', { name: '确认分配', exact: true })).toBeDisabled();
+  await batch.getByRole('button', { name: '取消选择', exact: true }).click();
+  await expect(batch).toHaveCount(0);
   expect(writes).toEqual([]);
 });
 

@@ -14,6 +14,7 @@ import {
 import { useRole } from "@/lib/role-context";
 import { businessDateKey } from "@/lib/business-date";
 import { salesApi, salesError, salesDate } from "@/lib/sales-intelligence";
+import { invokeWithAuth } from "@/lib/tokenStore";
 type TargetValues = {
   role_template: string;
   calls: number;
@@ -69,6 +70,125 @@ const weightLabels: Record<string, string> = {
   execution: "真实拨打",
   quality: "记录质量",
 };
+
+type DailyTeamRow = {
+  id: number;
+  name: string;
+  quota: number | null;
+  completed: number | null;
+  remaining: number | null;
+};
+type DailyTeamSummary = {
+  rows: DailyTeamRow[];
+  connected: number | null;
+  overdue: number | null;
+  stalled: number | null;
+  unassigned: number | null;
+  incomplete: boolean;
+};
+const dailyCount = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+
+/** Daily task progress is read from existing batches; opening this view never prepares tasks. */
+export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
+  employees: { id: number; name: string }[];
+  targetDate: string;
+  onOpenWorkbench: (employeeId: number) => void;
+}) {
+  const [summary, setSummary] = useState<DailyTeamSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    setSummary(null);
+    setLoading(true);
+    const read = async () => {
+      const rows: DailyTeamRow[] = employees.map(employee => ({ ...employee, quota: null, completed: null, remaining: null }));
+      let cursor = 0;
+      const readRows = async () => {
+        while (live && cursor < employees.length) {
+          const index = cursor++;
+          const employee = employees[index];
+          try {
+            const params = new URLSearchParams({ target_date: targetDate, sales_employee_id: String(employee.id) });
+            const response = await invokeWithAuth({ url: `/api/v1/sales-leads/workbench/today?${params}`, method: "GET" });
+            const data = response.data;
+            if (Number(data?.salesperson?.id) === employee.id && (!data.target_date || data.target_date === targetDate)) {
+              rows[index] = { ...employee, quota: dailyCount(data.quota), completed: dailyCount(data.completed_count), remaining: dailyCount(data.remaining_count) };
+            }
+          } catch { /* An unreadable row stays unknown rather than becoming zero. */ }
+        }
+      };
+      const requests = [
+        invokeWithAuth({ url: `/api/v1/sales-leads/dashboard/management?target_date=${targetDate}`, method: "GET" }),
+        invokeWithAuth({ url: "/api/v1/merchant-pool/stats", method: "GET" }),
+        targetDate === businessDateKey() ? invokeWithAuth({ url: "/api/v1/sales-leads/dashboard/call-report?days=1", method: "GET" }) : Promise.resolve(null),
+      ];
+      const [results] = await Promise.all([
+        Promise.allSettled(requests),
+        Promise.all(Array.from({ length: Math.min(4, employees.length) }, () => readRows())),
+      ]);
+      if (!live) return;
+      const management = results[0].status === "fulfilled" ? results[0].value?.data : null;
+      const pool = results[1].status === "fulfilled" ? results[1].value?.data : null;
+      const report = results[2].status === "fulfilled" ? results[2].value?.data : null;
+      const reportCurrent = targetDate === businessDateKey() && report?.source?.status === "verified"
+        && report?.period?.start_date === targetDate && report?.period?.end_date === targetDate;
+      const dateMatches = management?.target_date === targetDate;
+      const overdue = dateMatches ? dailyCount(management?.owner_attention?.overdue_followups) : null;
+      const stalled = dateMatches ? dailyCount(management?.owner_attention?.high_intent_stale) : null;
+      const unassigned = dailyCount(pool?.pending);
+      const connected = reportCurrent ? dailyCount(report?.summary?.connected) : null;
+      setSummary({ rows, connected, overdue, stalled, unassigned, incomplete: rows.some(row => row.completed === null || row.quota === null || row.remaining === null) || overdue === null || stalled === null || unassigned === null });
+      setLoading(false);
+    };
+    void read();
+    return () => { live = false; };
+  }, [employees, targetDate, reload]);
+
+  const value = (count: number | null | undefined) => loading ? "—" : count === null || count === undefined ? "待确认" : count;
+  const dateLabel = targetDate === businessDateKey() ? "今日" : "当日";
+  const recorded = summary && summary.rows.every(row => row.completed !== null) ? summary.rows.reduce((total, row) => total + (row.completed as number), 0) : null;
+  const taskRows = summary?.rows || employees.map(employee => ({ ...employee, quota: null, completed: null, remaining: null }));
+  const openProgress = (signal?: "overdue") => window.location.assign(`/sales-leads?view=intelligence&panel=leads${signal ? `&signal=${signal}` : ""}`);
+  return <div className="sw-team-today" aria-label="团队今日任务">
+    <section className="sw-team-summary" aria-label="团队任务概况">
+      <div><span>{dateLabel}已记录</span><strong>{value(recorded)}</strong></div>
+      <div title="仅显示所选日期为今天、且已核验的 RingCentral 官方通话记录"><span>官方接通</span><strong>{value(summary?.connected)}</strong></div>
+      <div><span>逾期回访</span><strong className={summary?.overdue ? "sw-count-attention" : undefined}>{value(summary?.overdue)}</strong></div>
+    </section>
+    {summary?.incomplete && <div className="sw-team-error" role="alert"><span>部分任务数据暂不可用</span><Button variant="outline" onClick={() => setReload(current => current + 1)}>重新读取</Button></div>}
+    <section className="sw-team-panel" aria-label="团队需要处理">
+      <h2>需要处理</h2>
+      <div className="sw-team-actions">
+        <div title="当前未分配商家，不随任务日期变化"><div><span>待分配商家</span><strong>{value(summary?.unassigned)}</strong></div><Button disabled={loading || summary?.unassigned === null} onClick={() => window.location.assign("/merchant-pool")}>分配商家</Button></div>
+        <div><div><span>逾期回访</span><strong className={summary?.overdue ? "sw-count-attention" : undefined}>{value(summary?.overdue)}</strong></div><Button variant="outline" title="查看当前线索" disabled={loading || summary?.overdue === null} onClick={() => openProgress("overdue")}>查看</Button></div>
+        <div><div><span>商机待跟进</span><strong>{value(summary?.stalled)}</strong></div><Button variant="outline" title="查看当前商机" disabled={loading || summary?.stalled === null} onClick={() => openProgress()}>查看</Button></div>
+      </div>
+    </section>
+    <section className="sw-team-panel sw-team-progress" aria-label="团队进度">
+      <h2>团队进度</h2>
+      <div className="sw-team-table-scroll"><table><thead><tr><th>销售</th><th>{dateLabel}目标</th><th>已记录</th><th>待处理</th><th>操作</th></tr></thead><tbody>
+        {taskRows.map(row => <tr key={row.id}>
+          <td><span className="sw-team-person"><span className="sw-team-avatar" aria-hidden="true">{row.name.slice(0, 1)}</span><strong>{row.name}</strong></span></td>
+          <td>{value(row.quota)}</td>
+          <td><div className="sw-team-completion"><span>{value(row.completed)}</span>{row.completed !== null && row.quota !== null && row.quota > 0 && <div role="progressbar" aria-label={`${row.name}任务进度`} aria-valuemin={0} aria-valuemax={row.quota} aria-valuenow={row.completed}><span style={{ width: `${Math.min(100, row.completed / row.quota * 100)}%` }} /></div>}</div></td>
+          <td>{value(row.remaining)}</td>
+          <td><Button variant="outline" onClick={() => onOpenWorkbench(row.id)} aria-label={`查看任务：${row.name}`}>查看任务</Button></td>
+        </tr>)}
+      </tbody></table></div>
+      <div className="sw-team-mobile-list" role="list" aria-label="销售任务进度">
+        {taskRows.map(row => <div className="sw-team-mobile-row" role="listitem" key={row.id}>
+          <div><span className="sw-team-person"><strong>{row.name}</strong></span><Button variant="outline" onClick={() => onOpenWorkbench(row.id)} aria-label={`查看任务：${row.name}`}>查看任务</Button></div>
+          <dl><div><dt>{dateLabel}目标</dt><dd>{value(row.quota)}</dd></div><div><dt>已记录</dt><dd>{value(row.completed)}</dd></div><div><dt>待处理</dt><dd>{value(row.remaining)}</dd></div></dl>
+        </div>)}
+      </div>
+      {!employees.length && <p className="sw-team-empty">暂无可用销售人员</p>}
+      {employees.length > 0 && <p className="sw-team-total">{employees.length} 位销售</p>}
+    </section>
+  </div>;
+}
+
 export default function SalesTeamPerformance({
   onOpenLead,
   refreshKey,

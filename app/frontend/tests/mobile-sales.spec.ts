@@ -192,33 +192,44 @@ test('390px 销售线索直接提供拨号复制跟进，并用卡片呈现绩�
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/sales-leads-mobile-layout.png`, animations: 'disabled', fullPage: true });
 
   const dial = card.getByRole('button', { name: 'RingCentral', exact: true });
-  const followUp = card.getByRole('button', { name: '记录跟进' });
+  const followUp = card.getByRole('button', { name: '继续跟进' });
   await expectTouchTarget(dial);
   await expectTouchTarget(followUp);
   await expect(card.getByRole('button', { name: '选择其他拨号方式' })).toHaveCount(0);
   await card.getByRole('button', { name: /更多线索操作/ }).click();
   await expectTouchTarget(page.getByRole('menuitem', { name: '复制电话', exact: true }));
-  await page.keyboard.press('Escape');
+  await page.getByRole('menu').press('Home');
+  await expect(page.getByRole('menuitem').first()).toBeFocused();
+  await page.getByRole('menu').press('Escape');
+  await expect(page.getByRole('menu')).toBeHidden();
 
-  await page.getByRole('button', { name: '历史跟进参考' }).click();
+  await page.getByRole('button', { name: '更多视图' }).click();
+  await page.getByRole('menuitem', { name: '历史跟进参考' }).click();
   await expect(page.getByTestId('sales-performance-mobile-list')).toBeVisible();
   await expect(page.getByTestId('sales-performance-desktop-table')).toBeHidden();
   await expect(page.getByTestId('sales-performance-mobile-list')).toContainText('#1 手机销售测试主管');
   await expect(page.getByTestId('sales-performance-mobile-list')).toContainText('86');
-  await page.getByRole('navigation', { name: '电话销售中心视图' }).getByRole('button', { name: '联系进展', exact: true }).click();
+  await page.getByRole('button', { name: '更多视图' }).click();
+  await page.getByRole('menuitem', { name: '联系进展', exact: true }).click();
 
   const protectedCard = page.getByTestId('sales-lead-mobile-card').filter({ hasText: 'Do Not Call Test Merchant' });
   await expect(protectedCard.getByRole('button', { name: '拨号' })).toBeDisabled();
   await protectedCard.getByRole('button', { name: /更多线索操作/ }).click();
   await expect(page.getByRole('menuitem', { name: '复制电话', exact: true })).toBeDisabled();
-  await page.keyboard.press('Escape');
+  await page.getByRole('menu').press('Home');
+  await expect(page.getByRole('menuitem').first()).toBeFocused();
+  await page.getByRole('menu').press('Escape');
+  await expect(page.getByRole('menu')).toBeHidden();
   await expect(protectedCard.getByRole('button', { name: '查看保护' })).toBeVisible();
   await expect(page.getByRole('button', { name: /批量分配|批量重新分配|批量回收|查看并处理/ })).toHaveCount(0);
 
   await card.getByRole('button', { name: /更多线索操作/ }).click();
   await expect(page.getByRole('menuitem', { name: '成交审核' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: '保护与黑名单设置' })).toBeVisible();
-  await page.keyboard.press('Escape');
+  await page.getByRole('menu').press('Home');
+  await expect(page.getByRole('menuitem').first()).toBeFocused();
+  await page.getByRole('menu').press('Escape');
+  await expect(page.getByRole('menu')).toBeHidden();
 
   await page.getByRole('button', { name: '新增线索' }).click();
   const dialog = page.getByRole('dialog');
@@ -255,7 +266,8 @@ test('1440px 商家池与销售中心继续保留完整桌面表格', async ({ p
   await expect(page.getByTestId('sales-leads-desktop-table')).toBeVisible();
   await expect(page.getByTestId('sales-leads-mobile-list')).toBeHidden();
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/sales-leads-desktop-layout.png`, animations: 'disabled', fullPage: true });
-  await page.getByRole('button', { name: '历史跟进参考' }).click();
+  await page.getByRole('button', { name: '更多视图' }).click();
+  await page.getByRole('menuitem', { name: '历史跟进参考' }).click();
   await expect(page.getByTestId('sales-performance-desktop-table')).toBeVisible();
   await expect(page.getByTestId('sales-performance-mobile-list')).toBeHidden();
 });

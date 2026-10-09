@@ -118,7 +118,7 @@ async function expectReachable(control: Locator) {
 async function runLayout(page: Page, viewport: { width: number; height: number }, expanded = false, suffix = '') {
   await page.setViewportSize(viewport);
   const fixture = await mockWorkbench(page);
-  await page.goto(`${baseUrl}/sales-workbench`);
+  await page.goto(`${baseUrl}/sales-workbench?sales_employee_id=${employee.id}`);
   const surface = page.getByTestId(viewport.width < 768 ? 'sales-workbench-mobile' : 'sales-workbench-desktop');
   await expect(surface.getByLabel('沟通记录', { exact: true })).toBeVisible();
   const initialMainWidth = (await page.locator('main').boundingBox())?.width || 0;
@@ -218,7 +218,7 @@ test('1280x720 浏览器200%放大的640x360等效CSS视口仍可完成记录', 
 test('展开导航在窄桌面浮层和宽桌面并排之间切换，搜索Escape与工作区均可恢复', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   const fixture = await mockWorkbench(page);
-  await page.goto(`${baseUrl}/sales-workbench`);
+  await page.goto(`${baseUrl}/sales-workbench?sales_employee_id=${employee.id}`);
   const surface = page.getByTestId('sales-workbench-desktop');
   await expect(surface.getByLabel('沟通记录', { exact: true })).toBeVisible();
   const main = page.locator('main');

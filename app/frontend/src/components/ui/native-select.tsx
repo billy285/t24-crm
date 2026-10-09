@@ -14,12 +14,16 @@ interface NativeSelectProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  id?: string;
+  'aria-label'?: string;
 }
 
-export function NativeSelect({ value, onChange, options, placeholder, className, disabled = false }: NativeSelectProps) {
+export function NativeSelect({ value, onChange, options, placeholder, className, disabled = false, id, 'aria-label': ariaLabel }: NativeSelectProps) {
   return (
     <div className={cn('relative', className)}>
       <select
+        id={id}
+        aria-label={ariaLabel}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}

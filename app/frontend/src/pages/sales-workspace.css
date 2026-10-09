@@ -1,4 +1,45 @@
 /* Calm sales surfaces: keep business controls and statuses intact. */
+.sales-center-ui {
+  --t24-body-size: 15px;
+  --t24-body-line: 24px;
+  --t24-aux-size: 13px;
+  --t24-aux-line: 20px;
+  --t24-title-size: 30px;
+  --t24-title-line: 40px;
+  --t24-detail-size: 22px;
+  --t24-detail-line: 30px;
+  --t24-input-size: 15px;
+  --t24-input-line: 24px;
+  --t24-control-height: 44px;
+  --t24-control-compact: 40px;
+  --t24-control-large: 48px;
+  --t24-table-cell-y: 18px;
+  color: #17253d;
+}
+.sales-center-ui :is(.t24-input, .t24-textarea, .t24-native-select, .t24-select-trigger) {
+  font-size: var(--t24-input-size);
+  line-height: var(--t24-input-line);
+  border-color: #e2e8f0;
+}
+.sales-center-ui :is(.t24-input, .t24-native-select, .t24-select-trigger) {
+  min-height: var(--t24-control-height);
+}
+.sales-center-ui .t24-button { font-size: var(--t24-body-size); line-height: var(--t24-body-line); }
+.sales-center-ui .t24-button-compact { font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); }
+.sales-center-ui .t24-badge { font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); }
+.t24-system .calm-sales-page { width: 100%; max-width: 1680px; margin-inline: auto; }
+@media (min-width: 768px) {
+  .app-sales-layout .app-main { padding: 28px 32px; }
+}
+@media (max-width: 767px) {
+  .sales-center-ui {
+    --t24-title-size: 24px;
+    --t24-title-line: 32px;
+    --t24-input-size: 16px;
+    --t24-input-line: 24px;
+    --t24-control-compact: 44px;
+  }
+}
 .t24-system .calm-sales-page { --sc-muted: #64748b; }
 .t24-system .calm-sales-page .sc-section-heading,
 .t24-system .calm-sales-page .sc-page-heading { padding: 0; gap: var(--t24-space-24); }

@@ -1,6 +1,6 @@
 .sales-center-navigation { align-items: center; gap: clamp(14px, 2vw, 26px); min-width: 0; }
-.sales-center-navigation-title { margin-right: 6px; font-size: 14px; font-weight: 600; color: #182942; letter-spacing: -.01em; white-space: nowrap; }
-.sales-center-navigation a { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 0; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 14px; line-height: 20px; color: #64748b; }
+.sales-center-navigation-title { margin-right: 6px; font-size: 15px; font-weight: 600; color: #182942; letter-spacing: -.01em; white-space: nowrap; }
+.sales-center-navigation a { display: inline-flex; align-items: center; min-height: 56px; padding: 14px 0; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 15px; line-height: 24px; color: #64748b; }
 .sales-center-navigation a[aria-current=page] { color: #245de8; border-bottom-color: #245de8; font-weight: 500; }
 .sales-center-navigation a:hover { color: #245de8; }
 .sales-center-mobile-navigation { padding: 0 16px; background: #fff; border-bottom: 1px solid #e7ebf2; flex-shrink: 0; }
@@ -33,7 +33,7 @@
 @container sales-header (max-width: 740px) {
   .app-sales-layout .app-topbar .sales-center-navigation { gap: 12px; }
   .app-sales-layout .app-topbar .sales-center-navigation-title { display: none; }
-  .app-sales-layout .app-topbar .sales-center-navigation a { font-size: 13px; }
+  .app-sales-layout .app-topbar .sales-center-navigation a { font-size: 14px; }
 }
 @media (max-width: 1023px) {
   .sales-center-navigation { gap: 18px; }
