@@ -71,7 +71,7 @@ test('预检先展示原行号、电话隔离与结果，确认前不调用商�
   expect(download.suggestedFilename()).toContain('商家导入问题行');
   await dialog.getByRole('button', { name: '确认入池 2 条' }).click();
   await expect(result.getByText('已入池', { exact: true })).toBeVisible();
-  await expect(result.getByText(/仍需人工核对并选择销售负责人/)).toBeVisible();
+  await expect(result.getByText(/导入后选择销售负责人分配/)).toBeVisible();
   expect(writes).toEqual(['/api/v1/merchant-imports/preview', '/api/v1/merchant-imports/test-import-batch-001/confirm']);
   await expect(dialog.getByRole('button', { name: '确认入池 2 条' })).toHaveCount(0);
   const widths = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth }));

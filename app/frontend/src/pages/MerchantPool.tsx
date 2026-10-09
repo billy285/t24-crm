@@ -56,7 +56,7 @@ type Merchant = {
 };
 
 const statusLabels: Record<string, string> = {
-  pending: '待核对', no_phone: '电话待补齐', duplicate: '重复隔离',
+  pending: '未分配', no_phone: '电话待补齐', duplicate: '重复隔离',
   existing_customer: '正式客户隔离', closed: '已关闭隔离', converted: '已转线索', archived: '已归档',
 };
 const statusClasses: Record<string, string> = {
@@ -129,7 +129,6 @@ export default function MerchantPool() {
   const previousSearchRef = useRef(search);
   const [poolStatus, setPoolStatus] = useState('pending');
   const [reviewing, setReviewing] = useState<Merchant | null>(null);
-  const [reviewedMerchantIds, setReviewedMerchantIds] = useState<number[]>([]);
   const [regions, setRegions] = useState<string[]>([]);
   const [industry, setIndustry] = useState('');
   const [source, setSource] = useState('');
@@ -219,7 +218,6 @@ export default function MerchantPool() {
 
   const openEdit = (merchant: Merchant) => {
     setReviewing(null);
-    setReviewedMerchantIds(current => current.filter(id => id !== merchant.id));
     setEditing(merchant);
     setEditForm({
       business_name: merchant.business_name || '', contact_name: merchant.contact_name || '', phone: merchant.phone || '',
@@ -398,7 +396,9 @@ export default function MerchantPool() {
     }
   };
 
-  const viewTitle = poolStatus === 'pending' ? '待核对商家' : poolStatus === 'converted' ? '已转销售线索' : poolStatus ? statusLabels[poolStatus] : '全部采集记录';
+  const viewTitle = poolStatus === 'pending' ? '未分配商家' : poolStatus === 'converted' ? '已转销售线索' : poolStatus ? statusLabels[poolStatus] : '全部采集记录';
+  const showStatusColumn = poolStatus !== 'pending';
+  const tableColumnCount = (canManagePool ? 4 : 3) + Number(showStatusColumn);
   const extraFilterCount = Number(regions.length > 0) + Number(Boolean(industry)) + Number(Boolean(source)) + Number(Boolean(poolStatus && !['pending', 'converted'].includes(poolStatus)));
   const changeView = (status: string) => {
     setPoolStatus(status);
@@ -417,9 +417,14 @@ export default function MerchantPool() {
       </DropdownMenuContent>
     </DropdownMenu>
   );
+  const merchantAction = (merchant: Merchant) => canManagePool && merchant.pool_status === 'pending' ? (
+    <Button size="sm" variant="ghost" className="mp-inspect-action" aria-label={`${selectedMerchantIds.includes(merchant.id) ? '移出待分配' : '分配'}：${merchant.business_name}`} aria-pressed={selectedMerchantIds.includes(merchant.id)} onClick={() => toggleMerchantSelection(merchant.id)}>{selectedMerchantIds.includes(merchant.id) ? '已选择' : '分配'}</Button>
+  ) : (
+    <Button size="sm" variant="ghost" className="mp-inspect-action" aria-label={`商家详情：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>详情<ArrowUpRight className="ml-1.5 h-3.5 w-3.5" /></Button>
+  );
   const reviewDetails = reviewing && (
     <>
-      <div className="mp-review-identity"><h3>{reviewing.business_name}</h3><p className="mp-merchant-meta">{formatRegion(reviewing)} · #{reviewing.id}</p><Badge className={statusClasses[reviewing.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[reviewing.pool_status] || reviewing.pool_status}</Badge></div>
+      <div className="mp-review-identity"><h3>{reviewing.business_name}</h3><p className="mp-merchant-meta">{formatRegion(reviewing)} · #{reviewing.id}</p>{reviewing.pool_status !== 'pending' && <Badge className={statusClasses[reviewing.pool_status] || 'bg-slate-100 text-slate-700'}>{statusLabels[reviewing.pool_status] || reviewing.pool_status}</Badge>}</div>
       <dl className="mp-review-fields">
         {[
           ['联系电话', reviewing.phone ? formatPhoneNumber(reviewing.phone, reviewing.country) : '无电话'],
@@ -431,13 +436,12 @@ export default function MerchantPool() {
         {reviewing.existing_customer_id && <div><dt>关联客户</dt><dd>#{reviewing.existing_customer_id}</dd></div>}
       </dl>
       <details className="mp-review-extra"><summary>更多采集资料</summary><dl className="mp-review-fields"><div><dt>联系人</dt><dd>{reviewing.contact_name || '未填写'}</dd></div><div><dt>行业</dt><dd>{reviewing.industry || '未填写'}</dd></div><div><dt>采集时间</dt><dd>{formatDate(reviewing.collected_at)}</dd></div>{reviewing.website && <div><dt>商家网站</dt><dd>{/^https?:\/\//i.test(reviewing.website) ? <a href={reviewing.website} target="_blank" rel="noopener noreferrer">{reviewing.website}</a> : reviewing.website}</dd></div>}</dl></details>
-      {canManagePool && reviewing.pool_status === 'pending' && <label className="mp-review-confirm"><input type="checkbox" aria-label="已核对名称、电话和地区" checked={reviewedMerchantIds.includes(reviewing.id)} onChange={event => setReviewedMerchantIds(current => event.target.checked ? Array.from(new Set([...current, reviewing.id])) : current.filter(id => id !== reviewing.id))} /><span>已人工核对商家名称、电话和地区</span></label>}
       <div className="mp-review-actions">
         {canManagePool && !['converted', 'archived'].includes(reviewing.pool_status) && <Button variant="outline" onClick={() => openEdit(reviewing)}>补充资料</Button>}
-        {canManagePool && reviewing.pool_status === 'pending' && <Button disabled={!reviewedMerchantIds.includes(reviewing.id) || selectedMerchantIds.includes(reviewing.id)} onClick={() => { toggleMerchantSelection(reviewing.id, true); setReviewing(null); }}>{selectedMerchantIds.includes(reviewing.id) ? '已加入待分配' : '加入待分配'}<ArrowUpRight className="ml-2 h-4 w-4" /></Button>}
+        {canManagePool && reviewing.pool_status === 'pending' && <Button disabled={selectedMerchantIds.includes(reviewing.id)} onClick={() => { toggleMerchantSelection(reviewing.id, true); setReviewing(null); }}>{selectedMerchantIds.includes(reviewing.id) ? '已加入待分配' : '加入待分配'}<ArrowUpRight className="ml-2 h-4 w-4" /></Button>}
         {reviewing.converted_lead_id && <Button variant="outline" onClick={() => { setDossierId(reviewing.converted_lead_id!); setReviewing(null); }}>累计档案</Button>}
       </div>
-      <p className="mp-review-note">{reviewing.pool_status === 'pending' ? '加入待分配后，选择销售负责人并确认，才会转入电话销售线索。' : ['converted', 'archived'].includes(reviewing.pool_status) ? '保留原始采集记录，此处仅查看资料。' : '补齐资料并重新清洗后，符合条件的商家才可分配。'}</p>
+      <p className="mp-review-note">{reviewing.pool_status === 'pending' ? '选择销售负责人后即可分配。' : ['converted', 'archived'].includes(reviewing.pool_status) ? '保留原始采集记录，此处仅查看资料。' : '补齐资料并重新清洗后，符合条件的商家才可分配。'}</p>
     </>
   );
 
@@ -451,7 +455,7 @@ export default function MerchantPool() {
 
       <div className="mp-list-tools">
         <nav className="mp-work-views" aria-label="商家工作视图">
-          {[{ status: 'pending', label: '待核对', count: stats.pending }, { status: 'converted', label: '已转线索', count: stats.converted }, { status: '', label: '全部记录', count: stats.total }].map(view => <button type="button" key={view.label} aria-pressed={poolStatus === view.status} onClick={() => changeView(view.status)}>{view.label}<span>{view.count}</span></button>)}
+          {[{ status: 'pending', label: '未分配', count: stats.pending }, { status: 'converted', label: '已转线索', count: stats.converted }, { status: '', label: '全部记录', count: stats.total }].map(view => <button type="button" key={view.label} aria-pressed={poolStatus === view.status} onClick={() => changeView(view.status)}>{view.label}<span>{view.count}</span></button>)}
         </nav>
         <div className="mp-search-toolbar">
           <label className="mp-search-field"><Search className="h-4 w-4" /><Input aria-label="搜索商家" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索商家、电话或网站" /></label>
@@ -460,11 +464,11 @@ export default function MerchantPool() {
         </div>
       </div>
       {filtersExpanded && <div id="merchant-pool-extra-filters" className="mp-expanded-filters">
-        <label><span className="sc-filter-label">清洗状态</span><NativeSelect value={poolStatus} onChange={changeView} options={[{ value: '', label: '全部清洗状态' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /></label>
+        <label><span className="sc-filter-label">记录状态</span><NativeSelect value={poolStatus} onChange={changeView} options={[{ value: '', label: '全部状态' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /></label>
         <div><span className="sc-filter-label">州 / 省</span><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" className="w-full justify-between font-normal"><span className="truncate">{regions.length ? regions.join(' / ') : '州/省（可多选）'}</span><ChevronDown className="h-4 w-4 shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent align="start" className="max-h-72 w-64 overflow-y-auto">{usStateOptions.map(state => <DropdownMenuCheckboxItem key={state} checked={regions.includes(state)} onCheckedChange={checked => { setRegions(previous => checked ? (previous.includes(state) ? previous : [...previous, state]) : previous.filter(item => item !== state)); setPage(1); }} onSelect={event => event.preventDefault()}>{state}</DropdownMenuCheckboxItem>)}</DropdownMenuContent></DropdownMenu></div>
         <label><span className="sc-filter-label">行业</span><Input value={industry} onChange={event => { setIndustry(event.target.value); setPage(1); }} placeholder="全部行业" /></label>
         <label><span className="sc-filter-label">资料来源</span><NativeSelect value={source} onChange={value => { setSource(value); setPage(1); }} options={sourceOptions} /></label>
-        <p className="mp-filter-summary">自动隔离 {stats.isolated} · 其中重复 {stats.duplicates} · 已归档 {stats.archived}<span>归档记录可通过清洗状态单独查看。</span></p>
+        <p className="mp-filter-summary">自动隔离 {stats.isolated} · 其中重复 {stats.duplicates} · 已归档 {stats.archived}<span>归档记录可通过记录状态单独查看。</span></p>
       </div>}
 
       {canManagePool && selectedMerchantIds.length > 0 && (
@@ -472,7 +476,7 @@ export default function MerchantPool() {
           <CardContent className="flex flex-col gap-3 p-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-sm font-semibold text-indigo-950"><CheckSquare className="h-5 w-5 text-indigo-600" />已选择 {selectedMerchantIds.length} 家商家</div>
-              <Button variant="ghost" size="sm" onClick={() => setReviewing(items.find(item => selectedMerchantIds.includes(item.id)) || null)}>核对所选资料</Button>
+              <Button variant="ghost" size="sm" onClick={() => setReviewing(items.find(item => selectedMerchantIds.includes(item.id)) || null)}>查看所选资料</Button>
             </div>
             {isMobile ? <div className="flex flex-col gap-2">
               <label><span className="sr-only">选择销售负责人</span><NativeSelect value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: '选择销售负责人' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /></label>
@@ -501,26 +505,26 @@ export default function MerchantPool() {
           {poolStatus && !['pending', 'converted'].includes(poolStatus) && <div className="mp-active-status">当前筛选：{viewTitle}</div>}
           {isMobile ? <div data-testid="merchant-pool-mobile-list" aria-label={viewTitle} className="divide-y divide-slate-100">
             {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载商家池...</p> : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">暂无符合条件的商家</p> : items.map(merchant => <article key={merchant.id} data-testid="merchant-mobile-card" className={`mp-merchant-card${selectedMerchantIds.includes(merchant.id) ? ' is-selected' : ''}`}>
-              <div className="mp-merchant-identity"><strong>{merchant.business_name}</strong><p className="mp-merchant-meta">{merchant.industry && <span>{merchant.industry} · </span>}{formatRegion(merchant)}</p></div>
+              <div className="mp-merchant-identity"><button type="button" className="mp-merchant-name" aria-label={`查看资料：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.business_name}</button><p className="mp-merchant-meta">{merchant.industry && <span>{merchant.industry} · </span>}{formatRegion(merchant)}</p></div>
               <p className="mp-card-phone">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : '无电话'}</p>
-              <Badge className={`mp-pool-status ${statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}`}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge>
-              <div className="mp-row-actions"><Button variant="ghost" className="mp-inspect-action" aria-label={`${merchant.pool_status === 'pending' ? '核对资料' : '查看资料'}：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.pool_status === 'pending' ? '核对' : '查看'}<ArrowUpRight className="ml-2 h-4 w-4" /></Button>{selectedMerchantIds.includes(merchant.id) && <Button variant="ghost" aria-label={`移出待分配：${merchant.business_name}`} onClick={() => toggleMerchantSelection(merchant.id, false)}>移出待分配</Button>}{merchantMenu(merchant)}</div>
+              {merchant.pool_status !== 'pending' && <Badge className={`mp-pool-status ${statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}`}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge>}
+              <div className="mp-row-actions">{merchantAction(merchant)}{merchantMenu(merchant)}</div>
               {selectedMerchantIds.includes(merchant.id) && <p className="mp-merchant-meta">已加入本页待分配</p>}
             </article>)}
-          </div> : <div data-testid="merchant-pool-desktop-table"><table className="mp-queue-table"><caption className="sr-only">{viewTitle}</caption><thead><tr>{canManagePool && <th className="mp-select-column"><label><input aria-label="选择本页可操作商家" type="checkbox" checked={items.filter(item => !['converted', 'archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted', 'archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></label></th>}<th aria-label="商家与地区">商家</th><th className="mp-phone-column">电话</th><th className="mp-state-column" aria-label="当前状态">状态</th><th className="mp-action-column">操作</th></tr></thead><tbody>
-            {loading ? <tr><td colSpan={canManagePool ? 5 : 4} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr> : items.length === 0 ? <tr><td colSpan={canManagePool ? 5 : 4} className="py-12 text-center text-slate-400">暂无符合条件的商家</td></tr> : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) || reviewing?.id === merchant.id ? 'is-selected' : ''}>
+          </div> : <div data-testid="merchant-pool-desktop-table"><table className="mp-queue-table"><caption className="sr-only">{viewTitle}</caption><thead><tr>{canManagePool && <th className="mp-select-column"><label><input aria-label="选择本页可操作商家" type="checkbox" checked={items.filter(item => !['converted', 'archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted', 'archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></label></th>}<th aria-label="商家与地区">商家</th><th className="mp-phone-column">电话</th>{showStatusColumn && <th className="mp-state-column" aria-label="当前状态">状态</th>}<th className="mp-action-column">操作</th></tr></thead><tbody>
+            {loading ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr> : items.length === 0 ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-400">暂无符合条件的商家</td></tr> : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) || reviewing?.id === merchant.id ? 'is-selected' : ''}>
               {canManagePool && <td className="mp-select-column"><label><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={['converted', 'archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></label></td>}
-              <td><div className="mp-merchant-identity"><strong>{merchant.business_name}</strong><p className="mp-merchant-meta">{merchant.industry && <span>{merchant.industry} · </span>}{formatRegion(merchant)}</p><p className="mp-inline-phone">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : '无电话'}</p></div></td>
+              <td><div className="mp-merchant-identity"><button type="button" className="mp-merchant-name" aria-label={`查看资料：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.business_name}</button><p className="mp-merchant-meta">{merchant.industry && <span>{merchant.industry} · </span>}{formatRegion(merchant)}</p><p className="mp-inline-phone">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : '无电话'}</p></div></td>
               <td className="mp-phone-column">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : <span className="text-rose-600">无电话</span>}</td>
-              <td className="mp-state-column"><Badge className={`mp-pool-status ${statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}`}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge></td>
-              <td className="mp-action-column"><div className="mp-row-actions"><Button size="sm" variant="ghost" className="mp-inspect-action" aria-label={`${merchant.pool_status === 'pending' ? '核对资料' : '查看资料'}：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.pool_status === 'pending' ? '核对' : '查看'}<ArrowUpRight className="ml-1.5 h-3.5 w-3.5" /></Button>{merchantMenu(merchant)}</div></td>
+              {showStatusColumn && <td className="mp-state-column">{merchant.pool_status !== 'pending' && <Badge className={`mp-pool-status ${statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}`}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge>}</td>}
+              <td className="mp-action-column"><div className="mp-row-actions">{merchantAction(merchant)}{merchantMenu(merchant)}</div></td>
             </tr>)}
           </tbody></table></div>}
           <div className="mp-list-pagination flex flex-col gap-3 border-t bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-slate-500">显示 {total ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, total)} 条 / 共 {total} 条</p><div className="flex flex-wrap items-center gap-2"><label><span className="sr-only">每页显示</span><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /></label><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button><span className="text-xs text-slate-500">{page}/{totalPages}</span><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>下一页</Button></div></div>
         </CardContent></Card>
-        {reviewing && !isMobile && <aside className="mp-review-panel" aria-label="商家资料核对"><div className="mp-review-header"><span>核对商家资料</span><Button variant="ghost" size="sm" aria-label="关闭资料" onClick={() => setReviewing(null)}><X className="h-4 w-4" /></Button></div>{reviewDetails}</aside>}
+        {reviewing && !isMobile && <aside className="mp-review-panel" aria-label="商家资料"><div className="mp-review-header"><span>商家资料</span><Button variant="ghost" size="sm" aria-label="关闭资料" onClick={() => setReviewing(null)}><X className="h-4 w-4" /></Button></div>{reviewDetails}</aside>}
       </div>
-      {isMobile && <Dialog open={!!reviewing} onOpenChange={open => !open && setReviewing(null)}><DialogContent className="mp-review-dialog" aria-describedby={undefined}><DialogHeader><DialogTitle>核对商家资料</DialogTitle></DialogHeader>{reviewDetails}</DialogContent></Dialog>}
+      {isMobile && <Dialog open={!!reviewing} onOpenChange={open => !open && setReviewing(null)}><DialogContent className="mp-review-dialog" aria-describedby={undefined}><DialogHeader><DialogTitle>商家资料</DialogTitle></DialogHeader>{reviewDetails}</DialogContent></Dialog>}
 
       {!isMobile && <MerchantImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={() => loadData()} />}
 

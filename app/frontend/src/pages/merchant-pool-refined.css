@@ -136,6 +136,35 @@
   font-weight: 500;
 }
 
+.t24-system .merchant-pool-refined-page .mp-merchant-name {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mp-ink);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.t24-system .merchant-pool-refined-page .mp-merchant-name:hover {
+  color: #245de8;
+}
+
+.t24-system .merchant-pool-refined-page .mp-merchant-name:focus-visible {
+  outline: 2px solid #245de8;
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+.t24-system .merchant-pool-refined-page .mp-inspect-action[aria-pressed='true'] {
+  color: #245de8;
+  background: #eef4ff;
+}
+
 .t24-system .merchant-pool-refined-page .mp-merchant-meta {
   margin-top: 5px;
   color: var(--mp-muted);
