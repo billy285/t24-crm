@@ -47,12 +47,12 @@
   .mobile-finance-editor .flex { flex-wrap: wrap; }
   .mobile-finance-editor .min-w-0 { overflow-wrap: anywhere; }
   .mobile-finance-editor :is(p, dd, dt, h2, span) { overflow-wrap: anywhere; }
-  .mobile-finance-editor > .flex:last-of-type {
+  .mobile-finance-editor > div.flex:last-of-type {
     margin-top: 24px;
     padding-top: 16px;
     border-top: 1px solid #edf0f4;
   }
-  .mobile-finance-editor > .flex:last-of-type > button { flex: 1; }
+  .mobile-finance-editor > div.flex:last-of-type > button { flex: 1; }
   .mobile-finance-record-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .mobile-finance-record-actions button { min-height: 44px; font-size: 14px; }
   .mobile-finance-record-fields {
@@ -66,6 +66,6 @@
 }
 @media(max-width:767px) {
  .mobile-finance-editor { padding-bottom:calc(112px + env(safe-area-inset-bottom)); }
- .mobile-finance-editor>.flex:last-of-type { position:fixed; bottom:0; left:0; right:0; z-index:4; display:flex; gap:10px; margin:0; padding:12px 20px calc(12px + env(safe-area-inset-bottom)); background:white; box-shadow:0 -3px 16px #15233e08; }
- .mobile-finance-editor>.flex:last-of-type>button { flex:1; min-width:0; }
+ .mobile-finance-editor>div.flex:last-of-type { position:fixed; bottom:0; left:0; right:0; z-index:4; display:flex; gap:10px; margin:0; padding:12px 20px calc(12px + env(safe-area-inset-bottom)); background:white; box-shadow:0 -3px 16px #15233e08; }
+ .mobile-finance-editor>div.flex:last-of-type>button { flex:1; min-width:0; }
 }
