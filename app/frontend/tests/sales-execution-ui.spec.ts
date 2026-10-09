@@ -177,7 +177,7 @@ test('390px 销售工作台使用拨打返回记录一体化手机流程', async
   await expect(page.locator('.sales-v3-shell')).toHaveCount(0);
 
   await expect(mobileWorkbench.getByRole('heading', { name: '示例商家', exact: true })).toBeVisible();
-  await expect(mobileWorkbench).toContainText('+1 (212) 555-0126');
+  await expect(mobileWorkbench).toContainText('+1 (212) 555 0126');
   const dial = mobileWorkbench.getByRole('button', { name: '拨打电话', exact: true });
   for (const target of [dial]) {
     const box = await target.boundingBox();

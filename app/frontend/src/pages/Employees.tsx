@@ -28,7 +28,7 @@ import { useBusinessDicts } from '../lib/dict-config';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import { getLoadErrorMessage } from '../lib/load-utils';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { formatPhoneNumber, parsePhoneNumber, phoneSearchMatches } from '@/lib/phone-format';
+import { formatPhoneNumber, parsePhoneNumber, parsePhoneNumberForDisplay, phoneSearchMatches } from '@/lib/phone-format';
 
 const allRoleOptions = Object.entries(systemRoleLabels).map(([k, v]) => ({ value: k, label: v }));
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
@@ -614,7 +614,7 @@ export default function Employees() {
                 <div className="mt-3 flex gap-2">
                   {e.phone ? (
                     <Button variant="outline" className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700" onClick={() => {
-                      const phone = parsePhoneNumber(e.phone);
+                      const phone = parsePhoneNumberForDisplay(e.phone);
                       if (!phone.isValid) { toast.error(phone.reason); return; }
                       if (phone.extension) toast.info(`接通后请手动输入分机 ${phone.extension}`);
                       window.location.assign(`tel:${phone.e164}`);

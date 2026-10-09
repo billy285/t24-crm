@@ -1,7 +1,7 @@
-import { parsePhoneNumber, parsePhoneNumberForDisplay } from './phone-format';
+import { parsePhoneNumber } from './phone-format';
 
 export const MERCHANT_IMPORT_HEADERS = ['商家名称', '商家电话', '商家位置', '地区', '来源'] as const;
-export const MERCHANT_IMPORT_EXAMPLE = ['示例咖啡店', '+1 (212) 555-0123 ext 009', '1 Main St', 'New York, NY, US', 'Google Maps'] as const;
+export const MERCHANT_IMPORT_EXAMPLE = ['示例咖啡店', '+1 (212) 555 0123 ext 009', '1 Main St', 'New York, NY, US', 'Google Maps'] as const;
 
 export type MerchantImportIssueRow = {
   status: string; reason: string; phone?: string | null; phone_country?: string | null;
@@ -25,9 +25,9 @@ export function merchantImportRepairAdvice(row: MerchantImportIssueRow): string 
   if (row.status !== 'no_phone') return null;
   const raw = row.phone ?? row.raw?.['商家电话'] ?? '';
   if (!raw.trim()) return '补填一个完整联系电话；本地号码同时在“地区”列写明国家。';
-  if (parsePhoneNumberForDisplay(raw, row.phone_country).hasPresentationDecoration) return '删除原文件电话两端的 **，保留号码和分机，再重新预检。';
   const wrapped = raw.normalize('NFKC').trim().match(/^\*\*([^*]+)\*\*$/);
   const content = wrapped ? wrapped[1] : raw;
+  if (wrapped && parsePhoneNumber(content, row.phone_country).isValid) return '删除原文件电话两端的 **，保留号码和分机，再重新预检。';
   if (/[*•●]|\d[xX]{2,}\d/.test(content)) return '回到原始资料补齐真实号码；遮罩中的缺失数字不能推测。';
   const parsed = parsePhoneNumber(content, row.phone_country);
   const decorationAdvice = wrapped ? '删除电话两端的 **；' : '';

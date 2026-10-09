@@ -152,7 +152,7 @@ async function runLayout(page: Page, viewport: { width: number; height: number }
   expect(longHeading?.x || 0).toBeGreaterThanOrEqual(0);
   expect((longHeading?.x || 0) + (longHeading?.width || 0)).toBeLessThanOrEqual(viewport.width + 1);
   const phone = surface.locator('.sw-phone strong');
-  await expect(phone).toHaveText('+1 (212) 555-0126');
+  await expect(phone).toHaveText('+1 (212) 555 0126');
   expect((await phone.boundingBox())?.height || 0, '标准主号不能被旧客户卡片列宽挤成多行').toBeLessThanOrEqual(32);
   if (screenshotDir) {
     await page.locator('main').evaluate(element => { element.scrollTop = 0; });

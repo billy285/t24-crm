@@ -8,14 +8,14 @@ const employee = { id: 1, name: 'Phone fixture admin', role: 'admin', status: 'a
 const customers = [
   { id: 1, business_name: 'International fixture', contact_name: 'Owner', phone: '+86 138 0013 8000', country: 'CN', status: 'closed', industry: 'restaurant', level: 'normal' },
   { id: 2, business_name: 'Legacy fixture', contact_name: 'Owner', phone: 'old phone', country: 'US', status: '已合作', industry: 'restaurant', level: 'normal' },
-  { id: 3, business_name: 'Unknown country fixture', contact_name: 'Owner', phone: '2025550123', country: null, status: 'closed', industry: 'restaurant', level: 'normal' },
+  { id: 3, business_name: 'Unknown country fixture', contact_name: 'Owner', phone: '2025550123', country: 'unknown', status: 'closed', industry: 'restaurant', level: 'normal' },
 ];
 
 test('标准号码保留国际国家码、原文与分机，搜索不受展示标点影响', () => {
   expect(parsePhoneNumber('+1 (202) 555-0123 ext. 009')).toMatchObject({ raw: '+1 (202) 555-0123 ext. 009', e164: '+12025550123', extension: '009', status: 'valid' });
   expect(phoneMatchKey('020 7946 0018', 'UK')).toBe('+442079460018');
   expect(phoneMatchKey('+86 13800138000')).toBe('+8613800138000');
-  expect(formatPhoneNumber('2025550123 ext 9', 'US')).toBe('+1 (202) 555-0123 分机 9');
+  expect(formatPhoneNumber('2025550123 ext 9', 'US')).toBe('+1 (202) 555 0123 分机 9');
   expect(phoneSearchMatches('+1 (202) 555-0123', '2025550123')).toBe(true);
   expect(phoneSearchMatches('+44 20 7946 0018', '2079460018')).toBe(true);
   expect(getCustomerDialTarget('+86 13800138000')).toEqual({ dialNumber: '8613800138000', displayNumber: '+8613800138000' });
@@ -24,7 +24,7 @@ test('标准号码保留国际国家码、原文与分机，搜索不受展示�
 
 test('未知国家、短号、多号码及不合法文本不会得到拨号目标', () => {
   for (const raw of ['2025550123', '12025550123', '+12025550123 / +12125550123', '+12025550123 ext 1 ext 2', 'call +12025550123']) {
-    expect(getCustomerDialTarget(raw)).toBeNull();
+    expect(getCustomerDialTarget(raw, 'unknown')).toBeNull();
   }
   expect(getCustomerDialTarget('2025550123', 'US')).not.toBeNull();
   expect(parsePhoneNumber('2025550123').status).toBe('needs_country');
@@ -115,7 +115,7 @@ test('客户导入按标准号码识别重复，未知国家与多号码列入�
   await expect(dialog.getByRole('row').filter({ hasText: 'Duplicate international' })).toContainText('已存在');
   await expect(dialog.getByRole('row').filter({ hasText: 'Unknown national' })).toContainText('需要明确国家');
   await expect(dialog.getByRole('row').filter({ hasText: 'Multiple numbers' })).toContainText('请只填写一个电话号码');
-  await expect(dialog.getByRole('row').filter({ hasText: 'Valid raw retained' })).toContainText('+1 (202) 555-0144 分机 009');
+  await expect(dialog.getByRole('row').filter({ hasText: 'Valid raw retained' })).toContainText('+1 (202) 555 0144 分机 009');
   expect(writes).toHaveLength(0);
   await dialog.getByRole('button', { name: '确认导入 1 条数据', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '导入完成', exact: true })).toBeVisible();

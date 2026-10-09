@@ -89,7 +89,7 @@ for (const width of [1024, 1440]) {
     await expect(decorated).toContainText('电话待补齐');
     await expect(decorated).toContainText('删除原文件电话两端的 **');
     await expect(decorated).not.toContainText('+1 (202)');
-    await expect(result.getByRole('row').filter({ hasText: 'Valid Sample' })).toContainText('+1 (212) 555-0123 分机 009');
+    await expect(result.getByRole('row').filter({ hasText: 'Valid Sample' })).toContainText('+1 (212) 555 0123 分机 009');
     await expect(result.getByRole('row').filter({ hasText: 'Masked Sample' })).toContainText('缺失数字不能推测');
     await dialog.getByRole('button', { name: '格式错误', exact: true }).click();
     await expect(result.getByRole('row').filter({ hasText: 'Five Column Error' })).toContainText('同一个单元格');

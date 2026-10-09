@@ -63,14 +63,26 @@ export function phoneMatchKey(raw?: string | null, country?: string | null): str
   return parsePhoneNumber(raw, country).e164;
 }
 
-// Presentation compatibility never changes strict write/import validation or
-// match keys. Only one fully wrapped, otherwise valid number is accepted.
+// Historical US contacts may have no country field. Resolve only a complete,
+// valid North American number for presentation and dialing; never guess over an
+// explicitly supplied country or change strict writes, imports, or match keys.
+function parsePresentedPhone(raw?: string | null, country?: string | null): ParsedPhoneNumber {
+  const parsed = parsePhoneNumber(raw, country);
+  if (parsed.isValid || String(country || '').trim() || parsed.status !== 'needs_country') return parsed;
+  const main = parsed.raw.normalize('NFKC').trim().replace(EXTENSION, '').replace(/[\s().-]/g, '');
+  if (!/^(?:1)?[2-9]\d{2}[2-9]\d{6}$/.test(main)) return parsed;
+  const northAmerican = parsePhoneNumber(raw, 'US');
+  return northAmerican.isValid && (northAmerican.country === 'US' || northAmerican.country === 'CA')
+    ? northAmerican : parsed;
+}
+
+// Presentation compatibility also accepts one fully paired legacy decoration.
 export function parsePhoneNumberForDisplay(raw?: string | null, country?: string | null): ParsedPhoneNumber & { hasPresentationDecoration: boolean } {
-  const strict = parsePhoneNumber(raw, country);
+  const strict = parsePresentedPhone(raw, country);
   if (strict.isValid) return { ...strict, hasPresentationDecoration: false };
   const wrapped = strict.raw.normalize('NFKC').trim().match(/^\*\*([^*]+)\*\*$/);
   if (wrapped) {
-    const inner = parsePhoneNumber(wrapped[1], country);
+    const inner = parsePresentedPhone(wrapped[1], country);
     if (inner.isValid) return { ...inner, raw: strict.raw, hasPresentationDecoration: true };
   }
   return { ...strict, hasPresentationDecoration: false };
@@ -80,7 +92,7 @@ export function formatPhoneNumber(raw?: string | null, country?: string | null):
   const parsed = parsePhoneNumberForDisplay(raw, country);
   if (!parsed.isValid) return parsed.raw || '—';
   const northAmerican = (parsed.country === 'US' || parsed.country === 'CA') && parsed.e164?.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
-  const display = northAmerican ? `+1 (${northAmerican[1]}) ${northAmerican[2]}-${northAmerican[3]}` : parsed.internationalDisplay;
+  const display = northAmerican ? `+1 (${northAmerican[1]}) ${northAmerican[2]} ${northAmerican[3]}` : parsed.internationalDisplay;
   return `${display}${parsed.extension ? ` 分机 ${parsed.extension}` : ''}`;
 }
 
@@ -96,7 +108,7 @@ export function phoneSearchMatches(raw: string | null | undefined, query: string
   if (!/^[+0-9\s().-]+$/.test(needle)) return false;
   const digits = needle.replace(/\D/g, '');
   if (!digits) return false;
-  const parsed = parsePhoneNumber(raw, country);
+  const parsed = parsePhoneNumberForDisplay(raw, country);
   return [parsed.e164, parsed.nationalDisplay, parsed.internationalDisplay, parsed.raw]
     .filter(Boolean).some(value => value!.replace(/\D/g, '').includes(digits));
 }

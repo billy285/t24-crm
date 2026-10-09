@@ -352,7 +352,7 @@ test('已完成任务可追加拨号跟进，官方状态独立且禁止联系�
   const dialog = page.getByRole('dialog', { name: '追加跟进 · 第一位商家', exact: true });
   await expect(dialog.getByRole('button', { name: '再次拨打', exact: true })).toBeEnabled();
   await dialog.getByRole('button', { name: '复制号码', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('+1 (212) 555-0126');
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('+1 (212) 555 0126');
   await dialog.getByRole('button', { name: '有意向', exact: true }).click();
   await dialog.getByLabel('沟通记录', { exact: true }).fill('追加沟通：老板约定周一确认预约方案');
   await dialog.getByLabel(/^下次跟进/).fill('2026-10-12T10:30');

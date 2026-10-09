@@ -3,6 +3,7 @@ import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
 import { logOperation } from '../lib/operation-log-helper';
 import { invokeWithAuth } from '../lib/tokenStore';
+import { formatPhoneNumber } from '@/lib/phone-format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -460,7 +461,7 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
                     )}
                   </span>
                 )}
-                {a.bound_phone && <span className="min-w-0 break-all">手机: {a.bound_phone}</span>}
+                {a.bound_phone && <span className="min-w-0 break-all">手机: {formatPhoneNumber(a.bound_phone)}</span>}
                 {a.profile_url && <span className="min-w-0 break-all">链接: {a.profile_url}</span>}
                 {a.notes && <span className="min-w-0 break-all sm:col-span-2">备注: {a.notes}</span>}
               </div>

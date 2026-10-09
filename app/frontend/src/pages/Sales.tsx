@@ -23,6 +23,7 @@ import {
 } from '../lib/subscription-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import { businessDateKey } from '../lib/business-date';
+import { formatPhoneNumber } from '@/lib/phone-format';
 
 const subStatusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
@@ -555,7 +556,7 @@ export default function Sales() {
                     <p className="mt-1 text-xs text-slate-500">到期 {row.service_end_date?.slice(0, 10) || '-'} · {row.service_remaining_days == null ? '剩余 -' : row.service_remaining_days <= 0 ? `已超期 ${Math.abs(row.service_remaining_days)} 天` : `剩余 ${row.service_remaining_days} 天`}</p>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                    <div><p className="text-xs text-slate-400">联系人</p><p className="mt-1 text-slate-700">{row.contact_name || '-'} · {row.phone || '-'}</p></div>
+                    <div><p className="text-xs text-slate-400">联系人</p><p className="mt-1 text-slate-700">{row.contact_name || '-'} · {row.phone ? formatPhoneNumber(row.phone, row.country) : '-'}</p></div>
                     <div><p className="text-xs text-slate-400">最近成交</p><p className="mt-1 text-slate-700">{row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-'} · {row.latest_deal_date?.slice(0, 10) || '-'}</p></div>
                     {canViewFinance && <div><p className="text-xs text-slate-400">最近收款</p><p className="mt-1 text-slate-700">{row.latest_payment_amount ? fmt(row.latest_payment_amount) : '-'}</p></div>}
                     {canViewFinance && <div><p className="text-xs text-slate-400">尾款</p><p className={`mt-1 ${row.outstanding_amount > 0 ? 'font-medium text-red-600' : 'text-slate-400'}`}>{row.outstanding_amount > 0 ? fmt(row.outstanding_amount) : '-'}</p></div>}
@@ -597,7 +598,7 @@ export default function Sales() {
                       </td>
                       <td className="px-4 py-3 text-slate-600">
                         <div>{row.contact_name || '-'}</div>
-                        <div className="text-xs text-slate-400 mt-1">{row.phone || '-'}</div>
+                        <div className="text-xs text-slate-400 mt-1">{row.phone ? formatPhoneNumber(row.phone, row.country) : '-'}</div>
                       </td>
                       {showAllColumns && <td className="px-4 py-3 text-slate-600">
                         <div>{row.state || '-'}</div>
