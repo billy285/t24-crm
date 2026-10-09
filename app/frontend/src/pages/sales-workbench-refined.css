@@ -61,6 +61,15 @@
 .sw-note-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .sw-note-heading label { font-size: var(--t24-body-size); font-weight: 600; }
 .sw-note-heading > span { font-size: var(--t24-aux-size); color: #64748b; }
+.sw-draft-tools { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; min-width: 0; color: #64748b; font-size: var(--t24-aux-size); }
+.sw-draft-tools button { height: auto; min-height: 28px; padding: 2px 6px; font-size: var(--t24-aux-size); color: #64748b; }
+.sw-dial-actions { display: flex; flex-shrink: 0; align-items: center; flex-wrap: wrap; gap: 10px; }
+.sw-save-receipt { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; border: 1px solid #dbe8e4; border-radius: 10px; color: #53687a; background: #fff; font-size: var(--t24-aux-size); }
+.sw-save-receipt > svg { flex-shrink: 0; color: #059669; }
+.sw-save-receipt > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sw-save-receipt strong { font-weight: 500; color: #24354e; }
+.sw-save-receipt time { color: #64748b; }
+.sw-save-receipt button { flex-shrink: 0; }
 .t24-system .sw-refined .sw-notes, .sw-supplemental .sw-notes { height: clamp(112px, 18dvh, 230px); min-height: 112px; resize: vertical; width: 100%; font-size: var(--t24-body-size); line-height: 23px; border-color: #e7ebf2; border-radius: 9px; box-shadow: none; padding: 12px; background: #fbfcfe; }
 .sw-record .sw-notes:focus { background: #fff; border-color: #8eaaf0; }
 .sw-result-heading { margin: 16px 0 10px; padding-top: 14px; border-top: 1px dashed #dce4ef; font-size: var(--t24-aux-size); font-weight: 500; color: #334155; }
@@ -116,8 +125,11 @@
   .sw-dial-row { flex-wrap: wrap; gap: 10px; margin: 12px 0; }
   .sw-phone strong { font-size: var(--t24-detail-size); }
   .sw-dial-button { width: 100%; }
+  .sw-dial-actions { width: 100%; }
+  .sw-dial-actions > button { flex: 1; }
   .sw-dial-button > button { width: 100%; min-height: 44px; }
   .sw-last-contact { align-items: center; font-size: var(--t24-aux-size); }
+  .sw-draft-tools button { min-height: 36px; }
   .sw-last-contact > span { -webkit-line-clamp: 2; }
   .sw-last-contact button { min-height: 40px; }
   .t24-system .sw-refined .sc-record-fields, .sw-supplemental .sc-record-fields { padding: 14px 16px; }

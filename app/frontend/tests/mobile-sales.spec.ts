@@ -133,7 +133,7 @@ test('390px 商家池直接选择分配，资料按需查看且不暴露手机�
   await expect(page.getByTestId('merchant-pool-desktop-table')).toHaveCount(0);
   const card = page.getByTestId('merchant-mobile-card');
   await expect(card).toContainText('Golden Dragon Restaurant');
-  await expect(card).toContainText('+1 626 555 0123');
+  await expect(card).toContainText('+1 (626) 555-0123');
   await expect(card).toContainText('Los Angeles, CA');
   await expect(card).not.toContainText('123 Main St');
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-pool-mobile-layout.png`, animations: 'disabled', fullPage: true });

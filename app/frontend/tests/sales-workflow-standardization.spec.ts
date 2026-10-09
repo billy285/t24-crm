@@ -17,7 +17,8 @@ async function seed(page: Page, options: { failReadiness?: boolean; failList?: b
     else if (path === '/api/v1/sales-leads') {
       if (options.failList && url.searchParams.has('status')) return route.fulfill({status:503,json:{detail:'模拟筛选读取失败'}});
       data={items:[currentLead],total:1};
-    } else if (/sales-leads\/(?:dashboard|reports|recovery)\//.test(path) || path.endsWith('/sales-leads/performance')) data=null;
+    } else if (path === '/api/v1/sales-leads/31') data=currentLead;
+    else if (/sales-leads\/(?:dashboard|reports|recovery)\//.test(path) || path.endsWith('/sales-leads/performance')) data=null;
     else if (path.endsWith('/sales-leads/stats')) data={total:1,assigned:1,unassigned:0,blacklisted:0,do_not_contact:0};
     else if (path.endsWith('/sales-leads/assignees')) data=[{id:11,name:'测试销售',role:'sales'}];
     else if (path.endsWith('/sales-deal-controls/options')) data={employees:[]};
@@ -64,9 +65,10 @@ for (const timezoneId of ['America/Los_Angeles', 'Asia/Shanghai']) {
     await notes.fill('已沟通预算，需准备报价');
     await time.fill('2026-10-11T10:30');
     expect(writes).toHaveLength(0);
-    page.once('dialog', dialog => dialog.dismiss());
+    await expect(drawer.getByRole('status')).toContainText('草稿已暂存');
     await page.keyboard.press('Escape');
-    await expect(drawer).toBeVisible();
+    await expect(drawer).toBeHidden();
+    await openFollowUp(page);
     await expect(notes).toHaveValue('已沟通预算，需准备报价');
     await drawer.getByRole('button', { name: '保存跟进', exact: true }).click();
     await expect.poll(() => writes.length).toBe(1);

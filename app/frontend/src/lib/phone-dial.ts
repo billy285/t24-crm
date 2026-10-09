@@ -1,4 +1,4 @@
-import { parsePhoneNumber } from './phone-format';
+import { parsePhoneNumberForDisplay } from './phone-format';
 
 export type CustomerDialTarget = {
   dialNumber: string;
@@ -6,7 +6,7 @@ export type CustomerDialTarget = {
 };
 
 export function getCustomerDialValidation(phone: string, country?: string | null) {
-  return parsePhoneNumber(phone, country);
+  return parsePhoneNumberForDisplay(phone, country);
 }
 
 export function getCustomerDialTarget(phone: string, country?: string | null): CustomerDialTarget | null {

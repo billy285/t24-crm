@@ -15,7 +15,7 @@ test('标准号码保留国际国家码、原文与分机，搜索不受展示�
   expect(parsePhoneNumber('+1 (202) 555-0123 ext. 009')).toMatchObject({ raw: '+1 (202) 555-0123 ext. 009', e164: '+12025550123', extension: '009', status: 'valid' });
   expect(phoneMatchKey('020 7946 0018', 'UK')).toBe('+442079460018');
   expect(phoneMatchKey('+86 13800138000')).toBe('+8613800138000');
-  expect(formatPhoneNumber('2025550123 ext 9', 'US')).toBe('+1 202 555 0123 分机 9');
+  expect(formatPhoneNumber('2025550123 ext 9', 'US')).toBe('+1 (202) 555-0123 分机 9');
   expect(phoneSearchMatches('+1 (202) 555-0123', '2025550123')).toBe(true);
   expect(phoneSearchMatches('+44 20 7946 0018', '2079460018')).toBe(true);
   expect(getCustomerDialTarget('+86 13800138000')).toEqual({ dialNumber: '8613800138000', displayNumber: '+8613800138000' });
@@ -115,7 +115,7 @@ test('客户导入按标准号码识别重复，未知国家与多号码列入�
   await expect(dialog.getByRole('row').filter({ hasText: 'Duplicate international' })).toContainText('已存在');
   await expect(dialog.getByRole('row').filter({ hasText: 'Unknown national' })).toContainText('需要明确国家');
   await expect(dialog.getByRole('row').filter({ hasText: 'Multiple numbers' })).toContainText('请只填写一个电话号码');
-  await expect(dialog.getByRole('row').filter({ hasText: 'Valid raw retained' })).toContainText('+1 202 555 0144 分机 009');
+  await expect(dialog.getByRole('row').filter({ hasText: 'Valid raw retained' })).toContainText('+1 (202) 555-0144 分机 009');
   expect(writes).toHaveLength(0);
   await dialog.getByRole('button', { name: '确认导入 1 条数据', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '导入完成', exact: true })).toBeVisible();

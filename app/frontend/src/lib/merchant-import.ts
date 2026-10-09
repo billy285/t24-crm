@@ -1,3 +1,41 @@
+import { parsePhoneNumber, parsePhoneNumberForDisplay } from './phone-format';
+
+export const MERCHANT_IMPORT_HEADERS = ['商家名称', '商家电话', '商家位置', '地区', '来源'] as const;
+export const MERCHANT_IMPORT_EXAMPLE = ['示例咖啡店', '+1 (212) 555-0123 ext 009', '1 Main St', 'New York, NY, US', 'Google Maps'] as const;
+
+export type MerchantImportIssueRow = {
+  status: string; reason: string; phone?: string | null; phone_country?: string | null;
+  phone_status?: string; duplicate_row?: number; raw?: Record<string, string>;
+};
+
+// Advice explains the server's decision; it never changes eligibility or data.
+export function merchantImportRepairAdvice(row: MerchantImportIssueRow): string | null {
+  if (row.status === 'pending') return null;
+  if (row.status === 'error') {
+    if (/5列|五列/.test(row.reason)) return '保留模板的五列；用表格软件编辑，含逗号的地区或地址放在同一个单元格。';
+    if (/商家名称|business_name|名称/.test(row.reason)) return '填写商家名称，长度不超过 200 字。';
+    if (/来源|data_source/.test(row.reason)) return '来源填写简短的平台或文件名称，不超过 50 字。';
+    return '按原行号修改原文件，保留固定五列表头，再重新预检。';
+  }
+  if (row.status === 'duplicate') return row.duplicate_row
+    ? `与原第 ${row.duplicate_row} 行重复；核对后在原文件保留一条，勿为绕过重复而改造号码。`
+    : '核对已有商家或线索，补充原记录，避免重复分配。';
+  if (row.status === 'existing_customer') return '核对已关联的正式客户，继续客户跟进；此条不能作为新商家分配。';
+  if (row.status === 'closed') return '核实营业状态；确已停业的商家保持隔离，不进入拨打名单。';
+  if (row.status !== 'no_phone') return null;
+  const raw = row.phone ?? row.raw?.['商家电话'] ?? '';
+  if (!raw.trim()) return '补填一个完整联系电话；本地号码同时在“地区”列写明国家。';
+  if (parsePhoneNumberForDisplay(raw, row.phone_country).hasPresentationDecoration) return '删除原文件电话两端的 **，保留号码和分机，再重新预检。';
+  const wrapped = raw.normalize('NFKC').trim().match(/^\*\*([^*]+)\*\*$/);
+  const content = wrapped ? wrapped[1] : raw;
+  if (/[*•●]|\d[xX]{2,}\d/.test(content)) return '回到原始资料补齐真实号码；遮罩中的缺失数字不能推测。';
+  const parsed = parsePhoneNumber(content, row.phone_country);
+  const decorationAdvice = wrapped ? '删除电话两端的 **；' : '';
+  if (row.phone_status === 'ambiguous' || parsed.status === 'ambiguous') return `${decorationAdvice}一行只保留一个联系电话；分机写为 ext 009，不要用斜线或逗号合并号码。`;
+  if (row.phone_status === 'needs_country' || parsed.status === 'needs_country') return `${decorationAdvice}在“地区”列写明国家，例如 New York, NY, US；或填写含 + 国家码的完整号码。`;
+  return `${decorationAdvice}核对原始号码的国家码和位数，去掉说明文字；号码单元格设为文本，保留 +、前导零和分机。`;
+}
+
 export type MerchantImportRecord = {
   business_name: string;
   phone: string | null;

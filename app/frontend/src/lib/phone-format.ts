@@ -63,10 +63,29 @@ export function phoneMatchKey(raw?: string | null, country?: string | null): str
   return parsePhoneNumber(raw, country).e164;
 }
 
+// Presentation compatibility never changes strict write/import validation or
+// match keys. Only one fully wrapped, otherwise valid number is accepted.
+export function parsePhoneNumberForDisplay(raw?: string | null, country?: string | null): ParsedPhoneNumber & { hasPresentationDecoration: boolean } {
+  const strict = parsePhoneNumber(raw, country);
+  if (strict.isValid) return { ...strict, hasPresentationDecoration: false };
+  const wrapped = strict.raw.normalize('NFKC').trim().match(/^\*\*([^*]+)\*\*$/);
+  if (wrapped) {
+    const inner = parsePhoneNumber(wrapped[1], country);
+    if (inner.isValid) return { ...inner, raw: strict.raw, hasPresentationDecoration: true };
+  }
+  return { ...strict, hasPresentationDecoration: false };
+}
+
 export function formatPhoneNumber(raw?: string | null, country?: string | null): string {
-  const parsed = parsePhoneNumber(raw, country);
+  const parsed = parsePhoneNumberForDisplay(raw, country);
   if (!parsed.isValid) return parsed.raw || '—';
-  return `${parsed.internationalDisplay}${parsed.extension ? ` 分机 ${parsed.extension}` : ''}`;
+  const northAmerican = (parsed.country === 'US' || parsed.country === 'CA') && parsed.e164?.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  const display = northAmerican ? `+1 (${northAmerican[1]}) ${northAmerican[2]}-${northAmerican[3]}` : parsed.internationalDisplay;
+  return `${display}${parsed.extension ? ` 分机 ${parsed.extension}` : ''}`;
+}
+
+export function getPhoneCopyValue(raw?: string | null, country?: string | null): string | null {
+  return parsePhoneNumberForDisplay(raw, country).isValid ? formatPhoneNumber(raw, country) : null;
 }
 
 export function phoneSearchMatches(raw: string | null | undefined, query: string, country?: string | null): boolean {

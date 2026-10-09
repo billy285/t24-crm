@@ -18,6 +18,13 @@
 .slr-followup-form > div { display: grid; gap: 8px; }
 .slr-followup-form textarea { min-height: 180px; resize: vertical; line-height: 1.75; }
 .slr-followup-form .slr-followup-save { min-height: 48px; margin-top: 8px; }
+.slr-followup-form .slr-draft-state { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--t24-aux-size); color: #64748b; }
+.slr-followup-form .slr-followup-save-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.slr-deal-steps { display: flex; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid #e7ebf2; }
+.slr-deal-steps > button { flex: 1; min-height: 44px; }
+.slr-deal-steps > button[aria-pressed="true"] { background: #eef2ff; color: #245fe5; }
+.slr-deal-section[hidden] { display: none; }
+.slr-deal-next { display: flex; justify-content: flex-end; }
 .slr-followup-history { border-top: 1px solid #e7ebf2; padding-top: 12px; }
 .slr-followup-history summary { display: flex; gap: 8px; align-items: center; min-height: 44px; cursor: pointer; color: #64748b; list-style: none; }
 .slr-followup-history summary::-webkit-details-marker { display: none; }

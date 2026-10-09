@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowRightLeft, Ban, BarChart3, CheckCircle2, ChevronDown, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, History, Link2, MessageSquarePlus, MoreHorizontal, Phone, PhoneCall, PhoneOff, Plus, Radio, Search, ShieldAlert, Timer, Users,
+  ArrowRightLeft, Ban, BarChart3, CheckCircle2, ChevronDown, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, History, Link2, MessageSquarePlus, MoreHorizontal, Phone, PhoneCall, PhoneOff, Plus, Radio, Search, ShieldAlert, Timer, Trash2, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -23,7 +23,8 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { businessDateKey, formatBusinessDateTimeInput, parseBusinessDateTimeInput } from '@/lib/business-date';
-import { formatPhoneNumber, parsePhoneNumber } from '@/lib/phone-format';
+import { formatPhoneNumber, getPhoneCopyValue, parsePhoneNumber } from '@/lib/phone-format';
+import { readFollowUpDraft, writeFollowUpDraft, removeFollowUpDraft, type DraftPersistence } from '@/lib/sales-followup-draft';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useRole } from '@/lib/role-context';
 import { invokeWithAuth } from '@/lib/tokenStore';
@@ -72,7 +73,7 @@ type SalesCallReport = {
 type CallHistoryItem = { id: number; outcome: string; outcome_label: string; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string };
 type Quote = { id: number; business_line_id?: number; product_id?: number; product_plan_id?: number; package_name: string; selected_platforms: string[]; billing_mode: string; billing_cycle: string; payment_method: string; currency: string; list_amount: number; discount_amount: number; final_amount: number; service_start_date?: string; service_end_date?: string; special_terms?: string; status: 'submitted' | 'approved' | 'rejected' | 'superseded'; submitted_by_name?: string; reviewed_by_name?: string; review_notes?: string };
 type Handoff = { quote_id?: number; customer_goal?: string; key_contacts?: string; service_start_date?: string; service_end_date?: string; special_commitments?: string; operations_owner?: string; operations_owner_employee_id?: number; collaborator_employee_ids?: number[]; operations_group_created?: boolean; finance_payment_confirmed?: boolean; payment_status?: string; amount_received?: number; payment_date?: string; payment_reference?: string; payment_confirmed_by_name?: string; generated_deal_id?: number; generate_service_board?: boolean; handoff_notes?: string };
-type DealReadiness = { lead: { id: number; business_name: string; converted_customer_id?: number }; quotes: Quote[]; handoff: Handoff; blockers: string[] };
+type DealReadiness = { lead: SalesLead; quotes: Quote[]; handoff: Handoff; blockers: string[] };
 type BusinessLineOption = { id: number; code: string; name: string };
 type ProductOption = { id: number; business_line_id: number; name: string; default_currency: string };
 type PlanOption = { id: number; product_id: number; name: string; standard_price?: number; default_currency: string; default_billing_cycle?: string; platform_limit?: number; scope_type: string };
@@ -181,6 +182,8 @@ export default function SalesLeads() {
   const [dashboard, setDashboard] = useState<ManagementDashboard | null>(null);
   const [convertingId, setConvertingId] = useState<number | null>(null);
   const [dealLead, setDealLead] = useState<SalesLead | null>(null);
+  const [dealStep, setDealStep] = useState<'quote' | 'handoff' | 'payment'>('quote');
+  const dealBaselinesRef = useRef({ handoff: JSON.stringify(emptyHandoffForm), payment: JSON.stringify(createEmptyPaymentForm()) });
   const [conversionReceipt, setConversionReceipt] = useState<{ customer_id: number; customer_code: string; operations_owner?: string; operations_access_status?: string } | null>(null);
   const [dealReadiness, setDealReadiness] = useState<DealReadiness | null>(null);
   const [dealLoading, setDealLoading] = useState(false);
@@ -201,6 +204,7 @@ export default function SalesLeads() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const historyRequestRef = useRef(0);
   const [followUpSaving, setFollowUpSaving] = useState(false);
+  const [followUpPersistence, setFollowUpPersistence] = useState<DraftPersistence>('none');
   const followUpBaseline = useRef('');
   const [followUpForm, setFollowUpForm] = useState({ outcome: 'callback', notes: '', next_follow_up_at: '' });
   const [businessLines, setBusinessLines] = useState<BusinessLineOption[]>([]);
@@ -330,7 +334,9 @@ export default function SalesLeads() {
 
   const copyLeadPhone = async (lead: SalesLead) => {
     try {
-      await navigator.clipboard.writeText(lead.phone);
+      const value = getPhoneCopyValue(lead.phone, lead.country);
+      if (!value) { toast.error('请先补齐国家和有效电话号码'); return; }
+      await navigator.clipboard.writeText(value);
       toast.success(`已复制 ${lead.business_name} 的电话`);
     } catch {
       toast.error('电话号码复制失败，请长按号码复制');
@@ -371,21 +377,44 @@ export default function SalesLeads() {
       do_not_contact_reason: lead.do_not_contact_reason || '', next_follow_up_at: formatBusinessDateTimeInput(lead.next_follow_up_at),
     });
     setCallHistory([]);
-    setFollowUpForm({ outcome: lead.status === 'appointment' ? 'appointment' : lead.status === 'interested' ? 'interested' : 'callback', notes: '', next_follow_up_at: formatBusinessDateTimeInput(lead.next_follow_up_at) });
-    followUpBaseline.current = JSON.stringify({ outcome: lead.status === 'appointment' ? 'appointment' : lead.status === 'interested' ? 'interested' : 'callback', notes: '', next_follow_up_at: formatBusinessDateTimeInput(lead.next_follow_up_at) });
+    const initial = { outcome: lead.status === 'appointment' ? 'appointment' : lead.status === 'interested' ? 'interested' : 'callback', notes: '', next_follow_up_at: formatBusinessDateTimeInput(lead.next_follow_up_at) };
+    followUpBaseline.current = JSON.stringify(initial);
+    const saved = followUp && !lead.do_not_contact && !lead.is_blacklisted && !lead.converted_customer_id
+      ? readFollowUpDraft({ userId: Number(employee?.id), salesId: lead.assigned_sales_id, leadId: lead.id }) : null;
+    setFollowUpForm(saved?.value || initial);
+    setFollowUpPersistence(saved?.persistence || 'none');
     setShowForm(true);
     void loadCallHistory(lead.id);
   };
 
-  const hasFollowUpDraft = () => !!editing && JSON.stringify(followUpForm) !== followUpBaseline.current;
+  const hasFollowUpDraft = () => !!editing && followUpOnly && JSON.stringify(followUpForm) !== followUpBaseline.current;
+  useEffect(() => {
+    if (!showForm || !followUpOnly || !editing || editing.do_not_contact || editing.is_blacklisted || editing.converted_customer_id) return;
+    if (JSON.stringify(followUpForm) === followUpBaseline.current) return;
+    setFollowUpPersistence(writeFollowUpDraft({ userId: Number(employee?.id), salesId: editing.assigned_sales_id, leadId: editing.id }, followUpForm));
+  }, [showForm, followUpOnly, followUpForm, editing, employee?.id]);
+
+  useEffect(() => {
+    if (!followUpOnly || !hasFollowUpDraft() || followUpPersistence === 'session') return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showForm, followUpOnly, followUpForm, followUpPersistence]);
+
+  const discardFollowUpDraft = () => {
+    if (!editing || saving || followUpSaving || !window.confirm('确认清空本次草稿？已保存的历史记录会保留。')) return;
+    if (!removeFollowUpDraft({ userId: Number(employee?.id), salesId: editing.assigned_sales_id, leadId: editing.id })) toast.warning('本页已清空草稿；浏览器存储不可写，刷新可能恢复旧内容');
+    setFollowUpForm(JSON.parse(followUpBaseline.current));
+    setFollowUpPersistence('none');
+  };
   const closeForm = (open: boolean) => {
     if (!open && (saving || followUpSaving)) return;
-    if (!open && hasFollowUpDraft() && !window.confirm('本次跟进尚未保存到时间线。确认放弃这些内容吗？')) return;
     if (!open) historyRequestRef.current += 1;
     setShowForm(open);
   };
 
-  const recordFollowUp = async () => {
+  const recordFollowUp = async (nextAction: 'stay' | 'quote' = 'stay') => {
     if (!editing || saving || followUpSaving || editing.status === 'new' || editing.is_blacklisted || editing.do_not_contact || editing.converted_customer_id) return;
     if (!followUpForm.notes.trim()) {
       toast.error('请填写本次沟通内容，避免产生空白跟进记录');
@@ -395,6 +424,7 @@ export default function SalesLeads() {
       toast.error('请设置下次跟进时间');
       return;
     }
+    const draftScope = { userId: Number(employee?.id), salesId: editing.assigned_sales_id, leadId: editing.id };
     setFollowUpSaving(true);
     try {
       const response = await invokeWithAuth({
@@ -406,6 +436,8 @@ export default function SalesLeads() {
           next_follow_up_at: followUpForm.next_follow_up_at ? parseBusinessDateTimeInput(followUpForm.next_follow_up_at) : null,
         },
       });
+      if (!removeFollowUpDraft(draftScope)) toast.warning('记录已保存；浏览器存储不可写，刷新可能恢复旧草稿，请勿重复提交');
+      setFollowUpPersistence('none');
       const nextValue = formatBusinessDateTimeInput(response.data?.next_follow_up_at);
       followUpBaseline.current = JSON.stringify({ ...followUpForm, notes: '', next_follow_up_at: nextValue });
       const updatedLead = response.data?.lead as SalesLead | undefined;
@@ -420,6 +452,13 @@ export default function SalesLeads() {
       setFollowUpForm(current => ({ ...current, notes: '', next_follow_up_at: nextValue }));
       await Promise.all([loadCallHistory(editing.id), loadData()]);
       toast.success(response.data?.message || '跟进记录已加入时间线');
+      if (nextAction === 'quote') {
+        const refreshed = { ...editing, ...updatedLead, status: response.data?.status || editing.status };
+        if (!refreshed.do_not_contact && !refreshed.is_blacklisted && !refreshed.converted_customer_id && ['interested', 'appointment'].includes(refreshed.status)) {
+          setShowForm(false);
+          await openDealControl(refreshed);
+        }
+      }
     } catch (error: any) {
       toast.error(error?.data?.detail || error?.response?.data?.detail || error?.message || '跟进记录保存失败');
     } finally {
@@ -499,31 +538,39 @@ export default function SalesLeads() {
     }
   };
 
-  const loadDealReadiness = async (lead: SalesLead) => {
+  const loadDealReadiness = async (lead: SalesLead, resetDrafts = false) => {
     const requestId = ++dealRequestRef.current;
     setDealLoading(true);
     setDealError(false);
     setDealReadiness(null);
     try {
-      const response = await invokeWithAuth({ url: `/api/v1/sales-deal-controls/${lead.id}/readiness`, method: 'GET' });
+      const [response, leadResponse] = await Promise.all([
+        invokeWithAuth({ url: `/api/v1/sales-deal-controls/${lead.id}/readiness`, method: 'GET' }),
+        invokeWithAuth({ url: `/api/v1/sales-leads/${lead.id}`, method: 'GET' }),
+      ]);
       if (requestId !== dealRequestRef.current) return;
-      const readiness = response.data as DealReadiness;
-      if (readiness.lead.id !== lead.id) throw new Error('成交资料与当前商机不一致，请重新加载');
+      const receivedReadiness = response.data as DealReadiness;
+      const freshLead = leadResponse.data as SalesLead;
+      if (receivedReadiness.lead.id !== lead.id || freshLead.id !== lead.id) throw new Error('成交资料与当前商机不一致，请重新加载');
+      const readiness = { ...receivedReadiness, lead: { ...freshLead, converted_customer_id: receivedReadiness.lead.converted_customer_id || freshLead.converted_customer_id } };
       setDealReadiness(readiness);
       const handoff = readiness.handoff || {};
       const activeQuote = readiness.quotes.find(quote => quote.status === 'approved');
-      setHandoffForm({
+      const loadedHandoff = {
         quote_id: handoff.quote_id ? String(handoff.quote_id) : (activeQuote ? String(activeQuote.id) : ''), customer_goal: handoff.customer_goal || '', key_contacts: handoff.key_contacts || '',
         service_start_date: handoff.service_start_date || activeQuote?.service_start_date || '', service_end_date: handoff.service_end_date || activeQuote?.service_end_date || '', special_commitments: handoff.special_commitments || '',
         operations_owner: handoff.operations_owner || '', operations_owner_employee_id: handoff.operations_owner_employee_id ? String(handoff.operations_owner_employee_id) : '',
         collaborator_employee_ids: handoff.collaborator_employee_ids || [], operations_group_created: !!handoff.operations_group_created,
         generate_service_board: !!handoff.generate_service_board, handoff_notes: handoff.handoff_notes || '',
-      });
-      setPaymentForm({
+      };
+      if (resetDrafts || JSON.stringify(handoffForm) === dealBaselinesRef.current.handoff) setHandoffForm(loadedHandoff);
+      const loadedPayment = {
         payment_status: handoff.payment_status || (handoff.finance_payment_confirmed ? 'paid' : 'pending'),
         amount_received: handoff.amount_received ? String(handoff.amount_received) : '',
         payment_date: handoff.payment_date || businessDateKey(), payment_reference: handoff.payment_reference || '',
-      });
+      };
+      if (resetDrafts || JSON.stringify(paymentForm) === dealBaselinesRef.current.payment) setPaymentForm(loadedPayment);
+      dealBaselinesRef.current = { handoff: JSON.stringify(loadedHandoff), payment: JSON.stringify(loadedPayment) };
     } catch (error: any) {
       if (requestId !== dealRequestRef.current) return;
       setDealError(true);
@@ -532,26 +579,55 @@ export default function SalesLeads() {
   };
 
   const openDealControl = async (lead: SalesLead) => {
+    if (lead.converted_customer_id || lead.do_not_contact || lead.is_blacklisted) {
+      toast.error(lead.converted_customer_id ? '已转为正式客户，请在客户中心继续处理' : '该商家已停止联系');
+      return;
+    }
+    setDealStep('quote');
     setDealLead(lead);
     setDealReadiness(null);
     setQuoteForm(emptyQuoteForm);
     setHandoffForm(emptyHandoffForm);
     setPaymentForm(createEmptyPaymentForm());
-    await loadDealReadiness(lead);
+    await loadDealReadiness(lead, true);
   };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = Number(params.get('lead_id'));
-    if (!id || params.get('action') !== 'quote' || requestedQuoteRef.current) return;
+    const action = params.get('action');
+    if (!Number.isSafeInteger(id) || id <= 0 || !['quote', 'followup'].includes(action || '') || requestedQuoteRef.current) return;
     requestedQuoteRef.current = true;
     invokeWithAuth({ url: `/api/v1/sales-leads/${id}`, method: 'GET' })
-      .then(response => openDealControl(response.data))
+      .then(response => {
+        if (response.data?.id !== id) throw new Error('商机资料与当前客户不一致');
+        if (action === 'quote') return openDealControl(response.data);
+        if (response.data?.status === 'new') { toast.error('新线索请先进入今日拨打'); return; }
+        openEdit(response.data, true);
+      })
       .catch(error => toast.error(error?.data?.detail || '该商机无法读取，请检查归属权限'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const hasDealDraft = () => !!dealLead && !dealLoading && !dealError && (JSON.stringify(quoteForm) !== JSON.stringify(emptyQuoteForm) || JSON.stringify(handoffForm) !== dealBaselinesRef.current.handoff || JSON.stringify(paymentForm) !== dealBaselinesRef.current.payment);
+  const canEditDeal = !!dealLead && !dealSaving && !dealLoading && !dealError && !!dealReadiness && dealReadiness.lead.id === dealLead.id && !dealReadiness.lead.converted_customer_id && !dealReadiness.lead.do_not_contact && !dealReadiness.lead.is_blacklisted;
+  const closeDealControl = (open: boolean) => {
+    if (open || dealSaving || convertingId !== null) return;
+    if (hasDealDraft() && !window.confirm('报价或交接有未保存内容，确认放弃并关闭吗？')) return;
+    dealRequestRef.current += 1;
+    setDealLead(null);
+    setDealReadiness(null);
+  };
+  useEffect(() => {
+    if (!hasDealDraft()) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealLead, quoteForm, handoffForm, paymentForm]);
+
   const submitQuote = async () => {
+    if (!canEditDeal) return;
     if (!dealLead || !quoteForm.business_line_id || !quoteForm.product_id || !quoteForm.list_amount) {
       toast.error('请选择业务线、具体产品并填写报价金额');
       return;
@@ -578,6 +654,7 @@ export default function SalesLeads() {
   };
 
   const reviewQuote = async (quote: Quote, decision: 'approved' | 'rejected') => {
+    if (!canManage || !canEditDeal) return;
     const reviewNotes = window.prompt(decision === 'approved' ? '可填写审批备注（可留空）' : '请填写驳回原因') || '';
     if (decision === 'rejected' && !reviewNotes.trim()) return;
     setDealSaving(true);
@@ -591,7 +668,7 @@ export default function SalesLeads() {
   };
 
   const saveHandoff = async () => {
-    if (!dealLead) return;
+    if (!dealLead || !canEditDeal) return;
     setDealSaving(true);
     try {
       await invokeWithAuth({
@@ -605,6 +682,7 @@ export default function SalesLeads() {
         },
       });
       toast.success('成交交接清单已保存');
+      dealBaselinesRef.current.handoff = JSON.stringify(handoffForm);
       await loadDealReadiness(dealLead);
     } catch (error: any) {
       toast.error(error?.data?.detail || error?.message || '成交交接清单保存失败');
@@ -612,16 +690,26 @@ export default function SalesLeads() {
   };
 
   const savePaymentStatus = async () => {
-    if (!dealLead) return;
+    if (!canManage || !dealLead || !canEditDeal) return;
+    const received = Number(paymentForm.amount_received);
+    if (!Number.isFinite(received) || received < 0 || (['paid', 'deposit_paid'].includes(paymentForm.payment_status) && (!paymentForm.amount_received.trim() || received <= 0))) {
+      toast.error('请填写已核对的实收金额，不能以报价代替到账');
+      return;
+    }
+    if (['paid', 'deposit_paid'].includes(paymentForm.payment_status) && !paymentForm.payment_date) {
+      toast.error('请填写实际收款日期');
+      return;
+    }
     setDealSaving(true);
     try {
       await invokeWithAuth({
         url: `/api/v1/sales-deal-controls/${dealLead.id}/handoff/finance-confirmation`, method: 'POST', data: {
-          payment_status: paymentForm.payment_status, amount_received: Number(paymentForm.amount_received || 0),
+          payment_status: paymentForm.payment_status, amount_received: received,
           payment_date: paymentForm.payment_date || null, payment_reference: paymentForm.payment_reference || null,
         },
       });
       toast.success('收款状态已更新');
+      dealBaselinesRef.current.payment = JSON.stringify(paymentForm);
       await loadDealReadiness(dealLead);
     } catch (error: any) {
       toast.error(error?.data?.detail || error?.message || '收款确认失败');
@@ -629,7 +717,7 @@ export default function SalesLeads() {
   };
 
   const convertToCustomer = async () => {
-    if (!dealLead || dealLoading || dealError || !dealReadiness || dealReadiness.lead.id !== dealLead.id || dealReadiness.blockers.length) return;
+    if (!canManage || !dealLead || !canEditDeal || !dealReadiness || dealReadiness.blockers.length) return;
     if (!window.confirm(`确认 ${dealLead.business_name} 已正式合作，并转入客户管理吗？此操作会保留销售线索、报价和通话历史。`)) return;
     const lead = dealLead;
     setConvertingId(lead.id);
@@ -695,7 +783,7 @@ export default function SalesLeads() {
     if (protectedLead) return <Button size="sm" variant="outline" onClick={() => openEdit(lead)}>查看保护</Button>;
     if (lead.converted_customer_id) return <Button size="sm" variant="outline" onClick={() => window.location.assign(`/customers?detail=${lead.converted_customer_id}&tab=info`)}>查看客户</Button>;
     if (lead.status === 'new') return <Button size="sm" variant="outline" onClick={() => window.location.assign(`/sales-workbench?lead_id=${lead.id}${lead.assigned_sales_id ? `&sales_employee_id=${lead.assigned_sales_id}` : ''}`)}>首次拨打</Button>;
-    if (['interested', 'appointment'].includes(lead.status)) return <Button size="sm" variant="outline" onClick={() => void openDealControl(lead)}>准备报价</Button>;
+    if (['interested', 'appointment'].includes(lead.status)) return <><Button size="sm" variant="outline" onClick={() => void openDealControl(lead)}>准备报价</Button><Button size="sm" variant="ghost" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}><MessageSquarePlus size={16} /></Button></>;
     return <Button size="sm" variant="outline" onClick={() => openEdit(lead, true)}>继续跟进</Button>;
   };
 
@@ -928,9 +1016,10 @@ export default function SalesLeads() {
               ? <div role="status" className="slr-protection-note">{editing.converted_customer_id ? '已转正式客户' : '已停止联系'}{editing.do_not_contact_reason && <p>{editing.do_not_contact_reason}</p>}</div>
               : <fieldset disabled={saving || followUpSaving} className="slr-followup-form">
                   <div><Label htmlFor="slr-followup-outcome">本次结果</Label><NativeSelect id="slr-followup-outcome" value={followUpForm.outcome} onChange={value => setFollowUpForm(current => ({ ...current, outcome: value }))} options={followUpOutcomeOptions} /></div>
-                  <div><Label htmlFor="slr-followup-notes">沟通记录 *</Label><Textarea id="slr-followup-notes" rows={7} value={followUpForm.notes} onChange={event => setFollowUpForm(current => ({ ...current, notes: event.target.value }))} placeholder="记录客户反馈和约定的下一步…" /></div>
+                  <div><Label htmlFor="slr-followup-notes">沟通记录 *</Label><Textarea id="slr-followup-notes" maxLength={20000} rows={7} value={followUpForm.notes} onChange={event => setFollowUpForm(current => ({ ...current, notes: event.target.value }))} placeholder="记录客户反馈和约定的下一步…" /></div>
                   {!['not_interested', 'do_not_contact'].includes(followUpForm.outcome) && <div><Label htmlFor="slr-followup-time">下次回访 · 北京时间</Label><Input id="slr-followup-time" type="datetime-local" value={followUpForm.next_follow_up_at} onChange={event => setFollowUpForm(current => ({ ...current, next_follow_up_at: event.target.value }))} /></div>}
-                  <Button type="button" className="slr-followup-save" disabled={followUpSaving || editing.status === 'new'} onClick={() => void recordFollowUp()}>{followUpSaving ? '保存中…' : '保存跟进'}</Button>
+                  {hasFollowUpDraft() && <div className="slr-draft-state"><span role="status">{followUpPersistence === 'session' ? '草稿已暂存' : '草稿仅保留在当前页面'}</span><Button type="button" size="sm" variant="ghost" aria-label="清空跟进草稿" onClick={discardFollowUpDraft}><Trash2 size={14} /></Button></div>}
+                  <div className="slr-followup-save-row"><Button type="button" className="slr-followup-save" disabled={followUpSaving || editing.status === 'new'} onClick={() => void recordFollowUp()}>{followUpSaving ? '保存中…' : '保存跟进'}</Button>{['interested', 'appointment'].includes(followUpForm.outcome) && <Button type="button" variant="outline" className="slr-followup-save" disabled={followUpSaving || editing.status === 'new'} onClick={() => void recordFollowUp('quote')}>保存并准备报价</Button>}</div>
                 </fieldset>}
             <details className="slr-followup-history"><summary><History size={16} />历史记录 <span>{callHistory.length}</span><ChevronDown size={15} /></summary>{historyLoading ? <p>正在加载…</p> : callHistory.length ? callHistory.map(item => <article key={item.id}><div><strong>{item.outcome_label}</strong><time>{formatDate(item.called_at)}</time></div><p>{item.notes || '未填写沟通内容'}</p><small>{item.sales_employee_name || '—'} · 下次：{formatDate(item.next_follow_up_at)}</small></article>) : <p>暂无历史记录</p>}</details>
           </>}
@@ -978,35 +1067,37 @@ export default function SalesLeads() {
         </DialogContent>
       </Dialog>}
 
-      <Dialog open={!!dealLead} onOpenChange={open => { if (!open && !dealSaving && convertingId === null) { dealRequestRef.current += 1; setDealLead(null); setDealReadiness(null); } }}>
-        <DialogContent className="!h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none rounded-none pb-0 sm:!h-auto sm:!max-h-[90vh] sm:!w-full sm:!max-w-4xl sm:rounded-lg sm:pb-6">
+      <Dialog open={!!dealLead} onOpenChange={closeDealControl}>
+        <DialogContent className="sales-center-ui slr-deal-dialog !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none rounded-none pb-0 sm:!h-auto sm:!max-h-[90vh] sm:!w-full sm:!max-w-4xl sm:rounded-lg sm:pb-6">
           <DialogHeader><DialogTitle>成交审核 · {dealLead?.business_name}</DialogTitle></DialogHeader>
-          <p className="-mt-2 text-sm text-slate-500">报价审批、运营交接和收款确认完成前，线索不会进入正式客户管理、成交或财务数据。</p>
-          {dealError ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">成交审核资料读取失败，请重新加载后继续。<Button className="ml-3" variant="outline" onClick={() => dealLead && void loadDealReadiness(dealLead)}>重新加载审核资料</Button></div> : dealLoading ? <div className="py-16 text-center text-sm text-slate-500">正在加载成交审核资料...</div> : <div className="space-y-5">
+          <nav className="slr-deal-steps" aria-label="成交步骤"><Button variant="ghost" aria-pressed={dealStep === 'quote'} onClick={() => setDealStep('quote')}>1 报价</Button><Button variant="ghost" aria-pressed={dealStep === 'handoff'} onClick={() => setDealStep('handoff')}>2 交接</Button>{canManage && <Button variant="ghost" aria-pressed={dealStep === 'payment'} onClick={() => setDealStep('payment')}>3 收款确认</Button>}</nav>
+          {dealReadiness && (dealReadiness.lead.converted_customer_id || dealReadiness.lead.do_not_contact || dealReadiness.lead.is_blacklisted) && <div role="status" className="rounded-xl border bg-slate-50 p-4 text-sm text-slate-700">{dealReadiness.lead.converted_customer_id ? <>已转为正式客户，售前资料只读。<a className="ml-3 font-medium text-blue-600" href={`/customers?detail=${dealReadiness.lead.converted_customer_id}&tab=info`}>查看客户</a></> : '该商家已停止联系，售前资料只读。'}</div>}
+          {dealError ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">成交审核资料读取失败，请重新加载后继续。<Button className="ml-3" variant="outline" onClick={() => dealLead && void loadDealReadiness(dealLead)}>重新加载审核资料</Button></div> : dealLoading ? <div className="py-16 text-center text-sm text-slate-500">正在加载成交审核资料...</div> : <fieldset disabled={!canEditDeal || convertingId !== null} className="space-y-5">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><div className="flex items-start gap-2"><FileText className="mt-0.5 h-4 w-4 text-amber-700" /><div><p className="font-semibold text-amber-900">当前待完成项</p><div className="mt-2 flex flex-wrap gap-2">{(dealReadiness?.blockers || []).map(item => <Badge key={item} className="bg-white text-amber-800 ring-1 ring-amber-200">{item}</Badge>)}{dealReadiness && dealReadiness.blockers.length === 0 && <Badge className="bg-emerald-100 text-emerald-800">审核完成，可转入正式客户</Badge>}</div></div></div></div>
 
-            <section className="rounded-xl border border-slate-200 p-4"><div className="mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-blue-600" /><div><p className="font-semibold text-slate-900">1. 报价审批单</p><p className="text-xs text-slate-500">销售提交报价；销售主管或系统管理员审批。历史报价会保留，不会覆盖。</p></div></div>
+            <section hidden={dealStep !== 'quote'} className="slr-deal-section rounded-xl border border-slate-200 p-4"><div className="mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-blue-600" /><div><p className="font-semibold text-slate-900">1. 报价审批单</p><p className="text-xs text-slate-500">销售提交报价；销售主管或系统管理员审批。历史报价会保留，不会覆盖。</p></div></div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <div><Label>业务线 *</Label><NativeSelect value={quoteForm.business_line_id} onChange={value => setQuoteForm(current => ({ ...current, business_line_id: value, product_id: '', product_plan_id: '', package_name: '', selected_platforms: '' }))} options={[{ value: '', label: '请选择业务线' }, ...businessLines.map(item => ({ value: String(item.id), label: item.name }))]} /></div>
-                <div><Label>具体产品 *</Label><NativeSelect value={quoteForm.product_id} onChange={value => { const product = products.find(item => String(item.id) === value); setQuoteForm(current => ({ ...current, product_id: value, product_plan_id: '', package_name: product?.name || '', currency: product?.default_currency || current.currency, selected_platforms: '' })); }} options={[{ value: '', label: '请选择具体产品' }, ...quoteProducts.map(item => ({ value: String(item.id), label: item.name }))]} /></div>
-                <div><Label>套餐 / 版本</Label><NativeSelect value={quoteForm.product_plan_id} onChange={value => { const plan = productPlans.find(item => String(item.id) === value); setQuoteForm(current => ({ ...current, product_plan_id: value, package_name: plan?.name || current.package_name, currency: plan?.default_currency || current.currency, billing_cycle: plan?.default_billing_cycle || current.billing_cycle, list_amount: plan?.standard_price == null ? current.list_amount : String(plan.standard_price), selected_platforms: '' })); }} options={[{ value: '', label: quotePlans.length ? '请选择套餐版本' : '当前产品暂无套餐版本' }, ...quotePlans.map(item => ({ value: String(item.id), label: `${item.name}${item.standard_price == null ? ' · 待定价' : ` · ${item.default_currency} ${item.standard_price}`}` }))]} /></div>
-                <div><Label>收费周期 *</Label><NativeSelect value={quoteForm.billing_cycle} onChange={value => setQuoteForm({ ...quoteForm, billing_cycle: value, billing_mode: value === 'one_time' ? 'manual' : quoteForm.billing_mode })} options={billingCycleOptions} /></div>
-                <div><Label>收款方式</Label><NativeSelect value={quoteForm.billing_mode} onChange={value => setQuoteForm({ ...quoteForm, billing_mode: value })} options={[{ value: 'manual', label: '人工收款 / 支票 / 转账' }, { value: 'subscription', label: '自动订阅扣款' }]} /></div>
-                <div><Label>支付渠道</Label><NativeSelect value={quoteForm.payment_method} onChange={value => setQuoteForm({ ...quoteForm, payment_method: value })} options={[{ value: 'stripe', label: 'Stripe' }, { value: 'check', label: '支票' }, { value: 'zelle', label: 'Zelle' }, { value: 'bank_transfer', label: '银行转账' }, { value: 'other', label: '其他' }]} /></div>
+                <div><Label htmlFor="slr-quoteForm-business_line_id">业务线 *</Label><NativeSelect id="slr-quoteForm-business_line_id" value={quoteForm.business_line_id} onChange={value => setQuoteForm(current => ({ ...current, business_line_id: value, product_id: '', product_plan_id: '', package_name: '', selected_platforms: '' }))} options={[{ value: '', label: '请选择业务线' }, ...businessLines.map(item => ({ value: String(item.id), label: item.name }))]} /></div>
+                <div><Label htmlFor="slr-quoteForm-product_id">具体产品 *</Label><NativeSelect id="slr-quoteForm-product_id" value={quoteForm.product_id} onChange={value => { const product = products.find(item => String(item.id) === value); setQuoteForm(current => ({ ...current, product_id: value, product_plan_id: '', package_name: product?.name || '', currency: product?.default_currency || current.currency, selected_platforms: '' })); }} options={[{ value: '', label: '请选择具体产品' }, ...quoteProducts.map(item => ({ value: String(item.id), label: item.name }))]} /></div>
+                <div><Label htmlFor="slr-quoteForm-product_plan_id">套餐 / 版本</Label><NativeSelect id="slr-quoteForm-product_plan_id" value={quoteForm.product_plan_id} onChange={value => { const plan = productPlans.find(item => String(item.id) === value); setQuoteForm(current => ({ ...current, product_plan_id: value, package_name: plan?.name || current.package_name, currency: plan?.default_currency || current.currency, billing_cycle: plan?.default_billing_cycle || current.billing_cycle, list_amount: plan?.standard_price == null ? current.list_amount : String(plan.standard_price), selected_platforms: '' })); }} options={[{ value: '', label: quotePlans.length ? '请选择套餐版本' : '当前产品暂无套餐版本' }, ...quotePlans.map(item => ({ value: String(item.id), label: `${item.name}${item.standard_price == null ? ' · 待定价' : ` · ${item.default_currency} ${item.standard_price}`}` }))]} /></div>
+                <div><Label htmlFor="slr-quoteForm-billing_cycle">收费周期 *</Label><NativeSelect id="slr-quoteForm-billing_cycle" value={quoteForm.billing_cycle} onChange={value => setQuoteForm({ ...quoteForm, billing_cycle: value, billing_mode: value === 'one_time' ? 'manual' : quoteForm.billing_mode })} options={billingCycleOptions} /></div>
+                <div><Label htmlFor="slr-quoteForm-billing_mode">收款方式</Label><NativeSelect id="slr-quoteForm-billing_mode" value={quoteForm.billing_mode} onChange={value => setQuoteForm({ ...quoteForm, billing_mode: value })} options={[{ value: 'manual', label: '人工收款 / 支票 / 转账' }, { value: 'subscription', label: '自动订阅扣款' }]} /></div>
+                <div><Label htmlFor="slr-quoteForm-payment_method">支付渠道</Label><NativeSelect id="slr-quoteForm-payment_method" value={quoteForm.payment_method} onChange={value => setQuoteForm({ ...quoteForm, payment_method: value })} options={[{ value: 'stripe', label: 'Stripe' }, { value: 'check', label: '支票' }, { value: 'zelle', label: 'Zelle' }, { value: 'bank_transfer', label: '银行转账' }, { value: 'other', label: '其他' }]} /></div>
                 <div className="sm:col-span-2 lg:col-span-3"><div className="flex items-center justify-between"><Label>实际运营平台 / 服务范围</Label>{selectedQuotePlan?.platform_limit && <span className="text-xs text-slate-500">最多 {selectedQuotePlan.platform_limit} 项，已选 {selectedPlatforms.length}</span>}</div><div className="mt-2 flex flex-wrap gap-2">{platformOptions.map(platform => { const checked = selectedPlatforms.includes(platform); const limitReached = !!selectedQuotePlan?.platform_limit && selectedPlatforms.length >= selectedQuotePlan.platform_limit && !checked; return <label key={platform} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${checked ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600'} ${limitReached ? 'cursor-not-allowed opacity-50' : ''}`}><input type="checkbox" checked={checked} disabled={limitReached} onChange={() => { const next = checked ? selectedPlatforms.filter(item => item !== platform) : [...selectedPlatforms, platform]; setQuoteForm({ ...quoteForm, selected_platforms: next.join(', ') }); }} />{platform}</label>; })}</div><Input className="mt-2" value={quoteForm.selected_platforms} onChange={event => setQuoteForm({ ...quoteForm, selected_platforms: event.target.value })} placeholder="可补充其他平台或服务范围，用逗号分隔" /></div>
-                <div><Label>原报价 *</Label><Input type="number" min="0" value={quoteForm.list_amount} onChange={event => setQuoteForm({ ...quoteForm, list_amount: event.target.value })} /></div><div><Label>优惠金额</Label><Input type="number" min="0" value={quoteForm.discount_amount} onChange={event => setQuoteForm({ ...quoteForm, discount_amount: event.target.value })} /></div><div><Label>币种</Label><NativeSelect value={quoteForm.currency} onChange={value => setQuoteForm({ ...quoteForm, currency: value })} options={[{ value: 'USD', label: 'USD 美元' }, { value: 'CNY', label: 'CNY 人民币' }]} /></div>
-                <div><Label>服务开始</Label><Input type="date" value={quoteForm.service_start_date} onChange={event => setQuoteForm({ ...quoteForm, service_start_date: event.target.value })} /></div><div><Label>服务结束</Label><Input type="date" value={quoteForm.service_end_date} onChange={event => setQuoteForm({ ...quoteForm, service_end_date: event.target.value })} /></div><div className="flex items-end"><Button className="w-full" disabled={dealSaving} onClick={() => void submitQuote()}>提交报价审批</Button></div>
-                <div className="sm:col-span-2 lg:col-span-3"><Label>特殊条款 / 折扣原因</Label><Textarea rows={2} value={quoteForm.special_terms} onChange={event => setQuoteForm({ ...quoteForm, special_terms: event.target.value })} placeholder="例如：客户需求、折扣依据、交付范围" /></div>
+                <div><Label htmlFor="slr-quoteForm-list_amount">原报价 *</Label><Input id="slr-quoteForm-list_amount" type="number" min="0" value={quoteForm.list_amount} onChange={event => setQuoteForm({ ...quoteForm, list_amount: event.target.value })} /></div><div><Label htmlFor="slr-quoteForm-discount_amount">优惠金额</Label><Input id="slr-quoteForm-discount_amount" type="number" min="0" value={quoteForm.discount_amount} onChange={event => setQuoteForm({ ...quoteForm, discount_amount: event.target.value })} /></div><div><Label htmlFor="slr-quoteForm-currency">币种</Label><NativeSelect id="slr-quoteForm-currency" value={quoteForm.currency} onChange={value => setQuoteForm({ ...quoteForm, currency: value })} options={[{ value: 'USD', label: 'USD 美元' }, { value: 'CNY', label: 'CNY 人民币' }]} /></div>
+                <div><Label htmlFor="slr-quoteForm-service_start_date">服务开始</Label><Input id="slr-quoteForm-service_start_date" type="date" value={quoteForm.service_start_date} onChange={event => setQuoteForm({ ...quoteForm, service_start_date: event.target.value })} /></div><div><Label htmlFor="slr-quoteForm-service_end_date">服务结束</Label><Input id="slr-quoteForm-service_end_date" type="date" value={quoteForm.service_end_date} onChange={event => setQuoteForm({ ...quoteForm, service_end_date: event.target.value })} /></div><div className="flex items-end"><Button className="w-full" disabled={dealSaving} onClick={() => void submitQuote()}>提交报价审批</Button></div>
+                <div className="sm:col-span-2 lg:col-span-3"><Label htmlFor="slr-quoteForm-special_terms">特殊条款 / 折扣原因</Label><Textarea id="slr-quoteForm-special_terms" rows={2} value={quoteForm.special_terms} onChange={event => setQuoteForm({ ...quoteForm, special_terms: event.target.value })} placeholder="例如：客户需求、折扣依据、交付范围" /></div>
               </div>
               <div className="mt-4 space-y-2">{(dealReadiness?.quotes || []).map(quote => <div key={quote.id} className={`flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${quote.status === 'superseded' ? 'bg-slate-100 opacity-70' : 'bg-slate-50'}`}><div><p className="font-medium text-slate-900">{quote.package_name} · {quote.currency} {quote.final_amount.toFixed(2)}</p><p className="text-xs text-slate-500">{quote.selected_platforms.join('、') || '未指定平台'} · {billingCycleOptions.find(item => item.value === quote.billing_cycle)?.label || quote.billing_cycle} · {quote.billing_mode === 'subscription' ? '自动扣款' : '人工收款'} · {quote.payment_method}</p>{!quote.business_line_id && <p className="mt-1 text-xs text-amber-700">历史报价：尚未关联业务线与产品，后续新报价将自动归类</p>}{quote.review_notes && <p className="mt-1 text-xs text-slate-600">审批备注：{quote.review_notes}</p>}</div><div className="flex items-center gap-2"><Badge className={quote.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : quote.status === 'rejected' ? 'bg-rose-100 text-rose-700' : quote.status === 'superseded' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-800'}>{quote.status === 'approved' ? '当前生效' : quote.status === 'rejected' ? '已驳回' : quote.status === 'superseded' ? '历史失效' : '待审批'}</Badge>{canManage && quote.status === 'submitted' && <><Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700" disabled={dealSaving} onClick={() => void reviewQuote(quote, 'approved')}>批准</Button><Button size="sm" variant="outline" className="border-rose-200 text-rose-700" disabled={dealSaving} onClick={() => void reviewQuote(quote, 'rejected')}>驳回</Button></>}</div></div>)}{!(dealReadiness?.quotes || []).length && <p className="py-3 text-center text-sm text-slate-400">尚未提交报价</p>}</div>
             </section>
 
-            <section className="rounded-xl border border-slate-200 p-4"><div className="mb-4 flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-violet-600" /><div><p className="font-semibold text-slate-900">2. 成交交接清单</p><p className="text-xs text-slate-500">成交前把客户目标、对接人和运营安排写清楚，避免销售与运营信息断层。</p></div></div><div className="grid gap-3 sm:grid-cols-2"><div><Label>关联当前生效报价</Label><NativeSelect value={handoffForm.quote_id} onChange={value => setHandoffForm({ ...handoffForm, quote_id: value })} options={[{ value: '', label: '请选择已批准报价' }, ...(dealReadiness?.quotes || []).filter(quote => quote.status === 'approved').map(quote => ({ value: String(quote.id), label: `${quote.package_name} · ${quote.currency} ${quote.final_amount}` }))]} /></div><div><Label>运营对接负责人 *</Label><NativeSelect value={handoffForm.operations_owner_employee_id} onChange={value => { const owner = dealEmployees.find(item => String(item.id) === value); setHandoffForm({ ...handoffForm, operations_owner_employee_id: value, operations_owner: owner?.name || '' }); }} options={[{ value: '', label: '请选择在职员工' }, ...dealEmployees.map(item => ({ value: String(item.id), label: `${item.name} · ${item.department || item.position || item.role}` }))]} /></div><div className="sm:col-span-2"><Label>协作人（可多选）</Label><div className="mt-2 flex flex-wrap gap-2">{dealEmployees.filter(item => String(item.id) !== handoffForm.operations_owner_employee_id).map(item => { const checked = handoffForm.collaborator_employee_ids.includes(item.id); return <label key={item.id} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${checked ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-600'}`}><input type="checkbox" checked={checked} onChange={() => setHandoffForm({ ...handoffForm, collaborator_employee_ids: checked ? handoffForm.collaborator_employee_ids.filter(id => id !== item.id) : [...handoffForm.collaborator_employee_ids, item.id] })} />{item.name}<span className="text-xs opacity-70">{item.department || item.role}</span></label>; })}</div></div><div className="sm:col-span-2"><Label>客户目标 *</Label><Textarea rows={2} value={handoffForm.customer_goal} onChange={event => setHandoffForm({ ...handoffForm, customer_goal: event.target.value })} placeholder="例如：提升本地搜索曝光、预约量或内容更新频率" /></div><div className="sm:col-span-2"><Label>关键联系人 / 对接方式 *</Label><Textarea rows={2} value={handoffForm.key_contacts} onChange={event => setHandoffForm({ ...handoffForm, key_contacts: event.target.value })} placeholder="联系人姓名、电话、邮箱、谁负责提供素材或权限" /></div><div><Label>服务开始</Label><Input type="date" value={handoffForm.service_start_date} onChange={event => setHandoffForm({ ...handoffForm, service_start_date: event.target.value })} /></div><div><Label>服务结束</Label><Input type="date" value={handoffForm.service_end_date} onChange={event => setHandoffForm({ ...handoffForm, service_end_date: event.target.value })} /></div><div className="sm:col-span-2"><Label>特殊承诺 / 注意事项</Label><Textarea rows={2} value={handoffForm.special_commitments} onChange={event => setHandoffForm({ ...handoffForm, special_commitments: event.target.value })} /></div><div className="sm:col-span-2"><Label>交接备注</Label><Textarea rows={2} value={handoffForm.handoff_notes} onChange={event => setHandoffForm({ ...handoffForm, handoff_notes: event.target.value })} /></div></div><div className="mt-4 flex flex-wrap gap-5 rounded-lg bg-slate-50 p-3"><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={handoffForm.operations_group_created} onChange={event => setHandoffForm({ ...handoffForm, operations_group_created: event.target.checked })} />已建立运营对接群 *</label><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={handoffForm.generate_service_board} onChange={event => setHandoffForm({ ...handoffForm, generate_service_board: event.target.checked })} />转入后生成服务看板</label></div><div className="mt-4"><Button disabled={dealSaving} onClick={() => void saveHandoff()}>保存成交交接清单</Button></div></section>
+            <section hidden={dealStep !== 'handoff'} className="slr-deal-section rounded-xl border border-slate-200 p-4"><div className="mb-4 flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-violet-600" /><div><p className="font-semibold text-slate-900">2. 成交交接清单</p><p className="text-xs text-slate-500">成交前把客户目标、对接人和运营安排写清楚，避免销售与运营信息断层。</p></div></div><div className="grid gap-3 sm:grid-cols-2"><div><Label htmlFor="slr-handoffForm-quote_id">关联当前生效报价</Label><NativeSelect id="slr-handoffForm-quote_id" value={handoffForm.quote_id} onChange={value => setHandoffForm({ ...handoffForm, quote_id: value })} options={[{ value: '', label: '请选择已批准报价' }, ...(dealReadiness?.quotes || []).filter(quote => quote.status === 'approved').map(quote => ({ value: String(quote.id), label: `${quote.package_name} · ${quote.currency} ${quote.final_amount}` }))]} /></div><div><Label htmlFor="slr-handoffForm-operations_owner_employee_id">运营对接负责人 *</Label><NativeSelect id="slr-handoffForm-operations_owner_employee_id" value={handoffForm.operations_owner_employee_id} onChange={value => { const owner = dealEmployees.find(item => String(item.id) === value); setHandoffForm({ ...handoffForm, operations_owner_employee_id: value, operations_owner: owner?.name || '' }); }} options={[{ value: '', label: '请选择在职员工' }, ...dealEmployees.map(item => ({ value: String(item.id), label: `${item.name} · ${item.department || item.position || item.role}` }))]} /></div><div className="sm:col-span-2"><Label>协作人（可多选）</Label><div className="mt-2 flex flex-wrap gap-2">{dealEmployees.filter(item => String(item.id) !== handoffForm.operations_owner_employee_id).map(item => { const checked = handoffForm.collaborator_employee_ids.includes(item.id); return <label key={item.id} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${checked ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-600'}`}><input type="checkbox" checked={checked} onChange={() => setHandoffForm({ ...handoffForm, collaborator_employee_ids: checked ? handoffForm.collaborator_employee_ids.filter(id => id !== item.id) : [...handoffForm.collaborator_employee_ids, item.id] })} />{item.name}<span className="text-xs opacity-70">{item.department || item.role}</span></label>; })}</div></div><div className="sm:col-span-2"><Label htmlFor="slr-handoffForm-customer_goal">客户目标 *</Label><Textarea id="slr-handoffForm-customer_goal" rows={2} value={handoffForm.customer_goal} onChange={event => setHandoffForm({ ...handoffForm, customer_goal: event.target.value })} placeholder="例如：提升本地搜索曝光、预约量或内容更新频率" /></div><div className="sm:col-span-2"><Label htmlFor="slr-handoffForm-key_contacts">关键联系人 / 对接方式 *</Label><Textarea id="slr-handoffForm-key_contacts" rows={2} value={handoffForm.key_contacts} onChange={event => setHandoffForm({ ...handoffForm, key_contacts: event.target.value })} placeholder="联系人姓名、电话、邮箱、谁负责提供素材或权限" /></div><div><Label htmlFor="slr-handoffForm-service_start_date">服务开始</Label><Input id="slr-handoffForm-service_start_date" type="date" value={handoffForm.service_start_date} onChange={event => setHandoffForm({ ...handoffForm, service_start_date: event.target.value })} /></div><div><Label htmlFor="slr-handoffForm-service_end_date">服务结束</Label><Input id="slr-handoffForm-service_end_date" type="date" value={handoffForm.service_end_date} onChange={event => setHandoffForm({ ...handoffForm, service_end_date: event.target.value })} /></div><div className="sm:col-span-2"><Label htmlFor="slr-handoffForm-special_commitments">特殊承诺 / 注意事项</Label><Textarea id="slr-handoffForm-special_commitments" rows={2} value={handoffForm.special_commitments} onChange={event => setHandoffForm({ ...handoffForm, special_commitments: event.target.value })} /></div><div className="sm:col-span-2"><Label htmlFor="slr-handoffForm-handoff_notes">交接备注</Label><Textarea id="slr-handoffForm-handoff_notes" rows={2} value={handoffForm.handoff_notes} onChange={event => setHandoffForm({ ...handoffForm, handoff_notes: event.target.value })} /></div></div><div className="mt-4 flex flex-wrap gap-5 rounded-lg bg-slate-50 p-3"><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={handoffForm.operations_group_created} onChange={event => setHandoffForm({ ...handoffForm, operations_group_created: event.target.checked })} />已建立运营对接群 *</label><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={handoffForm.generate_service_board} onChange={event => setHandoffForm({ ...handoffForm, generate_service_board: event.target.checked })} />转入后生成服务看板</label></div><div className="mt-4"><Button disabled={dealSaving} onClick={() => void saveHandoff()}>保存成交交接清单</Button></div></section>
 
-            {canManage && <section className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-4"><div className="mb-4 flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-cyan-700" /><div><p className="font-semibold text-slate-900">3. 收款确认</p><p className="text-xs text-slate-500">订金不会被当成全额收入；只有“已全额支付”后才允许转入正式客户。</p></div></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div><Label>收款状态</Label><NativeSelect value={paymentForm.payment_status} onChange={value => setPaymentForm({ ...paymentForm, payment_status: value })} options={[{ value: 'pending', label: '待收款' }, { value: 'deposit_paid', label: '已收订金' }, { value: 'paid', label: '已全额支付' }, { value: 'failed', label: '支付失败' }, { value: 'refunded', label: '已退款' }]} /></div><div><Label>实收金额</Label><Input type="number" min="0" value={paymentForm.amount_received} onChange={event => setPaymentForm({ ...paymentForm, amount_received: event.target.value })} placeholder="全额支付可留空自动带入" /></div><div><Label>实际收款日期</Label><Input type="date" value={paymentForm.payment_date} onChange={event => setPaymentForm({ ...paymentForm, payment_date: event.target.value })} /></div><div><Label>交易号 / 支票号</Label><Input value={paymentForm.payment_reference} onChange={event => setPaymentForm({ ...paymentForm, payment_reference: event.target.value })} /></div></div><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">{dealReadiness?.handoff?.payment_confirmed_by_name ? `最近确认：${dealReadiness.handoff.payment_confirmed_by_name}` : '尚未由主管确认收款状态'}</div><Button disabled={dealSaving || !dealReadiness?.handoff} onClick={() => void savePaymentStatus()}>保存收款状态</Button></div></section>}
+            {canManage && <section hidden={dealStep !== 'payment'} className="slr-deal-section rounded-xl border border-cyan-200 bg-cyan-50/40 p-4"><div className="mb-4 flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-cyan-700" /><div><p className="font-semibold text-slate-900">3. 收款确认</p><p className="text-xs text-slate-500">由主管按财务核对结果确认；全额支付后才可转入正式客户。</p></div></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div><Label htmlFor="slr-paymentForm-payment_status">收款状态</Label><NativeSelect id="slr-paymentForm-payment_status" value={paymentForm.payment_status} onChange={value => setPaymentForm({ ...paymentForm, payment_status: value })} options={[{ value: 'pending', label: '待收款' }, { value: 'deposit_paid', label: '已收订金' }, { value: 'paid', label: '已全额支付' }, { value: 'failed', label: '支付失败' }, { value: 'refunded', label: '已退款' }]} /></div><div><Label htmlFor="slr-paymentForm-amount_received">实收金额</Label><Input id="slr-paymentForm-amount_received" type="number" min="0" value={paymentForm.amount_received} onChange={event => setPaymentForm({ ...paymentForm, amount_received: event.target.value })} step="0.01" placeholder="填写已核对的实际到账金额" /></div><div><Label htmlFor="slr-paymentForm-payment_date">实际收款日期</Label><Input id="slr-paymentForm-payment_date" type="date" value={paymentForm.payment_date} onChange={event => setPaymentForm({ ...paymentForm, payment_date: event.target.value })} /></div><div><Label htmlFor="slr-paymentForm-payment_reference">交易号 / 支票号</Label><Input id="slr-paymentForm-payment_reference" value={paymentForm.payment_reference} onChange={event => setPaymentForm({ ...paymentForm, payment_reference: event.target.value })} /></div></div><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">{dealReadiness?.handoff?.payment_confirmed_by_name ? `最近确认：${dealReadiness.handoff.payment_confirmed_by_name}` : '尚未由主管确认收款状态'}</div><Button disabled={dealSaving || !dealReadiness?.handoff} onClick={() => void savePaymentStatus()}>保存收款状态</Button></div></section>}
 
-            {canManage && <div className="sticky bottom-0 -mx-4 flex justify-end border-t bg-white/95 px-4 py-3 pb-[calc(.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-4"><Button disabled={dealSaving || dealLoading || dealError || !dealReadiness || !!dealReadiness.blockers.length || convertingId === dealLead?.id} className="h-11 w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto" onClick={() => void convertToCustomer()}><CheckCircle2 className="mr-2 h-4 w-4" />{convertingId === dealLead?.id ? '转入中...' : dealReadiness?.blockers?.length ? '请先完成审核项' : '确认合作并转入正式客户'}</Button></div>}
-          </div>}
+            {dealStep !== 'payment' && <div className="slr-deal-next"><Button variant="outline" disabled={dealSaving} onClick={() => setDealStep(dealStep === 'quote' ? 'handoff' : canManage ? 'payment' : 'quote')}>{dealStep === 'quote' ? '继续填写交接' : canManage ? '继续收款确认' : '返回报价'}</Button></div>}
+            {canManage && dealStep === 'payment' && <div className="sticky bottom-0 -mx-4 flex justify-end border-t bg-white/95 px-4 py-3 pb-[calc(.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-4"><Button disabled={dealSaving || dealLoading || dealError || !dealReadiness || !!dealReadiness.blockers.length || convertingId === dealLead?.id} className="h-11 w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto" onClick={() => void convertToCustomer()}><CheckCircle2 className="mr-2 h-4 w-4" />{convertingId === dealLead?.id ? '转入中...' : dealReadiness?.blockers?.length ? '请先完成审核项' : '确认合作并转入正式客户'}</Button></div>}
+          </fieldset>}
         </DialogContent>
       </Dialog>
     </div>
