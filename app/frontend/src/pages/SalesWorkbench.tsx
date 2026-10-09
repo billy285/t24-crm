@@ -28,6 +28,7 @@ import { useAutoRefresh } from '@/lib/use-auto-refresh';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { wasExplicitlyLoggedOut } from '@/lib/auth-storage';
 import { clearSalesCallDraftMemory, legacySalesCallDraftKey, readSalesWorkbenchFocus, salesCallDraftKey, setSalesCallDraftOwner, writeSalesWorkbenchFocus } from '@/lib/sales-call-draft';
+import { isSalesWorkspaceDate, isSalesWorkspaceFilter, readSalesWorkspaceViewState, salesWorkspaceFilters, writeSalesWorkspaceViewState, type SalesWorkspaceViewState } from '@/lib/sales-workspace-view-state';
 
 type Lead = { id: number; business_name: string; contact_name?: string; phone: string; industry?: string; city?: string; state?: string; country?: string; status: string; next_follow_up_at?: string; last_contact_at?: string; do_not_contact: boolean; is_blacklisted: boolean; converted_customer_id?: number | null };
 type Task = { task_id: number; task_status: string; completed_at?: string; priority?: 'urgent' | 'high' | 'normal'; next_action_label?: string; queue_category?: 'new' | 'retry' | 'recycled' | 'follow_up'; lead: Lead };
@@ -96,7 +97,7 @@ const formatDate = (value?: string) => {
 };
 const priorityStyle: Record<string, string> = { urgent: 'bg-rose-100 text-rose-700', high: 'bg-amber-100 text-amber-800', normal: 'bg-slate-100 text-slate-700' };
 const priorityLabel: Record<string, string> = { urgent: '优先处理', high: '今日重点', normal: '正常任务' };
-const workbenchFilters = ['all', 'overdue', 'unfinished', 'callback', 'interested', 'appointment'] as const;
+const workbenchFilters = salesWorkspaceFilters;
 const scopedStorageKey = (kind: string, userId?: number) => Number.isSafeInteger(userId) && Number(userId) > 0 ? `t24:sales-workbench:${kind}:v2:${userId}` : null;
 const removeSessionValue = (key: string | null) => { if (key) { try { sessionStorage.removeItem(key); } catch { /* Optional browser context cannot invalidate a saved business record. */ } } };
 
@@ -150,26 +151,50 @@ function suggestedFollowUpValue(value: string) {
   return shanghaiDateTimeValue(next);
 }
 
+function initialWorkspaceView(userId: number | undefined, role: string, canManage: boolean): SalesWorkspaceViewState {
+  const day = today();
+  const saved = readSalesWorkspaceViewState(userId, role, day);
+  const params = new URLSearchParams(window.location.search);
+  const explicitSales = params.has('sales_employee_id');
+  const salesId = Number(params.get('sales_employee_id'));
+  const selectedSalesId = !canManage ? '' : explicitSales
+    ? Number.isSafeInteger(salesId) && salesId > 0 ? String(salesId) : ''
+    : saved?.selectedSalesId || '';
+  const explicitLead = params.has('lead_id');
+  const explicitDate = params.get('target_date') ?? params.get('date');
+  const date = explicitDate !== null ? isSalesWorkspaceDate(explicitDate) ? explicitDate : day
+    : explicitLead ? day : saved?.date || day;
+  const sameScope = saved?.date === date && saved.selectedSalesId === selectedSalesId;
+  const explicitFilter = params.get('filter');
+  const filter = explicitFilter !== null ? isSalesWorkspaceFilter(explicitFilter) ? explicitFilter : 'all'
+    : explicitLead ? 'all' : sameScope ? saved.filter : 'all';
+  const teamView = canManage && !explicitSales && !explicitLead && !params.has('ringcentral') && (saved?.teamView ?? true);
+  return { date, selectedSalesId, filter, teamView };
+}
+
 export default function SalesWorkbench() {
+  const { employee, role } = useRole();
+  return <SalesWorkspace key={`${employee?.id || 'unknown'}:${role || 'unknown'}`} />;
+}
+
+function SalesWorkspace() {
   const { role, isAdmin, employee } = useRole();
   const isMobile = useIsMobile();
   const [dossierId, setDossierId] = useState<number | null>(null);
   const canManage = isAdmin || role === 'sales_manager';
-  const [teamView, setTeamView] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return canManage && !params.has('sales_employee_id') && !params.has('lead_id') && !params.has('ringcentral');
-  });
+  const [initialView] = useState(() => initialWorkspaceView(employee?.id, role, canManage));
+  const [teamView, setTeamView] = useState(initialView.teamView);
   useEffect(() => { if (!canManage) setTeamView(false); }, [canManage]);
   const [assignees, setAssignees] = useState<Assignee[]>([]);
-  const [selectedSalesId, setSelectedSalesId] = useState(() => new URLSearchParams(window.location.search).get('sales_employee_id') || '');
-  const [date, setDate] = useState(today());
+  const [selectedSalesId, setSelectedSalesId] = useState(initialView.selectedSalesId);
+  const [date, setDate] = useState(initialView.date);
   const [workbench, setWorkbench] = useState<Workbench | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const requestedLeadRef = useRef(Number(new URLSearchParams(window.location.search).get('lead_id')) || null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'overdue' | 'unfinished' | 'callback' | 'interested' | 'appointment'>('all');
+  const [filter, setFilter] = useState(initialView.filter);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [focusedTask, setFocusedTask] = useState<Task | null>(null);
   const [supplementalFollowUp, setSupplementalFollowUp] = useState(false);
@@ -202,6 +227,11 @@ export default function SalesWorkbench() {
   const restoredFocusScopeRef = useRef('');
 
   useEffect(() => {
+    writeSalesWorkspaceViewState(employee?.id, role, today(), { date, selectedSalesId: canManage ? selectedSalesId : '', filter, teamView: canManage && teamView });
+  }, [employee?.id, role, date, selectedSalesId, filter, teamView, canManage]);
+
+
+  useEffect(() => {
     setSalesCallDraftOwner(employee?.id);
     return () => { if (wasExplicitlyLoggedOut()) clearSalesCallDraftMemory(); };
   }, [employee?.id]);
@@ -222,7 +252,7 @@ export default function SalesWorkbench() {
       setAssignees(records);
       setAssigneesLoaded(true);
       setAssigneeLoadError(null);
-      setSelectedSalesId(current => current || (records[0] ? String(records[0].id) : ''));
+      setSelectedSalesId(current => records.some(record => Number(record.id) === Number(current)) ? current : records[0] ? String(records[0].id) : '');
       if (records.length === 0) setLoading(false);
     } catch (error: any) {
       setAssignees([]);
@@ -344,6 +374,7 @@ export default function SalesWorkbench() {
 
   useEffect(() => { void loadAssignees(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [canManage]);
   useEffect(() => {
+    if (canManage && (!assigneesLoaded || assigneeLoadError)) return;
     setWorkbench(null);
     setLoadError(null);
     setLoading(true);
@@ -353,7 +384,7 @@ export default function SalesWorkbench() {
     void loadAutomationOverview();
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
     return () => { workbenchRequestRef.current += 1; };
-  }, [selectedSalesId, date, canManage, role, teamView]);
+  }, [selectedSalesId, date, canManage, role, teamView, assigneesLoaded, assigneeLoadError]);
   useEffect(() => {
     if (teamView) return;
     void loadRingCentral();
@@ -605,7 +636,7 @@ export default function SalesWorkbench() {
     {assigneeLoadError && <div className="sales-v3-alert" role="alert">销售人员暂时无法读取<Button size="sm" variant="outline" onClick={() => void loadAssignees()}>重新加载</Button></div>}
     {!teamView && loadError && <div className="sales-v3-alert" role="alert">今日任务暂时无法更新{workbench ? '，保留上次读取的任务' : ''}<Button size="sm" variant="outline" onClick={() => void loadWorkbench()}>重新加载</Button></div>}
     {teamView && canManage ? assigneesLoaded && !assigneeLoadError ? <SalesTeamToday employees={assignees} targetDate={date} onOpenWorkbench={openSalesTasks} /> : <div className="sc-empty">{assigneeLoadError ? '销售人员暂不可用' : '正在读取团队任务…'}</div> : <>
-    {isMobile ? <MobileSalesQueue tasks={filteredTasks} selectedTaskId={focusedTask?.task_id} filter={filter} overdueCount={overdueFollowUpCount} disabled={saving} onFilterChange={setFilter} onSelect={taskId => { const task = filteredTasks.find(item => item.task_id === taskId); if (task) chooseTask(task); }} /> : <div className="sw-mobile-queue"><label><span className="sr-only">选择客户</span><select aria-label="选择客户" value={focusedTask?.task_id || ''} disabled={saving} onChange={event => { const task = filteredTasks.find(item => String(item.task_id) === event.target.value); if (task) chooseTask(task); }}><option value="" disabled>选择客户</option>{filteredTasks.map((task, index) => <option key={task.task_id} value={task.task_id}>{index + 1}. {task.lead.business_name}{task.task_status === 'completed' ? ' · 已完成' : ''}</option>)}</select></label><label><span className="sr-only">队列状态</span><NativeSelect value={filter} onChange={value => setFilter(value as typeof filter)} disabled={saving} options={[{value:'all',label:'全部任务'},{value:'unfinished',label:'未完成'},{value:'overdue',label:`逾期 ${overdueFollowUpCount}`}]} /></label></div>}
+    {isMobile ? <MobileSalesQueue key={`${employee?.id}:${role}:${date}:${canManage ? selectedSalesId : employee?.id}`} workspaceScope={{ userId: employee?.id, role, date, salesId: canManage ? Number(selectedSalesId) : employee?.id }} businessDay={today()} tasks={filteredTasks} selectedTaskId={focusedTask?.task_id} filter={filter} overdueCount={overdueFollowUpCount} disabled={saving} onFilterChange={setFilter} onSelect={taskId => { const task = filteredTasks.find(item => item.task_id === taskId); if (task) chooseTask(task); }} /> : <div className="sw-mobile-queue"><label><span className="sr-only">选择客户</span><select aria-label="选择客户" value={focusedTask?.task_id || ''} disabled={saving} onChange={event => { const task = filteredTasks.find(item => String(item.task_id) === event.target.value); if (task) chooseTask(task); }}><option value="" disabled>选择客户</option>{filteredTasks.map((task, index) => <option key={task.task_id} value={task.task_id}>{index + 1}. {task.lead.business_name}{task.task_status === 'completed' ? ' · 已完成' : ''}</option>)}</select></label><label><span className="sr-only">队列状态</span><NativeSelect value={filter} onChange={value => setFilter(value as typeof filter)} disabled={saving} options={[{value:'all',label:'全部任务'},{value:'unfinished',label:'未完成'},{value:'overdue',label:`逾期 ${overdueFollowUpCount}`}]} /></label></div>}
 
     <div className="sc-call-layout">
       <aside className="sc-queue" aria-label="今日客户队列"><div className="sc-queue-head"><div className="sc-panel-heading"><h3>接下来</h3><span>{workbench?.remaining_count ?? '—'} 位</span></div><div className="sc-queue-filters"><button type="button" aria-pressed={filter !== 'overdue'} onClick={() => setFilter('all')} disabled={saving}>全部</button><button type="button" aria-pressed={filter === 'overdue'} onClick={() => setFilter('overdue')} disabled={saving}>逾期 {overdueFollowUpCount}</button></div></div>

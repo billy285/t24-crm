@@ -7,6 +7,7 @@ import {
   type RolePermissionConfig,
 } from './permissions';
 import { APP_CONFIG_UPDATED_EVENT, clearCachedAppConfig, readCachedAppConfig, syncAppConfigCache } from './app-config';
+import { clearSalesWorkspaceViewState } from './sales-workspace-view-state';
 import { getToken, setToken as setAccessToken, clearToken as clearTokenStore, refreshToken, invokeWithAuth } from './tokenStore';
 import {
   clearStoredEmployee,
@@ -233,6 +234,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     // also prevents a stale HttpOnly cookie from silently restoring a session
     // if the device goes offline during logout.
     markExplicitLogout();
+    clearSalesWorkspaceViewState();
     clearAuth();
 
     const requests: Promise<unknown>[] = [

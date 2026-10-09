@@ -52,6 +52,7 @@ import {
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import { useSessionViewState } from '@/hooks/use-session-view-state';
 import { getFinanceNavigationItem, normalizeFinanceTab } from '@/lib/finance-navigation';
+import { buildReturnLink } from '@/lib/navigation-state';
 import './finance-income-refined.css';
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -615,7 +616,7 @@ export default function Finance() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAdmin, hasPermission, employee } = useRole();
+  const { isAdmin, hasPermission, employee, canAccess } = useRole();
   const workspaceKey = `t24:finance-view:v1:${employee?.id ?? 'guest'}:${isMobile ? 'mobile' : 'desktop'}`;
   const [viewState, setViewField] = useSessionViewState(workspaceKey, financeViewDefaults);
   const { dateFilterMode, filterStartDate, filterEndDate, expenseMonth, companyExpenseMonth,
@@ -687,6 +688,7 @@ export default function Finance() {
     const tab = normalizeFinanceTab(searchParams.get('tab'));
     return tab === 'subscriptions' ? 'renewals' : tab === 'receivables' ? 'receivables' : tab === 'income' ? 'ledger' : 'overview';
   });
+  const [mobileVisibleLimit, setMobileVisibleLimit] = useState(15);
   const [exporting, setExporting] = useState(false);
   const blockMobileFinanceMutation = (allowCreate = false) => {
     if (!isMobile || allowCreate) return false;
@@ -3894,6 +3896,35 @@ export default function Finance() {
     return rows.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }, [activeCustomerExpenses, companyExpenseTypeLabels, customerExpenseTypeLabels, customerMap, filteredCompanyExpenses, filteredPayments, incomeTypeLabels, payMethodLabels]);
 
+  useEffect(() => {
+    setMobileVisibleLimit(15);
+  }, [mobileFinanceView, pageFilterKey, currentMonthKey, workspaceKey]);
+
+  const changeMobileFinanceView = (view: typeof mobileFinanceView) => {
+    setMobileFinanceView(view);
+    const nextParams = new URLSearchParams(searchParams);
+    if (view === 'overview') nextParams.delete('tab');
+    else nextParams.set('tab', view === 'renewals' ? 'subscriptions' : view === 'ledger' ? 'income' : 'receivables');
+    setSearchParams(nextParams);
+  };
+
+  const canOpenMobileCustomer = (customerId: unknown) => {
+    if (typeof customerId !== 'number' && typeof customerId !== 'string') return false;
+    const id = Number(customerId);
+    return canAccess('/customers') && Number.isSafeInteger(id) && id > 0;
+  };
+
+  const openMobileCustomerDetail = (customerId: unknown) => {
+    if (!canOpenMobileCustomer(customerId)) return;
+    const returnParams = new URLSearchParams(searchParams);
+    const tab = mobileFinanceView === 'renewals' ? 'subscriptions' : mobileFinanceView === 'receivables' ? 'receivables' : mobileFinanceView === 'ledger' ? 'income' : '';
+    if (tab) returnParams.set('tab', tab);
+    else returnParams.delete('tab');
+    const returnQuery = returnParams.toString();
+    const returnTo = `/finance${returnQuery ? `?${returnQuery}` : ''}`;
+    navigate(buildReturnLink(`/customers?detail=${Number(customerId)}&tab=overview`, returnTo, 'finance'));
+  };
+
   const openPaymentForm = () => {
     if (!canCreatePayment) { toast.error('你没有新增收款权限'); return; }
     setEditingPayId(null);
@@ -3931,7 +3962,8 @@ export default function Finance() {
 
   if (isMobile) {
     const mobileEntryDisabled = closedFinanceMonths.has(currentMonthKey);
-    const visibleLedgerRows = mobileFinanceView === 'overview' ? mobileLedgerRows.slice(0, 5) : mobileLedgerRows.slice(0, 15);
+    const visibleLedgerRows = mobileLedgerRows.slice(0, mobileFinanceView === 'overview' ? 5 : mobileVisibleLimit);
+    const visibleReceivableRows = receivableRows.slice(0, mobileVisibleLimit);
     const mobileRenewalRisks = subscriptions.filter(subscription => ACTIONABLE_SUBSCRIPTION_STATUSES.has(getEffectiveSubscriptionStatus(subscription)));
     const mobileIncomeTypeOptions = paymentIncomeTypeOptions.filter(option => option.value !== MIXED_MANAGEMENT_ADS_KEY);
     const renderLedgerCard = (row: typeof mobileLedgerRows[number]) => {
@@ -4053,13 +4085,7 @@ export default function Finance() {
               <button
                 key={value}
                 type="button"
-                onClick={() => {
-                  setMobileFinanceView(value);
-                  const nextParams = new URLSearchParams(searchParams);
-                  if (value === 'overview') nextParams.delete('tab');
-                  else nextParams.set('tab', value === 'renewals' ? 'subscriptions' : value === 'ledger' ? 'income' : 'receivables');
-                  setSearchParams(nextParams);
-                }}
+                onClick={() => changeMobileFinanceView(value)}
                 aria-current={mobileFinanceView === value ? 'page' : undefined}
                 className={`min-h-11 rounded-xl px-2 text-sm font-semibold transition ${mobileFinanceView === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
               >
@@ -4089,6 +4115,7 @@ export default function Finance() {
                       </span>
                     </div>
                     {subscription.end_date && <p className="mt-3 text-xs text-slate-500">到期日期 · {String(subscription.end_date).slice(0, 10)}</p>}
+                    {canOpenMobileCustomer(subscription.customer_id) && <Button type="button" variant="outline" className="mt-3 min-h-11 w-full" aria-label={`查看客户详情：${customer?.business_name || customer?.name || subscription.customer_name || `客户 #${subscription.customer_id}`}`} onClick={() => openMobileCustomerDetail(subscription.customer_id)}>查看客户详情</Button>}
                   </article>
                 );
               }) : (
@@ -4096,7 +4123,7 @@ export default function Finance() {
               )}
             </section>
           ) : mobileFinanceView !== 'receivables' ? (
-            <section className="space-y-3">
+            <section aria-label="流水列表" className="space-y-3">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-base font-bold text-slate-900">{mobileFinanceView === 'overview' ? '最近流水' : '本月流水'}</h2>
                 <span className="text-xs text-slate-500">收入与支出分开标记</span>
@@ -4104,19 +4131,20 @@ export default function Finance() {
               {visibleLedgerRows.length > 0 ? visibleLedgerRows.map(renderLedgerCard) : (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">本月还没有流水</div>
               )}
-              {mobileFinanceView === 'overview' && mobileLedgerRows.length > 5 && (
-                <button type="button" onClick={() => setMobileFinanceView('ledger')} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-blue-600">
+              {mobileLedgerRows.length > 0 && <p aria-live="polite" className="text-center text-xs text-slate-500">已显示 {visibleLedgerRows.length} / 共 {mobileLedgerRows.length} 条</p>}
+              {mobileFinanceView === 'overview' && mobileLedgerRows.length > 5 ? (
+                <button type="button" onClick={() => changeMobileFinanceView('ledger')} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-blue-600">
                   查看全部流水
                 </button>
-              )}
+              ) : mobileFinanceView === 'ledger' && visibleLedgerRows.length < mobileLedgerRows.length ? <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setMobileVisibleLimit(limit => limit + 15)}>加载更多流水</Button> : null}
             </section>
           ) : (
-            <section className="space-y-3">
+            <section aria-label="应收列表" className="space-y-3">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-base font-bold text-slate-900">待收款客户</h2>
                 <span className="text-xs text-slate-500">合计 {fmt(ownerOverview.outstanding)}</span>
               </div>
-              {receivableRows.length > 0 ? receivableRows.slice(0, 15).map(row => (
+              {visibleReceivableRows.length > 0 ? visibleReceivableRows.map(row => (
                 <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -4126,10 +4154,13 @@ export default function Finance() {
                     <p className="shrink-0 text-base font-bold tabular-nums text-amber-600">{fmt(row.outstanding)}</p>
                   </div>
                   {row.overdueDays > 0 && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">已逾期 {row.overdueDays} 天</p>}
+                  {canOpenMobileCustomer(row.customer_id) && <Button type="button" variant="outline" className="mt-3 min-h-11 w-full" aria-label={`查看客户详情：${row.customerName}`} onClick={() => openMobileCustomerDetail(row.customer_id)}>查看客户详情</Button>}
                 </div>
               )) : (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">目前没有待收款</div>
               )}
+              {receivableRows.length > 0 && <p aria-live="polite" className="text-center text-xs text-slate-500">已显示 {visibleReceivableRows.length} / 共 {receivableRows.length} 条</p>}
+              {visibleReceivableRows.length < receivableRows.length && <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setMobileVisibleLimit(limit => limit + 15)}>加载更多应收</Button>}
             </section>
           )}
 

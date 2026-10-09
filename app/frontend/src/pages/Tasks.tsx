@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   Plus, Search, CheckCircle2, Edit, Trash2, ArrowLeft, Bot,
-  ClipboardList, UserCheck, Users, ExternalLink,
+  ClipboardList, UserCheck, Users, ExternalLink, ChevronDown,
 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -143,6 +143,25 @@ const getCompletionSummary = (notes?: string) => {
 const parseEmployeeNames = (value?: string) => Array.from(new Set(
   String(value || '').split(/[,，]/).map(name => name.trim()).filter(Boolean),
 ));
+
+function MobileTaskNotes({ notes, preview }: { notes: string; preview: string }) {
+  const compactPreview = preview.replace(/\s+/g, ' ').trim();
+  const canExpand = notes !== preview || compactPreview.length > 80 || notes.split('\n').length > 2;
+  if (!canExpand) return <p className="mt-3 break-words rounded-xl bg-slate-50 px-3 py-2.5 text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">{notes}</p>;
+
+  return (
+    <details className="mobile-task-note group mt-3 rounded-xl border border-slate-200 bg-slate-50" aria-label="任务说明">
+      <summary className="cursor-pointer list-none px-3 pt-2.5 text-sm text-slate-600 [&::-webkit-details-marker]:hidden">
+        <span className="line-clamp-2 leading-6 [overflow-wrap:anywhere] group-open:hidden">{compactPreview.length > 80 ? `${compactPreview.slice(0, 80)}…` : compactPreview}</span>
+        <span className="flex min-h-11 items-center justify-between gap-2 font-medium text-blue-700">
+          <span className="group-open:hidden">展开说明</span><span className="hidden group-open:inline">收起说明</span>
+          <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 group-open:rotate-180" />
+        </span>
+      </summary>
+      <p className="mobile-task-note-full whitespace-pre-wrap border-t border-slate-200 px-3 py-3 text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">{notes}</p>
+    </details>
+  );
+}
 
 const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
   const total = items.length;
@@ -797,8 +816,6 @@ export default function Tasks() {
                 const noteLines = String(t.notes || '').split('\n').map((line: string) => line.trim()).filter(Boolean);
                 const findingLine = noteLines.find((line: string) => line.startsWith('发现问题：'))?.replace(/^发现问题：\s*/, '');
                 const suggestionLine = noteLines.find((line: string) => line.startsWith('建议处理：'))?.replace(/^建议处理：\s*/, '');
-                const issueLine = noteLines.find((line: string) => line.startsWith('问题编号：'));
-                const otherNoteLines = noteLines.filter((line: string) => !/^(发现问题|建议处理|问题编号)：/.test(line));
                 const mobileTitle = String(t.title || '未命名任务').replace(/^【[^】]+】\s*/, '');
                 const TaskSourceIcon = source === 'system' ? Bot : ClipboardList;
                 return (
@@ -846,32 +863,7 @@ export default function Tasks() {
                           </div>
                         </div>
 
-                        {(findingLine || suggestionLine) ? (
-                          <div className="mt-3 space-y-2">
-                            {findingLine && (
-                              <div className="rounded-2xl border border-rose-100 bg-rose-50/70 px-3 py-2.5">
-                                <p className="text-[10px] font-bold text-rose-600">需要处理</p>
-                                <p className="mt-1 text-xs leading-5 text-slate-700">{findingLine}</p>
-                              </div>
-                            )}
-                            {suggestionLine && (
-                              <div className="rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-2.5">
-                                <p className="text-[10px] font-bold text-blue-600">建议下一步</p>
-                                <p className="mt-1 text-xs leading-5 text-slate-700">{suggestionLine}</p>
-                              </div>
-                            )}
-                          </div>
-                        ) : t.notes ? (
-                          <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-600">{t.notes}</div>
-                        ) : null}
-
-                        {(otherNoteLines.length > 0 || issueLine) && (findingLine || suggestionLine) && (
-                          <details className="mt-2 rounded-xl border border-slate-100 bg-white px-3 py-2 text-[11px] text-slate-500">
-                            <summary className="cursor-pointer list-none font-semibold text-slate-600">查看任务说明</summary>
-                            {otherNoteLines.length > 0 && <p className="mt-2 whitespace-pre-wrap leading-5">{otherNoteLines.join('\n')}</p>}
-                            {issueLine && <p className="mt-1 font-medium text-slate-400">{issueLine}</p>}
-                          </details>
-                        )}
+                        {t.notes && <MobileTaskNotes notes={String(t.notes)} preview={suggestionLine || findingLine || String(t.notes)} />}
 
                         {completionSummary && (
                           <p className="mt-3 rounded-2xl bg-emerald-50 px-3 py-2.5 text-xs font-medium leading-5 text-emerald-700">{completionSummary}</p>
