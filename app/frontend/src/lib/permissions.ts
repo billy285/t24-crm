@@ -380,9 +380,9 @@ export function getPermissions(role: string): RolePermissionConfig {
 
 export function canAccessPage(role: string, path: string): boolean {
   if (!role) return true; // No role = treat as super_admin
-  // /apps is an authenticated navigation shell. It never grants access to a
+  // /apps and /more are authenticated navigation shells. It never grants access to a
   // business page; every visible app and destination is filtered separately.
-  if (path === '/apps') return true;
+  if (path === '/apps' || path === '/more') return true;
   // Payroll is an independent finance worksheet. Keep its access available for
   // finance administrators even when an older cached permission config exists.
   if (path === '/payroll' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;

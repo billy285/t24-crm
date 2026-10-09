@@ -321,8 +321,12 @@ export default function MobileAppHome({
           {availableApps.length === 0 ? <p className="home-empty-apps">当前账号暂无可用业务应用</p> : null}
         </section>
 
+        <button type="button" onClick={() => openPath('/more')} className="home-more-entry md:hidden">
+          <span>全部功能</span><ChevronRight aria-hidden="true" />
+        </button>
+
         {appSections.length > 0 ? (
-          <details className="home-all-functions" aria-labelledby="mobile-functions-heading">
+          <details className="home-all-functions hidden md:block" aria-labelledby="mobile-functions-heading">
             <summary><h2 id="mobile-functions-heading">全部功能</h2><ChevronRight aria-hidden="true" /></summary>
             <div className="home-function-groups">
               {appSections.map(section => (

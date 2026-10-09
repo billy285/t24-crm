@@ -25,6 +25,7 @@ import {
 import { T24AppMark } from '@/components/MobileAppHome';
 import MobileAppLauncher from '@/components/MobileAppLauncher';
 import MobileBottomNav from '@/components/MobileBottomNav';
+import MobileMorePage from '@/components/MobileMorePage';
 import MobileModuleMenu from '@/components/MobileModuleMenu';
 import { getSafeInternalPath } from '@/lib/navigation-state';
 import { getToken } from '@/lib/tokenStore';
@@ -106,7 +107,9 @@ export default function Layout({ children }: LayoutProps) {
 
   const navigationSurfaceKey = currentPath === '/finance'
     ? `${currentPath}:${getFinanceNavigationItem(currentSearch.get('tab')).tab}`
-    : `${currentPath}:${mobileDetailKey}`;
+    : currentPath === '/more'
+      ? `/more:${currentSearch.get('group') || ''}`
+      : `${currentPath}:${mobileDetailKey}`;
 
   useEffect(() => {
     const scrollContainer = mainScrollRef.current;
@@ -234,6 +237,8 @@ export default function Layout({ children }: LayoutProps) {
     : '管理员模式';
   const homePath = getRoleTodayPath(role);
   const isAppLauncher = currentPath === '/apps';
+  const isMorePage = currentPath === '/more';
+  const isNavigationPage = isAppLauncher || isMorePage;
   const isMobileDetailContext = (
     currentPath === '/customers' && currentSearch.has('detail')
   ) || (
@@ -260,6 +265,9 @@ export default function Layout({ children }: LayoutProps) {
       mobileContextReturnPath = `/tasks${nextSearch.size ? `?${nextSearch.toString()}` : ''}`;
     }
   }
+  const moreReturnPath = getSafeInternalPath(location.state?.mobileMoreReturnTo);
+  const mobileMoreReturnPath = moreReturnPath && new URL(moreReturnPath, 'https://t24-crm.local').pathname === '/more' ? moreReturnPath : '';
+  const mobileHeaderReturnPath = mobileContextReturnPath || mobileMoreReturnPath;
   const currentPageLabel = currentPath === '/management-decisions'
     && new URLSearchParams(location.search).get('section') === 'insights'
     ? '经营健康与决策'
@@ -294,7 +302,7 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
       {/* Sidebar */}
-      {!isAppLauncher && <DesktopBusinessNavigation
+      {!isNavigationPage && <DesktopBusinessNavigation
         sections={visibleNavSections}
         pathname={currentPath}
         search={location.search}
@@ -317,15 +325,18 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         )}
         {/* Top bar */}
-        <header className={`app-topbar sticky top-0 z-30 min-h-16 items-center justify-between px-3 py-2.5 md:px-4 md:py-3 lg:px-6 ${isAppLauncher ? 'hidden' : 'flex'}`}>
+        <header className={`app-topbar sticky top-0 z-30 min-h-16 items-center justify-between px-3 py-2.5 md:px-4 md:py-3 lg:px-6 ${isNavigationPage ? 'hidden' : 'flex'}`}>
           <div className="flex min-w-0 flex-1 items-center gap-3 md:hidden">
             <button
               type="button"
-              onClick={() => navigate(mobileContextReturnPath || '/apps')}
+              onClick={() => {
+                if (!mobileContextReturnPath && mobileMoreReturnPath) navigate(-1);
+                else navigate(mobileHeaderReturnPath || '/apps');
+              }}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
-              aria-label={mobileContextReturnPath ? '返回上一工作位置' : '返回应用中心'}
+              aria-label={mobileContextReturnPath ? '返回上一工作位置' : mobileMoreReturnPath ? '返回功能列表' : '返回应用中心'}
             >
-              {mobileContextReturnPath
+              {mobileHeaderReturnPath
                 ? <ArrowLeft className="h-5 w-5 text-slate-700" />
                 : <T24AppMark decorative className="h-10 w-10 rounded-[14px]" />}
             </button>
@@ -400,9 +411,11 @@ export default function Layout({ children }: LayoutProps) {
         </header>
 
         {/* Page content */}
-        <main ref={mainScrollRef} className={`app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isAppLauncher ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>
+        <main ref={mainScrollRef} className={`${isMorePage ? 'app-main-more ' : ''}app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isNavigationPage ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>
           {hasPageAccess ? (
-            isAppLauncher
+            isMorePage
+              ? <MobileMorePage onOpenProfile={() => setMobileProfileOpen(true)} />
+              : isAppLauncher
               ? <MobileAppLauncher key={`${employee?.id || 'unknown'}:${role}`} onOpenProfile={() => setMobileProfileOpen(true)} />
               : <div key={currentPath} className="mobile-route-stage">{children}</div>
           ) : (
@@ -416,11 +429,11 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           )}
         </main>
-        <MobileBottomNav onOpenProfile={() => setMobileProfileOpen(true)} hidden={isMobileDetailContext} profileOpen={mobileProfileOpen} />
+        <MobileBottomNav hidden={isMobileDetailContext} profileOpen={mobileProfileOpen} />
       </div>
 
       <Dialog open={mobileProfileOpen} onOpenChange={setMobileProfileOpen}>
-        <DialogContent className={`bottom-0 top-auto w-full max-w-lg translate-y-0 rounded-b-none rounded-t-[28px] border-x-0 border-b-0 px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-6 ${isAppLauncher ? 'md:bottom-auto md:top-1/2 md:-translate-y-1/2 md:rounded-[28px] md:border' : 'md:hidden'}`}>
+        <DialogContent className={`bottom-0 top-auto w-full max-w-lg translate-y-0 rounded-b-none rounded-t-[28px] border-x-0 border-b-0 px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-6 ${isNavigationPage ? 'md:bottom-auto md:top-1/2 md:-translate-y-1/2 md:rounded-[28px] md:border' : 'md:hidden'}`}>
           <DialogHeader className="text-left">
             <DialogTitle>我的账户</DialogTitle>
           </DialogHeader>
@@ -436,9 +449,9 @@ export default function Layout({ children }: LayoutProps) {
               type="button"
               variant="outline"
               className="min-h-12 justify-start rounded-2xl"
-              onClick={() => { setMobileProfileOpen(false); navigate('/apps'); }}
+              onClick={() => { setMobileProfileOpen(false); navigate('/more'); }}
             >
-              <LayoutDashboard className="mr-2 h-4 w-4" />应用中心
+              <LayoutDashboard className="mr-2 h-4 w-4" />全部功能
             </Button>
             <Button
               type="button"

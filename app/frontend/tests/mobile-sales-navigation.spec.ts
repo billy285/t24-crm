@@ -61,7 +61,7 @@ for (const width of [320, 390, 430]) {
       const nav = bottomNav(page);
       await expect(nav).toBeVisible();
       await expect(nav.getByRole('button')).toHaveCount(5);
-      for (const label of ['首页', '拨打', '跟进', '商家', '我的']) await expect(nav.getByRole('button', { name: label, exact: true })).toBeVisible();
+      for (const label of ['首页', '拨打', '跟进', '商家', '更多']) await expect(nav.getByRole('button', { name: label, exact: true })).toBeVisible();
       await expect(nav.locator('[aria-current="page"]')).toHaveCount(current ? 1 : 0);
       if (current) await expect(nav.getByRole('button', { name: current, exact: true })).toHaveAttribute('aria-current', 'page');
       await expect(page.locator('.sales-center-mobile-navigation')).toHaveCount(0);
@@ -81,7 +81,7 @@ for (const width of [320, 390, 430]) {
   });
 }
 
-test('销售底栏切换到对应位置，打开我的时其他项不再宣称当前页面', async ({ page }) => {
+test('销售底栏切换到对应位置，更多账户打开时其他项不宣称当前页面', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const requests = await seed(page, 'sales_manager');
   await page.goto(`${baseUrl}/sales-workbench`);
@@ -92,12 +92,16 @@ test('销售底栏切换到对应位置，打开我的时其他项不再宣称�
   await expect(page).toHaveURL(/\/merchant-pool$/);
   await bottomNav(page).getByRole('button', { name: '拨打', exact: true }).click();
   await expect(page).toHaveURL(/\/sales-workbench$/);
-  await bottomNav(page).getByRole('button', { name: '我的', exact: true }).click();
+  await bottomNav(page).getByRole('button', { name: '更多', exact: true }).click();
+  await expect(page).toHaveURL(/\/more$/);
+  await expect(bottomNav(page).getByRole('button', { name: '更多', exact: true })).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('button', { name: '查看账户与设置', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '我的账户' })).toBeVisible();
   const nav = page.locator('nav[aria-label="手机主导航"]');
-  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
-  await expect(nav.locator('button[aria-label="我的"]')).toHaveAttribute('aria-current', 'page');
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
   await page.keyboard.press('Escape');
+  await expect(bottomNav(page).getByRole('button', { name: '更多', exact: true })).toHaveAttribute('aria-current', 'page');
+  await page.goBack();
   await expect(bottomNav(page).getByRole('button', { name: '拨打', exact: true })).toHaveAttribute('aria-current', 'page');
   await bottomNav(page).getByRole('button', { name: '首页', exact: true }).click();
   await expect(page).toHaveURL(/\/apps$/);
@@ -124,15 +128,20 @@ test('普通销售不出现无权商家入口，知识库仍可由菜单直接�
 });
 
 for (const role of ['finance', 'sales_partner'] as const) {
-  test(`${role} 首页与业务页保留原底栏，我的打开时只有一个当前项`, async ({ page }) => {
+  test(`${role} 首页与业务页保留原底栏，更多账户不产生错误当前项`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await seed(page, role);
     await page.goto(`${baseUrl}${role === 'finance' ? '/finance' : '/partner-portal'}`);
     await expect(bottomNav(page).getByRole('button')).toHaveCount(role === 'sales_partner' ? 3 : 5);
     await expect(bottomNav(page).getByRole('button', { name: role === 'sales_partner' ? '客户与分润' : '待办', exact: true })).toHaveAttribute('aria-current', 'page');
-    await bottomNav(page).getByRole('button', { name: '我的', exact: true }).click();
+    await bottomNav(page).getByRole('button', { name: '更多', exact: true }).click();
+    await expect(page).toHaveURL(/\/more$/);
+    await expect(bottomNav(page).getByRole('button', { name: '更多', exact: true })).toHaveAttribute('aria-current', 'page');
+    await page.getByRole('button', { name: '查看账户与设置', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '我的账户' })).toBeVisible();
-    await expect(page.locator('nav[aria-label="手机主导航"] [aria-current="page"]')).toHaveCount(1);
+    await expect(page.locator('nav[aria-label="手机主导航"] [aria-current="page"]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(bottomNav(page).getByRole('button', { name: '更多', exact: true })).toHaveAttribute('aria-current', 'page');
   });
 }
 
@@ -184,14 +193,15 @@ test('销售首页快捷名称与模块菜单一致且仍按权限显示', async
   await page.setViewportSize({ width: 390, height: 844 });
   await seed(page, 'admin');
   await page.goto(`${baseUrl}/apps`);
-  await page.locator('summary').filter({ hasText: '全部功能' }).click();
-  const sales = page.getByRole('region', { name: '销售中心', exact: true });
-  for (const label of ['今日拨打', '商家池', '联系进展', '知识库']) await expect(sales.getByRole('button', { name: `打开${label}`, exact: true })).toBeVisible();
-  await sales.getByRole('button', { name: '打开联系进展', exact: true }).click();
+  await page.getByRole('button', { name: '全部功能', exact: true }).click();
+  const sales = page.getByRole('region', { name: '更多功能', exact: true });
+  await sales.getByRole('link', { name: '销售中心，查看全部功能', exact: true }).click();
+  for (const label of ['今日拨打', '商家池', '联系进展', '知识库']) await expect(sales.getByRole('link', { name: `打开${label}`, exact: true })).toBeVisible();
+  await sales.getByRole('link', { name: '打开联系进展', exact: true }).click();
   await expect(page).toHaveURL(/\/sales-leads$/);
 });
 
-test('销售首页今日任务先于应用入口，全部功能收起且展开后仍可进入知识库', async ({ page }) => {
+test('销售首页今日任务先于应用入口，更多目录保留有权限的知识库', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const requests = await seed(page, 'sales', { batch: taskBatch(4, 1, 20) });
   await page.goto(`${baseUrl}/apps`);
@@ -199,12 +209,13 @@ test('销售首页今日任务先于应用入口，全部功能收起且展开�
   await expect(today.getByRole('heading', { name: '今天还有 3 条销售任务' })).toBeVisible();
   const appOrder = await today.evaluate(element => Boolean(element.compareDocumentPosition(document.querySelector('[aria-label="工作应用"]')!) & Node.DOCUMENT_POSITION_FOLLOWING));
   expect(appOrder).toBe(true);
-  const summary = page.locator('summary').filter({ hasText: '全部功能' });
-  await expect(summary).toBeVisible();
-  await expect(page.getByRole('button', { name: '打开知识库', exact: true })).toBeHidden();
-  await summary.click();
-  await expect(page.getByRole('button', { name: '打开商家池', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '打开知识库', exact: true }).click();
+  const entry = page.getByRole('button', { name: '全部功能', exact: true });
+  await expect(entry).toBeVisible();
+  await entry.click();
+  const directory = page.getByRole('region', { name: '更多功能', exact: true });
+  await directory.getByRole('link', { name: '销售中心，查看全部功能', exact: true }).click();
+  await expect(directory.getByRole('link', { name: '打开商家池', exact: true })).toHaveCount(0);
+  await directory.getByRole('link', { name: '打开知识库', exact: true }).click();
   await expect(page).toHaveURL(/\/sales-knowledge$/);
   expect(requests.filter(request => request.method !== 'GET')).toEqual([]);
 });

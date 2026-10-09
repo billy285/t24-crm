@@ -87,6 +87,7 @@ const App = () => (
             <Route path="/auth/error" element={<PublicPage><AuthError /></PublicPage>} />
             <Route element={<ProtectedAppShell />}>
               <Route path="/apps" element={<div />} />
+              <Route path="/more" element={<div />} />
               <Route path="/" element={<Dashboard />} />
               <Route path="/company-roadmap" element={<CompanyRoadmap />} />
               <Route path="/merchant-pool" element={<MerchantPool />} />

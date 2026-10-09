@@ -67,6 +67,7 @@ async function mockAuthenticatedApi(page: Page, role: TestRole, fixtures: HomeFi
     else if (path.endsWith('/entities/customers')) data = { items: fixtures.customers || [], total: (fixtures.customers || []).length };
     else if (path.includes('/entities/subscriptions')) data = { items: fixtures.subscriptions || [], total: (fixtures.subscriptions || []).length };
     else if (path.includes('/entities/payments')) data = { items: fixtures.payments || [], total: (fixtures.payments || []).length };
+    else if (path.endsWith('/reports/rmb-profit-estimate')) data = { definition: '本地模拟计算口径', usd_definition: '本地模拟美元口径', payroll_note: '本地模拟工资说明', start_date: '2026-01-01', end_date: '2026-10-10', fallback_exchange_rate: 6.7, rows: [], quarterly: [], yearly: [], summary: { period: '模拟期间', month_count: 0, usd_operating_balance: 0, usd_converted_cny: 0, cny_operating_income: 0, cny_actual_expense: 0, estimated_profit_cny: 0, profitable_months: 0, loss_months: 0, break_even_months: 0 } };
     else if (path.endsWith('/deductions-monthly/default')) data = { rate: 0.15 };
     else if (path.endsWith('/deductions-monthly')) data = [];
     else if (path.includes('/app-config')) data = { items: {} };
@@ -167,19 +168,11 @@ for (const role of ['sales', 'sales_manager', 'ops', 'design', 'finance', 'sales
       }
     }
 
-    const functionsSummary = page.locator('summary').filter({ hasText: '全部功能' });
-    await expect(functionsSummary).toBeVisible();
-    await expect(functionsSummary.locator('..')).not.toHaveAttribute('open', '');
-    await functionsSummary.click();
-    for (const app of allApps) {
-      const group = page.getByRole('region', { name: app.label, exact: true });
-      if (visibleLabels.includes(app.label)) {
-        await expect(group).toBeVisible();
-        expect(await group.getByRole('button').count()).toBeGreaterThan(0);
-      } else {
-        await expect(group).toHaveCount(0);
-      }
-    }
+    const functionsEntry = page.getByRole('button', { name: '全部功能', exact: true });
+    await expect(functionsEntry).toBeVisible();
+    await functionsEntry.click();
+    await expect(page).toHaveURL(/\/more$/);
+    await expect(page.getByRole('region', { name: '更多功能', exact: true })).toBeVisible();
 
     if (role === 'sales_partner') {
       const bottomNav = page.getByRole('navigation', { name: '手机主导航' });
@@ -245,30 +238,24 @@ test('管理员应用卡进入各自已有业务路径', async ({ page }) => {
   }
 });
 
-test('管理员手机工作台按真实业务分类展示全部功能并可直接进入', async ({ page }) => {
+test('管理员手机工作台由更多目录进入全部功能和真实财务入口', async ({ page }) => {
   await mockAuthenticatedApi(page, 'admin');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/apps`);
-
-  await expect(page.getByRole('heading', { name: '全部功能' })).toBeVisible();
-  const functionsSummary = page.locator('summary').filter({ hasText: '全部功能' });
-  await expect(page.getByRole('button', { name: '打开今日拨打' })).toBeHidden();
-  await functionsSummary.click();
-  const salesFunctions = page.getByRole('region', { name: '销售中心' });
-  await expect(salesFunctions.getByRole('button')).toHaveCount(4);
-  await expect(salesFunctions.getByRole('button', { name: '打开今日拨打' })).toBeVisible();
-  await expect(salesFunctions.getByRole('button', { name: '打开商家池' })).toBeVisible();
-  await expect(salesFunctions.getByRole('button', { name: '打开联系进展' })).toBeVisible();
-  await expect(salesFunctions.getByRole('button', { name: '打开知识库' })).toBeVisible();
-
-  await salesFunctions.getByRole('button', { name: '打开联系进展' }).click();
+  await page.getByRole('button', { name: '全部功能', exact: true }).click();
+  await expect(page).toHaveURL(/\/more$/);
+  const directory = page.getByRole('region', { name: '更多功能', exact: true });
+  await directory.getByRole('link', { name: '销售中心，查看全部功能', exact: true }).click();
+  for (const label of ['今日拨打', '商家池', '联系进展', '知识库']) {
+    await expect(directory.getByRole('link', { name: `打开${label}`, exact: true })).toBeVisible();
+  }
+  await directory.getByRole('link', { name: '打开联系进展', exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe('/sales-leads');
-
   await page.goto(`${baseUrl}/apps`);
-  await functionsSummary.click();
-  const financeFunctions = page.getByRole('region', { name: '财务结算' });
-  await expect(financeFunctions.getByRole('button', { name: '打开财务管理' })).toBeVisible();
-  await expect(financeFunctions.getByRole('button', { name: '打开利润预估' })).toBeVisible();
+  await page.getByRole('button', { name: '全部功能', exact: true }).click();
+  await directory.getByRole('link', { name: '财务结算，查看全部功能', exact: true }).click();
+  await expect(directory.getByRole('link', { name: '打开收入管理', exact: true })).toHaveAttribute('href', '/finance?tab=income');
+  await expect(directory.getByRole('link', { name: '打开人民币利润预估', exact: true })).toHaveAttribute('href', '/rmb-profit');
   await expectNoDocumentOverflow(page);
 });
 

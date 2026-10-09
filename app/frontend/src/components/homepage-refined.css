@@ -172,3 +172,10 @@
 @media (prefers-reduced-motion: reduce) {
   .homepage-refined button { transition: none; }
 }
+
+/* The full mobile directory lives in More; keep the home overview brief. */
+@media (max-width: 767px) {
+  .homepage-refined .home-more-entry { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 52px; padding: 12px 16px; border: 1px solid #e6ebf2; border-radius: 16px; background: #fff; color: #334155; font-size: 15px; font-weight: 600; }
+  .homepage-refined .home-more-entry svg { width: 18px; height: 18px; color: #94a3b8; }
+  .homepage-refined .home-all-functions { display: none; }
+}
