@@ -256,6 +256,7 @@
 }
 
 @media (max-width: 767px) {
+  .t24-system .merchant-pool-refined-page .mp-merchant-name { min-height: 44px; display: flex; align-items: center; }
   .t24-system .merchant-pool-refined-page.sales-center-ui {
     gap: 16px;
   }

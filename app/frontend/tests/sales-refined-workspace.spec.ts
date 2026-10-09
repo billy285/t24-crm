@@ -153,7 +153,10 @@ async function openWorkbench(page: Page, width: number, completed = 0) {
 }
 
 async function chooseTask(surface: Locator, width: number, taskId: number) {
-  if (width < 768) await surface.getByRole('combobox', { name: '选择客户', exact: true }).selectOption(String(taskId));
+  if (width < 768) {
+    await surface.getByRole('button', { name: '打开客户队列', exact: true }).click();
+    await surface.page().getByRole('dialog', { name: '客户队列', exact: true }).locator(`[data-task-id="${taskId}"]`).click();
+  }
   else await surface.locator(`[data-lead-id="${taskId - 400}"]`).click();
 }
 
@@ -247,8 +250,11 @@ test('手机全队列可切换，RingCentral 返回保留内联草稿且不虚�
   const fixture = await mockWorkbench(page, { records: tasks(15) });
   const surface = await openWorkbench(page, 390);
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/sales-workbench-mobile-390.png` });
-  const customerSelect = surface.getByRole('combobox', { name: '选择客户', exact: true });
-  await expect(customerSelect.locator('option:not([disabled])')).toHaveCount(15);
+  const customerQueue = surface.getByRole('button', { name: '打开客户队列', exact: true });
+  await customerQueue.click();
+  const queueSheet = page.getByRole('dialog', { name: '客户队列', exact: true });
+  await expect(queueSheet.locator('[data-task-id]')).toHaveCount(15);
+  await queueSheet.getByRole('button', { name: 'Close', exact: true }).click();
   await chooseTask(surface, 390, 915);
   await expect(surface.getByRole('heading', { name: '第15位商家', exact: true })).toBeVisible();
   await surface.getByRole('button', { name: '待回访', exact: true }).click();
@@ -267,7 +273,7 @@ test('手机全队列可切换，RingCentral 返回保留内联草稿且不虚�
 
   await page.goBack();
   await expect(page).toHaveURL(`${baseUrl}/sales-workbench?sales_employee_id=27`);
-  await expect(customerSelect).toHaveValue('915');
+  await expect(customerQueue).toHaveAttribute('data-selected-task-id', '915');
   await expect(surface.getByLabel('沟通记录', { exact: true })).toHaveValue('第15位商家约定明天回电，不要丢失');
   await expect(surface.getByRole('button', { name: '待回访', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(surface.getByLabel(/^下次跟进/)).toHaveValue('2026-10-12T10:30');

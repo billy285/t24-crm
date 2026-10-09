@@ -233,12 +233,12 @@ test('管理员手机工作台按真实业务分类展示全部功能并可直�
   await expect(page.getByRole('heading', { name: '全部功能' })).toBeVisible();
   const salesFunctions = page.getByRole('region', { name: '销售中心' });
   await expect(salesFunctions.getByRole('button')).toHaveCount(4);
-  await expect(salesFunctions.getByRole('button', { name: '打开销售工作台' })).toBeVisible();
+  await expect(salesFunctions.getByRole('button', { name: '打开今日拨打' })).toBeVisible();
   await expect(salesFunctions.getByRole('button', { name: '打开商家池' })).toBeVisible();
-  await expect(salesFunctions.getByRole('button', { name: '打开电话销售' })).toBeVisible();
-  await expect(salesFunctions.getByRole('button', { name: '打开销售知识' })).toBeVisible();
+  await expect(salesFunctions.getByRole('button', { name: '打开联系进展' })).toBeVisible();
+  await expect(salesFunctions.getByRole('button', { name: '打开知识库' })).toBeVisible();
 
-  await salesFunctions.getByRole('button', { name: '打开电话销售' }).click();
+  await salesFunctions.getByRole('button', { name: '打开联系进展' }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe('/sales-leads');
 
   await page.goto(`${baseUrl}/apps`);

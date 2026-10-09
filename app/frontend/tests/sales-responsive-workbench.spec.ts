@@ -129,10 +129,18 @@ async function runLayout(page: Page, viewport: { width: number; height: number }
   }
   await page.locator('main').evaluate(element => { element.scrollTop = 0; });
   const title = surface.getByRole('heading', { name: '今日拨打', exact: true });
-  const date = surface.getByLabel('任务日期（北京时间）', { exact: true });
-  const salesperson = surface.getByRole('combobox', { name: '当前销售', exact: true });
-  for (const control of [title, date, salesperson, surface.getByRole('button', { name: '更多工作台功能', exact: true })]) {
+  const scopeControls = viewport.width < 768
+    ? [surface.getByRole('button', { name: '调整任务范围', exact: true })]
+    : [surface.getByLabel('任务日期（北京时间）', { exact: true }), surface.getByRole('combobox', { name: '当前销售', exact: true })];
+  for (const control of [title, ...scopeControls, surface.getByRole('button', { name: '更多工作台功能', exact: true })]) {
     await expect(control, '起始工具栏必须完整可见').toBeInViewport({ ratio: 1 });
+  }
+  if (viewport.width < 768) {
+    await scopeControls[0].click();
+    const scope = page.getByRole('dialog', { name: '任务范围', exact: true });
+    await expect(scope.getByLabel('任务日期（北京时间）', { exact: true })).toBeVisible();
+    await expect(scope.getByRole('combobox', { name: '当前销售', exact: true })).toHaveValue(String(employee.id));
+    await scope.getByRole('button', { name: '返回工作台', exact: true }).click();
   }
   await expectNoHorizontalOverflow(page, surface);
   const notes = surface.getByLabel('沟通记录', { exact: true });
@@ -157,7 +165,12 @@ async function runLayout(page: Page, viewport: { width: number; height: number }
     await expect(page.getByRole('button', { name: '展开功能导航', exact: true })).toBeVisible();
   }
   const picker = surface.getByRole('combobox', { name: '选择客户', exact: true });
-  if (await picker.isVisible()) await expect(picker.locator('option:not([disabled])')).toHaveCount(20);
+  if (viewport.width < 768) {
+    await surface.getByRole('button', { name: '打开客户队列', exact: true }).click();
+    const queue = page.getByRole('dialog', { name: '客户队列', exact: true });
+    await expect(queue.locator('[data-task-id]')).toHaveCount(20);
+    await queue.getByRole('button', { name: 'Close', exact: true }).click();
+  } else if (await picker.isVisible()) await expect(picker.locator('option:not([disabled])')).toHaveCount(20);
   else await expect(surface.getByRole('complementary', { name: '今日客户队列', exact: true })).toBeVisible();
 
   const next = surface.getByRole('button', { name: '下一位客户', exact: true });

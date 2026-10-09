@@ -112,10 +112,10 @@ const mobileShortcutLabels: Record<string, string> = {
   '/': '今日经营',
   '/company-roadmap': '公司战略',
   '/management-decisions': '经营决策',
-  '/sales-workbench': '销售工作台',
+  '/sales-workbench': '今日拨打',
   '/merchant-pool': '商家池',
-  '/sales-leads': '电话销售',
-  '/sales-knowledge': '销售知识',
+  '/sales-leads': '联系进展',
+  '/sales-knowledge': '知识库',
   '/customers': '客户管理',
   '/sales': '成交客户',
   '/deals': '成交管理',
@@ -247,6 +247,8 @@ export default function MobileAppHome({
   const notificationBadge = visibleBadge(notificationCount);
   const todayTone = toneStyles[topTodayItem?.tone || 'info'];
   const homeCopy = roleHomeCopy[role] || roleHomeCopy.admin;
+  const isSalesHome = role === 'sales' || role === 'sales_manager';
+  const FunctionsContainer = isSalesHome ? 'details' : 'section';
 
   const openNotifications = () => {
     if (onOpenNotifications) {
@@ -255,6 +257,53 @@ export default function MobileAppHome({
     }
     openPath(resolvedPendingPath);
   };
+
+  const workAppsSection = (
+        <section aria-label="工作应用" className="rounded-[24px] border border-white/90 bg-white/95 px-3 py-5 shadow-[0_20px_48px_-38px_rgba(37,70,132,0.58)] backdrop-blur-xl">
+          <div className="mb-4 flex items-end justify-between px-1">
+            <div>
+              <h2 id="mobile-apps-heading" className="text-[17px] font-black tracking-tight text-slate-950">首页应用</h2>
+              <p className="mt-0.5 text-[10px] text-slate-400">常用业务中心 · 按当前账号权限显示</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">{availableApps.length} 个入口</span>
+          </div>
+          <div className={cn(
+            'grid gap-x-2 gap-y-4',
+            availableApps.length === 1 && 'grid-cols-1',
+            (availableApps.length === 2 || availableApps.length === 4) && 'grid-cols-2',
+            (availableApps.length === 3 || availableApps.length >= 5) && 'grid-cols-3',
+            availableApps.length >= 4 && 'md:grid-cols-6',
+          )}>
+            {availableApps.map(app => {
+              const Icon = app.icon;
+              const badge = visibleBadge(appBadges[app.key]);
+              return (
+                <button
+                  key={app.key}
+                  type="button"
+                  onClick={() => openPath(app.path)}
+                  className={cn(
+                    'relative flex min-h-[84px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-1 py-1 text-center transition active:scale-[0.96]',
+                    availableApps.length === 1 && 'mx-auto w-28',
+                  )}
+                  aria-label={`${app.label}：${app.description}`}
+                >
+                  <span className={cn('relative flex h-12 w-12 items-center justify-center rounded-[16px] ring-1 shadow-[0_12px_24px_-14px_rgba(15,23,42,0.65)]', iconTones[app.tone])}>
+                    <Icon className="h-5 w-5" />
+                    {badge ? <span className="absolute -right-2 -top-2 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold text-white ring-2 ring-white">{badge}</span> : null}
+                  </span>
+                  <span className="max-w-full text-[11px] font-bold leading-4 text-slate-800">{app.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {availableApps.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
+              当前账号暂无可用业务应用，请联系管理员检查权限。
+            </div>
+          ) : null}
+        </section>
+  );
 
   return (
     <div
@@ -314,50 +363,7 @@ export default function MobileAppHome({
             {onRetry ? <button type="button" className="shrink-0 font-bold underline" onClick={onRetry}>重新加载</button> : null}
           </div>
         ) : null}
-        <section aria-label="工作应用" className="rounded-[24px] border border-white/90 bg-white/95 px-3 py-5 shadow-[0_20px_48px_-38px_rgba(37,70,132,0.58)] backdrop-blur-xl">
-          <div className="mb-4 flex items-end justify-between px-1">
-            <div>
-              <h2 id="mobile-apps-heading" className="text-[17px] font-black tracking-tight text-slate-950">首页应用</h2>
-              <p className="mt-0.5 text-[10px] text-slate-400">常用业务中心 · 按当前账号权限显示</p>
-            </div>
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">{availableApps.length} 个入口</span>
-          </div>
-          <div className={cn(
-            'grid gap-x-2 gap-y-4',
-            availableApps.length === 1 && 'grid-cols-1',
-            (availableApps.length === 2 || availableApps.length === 4) && 'grid-cols-2',
-            (availableApps.length === 3 || availableApps.length >= 5) && 'grid-cols-3',
-            availableApps.length >= 4 && 'md:grid-cols-6',
-          )}>
-            {availableApps.map(app => {
-              const Icon = app.icon;
-              const badge = visibleBadge(appBadges[app.key]);
-              return (
-                <button
-                  key={app.key}
-                  type="button"
-                  onClick={() => openPath(app.path)}
-                  className={cn(
-                    'relative flex min-h-[84px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-1 py-1 text-center transition active:scale-[0.96]',
-                    availableApps.length === 1 && 'mx-auto w-28',
-                  )}
-                  aria-label={`${app.label}：${app.description}`}
-                >
-                  <span className={cn('relative flex h-12 w-12 items-center justify-center rounded-[16px] ring-1 shadow-[0_12px_24px_-14px_rgba(15,23,42,0.65)]', iconTones[app.tone])}>
-                    <Icon className="h-5 w-5" />
-                    {badge ? <span className="absolute -right-2 -top-2 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold text-white ring-2 ring-white">{badge}</span> : null}
-                  </span>
-                  <span className="max-w-full text-[11px] font-bold leading-4 text-slate-800">{app.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          {availableApps.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
-              当前账号暂无可用业务应用，请联系管理员检查权限。
-            </div>
-          ) : null}
-        </section>
+        {!isSalesHome && workAppsSection}
 
         <section aria-labelledby="mobile-today-heading">
           <div className="mb-3 flex items-center justify-between px-1">
@@ -412,6 +418,8 @@ export default function MobileAppHome({
           )}
         </section>
 
+        {isSalesHome && workAppsSection}
+
         {accessibleRecentItems.length > 0 ? (
           <section aria-labelledby="mobile-recent-heading">
             <div className="mb-3 px-1">
@@ -442,11 +450,11 @@ export default function MobileAppHome({
         ) : null}
 
         {appSections.length > 0 ? (
-          <section aria-labelledby="mobile-functions-heading" className="space-y-3">
-            <div className="px-1">
+          <FunctionsContainer aria-labelledby="mobile-functions-heading" className="space-y-3">
+            {isSalesHome ? <summary className="cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3"><h2 id="mobile-functions-heading" className="inline text-[15px] font-bold text-slate-800">全部功能</h2></summary> : <div className="px-1">
               <h2 id="mobile-functions-heading" className="text-[17px] font-black tracking-tight text-slate-950">全部功能</h2>
               <p className="mt-0.5 text-[11px] text-slate-500">按业务分类，直接进入需要处理的页面</p>
-            </div>
+            </div>}
             {appSections.map(section => (
               <section
                 key={section.key}
@@ -495,7 +503,7 @@ export default function MobileAppHome({
                 </div>
               </section>
             ))}
-          </section>
+          </FunctionsContainer>
         ) : null}
       </main>
     </div>

@@ -54,6 +54,7 @@ const dataOf = (result: PromiseSettledResult<any>) => result.status === 'fulfill
   : null;
 
 const fulfilled = (result: PromiseSettledResult<any>) => result.status === 'fulfilled';
+const countOf = (value: unknown): number | null => typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
 
 export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: () => void }) {
   const { employee, role, canAccess, isAdmin } = useRole();
@@ -112,7 +113,7 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
     const allFailed = requiredResults.length > 0 && requiredResults.every(result => !fulfilled(result));
     const partiallyFailed = requiredResults.some(result => !fulfilled(result));
 
-    if (allFailed) {
+    if (allFailed && !isSales && !isSalesManager) {
       setLoadError('首页数字暂时无法更新，应用入口仍可正常使用。');
       setLoading(false);
       return;
@@ -161,38 +162,48 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
     let notificationCount = 0;
 
     if (isSales) {
-      const remaining = Number(salesData.remaining_count || 0);
-      const callbacksDue = Number(salesData.performance?.callbacks_due || salesData.categories?.callback || 0);
+      const remaining = countOf(salesData.remaining_count);
+      const assigned = countOf(salesData.assigned_count);
+      const completed = countOf(salesData.completed_count);
+      const quota = countOf(salesData.quota);
+      const readUsable = fulfilled(salesResult) && remaining !== null && (remaining > 0 || (
+        assigned !== null && completed !== null && quota !== null && assigned - completed === remaining
+      ));
+      const callbacksDue = readUsable ? countOf(salesData.performance?.callbacks_due) ?? countOf(salesData.categories?.callback) ?? 0 : 0;
       const firstTask = Array.isArray(salesData.items)
-        ? salesData.items.find((item: AnyRecord) => item.task_status !== 'completed')
+        ? salesData.items.find((item: AnyRecord) => item.task_status === 'pending')
         : null;
-      appBadges.sales = remaining;
-      notificationCount = remaining + callbacksDue;
+      const completedBatch = readUsable && quota! > 0 && assigned! > 0 && assigned === completed && remaining === 0 && !firstTask;
+      const hasRemaining = readUsable && remaining! > 0;
+      if (readUsable) appBadges.sales = remaining!;
+      notificationCount = readUsable ? remaining! + callbacksDue : 0;
       todayItems.push({
         id: 'sales-today',
-        title: remaining > 0 ? `今天还有 ${remaining} 条销售任务` : '今日销售任务已完成',
-        description: callbacksDue > 0
-          ? `${callbacksDue} 条客户需要回访，优先完成已约时间的联系。`
-          : '继续维护意向客户并完整记录沟通结果。',
-        meta: firstTask?.lead?.business_name ? `下一位：${firstTask.lead.business_name}` : undefined,
+        title: !readUsable ? '销售任务数据待更新' : hasRemaining ? `今天还有 ${remaining} 条销售任务` : completedBatch ? '今日已分配任务已完成' : '等待今日销售任务',
+        description: !readUsable ? '暂未读取到有效的今日任务，请重新加载或进入今日拨打查看。'
+          : hasRemaining ? callbacksDue > 0 ? `${callbacksDue} 条客户需要回访，优先完成已约时间的联系。` : '按名单依次联系，记录本次结果。'
+          : completedBatch ? `已完成 ${completed} 条任务${quota ? ` · 今日目标 ${quota} 条` : ''}。`
+          : '当前暂无待拨打的任务，进入今日拨打查看安排。',
+        meta: hasRemaining && firstTask?.lead?.business_name ? `下一位：${firstTask.lead.business_name}` : undefined,
         path: '/sales-workbench',
-        actionLabel: remaining > 0 ? '开始拨打' : '查看今日记录',
-        tone: remaining > 0 ? 'info' : 'success',
+        actionLabel: hasRemaining ? '开始拨打' : completedBatch ? '查看今日记录' : '查看今日拨打',
+        tone: !readUsable ? 'warning' : completedBatch ? 'success' : 'info',
       });
     } else if (isSalesManager) {
       const metrics = salesData.metrics || {};
-      const assigned = Number(metrics.assigned || 0);
-      const completed = Number(metrics.completed || 0);
-      const remaining = Math.max(0, assigned - completed);
-      appBadges.sales = remaining;
-      notificationCount = remaining;
+      const assigned = countOf(metrics.assigned);
+      const completed = countOf(metrics.completed);
+      const readUsable = fulfilled(salesResult) && assigned !== null && completed !== null && completed <= assigned;
+      const remaining = readUsable ? assigned! - completed! : 0;
+      if (readUsable) appBadges.sales = remaining;
+      notificationCount = readUsable ? remaining : 0;
       todayItems.push({
         id: 'sales-team-today',
-        title: assigned > 0 ? `团队今日已完成 ${completed}/${assigned}` : '查看销售团队今日执行',
-        description: remaining > 0 ? `还有 ${remaining} 条分配任务未完成，及时查看成员进度。` : '今日暂无未完成的团队销售任务。',
+        title: !readUsable ? '团队任务数据待更新' : assigned! > 0 ? `团队今日已完成 ${completed}/${assigned}` : '等待团队今日任务',
+        description: !readUsable ? '暂未读取到有效的团队进度，请重新加载或进入今日拨打查看。' : remaining > 0 ? `还有 ${remaining} 条分配任务未完成。` : assigned! > 0 ? '今日已分配的团队任务均已完成。' : '当前暂无已分配任务，进入今日拨打查看安排。',
         path: '/sales-workbench',
         actionLabel: '查看团队进度',
-        tone: remaining > 0 ? 'warning' : 'success',
+        tone: !readUsable || remaining > 0 ? 'warning' : assigned! > 0 ? 'success' : 'info',
       });
     } else if (isPartner) {
       const renewalAttention = Number(partnerData.summary?.renewal_attention_count || 0);
@@ -276,7 +287,7 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
     }
 
     setSnapshot({ todayItems, appBadges, recentItems, notificationCount });
-    setLoadError(partiallyFailed ? '部分首页数字暂未更新，已显示当前可用数据。' : '');
+    setLoadError(allFailed ? '首页数字暂时无法更新，应用入口仍可正常使用。' : partiallyFailed ? '部分首页数字暂未更新，已显示当前可用数据。' : '');
     setLoading(false);
   }, [canAccess, employee?.id, employee?.name, isAdmin, role]);
 

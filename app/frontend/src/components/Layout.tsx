@@ -1,4 +1,5 @@
 import '../pages/workspace-layout.css';
+import './mobile-sales-layout.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
@@ -345,14 +346,14 @@ export default function Layout({ children }: LayoutProps) {
           </nav>}
           <div className="app-topbar-actions flex items-center gap-2">
             <MobileModuleMenu currentPath={currentPath} />
-            <button
+            {!isSalesWorkspace && <button
               type="button"
               onClick={() => setMobileProfileOpen(true)}
               className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-blue-600 shadow-sm md:hidden"
               aria-label="打开我的账户"
             >
               <User className="h-4 w-4" />
-            </button>
+            </button>}
             {currentPath !== homePath && (
               <Button
                 type="button"
@@ -397,7 +398,6 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           </div>
         </header>
-        {isSalesWorkspace && <SalesCenterNavigation className="sales-center-mobile-navigation flex md:hidden" />}
 
         {/* Page content */}
         <main ref={mainScrollRef} className={`app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isAppLauncher ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>

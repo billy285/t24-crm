@@ -1,0 +1,28 @@
+/* Phone sales has one business navigation and one page scroll surface. */
+@media (max-width: 767px) {
+  .t24-system.app-sales-layout {
+    --mobile-sales-nav-height: 80px;
+  }
+
+  .t24-system.app-sales-layout .app-topbar {
+    min-height: 60px;
+    padding-block: 8px;
+  }
+
+  .t24-system.app-sales-layout .app-main {
+    padding: 12px 12px calc(var(--mobile-sales-nav-height) + 12px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(var(--mobile-sales-nav-height) + 16px + env(safe-area-inset-bottom));
+  }
+
+  .t24-system.app-sales-layout .mobile-route-stage {
+    min-height: 0;
+  }
+
+  .t24-system.app-sales-layout .app-page {
+    padding-bottom: 0;
+  }
+
+  .t24-system.app-sales-layout .mobile-bottom-nav {
+    max-width: none;
+  }
+}

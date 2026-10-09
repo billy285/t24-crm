@@ -32,6 +32,10 @@ export default function MobileModuleMenu({ currentPath }: { currentPath: string 
   const availablePaths = currentApp
     ? Array.from(new Set([...(configuredApp?.paths || []), currentPath]))
     : [];
+  if (currentApp?.key === 'sales') {
+    const salesOrder = ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'];
+    availablePaths.sort((a, b) => salesOrder.indexOf(a) - salesOrder.indexOf(b));
+  }
   const pages = availablePaths
     .map(path => appNavigationItems.find(item => item.path === path))
     .filter((item): item is (typeof appNavigationItems)[number] => Boolean(item && canAccess(item.path))) || [];
@@ -40,6 +44,7 @@ export default function MobileModuleMenu({ currentPath }: { currentPath: string 
 
   const AppIcon = currentApp.icon;
   const navigateTo = (path: string) => {
+    if (!canAccess(path)) return;
     setOpen(false);
     navigate(path);
   };
@@ -77,6 +82,7 @@ export default function MobileModuleMenu({ currentPath }: { currentPath: string 
                 <button
                   key={item.path}
                   type="button"
+                  aria-current={isCurrent ? 'page' : undefined}
                   onClick={() => navigateTo(item.path)}
                   className={cn(
                     'flex min-h-14 w-full items-center gap-3 rounded-2xl border px-4 text-left transition-colors',

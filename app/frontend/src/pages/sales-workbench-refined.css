@@ -260,3 +260,85 @@
   .sw-team-mobile-list { display: grid; }
   .sw-team-error { flex-wrap: wrap; }
 }
+
+/* Phone sheets keep task selection local; desktop retains its native picker. */
+.sw-mobile-sheet { display: flex; flex-direction: column; gap: 14px; max-height: calc(100dvh - 24px); padding: 20px 16px calc(16px + env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0; }
+.sw-mobile-sheet > div:first-child { padding-right: 44px; text-align: left; }
+.sw-mobile-sheet > button:last-child { top: 10px; right: 10px; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; }
+.sw-queue-sheet { height: min(80dvh, 720px); }
+.sw-queue-search { position: relative; flex-shrink: 0; }
+.sw-queue-search > svg { position: absolute; top: 14px; left: 12px; color: #64748b; pointer-events: none; }
+.sw-queue-search input { min-height: 44px; padding-left: 38px; font-size: 16px; }
+.sw-phone-queue-filters { display: flex; flex-shrink: 0; gap: 5px; padding: 3px; border-radius: 10px; background: #f1f5fa; }
+.sw-phone-queue-filters button { flex: 1; min-height: 44px; border-radius: 8px; color: #52647e; font-size: var(--t24-aux-size); }
+.sw-phone-queue-filters button[aria-pressed=true] { background: #fff; color: #2563eb; box-shadow: 0 1px 3px #172b4a12; }
+.sw-phone-queue-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.sw-phone-queue-list > button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 64px; gap: 12px; padding: 12px; border: 1px solid transparent; border-bottom-color: #edf0f5; border-radius: 9px; text-align: left; }
+.sw-phone-queue-list > button[aria-pressed=true] { color: #245ed8; background: #edf3ff; border-color: #c7d7f7; }
+.sw-phone-queue-list > button > span { flex: 1; min-width: 0; }
+.sw-phone-queue-list strong { display: block; font-size: var(--t24-body-size); line-height: var(--t24-body-line); font-weight: 500; overflow-wrap: anywhere; }
+.sw-phone-queue-list small { display: block; font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); color: #64748b; overflow-wrap: anywhere; }
+.sw-phone-queue-list > button > svg, .sw-phone-queue-list > button > small { flex-shrink: 0; }
+.sw-queue-total, .sw-queue-empty { color: #64748b; font-size: var(--t24-aux-size); }
+.sw-queue-empty { padding: 28px 12px; text-align: center; }
+.sw-phone-scope-fields { display: grid; gap: 16px; }
+.sw-phone-scope-fields label { display: grid; gap: 7px; color: #52647e; font-size: var(--t24-aux-size); }
+.sw-phone-scope-fields input, .sw-phone-scope-fields select { width: 100%; min-width: 0; min-height: 44px; font-size: 16px; }
+.sw-scope-sheet { overflow-y: auto; }
+.sw-scope-sheet .sw-mode-switch { width: 100%; }
+.sw-scope-sheet .sw-mode-switch button { flex: 1; padding-inline: 10px; }
+.sw-scope-sheet .sw-salesperson { display: block; }
+.sw-scope-review { display: flex; justify-content: space-between; gap: 10px; color: #64748b; font-size: var(--t24-aux-size); }
+.sw-scope-review strong { font-weight: 500; color: #24354e; }
+@media (max-width: 767px) {
+  .t24-system .sw-refined.sc-workbench { gap: 10px; }
+  .sw-workspace-heading { padding: 0; gap: 4px; }
+  .t24-system .sw-refined .sc-page-heading { flex-wrap: nowrap; gap: 5px; }
+  .t24-system .sw-refined .sc-page-heading h1 { flex: 1; min-width: 0; padding: 0; font-size: var(--t24-detail-size); line-height: var(--t24-detail-line); }
+  .sw-phone-scope-controls { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
+  .sw-phone-scope-controls > button { width: 44px; min-width: 44px; height: 44px; }
+  .sw-phone-scope-controls .sw-scope-trigger { display: flex; gap: 4px; width: auto; min-height: 44px; padding: 3px 5px; color: #64748b; }
+  .sw-scope-trigger > span { display: grid; gap: 0; min-width: 0; text-align: right; font-size: var(--t24-aux-size); line-height: 18px; }
+  .sw-scope-trigger strong { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .sw-progress-row { min-height: 20px; gap: 10px; flex-wrap: nowrap; padding-inline: 2px; }
+  .sw-progress-value strong { font-size: var(--t24-body-size); }
+  .t24-system .sw-refined .sw-progress-row .sc-progress-track { flex: 1; max-width: none; }
+  .sw-phone-queue-trigger { display: flex; width: 100%; min-height: 44px; padding: 9px 12px; gap: 8px; border-color: #dce4ef; border-radius: 10px; background: #fff; font-size: var(--t24-body-size); font-weight: 500; }
+  .sw-queue-position { flex: 1; min-width: 0; text-align: right; color: #64748b; font-size: var(--t24-aux-size); font-weight: 400; }
+  .t24-system .sw-refined .sc-customer { padding: 10px 14px 0; }
+  .sw-customer-heading { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 0 4px; align-items: center; }
+  .sw-customer-heading > div:first-child { display: contents; }
+  .sw-customer-context { grid-row: 1; grid-column: 1; gap: 5px; }
+  .sw-customer-heading h2 { grid-column: 1 / -1; margin: 2px 0 3px; }
+  .sw-customer-heading p { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sw-customer-navigation { grid-row: 1; grid-column: 2; }
+  .sw-customer-navigation button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+  .sw-dial-row { gap: 5px; margin: 4px 0 8px; }
+  .sw-dial-row > div:first-child { flex: 1 1 100%; }
+  .sw-phone { gap: 4px; }
+  .sw-phone strong { flex: 1; min-width: 0; font-size: 21px; line-height: 28px; }
+  .sw-phone button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+  .sw-provider-status { margin-top: -4px; }
+  .sw-dial-actions { gap: 6px; flex-wrap: nowrap; }
+  .sw-dial-button { flex: 1; min-width: 0; }
+  .sw-dial-actions > button { flex: 1; min-width: 0; }
+  .sw-last-contact { padding: 5px 0; min-height: 30px; }
+  .sw-last-contact > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sw-last-contact > button:last-child { display: none; }
+  .sw-last-contact > button { min-height: 44px; }
+  .t24-system .sw-refined .sc-record-fields { padding: 10px 14px 88px; }
+  .sw-note-heading { gap: 5px; min-height: 24px; margin-bottom: 6px; }
+  .sw-draft-tools { gap: 3px; }
+  .sw-draft-tools button { min-height: 44px; padding-inline: 4px; }
+  .t24-system .sw-refined .sw-notes, .sw-supplemental .sw-notes { height: clamp(112px, 18dvh, 150px); min-height: 112px; font-size: 16px; line-height: 24px; }
+  .sw-result-heading { margin-top: 12px; padding-top: 10px; }
+  .sw-record .si-contact-extra summary { min-height: 44px; display: flex; align-items: center; }
+  /* Main already reserves bottom navigation + safe area in its scroll padding
+     box. Keep a zero sticky inset to avoid reserving that same space twice. */
+  .t24-system .sw-refined.sc-workbench .sw-current .sc-record-footer { position: sticky; bottom: 0; z-index: 25; padding: 10px 14px; border-radius: 0 0 13px 13px; box-shadow: 0 -6px 18px #132e5608; }
+  .app-main:has(.sw-refined.sc-workbench) { scroll-padding-block: 16px calc(var(--mobile-sales-nav-height, 80px) + 88px + env(safe-area-inset-bottom)); }
+  .sw-current .sc-record-fields :is(input, textarea, select, button, summary) { scroll-margin-block: 16px 80px; }
+}
+@media (max-width: 767px) and (max-height: 600px) {
+  .sw-queue-sheet { height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); }
+}

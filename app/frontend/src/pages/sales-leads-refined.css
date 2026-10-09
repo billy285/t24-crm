@@ -188,6 +188,14 @@
 .slr-page button:focus-visible,
 .slr-page summary:focus-visible { outline: 2px solid #245de8; outline-offset: 3px; }
 @media (max-width: 767px) {
+  .slr-card-name { min-height: 44px; display: flex; align-items: center; font-size: 16px; }
+  .slr-followup-sheet { max-height: 100dvh; overscroll-behavior: contain; }
+  .slr-followup-sheet > button { width: 44px; height: 44px; top: 8px; right: 8px; }
+  .slr-followup-form input, .slr-followup-form select, .slr-followup-form textarea,
+  .slr-details-dialog input, .slr-details-dialog select, .slr-details-dialog textarea { font-size: 16px; }
+  .slr-followup-form input, .slr-followup-form select { min-height: 44px; }
+  .slr-followup-form textarea { min-height: 160px; }
+  .slr-followup-form .slr-followup-save-row { position: sticky; bottom: -1px; padding-block: 8px; background: white; border-top: 1px solid #e7ebf2; }
   .slr-followup-sheet { padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); gap: 20px; }
   .slr-followup-form { gap: 20px; }
   .slr-followup-tools { flex-wrap: wrap; }
