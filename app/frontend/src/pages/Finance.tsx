@@ -52,6 +52,7 @@ import {
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import { useSessionViewState } from '@/hooks/use-session-view-state';
 import { getFinanceNavigationItem, normalizeFinanceTab } from '@/lib/finance-navigation';
+import './finance-income-refined.css';
 
 // ─── Constants ───────────────────────────────────────────────────────
 const defaultIncomeTypeLabels: Record<string, string> = {
@@ -4558,8 +4559,8 @@ export default function Finance() {
               ) : visiblePayments.length === 0 ? (
                 <div className="py-10 text-center"><p className="text-sm text-slate-500">{incomeSearch.trim() ? '当前账目范围内没有匹配的收款' : '当前账目范围内暂无收款记录'}</p><div className="mt-3 flex justify-center gap-2">{incomeSearch && <Button size="sm" variant="outline" onClick={() => setIncomeSearch('')}>清除搜索</Button>}{dateFilterMode !== 'all' && <Button size="sm" variant="outline" onClick={() => setDateFilterMode('all')}>查看全部时间</Button>}</div></div>
               ) : (
-                <div className="max-h-[65vh] overflow-auto">
-                  <table className="w-full min-w-[1100px] whitespace-nowrap text-sm tabular-nums">
+                <div className="fi-income-scroll max-h-[65vh] overflow-auto">
+                  <table className="fi-income-table w-full min-w-[1100px] whitespace-nowrap text-sm tabular-nums">
                     <thead className="sticky top-0 z-20 bg-slate-50">
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
                         <th className="sticky left-0 z-30 min-w-[180px] bg-slate-50 px-3 py-2.5 font-medium">客户</th>

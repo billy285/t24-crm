@@ -1,19 +1,39 @@
-.sales-center-navigation { align-items: center; gap: 26px; min-width: 0; }
-.sales-center-navigation-title { margin-right: 6px; font-size: 14px; font-weight: 500; color: #182942; white-space: nowrap; }
+.sales-center-navigation { align-items: center; gap: clamp(14px, 2vw, 26px); min-width: 0; }
+.sales-center-navigation-title { margin-right: 6px; font-size: 14px; font-weight: 600; color: #182942; letter-spacing: -.01em; white-space: nowrap; }
 .sales-center-navigation a { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 0; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 14px; line-height: 20px; color: #64748b; }
 .sales-center-navigation a[aria-current=page] { color: #245de8; border-bottom-color: #245de8; font-weight: 500; }
 .sales-center-navigation a:hover { color: #245de8; }
 .sales-center-mobile-navigation { padding: 0 16px; background: #fff; border-bottom: 1px solid #e7ebf2; flex-shrink: 0; }
 .sales-center-mobile-navigation .sales-center-navigation-title { display: none; }
-.app-sales-layout .app-topbar { box-shadow: none; }
+.app-sales-layout .app-topbar { box-shadow: none; flex-shrink: 0; }
+.app-sales-layout .app-topbar-actions { flex-shrink: 0; }
 @media (min-width: 768px) {
-  .app-sales-layout .app-topbar { min-height: 60px; padding-top: 0; padding-bottom: 0; gap: 18px; }
+  .app-sales-layout .app-topbar { container-type: inline-size; container-name: sales-header; min-height: 60px; padding-top: 0; padding-bottom: 0; gap: 16px; flex-wrap: wrap; }
+  .app-sales-layout .app-topbar .sales-center-navigation { flex-wrap: wrap; row-gap: 0; }
+  .app-sales-layout .app-topbar > button { flex-shrink: 0; width: 36px; min-height: 44px; }
+  .app-sales-layout .app-topbar-actions > button { white-space: nowrap; }
 }
 @media (min-width: 1024px) {
   .app-sales-layout .app-primary-rail { width: 76px; flex-basis: 76px; }
+  .app-sales-layout .app-sidebar { width: 296px; }
   .app-sales-layout .app-sidebar.app-sidebar-collapsed { width: 76px; }
+  .app-sales-layout .app-secondary-panel { width: 220px; flex: 0 0 220px; }
+  .app-sales-layout .app-navigation-brand { padding: 15px 8px 17px; gap: 7px; font-size: 10px; letter-spacing: .08em; }
+  .app-sales-layout .app-navigation-brand img { width: 36px; height: 36px; border-radius: 10px; }
   .app-sales-layout .app-primary-links { padding-left: 7px; padding-right: 7px; }
   .app-sales-layout .app-primary-link { min-height: 64px; }
+}
+/* Small desktop windows keep the work area wide when a center is expanded. */
+@media (min-width: 1024px) and (max-width: 1359px) {
+  .app-sales-layout .app-sidebar { width: 76px; }
+  .app-sales-layout .app-sidebar:not(.app-sidebar-collapsed) .app-secondary-panel { position: absolute; inset: 0 auto 0 76px; width: 236px; border-right: 1px solid #e2e8f0; box-shadow: 16px 0 34px -18px #0d1b3330; }
+  .app-sales-layout .app-navigation-close { display: inline-flex; min-width: 36px; min-height: 36px; align-items: center; justify-content: center; }
+  .app-sales-layout .app-sidebar:not(.app-sidebar-collapsed) .app-rail-control[aria-expanded=true] { position: relative; z-index: 1; }
+}
+@container sales-header (max-width: 740px) {
+  .app-sales-layout .app-topbar .sales-center-navigation { gap: 12px; }
+  .app-sales-layout .app-topbar .sales-center-navigation-title { display: none; }
+  .app-sales-layout .app-topbar .sales-center-navigation a { font-size: 13px; }
 }
 @media (max-width: 1023px) {
   .sales-center-navigation { gap: 18px; }

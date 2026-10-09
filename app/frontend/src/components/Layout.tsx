@@ -1,5 +1,5 @@
 import '../pages/workspace-layout.css';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
 import { pageLabels } from '../lib/permissions';
@@ -47,12 +47,51 @@ export default function Layout({ children }: LayoutProps) {
   const [expandedWorkRoutes, setExpandedWorkRoutes] = useState<Record<string, boolean>>({});
   const isFocusedWorkspace = appNavigationItems.some(item => item.path === currentPath);
   const isSalesWorkspace = salesWorkspacePaths.includes(currentPath);
+  const [salesSecondaryFloats, setSalesSecondaryFloats] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches,
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
   );
   const navigationScope = isSalesWorkspace ? 'sales-center' : currentPath;
   const navigationCollapsed = isSalesWorkspace || isFocusedWorkspace ? !expandedWorkRoutes[navigationScope] : sidebarCollapsed;
+  const salesSecondaryOverlayOpen = isSalesWorkspace && salesSecondaryFloats && !navigationCollapsed;
   const { employee, role, loading, isLoggedIn, isDisabled, logout, canAccess } = useRole();
+
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1024px) and (max-width: 1359px)');
+    const update = () => setSalesSecondaryFloats(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  const closeBusinessNavigation = useCallback(() => {
+    setSidebarOpen(false);
+    if (isSalesWorkspace && window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches) {
+      setExpandedWorkRoutes(value => ({ ...value, [navigationScope]: false }));
+    }
+  }, [isSalesWorkspace, navigationScope]);
+
+  useEffect(() => {
+    if (!isSalesWorkspace || navigationCollapsed) return;
+    const handleOverlayKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeBusinessNavigation();
+      } else if (event.key === 'Tab') {
+        const sidebar = document.querySelector<HTMLElement>('.app-sales-layout .app-sidebar');
+        if (!sidebar || sidebar.contains(document.activeElement)) return;
+        const controls = [...sidebar.querySelectorAll<HTMLElement>('a[href], button, input')]
+          .filter(control => control.getClientRects().length > 0 && !control.hasAttribute('disabled'));
+        event.preventDefault();
+        (event.shiftKey ? controls[controls.length - 1] : controls[0])?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleOverlayKey);
+    return () => document.removeEventListener('keydown', handleOverlayKey);
+  }, [isSalesWorkspace, navigationCollapsed, closeBusinessNavigation]);
 
   useEffect(() => {
     window.localStorage.setItem('t24_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
@@ -226,10 +265,31 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}`}>
+    <div className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}`} onKeyDown={isSalesWorkspace ? event => {
+      if (navigationCollapsed || !window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeBusinessNavigation();
+      }
+      if (event.key !== 'Tab') return;
+      const sidebar = event.currentTarget.querySelector<HTMLElement>('.app-sidebar');
+      if (!sidebar) return;
+      const controls = [...sidebar.querySelectorAll<HTMLElement>('a[href], button, input')]
+        .filter(control => control.getClientRects().length > 0 && !control.hasAttribute('disabled'));
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !sidebar.contains(document.activeElement))) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !sidebar.contains(document.activeElement))) {
+        event.preventDefault();
+        first?.focus();
+      }
+    } : undefined}>
       {/* Mobile overlay */}
-      {sidebarOpen && (
-        <button type="button" tabIndex={-1} aria-label="关闭业务导航遮罩" className="fixed inset-0 z-40 hidden bg-slate-950/40 md:block lg:hidden" onClick={() => setSidebarOpen(false)} />
+      {(sidebarOpen || salesSecondaryOverlayOpen) && (
+        <button type="button" tabIndex={-1} aria-label="关闭业务导航遮罩" className={`fixed inset-0 z-40 ${salesSecondaryOverlayOpen ? 'sales-navigation-backdrop bg-slate-950/20' : 'hidden bg-slate-950/40 md:block lg:hidden'}`} onClick={closeBusinessNavigation} />
       )}
 
       {/* Sidebar */}
@@ -240,9 +300,9 @@ export default function Layout({ children }: LayoutProps) {
         homePath={homePath}
         employeeName={employee?.name}
         roleLabel={displayRole}
-        open={sidebarOpen}
+        open={sidebarOpen || salesSecondaryOverlayOpen}
         collapsed={navigationCollapsed}
-        onClose={() => setSidebarOpen(false)}
+        onClose={closeBusinessNavigation}
         onCollapsedChange={collapsed => isSalesWorkspace || isFocusedWorkspace ? setExpandedWorkRoutes(value => ({ ...value, [navigationScope]: !collapsed })) : setSidebarCollapsed(collapsed)}
         onLogout={handleLogout}
       />}
@@ -283,7 +343,7 @@ export default function Layout({ children }: LayoutProps) {
             </>}
             <span className="truncate font-semibold text-slate-800">{desktopPageLabel || currentPageLabel}</span>
           </nav>}
-          <div className="flex items-center gap-2">
+          <div className="app-topbar-actions flex items-center gap-2">
             <MobileModuleMenu currentPath={currentPath} />
             <button
               type="button"

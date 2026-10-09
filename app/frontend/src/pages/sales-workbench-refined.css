@@ -1,7 +1,8 @@
-.t24-system .sw-refined.sc-workbench { gap: 16px; max-width: 1440px; }
-.t24-system .sw-refined .sc-page-heading { gap: 12px; flex-wrap: nowrap; }
-.t24-system .sw-refined .sc-page-heading h1 { margin: 0; font-size: 25px; line-height: 34px; font-weight: 500; }
-.sw-scope-controls { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.t24-system .sw-refined.sc-workbench { container: sales-workbench / inline-size; gap: 20px; max-width: 1680px; min-width: 0; }
+.sw-workspace-heading { position: sticky; top: 0; z-index: 20; display: grid; gap: 12px; padding: 14px 18px; border: 1px solid #e2e8f1; border-radius: 12px; background: #fff; box-shadow: 0 3px 12px #132e5605; }
+.t24-system .sw-refined .sc-page-heading { gap: 12px; flex-wrap: wrap; }
+.t24-system .sw-refined .sc-page-heading h1 { margin: 0; font-size: 25px; line-height: 34px; font-weight: 600; }
+.sw-scope-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .sw-scope-controls .sc-date-control { min-width: 0; max-width: 170px; }
 .sw-scope-controls .sc-date-control input, .sw-scope-controls .sc-date-control select { height: 38px; min-height: 38px; font-size: 13px; }
 .sw-salesperson { color: #64748b; font-size: 13px; white-space: nowrap; }
@@ -15,26 +16,27 @@
 .sw-review > div { position: absolute; z-index: 15; top: calc(100% + 5px); right: 0; display: grid; gap: 12px; min-width: 150px; padding: 16px; background: #fff; border: 1px solid #e7ebf2; border-radius: 10px; box-shadow: 0 8px 28px #1829420c; }
 .sw-review > div > span { display: flex; justify-content: space-between; gap: 20px; }
 .sw-review strong { font-weight: 500; color: #182942; }
-.t24-system .sw-refined .sc-call-layout { display: grid; grid-template-columns: 210px minmax(0,1fr); gap: 20px; }
-.t24-system .sw-refined .sc-queue { background: transparent; border: 0; border-radius: 0; box-shadow: none; }
-.t24-system .sw-refined .sc-queue-head { padding: 0 10px 10px; }
+.t24-system .sw-refined .sc-call-layout { display: grid; grid-template-columns: clamp(208px, 22%, 280px) minmax(0,1fr); gap: 20px; }
+.t24-system .sw-refined .sc-queue { background: #f8fafd; border: 1px solid #e2e8f1; border-radius: 12px; box-shadow: none; min-width: 0; overflow: hidden; }
+.t24-system .sw-refined .sc-queue-head { padding: 16px 14px 10px; background: #fff; border-bottom: 1px solid #e2e8f1; }
 .t24-system .sw-refined .sc-panel-heading h3 { font-size: 14px; font-weight: 500; }
 .t24-system .sw-refined .sc-queue-filters { margin-top: 10px; padding: 0; gap: 16px; background: transparent; }
 .t24-system .sw-refined .sc-queue-filters button { flex: 0 1 auto; min-height: 32px; background: transparent; padding: 4px 0; font-size: 12px; box-shadow: none; }
 .t24-system .sw-refined .sc-queue-filters button[aria-pressed=true] { color: #245de8; }
-.t24-system .sw-refined .sc-queue-list { max-height: min(600px,calc(100dvh - 270px)); min-height: 0; padding: 0; }
-.t24-system .sw-refined .sc-queue-item { min-height: 76px; padding: 14px 10px; border: 1px solid transparent; margin-bottom: 4px; }
-.t24-system .sw-refined .sc-queue-item[aria-pressed=true] { background: #fff; border-color: #e7ebf2; box-shadow: 0 3px 12px #16305505; }
+.t24-system .sw-refined .sc-queue-list { max-height: max(190px,calc(100dvh - 326px)); min-height: 0; padding: 6px 8px; }
+.t24-system .sw-refined .sc-queue-item { min-height: 76px; padding: 14px 10px; border: 1px solid transparent; border-bottom: 1px dashed #dce4ef; border-radius: 0; margin: 0; }
+.t24-system .sw-refined .sc-queue-item[aria-pressed=true] { background: #edf3ff; border: 1px solid #bbcdf5; border-radius: 9px; box-shadow: inset 3px 0 #3564d8; }
 .t24-system .sw-refined .sc-queue-item[aria-pressed=true]::before { display: none; }
 .t24-system .sw-refined .sc-queue-copy strong { font-size: 13px; font-weight: 500; line-height: 20px; }
 .t24-system .sw-refined .sc-queue-copy small { margin-top: 7px; font-size: 12px; color: #64748b; }
 .t24-system .sw-refined .sc-queue-number { font-size: 12px; }
-.t24-system .sw-refined .sc-queue-footer { padding: 12px 10px; border: 0; font-size: 12px; color: #64748b; }
-.t24-system .sw-refined .sw-current { display: block; border: 1px solid #e7ebf2; border-radius: 13px; background: #fff; box-shadow: 0 4px 18px #132e5605; min-width: 0; }
-.t24-system .sw-refined .sc-customer { padding: 20px 24px 0; }
+.t24-system .sw-refined .sc-queue-footer { padding: 12px 16px; border-top: 1px solid #e2e8f1; font-size: 12px; color: #64748b; background: #fff; }
+.t24-system .sw-refined .sw-current { display: block; border: 1px solid #dce4ef; border-radius: 14px; background: #fff; box-shadow: 0 6px 24px #132e5608; min-width: 0; }
+.t24-system .sw-refined .sc-customer { display: block; padding: 20px 24px 0; background: linear-gradient(180deg, #f5f8ff, #fff); border-radius: 14px 14px 0 0; }
 .sw-customer-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .sw-customer-heading > div:first-child { min-width: 0; }
-.sw-customer-heading h2 { margin: 6px 0 3px; font-size: 22px; line-height: 29px; font-weight: 500; overflow-wrap: anywhere; }
+.sw-customer-context { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: #64748b; font-size: 12px; line-height: 22px; }
+.sw-customer-heading h2 { margin: 8px 0 4px; font-size: clamp(20px, 2.2cqi, 26px); line-height: 1.35; font-weight: 600; overflow-wrap: anywhere; }
 .sw-customer-heading p { font-size: 12px; line-height: 20px; color: #64748b; }
 .sw-customer-heading .sw-followup-plan { margin-top: 4px; color: #7a6545; }
 .sw-supplemental-dial { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 14px; }
@@ -57,10 +59,11 @@
 .t24-system .sw-refined .sw-record, .sw-supplemental .sw-record { border: 0; border-radius: 0 0 13px 13px; box-shadow: none; overflow: visible; }
 .t24-system .sw-refined .sc-record-fields, .sw-supplemental .sc-record-fields { padding: 14px 24px 12px; min-width: 0; }
 .sw-note-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.sw-note-heading label { font-size: 13px; font-weight: 500; }
+.sw-note-heading label { font-size: 14px; font-weight: 600; }
 .sw-note-heading > span { font-size: 12px; color: #64748b; }
-.t24-system .sw-refined .sw-notes, .sw-supplemental .sw-notes { height: 138px; min-height: 138px; resize: vertical; width: 100%; font-size: 14px; line-height: 23px; border-color: #e7ebf2; border-radius: 9px; box-shadow: none; padding: 12px; }
-.sw-result-heading { margin: 13px 0 8px; font-size: 12px; }
+.t24-system .sw-refined .sw-notes, .sw-supplemental .sw-notes { height: clamp(112px, 18dvh, 230px); min-height: 112px; resize: vertical; width: 100%; font-size: 14px; line-height: 23px; border-color: #e7ebf2; border-radius: 9px; box-shadow: none; padding: 12px; background: #fbfcfe; }
+.sw-record .sw-notes:focus { background: #fff; border-color: #8eaaf0; }
+.sw-result-heading { margin: 16px 0 10px; padding-top: 14px; border-top: 1px dashed #dce4ef; font-size: 13px; font-weight: 500; color: #334155; }
 .sw-result-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .t24-system .sw-refined .sc-outcomes, .sw-supplemental .sc-outcomes { display: flex; flex-wrap: wrap; gap: 7px; }
 .t24-system .sw-refined .sc-outcomes button, .sw-supplemental .sc-outcomes button { display: inline-flex; flex: 0 1 auto; align-items: center; justify-content: center; min-height: 34px; padding: 6px 12px; font-size: 12px; font-weight: 400; line-height: 20px; border-color: #e7ebf2; border-radius: 7px; background: #fff; white-space: nowrap; }
@@ -82,7 +85,7 @@
 .sw-supplemental .sc-record-fields { padding: 0; }
 .sw-supplemental .sc-record-footer { margin: 0; }
 @media (max-width: 1050px) and (min-width: 768px) {
-  .t24-system .sw-refined .sc-call-layout { grid-template-columns: 180px minmax(0,1fr); gap: 14px; }
+  .t24-system .sw-refined .sc-call-layout { grid-template-columns: 208px minmax(0,1fr); gap: 16px; }
   .sw-customer-heading { gap: 8px; }
   .sw-customer-heading h2 { font-size: 20px; }
   .sw-phone strong { font-size: 19px; }
@@ -105,7 +108,7 @@
   .sw-mobile-queue select { width: 100%; min-width: 0; min-height: 44px; background: #fff; border: 1px solid #e7ebf2; border-radius: 8px; padding: 9px 8px; font-size: 16px; text-overflow: ellipsis; }
   .t24-system .sw-refined .sc-call-layout { grid-template-columns: minmax(0,1fr); }
   .t24-system .sw-refined .sc-queue { display: none; }
-  .t24-system .sw-refined .sc-customer { padding: 16px 16px 0; }
+  .t24-system .sw-refined .sc-customer { display: block; padding: 16px 16px 0; }
   .sw-customer-heading { gap: 8px; }
   .sw-customer-heading h2 { font-size: 20px; line-height: 27px; }
   .sw-customer-navigation { gap: 0; }
@@ -132,4 +135,52 @@
   .t24-system .sw-refined .sc-record-footer > button, .sw-supplemental .sc-record-footer > button { min-height: 44px; height: 44px; font-size: 14px; }
   .sw-record .sc-record-footer > span { max-width: 38%; }
   .sw-supplemental .sc-record-fields { padding-left: 0; padding-right: 0; }
+}
+
+/* Reserve scroll space for the workspace heading and the desktop save bar. */
+.app-main:has(.sw-refined.sc-workbench) { scroll-padding-block: 140px 90px; }
+/* The workspace follows its available width, including expanded navigation. */
+.t24-system .sw-refined.sc-workbench .sc-record-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 0;
+  padding: 14px 24px;
+  border-radius: 0 0 14px 14px;
+  box-shadow: 0 -5px 16px #132e5605;
+}
+.sw-mobile-queue label { min-width: 0; }
+.sw-mobile-queue select { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #dce4ef; border-radius: 9px; padding: 9px 10px; background: #fff; font-size: 14px; text-overflow: ellipsis; }
+@container sales-workbench (max-width: 860px) {
+  .t24-system .sw-refined .sc-call-layout { grid-template-columns: minmax(0, 1fr); }
+  .t24-system .sw-refined .sc-queue { display: none; }
+  .sw-mobile-queue { display: grid; grid-template-columns: minmax(0, 1fr) minmax(110px, 150px); gap: 10px; }
+  .sw-customer-heading h2 { font-size: 22px; }
+}
+@container sales-workbench (max-width: 540px) {
+  .sw-workspace-heading { padding: 12px; gap: 8px; }
+  .t24-system .sw-refined .sc-page-heading { position: relative; }
+  .t24-system .sw-refined .sc-page-heading h1 { padding-right: 40px; }
+  .sw-scope-controls { width: 100%; }
+  .sw-scope-controls > button[aria-label="更多工作台功能"] { position: absolute; top: 0; right: 0; width: 36px; height: 36px; }
+  .sw-scope-controls .sc-date-control { flex: 1 1 130px; max-width: none; }
+  .sw-scope-controls .sc-date-control:has(input[type=date]) { flex-basis: 160px; }
+  .sw-progress-row { gap: 8px; flex-wrap: wrap; }
+  .t24-system .sw-refined .sw-progress-row .sc-progress-track { flex: 1 1 32px; max-width: 160px; }
+  .sw-mobile-queue { grid-template-columns: minmax(0, 1fr) 112px; gap: 8px; }
+  .sw-customer-heading h2 { font-size: 20px; }
+  .sw-dial-row { flex-wrap: wrap; }
+}
+@media (max-width: 767px) {
+  /* Native inputs stay legible at browser zoom; the page keeps one scroll axis. */
+  .sw-workspace-heading { position: static; }
+  .sw-mobile-queue select { font-size: 16px; }
+  .app-main:has(.sw-refined.sc-workbench) { scroll-padding-block: 16px 90px; }
+  .t24-system .sw-refined.sc-workbench .sc-record-footer { position: static; padding: 12px 16px; box-shadow: none; }
+}
+@media (max-height: 720px) and (min-width: 768px) {
+  .sw-workspace-heading { gap: 8px; padding-top: 10px; padding-bottom: 10px; }
+  .t24-system .sw-refined .sc-customer { padding-top: 16px; }
+  .t24-system .sw-refined .sc-record-fields { padding-top: 12px; }
+  .t24-system .sw-refined .sw-notes { height: 112px; }
 }

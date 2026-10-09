@@ -1,0 +1,78 @@
+/* Income ledger only: keep every field available in the horizontal scroll area. */
+.t24-system.app-shell .calm-finance-page .fi-income-scroll {
+  isolation: isolate;
+  overscroll-behavior-x: contain;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table {
+  min-width: 1480px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table th,
+.t24-system.app-shell .calm-finance-page .fi-income-table td {
+  display: table-cell;
+  padding-left: var(--t24-table-cell-x);
+  padding-right: var(--t24-table-cell-x);
+  vertical-align: middle;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table thead th {
+  height: 44px;
+  background: #f5f7fb;
+  border-bottom: 1px solid #dce4ef;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table tbody > tr {
+  --fi-income-row-bg: #fff;
+  border: 0;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table tbody > tr:nth-child(even) {
+  --fi-income-row-bg: #fafbfd;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table tbody > tr:hover,
+.t24-system.app-shell .calm-finance-page .fi-income-table tbody > tr:focus-within {
+  --fi-income-row-bg: #f1f6fc;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table tbody td {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  background: var(--fi-income-row-bg);
+  border-bottom: 1px dashed #d5dfeb;
+  transition: background-color 120ms ease;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table tbody > tr:last-child > td {
+  border-bottom: 0;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table th:first-child,
+.t24-system.app-shell .calm-finance-page .fi-income-table td:first-child {
+  min-width: 190px;
+  border-right: 1px solid #e4eaf3;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table :is(th, td):nth-child(n+4):nth-child(-n+10) {
+  text-align: right;
+}
+
+.t24-system.app-shell .calm-finance-page .fi-income-table :is(th, td):last-child {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+@media (max-width: 767px) {
+  .t24-system.app-shell .calm-finance-page .fi-income-table tbody td {
+    padding-top: var(--t24-table-cell-y);
+    padding-bottom: var(--t24-table-cell-y);
+  }
+
+  .t24-system.app-shell .calm-finance-page .fi-income-table th:first-child,
+  .t24-system.app-shell .calm-finance-page .fi-income-table td:first-child {
+    min-width: 160px;
+  }
+}
