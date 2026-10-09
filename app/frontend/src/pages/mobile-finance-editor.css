@@ -1,0 +1,66 @@
+@media (max-width: 767px) {
+  .mobile-finance-editor {
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: 100dvh;
+    max-height: 100dvh !important;
+    transform: none !important;
+    border: 0;
+    border-radius: 0;
+    padding: 16px 20px max(24px, env(safe-area-inset-bottom));
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .mobile-finance-editor > div:first-child {
+    position: sticky;
+    top: -16px;
+    z-index: 2;
+    margin: -16px -20px 20px;
+    min-height: 60px;
+    padding: 19px 56px 16px 20px;
+    background: white;
+    border-bottom: 1px solid #edf0f4;
+    text-align: left;
+  }
+  .mobile-finance-editor > button:last-child {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 3;
+    background: white;
+  }
+  .mobile-finance-editor input:not([type="checkbox"]):not([type="radio"]),
+  .mobile-finance-editor select,
+  .mobile-finance-editor textarea {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .mobile-finance-editor label { font-size: 14px; line-height: 1.6; }
+  .mobile-finance-editor button { min-height: 44px; white-space: normal; }
+  .mobile-finance-editor :is(.grid-cols-2, .grid-cols-3, .grid-cols-4) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mobile-finance-editor .flex { flex-wrap: wrap; }
+  .mobile-finance-editor .min-w-0 { overflow-wrap: anywhere; }
+  .mobile-finance-editor :is(p, dd, dt, h2, span) { overflow-wrap: anywhere; }
+  .mobile-finance-editor > .flex:last-of-type {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #edf0f4;
+  }
+  .mobile-finance-editor > .flex:last-of-type > button { flex: 1; }
+  .mobile-finance-record-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .mobile-finance-record-actions button { min-height: 44px; font-size: 14px; }
+  .mobile-finance-record-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px 16px;
+    font-size: 14px;
+  }
+  .mobile-finance-record-fields dt { color: #64748b; font-size: 12px; }
+  .mobile-finance-record-fields dd { margin: 3px 0 0; overflow-wrap: anywhere; color: #0f172a; }
+}

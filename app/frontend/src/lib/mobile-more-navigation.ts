@@ -26,10 +26,7 @@ export interface MobileMoreGroup {
 
 // These administrative tools remain on desktop, matching the mobile launcher.
 // Listing them here makes the directory complete without enabling new actions.
-const desktopOnlyPaths = new Set(['/settings', '/permissions', '/settings/deduction', '/payroll']);
-// Finance currently renders these four mobile views. Other existing tabs keep
-// their desktop designation instead of silently opening the mobile overview.
-const mobileFinanceTabs = new Set(['overview', 'income', 'subscriptions', 'receivables']);
+const desktopOnlyPaths = new Set(['/settings', '/permissions']);
 const labels: Record<string, string> = {
   '/': '今日经营',
   '/company-roadmap': '公司战略',
@@ -55,7 +52,6 @@ function financeTab(tab: string): MobileMoreItem {
     path: '/finance',
     href: tab === 'overview' ? '/finance' : `/finance?tab=${tab}`,
     label: tab === 'overview' ? '财务总览' : item.label,
-    ...(!mobileFinanceTabs.has(tab) ? { desktopOnly: true } : {}),
   };
 }
 

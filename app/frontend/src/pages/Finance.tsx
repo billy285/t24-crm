@@ -1,5 +1,5 @@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { useRole } from '../lib/role-context';
@@ -28,6 +28,7 @@ import ExportButton from '@/components/ExportButton';
 import { exportProfitMonthlyCsv, exportProfitMonthlyXlsx } from '../lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import FinanceOwnerOverview from '@/components/FinanceOwnerOverview';
+import MobileFinanceDetails, { isMobileFinanceDetailTab, MobileFinanceDateFilter } from '@/components/MobileFinanceDetails';
 import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
 import { loadRemoteAppConfig, saveRemoteAppConfig } from '../lib/app-config';
@@ -54,6 +55,7 @@ import { useSessionViewState } from '@/hooks/use-session-view-state';
 import { getFinanceNavigationItem, normalizeFinanceTab } from '@/lib/finance-navigation';
 import { buildReturnLink } from '@/lib/navigation-state';
 import './finance-income-refined.css';
+import './mobile-finance-editor.css';
 
 // ─── Constants ───────────────────────────────────────────────────────
 const defaultIncomeTypeLabels: Record<string, string> = {
@@ -617,7 +619,10 @@ export default function Finance() {
   const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin, hasPermission, employee, canAccess } = useRole();
-  const workspaceKey = `t24:finance-view:v1:${employee?.id ?? 'guest'}:${isMobile ? 'mobile' : 'desktop'}`;
+  const requestedFinanceTab = normalizeFinanceTab(searchParams.get('tab'));
+  const mobileDetailTab = isMobile && isMobileFinanceDetailTab(requestedFinanceTab) ? requestedFinanceTab : null;
+  // Keep detail browsing filters separate from the existing phone workbench.
+  const workspaceKey = `t24:finance-view:v1:${employee?.id ?? 'guest'}:${isMobile ? mobileDetailTab ? 'mobile-details' : 'mobile' : 'desktop'}`;
   const [viewState, setViewField] = useSessionViewState(workspaceKey, financeViewDefaults);
   const { dateFilterMode, filterStartDate, filterEndDate, expenseMonth, companyExpenseMonth,
     companyExpenseCurrencyFilter, financeIssueFilter, pageSize, financePages,
@@ -661,6 +666,8 @@ export default function Finance() {
   const canManageCustomerPackages = isAdmin || hasPermission('settings_edit');
   const canCreatePayment = isAdmin || hasPermission('payment_create');
   const canCreateExpense = isAdmin || employee?.role === 'finance';
+  const canManageFinance = isAdmin || employee?.role === 'finance';
+  const canEditPayment = canManageFinance && (isAdmin || hasPermission('payment_edit'));
   const incomeTypeOptions = useMemo(
     () => Object.entries(incomeTypeLabels).map(([value, label]) => ({ value, label })),
     [incomeTypeLabels],
@@ -681,7 +688,7 @@ export default function Finance() {
   );
   const defaultCompanyExpenseType = companyExpenseTypeOptions[0]?.value || 'salary';
   const [activeFinanceTab, setActiveFinanceTab] = useState(() => (
-    typeof window !== 'undefined' && window.innerWidth < 768 ? 'overview' : normalizeFinanceTab(searchParams.get('tab'))
+    typeof window !== 'undefined' && window.innerWidth < 768 && !isMobileFinanceDetailTab(requestedFinanceTab) ? 'overview' : requestedFinanceTab
   ));
   const [snapshotExpanded, setSnapshotExpanded] = useState(activeFinanceTab === 'overview');
   const [mobileFinanceView, setMobileFinanceView] = useState<'overview' | 'ledger' | 'receivables' | 'renewals'>(() => {
@@ -689,10 +696,12 @@ export default function Finance() {
     return tab === 'subscriptions' ? 'renewals' : tab === 'receivables' ? 'receivables' : tab === 'income' ? 'ledger' : 'overview';
   });
   const [mobileVisibleLimit, setMobileVisibleLimit] = useState(15);
+  const [mobileAllSubscriptions, setMobileAllSubscriptions] = useState(false);
+  const [mobileMonthConfirmation, setMobileMonthConfirmation] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const blockMobileFinanceMutation = (allowCreate = false) => {
-    if (!isMobile || allowCreate) return false;
-    toast.info('手机版仅开放新增收款和支出；编辑、删除、退款与月结请在电脑端处理');
+  const blockMobileFinanceMutation = (_allowCreate = false) => {
+    if (!isMobile || canManageFinance) return false;
+    toast.error('当前账号没有财务修改权限');
     return true;
   };
   const doExport = async (fmt: 'csv'|'xlsx') => {
@@ -2650,7 +2659,8 @@ export default function Finance() {
   );
 
   useEffect(() => {
-    setActiveFinanceTab(isMobile ? 'overview' : normalizeFinanceTab(searchParams.get('tab')));
+    const requestedTab = normalizeFinanceTab(searchParams.get('tab'));
+    setActiveFinanceTab(isMobile && !isMobileFinanceDetailTab(requestedTab) ? 'overview' : requestedTab);
     if (isMobile) {
       const tab = normalizeFinanceTab(searchParams.get('tab'));
       setMobileFinanceView(tab === 'subscriptions' ? 'renewals' : tab === 'receivables' ? 'receivables' : tab === 'income' ? 'ledger' : 'overview');
@@ -2711,10 +2721,6 @@ export default function Finance() {
 
   const handleFinanceTabChange = (nextTab: string) => {
     const safeTab = normalizeFinanceTab(nextTab);
-    if (isMobile && safeTab !== 'overview') {
-      toast.info('手机版仅提供经营摘要；收款、续费、账本与月结请在电脑端处理');
-      return;
-    }
     setActiveFinanceTab(safeTab);
     const nextParams = new URLSearchParams(searchParams);
     if (safeTab === 'overview') {
@@ -2772,6 +2778,7 @@ export default function Finance() {
 
   const handleToggleMonthClose = async (monthValue = closingMonth, shouldClose?: boolean) => {
     if (blockMobileFinanceMutation()) return;
+    if (!isAdmin) { toast.error('只有管理员可以关账或重新打开月份'); return; }
     const month = normalizeMonthKey(monthValue);
     if (!month) {
       toast.error('请选择要关账的月份');
@@ -2846,10 +2853,17 @@ export default function Finance() {
       payForm.management_amount,
       payForm.ads_recharge_amount,
     );
-    const stripeFeeAmount = calculateStripePlatformFeeFromValues(
-      amountPaid,
-      payForm.payment_mode,
-      normalizePaymentMethodKey(payForm.payment_method),
+    const original = editingPayId ? payments.find(payment => Number(payment.id) === Number(editingPayId)) : null;
+    const sameReceipt = original
+      && amountPaid === roundMoney(toMoneyNumber(original.amount_paid))
+      && payForm.payment_mode === inferPaymentModeKey(original)
+      && normalizePaymentMethodKey(payForm.payment_method) === normalizePaymentMethodKey(original.payment_method);
+    // A notes/date/product correction must preserve the booked fee, including
+    // an explicit zero. Re-estimate only when receipt inputs actually change.
+    const storedFee = sameReceipt ? getStoredMoney(original.stripe_fee_amount) : null;
+    const storedNet = sameReceipt ? getStoredMoney(original.net_amount) : null;
+    const stripeFeeAmount = storedFee ?? calculateStripePlatformFeeFromValues(
+      amountPaid, payForm.payment_mode, normalizePaymentMethodKey(payForm.payment_method),
     );
     const resolvedIncomeType = managementAmount > 0 && adsRechargeAmount > 0
       ? MIXED_MANAGEMENT_ADS_KEY
@@ -2859,7 +2873,7 @@ export default function Finance() {
       management_amount: managementAmount,
       ads_recharge_amount: adsRechargeAmount,
       stripe_fee_amount: stripeFeeAmount,
-      net_amount: roundMoney(Math.max(amountPaid - stripeFeeAmount, 0)),
+      net_amount: storedNet ?? roundMoney(Math.max(amountPaid - stripeFeeAmount, 0)),
     };
   };
 
@@ -2870,12 +2884,13 @@ export default function Finance() {
   // ─── Payment CRUD ────────────────────────────────────────────────
   const openEditPayment = (p: any) => {
     if (blockMobileFinanceMutation()) return;
+    if (isMobile && !canEditPayment) { toast.error('你没有编辑收款权限'); return; }
     const names = p.product_name ? p.product_name.split('、').map((s: string) => s.trim()).filter(Boolean) : [];
     const displayIncomeType = getPaymentDisplayIncomeType(p);
     setPayForm({
       customer_id: String(p.customer_id || ''), product_names: names,
       income_type: displayIncomeType || 'management_fee',
-      amount_due: String(p.amount_due || ''), amount_paid: String(p.amount_paid || ''),
+      amount_due: String(p.amount_due ?? ''), amount_paid: String(p.amount_paid ?? ''),
       payment_mode: inferPaymentModeKey(p),
       payment_method: normalizePaymentMethodKey(p.payment_method),
       billing_cycle: p.billing_cycle || 'monthly',
@@ -2892,7 +2907,7 @@ export default function Finance() {
 
   const handleSavePayment = async () => {
     if (blockMobileFinanceMutation(!editingPayId)) return;
-    if (isMobile && !canCreatePayment) { toast.error('你没有新增收款权限'); return; }
+    if (isMobile && !(editingPayId ? canEditPayment : canCreatePayment)) { toast.error(editingPayId ? '你没有编辑收款权限' : '你没有新增收款权限'); return; }
     if (!payForm.customer_id || !payForm.amount_due || !payForm.amount_paid) { toast.error('请填写必填字段'); return; }
     if (payForm.product_names.length === 0) { toast.error('请至少选择一个产品'); return; }
     const originalPayment = editingPayId ? payments.find((payment: any) => Number(payment.id) === Number(editingPayId)) : null;
@@ -2952,7 +2967,7 @@ export default function Finance() {
         product_name: payForm.product_names.join('、'),
         amount_due: amountDue, amount_paid: amountPaid,
         ...financeAmounts,
-        currency: 'USD',
+        currency: originalPayment ? normalizeCurrency(originalPayment.currency, 'USD') : 'USD',
         payment_mode: payForm.payment_mode,
         payment_method: normalizedPaymentMethod,
         transaction_reference: payForm.transaction_reference || null,
@@ -3509,10 +3524,11 @@ export default function Finance() {
   // ─── Customer Expense CRUD ───────────────────────────────────────
   const openEditExpense = (e: any) => {
     if (blockMobileFinanceMutation()) return;
+    if (e.expense_type === ADS_FEE_KEY) { toast.info('历史投流记录只读，请在投流月结中处理'); return; }
     setExpenseForm({
       customer_id: String(e.customer_id || ''), expense_type: e.expense_type || 'management_fee',
       currency: getCustomerExpenseCurrency(e),
-      amount: String(e.amount || ''), expense_month: e.expense_month || expenseMonth, notes: e.notes || '',
+      amount: String(e.amount ?? ''), expense_month: e.expense_month || expenseMonth, notes: e.notes || '',
     });
     setEditingExpenseId(e.id);
     setShowExpenseForm(true);
@@ -3527,6 +3543,7 @@ export default function Finance() {
       return;
     }
     const originalExpense = editingExpenseId ? expenses.find((expense: any) => Number(expense.id) === Number(editingExpenseId)) : null;
+    if (originalExpense?.expense_type === ADS_FEE_KEY) { toast.error('历史投流记录只读，请在投流月结中处理'); return; }
     const targetExpenseMonth = normalizeMonthKey(expenseForm.expense_month);
     const originalExpenseMonth = normalizeMonthKey(originalExpense?.expense_month);
     if (isFinanceMonthClosed(targetExpenseMonth) || isFinanceMonthClosed(originalExpenseMonth)) {
@@ -3584,6 +3601,7 @@ export default function Finance() {
   const handleDeleteExpense = async () => {
     if (blockMobileFinanceMutation()) return;
     if (!deleteExpenseTarget) return;
+    if (deleteExpenseTarget.expense_type === ADS_FEE_KEY) { toast.error('历史投流记录只读，请在投流月结中处理'); return; }
     const expenseClosedMonth = normalizeMonthKey(deleteExpenseTarget.expense_month);
     if (isFinanceMonthClosed(expenseClosedMonth)) {
       toast.error(`${expenseClosedMonth} 已关账，请先在按月明细里重新打开该月份`);
@@ -3610,7 +3628,7 @@ export default function Finance() {
   const openEditCompanyExpense = (e: any) => {
     if (blockMobileFinanceMutation()) return;
     setCompanyExpenseForm({
-      category: e.category || defaultCompanyExpenseType, amount: String(e.amount || ''),
+      category: e.category || defaultCompanyExpenseType, amount: String(e.amount ?? ''),
       currency: getCompanyExpenseCurrency(e),
       expense_month: e.expense_month || companyExpenseMonth,
       expense_date: e.expense_date?.slice(0, 10) || '', notes: e.notes || '',
@@ -3898,7 +3916,19 @@ export default function Finance() {
 
   useEffect(() => {
     setMobileVisibleLimit(15);
-  }, [mobileFinanceView, pageFilterKey, currentMonthKey, workspaceKey]);
+  }, [mobileFinanceView, pageFilterKey, currentMonthKey, workspaceKey, incomeSearch]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const month = searchParams.get('month');
+    if (month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      const range = getMonthRange(new Date(`${month}-01T00:00:00`));
+      setFilterStartDate(range.start); setFilterEndDate(range.end); setDateFilterMode('custom');
+      setExpenseMonth(''); setCompanyExpenseMonth('');
+    }
+    const customer = searchParams.get('customer');
+    if (customer) { setIncomeSearch(customer); setDateFilterMode('all'); setExpenseMonth(''); setCompanyExpenseMonth(''); }
+  }, [isMobile, searchParams, workspaceKey]);
 
   const changeMobileFinanceView = (view: typeof mobileFinanceView) => {
     setMobileFinanceView(view);
@@ -3946,6 +3976,59 @@ export default function Finance() {
     setShowCompanyExpenseForm(true);
   };
 
+  const mobileWriteUnavailable = loading || Boolean(loadError);
+  const paymentFormCurrency = normalizeCurrency(payments.find(payment => Number(payment.id) === Number(editingPayId))?.currency, 'USD');
+  const mobilePaymentActions = (payment: any) => {
+    if (!payment || !canManageFinance) return null;
+    const locked = isFinanceMonthClosed(payment.payment_date || payment.expense_month);
+    const customerName = payment.customer_name || customerMap[payment.customer_id]?.business_name || '未关联客户';
+    return <div className="mobile-finance-record-actions">
+      {canEditPayment && <Button variant="outline" disabled={locked || mobileWriteUnavailable} aria-label={`编辑收款记录：${customerName}`} onClick={() => openEditPayment(payment)}>编辑收款</Button>}
+      <Button variant="outline" disabled={locked || mobileWriteUnavailable} onClick={() => openRefundPayment(payment)}>记录退款</Button>
+      <Button variant="ghost" className="text-rose-600" disabled={locked || mobileWriteUnavailable} onClick={() => setDeleteTarget({ type: 'payment', item: payment })}>删除记录</Button>
+      {locked && <span className="w-full text-xs text-slate-500">该月份已关账</span>}
+    </div>;
+  };
+  const mobileDetailActions = ({ kind, record }: { kind: string; record: any }) => {
+    const locked = isFinanceMonthClosed(record.expense_month || record.year_month || record.month);
+    const disabled = locked || mobileWriteUnavailable;
+    if (kind === 'customer_expense' || kind === 'company_expense') {
+      if (!canCreateExpense) return null;
+      const customerExpense = kind === 'customer_expense';
+      if (customerExpense && record.expense_type === ADS_FEE_KEY) return <p className="mt-3 text-xs text-slate-500">历史投流记录只读，请在投流月结中处理。</p>;
+      return <div className="mobile-finance-record-actions">
+        <Button variant="outline" disabled={disabled} onClick={() => customerExpense ? openEditExpense(record) : openEditCompanyExpense(record)}>{customerExpense ? '编辑客户支出' : '编辑运营支出'}</Button>
+        <Button variant="ghost" className="text-rose-600" disabled={disabled} onClick={() => customerExpense ? setDeleteExpenseTarget(record) : setDeleteCompanyExpenseTarget(record)}>删除记录</Button>
+        {locked && <span className="w-full text-xs text-slate-500">该月份已关账</span>}
+      </div>;
+    }
+    if (kind === 'ad_funds' || kind === 'ad_funds_unsettled') {
+      if (!canManageFinance) return null;
+      return <div className="mobile-finance-record-actions"><Button variant="outline" disabled={disabled} onClick={() => {
+        if (kind === 'ad_funds') openAdSettlement(record);
+        else {
+          setEditingAdSettlementId(null);
+          setAdSettlementForm({ customer_id: String(record.customer_id), year_month: record.year_month, currency: record.currency, opening_balance: '0', actual_ad_spend: '', customer_refund_amount: '0', recognized_spread_amount: '0', adjustment_amount: '0', status: 'draft', notes: '' });
+          setShowAdSettlementForm(true);
+        }
+      }}>{kind === 'ad_funds' ? '编辑投流月结' : '建立投流月结'}</Button>{locked && <span className="text-xs text-slate-500">该月份已关账</span>}</div>;
+    }
+    if (kind === 'refunds') {
+      const payment = payments.find(item => Number(item.id) === Number(record.payment_id));
+      return payment ? <details className="mt-3 rounded-xl border p-3 text-sm"><summary className="min-h-11 cursor-pointer py-3">原收款记录</summary><p>{payment.product_name || '未填写产品'} · {formatMoney(toMoneyNumber(payment.amount_paid), normalizeCurrency(payment.currency, 'USD'))}</p>{mobilePaymentActions(payment)}</details> : null;
+    }
+    if (kind === 'monthly_detail') {
+      const checklist = buildClosingChecklist(record.month);
+      return <div className="mobile-finance-record-actions">
+        <Button variant="outline" onClick={() => navigate(`/finance?tab=income&month=${record.month}`)}>查看本月收支</Button>
+        {isAdmin && <Button variant="outline" disabled={mobileWriteUnavailable || savingMonthClose || (!locked && checklist.blockerCount > 0)} onClick={() => setMobileMonthConfirmation(record.month)}>{locked ? '重新打开月份' : '确认关账'}</Button>}
+        {!locked && checklist.blockerCount > 0 && <p className="w-full text-xs text-amber-700">关账前需处理 {checklist.blockerCount} 项：{checklist.items?.filter((item: any) => item.level === 'blocker' && item.count > 0).map((item: any) => item.label).join('、')}</p>}
+      </div>;
+    }
+    if (kind === 'customer_profit') return <div className="mobile-finance-record-actions"><Button variant="outline" onClick={() => navigate(`/finance?tab=income&customer=${encodeURIComponent(record.customerName || '')}`)}>查看并编辑原始收支</Button></div>;
+    return null;
+  };
+
   // ─── Render ──────────────────────────────────────────────────────
   const hasFinanceData = payments.length > 0
     || subscriptions.length > 0
@@ -3953,39 +4036,122 @@ export default function Finance() {
     || deals.length > 0
     || expenses.length > 0
     || companyExpenses.length > 0;
-  if (loading && !hasFinanceData) {
+
+  let mobileFinanceContent: ReactNode = null;
+  if (mobileDetailTab) {
+    const resetSecondaryDateFilters = () => {
+      setExpenseMonth('');
+      setCompanyExpenseMonth('');
+      setCompanyExpenseCurrencyFilter('all');
+      setFinanceIssueFilter(null);
+    };
+    const detailPeriodLabel = activeDateRange
+      ? `${activeDateRange.start || '最早'} 至 ${activeDateRange.end || '最新'}`
+      : '全部时间';
+    const calculationPages = ['monthly_detail', 'customer_profit', 'charts'].includes(mobileDetailTab);
+    const missingDeductionRates = monthlyDetail.rows.some(row => typeof deductionRates[row.month] !== 'number');
+    mobileFinanceContent = <MobileFinanceDetails
+      tab={mobileDetailTab}
+      dateFilter={{
+        mode: dateFilterMode, start: filterStartDate, end: filterEndDate,
+        onModeChange: mode => {
+          resetSecondaryDateFilters();
+          setDateFilterMode(mode);
+          setFilterStartDate('');
+          setFilterEndDate('');
+        },
+        onMonthChange: month => {
+          if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
+          const range = getMonthRange(new Date(`${month}-01T00:00:00`));
+          resetSecondaryDateFilters();
+          setFilterStartDate(range.start);
+          setFilterEndDate(range.end);
+          setDateFilterMode('custom');
+        },
+      }}
+      periodLabel={detailPeriodLabel}
+      loading={loading}
+      error={loadError}
+      hasLoaded={Boolean(lastSuccessfulLoadAt)}
+      lastUpdated={lastSuccessfulLoadAt}
+      onRetry={() => { setLoading(true); void loadData(); }}
+      calculationNote={calculationPages
+        ? `按现有明细计算口径展示，搜索只筛选列表。${auditedFinanceFailed ? '月度审计报告暂时无法读取，当前明细未经本次审计核对。' : ''}${missingDeductionRates ? '部分月份沿用系统默认扣点率。' : ''}${mobileDetailTab === 'charts' ? '全部时间的经营趋势沿用近 12 个月；其他分类按所选范围展示。' : ''}`
+        : mobileDetailTab === 'customer_expense' && legacyAdFundExpenseCount > 0
+          ? '历史投流记录仅保留查看，不重复计入利润。' : undefined}
+      calculationWarning={calculationPages && auditedFinanceFailed ? '审计报告暂未读取，当前按明细口径展示，待核对。' : undefined}
+      actions={canManageFinance && !mobileWriteUnavailable ? <>
+        {mobileDetailTab === 'customer_expense' && <Button onClick={openMobileExpenseForm}>新增支出</Button>}
+        {mobileDetailTab === 'company_expense' && <Button onClick={openMobileCompanyExpenseForm}>新增支出</Button>}
+        {mobileDetailTab === 'ad_funds' && <Button onClick={() => openAdSettlement()}>新增月结</Button>}
+        {mobileDetailTab === 'refunds' && <Button variant="outline" onClick={() => navigate('/finance?tab=income')}>选择收款记录</Button>}
+      </> : undefined}
+      renderRecordActions={mobileDetailActions}
+      data={{
+        monthlyRows: monthlyDetail.rows, monthlyTotals: monthlyDetailTotals,
+        customerProfitRows, profitWarningRows,
+        refunds: filteredRefunds, settlements: filteredAdFundSettlements, unsettled: unsettledAdFundRows,
+        customerExpenses: filteredExpenses, companyExpenses: filteredCompanyExpenses,
+        customerExpenseTotalUsd: totalCustomerExpense, legacyAdFundExpenseCount,
+        companyExpenseTotals: totalCompanyExpenseByCurrency, summaryFinance,
+        monthlyTrend: monthlyTrendData, chartPeriodLabel,
+        incomeByType: incomeByTypeData, productRevenue: productRevenueData, customerRevenue: customerRevenueData,
+        payMethods: payMethodData, payModes: payModeData,
+        chartCompanyExpenses: chartCompanyExpenseByType, chartCompanyExpenseTotals,
+        customerMap, customerExpenseLabels: customerExpenseTypeLabels, companyExpenseLabels: companyExpenseTypeLabels,
+      }}
+      formatMoney={formatMoney}
+      customerExpenseCurrency={getCustomerExpenseCurrency}
+      companyExpenseCurrency={getCompanyExpenseCurrency}
+    />;
+  }
+  if (!mobileDetailTab && loading && !hasFinanceData) {
     return <PageLoadState loading message="正在核对收入、成本与续费数据…" />;
   }
-  if (loadError && !hasFinanceData) {
+  if (!mobileDetailTab && loadError && !hasFinanceData) {
     return <PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadData(); }} />;
   }
 
-  if (isMobile) {
+  if (isMobile && !mobileDetailTab) {
     const mobileEntryDisabled = closedFinanceMonths.has(currentMonthKey);
-    const visibleLedgerRows = mobileLedgerRows.slice(0, mobileFinanceView === 'overview' ? 5 : mobileVisibleLimit);
+    const searchedMobileLedgerRows = mobileLedgerRows.filter(row => !incomeSearch.trim() || `${row.title} ${row.subtitle} ${row.date}`.toLowerCase().includes(incomeSearch.trim().toLowerCase()));
+    const visibleLedgerRows = searchedMobileLedgerRows.slice(0, mobileFinanceView === 'overview' ? 5 : mobileVisibleLimit);
     const visibleReceivableRows = receivableRows.slice(0, mobileVisibleLimit);
-    const mobileRenewalRisks = subscriptions.filter(subscription => ACTIONABLE_SUBSCRIPTION_STATUSES.has(getEffectiveSubscriptionStatus(subscription)));
-    const mobileIncomeTypeOptions = paymentIncomeTypeOptions.filter(option => option.value !== MIXED_MANAGEMENT_ADS_KEY);
+    const mobileRenewalRisks = subscriptions.filter(subscription => (mobileAllSubscriptions || ACTIONABLE_SUBSCRIPTION_STATUSES.has(getEffectiveSubscriptionStatus(subscription))) && (!subscriptionSearch.trim() || `${subscription.customer_name} ${subscription.package_name}`.toLowerCase().includes(subscriptionSearch.trim().toLowerCase())));
     const renderLedgerCard = (row: typeof mobileLedgerRows[number]) => {
       const isIncome = row.kind === 'income';
+      const rawId = Number(row.id.split('-').at(-1));
+      const record = (isIncome ? payments : row.kind === 'customer_expense' ? expenses : companyExpenses).find(item => Number(item.id) === rawId);
       const Icon = isIncome ? ArrowDownRight : ArrowUpRight;
+      const money = (value: unknown) => value === undefined || value === null ? '未填写' : formatMoney(toMoneyNumber(value), row.currency);
+      const fields = isIncome ? [
+        ['产品', record?.product_name], ['收款日期', row.date],
+        ['应收金额', money(record?.amount_due)], ['实收金额', money(record?.amount_paid)],
+        ['管理费', money(record?.management_amount)], ['投流充值', money(record?.ads_recharge_amount)],
+        ['Stripe 手续费', money(record?.stripe_fee_amount)], ['交易参考号', record?.transaction_reference],
+        ['服务开始', record?.coverage_start?.slice(0, 10)], ['服务结束', record?.coverage_end?.slice(0, 10)],
+        ['账目编号', record?.id], ['备注', record?.notes],
+      ] : [['归属月份', record?.expense_month], ['币种', row.currency], ['账目编号', record?.id], ['备注', record?.notes]];
       return (
-        <div key={row.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${isIncome ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-            <Icon className="h-5 w-5" />
+        <details key={row.id} className="rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <summary aria-label={`查看账目：${row.title}`} className="flex min-h-20 cursor-pointer list-none items-center gap-3 p-3.5">
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isIncome ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Icon className="h-5 w-5" /></div>
+            <div className="min-w-0 flex-1">
+              <p className="break-words text-sm font-semibold text-slate-900">{row.title}</p>
+              <p className="mt-0.5 break-words text-xs text-slate-500">{row.subtitle} · {row.date || '日期待补充'}</p>
+            </div>
+            <p className={`max-w-[42%] shrink-0 break-all text-right text-sm font-bold tabular-nums ${isIncome ? 'text-emerald-600' : 'text-slate-900'}`}>{isIncome ? '+' : '-'}{formatMoney(row.amount, row.currency)}</p>
+            <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+          </summary>
+          <div className="border-t border-slate-100 p-4">
+            <dl className="mobile-finance-record-fields">{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value === undefined || value === null || value === '' ? '未填写' : String(value)}</dd></div>)}</dl>
+            {record && (isIncome ? mobilePaymentActions(record) : mobileDetailActions({ kind: row.kind, record }))}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-slate-900">{row.title}</p>
-            <p className="mt-0.5 truncate text-xs text-slate-500">{row.subtitle} · {row.date || '日期待补充'}</p>
-          </div>
-          <p className={`shrink-0 text-sm font-bold tabular-nums ${isIncome ? 'text-emerald-600' : 'text-slate-900'}`}>
-            {isIncome ? '+' : '-'}{formatMoney(row.amount, row.currency)}
-          </p>
-        </div>
+        </details>
       );
     };
 
-    return (
+    mobileFinanceContent = (
       <>
         <div className="app-page min-h-full space-y-4">
           <section className="overflow-hidden rounded-[28px] bg-slate-950 p-5 text-white shadow-[0_18px_50px_rgba(15,23,42,0.2)]">
@@ -3993,14 +4159,14 @@ export default function Finance() {
               <div>
                 <p className="text-xs font-medium tracking-[0.16em] text-cyan-300">T24 FINANCE</p>
                 <h1 className="mt-1 text-2xl font-bold">财务工作台</h1>
-                <p className="mt-1 text-sm text-slate-300">{currentMonthKey} · 手机随手记账</p>
+                <p className="mt-1 text-sm text-slate-300">{activeDateRange ? `${activeDateRange.start} 至 ${activeDateRange.end}` : '全部账期'}</p>
               </div>
               <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${mobileEntryDisabled ? 'bg-emerald-400/15 text-emerald-200' : 'bg-amber-300/15 text-amber-200'}`}>
                 {mobileEntryDisabled ? '已关账' : '进行中'}
               </span>
             </div>
             <div className="mt-5 rounded-2xl bg-white/10 p-4 ring-1 ring-white/10">
-              <p className="text-xs text-slate-300">本月经营利润</p>
+              <p className="text-xs text-slate-300">{dateFilterMode === 'this_month' ? '本月经营利润' : '所选账期经营利润'}</p>
               <div className="mt-1 flex items-end justify-between gap-3">
                 <p className="text-3xl font-bold tracking-tight tabular-nums">{fmt(summaryProfitUsd)}</p>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${summaryProfitUsd >= 0 ? 'bg-emerald-400/15 text-emerald-200' : 'bg-rose-400/15 text-rose-200'}`}>
@@ -4009,6 +4175,15 @@ export default function Finance() {
               </div>
             </div>
           </section>
+
+          <MobileFinanceDateFilter mode={dateFilterMode} start={filterStartDate} end={filterEndDate} onModeChange={mode => {
+            setDateFilterMode(mode); setFilterStartDate(''); setFilterEndDate(''); setExpenseMonth(''); setCompanyExpenseMonth('');
+            if (searchParams.has('month')) { const next = new URLSearchParams(searchParams); next.delete('month'); setSearchParams(next, { replace: true }); }
+          }} onMonthChange={month => {
+            const range = getMonthRange(new Date(`${month}-01T00:00:00`));
+            setFilterStartDate(range.start); setFilterEndDate(range.end); setDateFilterMode('custom'); setExpenseMonth(''); setCompanyExpenseMonth('');
+            if (searchParams.has('month')) { const next = new URLSearchParams(searchParams); next.delete('month'); setSearchParams(next, { replace: true }); }
+          }} />
 
           {loadError && hasFinanceData && (
             <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -4053,16 +4228,16 @@ export default function Finance() {
                 运营支出
               </button>
             </div>
-            {mobileEntryDisabled && <p className="mt-3 text-center text-xs text-slate-500">本月已关账，如需补录请在电脑端重新打开月份。</p>}
+            {mobileEntryDisabled && <p className="mt-3 text-center text-xs text-slate-500">本月已关账，如需补录请由管理员重新打开月份。</p>}
           </section>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-xs text-slate-500">本月实收</p>
+              <p className="text-xs text-slate-500">{dateFilterMode === 'this_month' ? '本月实收' : '所选账期实收'}</p>
               <p className="mt-1 text-xl font-bold tabular-nums text-slate-900">{fmt(summaryNetReceiptsUsd)}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-xs text-slate-500">本月总成本</p>
+              <p className="text-xs text-slate-500">{dateFilterMode === 'this_month' ? '本月总成本' : '所选账期总成本'}</p>
               <p className="mt-1 text-xl font-bold tabular-nums text-slate-900">{fmt(summaryCostUsd)}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -4097,9 +4272,11 @@ export default function Finance() {
           {mobileFinanceView === 'renewals' ? (
             <section aria-labelledby="mobile-renewal-risk-heading" className="space-y-3">
               <div className="flex items-center justify-between px-1">
-                <h2 id="mobile-renewal-risk-heading" className="text-base font-bold text-slate-900">续费风险列表</h2>
+                <h2 id="mobile-renewal-risk-heading" className="text-base font-bold text-slate-900">{mobileAllSubscriptions ? '全部套餐' : '续费风险列表'}</h2>
                 <span className="text-xs text-slate-500">{mobileRenewalRisks.length} 个套餐</span>
               </div>
+              <div className="flex gap-2"><Button variant={mobileAllSubscriptions ? 'outline' : 'default'} onClick={() => setMobileAllSubscriptions(false)}>待处理</Button><Button variant={mobileAllSubscriptions ? 'default' : 'outline'} onClick={() => setMobileAllSubscriptions(true)}>全部套餐</Button></div>
+              <Input aria-label="搜索续费套餐" placeholder="搜索客户或套餐" value={subscriptionSearch} onChange={event => setSubscriptionSearch(event.target.value)} />
               {mobileRenewalRisks.length > 0 ? mobileRenewalRisks.map(subscription => {
                 const status = getEffectiveSubscriptionStatus(subscription);
                 const customer = customerMap[subscription.customer_id];
@@ -4115,6 +4292,22 @@ export default function Finance() {
                       </span>
                     </div>
                     {subscription.end_date && <p className="mt-3 text-xs text-slate-500">到期日期 · {String(subscription.end_date).slice(0, 10)}</p>}
+                    <details className="mt-3 border-t border-slate-100 pt-2"><summary className="min-h-11 cursor-pointer py-3 text-sm text-slate-600">套餐详情与管理</summary>
+                      <dl className="mobile-finance-record-fields">
+                        <div><dt>套餐金额</dt><dd>{fmt(toMoneyNumber(subscription.package_price))}</dd></div><div><dt>周期</dt><dd>{cycleLabels[subscription.billing_cycle] || subscription.billing_cycle || '未填写'}</dd></div>
+                        <div><dt>服务开始</dt><dd>{subscription.start_date?.slice(0, 10) || '未填写'}</dd></div><div><dt>计划收款</dt><dd>{getSubscriptionPlannedPaymentDate(subscription) || '未填写'}</dd></div>
+                        <div><dt>负责人</dt><dd>{subscription.renewal_person || '未填写'}</dd></div><div><dt>续费方式</dt><dd>{subscription.auto_renew ? 'Stripe 续费记录' : '手动收款记录'}</dd></div>
+                      </dl>
+                      {canManageFinance && <div className="mobile-finance-record-actions">
+                        {['expired', 'renewal_pending'].includes(status) && <Button disabled={mobileWriteUnavailable || confirmingRenewalId === Number(subscription.id)} onClick={() => openConfirmSubscriptionRenewal(subscription)}>核对到账</Button>}
+                        {!['stopped', 'lost', 'upgraded', 'paused', 'renewed'].includes(status) && <>
+                          <Button variant="outline" disabled={mobileWriteUnavailable} onClick={() => openSubscriptionPackageChange(subscription)}>变更套餐</Button>
+                          <Button variant="outline" disabled={mobileWriteUnavailable || updatingSubscriptionId === Number(subscription.id)} onClick={() => handleToggleSubscriptionAutoRenew(subscription, !subscription.auto_renew)}>{subscription.auto_renew ? '切换手动收款' : '开启续费记录'}</Button>
+                          <Button variant="outline" disabled={mobileWriteUnavailable || updatingSubscriptionId === Number(subscription.id)} onClick={() => handleStopSubscriptionRenewal(subscription)}>停止未来续费</Button>
+                        </>}
+                        <Button variant="ghost" className="text-rose-600" disabled={mobileWriteUnavailable} onClick={() => setDeleteTarget({ type: 'subscription', item: subscription })}>删除套餐记录</Button>
+                      </div>}
+                    </details>
                     {canOpenMobileCustomer(subscription.customer_id) && <Button type="button" variant="outline" className="mt-3 min-h-11 w-full" aria-label={`查看客户详情：${customer?.business_name || customer?.name || subscription.customer_name || `客户 #${subscription.customer_id}`}`} onClick={() => openMobileCustomerDetail(subscription.customer_id)}>查看客户详情</Button>}
                   </article>
                 );
@@ -4125,18 +4318,19 @@ export default function Finance() {
           ) : mobileFinanceView !== 'receivables' ? (
             <section aria-label="流水列表" className="space-y-3">
               <div className="flex items-center justify-between px-1">
-                <h2 className="text-base font-bold text-slate-900">{mobileFinanceView === 'overview' ? '最近流水' : '本月流水'}</h2>
+                <h2 className="text-base font-bold text-slate-900">{mobileFinanceView === 'overview' ? '最近流水' : dateFilterMode === 'this_month' ? '本月流水' : '收支流水'}</h2>
                 <span className="text-xs text-slate-500">收入与支出分开标记</span>
               </div>
+              {mobileFinanceView === 'ledger' && <Input aria-label="搜索收支流水" placeholder="搜索客户、类型或日期" value={incomeSearch} onChange={event => setIncomeSearch(event.target.value)} />}
               {visibleLedgerRows.length > 0 ? visibleLedgerRows.map(renderLedgerCard) : (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">本月还没有流水</div>
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">{incomeSearch ? '没有匹配的流水' : '所选账期没有流水'}</div>
               )}
-              {mobileLedgerRows.length > 0 && <p aria-live="polite" className="text-center text-xs text-slate-500">已显示 {visibleLedgerRows.length} / 共 {mobileLedgerRows.length} 条</p>}
-              {mobileFinanceView === 'overview' && mobileLedgerRows.length > 5 ? (
+              {searchedMobileLedgerRows.length > 0 && <p aria-live="polite" className="text-center text-xs text-slate-500">已显示 {visibleLedgerRows.length} / 共 {searchedMobileLedgerRows.length} 条</p>}
+              {mobileFinanceView === 'overview' && searchedMobileLedgerRows.length > 5 ? (
                 <button type="button" onClick={() => changeMobileFinanceView('ledger')} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-blue-600">
                   查看全部流水
                 </button>
-              ) : mobileFinanceView === 'ledger' && visibleLedgerRows.length < mobileLedgerRows.length ? <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setMobileVisibleLimit(limit => limit + 15)}>加载更多流水</Button> : null}
+              ) : mobileFinanceView === 'ledger' && visibleLedgerRows.length < searchedMobileLedgerRows.length ? <Button type="button" variant="outline" className="min-h-11 w-full" onClick={() => setMobileVisibleLimit(limit => limit + 15)}>加载更多流水</Button> : null}
             </section>
           ) : (
             <section aria-label="应收列表" className="space-y-3">
@@ -4154,6 +4348,7 @@ export default function Finance() {
                     <p className="shrink-0 text-base font-bold tabular-nums text-amber-600">{fmt(row.outstanding)}</p>
                   </div>
                   {row.overdueDays > 0 && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">已逾期 {row.overdueDays} 天</p>}
+                  {mobilePaymentActions(payments.find(payment => Number(payment.id) === Number(row.id)))}
                   {canOpenMobileCustomer(row.customer_id) && <Button type="button" variant="outline" className="mt-3 min-h-11 w-full" aria-label={`查看客户详情：${row.customerName}`} onClick={() => openMobileCustomerDetail(row.customer_id)}>查看客户详情</Button>}
                 </div>
               )) : (
@@ -4164,79 +4359,16 @@ export default function Finance() {
             </section>
           )}
 
-          <p className="px-2 text-center text-[11px] leading-5 text-slate-400">手机端只开放新增。编辑、删除、退款、月结与导出请使用电脑端。</p>
+          <Button variant="outline" className="min-h-11 w-full" onClick={() => navigate('/more?group=finance')}>全部财务功能</Button>
         </div>
 
-        <Dialog open={showPaymentForm} onOpenChange={setShowPaymentForm}>
-          <DialogContent className="!grid !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-5 overflow-hidden rounded-none p-4 pb-0 sm:!h-auto sm:!max-h-[calc(100dvh-2rem)] sm:!w-full sm:!max-w-lg sm:rounded-[24px] sm:p-6">
-            <DialogHeader className="pr-12 text-left">
-              <DialogTitle>录入收款</DialogTitle>
-              <p className="text-sm text-slate-500">记录实际到账，不自动修改成交或续费。</p>
-            </DialogHeader>
-            <div className="min-h-0 space-y-4 overflow-y-auto pb-4">
-              <div className="space-y-2"><Label>客户 *</Label><NativeSelect value={payForm.customer_id} onChange={handlePayCustomerValueChange} options={customerOptions} placeholder="选择客户" /></div>
-              <div className="space-y-2">
-                <Label>收款金额（USD）*</Label>
-                <Input inputMode="decimal" type="number" min="0" step="0.01" className="h-12 text-lg" value={payForm.amount_paid} onChange={event => setPayForm(previous => ({ ...previous, amount_due: event.target.value, amount_paid: event.target.value, management_amount: '', ads_recharge_amount: '' }))} placeholder="0.00" />
-              </div>
-              <div className="space-y-2">
-                <Label>产品 / 服务 *</Label>
-                <Input list="mobile-finance-packages" className="h-12" value={payForm.product_names[0] || ''} onChange={event => setPayForm(previous => ({ ...previous, product_names: event.target.value ? [event.target.value] : [] }))} placeholder="例如：Google Ads 管理" />
-                <datalist id="mobile-finance-packages">{paymentPackageOptions.map(option => <option key={option.value} value={option.value} />)}</datalist>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2"><Label>收入类型</Label><NativeSelect value={payForm.income_type} onChange={value => setPayForm(previous => ({ ...previous, income_type: value, management_amount: '', ads_recharge_amount: '' }))} options={mobileIncomeTypeOptions} /></div>
-                <div className="space-y-2"><Label>收款方式</Label><NativeSelect value={payForm.payment_method} onChange={value => setPayForm(previous => ({ ...previous, payment_method: value }))} options={availablePaymentMethodOptions} /></div>
-              </div>
-              <div className="space-y-2"><Label>到账日期</Label><Input type="date" className="h-12" value={payForm.payment_date} onChange={event => setPayForm(previous => ({ ...previous, payment_date: event.target.value }))} /></div>
-              <div className="space-y-2"><Label>交易编号（选填）</Label><Input className="h-12" value={payForm.transaction_reference} onChange={event => setPayForm(previous => ({ ...previous, transaction_reference: event.target.value }))} placeholder="Zelle / Stripe / 支票编号" /></div>
-              <div className="space-y-2"><Label>备注（选填）</Label><Textarea value={payForm.notes} onChange={event => setPayForm(previous => ({ ...previous, notes: event.target.value }))} placeholder="补充说明" /></div>
-            </div>
-            <div className="-mx-4 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:mx-0 sm:border-0 sm:p-0"><Button onClick={handleSavePayment} disabled={saving} className="min-h-12 w-full bg-blue-600 text-base hover:bg-blue-700">{saving ? '保存中…' : '确认录入收款'}</Button></div>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={showExpenseForm} onOpenChange={setShowExpenseForm}>
-          <DialogContent className="!grid !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-5 overflow-hidden rounded-none p-4 pb-0 sm:!h-auto sm:!max-h-[calc(100dvh-2rem)] sm:!w-full sm:!max-w-lg sm:rounded-[24px] sm:p-6">
-            <DialogHeader className="pr-12 text-left"><DialogTitle>录入客户支出</DialogTitle><p className="text-sm text-slate-500">记录为某个客户发生的交付成本。</p></DialogHeader>
-            <div className="min-h-0 space-y-4 overflow-y-auto pb-4">
-              <div className="space-y-2"><Label>客户 *</Label><NativeSelect value={expenseForm.customer_id} onChange={value => setExpenseForm(previous => ({ ...previous, customer_id: value }))} options={customerOptions} placeholder="选择客户" /></div>
-              <div className="space-y-2"><Label>支出类型</Label><NativeSelect value={expenseForm.expense_type} onChange={value => setExpenseForm(previous => ({ ...previous, expense_type: value }))} options={customerExpenseTypeOptions} /></div>
-              <div className="grid grid-cols-[1fr_112px] gap-3">
-                <div className="space-y-2"><Label>金额 *</Label><Input inputMode="decimal" type="number" min="0" step="0.01" className="h-12 text-lg" value={expenseForm.amount} onChange={event => setExpenseForm(previous => ({ ...previous, amount: event.target.value }))} placeholder="0.00" /></div>
-                <div className="space-y-2"><Label>币种</Label><NativeSelect value={expenseForm.currency} onChange={value => setExpenseForm(previous => ({ ...previous, currency: value as CurrencyCode }))} options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))} /></div>
-              </div>
-              <div className="space-y-2"><Label>归属月份</Label><Input type="month" className="h-12" value={expenseForm.expense_month} onChange={event => setExpenseForm(previous => ({ ...previous, expense_month: event.target.value }))} /></div>
-              <div className="space-y-2"><Label>备注（选填）</Label><Textarea value={expenseForm.notes} onChange={event => setExpenseForm(previous => ({ ...previous, notes: event.target.value }))} placeholder="例如：客户网站素材采购" /></div>
-            </div>
-            <div className="-mx-4 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:mx-0 sm:border-0 sm:p-0"><Button onClick={handleSaveExpense} disabled={savingExpense} className="min-h-12 w-full bg-amber-600 text-base hover:bg-amber-700">{savingExpense ? '保存中…' : '确认录入客户支出'}</Button></div>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={showCompanyExpenseForm} onOpenChange={setShowCompanyExpenseForm}>
-          <DialogContent className="!grid !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-5 overflow-hidden rounded-none p-4 pb-0 sm:!h-auto sm:!max-h-[calc(100dvh-2rem)] sm:!w-full sm:!max-w-lg sm:rounded-[24px] sm:p-6">
-            <DialogHeader className="pr-12 text-left"><DialogTitle>录入运营支出</DialogTitle><p className="text-sm text-slate-500">记录工资、软件、房租等公司运营成本。</p></DialogHeader>
-            <div className="min-h-0 space-y-4 overflow-y-auto pb-4">
-              <div className="space-y-2"><Label>支出类型</Label><NativeSelect value={companyExpenseForm.category} onChange={value => setCompanyExpenseForm(previous => ({ ...previous, category: value }))} options={companyExpenseTypeOptions} /></div>
-              <div className="grid grid-cols-[1fr_112px] gap-3">
-                <div className="space-y-2"><Label>金额 *</Label><Input inputMode="decimal" type="number" min="0" step="0.01" className="h-12 text-lg" value={companyExpenseForm.amount} onChange={event => setCompanyExpenseForm(previous => ({ ...previous, amount: event.target.value }))} placeholder="0.00" /></div>
-                <div className="space-y-2"><Label>币种</Label><NativeSelect value={companyExpenseForm.currency} onChange={value => setCompanyExpenseForm(previous => ({ ...previous, currency: value as CurrencyCode }))} options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2"><Label>归属月份</Label><Input type="month" className="h-12" value={companyExpenseForm.expense_month} onChange={event => setCompanyExpenseForm(previous => ({ ...previous, expense_month: event.target.value }))} /></div>
-                <div className="space-y-2"><Label>支出日期</Label><Input type="date" className="h-12" value={companyExpenseForm.expense_date} onChange={event => setCompanyExpenseForm(previous => ({ ...previous, expense_date: event.target.value }))} /></div>
-              </div>
-              <div className="space-y-2"><Label>备注（选填）</Label><Textarea value={companyExpenseForm.notes} onChange={event => setCompanyExpenseForm(previous => ({ ...previous, notes: event.target.value }))} placeholder="补充说明或付款对象" /></div>
-            </div>
-            <div className="-mx-4 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:mx-0 sm:border-0 sm:p-0"><Button onClick={handleSaveCompanyExpense} disabled={savingCompanyExpense} className="min-h-12 w-full bg-violet-600 text-base hover:bg-violet-700">{savingCompanyExpense ? '保存中…' : '确认录入运营支出'}</Button></div>
-          </DialogContent>
-        </Dialog>
       </>
     );
   }
 
   return (
-    <div className={`t24-command-page t24-finance-page calm-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
+    <div className={isMobile ? 'min-w-0' : `t24-command-page t24-finance-page calm-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
+      {isMobile ? mobileFinanceContent : <>
       {/* Header */}
       <div className="app-page-title flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-start gap-3">
@@ -5875,9 +6007,11 @@ export default function Finance() {
 
       </Tabs>
 
+      </>}
+
       {/* ── Dialogs ── */}
 
-      {!isMobile && <>
+      <>
       {/* Subscription Renewal Confirm */}
       <Dialog
         open={!!subscriptionRenewalTarget}
@@ -5889,7 +6023,7 @@ export default function Finance() {
           }
         }}
       >
-        <DialogContent className="calm-renewal-confirm max-w-md">
+        <DialogContent className="mobile-finance-editor calm-renewal-confirm max-w-md">
           <DialogHeader>
             <DialogTitle>核对实际到账</DialogTitle>
           </DialogHeader>
@@ -6014,7 +6148,7 @@ export default function Finance() {
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="mobile-finance-editor max-w-lg">
           <DialogHeader>
             <DialogTitle>套餐变更</DialogTitle>
           </DialogHeader>
@@ -6116,11 +6250,11 @@ export default function Finance() {
         </DialogContent>
       </Dialog>
 
-      </>}
+      </>
 
       {/* Customer Profit Detail */}
       <Dialog open={!!profitDetailTarget} onOpenChange={(v) => { if (!v) setProfitDetailTarget(null); }}>
-        <DialogContent className="max-w-6xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="mobile-finance-editor max-w-6xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>客户利润详情</DialogTitle>
           </DialogHeader>
@@ -6306,12 +6440,13 @@ export default function Finance() {
         </DialogContent>
       </Dialog>
 
-      {!isMobile && <>
+      <>
       {/* Payment Form */}
       <Dialog open={showPaymentForm} onOpenChange={(v) => { setShowPaymentForm(v); if (!v) { setEditingPayId(null); setPayForm(emptyPayForm); } }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingPayId ? '编辑收款记录' : '录入收款'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
+            <p className="text-sm text-slate-500">本笔币种：{paymentFormCurrency === 'CNY' ? '人民币 CNY' : '美元 USD'}</p>
             <div>
               <Label>选择客户 *</Label>
               {customers.length === 0 ? (
@@ -6456,9 +6591,9 @@ export default function Finance() {
                 const unallocatedAmount = roundMoney(toMoneyNumber(payForm.amount_paid) - preview.management_amount - preview.ads_recharge_amount);
                 return (
                   <p className="mt-2 text-xs text-blue-700">
-                    当前计算：管理费 {fmt(preview.management_amount)}，投流充值 {fmt(preview.ads_recharge_amount)}，
-                    未拆分 {unallocatedAmount > 0 ? fmt(unallocatedAmount) : '$0'}，
-                    Stripe手续费 {preview.stripe_fee_amount > 0 ? fmt(preview.stripe_fee_amount) : '$0'}。
+                    当前计算：管理费 {formatMoney(preview.management_amount, paymentFormCurrency)}，投流充值 {formatMoney(preview.ads_recharge_amount, paymentFormCurrency)}，
+                    未拆分 {formatMoney(unallocatedAmount > 0 ? unallocatedAmount : 0, paymentFormCurrency)}，
+                    Stripe手续费 {formatMoney(preview.stripe_fee_amount > 0 ? preview.stripe_fee_amount : 0, paymentFormCurrency)}。
                   </p>
                 );
               })()}
@@ -6552,7 +6687,7 @@ export default function Finance() {
       </Dialog>
 
       <Dialog open={showIncomeTypeManager} onOpenChange={(v) => { setShowIncomeTypeManager(v); if (!v) setNewIncomeTypeName(''); }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>管理收入类型</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="flex items-center gap-2">
@@ -6613,7 +6748,7 @@ export default function Finance() {
       </Dialog>
 
       <Dialog open={showPaymentPackageManager} onOpenChange={(v) => { setShowPaymentPackageManager(v); if (!v) setNewPaymentPackageName(''); }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>管理收款套餐</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="flex items-center gap-2">
@@ -6657,7 +6792,7 @@ export default function Finance() {
       </Dialog>
 
       <Dialog open={showCustomerExpenseTypeManager} onOpenChange={(v) => { setShowCustomerExpenseTypeManager(v); if (!v) setNewCustomerExpenseTypeName(''); }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>管理客户支出类型</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="flex items-center gap-2">
@@ -6706,7 +6841,7 @@ export default function Finance() {
 
       {/* Customer Expense Form */}
       <Dialog open={showExpenseForm} onOpenChange={(v) => { setShowExpenseForm(v); if (!v) { setEditingExpenseId(null); setExpenseForm(emptyExpenseForm); } }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingExpenseId ? '编辑客户支出' : '录入客户支出'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
@@ -6775,7 +6910,7 @@ export default function Finance() {
 
       {/* Company Expense Form */}
       <Dialog open={showCompanyExpenseForm} onOpenChange={(v) => { setShowCompanyExpenseForm(v); if (!v) { setEditingCompanyExpenseId(null); setCompanyExpenseForm(emptyCompanyExpenseForm); } }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingCompanyExpenseId ? '编辑运营支出' : '录入运营支出'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
@@ -6830,7 +6965,7 @@ export default function Finance() {
       </Dialog>
 
       <Dialog open={showCompanyExpenseTypeManager} onOpenChange={(v) => { setShowCompanyExpenseTypeManager(v); if (!v) setNewCompanyExpenseTypeName(''); }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>管理运营支出类型</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="flex items-center gap-2">
@@ -6873,7 +7008,7 @@ export default function Finance() {
       </Dialog>
 
       <Dialog open={!!refundTarget} onOpenChange={(open) => { if (!open) setRefundTarget(null); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="mobile-finance-editor max-w-lg">
           <DialogHeader><DialogTitle>记录退款</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -6891,7 +7026,7 @@ export default function Finance() {
       </Dialog>
 
       <Dialog open={showAdSettlementForm} onOpenChange={(open) => { setShowAdSettlementForm(open); if (!open) setEditingAdSettlementId(null); }}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="mobile-finance-editor max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingAdSettlementId ? '编辑投流月结' : '新增投流月结'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4"><div><Label>客户 *</Label><select disabled={!!editingAdSettlementId} value={adSettlementForm.customer_id} onChange={e => setAdSettlementForm({ ...adSettlementForm, customer_id: e.target.value })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"><option value="">请选择客户</option>{customerOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div><div><Label>结算月份 *</Label><Input disabled={!!editingAdSettlementId} type="month" value={adSettlementForm.year_month} onChange={e => setAdSettlementForm({ ...adSettlementForm, year_month: e.target.value })} /></div></div>
@@ -6907,6 +7042,11 @@ export default function Finance() {
       </Dialog>
 
       {/* Confirm Dialogs */}
+      <ConfirmDialog open={!!mobileMonthConfirmation} onOpenChange={open => { if (!open) setMobileMonthConfirmation(null); }}
+        confirmLabel="确认" loadingLabel="保存中..." destructive={false}
+        title={mobileMonthConfirmation && closedFinanceMonths.has(mobileMonthConfirmation) ? '重新打开月份' : '确认关账'}
+        description={mobileMonthConfirmation && closedFinanceMonths.has(mobileMonthConfirmation) ? `重新打开 ${mobileMonthConfirmation} 后，可修改该月份账目。` : `确认 ${mobileMonthConfirmation || ''} 的账目已核对完成？关账后将锁定该月份的收支。`}
+        onConfirm={async () => { if (mobileMonthConfirmation) await handleToggleMonthClose(mobileMonthConfirmation); setMobileMonthConfirmation(null); }} loading={savingMonthClose} />
       <ConfirmDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
         title={deleteTarget?.type === 'payment' ? '确认删除收款记录' : '确认删除套餐记录'}
         description={`确定要删除「${deleteTarget?.item?.customer_name}」的${deleteTarget?.type === 'payment' ? '收款' : '套餐'}记录吗？`}
@@ -6921,7 +7061,7 @@ export default function Finance() {
         title="确认删除运营支出记录"
         description={`确定要删除「${companyExpenseTypeLabels[deleteCompanyExpenseTarget?.category] || deleteCompanyExpenseTarget?.category_name || deleteCompanyExpenseTarget?.category || ''}」的运营支出记录吗？`}
         onConfirm={handleDeleteCompanyExpense} loading={deletingCompanyExpense} />
-      </>}
+      </>
     </div>
   );
 }

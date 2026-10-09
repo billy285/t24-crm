@@ -132,22 +132,17 @@ test('叶页顶部返回和分组返回不制造重复历史或再次进入叶�
   expectReadOnly(requests);
 });
 
-test('财务保留十一项，四个手机视图实际可用，其余明确电脑端且不写入', async ({ page }) => {
+test('财务十一项均可在手机查看，明细入口保持只读', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const requests = await installApi(page, 'admin');
   const supported = [
     ['财务总览', '', '最近流水'], ['收入管理', 'income', '本月流水'],
     ['套餐续费', 'subscriptions', '续费风险列表'], ['应收欠款', 'receivables', '待收款客户'],
+    ['按月明细', 'monthly_detail', '按月明细'], ['客户利润', 'customer_profit', '客户利润'],
+    ['退款记录', 'refunds', '退款记录'], ['投流月结', 'ad_funds', '投流月结'],
+    ['客户支出', 'customer_expense', '客户支出'], ['运营支出', 'company_expense', '运营支出'],
+    ['数据分析', 'charts', '数据分析'],
   ];
-  const desktopOnly = ['按月明细', '客户利润', '退款记录', '投流月结', '客户支出', '运营支出', '数据分析'];
-  await page.goto(`${baseUrl}/more?group=finance`);
-  for (const label of desktopOnly) {
-    const row = more(page).locator(`[aria-label="${label}，请在电脑端管理"]`);
-    await expect(row).toBeVisible();
-    await expect(row.getByText('电脑端', { exact: true })).toBeVisible();
-    await expect(row.locator('a,button')).toHaveCount(0);
-    await expect(leafLink(page, label)).toHaveCount(0);
-  }
   for (const [label, tab, heading] of supported) {
     await page.goto(`${baseUrl}/more?group=finance`);
     const link = leafLink(page, label);
@@ -212,9 +207,9 @@ test('账户仍可访问，电脑端设置保留说明并不能从手机直接�
   await expect(more(page).getByText('电脑端', { exact: true })).toHaveCount(2);
   await page.goto(`${baseUrl}/more?group=finance`);
   await expect(more(page).getByText('月度扣点比例', { exact: true })).toBeVisible();
-  await expect(leafLink(page, '月度扣点比例')).toHaveCount(0);
+  await expect(leafLink(page, '月度扣点比例')).toHaveAttribute('href', '/settings/deduction');
   await expect(more(page).getByText('工资表', { exact: true })).toBeVisible();
-  await expect(leafLink(page, '工资表')).toHaveCount(0);
+  await expect(leafLink(page, '工资表')).toHaveAttribute('href', '/payroll');
   expect(requests.some(request => /\/settings|\/permissions/.test(request.path))).toBe(false);
   expectReadOnly(requests);
 });

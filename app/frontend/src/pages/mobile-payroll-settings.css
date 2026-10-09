@@ -1,0 +1,208 @@
+/* Mobile presentation only; shared financial values and actions stay in the pages. */
+@media (max-width: 767px) {
+  .payroll-page,
+  .deduction-settings-page {
+    min-width: 0;
+    width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .payroll-page button,
+  .deduction-settings-page button,
+  .deduction-editor button {
+    min-height: 44px;
+    white-space: normal;
+  }
+
+  .payroll-page input,
+  .payroll-page select,
+  .payroll-page textarea,
+  .deduction-settings-page input,
+  .deduction-editor input {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .payroll-view-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .payroll-view-tabs [role="tab"] {
+    min-width: 0;
+    gap: 5px;
+    padding-inline: 4px;
+    font-size: 13px;
+  }
+
+  .payroll-list-heading,
+  .deduction-settings-page > .app-page-title,
+  .deduction-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .payroll-page .app-table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .payroll-responsive-table,
+  .deduction-responsive-table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+    white-space: normal;
+  }
+
+  .payroll-responsive-table thead,
+  .deduction-responsive-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .payroll-responsive-table tbody,
+  .deduction-responsive-table tbody {
+    display: grid;
+    gap: 14px;
+  }
+
+  .payroll-responsive-table tbody tr,
+  .deduction-responsive-table tbody tr {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: #fff;
+  }
+
+  .payroll-responsive-table td,
+  .deduction-responsive-table td {
+    display: grid;
+    grid-template-columns: minmax(70px, 32%) minmax(0, 1fr);
+    gap: 4px 10px;
+    padding: 8px 12px;
+    text-align: left;
+    white-space: normal;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .payroll-responsive-table td::before,
+  .deduction-responsive-table td::before {
+    content: attr(data-label);
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 400;
+  }
+
+  .payroll-responsive-table td > *,
+  .deduction-responsive-table td > * {
+    min-width: 0;
+    grid-column: 2;
+  }
+
+  .payroll-responsive-table td:first-child,
+  .deduction-responsive-table td:first-child,
+  .payroll-responsive-table td[colspan],
+  .deduction-responsive-table td[colspan] {
+    display: block;
+    padding: 12px;
+  }
+
+  .payroll-responsive-table td:first-child,
+  .deduction-responsive-table td:first-child {
+    border-bottom: 1px dashed #e2e8f0;
+    background: #f8fafc;
+    font-weight: 600;
+  }
+
+  .payroll-responsive-table td:first-child::before,
+  .deduction-responsive-table td:first-child::before,
+  .payroll-responsive-table td[colspan]::before,
+  .deduction-responsive-table td[colspan]::before {
+    display: none;
+  }
+
+  .deduction-responsive-table td[data-label="操作"] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-top: 1px dashed #e2e8f0;
+  }
+
+  .deduction-responsive-table td[data-label="操作"]::before {
+    display: none;
+  }
+
+  .deduction-responsive-table td[data-label="操作"] > * {
+    margin: 0;
+  }
+
+  .payroll-trend-row {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 6px 10px;
+  }
+
+  .payroll-trend-row > :last-child {
+    grid-column: 2;
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+  }
+
+  .payroll-dialog-layer {
+    padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+  }
+
+  .payroll-dialog-layer > * {
+    min-width: 0;
+    max-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .payroll-dialog-layer > * > * {
+    padding: 16px;
+  }
+
+  .payroll-editor-grid > * {
+    min-width: 0;
+  }
+
+  .deduction-default-form {
+    flex-wrap: wrap;
+  }
+
+  .deduction-default-form > div {
+    flex: 1 1 150px;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 359px) {
+  .payroll-view-tabs svg {
+    display: none;
+  }
+
+  .payroll-editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .payroll-editor-grid > .col-span-2 {
+    grid-column: auto;
+  }
+}

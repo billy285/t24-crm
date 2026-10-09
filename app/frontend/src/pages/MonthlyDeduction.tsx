@@ -6,18 +6,16 @@ import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableHead, TableHeader, TableRow, TableBody, TableCell } from '@/components/ui/table';
-import { Plus, Edit, Trash2, RefreshCw, Upload, Shield, Monitor } from 'lucide-react';
+import { Plus, Edit, Trash2, RefreshCw, Upload, Shield } from 'lucide-react';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { getDefaultDeduction, updateDefaultDeduction, importMonthlyDeductions } from '@/lib/api';
 import { useRole } from '@/lib/role-context';
+import './mobile-payroll-settings.css';
 
 type RateItem = { year_month: string; rate: number; created_at?: string; updated_at?: string };
 
 export default function MonthlyDeduction() {
   const { isAdmin } = useRole();
-  const [isMobileViewport, setIsMobileViewport] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
-  );
   const [items, setItems] = useState<RateItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -51,16 +49,8 @@ export default function MonthlyDeduction() {
   }, []);
 
   useEffect(() => {
-    const query = window.matchMedia('(max-width: 767px)');
-    const handleChange = (event: MediaQueryListEvent) => setIsMobileViewport(event.matches);
-    setIsMobileViewport(query.matches);
-    query.addEventListener('change', handleChange);
-    return () => query.removeEventListener('change', handleChange);
-  }, []);
-
-  useEffect(() => {
-    if (!isMobileViewport) void load();
-  }, [isMobileViewport, load]);
+    void load();
+  }, [load]);
 
   const openCreate = () => {
     setEditTarget(null);
@@ -142,29 +132,8 @@ export default function MonthlyDeduction() {
     }
   };
 
-  if (isMobileViewport) {
-    return (
-      <div className="app-page mx-auto flex min-h-[60dvh] max-w-lg items-center px-1 py-6">
-        <Card className="w-full border-blue-100 bg-white shadow-sm">
-          <CardContent className="p-6 text-center">
-            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm ring-1 ring-blue-100">
-              <Monitor className="h-6 w-6" />
-            </span>
-            <h1 className="mt-4 text-lg font-semibold text-slate-900">月度扣点比例设置</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              此功能会影响公司财务计算口径，为避免手机误触，请在电脑端进入系统处理。
-            </p>
-            <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs leading-5 text-slate-500 ring-1 ring-slate-100">
-              手机端不会加载扣点明细，也不能新增、修改、删除或导入比例。
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className="t24-settings-page calm-report-page app-page space-y-5">
+    <div className="deduction-settings-page t24-settings-page calm-report-page app-page space-y-5">
       <div className="app-page-title flex items-center justify-between">
         <div><p className="app-page-kicker">T24 Marketing · Finance Settings</p><h1 className="app-page-heading">月度扣点比例</h1><p className="app-page-description">统一管理每月平台扣点比例，修改后影响对应月份财务口径。</p></div>
         <div className="flex gap-2">
@@ -182,15 +151,15 @@ export default function MonthlyDeduction() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="deduction-card-heading flex flex-row items-center justify-between">
           <CardTitle>默认扣点（全局）</CardTitle>
           <div className="flex items-center text-slate-500 text-xs"><Shield className="w-4 h-4 mr-1" />仅管理员可修改</div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-end gap-3">
+          <div className="deduction-default-form flex items-end gap-3">
             <div>
-              <Label>默认扣点 (%)</Label>
-              <Input type="number" min={0} max={100} value={defaultRatePct} onChange={(e) => setDefaultRatePct(e.target.value)} disabled={!isAdmin} />
+              <Label htmlFor="default-deduction-rate">默认扣点 (%)</Label>
+              <Input id="default-deduction-rate" type="number" min={0} max={100} value={defaultRatePct} onChange={(e) => setDefaultRatePct(e.target.value)} disabled={!isAdmin} />
             </div>
             {isAdmin && (
               <Button onClick={saveDefault} disabled={savingDefault}>
@@ -206,7 +175,7 @@ export default function MonthlyDeduction() {
           <CardTitle>配置列表</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table className="deduction-responsive-table">
             <TableHeader>
               <TableRow>
                 <TableHead>月份</TableHead>
@@ -218,10 +187,10 @@ export default function MonthlyDeduction() {
             <TableBody>
               {items.map((it) => (
                 <TableRow key={it.year_month}>
-                  <TableCell>{it.year_month}</TableCell>
-                  <TableCell>{Math.round((it.rate || 0) * 100)}%</TableCell>
-                  <TableCell>{it.updated_at ? String(it.updated_at).slice(0, 19).replace('T', ' ') : '-'}</TableCell>
-                  <TableCell className="text-right space-x-2">
+                  <TableCell data-label="月份">{it.year_month}</TableCell>
+                  <TableCell data-label="扣点比例">{Math.round((it.rate || 0) * 100)}%</TableCell>
+                  <TableCell data-label="更新时间">{it.updated_at ? String(it.updated_at).slice(0, 19).replace('T', ' ') : '-'}</TableCell>
+                  <TableCell data-label="操作" className="text-right space-x-2">
                     {isAdmin && (
                       <>
                         <Button size="sm" variant="outline" onClick={() => openEdit(it)}>
@@ -274,18 +243,19 @@ export default function MonthlyDeduction() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="deduction-editor">
           <DialogHeader>
             <DialogTitle>{editTarget ? '编辑月份' : '新增月份'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>月份 (YYYY-MM)</Label>
-              <Input value={ym} onChange={(e) => setYm(e.target.value)} placeholder="例如 2026-03" />
+              <Label htmlFor="deduction-month">月份 (YYYY-MM)</Label>
+              <Input id="deduction-month" value={ym} onChange={(e) => setYm(e.target.value)} placeholder="例如 2026-03" />
             </div>
             <div>
-              <Label>扣点比例 (%)</Label>
+              <Label htmlFor="deduction-rate">扣点比例 (%)</Label>
               <Input
+                id="deduction-rate"
                 type="number"
                 min={0}
                 max={100}

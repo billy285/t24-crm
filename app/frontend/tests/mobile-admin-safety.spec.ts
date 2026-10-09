@@ -112,7 +112,7 @@ function managementDecisionPayloads() {
   };
 }
 
-test('手机直接访问设置、权限和工资时只显示安全说明', async ({ page }) => {
+test('手机直接访问系统设置和权限时保留安全说明', async ({ page }) => {
   await seedAdmin(page, 'super_admin');
   const sensitiveRequests: string[] = [];
   page.on('request', request => {
@@ -124,7 +124,6 @@ test('手机直接访问设置、权限和工资时只显示安全说明', async
   for (const [path, title] of [
     ['/settings', '全局设置请在电脑端处理'],
     ['/permissions', '权限管理请在电脑端处理'],
-    ['/payroll', '工资处理请在电脑端完成'],
   ] as const) {
     await page.goto(`${baseUrl}${path}`);
     await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 15_000 });
@@ -215,7 +214,7 @@ test('客户生命周期手机版只读查看轨迹且不挂载状态变更操�
   await expectNoHorizontalOverflow(page);
 });
 
-test('财务手机深链接进入记账工作台且只开放三类新增操作', async ({ page }) => {
+test('财务手机新增表单适配全屏且打开关闭不写入', async ({ page }) => {
   await seedAdmin(page);
   const nonGetRequests: string[] = [];
   page.on('request', request => {
@@ -235,12 +234,11 @@ test('财务手机深链接进入记账工作台且只开放三类新增操作',
   await expect(page.getByRole('button', { name: '客户支出' })).toBeVisible();
   await expect(page.getByRole('button', { name: '运营支出' })).toBeVisible();
   await expect(page.getByRole('button', { name: '导出 Excel' })).toHaveCount(0);
-  await expect(page.locator('button').filter({ hasText: /导出 CSV|导出 Excel|记录退款|确认退款入账|新增月结|保存月结|确认关账|重新打开|删除收款|删除支出|编辑收款|编辑支出/ })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: /收入管理/ })).toHaveCount(0);
   await page.getByRole('button', { name: '录入收款' }).click();
   let mobileDialog = page.getByRole('dialog');
   await expect(mobileDialog.getByRole('heading', { name: '录入收款' })).toBeVisible();
-  await expect(mobileDialog.getByRole('button', { name: '确认录入收款' })).toBeVisible();
+  await expect(mobileDialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
   const dialogBounds = await mobileDialog.boundingBox();
   expect(dialogBounds).not.toBeNull();
   expect(dialogBounds!.x).toBeGreaterThanOrEqual(-1);
@@ -254,13 +252,13 @@ test('财务手机深链接进入记账工作台且只开放三类新增操作',
   await page.getByRole('button', { name: '客户支出' }).click();
   mobileDialog = page.getByRole('dialog');
   await expect(mobileDialog.getByRole('heading', { name: '录入客户支出' })).toBeVisible();
-  await expect(mobileDialog.getByRole('button', { name: '确认录入客户支出' })).toBeVisible();
+  await expect(mobileDialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
   await mobileDialog.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: '运营支出' }).click();
   mobileDialog = page.getByRole('dialog');
   await expect(mobileDialog.getByRole('heading', { name: '录入运营支出' })).toBeVisible();
-  await expect(mobileDialog.getByRole('button', { name: '确认录入运营支出' })).toBeVisible();
+  await expect(mobileDialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
   await mobileDialog.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.waitForTimeout(100);
@@ -275,10 +273,8 @@ test('财务手机深链接进入记账工作台且只开放三类新增操作',
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('dialog').getByRole('heading', { name: '录入运营支出' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '录入收款' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '客户支出' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '运营支出' })).toBeVisible();
-  await expect(page.locator('button').filter({ hasText: /导出 CSV|导出 Excel|记录退款|确认退款入账|新增月结|保存月结|确认关账|重新打开/ })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '运营支出', exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole('button', { name: '新增支出', exact: true })).toBeVisible();
   await page.waitForTimeout(100);
   expect(nonGetRequests).toEqual([]);
 });
@@ -305,22 +301,23 @@ test('财务手机工作台可以提交收款、客户支出和运营支出', as
   await page.getByRole('button', { name: '录入收款' }).click();
   let dialog = page.getByRole('dialog');
   await dialog.locator('select').nth(0).selectOption('1');
-  await dialog.locator('input[type="number"]').fill('120');
-  await dialog.getByPlaceholder('例如：Google Ads 管理').fill('Google Ads');
-  await dialog.getByRole('button', { name: '确认录入收款' }).click();
+  await dialog.locator('input[type="number"]').nth(0).fill('120');
+  await dialog.locator('input[type="number"]').nth(1).fill('120');
+  await dialog.locator('input[type="checkbox"]').first().check();
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
   await page.getByRole('button', { name: '客户支出' }).click();
   dialog = page.getByRole('dialog');
   await dialog.locator('select').nth(0).selectOption('1');
   await dialog.locator('input[type="number"]').fill('35');
-  await dialog.getByRole('button', { name: '确认录入客户支出' }).click();
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
   await page.getByRole('button', { name: '运营支出' }).click();
   dialog = page.getByRole('dialog');
   await dialog.locator('input[type="number"]').fill('88');
-  await dialog.getByRole('button', { name: '确认录入运营支出' }).click();
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
   expect(writes).toEqual([
@@ -465,7 +462,6 @@ test('430px 安全页面保持只读提示且无横向溢出', async ({ page }) 
   for (const [path, title] of [
     ['/settings', '全局设置请在电脑端处理'],
     ['/permissions', '权限管理请在电脑端处理'],
-    ['/payroll', '工资处理请在电脑端完成'],
   ] as const) {
     await page.goto(`${baseUrl}${path}`);
     await expect(page.getByRole('heading', { name: title })).toBeVisible();

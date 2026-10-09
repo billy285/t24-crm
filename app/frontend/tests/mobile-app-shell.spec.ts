@@ -68,6 +68,8 @@ async function mockAuthenticatedApi(page: Page, role: TestRole, fixtures: HomeFi
     else if (path.includes('/entities/subscriptions')) data = { items: fixtures.subscriptions || [], total: (fixtures.subscriptions || []).length };
     else if (path.includes('/entities/payments')) data = { items: fixtures.payments || [], total: (fixtures.payments || []).length };
     else if (path.endsWith('/reports/rmb-profit-estimate')) data = { definition: '本地模拟计算口径', usd_definition: '本地模拟美元口径', payroll_note: '本地模拟工资说明', start_date: '2026-01-01', end_date: '2026-10-10', fallback_exchange_rate: 6.7, rows: [], quarterly: [], yearly: [], summary: { period: '模拟期间', month_count: 0, usd_operating_balance: 0, usd_converted_cny: 0, cny_operating_income: 0, cny_actual_expense: 0, estimated_profit_cny: 0, profitable_months: 0, loss_months: 0, break_even_months: 0 } };
+    else if (path === '/api/v1/payroll') data = { sheet: { id: 1, month: '2026-08', status: 'draft', currency: 'CNY' }, items: [], totals: { gross: 0, deductions: 0, net: 0 } };
+    else if (path.endsWith('/payroll/employees')) data = [];
     else if (path.endsWith('/deductions-monthly/default')) data = { rate: 0.15 };
     else if (path.endsWith('/deductions-monthly')) data = [];
     else if (path.includes('/app-config')) data = { items: {} };
@@ -303,7 +305,7 @@ test('手机直接进入受控管理页时仍保留所属 App 导航', async ({ 
   await expect(page.getByRole('button', { name: /系统设置/ })).toBeVisible();
 
   await page.goto(`${baseUrl}/payroll`);
-  await expect(page.getByRole('heading', { name: '工资处理请在电脑端完成' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工资表与人力成本' })).toBeVisible();
   await page.getByRole('button', { name: '打开财务结算功能菜单' }).click();
   await expect(page.getByRole('button', { name: /财务管理/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /工资表/ })).toBeVisible();
