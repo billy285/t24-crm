@@ -683,7 +683,10 @@ export default function Finance() {
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'overview' : normalizeFinanceTab(searchParams.get('tab'))
   ));
   const [snapshotExpanded, setSnapshotExpanded] = useState(activeFinanceTab === 'overview');
-  const [mobileFinanceView, setMobileFinanceView] = useState<'overview' | 'ledger' | 'receivables'>('overview');
+  const [mobileFinanceView, setMobileFinanceView] = useState<'overview' | 'ledger' | 'receivables' | 'renewals'>(() => {
+    const tab = normalizeFinanceTab(searchParams.get('tab'));
+    return tab === 'subscriptions' ? 'renewals' : tab === 'receivables' ? 'receivables' : tab === 'income' ? 'ledger' : 'overview';
+  });
   const [exporting, setExporting] = useState(false);
   const blockMobileFinanceMutation = (allowCreate = false) => {
     if (!isMobile || allowCreate) return false;
@@ -2646,6 +2649,10 @@ export default function Finance() {
 
   useEffect(() => {
     setActiveFinanceTab(isMobile ? 'overview' : normalizeFinanceTab(searchParams.get('tab')));
+    if (isMobile) {
+      const tab = normalizeFinanceTab(searchParams.get('tab'));
+      setMobileFinanceView(tab === 'subscriptions' ? 'renewals' : tab === 'receivables' ? 'receivables' : tab === 'income' ? 'ledger' : 'overview');
+    }
   }, [isMobile, searchParams]);
   useEffect(() => { setSnapshotExpanded(activeFinanceTab === 'overview'); }, [activeFinanceTab]);
 
@@ -3925,6 +3932,7 @@ export default function Finance() {
   if (isMobile) {
     const mobileEntryDisabled = closedFinanceMonths.has(currentMonthKey);
     const visibleLedgerRows = mobileFinanceView === 'overview' ? mobileLedgerRows.slice(0, 5) : mobileLedgerRows.slice(0, 15);
+    const mobileRenewalRisks = subscriptions.filter(subscription => ACTIONABLE_SUBSCRIPTION_STATUSES.has(getEffectiveSubscriptionStatus(subscription)));
     const mobileIncomeTypeOptions = paymentIncomeTypeOptions.filter(option => option.value !== MIXED_MANAGEMENT_ADS_KEY);
     const renderLedgerCard = (row: typeof mobileLedgerRows[number]) => {
       const isIncome = row.kind === 'income';
@@ -4035,16 +4043,24 @@ export default function Finance() {
             </div>
           </div>
 
-          <nav aria-label="财务手机视图" className="grid grid-cols-3 rounded-2xl bg-slate-200/70 p-1">
+          <nav aria-label="财务手机视图" className="grid grid-cols-4 rounded-2xl bg-slate-200/70 p-1">
             {([
               ['overview', '总览'],
               ['ledger', '流水'],
               ['receivables', `应收 ${ownerOverview.receivableCount}`],
+              ['renewals', '续费'],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
-                onClick={() => setMobileFinanceView(value)}
+                onClick={() => {
+                  setMobileFinanceView(value);
+                  const nextParams = new URLSearchParams(searchParams);
+                  if (value === 'overview') nextParams.delete('tab');
+                  else nextParams.set('tab', value === 'renewals' ? 'subscriptions' : value === 'ledger' ? 'income' : 'receivables');
+                  setSearchParams(nextParams);
+                }}
+                aria-current={mobileFinanceView === value ? 'page' : undefined}
                 className={`min-h-11 rounded-xl px-2 text-sm font-semibold transition ${mobileFinanceView === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
               >
                 {label}
@@ -4052,7 +4068,34 @@ export default function Finance() {
             ))}
           </nav>
 
-          {mobileFinanceView !== 'receivables' ? (
+          {mobileFinanceView === 'renewals' ? (
+            <section aria-labelledby="mobile-renewal-risk-heading" className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <h2 id="mobile-renewal-risk-heading" className="text-base font-bold text-slate-900">续费风险列表</h2>
+                <span className="text-xs text-slate-500">{mobileRenewalRisks.length} 个套餐</span>
+              </div>
+              {mobileRenewalRisks.length > 0 ? mobileRenewalRisks.map(subscription => {
+                const status = getEffectiveSubscriptionStatus(subscription);
+                const customer = customerMap[subscription.customer_id];
+                return (
+                  <article key={subscription.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="break-words text-sm font-semibold text-slate-900">{customer?.business_name || customer?.name || subscription.customer_name || `客户 #${subscription.customer_id}`}</h3>
+                        <p className="mt-1 break-words text-xs text-slate-500">{subscription.package_name || '套餐信息待补充'}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${subStatusColors[status] || 'bg-slate-100 text-slate-600'}`}>
+                        {subStatusLabels[status] || subscriptionStatusFallbackLabels[status] || status}
+                      </span>
+                    </div>
+                    {subscription.end_date && <p className="mt-3 text-xs text-slate-500">到期日期 · {String(subscription.end_date).slice(0, 10)}</p>}
+                  </article>
+                );
+              }) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">当前没有续费风险提醒</div>
+              )}
+            </section>
+          ) : mobileFinanceView !== 'receivables' ? (
             <section className="space-y-3">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-base font-bold text-slate-900">{mobileFinanceView === 'overview' ? '最近流水' : '本月流水'}</h2>

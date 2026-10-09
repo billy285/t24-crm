@@ -71,7 +71,7 @@ for (const width of [320, 390, 430]) {
       await expect(dialog.locator('[aria-current="page"]')).toHaveCount(1);
       await expect(dialog.getByRole('button', { name: menuLabel, exact: true })).toHaveAttribute('aria-current', 'page');
       if (screenshotDir && width === 390 && path === '/sales-knowledge') await page.screenshot({ path: `${screenshotDir}/local-mock-sales-module-menu-390.png`, fullPage: true });
-      await page.keyboard.press('Escape');
+      await dialog.press('Escape');
       await expect(dialog).toBeHidden();
       const widths = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth }));
       expect(widths.document).toBeLessThanOrEqual(widths.viewport);
@@ -184,6 +184,7 @@ test('销售首页快捷名称与模块菜单一致且仍按权限显示', async
   await page.setViewportSize({ width: 390, height: 844 });
   await seed(page, 'admin');
   await page.goto(`${baseUrl}/apps`);
+  await page.locator('summary').filter({ hasText: '全部功能' }).click();
   const sales = page.getByRole('region', { name: '销售中心', exact: true });
   for (const label of ['今日拨打', '商家池', '联系进展', '知识库']) await expect(sales.getByRole('button', { name: `打开${label}`, exact: true })).toBeVisible();
   await sales.getByRole('button', { name: '打开联系进展', exact: true }).click();
@@ -194,7 +195,7 @@ test('销售首页今日任务先于应用入口，全部功能收起且展开�
   await page.setViewportSize({ width: 390, height: 844 });
   const requests = await seed(page, 'sales', { batch: taskBatch(4, 1, 20) });
   await page.goto(`${baseUrl}/apps`);
-  const today = page.getByRole('region', { name: '今天先处理' });
+  const today = page.getByRole('region', { name: '今日重点' });
   await expect(today.getByRole('heading', { name: '今天还有 3 条销售任务' })).toBeVisible();
   const appOrder = await today.evaluate(element => Boolean(element.compareDocumentPosition(document.querySelector('[aria-label="工作应用"]')!) & Node.DOCUMENT_POSITION_FOLLOWING));
   expect(appOrder).toBe(true);

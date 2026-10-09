@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import MobileAppHome, {
+  type MobileHomePriorityItem,
   type MobileHomeRecentItem,
   type MobileHomeTodayItem,
 } from '@/components/MobileAppHome';
@@ -13,6 +14,7 @@ import { invokeWithAuth } from '@/lib/tokenStore';
 
 type LauncherSnapshot = {
   todayItems: MobileHomeTodayItem[];
+  priorityItems: MobileHomePriorityItem[];
   appBadges: Partial<Record<MobileBusinessAppKey, number>>;
   recentItems: MobileHomeRecentItem[];
   notificationCount: number;
@@ -22,6 +24,7 @@ type AnyRecord = Record<string, any>;
 
 const emptySnapshot: LauncherSnapshot = {
   todayItems: [],
+  priorityItems: [],
   appBadges: {},
   recentItems: [],
   notificationCount: 0,
@@ -114,6 +117,7 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
     const partiallyFailed = requiredResults.some(result => !fulfilled(result));
 
     if (allFailed && !isSales && !isSalesManager) {
+      setSnapshot(emptySnapshot);
       setLoadError('首页数字暂时无法更新，应用入口仍可正常使用。');
       setLoading(false);
       return;
@@ -158,6 +162,32 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
     const overduePayments = payments.filter((payment: AnyRecord) => Number(payment.outstanding_amount || 0) > 0);
     const recentItems: MobileHomeRecentItem[] = [];
     const todayItems: MobileHomeTodayItem[] = [];
+    const priorityItems: MobileHomePriorityItem[] = ['super_admin', 'admin'].includes(role) ? [
+      {
+        id: 'overdue-tasks',
+        title: '逾期任务',
+        count: fulfilled(tasksResult) ? overdueTasks.length : null,
+        path: '/tasks?view=team&quick=overdue',
+        actionLabel: '查看任务',
+        tone: 'warning',
+      },
+      {
+        id: 'renewal-risks',
+        title: '续费风险',
+        count: fulfilled(subscriptionsResult) ? financeRiskSubscriptions.length : null,
+        path: '/finance?tab=subscriptions',
+        actionLabel: '查看续费',
+        tone: 'warning',
+      },
+      {
+        id: 'receivables',
+        title: '待收款',
+        count: fulfilled(paymentsResult) ? overduePayments.length : null,
+        path: '/finance?tab=receivables',
+        actionLabel: '查看收款',
+        tone: overduePayments.length > 0 ? 'critical' : 'info',
+      },
+    ] : [];
     const appBadges: Partial<Record<MobileBusinessAppKey, number>> = {};
     let notificationCount = 0;
 
@@ -206,6 +236,7 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
         tone: !readUsable || remaining > 0 ? 'warning' : assigned! > 0 ? 'success' : 'info',
       });
     } else if (isPartner) {
+      const readUsable = fulfilled(partnerResult);
       const renewalAttention = Number(partnerData.summary?.renewal_attention_count || 0);
       const currencies = Object.values(partnerData.summary?.currencies || {}) as AnyRecord[];
       const payableEntries = currencies.reduce((sum, item) => sum + Number(item.payable || 0), 0);
@@ -213,43 +244,47 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
       notificationCount = renewalAttention;
       todayItems.push({
         id: 'partner-today',
-        title: renewalAttention > 0 ? `${renewalAttention} 位合作客户需要关注` : '合作客户状态正常',
-        description: payableEntries > 0 ? `当前有 ${payableEntries} 笔分润进入可结算状态。` : '查看客户续费与分润确认状态。',
+        title: !readUsable ? '合作客户数据待更新' : renewalAttention > 0 ? `${renewalAttention} 位合作客户需要关注` : '合作客户状态正常',
+        description: !readUsable ? '暂未读取到合作客户与分润状态，请重新加载或进入应用查看。' : payableEntries > 0 ? `当前有 ${payableEntries} 笔分润进入可结算状态。` : '查看客户续费与分润确认状态。',
         path: '/partner-portal',
         actionLabel: '查看客户与分润',
-        tone: renewalAttention > 0 ? 'warning' : 'success',
+        tone: !readUsable || renewalAttention > 0 ? 'warning' : 'success',
       });
     } else if (role === 'finance') {
+      const readUsable = fulfilled(subscriptionsResult) && fulfilled(paymentsResult);
       const riskCount = financeRiskSubscriptions.length + overduePayments.length;
       appBadges.finance = riskCount;
       notificationCount = riskCount;
       todayItems.push({
         id: 'finance-today',
-        title: riskCount > 0 ? `${riskCount} 项财务事项需要核对` : '收款与续费状态正常',
-        description: `${overduePayments.length} 笔待收款 · ${financeRiskSubscriptions.length} 个续费风险`,
+        title: riskCount > 0 ? `${riskCount} 项财务事项需要核对` : !readUsable ? '财务事项数据待更新' : '收款与续费状态正常',
+        description: `${fulfilled(paymentsResult) ? `${overduePayments.length} 笔待收款` : '待收款待更新'} · ${fulfilled(subscriptionsResult) ? `${financeRiskSubscriptions.length} 个续费风险` : '续费风险待更新'}`,
         path: '/finance?tab=receivables',
         actionLabel: '查看财务待办',
-        tone: overduePayments.length > 0 ? 'critical' : riskCount > 0 ? 'warning' : 'success',
+        tone: overduePayments.length > 0 ? 'critical' : riskCount > 0 || !readUsable ? 'warning' : 'success',
       });
     } else if (role === 'ops' || role === 'design') {
+      const readUsable = fulfilled(tasksResult);
       const priorityCount = overdueTasks.length + dueTodayTasks.length;
       appBadges.delivery = openTasks.length;
       notificationCount = priorityCount || openTasks.length;
       const roleName = role === 'design' ? '设计' : '运营';
       todayItems.push({
         id: `${role}-today`,
-        title: overdueTasks.length > 0
+        title: !readUsable ? `${roleName}任务数据待更新` : overdueTasks.length > 0
           ? `${overdueTasks.length} 项${roleName}任务已逾期`
           : dueTodayTasks.length > 0
             ? `今天有 ${dueTodayTasks.length} 项${roleName}任务到期`
             : `当前有 ${openTasks.length} 项${roleName}任务`,
-        description: overdueTasks.length > 0 ? '优先处理逾期事项，并补充最新进展。' : '从自己的任务开始，完成后及时记录结果。',
+        description: !readUsable ? '暂未读取到任务安排，请重新加载或进入我的任务查看。' : overdueTasks.length > 0 ? '优先处理逾期事项，并补充最新进展。' : '从自己的任务开始，完成后及时记录结果。',
         meta: (overdueTasks[0] || dueTodayTasks[0] || openTasks[0])?.title,
         path: '/tasks?view=mine',
         actionLabel: '打开我的任务',
-        tone: overdueTasks.length > 0 ? 'critical' : priorityCount > 0 ? 'warning' : openTasks.length > 0 ? 'info' : 'success',
+        tone: overdueTasks.length > 0 ? 'critical' : priorityCount > 0 || !readUsable ? 'warning' : openTasks.length > 0 ? 'info' : 'success',
       });
     } else {
+      const readUsable = (!canReadTasks || fulfilled(tasksResult))
+        && (!canReadFinance || (fulfilled(subscriptionsResult) && fulfilled(paymentsResult)));
       const totalRisk = overdueTasks.length + financeRiskSubscriptions.length + overduePayments.length;
       appBadges.delivery = openTasks.length;
       appBadges.customers = customers.length;
@@ -257,11 +292,11 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
       notificationCount = totalRisk;
       todayItems.push({
         id: 'owner-today',
-        title: totalRisk > 0 ? `今天有 ${totalRisk} 项经营风险待确认` : '今日经营状态暂无高风险提醒',
-        description: `${overdueTasks.length} 项逾期任务 · ${overduePayments.length} 笔待收款 · ${financeRiskSubscriptions.length} 个续费风险`,
+        title: totalRisk > 0 ? `今天有 ${totalRisk} 项经营风险待确认` : !readUsable ? '经营风险数据待更新' : '今日经营状态暂无高风险提醒',
+        description: `${fulfilled(tasksResult) ? `${overdueTasks.length} 项逾期任务` : '逾期任务待更新'} · ${fulfilled(paymentsResult) ? `${overduePayments.length} 笔待收款` : '待收款待更新'} · ${fulfilled(subscriptionsResult) ? `${financeRiskSubscriptions.length} 个续费风险` : '续费风险待更新'}`,
         path: '/',
         actionLabel: '打开老板今日工作台',
-        tone: overduePayments.length > 0 || overdueTasks.length > 0 ? 'critical' : totalRisk > 0 ? 'warning' : 'success',
+        tone: overduePayments.length > 0 || overdueTasks.length > 0 ? 'critical' : totalRisk > 0 || !readUsable ? 'warning' : 'success',
       });
     }
 
@@ -286,7 +321,7 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
       }));
     }
 
-    setSnapshot({ todayItems, appBadges, recentItems, notificationCount });
+    setSnapshot({ todayItems, priorityItems, appBadges, recentItems, notificationCount });
     setLoadError(allFailed ? '首页数字暂时无法更新，应用入口仍可正常使用。' : partiallyFailed ? '部分首页数字暂未更新，已显示当前可用数据。' : '');
     setLoading(false);
   }, [canAccess, employee?.id, employee?.name, isAdmin, role]);
@@ -311,6 +346,7 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
   return (
     <MobileAppHome
       {...snapshot}
+      priorityItems={['super_admin', 'admin'].includes(role) ? snapshot.priorityItems : undefined}
       loading={loading}
       loadError={loadError}
       onRetry={retry}

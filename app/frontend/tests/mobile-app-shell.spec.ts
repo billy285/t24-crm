@@ -132,8 +132,12 @@ test('管理员在 360px、390px 与 430px 看到六个核心应用且页面无�
     await page.setViewportSize(viewport);
     await page.goto(`${baseUrl}/apps`);
 
-    await expect(page.getByRole('heading', { name: '管理工作台' })).toBeVisible();
-    await expect(page.getByText(/当前账号.*admin 测试账号.*管理员/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: '今日工作', level: 1, exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '打开我的账户', exact: true }).click();
+    const profile = page.getByRole('dialog', { name: '我的账户' });
+    await expect(profile.getByText('admin 测试账号', { exact: true })).toBeVisible();
+    await expect(profile.getByText('管理员', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
     await expect(appRegion(page).getByRole('button')).toHaveCount(6);
     for (const app of standardApps) {
       await expect(appRegion(page).getByRole('button', { name: app.accessibleName })).toBeVisible();
@@ -150,6 +154,8 @@ for (const role of ['sales', 'sales_manager', 'ops', 'design', 'finance', 'sales
     await page.goto(`${baseUrl}/apps`);
 
     const visibleLabels = roleVisibleApps[role];
+    await expect(page.getByRole('heading', { name: '今日工作', level: 1, exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
     await expect(appRegion(page).getByRole('button')).toHaveCount(visibleLabels.length);
 
     for (const app of allApps) {
@@ -158,6 +164,20 @@ for (const role of ['sales', 'sales_manager', 'ops', 'design', 'finance', 'sales
         await expect(card).toBeVisible();
       } else {
         await expect(card).toHaveCount(0);
+      }
+    }
+
+    const functionsSummary = page.locator('summary').filter({ hasText: '全部功能' });
+    await expect(functionsSummary).toBeVisible();
+    await expect(functionsSummary.locator('..')).not.toHaveAttribute('open', '');
+    await functionsSummary.click();
+    for (const app of allApps) {
+      const group = page.getByRole('region', { name: app.label, exact: true });
+      if (visibleLabels.includes(app.label)) {
+        await expect(group).toBeVisible();
+        expect(await group.getByRole('button').count()).toBeGreaterThan(0);
+      } else {
+        await expect(group).toHaveCount(0);
       }
     }
 
@@ -231,6 +251,9 @@ test('管理员手机工作台按真实业务分类展示全部功能并可直�
   await page.goto(`${baseUrl}/apps`);
 
   await expect(page.getByRole('heading', { name: '全部功能' })).toBeVisible();
+  const functionsSummary = page.locator('summary').filter({ hasText: '全部功能' });
+  await expect(page.getByRole('button', { name: '打开今日拨打' })).toBeHidden();
+  await functionsSummary.click();
   const salesFunctions = page.getByRole('region', { name: '销售中心' });
   await expect(salesFunctions.getByRole('button')).toHaveCount(4);
   await expect(salesFunctions.getByRole('button', { name: '打开今日拨打' })).toBeVisible();
@@ -242,6 +265,7 @@ test('管理员手机工作台按真实业务分类展示全部功能并可直�
   await expect.poll(() => new URL(page.url()).pathname).toBe('/sales-leads');
 
   await page.goto(`${baseUrl}/apps`);
+  await functionsSummary.click();
   const financeFunctions = page.getByRole('region', { name: '财务结算' });
   await expect(financeFunctions.getByRole('button', { name: '打开财务管理' })).toBeVisible();
   await expect(financeFunctions.getByRole('button', { name: '打开利润预估' })).toBeVisible();
@@ -309,7 +333,9 @@ test('1440px 网页 App 使用独立应用外壳，不再叠加后台侧栏', as
   const mobileBottomNav = page.locator('nav[aria-label="手机主导航"]');
   await expect(mobileBottomNav).toHaveCount(1);
   await expect(mobileBottomNav).toBeHidden();
-  await expect(page.locator('.mobile-app-home')).toHaveCSS('max-width', '768px');
+  const homeBounds = await page.locator('.homepage-refined').boundingBox();
+  expect(homeBounds!.width).toBeGreaterThan(1000);
+  expect(homeBounds!.width).toBeLessThanOrEqual(1440);
   await page.getByRole('button', { name: '打开我的账户' }).click();
   await expect(page.getByRole('dialog', { name: '我的账户' })).toBeVisible();
   await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible();
@@ -340,7 +366,7 @@ test('销售账号首页直接显示真实剩余任务、回访数量与下一�
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/apps`);
 
-  await expect(page.getByRole('heading', { name: '我的销售工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今日工作', level: 1, exact: true })).toBeVisible();
   await expect(page.getByText('今天还有 4 条销售任务')).toBeVisible();
   await expect(page.getByText(/2 条客户需要回访/)).toBeVisible();
   await expect(page.getByText('下一位：测试美甲店')).toBeVisible();
@@ -357,9 +383,9 @@ test('运营账号首页只汇总自己的逾期任务并提供继续处理入�
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/apps`);
 
-  await expect(page.getByRole('heading', { name: '我的运营工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今日工作', level: 1, exact: true })).toBeVisible();
   await expect(page.getByText('1 项运营任务已逾期')).toBeVisible();
-  await expect(page.getByRole('region', { name: '今天先处理' }).getByText('补充客户月报')).toBeVisible();
+  await expect(page.getByRole('region', { name: '今日重点' }).getByText('补充客户月报')).toBeVisible();
   await expect(page.getByText('其他人的任务')).toHaveCount(0);
 });
 
@@ -374,7 +400,7 @@ test('财务账号首页汇总待收款与续费风险', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/apps`);
 
-  await expect(page.getByRole('heading', { name: '财务今日工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今日工作', level: 1, exact: true })).toBeVisible();
   await expect(page.getByText('2 项财务事项需要核对')).toBeVisible();
   await expect(page.getByText('1 笔待收款 · 1 个续费风险')).toBeVisible();
 });
@@ -391,7 +417,7 @@ test('销售合伙人首页显示客户续费与分润状态', async ({ page }) 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/apps`);
 
-  await expect(page.getByRole('heading', { name: '客户与分润工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今日工作', level: 1, exact: true })).toBeVisible();
   await expect(page.getByText('3 位合作客户需要关注')).toBeVisible();
   await expect(page.getByText('当前有 2 笔分润进入可结算状态。')).toBeVisible();
 });

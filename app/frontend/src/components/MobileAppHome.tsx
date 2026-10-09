@@ -1,11 +1,13 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+  ArrowRight,
   Bell,
   Building2,
+  CalendarDays,
   CalendarCheck2,
-  CheckCircle2,
   ChevronRight,
   CircleUserRound,
+  Clock3,
   Headphones,
   ListTodo,
   Settings2,
@@ -24,6 +26,7 @@ import {
 } from '@/lib/app-navigation';
 import { getSafeInternalPath } from '@/lib/navigation-state';
 import { roleLabels, useRole } from '@/lib/role-context';
+import './homepage-refined.css';
 
 export type { MobileBusinessAppKey } from '@/lib/app-navigation';
 
@@ -39,6 +42,15 @@ export interface MobileHomeTodayItem {
   tone?: MobileHomeItemTone;
 }
 
+export interface MobileHomePriorityItem {
+  id: string;
+  title: string;
+  count: number | null;
+  path: string;
+  actionLabel: string;
+  tone?: MobileHomeItemTone;
+}
+
 export interface MobileHomeRecentItem {
   id: string | number;
   title: string;
@@ -50,6 +62,7 @@ export interface MobileHomeRecentItem {
 
 export interface MobileAppHomeProps {
   todayItems?: MobileHomeTodayItem[];
+  priorityItems?: MobileHomePriorityItem[];
   appBadges?: Partial<Record<MobileBusinessAppKey, string | number>>;
   recentItems?: MobileHomeRecentItem[];
   notificationCount?: number;
@@ -62,51 +75,6 @@ export interface MobileAppHomeProps {
   pendingPath?: string;
   className?: string;
 }
-
-const toneStyles: Record<MobileHomeItemTone, { label: string; container: string; badge: string; button: string }> = {
-  critical: {
-    label: '高风险',
-    container: 'border-rose-200 bg-gradient-to-br from-rose-50 to-white',
-    badge: 'bg-rose-100 text-rose-700',
-    button: 'bg-rose-600 text-white active:bg-rose-700',
-  },
-  warning: {
-    label: '待处理',
-    container: 'border-amber-200 bg-gradient-to-br from-amber-50 to-white',
-    badge: 'bg-amber-100 text-amber-800',
-    button: 'bg-amber-600 text-white active:bg-amber-700',
-  },
-  info: {
-    label: '今日事项',
-    container: 'border-blue-200 bg-gradient-to-br from-blue-50 to-white',
-    badge: 'bg-blue-100 text-blue-700',
-    button: 'bg-blue-600 text-white active:bg-blue-700',
-  },
-  success: {
-    label: '进展正常',
-    container: 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white',
-    badge: 'bg-emerald-100 text-emerald-700',
-    button: 'bg-emerald-600 text-white active:bg-emerald-700',
-  },
-};
-
-const iconTones = {
-  indigo: 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white ring-indigo-200',
-  blue: 'bg-gradient-to-br from-blue-500 to-blue-700 text-white ring-blue-200',
-  cyan: 'bg-gradient-to-br from-cyan-400 to-blue-600 text-white ring-cyan-200',
-  violet: 'bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white ring-violet-200',
-  emerald: 'bg-gradient-to-br from-emerald-400 to-teal-600 text-white ring-emerald-200',
-  slate: 'bg-gradient-to-br from-slate-500 to-slate-700 text-white ring-slate-200',
-} as const;
-
-const shortcutIconTones = {
-  indigo: 'bg-indigo-50 text-indigo-600 ring-indigo-100',
-  blue: 'bg-blue-50 text-blue-600 ring-blue-100',
-  cyan: 'bg-cyan-50 text-cyan-600 ring-cyan-100',
-  violet: 'bg-violet-50 text-violet-600 ring-violet-100',
-  emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
-  slate: 'bg-slate-100 text-slate-600 ring-slate-200',
-} as const;
 
 const mobileShortcutLabels: Record<string, string> = {
   '/': '今日经营',
@@ -159,17 +127,6 @@ const visibleBadge = (value: string | number | undefined) => {
   return String(value);
 };
 
-const roleHomeCopy: Record<string, { eyebrow: string; title: string; subtitle: string }> = {
-  super_admin: { eyebrow: '经营总览', title: '老板今日工作台', subtitle: '先看风险，再推进今天最重要的事项' },
-  admin: { eyebrow: '经营总览', title: '管理工作台', subtitle: '查看团队、客户与财务的今日重点' },
-  sales: { eyebrow: '销售执行', title: '我的销售工作台', subtitle: '先拨打、再回访，记录每一次有效沟通' },
-  sales_manager: { eyebrow: '销售管理', title: '销售主管工作台', subtitle: '掌握团队进度，及时处理未完成任务' },
-  ops: { eyebrow: '客户交付', title: '我的运营工作台', subtitle: '优先处理逾期、回访与客户问题' },
-  design: { eyebrow: '设计交付', title: '我的设计工作台', subtitle: '集中处理自己的设计任务与素材事项' },
-  finance: { eyebrow: '财务核对', title: '财务今日工作台', subtitle: '关注待收款、续费风险与异常记录' },
-  sales_partner: { eyebrow: '合作进展', title: '客户与分润工作台', subtitle: '跟进客户续费与分润确认状态' },
-};
-
 export function T24AppMark({ className, decorative = false }: { className?: string; decorative?: boolean }) {
   return (
     <span
@@ -192,7 +149,7 @@ export function T24AppMark({ className, decorative = false }: { className?: stri
 
 export default function MobileAppHome({
   todayItems = [],
-  appBadges = {},
+  priorityItems,
   recentItems = [],
   notificationCount = 0,
   loading = false,
@@ -239,16 +196,22 @@ export default function MobileAppHome({
   const defaultPendingPath = getRolePendingPath(role);
   const resolvedTodayPath = canOpen(todayPath) ? todayPath : canOpen(defaultTodayPath) ? defaultTodayPath : availableApps[0]?.path;
   const resolvedPendingPath = canOpen(pendingPath) ? pendingPath : canOpen(defaultPendingPath) ? defaultPendingPath : resolvedTodayPath;
-  const accessibleTodayItems = todayItems.filter(item => canOpen(item.path));
-  const topTodayItem = accessibleTodayItems[0];
+  const topTodayItem = todayItems.find(item => canOpen(item.path));
+  const accessiblePriorityItems = (priorityItems || [])
+    .filter(item => canOpen(item.path))
+    .map(item => ({ ...item, count: typeof item.count === 'number' && Number.isInteger(item.count) && item.count >= 0 ? item.count : null }))
+    .filter(item => item.count !== 0);
+  const hasStructuredPriority = priorityItems !== undefined;
   const accessibleRecentItems = recentItems.filter(item => canOpen(item.path)).slice(0, 3);
+  const showRecentSection = accessibleRecentItems.length > 0 || loading || Boolean(loadError);
+  const isOwnerHome = role === 'super_admin' || role === 'admin';
+  const primaryPath = hasStructuredPriority || !topTodayItem ? resolvedTodayPath : topTodayItem.path;
+  const primaryLabel = hasStructuredPriority || !topTodayItem ? '打开今日工作台' : topTodayItem.actionLabel || '立即处理';
   const roleLabel = roleLabels[employee?.role] || roleLabels[role] || '员工';
   const employeeName = employee?.name || employee?.full_name || '同事';
   const notificationBadge = visibleBadge(notificationCount);
-  const todayTone = toneStyles[topTodayItem?.tone || 'info'];
-  const homeCopy = roleHomeCopy[role] || roleHomeCopy.admin;
-  const isSalesHome = role === 'sales' || role === 'sales_manager';
-  const FunctionsContainer = isSalesHome ? 'details' : 'section';
+  const today = new Date();
+  const dateLabel = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric' }).format(today);
 
   const openNotifications = () => {
     if (onOpenNotifications) {
@@ -258,252 +221,123 @@ export default function MobileAppHome({
     openPath(resolvedPendingPath);
   };
 
-  const workAppsSection = (
-        <section aria-label="工作应用" className="rounded-[24px] border border-white/90 bg-white/95 px-3 py-5 shadow-[0_20px_48px_-38px_rgba(37,70,132,0.58)] backdrop-blur-xl">
-          <div className="mb-4 flex items-end justify-between px-1">
-            <div>
-              <h2 id="mobile-apps-heading" className="text-[17px] font-black tracking-tight text-slate-950">首页应用</h2>
-              <p className="mt-0.5 text-[10px] text-slate-400">常用业务中心 · 按当前账号权限显示</p>
-            </div>
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">{availableApps.length} 个入口</span>
-          </div>
-          <div className={cn(
-            'grid gap-x-2 gap-y-4',
-            availableApps.length === 1 && 'grid-cols-1',
-            (availableApps.length === 2 || availableApps.length === 4) && 'grid-cols-2',
-            (availableApps.length === 3 || availableApps.length >= 5) && 'grid-cols-3',
-            availableApps.length >= 4 && 'md:grid-cols-6',
-          )}>
-            {availableApps.map(app => {
-              const Icon = app.icon;
-              const badge = visibleBadge(appBadges[app.key]);
-              return (
-                <button
-                  key={app.key}
-                  type="button"
-                  onClick={() => openPath(app.path)}
-                  className={cn(
-                    'relative flex min-h-[84px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-1 py-1 text-center transition active:scale-[0.96]',
-                    availableApps.length === 1 && 'mx-auto w-28',
-                  )}
-                  aria-label={`${app.label}：${app.description}`}
-                >
-                  <span className={cn('relative flex h-12 w-12 items-center justify-center rounded-[16px] ring-1 shadow-[0_12px_24px_-14px_rgba(15,23,42,0.65)]', iconTones[app.tone])}>
-                    <Icon className="h-5 w-5" />
-                    {badge ? <span className="absolute -right-2 -top-2 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold text-white ring-2 ring-white">{badge}</span> : null}
-                  </span>
-                  <span className="max-w-full text-[11px] font-bold leading-4 text-slate-800">{app.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          {availableApps.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
-              当前账号暂无可用业务应用，请联系管理员检查权限。
-            </div>
+  const renderRecentItem = (item: MobileHomeRecentItem) => {
+    const Icon = item.appKey ? recentIcons[item.appKey] : Building2;
+    return (
+      <button key={item.id} type="button" onClick={() => openPath(item.path)} className="home-recent-item">
+        <span className="home-icon home-recent-icon"><Icon aria-hidden="true" /></span>
+        <span className="home-recent-copy">
+          <span className="home-recent-title">{item.title}</span>
+          {[item.description, item.timestamp].some(Boolean) ? (
+            <span className="home-recent-meta">{[item.description, item.timestamp].filter(Boolean).join(' · ')}</span>
           ) : null}
-        </section>
-  );
+        </span>
+        <span className="home-recent-action" aria-hidden="true">继续<ArrowRight /></span>
+      </button>
+    );
+  };
 
   return (
-    <div
-      className={cn(
-        'mobile-app-home relative mx-auto min-h-[100dvh] w-full max-w-[48rem] overflow-x-hidden bg-[#f3f6fb] pb-[calc(6.25rem+env(safe-area-inset-bottom))] text-slate-950 md:min-h-full md:pb-10',
-        className,
-      )}
-    >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[25rem] bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.20),transparent_48%),radial-gradient(circle_at_top_left,rgba(139,92,246,0.10),transparent_42%),linear-gradient(180deg,#ffffff_0%,rgba(255,255,255,0)_100%)]" />
-
-      <header className="relative pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(env(safe-area-inset-top),1rem)]">
-        <div className="flex min-h-12 items-center gap-3">
-          <T24AppMark decorative />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-bold tracking-tight text-slate-950">T24 工作台</p>
-            <p className="mt-0.5 truncate text-[11px] text-slate-500"><span className="font-semibold text-blue-600">当前账号</span> · {employeeName} · {roleLabel}</p>
+    <div className={cn('mobile-app-home homepage-refined', className)}>
+      <header className="home-topbar">
+        <div className="home-topbar-inner">
+          <div className="home-brand"><T24AppMark decorative className="home-brand-mark" /><span>T24 工作台</span></div>
+          <div className="home-account-actions">
+            <button type="button" onClick={openNotifications} className="home-header-button home-notifications" aria-label={notificationBadge ? `查看待办，${notificationBadge} 项未处理` : '查看待办'}>
+              <Bell aria-hidden="true" />
+              {notificationBadge ? <span className="home-notification-count">{notificationBadge}</span> : null}
+            </button>
+            <button type="button" onClick={onOpenProfile} className="home-header-button home-profile" aria-label="打开我的账户">
+              <CircleUserRound aria-hidden="true" />
+              <span className="home-account-name">{employeeName} · {roleLabel}</span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={openNotifications}
-            className="relative flex h-11 w-11 items-center justify-center rounded-full border border-white/90 bg-white/85 text-slate-700 shadow-sm backdrop-blur-xl active:scale-95"
-            aria-label={notificationBadge ? `查看待办，${notificationBadge} 项未处理` : '查看待办'}
-          >
-            <Bell className="h-5 w-5" />
-            {notificationBadge ? (
-              <span className="absolute -right-0.5 -top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-[#f3f6fb] bg-rose-500 px-1 text-[10px] font-bold text-white">
-                {notificationBadge}
-              </span>
-            ) : null}
-          </button>
-          <button
-            type="button"
-            onClick={onOpenProfile}
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/90 bg-white/85 text-slate-700 shadow-sm backdrop-blur-xl active:scale-95"
-            aria-label="打开我的账户"
-          >
-            <CircleUserRound className="h-6 w-6" />
-          </button>
-        </div>
-
-        <div className="pb-5 pt-5 md:pb-6 md:pt-8">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">{homeCopy.eyebrow}</p>
-          <h1 className="mt-1 text-[26px] font-black tracking-[-0.04em] text-[#10213f]">{homeCopy.title}</h1>
-          <p className="mt-1.5 text-[12px] text-slate-500">{homeCopy.subtitle}</p>
         </div>
       </header>
 
-      <main className="relative space-y-6 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
+      <main className="home-content">
+        <div className="home-page-heading">
+          <div><h1>今日工作</h1><time dateTime={today.toISOString()} title="北京时间">{dateLabel}</time></div>
+          {isOwnerHome && resolvedTodayPath ? <button type="button" onClick={() => openPath(resolvedTodayPath)} className="home-outline-button home-overview-button">经营总览<ArrowRight aria-hidden="true" /></button> : null}
+        </div>
         {loading ? (
-          <div className="flex items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50/80 px-4 py-3 text-xs text-blue-700" role="status" aria-live="polite">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
-            正在更新当前账号的今日重点，应用入口可直接使用。
-          </div>
+          <div className="home-load-state" role="status" aria-live="polite">正在更新今日重点</div>
         ) : loadError ? (
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800" role="status" aria-live="polite">
+          <div className="home-load-state home-load-warning" role="status" aria-live="polite">
             <span>{loadError}</span>
-            {onRetry ? <button type="button" className="shrink-0 font-bold underline" onClick={onRetry}>重新加载</button> : null}
+            {onRetry ? <button type="button" onClick={onRetry}>重新加载</button> : null}
           </div>
         ) : null}
-        {!isSalesHome && workAppsSection}
 
-        <section aria-labelledby="mobile-today-heading">
-          <div className="mb-3 flex items-center justify-between px-1">
-            <div>
-              <h2 id="mobile-today-heading" className="text-[16px] font-bold tracking-tight text-slate-950">今天先处理</h2>
-              <p className="mt-0.5 text-[11px] text-slate-500">先完成最重要的一件事</p>
-            </div>
-            {resolvedTodayPath ? (
-              <button type="button" onClick={() => openPath(resolvedTodayPath)} className="flex min-h-11 items-center gap-0.5 px-1 text-sm font-semibold text-blue-700">
-                今日工作台<ChevronRight className="h-4 w-4" />
-              </button>
-            ) : null}
-          </div>
-
-          {topTodayItem ? (
-            <article className={cn('rounded-[24px] border p-4 shadow-[0_14px_40px_-28px_rgba(15,23,42,0.55)]', todayTone.container)}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <span className={cn('inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold', todayTone.badge)}>{todayTone.label}</span>
-                  <h3 className="mt-3 text-lg font-bold tracking-tight text-slate-950">{topTodayItem.title}</h3>
-                  {topTodayItem.description ? <p className="mt-1.5 text-sm leading-5 text-slate-600">{topTodayItem.description}</p> : null}
-                  {topTodayItem.meta ? <p className="mt-2 text-xs font-medium text-slate-500">{topTodayItem.meta}</p> : null}
-                </div>
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/85 text-slate-700 shadow-sm">
-                  <CalendarCheck2 className="h-5 w-5" />
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => openPath(topTodayItem.path)}
-                className={cn('mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 text-sm font-bold shadow-sm active:scale-[0.99]', todayTone.button)}
-              >
-                {topTodayItem.actionLabel || '立即处理'}<ChevronRight className="h-4 w-4" />
-              </button>
-            </article>
-          ) : (
-            <button
-              type="button"
-              disabled={!resolvedTodayPath}
-              onClick={() => openPath(resolvedTodayPath)}
-              className="flex min-h-[78px] w-full items-center gap-3 rounded-[22px] border border-blue-100 bg-gradient-to-r from-blue-50 to-white p-4 text-left shadow-[0_14px_40px_-30px_rgba(15,23,42,0.4)] disabled:opacity-60"
-            >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm">
-                <CheckCircle2 className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold text-slate-900">打开今日工作台</span>
-                <span className="mt-0.5 block text-xs text-slate-500">查看当前角色需要处理的真实事项</span>
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-blue-400" />
-            </button>
-          )}
-        </section>
-
-        {isSalesHome && workAppsSection}
-
-        {accessibleRecentItems.length > 0 ? (
-          <section aria-labelledby="mobile-recent-heading">
-            <div className="mb-3 px-1">
-              <h2 id="mobile-recent-heading" className="text-[16px] font-bold tracking-tight text-slate-950">继续处理</h2>
-              <p className="mt-0.5 text-[11px] text-slate-500">回到刚才的客户或工作位置</p>
-            </div>
-            <div className="overflow-hidden rounded-[24px] border border-white/90 bg-white shadow-[0_16px_40px_-32px_rgba(15,23,42,0.6)]">
-              {accessibleRecentItems.map((item, index) => {
-                const Icon = item.appKey ? recentIcons[item.appKey] : Building2;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => openPath(item.path)}
-                    className={cn('flex min-h-[68px] w-full items-center gap-3 px-4 py-3 text-left active:bg-slate-50', index > 0 && 'border-t border-slate-100')}
-                  >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600"><Icon className="h-4 w-4" /></span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-bold text-slate-900">{item.title}</span>
-                      <span className="mt-0.5 block truncate text-xs text-slate-500">{[item.description, item.timestamp].filter(Boolean).join(' · ')}</span>
-                    </span>
-                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
-
-        {appSections.length > 0 ? (
-          <FunctionsContainer aria-labelledby="mobile-functions-heading" className="space-y-3">
-            {isSalesHome ? <summary className="cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3"><h2 id="mobile-functions-heading" className="inline text-[15px] font-bold text-slate-800">全部功能</h2></summary> : <div className="px-1">
-              <h2 id="mobile-functions-heading" className="text-[17px] font-black tracking-tight text-slate-950">全部功能</h2>
-              <p className="mt-0.5 text-[11px] text-slate-500">按业务分类，直接进入需要处理的页面</p>
-            </div>}
-            {appSections.map(section => (
-              <section
-                key={section.key}
-                aria-labelledby={`mobile-function-group-${section.key}`}
-                className="rounded-[22px] border border-white/90 bg-white px-3 pb-4 pt-4 shadow-[0_18px_46px_-38px_rgba(15,23,42,0.6)]"
-              >
-                <div className="mb-4 flex items-center justify-between px-1">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ring-1', shortcutIconTones[section.tone])}>
-                      <section.icon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <h3 id={`mobile-function-group-${section.key}`} className="text-[15px] font-black text-slate-900">{section.label}</h3>
-                      <p className="truncate text-[10px] text-slate-400">{section.description}</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-semibold text-slate-400">{section.shortcuts.length} 项</span>
-                </div>
-                <div className={cn(
-                  'grid gap-x-2 gap-y-3',
-                  section.shortcuts.length === 1 && 'grid-cols-1',
-                  section.shortcuts.length === 2 && 'grid-cols-2',
-                  section.shortcuts.length === 3 && 'grid-cols-3',
-                  section.shortcuts.length >= 4 && 'grid-cols-4',
-                )}>
-                  {section.shortcuts.map(shortcut => {
-                    const ShortcutIcon = shortcut.icon;
+        <div className={cn('home-work-grid', !showRecentSection && 'home-work-grid-single')}>
+          <section aria-label="今日重点" className="home-panel home-priority-panel">
+            <h2 id="mobile-today-heading">今日重点</h2>
+            {hasStructuredPriority ? (
+              accessiblePriorityItems.length > 0 ? (
+                <div className="home-priority-list">
+                  {accessiblePriorityItems.map(item => {
+                    const Icon = item.id === 'overdue-tasks' ? Clock3 : item.id === 'renewal-risks' ? CalendarDays : WalletCards;
                     return (
-                      <button
-                        key={`${section.key}:${shortcut.path}`}
-                        type="button"
-                        onClick={() => openPath(shortcut.path)}
-                        className={cn(
-                          'flex min-h-[76px] min-w-0 flex-col items-center justify-start gap-2 rounded-2xl px-1 py-1 text-center transition active:scale-[0.96] active:bg-slate-50',
-                          section.shortcuts.length === 1 && 'mx-auto w-28',
-                        )}
-                        aria-label={`打开${shortcut.label}`}
-                      >
-                        <span className={cn('flex h-11 w-11 items-center justify-center rounded-[15px] ring-1', shortcutIconTones[section.tone])}>
-                          <ShortcutIcon className="h-5 w-5" />
-                        </span>
-                        <span className="line-clamp-2 text-[11px] font-semibold leading-4 text-slate-700">{shortcut.label}</span>
-                      </button>
+                      <div key={item.id} role="group" aria-label={item.title} className="home-priority-row">
+                        <span className={cn('home-icon home-priority-icon', (item.tone === 'critical' || item.tone === 'warning') && 'home-icon-amber')}><Icon aria-hidden="true" /></span>
+                        <h3>{item.title}</h3>
+                        <span className={cn('home-priority-count', item.count === null && 'home-count-unknown')}>{item.count === null ? '待更新' : item.count}</span>
+                        <button type="button" onClick={() => openPath(item.path)} className="home-outline-button">{item.actionLabel}<ArrowRight aria-hidden="true" /></button>
+                      </div>
                     );
                   })}
                 </div>
-              </section>
-            ))}
-          </FunctionsContainer>
+              ) : <p className="home-empty-priority">{loading ? '正在更新今日重点' : loadError ? '今日重点待更新' : '暂无待处理提醒'}</p>
+            ) : topTodayItem ? (
+              <article className="home-today-item">
+                <div className="home-today-copy">
+                  <span className={cn('home-icon home-priority-icon', (topTodayItem.tone === 'critical' || topTodayItem.tone === 'warning') && 'home-icon-amber')}><CalendarCheck2 aria-hidden="true" /></span>
+                  <div><h3>{topTodayItem.title}</h3>{topTodayItem.description ? <p>{topTodayItem.description}</p> : null}{topTodayItem.meta ? <p className="home-today-meta">{topTodayItem.meta}</p> : null}</div>
+                </div>
+              </article>
+            ) : <p className="home-empty-priority">{loading ? '正在更新今日重点' : loadError ? '今日重点待更新' : '查看今日需要处理的事项'}</p>}
+            {primaryPath ? <div className="home-primary-action"><button type="button" onClick={() => openPath(primaryPath)} className="home-primary-button">{primaryLabel}<ArrowRight aria-hidden="true" /></button></div> : null}
+          </section>
+
+          {showRecentSection ? <section aria-label="继续处理" className="home-panel home-recent-panel">
+            <h2 id="mobile-recent-heading">继续处理</h2>
+            {accessibleRecentItems.length > 0 ? (
+              <>
+                {renderRecentItem(accessibleRecentItems[0])}
+                {accessibleRecentItems.length > 1 ? <details className="home-more-recent"><summary>更多最近事项<ChevronRight aria-hidden="true" /></summary><div>{accessibleRecentItems.slice(1).map(renderRecentItem)}</div></details> : null}
+              </>
+            ) : <p className="home-empty-recent">{loading || loadError ? '最近事项待更新' : '暂无最近事项'}</p>}
+          </section> : null}
+        </div>
+
+        <section aria-label="工作应用" className="home-apps-section">
+          <h2 id="mobile-apps-heading">常用应用</h2>
+          <div className={cn('home-app-grid', availableApps.length === 1 && 'home-app-grid-one', availableApps.length === 2 && 'home-app-grid-two')}>
+            {availableApps.map(app => {
+              const Icon = app.icon;
+              return <button key={app.key} type="button" onClick={() => openPath(app.path)} className="home-app-tile" aria-label={`${app.label}：${app.description}`}><span className="home-icon home-app-icon"><Icon aria-hidden="true" /></span><span>{app.label}</span><ChevronRight className="home-app-chevron" aria-hidden="true" /></button>;
+            })}
+          </div>
+          {availableApps.length === 0 ? <p className="home-empty-apps">当前账号暂无可用业务应用</p> : null}
+        </section>
+
+        {appSections.length > 0 ? (
+          <details className="home-all-functions" aria-labelledby="mobile-functions-heading">
+            <summary><h2 id="mobile-functions-heading">全部功能</h2><ChevronRight aria-hidden="true" /></summary>
+            <div className="home-function-groups">
+              {appSections.map(section => (
+                <section key={section.key} aria-labelledby={`mobile-function-group-${section.key}`} className="home-function-group">
+                  <h3 id={`mobile-function-group-${section.key}`}><section.icon aria-hidden="true" />{section.label}</h3>
+                  <div className="home-shortcut-grid">
+                    {section.shortcuts.map(shortcut => {
+                      const Icon = shortcut.icon;
+                      return <button key={`${section.key}:${shortcut.path}`} type="button" onClick={() => openPath(shortcut.path)} className="home-shortcut-button" aria-label={`打开${shortcut.label}`}><Icon aria-hidden="true" /><span>{shortcut.label}</span><ChevronRight aria-hidden="true" /></button>;
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </details>
         ) : null}
       </main>
     </div>
