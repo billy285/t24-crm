@@ -240,6 +240,10 @@ def main(args):
     need((RELEASE/'private-persistence-write.log').read_text().strip() == 'PRIVATE_PERSISTENCE_PROBE_WRITTEN' and
          (RELEASE/'private-restart.log').read_text().split() == list(NAMES), 'ORIGINAL_PERSISTENCE_EVIDENCE_DRIFT')
     public = Path(candidate['public_directory'])
+    need(public.is_dir() and not public.is_symlink() and public.resolve() == public, 'PUBLIC_DIRECTORY_UNTRUSTED')
+    for path in [public,*public.rglob('*')]:
+        need(not path.is_symlink() and path.stat().st_uid == 0 and
+             path.stat().st_mode & 0o777 == (0o755 if path.is_dir() else 0o644), 'PUBLIC_TREE_METADATA_DRIFT')
     need(public == prep.PUBLIC_RELEASES/RELEASE.name and
          sha(RELEASE/'candidate-public-files.json') == candidate['public_manifest_sha256'] and
          sha(RELEASE/'candidate-current-assets.json') == candidate['current_assets_proof_sha256'], 'PUBLIC_PROOF_DRIFT')
@@ -333,6 +337,11 @@ def main(args):
         after = deploy.snapshot(deploy.BUSINESS,logs/'business-after.db')
         deploy.save(logs/'business-after-safe.json',after)
         changed = sorted(name for name in before if before[name] != after[name])
+        need(deploy.crm_matches_preparation(prep,before_crm) and sha(deploy.NGINX) == new_nginx_sha and
+             original_inventory() == original_evidence and private_metadata(deploy,state) == private_before,
+             'PRE_RECEIPT_ORIGINAL_OR_PRIVATE_STATE_DRIFT')
+        for name in NAMES:
+            validate_container(deploy,state,name,values,True)
         receipt = {
             'stage':'PRIVATE_WORKSPACE_DEPLOYED_SERVER_VERIFIED','source_sha':SOURCE,'private_image_id':IMAGE,
             'version':candidate['version'],'private_owner_ids':[4],
