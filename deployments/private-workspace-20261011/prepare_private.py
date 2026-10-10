@@ -363,76 +363,25 @@ print(json.dumps({'stage':'PRIVATE_CANDIDATE_REGRESSIONS_PASSED','tests':sum(int
 
 
 
-ORIGINAL_FAILED_PREPARER_SHA = '3de41376a4c32547c0341879f5d00c5d64b7def7cea25a3d894fba69b5fc8482'
-RESUME_ORIGINAL_FILES = frozenset({
-    'base-backend.log','base-dist.log','base-package-bytes.log','base-packages.log','base-pin.log',
-    'crm-before-safe.json','existing-tags.log','expected-runtime-backend.json','prepare_private.py',
-    'release-spec.json','reviewed-changes.json','source-files.json','source.tar.gz',
-})
-FAILED_BASE_TAG = 't24-crm:app/backend/services/private_workspace_worker.py-base'
-FAILED_BASE_PIN_BYTES = ('\nerror parsing reference: "'+FAILED_BASE_TAG+
-                        '" is not a valid repository/tag: invalid reference format\n').encode()
 
-
-def release_identity(source_sha):
+def release_identity(source_sha, release_suffix=None):
     require(re.fullmatch(r'[a-f0-9]{40}',source_sha) is not None, 'RELEASE_HASH_SHAPE')
+    require(release_suffix in (None, 'retry2'), 'RELEASE_SUFFIX_REJECTED')
     release_name = 'private-workspace-' + source_sha[:7] + '-20261011'
+    if release_suffix:
+        release_name += '-' + release_suffix
     return release_name, 't24-crm:'+release_name
 
 
 def canonical_json_bytes(value):
-    return (json.dumps(value,sort_keys=True,indent=2)+'\n').encode()
-
-
-def source_tree_manifest(root):
-    require(root.is_dir() and not root.is_symlink() and root.resolve() == root, 'RESUME_SOURCE_DIRECTORY_UNTRUSTED')
-    actual = {}
-    for source_path in sorted(root.rglob('*')):
-        require(not source_path.is_symlink() and (source_path.is_dir() or source_path.is_file()) and
-                source_path.stat().st_uid == 0 and not source_path.stat().st_mode & 0o022,
-                'RESUME_SOURCE_NODE_UNTRUSTED')
-        if source_path.is_file():
-            require(source_path.stat().st_nlink == 1, 'RESUME_SOURCE_HARDLINK')
-            actual[source_path.relative_to(root).as_posix()] = sha(source_path)
-    return actual
-
-
-def resume_original_inventory(directory):
-    return {filename:sha(private_file(directory/filename)) for filename in sorted(RESUME_ORIGINAL_FILES)}
-
-
-def verify_resume_preconditions(directory, public, args, spec, baseline_archive, current_crm):
-    require(not public.exists() and not public.is_symlink(), 'RESUME_PUBLIC_RELEASE_ALREADY_EXISTS')
-    names = {path.name for path in directory.iterdir()}
-    require(names == set(RESUME_ORIGINAL_FILES) | {'source','prepare_private_v2.py'},
-            'RESUME_REQUIRES_EXACT_BASE_PIN_FAILURE_FILESET')
-    private_file(directory/'prepare_private_v2.py')
-    original_hashes = resume_original_inventory(directory)
-    require(original_hashes['prepare_private.py'] == ORIGINAL_FAILED_PREPARER_SHA and
-            original_hashes['release-spec.json'] == args.manifest_sha256 and
-            original_hashes['source.tar.gz'] == args.archive_sha256, 'RESUME_ORIGINAL_INPUT_HASH_DRIFT')
-    require((directory/'base-pin.log').read_bytes() == FAILED_BASE_PIN_BYTES, 'RESUME_EXACT_BASE_PIN_FAILURE_REQUIRED')
-    archived_source = archive_files(directory/'source.tar.gz',args.source_sha)
-    require(source_tree_manifest(directory/'source') == archived_source, 'RESUME_EXTRACTED_SOURCE_BYTES_DRIFT')
-    baseline_source = archive_files(baseline_archive,BASE_SOURCE)
-    changes = checked_manifest(spec,args,baseline_source,archived_source)
-    require((directory/'source-files.json').read_bytes() == canonical_json_bytes(archived_source) and
-            (directory/'reviewed-changes.json').read_bytes() == canonical_json_bytes(changes) and
-            (directory/'crm-before-safe.json').read_bytes() == canonical_json_bytes(current_crm),
-            'RESUME_ORIGINAL_SOURCE_OR_CRM_PROOF_DRIFT')
-    for filename in ('base-backend.log','base-dist.log','base-package-bytes.log','base-packages.log'):
-        previous = json.loads((directory/filename).read_text())
-        require((directory/filename).read_bytes() == (json.dumps(previous,sort_keys=True)+'\n\n').encode(),
-                'RESUME_ORIGINAL_SCAN_LOG_SHAPE_DRIFT')
-    return archived_source,changes,original_hashes
-
+    return (json.dumps(value,sort_keys=True,indent=2)+chr(10)).encode()
 
 def prepare(args):
     require(os.geteuid() == 0 and socket.gethostname() == HOST, 'SERVER_IDENTITY_MISMATCH')
     os.umask(0o077)
     require(re.fullmatch(r'[a-f0-9]{40}',args.source_sha) is not None and
             HASH.fullmatch(args.archive_sha256) and HASH.fullmatch(args.manifest_sha256), 'RELEASE_HASH_SHAPE')
-    release_name, tag = release_identity(args.source_sha)
+    release_name, tag = release_identity(args.source_sha,getattr(args,'release_suffix',None))
     directory = RELEASES/release_name
     public = PUBLIC_RELEASES/release_name
     trusted_parent(RELEASES)
@@ -446,32 +395,24 @@ def prepare(args):
     require(sha(baseline_archive) == BASE_ARCHIVE_SHA, 'ACCEPTED_BASE_ARCHIVE_DRIFT')
     before_crm = crm_identity()
     require(shutil.disk_usage(RELEASES).free > 4*1024**3, 'CANDIDATE_DISK_SPACE_REQUIRED')
-    resuming = getattr(args,'resume_base_pin_failure',False)
     source = directory/'source'
-    if resuming:
-        after,changes,original_hashes = verify_resume_preconditions(directory,public,args,spec,baseline_archive,before_crm)
-        logs = directory/('resume-base-pin-'+uuid4().hex[:12])
-        logs.mkdir(mode=0o700)
-        write_json(logs/'original-evidence-hashes.json',original_hashes)
-        write_json(logs/'source-tree-reverified.json',after)
-    else:
-        require(not any((directory/part).exists() or (directory/part).is_symlink()
-                        for part in ('source','source.tar.gz','candidate.json','static-dist')), 'NEW_PREPARATION_REQUIRED')
-        logs = directory
-        write_json(directory/'crm-before-safe.json',before_crm)
-        source_archive = directory/'source.tar.gz'
-        with urllib.request.urlopen('https://codeload.github.com/billy285/t24-crm/tar.gz/'+args.source_sha,
-                                    timeout=60) as response:
-            require(response.status == 200, 'EXACT_SOURCE_DOWNLOAD_FAILED')
-            write(source_archive,response.read(256*1024**2+1))
-        require(source_archive.stat().st_size <= 256*1024**2 and sha(source_archive) == args.archive_sha256,
-                'EXACT_ARCHIVE_HASH_DRIFT')
-        source.mkdir(mode=0o700)
-        after = archive_files(source_archive,args.source_sha,source)
-        before = archive_files(baseline_archive,BASE_SOURCE)
-        changes = checked_manifest(spec,args,before,after)
-        write_json(directory/'source-files.json',after)
-        write_json(directory/'reviewed-changes.json',changes)
+    require(not any((directory/part).exists() or (directory/part).is_symlink()
+                    for part in ('source','source.tar.gz','candidate.json','static-dist')), 'NEW_PREPARATION_REQUIRED')
+    logs = directory
+    write_json(directory/'crm-before-safe.json',before_crm)
+    source_archive = directory/'source.tar.gz'
+    with urllib.request.urlopen('https://codeload.github.com/billy285/t24-crm/tar.gz/'+args.source_sha,
+                                timeout=60) as response:
+        require(response.status == 200, 'EXACT_SOURCE_DOWNLOAD_FAILED')
+        write(source_archive,response.read(256*1024**2+1))
+    require(source_archive.stat().st_size <= 256*1024**2 and sha(source_archive) == args.archive_sha256,
+            'EXACT_ARCHIVE_HASH_DRIFT')
+    source.mkdir(mode=0o700)
+    after = archive_files(source_archive,args.source_sha,source)
+    before = archive_files(baseline_archive,BASE_SOURCE)
+    changes = checked_manifest(spec,args,before,after)
+    write_json(directory/'source-files.json',after)
+    write_json(directory/'reviewed-changes.json',changes)
     base_backend = image_scan('base-backend',BASE_IMAGE,SCAN_BACKEND,logs)
     packages = image_scan('base-packages',BASE_IMAGE,SCAN_PACKAGES,logs)
     package_bytes = image_scan('base-package-bytes',BASE_IMAGE,SCAN_PACKAGE_BYTES,logs)
@@ -484,23 +425,7 @@ def prepare(args):
     base_tag = tag+'-base'
     existing_tags = run('existing-tags',['docker','image','ls','--format','{{.Repository}}:{{.Tag}}'],logs).splitlines()
     require(tag not in existing_tags and base_tag not in existing_tags, 'CANDIDATE_TAG_ALREADY_EXISTS')
-    if resuming:
-        require(FAILED_BASE_TAG not in existing_tags, 'RESUME_INVALID_FAILED_TAG_EXISTS')
-        for filename in ('base-backend.log','base-dist.log','base-package-bytes.log','base-packages.log','existing-tags.log'):
-            require(sha(logs/filename) == original_hashes[filename], 'RESUME_ORIGINAL_BASE_SCAN_OR_TAGS_DRIFT')
-        require((directory/'expected-runtime-backend.json').read_bytes() == canonical_json_bytes(expected),
-                'RESUME_ORIGINAL_BACKEND_PROOF_DRIFT')
-        require(resume_original_inventory(directory) == original_hashes and
-                source_tree_manifest(source) == after and crm_identity() == before_crm,
-                'RESUME_ORIGINAL_EVIDENCE_OR_CRM_CHANGED')
-        write_json(logs/'resume-preconditions-verified.json',{
-            'stage':'EXACT_BASE_PIN_FAILURE_RESUME_VERIFIED','source_sha':args.source_sha,
-            'failed_tag':FAILED_BASE_TAG,'correct_candidate_tag':tag,'correct_base_tag':base_tag,
-            'original_evidence_hashes':original_hashes,'source_tree_sha256':digest(after),
-            'crm_identity':before_crm,'candidate_existed_before_resume':False,
-            'public_directory_existed_before_resume':False,'prior_evidence_preserved':True})
-    else:
-        write_json(directory/'expected-runtime-backend.json',expected)
+    write_json(directory/'expected-runtime-backend.json',expected)
     run('base-pin',['docker','tag',BASE_IMAGE,base_tag],logs)
     require(run('base-pin-proof',['docker','image','inspect','-f','{{.Id}}',base_tag],logs) == BASE_IMAGE,
             'BASE_PIN_DRIFT')
@@ -572,10 +497,7 @@ def prepare(args):
               'crm_container_id':before_crm['container_id'],'crm_container_unchanged':True,
               'production_database_accessed':False,'production_database_mutations_performed':False,
               'private_production_services_started':False,'nginx_modified':False,'deployment_performed':False,
-              'resumed_exact_base_pin_failure':resuming,'preparation_log_directory':str(logs)}
-    if resuming:
-        require(resume_original_inventory(directory) == original_hashes and source_tree_manifest(source) == after,
-                'ORIGINAL_FAILURE_EVIDENCE_CHANGED_DURING_RESUME')
+              'release_suffix':getattr(args,'release_suffix',None),'preparation_log_directory':str(logs)}
     write_json(directory/'candidate.json',result)
     print(json.dumps(result,sort_keys=True),flush=True)
 
@@ -583,7 +505,7 @@ def prepare(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute',action='store_true')
-    parser.add_argument('--resume-base-pin-failure',action='store_true')
+    parser.add_argument('--release-suffix',choices=['retry2'],default=None)
     for argument_name in ('source-sha','archive-sha256','manifest-sha256'):
         parser.add_argument('--'+argument_name,required=True)
     arguments = parser.parse_args()

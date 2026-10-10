@@ -12,7 +12,7 @@ NGINX_SHA='8760b8bf06693797b7835a25fc1e0ece7b85a655584c01a898879dae57a17456'
 BUSINESS=Path('/opt/t24-crm/app/data/crm_prod.db')
 PRIVATE=Path('/opt/t24-crm/private-workspace')
 PREFIX='/api/v1/private-workspace'
-PREPARE_SHA='17e1518732a936883e0e39757a1b75e71e4632c35cdf296427838d6399b29cb3'
+PREPARE_SHA='8de2ecaec7aad3b56fa966a3d3509ebe522c46345f227c79584ebcaabfb73641'
 SECURITY_HEADERS={
   "X-Frame-Options": "SAMEORIGIN",
   "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
@@ -146,8 +146,8 @@ def static_block(public):
 def main(a):
     need(os.geteuid()==0 and socket.gethostname()=='iZj6c4cj7edgnhdimts4l7Z','SERVER_IDENTITY_DRIFT');os.umask(0o077)
     need(re.fullmatch('[a-f0-9]{40}',a.source_sha) and re.fullmatch('[a-f0-9]{64}',a.candidate_sha256),'ARGUMENT_HASH_SHAPE')
-    release=Path('/opt/t24-crm/releases/private-workspace-'+a.source_sha[:7]+'-20261011');secure(release,True)
-    p=release/'prepare_private_v2.py';secure(p)
+    release=Path('/opt/t24-crm/releases/private-workspace-'+a.source_sha[:7]+'-20261011-retry2');secure(release,True)
+    p=release/'prepare_private_v3.py';secure(p)
     need(sha(p)==PREPARE_SHA,'PREPARATION_HELPER_DRIFT')
     sp=importlib.util.spec_from_file_location('prepare_private',p);prep=importlib.util.module_from_spec(sp);sp.loader.exec_module(prep)
     candidate_path=release/'candidate.json';secure(candidate_path);need(sha(candidate_path)==a.candidate_sha256,'CANDIDATE_RECEIPT_DRIFT')
