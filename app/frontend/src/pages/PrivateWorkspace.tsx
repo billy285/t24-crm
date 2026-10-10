@@ -370,7 +370,7 @@ export default function PrivateWorkspace() {
       {actions.pendingConfiguration && <p className="pw-connection-note">来源配置尚未完成，暂时无法连接或同步。</p>}
       {(actions.canConnect || actions.canSync || actions.canDisconnect) && <div className="pw-source-actions">
         {actions.canConnect && <button type="button" className="pw-button pw-button-primary" disabled={Boolean(busy)} onClick={() => void sourceAction(source, 'connect')}>{source.status === 'error' ? '重新连接 / 授权' : source.status === 'connecting' ? '继续授权' : '连接来源'}</button>}
-        {actions.canSync && <button type="button" className="pw-button" disabled={Boolean(busy)} onClick={() => void sourceAction(source, 'sync')}><RefreshCw aria-hidden="true" />同步</button>}
+        {actions.canSync && <button type="button" className="pw-button" disabled={Boolean(busy)} onClick={() => void sourceAction(source, 'sync')}><RefreshCw aria-hidden="true" />{busy === `sync-${source.id}` ? '正在同步…' : '同步'}</button>}
         {actions.canDisconnect && <button type="button" className="pw-button pw-button-quiet" disabled={Boolean(busy)} onClick={() => void sourceAction(source, 'disconnect')}>停止同步</button>}
       </div>}
     </section>;

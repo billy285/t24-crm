@@ -22,7 +22,7 @@ function fixture(items = [mail('message')], initialView = 'gmail') {
   let cursor = 0, epoch = 'synthetic-owner', tree;
   const hooks = [], effects = [], requests = [], listeners = new Map(), modules = new Map();
   const params = new URLSearchParams({ view: initialView });
-  let preferencesHandler;
+  let preferencesHandler, syncHandler;
   const preferences = { sync_interval_seconds: 2700, gmail: { topics: ['finance', 'security'], watch_senders: [], watch_keywords: [], muted_senders: [] } };
   const source = { id: 'gmail', status: 'connected', capabilities: [], missing_configuration: [], last_sync: null, error: null };
   const react = {
@@ -61,6 +61,7 @@ function fixture(items = [mail('message')], initialView = 'gmail') {
           if (request.method === 'PATCH') Object.assign(preferences.gmail, request.data.gmail);
           return { data: structuredClone(preferences) };
         }
+        if (url.pathname.endsWith('/sync')) return { data: syncHandler ? await syncHandler(request) : { source, counts: { created: 0, updated: 0 } } };
         if (url.pathname.endsWith('/mail-feedback')) {
           const id = decodeURIComponent(url.pathname.split('/').at(-2));
           const item = items.find(value => value.id === id); item.mail_relevance.feedback = request.data.feedback;
@@ -96,6 +97,7 @@ function fixture(items = [mail('message')], initialView = 'gmail') {
     find: (type, label) => all().find(node => node.type === type && text(node) === label),
     button: label => all().find(node => node.type === 'button' && text(node).trim() === label),
     setPreferencesHandler: handler => { preferencesHandler = handler; },
+    setSyncHandler: handler => { syncHandler = handler; },
     invalidate() { epoch = 'synthetic-new-account'; for (const listener of listeners.get('synthetic-auth-invalidated') || []) listener(); },
     unmount() { hooks.forEach(hook => hook?.cleanup?.()); },
   };
@@ -214,5 +216,18 @@ test('expired authorization has a visible manual retry route and does not launch
   f.button('打开工作接入').props.onClick(); await f.flush();
   assert.equal(f.params.get('view'), 'connections');
   assert.ok(!f.requests.some(request => request.url.endsWith('/connect')));
+  f.unmount();
+});
+
+test('a source sync remains visibly busy while waiting and does not allow duplicate dispatch', async () => {
+  const pending = deferred(); const f = fixture([], 'connections'); f.setSyncHandler(() => pending.promise);
+  await f.flush(); f.button('同步').props.onClick(); await f.flush();
+  const busy = f.button('正在同步…'); assert.ok(busy); assert.equal(busy.props.disabled, true);
+  busy.props.onClick(); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/sync')).length, 1);
+  assert.equal(f.requests.find(request => request.url.endsWith('/sync')).options.timeout, 65_000);
+  pending.resolve({ counts: { created: 1, updated: 0 } }); await f.flush();
+  assert.ok(f.text().includes('同步完成：新增 1 条，更新 0 条'));
+  assert.ok(f.button('同步'));
   f.unmount();
 });

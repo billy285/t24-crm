@@ -166,3 +166,54 @@ test('preference and feedback session changes remain authentication failures', a
   await assert.rejects(() => f.api.privateWorkspaceApi.preferences(), error => error.status === 401);
   await assert.rejects(() => f.api.privateWorkspaceApi.mailFeedback('synthetic', 'important'), error => error.status === 401);
 });
+
+test('only private source sync extends the per-request timeout; other private routes retain defaults', async () => {
+  const f = fixture(() => ({ sources: [], items: [], total: 0, counts: { created: 0, updated: 0 } }));
+  await f.api.privateWorkspaceApi.overview();
+  await f.api.privateWorkspaceApi.preferences();
+  await f.api.privateWorkspaceApi.items({ source_id: 'gmail' });
+  await f.api.privateWorkspaceApi.connect('gmail');
+  await f.api.privateWorkspaceApi.updatePreferences({ gmail: { topics: ['finance'] } });
+  await f.api.privateWorkspaceApi.mailFeedback('synthetic', 'important');
+  for (const source of ['gmail', 'google_ads', 'bofa', 'stripe']) await f.api.privateWorkspaceApi.sync(source);
+  for (const request of f.requests) {
+    if (request.url.endsWith('/sync')) assert.equal(request.options.timeout, 65_000);
+    else assert.equal(Object.hasOwn(request, 'options'), false);
+  }
+  assert.ok(f.requests.every(request => request.url.startsWith('/api/v1/private-workspace')));
+});
+
+test('sync network and timeout outcomes are uncertain, do not leak transport details, and are not replayed', async () => {
+  for (const failure of [
+    { code: 'ECONNABORTED', message: 'synthetic sensitive timeout trace' },
+    { code: 'ERR_NETWORK', message: 'synthetic sensitive network trace' },
+    { response: { status: 408, data: { detail: 'synthetic internal response' } } },
+    { response: { status: 504, data: { detail: 'synthetic internal gateway' } } },
+  ]) {
+    const f = fixture(() => { throw failure; });
+    await assert.rejects(() => f.api.privateWorkspaceApi.sync('gmail'), error => {
+      assert.ok(error.message.includes('服务端可能仍在处理'));
+      assert.ok(error.message.includes('请先刷新查看最后同步时间'));
+      assert.ok(!error.message.includes('synthetic'));
+      return true;
+    });
+    assert.equal(f.requests.length, 1);
+  }
+});
+
+test('sync session denial keeps authentication handling instead of an uncertain-sync message', async () => {
+  for (const [failure, expectedStatus] of [
+    [{ response: { status: 401 } }, 401],
+    [{ response: { status: 403 } }, 403],
+    [{ name: 'AuthSessionChangedError' }, 401],
+  ]) {
+    const f = fixture(() => { throw failure; });
+    await assert.rejects(() => f.api.privateWorkspaceApi.sync('gmail'), error => {
+      assert.equal(error.status, expectedStatus);
+      assert.ok(!error.message.includes('可能仍在处理'));
+      return true;
+    });
+  }
+  const ordinary = fixture(() => { throw { code: 'ECONNABORTED', message: 'synthetic trace' }; });
+  await assert.rejects(() => ordinary.api.privateWorkspaceApi.overview(), error => error.message === '操作暂时无法完成，请重试。');
+});

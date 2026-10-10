@@ -129,11 +129,12 @@ export class PrivateWorkspaceApiError extends Error {
   }
 }
 
-function safeFailure(error: unknown): PrivateWorkspaceApiError {
+function safeFailure(error: unknown, syncOperation = false): PrivateWorkspaceApiError {
   const value = error as { response?: { status?: number; data?: { detail?: unknown } }; status?: number; name?: string };
   const status = value?.response?.status || value?.status || 0;
   if (status === 403) return new PrivateWorkspaceApiError('此空间仅对本人开放。', status);
   if (status === 401 || value?.name === 'AuthSessionChangedError') return new PrivateWorkspaceApiError('登录状态已改变，请重新进入工作空间。', 401);
+  if (syncOperation && [0, 408, 504].includes(status)) return new PrivateWorkspaceApiError('暂时没有收到同步结果，服务端可能仍在处理。请先刷新查看最后同步时间，再决定是否重试。', status);
   const detail = value?.response?.data?.detail;
   const message = typeof detail === 'string' && status >= 400 && status < 600
     ? detail.slice(0, 240)
@@ -142,12 +143,12 @@ function safeFailure(error: unknown): PrivateWorkspaceApiError {
 }
 
 const PREFIX = '/api/v1/private-workspace';
-async function request<T>(path: string, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', data?: unknown): Promise<T> {
+async function request<T>(path: string, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', data?: unknown, options?: { timeout: number }): Promise<T> {
   try {
-    const response = await client.apiCall.invoke({ url: `${PREFIX}${path}`, method, ...(data === undefined ? {} : { data }) });
+    const response = await client.apiCall.invoke({ url: `${PREFIX}${path}`, method, ...(data === undefined ? {} : { data }), ...(options ? { options } : {}) });
     return response.data as T;
   } catch (error) {
-    throw safeFailure(error);
+    throw safeFailure(error, path.endsWith('/sync'));
   }
 }
 
@@ -171,7 +172,7 @@ export const privateWorkspaceApi = {
   archive: (id: string) => request<{ item: PrivateItem }>(`/items/${encodeURIComponent(id)}`, 'DELETE'),
   connect: (id: PrivateSourceId) => request<PrivateConnectResult>(`/sources/${id}/connect`, 'POST'),
   disconnect: (id: PrivateSourceId) => request<{ source: PrivateSource }>(`/sources/${id}/disconnect`, 'POST'),
-  sync: (id: PrivateSourceId) => request<PrivateSyncResult>(`/sources/${id}/sync`, 'POST'),
+  sync: (id: PrivateSourceId) => request<PrivateSyncResult>(`/sources/${id}/sync`, 'POST', undefined, { timeout: 65_000 }),
 };
 
 /** Older records remain visible without inventing a personal relevance judgment. */
