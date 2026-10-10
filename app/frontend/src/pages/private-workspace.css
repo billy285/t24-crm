@@ -233,24 +233,25 @@
 .pw-mail-filters button[aria-pressed="true"] { background: var(--pw-blue-soft); color: var(--pw-blue); }
 .pw-mail-filters small { font-size: 11px; font-variant-numeric: tabular-nums; opacity: .8; }
 .pw-mail-settings { flex-shrink: 0; }
-.pw-mail-groups { display: grid; gap: 24px; }
+.pw-mail-groups { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 24px; }
+.pw-mail-group, .pw-mail-group .pw-list { min-width: 0; }
 .pw-mail-group .pw-section-heading h2, .pw-mail-low > summary > span { display: inline-flex; align-items: center; gap: 9px; font-size: 14px; }
 .pw-mail-group h2 small, .pw-mail-low > summary small { color: var(--pw-muted); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .pw-mail-group-urgent .pw-section-heading h2 { color: var(--pw-warning); }
-.pw-mail-row { display: flex; align-items: center; gap: 14px; width: 100%; padding: 18px 19px; border: 0; background: transparent; color: var(--pw-text); text-align: left; }
+.pw-mail-row { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; padding: 18px 19px; border: 0; background: transparent; color: var(--pw-text); text-align: left; }
 .pw-mail-row + .pw-mail-row { border-top: 1px dashed var(--pw-line); }
 .pw-mail-row:hover { background: var(--pw-neutral); }
 .pw-mail-row:first-child { border-radius: 15px 15px 0 0; }
 .pw-mail-row:last-child { border-radius: 0 0 15px 15px; }
 .pw-mail-row:only-child { border-radius: 15px; }
 .pw-mail-copy { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
-.pw-mail-title { display: flex; align-items: flex-start; gap: 10px; }
+.pw-mail-title { display: flex; align-items: flex-start; min-width: 0; gap: 10px; }
 .pw-mail-title strong { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
 .pw-mail-badge { display: inline-flex; align-items: center; flex-shrink: 0; padding: 3px 7px; border-radius: 6px; background: var(--pw-neutral); color: var(--pw-muted); font-size: 10px; white-space: nowrap; }
 .pw-mail-badge-urgent { color: var(--pw-warning); background: var(--pw-warning-soft); }
 .pw-mail-badge-today { color: var(--pw-blue); background: var(--pw-blue-soft); }
 .pw-mail-row-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; color: var(--pw-muted); font-size: 11px; }
-.pw-mail-row-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pw-mail-row-meta > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pw-mail-row-meta time { flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .pw-mail-snippet { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; color: var(--pw-muted); font-size: 12px; line-height: 1.65; }
 .pw-mail-reason { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pw-muted); font-size: 11px; }
