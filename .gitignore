@@ -10,6 +10,7 @@ vite.config.ts.timestamp-*
 *.db
 *.db-wal
 *.db-shm
+/app/backend/private-data/
 test-results/
 .env
 .env.*

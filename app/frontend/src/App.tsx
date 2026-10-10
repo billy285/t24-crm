@@ -38,6 +38,7 @@ const ManagementDecisions = lazy(() => import('./pages/ManagementDecisions'));
 const Commissions = lazy(() => import('./pages/Commissions'));
 const PartnerPortal = lazy(() => import('./pages/PartnerPortal'));
 const CompanyRoadmap = lazy(() => import('./pages/CompanyRoadmap'));
+const PrivateWorkspace = lazy(() => import('./pages/PrivateWorkspace'));
 
 const PageFallback = () => (
   <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6" role="status" aria-live="polite">
@@ -92,6 +93,7 @@ const router = createBrowserRouter(createRoutesFromElements(
             <Route element={<ProtectedAppShell />} errorElement={<AppErrorBoundary><RouteFailure /></AppErrorBoundary>}>
               <Route path="/apps" element={<div />} />
               <Route path="/more" element={<div />} />
+              <Route path="/private-workspace" element={<PrivateWorkspace />} />
               <Route path="/" element={<Dashboard />} />
               <Route path="/company-roadmap" element={<CompanyRoadmap />} />
               <Route path="/merchant-pool" element={<MerchantPool />} />

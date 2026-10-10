@@ -34,6 +34,8 @@ import PwaInstallAction from '@/components/PwaInstallAction';
 import DesktopBusinessNavigation from '@/components/DesktopBusinessNavigation';
 import { getFinanceNavigationItem } from '@/lib/finance-navigation';
 import SalesCenterNavigation, { salesWorkspacePaths } from '@/components/SalesCenterNavigation';
+import PrivateWorkspaceEntry from './PrivateWorkspaceEntry';
+import { getAuthSessionEpoch } from '@/lib/auth-storage';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -226,6 +228,12 @@ export default function Layout({ children }: LayoutProps) {
     );
   }
 
+  // This account-scoped space has its own server authorization and chrome.
+  // Remount all private state when the verified employee/session changes.
+  if (currentPath === '/private-workspace') {
+    return <div key={`${employee?.id || 'unknown'}:${getAuthSessionEpoch()}`} className="private-workspace-shell">{children}</div>;
+  }
+
   // Check page access permission
   const hasPageAccess = canAccess(currentPath);
 
@@ -399,6 +407,7 @@ export default function Layout({ children }: LayoutProps) {
                   </div>
                 )}
                 <DropdownMenuSeparator />
+                <PrivateWorkspaceEntry variant="menu" />
                 <DropdownMenuItem onClick={() => setShowChangePwd(true)}>
                   <KeyRound className="w-4 h-4 mr-2" />
                   修改密码

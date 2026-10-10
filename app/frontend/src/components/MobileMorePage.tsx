@@ -8,6 +8,7 @@ import { T24AppMark } from '@/components/MobileAppHome';
 import { getMobileMoreGroupPath, getMobileMoreGroups } from '@/lib/mobile-more-navigation';
 import { roleLabels, useRole } from '@/lib/role-context';
 import './mobile-more-page.css';
+import PrivateWorkspaceEntry from './PrivateWorkspaceEntry';
 
 interface MobileMorePageProps {
   onOpenProfile: () => void;
@@ -91,6 +92,7 @@ export default function MobileMorePage({ onOpenProfile }: MobileMorePageProps) {
             </button>
 
             {favorites.length > 0 && <div className="mobile-more-section"><h2 className="mobile-more-section-label">常用功能</h2><div className="mobile-more-list">{favorites.map(item => <div className="mobile-more-feature-wrap" key={item.href}><Link className="mobile-more-row" to={item.href}><span className="mobile-more-row-label">{item.label}</span><ChevronRight aria-hidden="true" /></Link>{favoriteButton(item)}</div>)}</div></div>}
+            <PrivateWorkspaceEntry />
             <div className="mobile-more-section">
               <h2 className="mobile-more-section-label">全部功能</h2>
               <nav className="mobile-more-list" aria-label="全部业务中心">
