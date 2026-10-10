@@ -301,7 +301,8 @@ def test_container(stage, image, command, directory, timeout=600):
             run(stage+'-cleanup',['docker','rm','-f',name],directory)
 
 
-def candidate_regressions(directory, image, packages):
+def candidate_regressions(directory, image, packages, log_directory=None):
+    logs = log_directory or directory
     test_root = directory/'source/app/backend/tests'
     require(all((test_root/name).is_file() and not (test_root/name).is_symlink() for name in REGRESSION_TESTS)
             and (test_root/'conftest.py').is_file(), 'EXACT_SOURCE_TESTS_REQUIRED')
@@ -316,7 +317,7 @@ def candidate_regressions(directory, image, packages):
         test_container('test-tools-download',image,
             ['--network','bridge','--read-only','--tmpfs','/tmp:rw,nosuid,size=256m',
              '--mount','type=bind,src='+str(wheels)+',dst=/test-wheels',
-             '--entrypoint','python',image,'-c',code],directory,600)
+             '--entrypoint','python',image,'-c',code],logs,600)
     wheel_proof = {}
     for path in sorted(wheels.iterdir()):
         require(path.is_file() and not path.is_symlink() and path.suffix == '.whl', 'PINNED_TEST_WHEEL_REQUIRED')
@@ -355,10 +356,75 @@ print(json.dumps({'stage':'PRIVATE_CANDIDATE_REGRESSIONS_PASSED','tests':sum(int
          '--mount','type=bind,src='+str(test_root)+',dst=/app/backend/tests,readonly',
          '--mount','type=bind,src='+str(wheels)+',dst=/test-wheels,readonly',
          '--mount','type=bind,src='+str(result_path)+',dst=/test-results',
-         '--entrypoint','python',image,'-c',code],directory,600)
+         '--entrypoint','python',image,'-c',code],logs,600)
     report = json.loads(result.splitlines()[-1])
     write_json(directory/'candidate-runtime-regressions.json',report)
     return report
+
+
+
+ORIGINAL_FAILED_PREPARER_SHA = '3de41376a4c32547c0341879f5d00c5d64b7def7cea25a3d894fba69b5fc8482'
+RESUME_ORIGINAL_FILES = frozenset({
+    'base-backend.log','base-dist.log','base-package-bytes.log','base-packages.log','base-pin.log',
+    'crm-before-safe.json','existing-tags.log','expected-runtime-backend.json','prepare_private.py',
+    'release-spec.json','reviewed-changes.json','source-files.json','source.tar.gz',
+})
+FAILED_BASE_TAG = 't24-crm:app/backend/services/private_workspace_worker.py-base'
+FAILED_BASE_PIN_BYTES = ('\nerror parsing reference: "'+FAILED_BASE_TAG+
+                        '" is not a valid repository/tag: invalid reference format\n').encode()
+
+
+def release_identity(source_sha):
+    require(re.fullmatch(r'[a-f0-9]{40}',source_sha) is not None, 'RELEASE_HASH_SHAPE')
+    release_name = 'private-workspace-' + source_sha[:7] + '-20261011'
+    return release_name, 't24-crm:'+release_name
+
+
+def canonical_json_bytes(value):
+    return (json.dumps(value,sort_keys=True,indent=2)+'\n').encode()
+
+
+def source_tree_manifest(root):
+    require(root.is_dir() and not root.is_symlink() and root.resolve() == root, 'RESUME_SOURCE_DIRECTORY_UNTRUSTED')
+    actual = {}
+    for source_path in sorted(root.rglob('*')):
+        require(not source_path.is_symlink() and (source_path.is_dir() or source_path.is_file()) and
+                source_path.stat().st_uid == 0 and not source_path.stat().st_mode & 0o022,
+                'RESUME_SOURCE_NODE_UNTRUSTED')
+        if source_path.is_file():
+            require(source_path.stat().st_nlink == 1, 'RESUME_SOURCE_HARDLINK')
+            actual[source_path.relative_to(root).as_posix()] = sha(source_path)
+    return actual
+
+
+def resume_original_inventory(directory):
+    return {filename:sha(private_file(directory/filename)) for filename in sorted(RESUME_ORIGINAL_FILES)}
+
+
+def verify_resume_preconditions(directory, public, args, spec, baseline_archive, current_crm):
+    require(not public.exists() and not public.is_symlink(), 'RESUME_PUBLIC_RELEASE_ALREADY_EXISTS')
+    names = {path.name for path in directory.iterdir()}
+    require(names == set(RESUME_ORIGINAL_FILES) | {'source','prepare_private_v2.py'},
+            'RESUME_REQUIRES_EXACT_BASE_PIN_FAILURE_FILESET')
+    private_file(directory/'prepare_private_v2.py')
+    original_hashes = resume_original_inventory(directory)
+    require(original_hashes['prepare_private.py'] == ORIGINAL_FAILED_PREPARER_SHA and
+            original_hashes['release-spec.json'] == args.manifest_sha256 and
+            original_hashes['source.tar.gz'] == args.archive_sha256, 'RESUME_ORIGINAL_INPUT_HASH_DRIFT')
+    require((directory/'base-pin.log').read_bytes() == FAILED_BASE_PIN_BYTES, 'RESUME_EXACT_BASE_PIN_FAILURE_REQUIRED')
+    archived_source = archive_files(directory/'source.tar.gz',args.source_sha)
+    require(source_tree_manifest(directory/'source') == archived_source, 'RESUME_EXTRACTED_SOURCE_BYTES_DRIFT')
+    baseline_source = archive_files(baseline_archive,BASE_SOURCE)
+    changes = checked_manifest(spec,args,baseline_source,archived_source)
+    require((directory/'source-files.json').read_bytes() == canonical_json_bytes(archived_source) and
+            (directory/'reviewed-changes.json').read_bytes() == canonical_json_bytes(changes) and
+            (directory/'crm-before-safe.json').read_bytes() == canonical_json_bytes(current_crm),
+            'RESUME_ORIGINAL_SOURCE_OR_CRM_PROOF_DRIFT')
+    for filename in ('base-backend.log','base-dist.log','base-package-bytes.log','base-packages.log'):
+        previous = json.loads((directory/filename).read_text())
+        require((directory/filename).read_bytes() == (json.dumps(previous,sort_keys=True)+'\n\n').encode(),
+                'RESUME_ORIGINAL_SCAN_LOG_SHAPE_DRIFT')
+    return archived_source,changes,original_hashes
 
 
 def prepare(args):
@@ -366,53 +432,77 @@ def prepare(args):
     os.umask(0o077)
     require(re.fullmatch(r'[a-f0-9]{40}',args.source_sha) is not None and
             HASH.fullmatch(args.archive_sha256) and HASH.fullmatch(args.manifest_sha256), 'RELEASE_HASH_SHAPE')
-    name = 'private-workspace-' + args.source_sha[:7] + '-20261011'
-    directory = RELEASES/name
-    public = PUBLIC_RELEASES/name
+    release_name, tag = release_identity(args.source_sha)
+    directory = RELEASES/release_name
+    public = PUBLIC_RELEASES/release_name
     trusted_parent(RELEASES)
     require(directory.is_dir() and not directory.is_symlink() and directory.resolve() == directory and
             directory.stat().st_uid == 0 and not directory.stat().st_mode & 0o077, 'PRIVATE_RELEASE_DIRECTORY_REQUIRED')
     require(not public.exists() and not public.is_symlink(), 'NEW_PUBLIC_RELEASE_REQUIRED')
-    require(not any((directory/part).exists() or (directory/part).is_symlink()
-                    for part in ('source','source.tar.gz','candidate.json','static-dist')), 'NEW_PREPARATION_REQUIRED')
     manifest = private_file(directory/'release-spec.json')
     require(sha(manifest) == args.manifest_sha256, 'MANIFEST_HASH_DRIFT')
     spec = json.loads(manifest.read_text())
     baseline_archive = private_file(BASE_RELEASE/'source.tar.gz')
     require(sha(baseline_archive) == BASE_ARCHIVE_SHA, 'ACCEPTED_BASE_ARCHIVE_DRIFT')
     before_crm = crm_identity()
-    write_json(directory/'crm-before-safe.json', before_crm)
     require(shutil.disk_usage(RELEASES).free > 4*1024**3, 'CANDIDATE_DISK_SPACE_REQUIRED')
-    source_archive = directory/'source.tar.gz'
-    with urllib.request.urlopen('https://codeload.github.com/billy285/t24-crm/tar.gz/'+args.source_sha,
-                                timeout=60) as response:
-        require(response.status == 200, 'EXACT_SOURCE_DOWNLOAD_FAILED')
-        write(source_archive, response.read(256*1024**2+1))
-    require(source_archive.stat().st_size <= 256*1024**2 and sha(source_archive) == args.archive_sha256,
-            'EXACT_ARCHIVE_HASH_DRIFT')
+    resuming = getattr(args,'resume_base_pin_failure',False)
     source = directory/'source'
-    source.mkdir(mode=0o700)
-    after = archive_files(source_archive,args.source_sha,source)
-    before = archive_files(baseline_archive,BASE_SOURCE)
-    changes = checked_manifest(spec,args,before,after)
-    write_json(directory/'source-files.json',after)
-    write_json(directory/'reviewed-changes.json',changes)
-    base_backend = image_scan('base-backend',BASE_IMAGE,SCAN_BACKEND,directory)
-    packages = image_scan('base-packages',BASE_IMAGE,SCAN_PACKAGES,directory)
-    package_bytes = image_scan('base-package-bytes',BASE_IMAGE,SCAN_PACKAGE_BYTES,directory)
-    base_dist = image_scan('base-dist',BASE_IMAGE,SCAN_DIST,directory)
+    if resuming:
+        after,changes,original_hashes = verify_resume_preconditions(directory,public,args,spec,baseline_archive,before_crm)
+        logs = directory/('resume-base-pin-'+uuid4().hex[:12])
+        logs.mkdir(mode=0o700)
+        write_json(logs/'original-evidence-hashes.json',original_hashes)
+        write_json(logs/'source-tree-reverified.json',after)
+    else:
+        require(not any((directory/part).exists() or (directory/part).is_symlink()
+                        for part in ('source','source.tar.gz','candidate.json','static-dist')), 'NEW_PREPARATION_REQUIRED')
+        logs = directory
+        write_json(directory/'crm-before-safe.json',before_crm)
+        source_archive = directory/'source.tar.gz'
+        with urllib.request.urlopen('https://codeload.github.com/billy285/t24-crm/tar.gz/'+args.source_sha,
+                                    timeout=60) as response:
+            require(response.status == 200, 'EXACT_SOURCE_DOWNLOAD_FAILED')
+            write(source_archive,response.read(256*1024**2+1))
+        require(source_archive.stat().st_size <= 256*1024**2 and sha(source_archive) == args.archive_sha256,
+                'EXACT_ARCHIVE_HASH_DRIFT')
+        source.mkdir(mode=0o700)
+        after = archive_files(source_archive,args.source_sha,source)
+        before = archive_files(baseline_archive,BASE_SOURCE)
+        changes = checked_manifest(spec,args,before,after)
+        write_json(directory/'source-files.json',after)
+        write_json(directory/'reviewed-changes.json',changes)
+    base_backend = image_scan('base-backend',BASE_IMAGE,SCAN_BACKEND,logs)
+    packages = image_scan('base-packages',BASE_IMAGE,SCAN_PACKAGES,logs)
+    package_bytes = image_scan('base-package-bytes',BASE_IMAGE,SCAN_PACKAGE_BYTES,logs)
+    base_dist = image_scan('base-dist',BASE_IMAGE,SCAN_DIST,logs)
     expected = dict(base_backend)
-    for name in sorted(BACKEND_ADDITIONS):
-        relative = name[len('app/backend/'):]
+    for backend_source_path in sorted(BACKEND_ADDITIONS):
+        relative = backend_source_path[len('app/backend/'):]
         require(relative not in expected, 'PRIVATE_BACKEND_ALREADY_IN_BASE')
-        expected[relative] = after[name]
-    write_json(directory/'expected-runtime-backend.json',expected)
-    tag = 't24-crm:'+name
+        expected[relative] = after[backend_source_path]
     base_tag = tag+'-base'
-    existing_tags = run('existing-tags',['docker','image','ls','--format','{{.Repository}}:{{.Tag}}'],directory).splitlines()
+    existing_tags = run('existing-tags',['docker','image','ls','--format','{{.Repository}}:{{.Tag}}'],logs).splitlines()
     require(tag not in existing_tags and base_tag not in existing_tags, 'CANDIDATE_TAG_ALREADY_EXISTS')
-    run('base-pin',['docker','tag',BASE_IMAGE,base_tag],directory)
-    require(run('base-pin-proof',['docker','image','inspect','-f','{{.Id}}',base_tag],directory) == BASE_IMAGE,
+    if resuming:
+        require(FAILED_BASE_TAG not in existing_tags, 'RESUME_INVALID_FAILED_TAG_EXISTS')
+        for filename in ('base-backend.log','base-dist.log','base-package-bytes.log','base-packages.log','existing-tags.log'):
+            require(sha(logs/filename) == original_hashes[filename], 'RESUME_ORIGINAL_BASE_SCAN_OR_TAGS_DRIFT')
+        require((directory/'expected-runtime-backend.json').read_bytes() == canonical_json_bytes(expected),
+                'RESUME_ORIGINAL_BACKEND_PROOF_DRIFT')
+        require(resume_original_inventory(directory) == original_hashes and
+                source_tree_manifest(source) == after and crm_identity() == before_crm,
+                'RESUME_ORIGINAL_EVIDENCE_OR_CRM_CHANGED')
+        write_json(logs/'resume-preconditions-verified.json',{
+            'stage':'EXACT_BASE_PIN_FAILURE_RESUME_VERIFIED','source_sha':args.source_sha,
+            'failed_tag':FAILED_BASE_TAG,'correct_candidate_tag':tag,'correct_base_tag':base_tag,
+            'original_evidence_hashes':original_hashes,'source_tree_sha256':digest(after),
+            'crm_identity':before_crm,'candidate_existed_before_resume':False,
+            'public_directory_existed_before_resume':False,'prior_evidence_preserved':True})
+    else:
+        write_json(directory/'expected-runtime-backend.json',expected)
+    run('base-pin',['docker','tag',BASE_IMAGE,base_tag],logs)
+    require(run('base-pin-proof',['docker','image','inspect','-f','{{.Id}}',base_tag],logs) == BASE_IMAGE,
             'BASE_PIN_DRIFT')
     # Exact existing Dockerfile frontend stage, official Node 22 and fixed pnpm 11.16.0.
     original = (source/'app/Dockerfile').read_text()
@@ -422,36 +512,36 @@ def prepare(args):
             'corepack prepare pnpm@11.16.0 --activate' in original and
             'pnpm install --frozen-lockfile' in original, 'REVIEWED_FRONTEND_BUILD_SHAPE_DRIFT')
     recipe = original.split('FROM python:',1)[0] + 'FROM '+base_tag+'\n'
-    for name in sorted(BACKEND_ADDITIONS):
-        relative = name[len('app/'):]
+    for backend_source_path in sorted(BACKEND_ADDITIONS):
+        relative = backend_source_path[len('app/'):]
         recipe += 'COPY '+relative+' /app/'+relative+'\n'
     recipe += 'COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist\n'
     recipe += 'LABEL t24.source.sha="'+args.source_sha+'"\n'
     recipe_path = directory/'Dockerfile.private'
     write(recipe_path,recipe.encode())
     print('PRIVATE_WORKSPACE_CANDIDATE_BUILD_STARTED',flush=True)
-    run('candidate-build',['docker','build','-f',str(recipe_path),'-t',tag,'.'],directory,1800,source/'app')
-    image = run('candidate-image',['docker','image','inspect','-f','{{.Id}}',tag],directory)
+    run('candidate-build',['docker','build','-f',str(recipe_path),'-t',tag,'.'],logs,1800,source/'app')
+    image = run('candidate-image',['docker','image','inspect','-f','{{.Id}}',tag],logs)
     require(re.fullmatch(r'sha256:[a-f0-9]{64}',image) and image != BASE_IMAGE, 'IMMUTABLE_CANDIDATE_REQUIRED')
-    require(run('candidate-source',['docker','image','inspect','-f','{{index .Config.Labels "t24.source.sha"}}',image],directory) == args.source_sha,
+    require(run('candidate-source',['docker','image','inspect','-f','{{index .Config.Labels "t24.source.sha"}}',image],logs) == args.source_sha,
             'CANDIDATE_SOURCE_DRIFT')
-    require(image_scan('candidate-backend',image,SCAN_BACKEND,directory) == expected, 'CANDIDATE_BACKEND_BYTES_DRIFT')
-    require(image_scan('candidate-packages',image,SCAN_PACKAGES,directory) == packages, 'RUNTIME_DEPENDENCIES_CHANGED')
-    require(image_scan('candidate-package-bytes',image,SCAN_PACKAGE_BYTES,directory) == package_bytes, 'RUNTIME_PACKAGE_BYTES_CHANGED')
-    tests = candidate_regressions(directory,image,packages)
-    dist = image_scan('candidate-dist',image,SCAN_DIST,directory)
+    require(image_scan('candidate-backend',image,SCAN_BACKEND,logs) == expected, 'CANDIDATE_BACKEND_BYTES_DRIFT')
+    require(image_scan('candidate-packages',image,SCAN_PACKAGES,logs) == packages, 'RUNTIME_DEPENDENCIES_CHANGED')
+    require(image_scan('candidate-package-bytes',image,SCAN_PACKAGE_BYTES,logs) == package_bytes, 'RUNTIME_PACKAGE_BYTES_CHANGED')
+    tests = candidate_regressions(directory,image,packages,logs)
+    dist = image_scan('candidate-dist',image,SCAN_DIST,logs)
     require(all(dist.get(name) == value for name,value in base_dist.items() if name.startswith('assets/')),
             'EXISTING_ASSET_BYTES_OVERWRITTEN_OR_MISSING')
     probe = 't24-private-export-'+uuid4().hex[:12]
     created = False
     try:
         run('export-create',['docker','create','--name',probe,'--network','none',
-                             '--label','t24.private.prepare='+args.source_sha,'--entrypoint','/bin/true',image],directory)
+                             '--label','t24.private.prepare='+args.source_sha,'--entrypoint','/bin/true',image],logs)
         created = True
-        run('export-dist',['docker','cp',probe+':/app/frontend/dist',str(directory/'static-dist')],directory)
+        run('export-dist',['docker','cp',probe+':/app/frontend/dist',str(directory/'static-dist')],logs)
     finally:
         if created:
-            run('export-remove',['docker','rm',probe],directory)
+            run('export-remove',['docker','rm',probe],logs)
     exported = file_manifest(directory/'static-dist')
     require(exported == dist, 'EXPORTED_DIST_BYTES_DRIFT')
     graph = current_graph(directory/'static-dist',spec['frontend_version'])
@@ -481,7 +571,11 @@ def prepare(args):
               'current_assets_proof_sha256':sha(directory/'candidate-current-assets.json'),
               'crm_container_id':before_crm['container_id'],'crm_container_unchanged':True,
               'production_database_accessed':False,'production_database_mutations_performed':False,
-              'private_production_services_started':False,'nginx_modified':False,'deployment_performed':False}
+              'private_production_services_started':False,'nginx_modified':False,'deployment_performed':False,
+              'resumed_exact_base_pin_failure':resuming,'preparation_log_directory':str(logs)}
+    if resuming:
+        require(resume_original_inventory(directory) == original_hashes and source_tree_manifest(source) == after,
+                'ORIGINAL_FAILURE_EVIDENCE_CHANGED_DURING_RESUME')
     write_json(directory/'candidate.json',result)
     print(json.dumps(result,sort_keys=True),flush=True)
 
@@ -489,8 +583,9 @@ def prepare(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute',action='store_true')
-    for name in ('source-sha','archive-sha256','manifest-sha256'):
-        parser.add_argument('--'+name,required=True)
+    parser.add_argument('--resume-base-pin-failure',action='store_true')
+    for argument_name in ('source-sha','archive-sha256','manifest-sha256'):
+        parser.add_argument('--'+argument_name,required=True)
     arguments = parser.parse_args()
     if not arguments.execute:
         print(json.dumps({'stage':'PLAN_ONLY','source_sha':arguments.source_sha,

@@ -2,6 +2,9 @@
 import importlib.util
 import io
 import json
+import hashlib
+import os
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
 import tarfile
@@ -122,6 +125,146 @@ class PreparationSafety(unittest.TestCase):
             (root/'assets/PrivateWorkspace-historical.js').write_text('old stale page')
             with self.assertRaisesRegex(prep.PrepareError,'CURRENT_PRIVATE_WORKSPACE_MODULE_REQUIRED'):
                 prep.current_graph(root,'1'*12)
+
+
+class ResumeSafety(PreparationSafety):
+    def fixture(self, directory):
+        value,before,after=self.manifest()
+        root=Path(directory)
+        release=root/'release';release.mkdir(mode=0o700)
+        public=root/'public'
+        originals={
+            'prepare_private.py':b'original failed preparer fixture',
+            'prepare_private_v2.py':b'reviewed fixed preparer fixture',
+            'release-spec.json':prep.canonical_json_bytes(value),
+            'source.tar.gz':b'exact source archive fixture',
+            'source-files.json':prep.canonical_json_bytes(after),
+            'reviewed-changes.json':prep.canonical_json_bytes(value['changed_file_sha256']),
+            'crm-before-safe.json':prep.canonical_json_bytes({'container_id':'same-fixture-container'}),
+            'expected-runtime-backend.json':prep.canonical_json_bytes({}),
+            'base-pin.log':prep.FAILED_BASE_PIN_BYTES,
+            'existing-tags.log':b't24-crm:local\n\n',
+        }
+        for filename in ('base-backend.log','base-dist.log','base-package-bytes.log','base-packages.log'):
+            originals[filename]=b'{}\n\n'
+        for filename,blob in originals.items():
+            (release/filename).write_bytes(blob);(release/filename).chmod(0o600)
+        (release/'source').mkdir(mode=0o700)
+        args=SimpleNamespace(source_sha=SHA,
+            archive_sha256=hashlib.sha256(originals['source.tar.gz']).hexdigest(),
+            manifest_sha256=hashlib.sha256(originals['release-spec.json']).hexdigest())
+        # checked_manifest verifies these identity fields in the fixture too.
+        value['archive_sha256']=args.archive_sha256
+        (release/'release-spec.json').write_bytes(prep.canonical_json_bytes(value))
+        args.manifest_sha256=prep.sha(release/'release-spec.json')
+        return release,public,args,value,before,after
+
+    def resume(self,release,public,args,value,before,after):
+        def read_archive(path,source_sha,target=None):
+            return before if source_sha==prep.BASE_SOURCE else after
+        with patch.object(prep,'private_file',side_effect=lambda path:path), \
+             patch.object(prep,'ORIGINAL_FAILED_PREPARER_SHA',prep.sha(release/'prepare_private.py')), \
+             patch.object(prep,'archive_files',side_effect=read_archive), \
+             patch.object(prep,'source_tree_manifest',return_value=after):
+            return prep.verify_resume_preconditions(release,public,args,value,Path('base-archive'),
+                                                     {'container_id':'same-fixture-container'})
+
+    def test_resume_exact_failure_and_original_hashes_accepted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            release,public,args,value,before,after=self.fixture(directory)
+            restored,changes,inventory=self.resume(release,public,args,value,before,after)
+            self.assertEqual(restored,after)
+            self.assertEqual(changes,value['changed_file_sha256'])
+            self.assertEqual(set(inventory),set(prep.RESUME_ORIGINAL_FILES))
+            self.assertEqual((release/'base-pin.log').read_bytes(),prep.FAILED_BASE_PIN_BYTES)
+
+    def test_resume_candidate_file_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            release,public,args,value,before,after=self.fixture(directory)
+            (release/'candidate.json').write_text('{}')
+            with self.assertRaisesRegex(prep.PrepareError,'EXACT_BASE_PIN_FAILURE_FILESET'):
+                self.resume(release,public,args,value,before,after)
+
+    def test_resume_existing_public_directory_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            release,public,args,value,before,after=self.fixture(directory)
+            public.mkdir()
+            with self.assertRaisesRegex(prep.PrepareError,'PUBLIC_RELEASE_ALREADY_EXISTS'):
+                self.resume(release,public,args,value,before,after)
+
+    def test_resume_different_failed_tag_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            release,public,args,value,before,after=self.fixture(directory)
+            (release/'base-pin.log').write_bytes(b'\nother Docker error\n')
+            with self.assertRaisesRegex(prep.PrepareError,'EXACT_BASE_PIN_FAILURE_REQUIRED'):
+                self.resume(release,public,args,value,before,after)
+
+    def test_resume_changed_original_source_proof_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            release,public,args,value,before,after=self.fixture(directory)
+            (release/'source-files.json').write_text('{}')
+            with self.assertRaisesRegex(prep.PrepareError,'SOURCE_OR_CRM_PROOF_DRIFT'):
+                self.resume(release,public,args,value,before,after)
+
+    def test_resume_changed_crm_container_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            release,public,args,value,before,after=self.fixture(directory)
+            (release/'crm-before-safe.json').write_bytes(prep.canonical_json_bytes({'container_id':'different'}))
+            with self.assertRaisesRegex(prep.PrepareError,'SOURCE_OR_CRM_PROOF_DRIFT'):
+                self.resume(release,public,args,value,before,after)
+
+    def test_resume_modified_scan_log_bytes_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            release,public,args,value,before,after=self.fixture(directory)
+            (release/'base-backend.log').write_text('{}\nwarning\n')
+            with self.assertRaises((prep.PrepareError,json.JSONDecodeError)):
+                self.resume(release,public,args,value,before,after)
+
+    def test_real_preparation_backend_loop_keeps_release_tag(self):
+        # Execute prepare through the real backend additions loop, intercepting
+        # only the first mutation. This failed against the original name shadow.
+        class StopAtTag(RuntimeError):pass
+        value,before,after=self.manifest()
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory).resolve();releases=root/'releases';releases.mkdir()
+            release_name,expected_tag=prep.release_identity(SHA)
+            release=releases/release_name;release.mkdir(mode=0o700)
+            baseline=root/'baseline';baseline.mkdir()
+            (baseline/'source.tar.gz').write_bytes(b'baseline')
+            archive_blob=b'exact-source-fixture'
+            args=SimpleNamespace(source_sha=SHA,archive_sha256=hashlib.sha256(archive_blob).hexdigest(),
+                                 resume_base_pin_failure=False)
+            value['archive_sha256']=args.archive_sha256
+            (release/'release-spec.json').write_bytes(prep.canonical_json_bytes(value))
+            args.manifest_sha256=prep.sha(release/'release-spec.json')
+            response=io.BytesIO(archive_blob);response.status=200
+            real_stat=Path.stat
+            def root_stat(path,*args,**kwargs):
+                record=list(real_stat(path,*args,**kwargs));record[4]=0
+                return os.stat_result(record)
+            observed=[]
+            def fake_run(stage,command,*args,**kwargs):
+                if stage=='existing-tags':return ''
+                if stage=='base-pin':
+                    observed.append(command)
+                    raise StopAtTag()
+                raise AssertionError('Unexpected Docker operation '+stage)
+            def fake_scan(stage,*args):
+                return {'sha256':'a'*64} if stage=='base-package-bytes' else {}
+            with patch.object(prep.os,'geteuid',return_value=0), \
+                 patch.object(prep.socket,'gethostname',return_value=prep.HOST), \
+                 patch.object(prep,'RELEASES',releases),patch.object(prep,'PUBLIC_RELEASES',root/'public'), \
+                 patch.object(prep,'BASE_RELEASE',baseline), \
+                 patch.object(prep,'BASE_ARCHIVE_SHA',prep.sha(baseline/'source.tar.gz')), \
+                 patch.object(prep,'trusted_parent'),patch.object(prep,'private_file',side_effect=lambda path:path), \
+                 patch.object(prep,'crm_identity',return_value={'container_id':'same-fixture-container'}), \
+                 patch.object(prep.urllib.request,'urlopen',return_value=response), \
+                 patch.object(prep,'archive_files',side_effect=lambda path,sha,target=None: before if sha==prep.BASE_SOURCE else after), \
+                 patch.object(prep,'image_scan',side_effect=fake_scan),patch.object(prep,'run',side_effect=fake_run), \
+                 patch.object(Path,'stat',root_stat):
+                with self.assertRaises(StopAtTag):
+                    prep.prepare(args)
+            self.assertEqual(observed,[['docker','tag',prep.BASE_IMAGE,expected_tag+'-base']])
 
 
 if __name__=='__main__':
