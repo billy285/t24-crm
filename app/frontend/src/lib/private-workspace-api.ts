@@ -15,6 +15,7 @@ export interface PrivateSource {
   last_sync: string | null;
   error: string | null;
   metadata?: {
+    account_label?: string;
     coverage?: string;
     partial?: boolean;
     sync_window?: string;

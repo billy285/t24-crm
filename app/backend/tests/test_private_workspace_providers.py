@@ -13,7 +13,8 @@ GOOGLE = {'access_token': 'synthetic-access', 'refresh_token': 'synthetic-refres
           'scope': providers.GMAIL_SCOPE, 'token_type': 'Bearer'}
 ENVIRONMENTS = ('GOOGLE_WORKSPACE_CLIENT_ID', 'GOOGLE_WORKSPACE_CLIENT_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
                 'PRIVATE_WORKSPACE_PUBLIC_URL', 'GOOGLE_ADS_DEVELOPER_TOKEN', 'PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID',
-                'GOOGLE_ADS_CUSTOMER_ID', 'GOOGLE_ADS_LOGIN_CUSTOMER_ID', 'PRIVATE_WORKSPACE_STRIPE_KEY')
+                'GOOGLE_ADS_CUSTOMER_ID', 'GOOGLE_ADS_LOGIN_CUSTOMER_ID', 'PRIVATE_WORKSPACE_STRIPE_KEY',
+                'PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT')
 
 
 @pytest.fixture(autouse=True)
@@ -115,6 +116,66 @@ async def test_google_exchange_sends_secret_only_to_fixed_form_endpoint(configur
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('expected,account,allowed', [
+    (None, 'another@example.com', True),
+    ('owner@example.com', 'OWNER@EXAMPLE.COM', True),
+    ('owner@example.com', 'another@example.com', False),
+    ('owner@example.com', 'owner+alias@example.com', False),
+])
+async def test_optional_gmail_account_check_uses_actual_profile(configured, monkeypatch, expected, account, allowed):
+    if expected: monkeypatch.setenv('PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT', expected)
+    calls = []
+    async def handler(request):
+        calls.append(request)
+        if request.url.host == 'oauth2.googleapis.com':
+            return httpx.Response(200, json={'access_token': 'issued-access', 'scope': providers.GMAIL_SCOPE})
+        assert request.url.path.endswith('/profile')
+        return httpx.Response(200, json={'emailAddress': account})
+    if allowed:
+        result = await providers.complete_connect('gmail', 'one-time-code', transport=httpx.MockTransport(handler))
+        assert result['metadata']['account_label'] == account
+    else:
+        with pytest.raises(providers.ProviderError) as error:
+            await providers.complete_connect('gmail', 'one-time-code', transport=httpx.MockTransport(handler))
+        assert error.value.code == 'access_denied'
+        assert account not in str(error.value) and 'issued-access' not in str(error.value)
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('account', [None, '', 'not-an-email', 'owner@example.com\n', 'owner@example.com?token=x'])
+async def test_missing_or_malformed_profile_is_not_a_connected_mailbox(configured, account):
+    async def handler(request):
+        if request.url.host == 'oauth2.googleapis.com':
+            return httpx.Response(200, json={'access_token': 'issued-access', 'scope': providers.GMAIL_SCOPE})
+        return httpx.Response(200, json={'emailAddress': account})
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.complete_connect('gmail', 'one-time-code', transport=httpx.MockTransport(handler))
+    assert error.value.code == 'invalid_response'
+
+
+@pytest.mark.asyncio
+async def test_gmail_account_configuration_does_not_restrict_bofa_or_ads(configured, monkeypatch):
+    monkeypatch.setenv('PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT', 'owner@example.com')
+    async def handler(request):
+        if request.url.host == 'oauth2.googleapis.com':
+            return httpx.Response(200, json={'access_token': 'issued-access', 'scope': providers.GMAIL_SCOPE})
+        return httpx.Response(200, json={'emailAddress': 'different@example.com'})
+    result = await providers.complete_connect('bofa', 'one-time-code', transport=httpx.MockTransport(handler))
+    assert result['metadata']['account_label'] == 'different@example.com'
+    monkeypatch.setenv('PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT', 'bad-account')
+    descriptors = {row['id']: row for row in providers.describe_sources()}
+    assert descriptors['gmail']['missing_configuration'] == ['PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT']
+    assert descriptors['google_ads']['missing_configuration'] == []
+    assert descriptors['bofa']['missing_configuration'] == []
+    await providers.begin_connect('google_ads', 'a' * 64)
+    async def forbidden(request): raise AssertionError('Invalid account configuration must not make a request')
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.complete_connect('gmail', 'one-time-code', transport=httpx.MockTransport(forbidden))
+    assert error.value.code == 'not_configured'
+
+
+@pytest.mark.asyncio
 async def test_exchange_rejects_wrong_scope_without_fetching_mail(configured):
     calls = []
     async def handler(request):
@@ -135,13 +196,42 @@ async def test_gmail_metadata_only_and_stable_ids_exclude_full_body(configured):
             return httpx.Response(200, json={'messages': [{'id': 'a1'}]})
         assert request.url.params['format'] == 'metadata'
         return httpx.Response(200, json=message())
-    batch = await providers.fetch_source('gmail', GOOGLE, {}, transport=httpx.MockTransport(handler))
+    batch = await providers.fetch_source('gmail', GOOGLE, {'account_label': 'owner+private@example.com'}, transport=httpx.MockTransport(handler))
     item = batch['items'][0]
     assert item['external_id'] == 'a1' and item['kind'] == 'email' and item['status'] == 'unread'
-    assert item['source_url'] == 'https://mail.google.com/mail/u/0/#all/b2'
+    assert item['source_url'] == 'https://mail.google.com/mail/u/?authuser=owner%2Bprivate%40example.com#all/b2'
+    assert item['evidence']['from'] == 'Sender <sender@example.com>'
+    assert item['evidence']['sender_verification'] == 'unverified'
     assert 'FULL_MAIL_BODY' not in json.dumps(batch) and 'synthetic-access' not in json.dumps(batch)
     assert batch['metadata']['sync_window'] == 'last_60_days'
     assert all(request.method == 'GET' and not request.url.params.get('access_token') for request in calls)
+
+
+@pytest.mark.asyncio
+async def test_mailbox_unknown_does_not_open_default_account_and_sender_header_is_bounded(configured):
+    async def handler(request):
+        if request.url.path.endswith('/messages'):
+            return httpx.Response(200, json={'messages': [{'id': 'a1'}]})
+        return httpx.Response(200, json=message(sender='Impersonated Bank\r\n' + 'A' * 400 + '<sender@example.com>'))
+    result = await providers.fetch_source('gmail', GOOGLE, {}, transport=httpx.MockTransport(handler))
+    row = result['items'][0]
+    assert row['source_url'] is None
+    assert len(row['evidence']['from']) == 300 and '\r' not in row['evidence']['from'] and '\n' not in row['evidence']['from']
+    assert row['evidence']['sender_verification'] == 'unverified'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('metadata', [{}, {'account_label': ''}, {'account_label': None}])
+async def test_configured_mailbox_requires_confirmed_identity_before_sync(configured, monkeypatch, metadata):
+    monkeypatch.setenv('PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT', 'owner@example.com')
+    calls = []
+    async def forbidden(request):
+        calls.append(request)
+        raise AssertionError('An unidentified mailbox must not fetch messages or refresh a token')
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.fetch_source('gmail', GOOGLE, metadata, transport=httpx.MockTransport(forbidden))
+    assert error.value.code == 'authorization_expired' and '重新连接' in str(error.value)
+    assert calls == [] and 'owner@example.com' not in str(error.value) and 'synthetic-access' not in str(error.value)
 
 
 @pytest.mark.asyncio

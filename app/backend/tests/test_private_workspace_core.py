@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI, HTTPException
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncClient, MockTransport, Response
 from jose import jwt
 from sqlalchemy import event, inspect, select, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -19,7 +19,7 @@ from core.database import Base, get_db
 from models.employees import Employees
 from models.private_workspace import PrivateConnection, PrivateItem, PrivateSyncRun, PrivateWorkspaceBase, utcnow
 from routers.private_workspace import router
-from services import emp_auth, private_workspace as service
+from services import emp_auth, private_workspace as service, private_workspace_providers as real_providers
 
 
 def headers(employee_id=1, role="super_admin"):
@@ -282,6 +282,84 @@ async def test_oauth_state_is_owner_bound_single_use_and_source_bound(workspace)
         connection = (await db.execute(select(PrivateConnection))).scalar_one()
         assert connection.oauth_state_hash != state
         assert connection.oauth_used_at is not None
+
+
+@pytest.mark.asyncio
+async def test_wrong_gmail_profile_does_not_save_credentials_or_touch_crm(workspace, monkeypatch):
+    monkeypatch.setenv('GOOGLE_WORKSPACE_CLIENT_ID', 'synthetic-client.apps.googleusercontent.com')
+    monkeypatch.setenv('GOOGLE_WORKSPACE_CLIENT_SECRET', 'synthetic-client-secret')
+    monkeypatch.setenv('PRIVATE_WORKSPACE_PUBLIC_URL', 'https://t24-crm.com')
+    monkeypatch.setenv('PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT', 'owner@example.com')
+    requests = []
+    async def provider_http(request):
+        requests.append(request)
+        if request.url.host == 'oauth2.googleapis.com':
+            return Response(200, json={'access_token': 'wrong-account-private-token', 'refresh_token': 'wrong-account-refresh',
+                                       'scope': real_providers.GMAIL_SCOPE})
+        return Response(200, json={'emailAddress': 'other@example.com'})
+    async def actual_exchange(source_id, code):
+        return await real_providers.complete_connect(source_id, code, transport=MockTransport(provider_http))
+    workspace.fake.complete_connect = actual_exchange
+    state = await oauth_state(workspace.client)
+    response = await workspace.client.get('/api/v1/private-workspace/oauth/gmail/callback',
+                                          params={'state': state, 'code': 'synthetic-code'})
+    assert response.status_code == 303 and 'connection=incomplete' in response.headers['location']
+    sessions = await service.private_session_factory()
+    async with sessions() as db:
+        connection = (await db.execute(select(PrivateConnection))).scalar_one()
+        assert connection.status == 'disconnected' and connection.encrypted_credentials is None
+        assert connection.oauth_used_at is not None and not connection.metadata_json.get('account_label')
+    assert len(requests) == 2
+    assert all(statement.lstrip().upper().startswith('SELECT') for statement in workspace.statements)
+
+
+@pytest.mark.asyncio
+async def test_sync_preserves_confirmed_account_scope_and_mode(workspace):
+    stable = {'account_label': 'owner@example.com', 'scope': real_providers.GMAIL_SCOPE, 'connection_mode': 'oauth',
+              'read_only_adapter': True, 'mode': 'test'}
+    sessions = await service.private_session_factory()
+    async with sessions() as db:
+        db.add(PrivateConnection(owner_id='1', source_id='gmail', status='connected', metadata_json=stable,
+                                 encrypted_credentials=service.encrypt_credentials({'key': 'synthetic'})))
+        await db.commit()
+    original_fetch = workspace.fake.fetch_source
+    async def fetched_snapshot(source_id, credentials, metadata):
+        assert metadata == stable
+        result = await original_fetch(source_id, credentials, metadata)
+        result['metadata'] = {'account_label': 'different@example.com', 'scope': 'mail-write', 'connection_mode': 'write',
+                              'read_only_adapter': False, 'mode': 'live', 'partial': True, 'sync_window': 'last_60_days'}
+        return result
+    workspace.fake.fetch_source = fetched_snapshot
+    response = await workspace.client.post('/api/v1/private-workspace/sources/gmail/sync', headers=headers())
+    assert response.status_code == 200
+    visible = response.json()['source']['metadata']
+    assert visible['account_label'] == stable['account_label'] and visible['read_only_adapter'] is True and visible['mode'] == 'test'
+    assert visible['sync_window'] == 'last_60_days' and visible['partial'] is True
+    assert 'scope' not in visible and 'encrypted_credentials' not in response.text
+    async with sessions() as db:
+        connection = (await db.execute(select(PrivateConnection))).scalar_one()
+        assert all(connection.metadata_json[key] == value for key, value in stable.items())
+        assert connection.last_sync is not None
+    assert all(statement.lstrip().upper().startswith('SELECT') for statement in workspace.statements)
+
+
+@pytest.mark.asyncio
+async def test_sync_cannot_invent_an_authorized_account_from_snapshot(workspace):
+    await workspace.client.post('/api/v1/private-workspace/sources/stripe/connect', headers=headers())
+    original_fetch = workspace.fake.fetch_source
+    async def fetched_snapshot(source_id, credentials, metadata):
+        result = await original_fetch(source_id, credentials, metadata)
+        result['metadata']['account_label'] = 'not-a-confirmed-account@example.com'
+        result['metadata']['connection_mode'] = 'unconfirmed-mode'
+        result['metadata']['scope'] = 'unconfirmed-scope'
+        return result
+    workspace.fake.fetch_source = fetched_snapshot
+    response = await workspace.client.post('/api/v1/private-workspace/sources/stripe/sync', headers=headers())
+    assert response.status_code == 200 and 'account_label' not in response.json()['source']['metadata']
+    sessions = await service.private_session_factory()
+    async with sessions() as db:
+        connection = (await db.execute(select(PrivateConnection))).scalar_one()
+        assert all(key not in connection.metadata_json for key in ('account_label', 'scope', 'connection_mode'))
 
 
 @pytest.mark.asyncio

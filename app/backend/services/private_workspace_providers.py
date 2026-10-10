@@ -82,6 +82,34 @@ def _google_settings() -> tuple[str, str]:
             os.getenv('GOOGLE_WORKSPACE_CLIENT_SECRET') or os.getenv('GOOGLE_CLIENT_SECRET') or '')
 
 
+def _account_email(value: object) -> str:
+    # This identifies the mailbox returned by Google's profile endpoint, not a
+    # sender address. Reject malformed values instead of truncating an identity.
+    if not isinstance(value, str) or len(value) > 254 or value.count('@') != 1:
+        raise ProviderError('invalid_response')
+    local, domain = value.rsplit('@', 1)
+    labels = domain.split('.')
+    if (not local or len(local) > 64 or not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+", local)
+            or len(labels) < 2 or any(not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', label) for label in labels)):
+        raise ProviderError('invalid_response')
+    return value
+
+
+def _expected_gmail_account() -> str | None:
+    value = os.getenv('PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT', '').strip()
+    return _account_email(value) if value else None
+
+
+def _check_gmail_account(account: str | None) -> None:
+    expected = _expected_gmail_account()
+    if expected and not account:
+        # Old snapshots may have lost their profile identity. A configured
+        # mailbox restriction must require reauthorization rather than guess.
+        raise ProviderError('authorization_expired')
+    if expected and account.casefold() != expected.casefold():
+        raise ProviderError('access_denied')
+
+
 def _public_origin() -> str:
     value = os.getenv('PRIVATE_WORKSPACE_PUBLIC_URL', '').rstrip('/')
     parsed = urlsplit(value)
@@ -111,6 +139,9 @@ def _missing(source: SourceDefinition) -> list[str]:
         if not secret: result.append('GOOGLE_WORKSPACE_CLIENT_SECRET')
         try: _public_origin()
         except (ProviderError, ValueError): result.append('PRIVATE_WORKSPACE_PUBLIC_URL')
+    if source.id == 'gmail':
+        try: _expected_gmail_account()
+        except ProviderError: result.append('PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT')
     if source.id == 'google_ads':
         if not os.getenv('GOOGLE_ADS_DEVELOPER_TOKEN'): result.append('GOOGLE_ADS_DEVELOPER_TOKEN')
         try: _customer_id(os.getenv('PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID') or os.getenv('GOOGLE_ADS_CUSTOMER_ID') or '')
@@ -271,7 +302,9 @@ async def complete_connect(source_id: str, code: str, *, transport: httpx.AsyncB
         if source.id in {'gmail', 'bofa'}:
             profile = await client.request('GET', 'https://gmail.googleapis.com/gmail/v1/users/me/profile',
                                            headers={'Authorization': 'Bearer ' + credentials['access_token']})
-            metadata['account_label'] = _text(profile.get('emailAddress'), 200)
+            account = _account_email(profile.get('emailAddress'))
+            if source.id == 'gmail': _check_gmail_account(account)
+            metadata['account_label'] = account
     return {'credentials': credentials, 'metadata': metadata}
 
 
@@ -306,7 +339,9 @@ def _list(value: object) -> list:
     return value
 
 
-async def _gmail(google: _Google, source: SourceDefinition) -> dict:
+async def _gmail(google: _Google, source: SourceDefinition, metadata: dict) -> dict:
+    account = _account_email(metadata['account_label']) if metadata.get('account_label') else None
+    if source.id == 'gmail': _check_gmail_account(account)
     query = 'newer_than:60d {is:important is:starred}' if source.id == 'gmail' else 'newer_than:60d {from:bankofamerica.com from:bofa.com}'
     items = []; seen = set(); page = None; partial = False
     for _ in range(2):
@@ -332,6 +367,8 @@ async def _gmail(google: _Google, source: SourceDefinition) -> dict:
             thread_id = _id(message.get('threadId') or message_id)
             labels = _list(message.get('labelIds', []))
             evidence = {'provider_message_id': message_id, 'provider_thread_id': thread_id}
+            if headers.get('from'):
+                evidence.update({'from': _text(headers['from']), 'sender_verification': 'unverified'})
             if source.id == 'bofa': evidence.update(type='email_alert', verification='unverified', accounting_effect='none')
             items.append({'external_id': message_id, 'kind': 'email_alert' if source.id == 'bofa' else 'email',
                           'title': _text(headers.get('subject') or ('银行邮件提醒' if source.id == 'bofa' else '邮件'), 200),
@@ -339,7 +376,10 @@ async def _gmail(google: _Google, source: SourceDefinition) -> dict:
                           ('unread' if 'UNREAD' in labels else 'read'),
                           'priority': 'high' if source.id == 'gmail' and any(label in labels for label in ('IMPORTANT', 'STARRED')) else 'normal',
                           'occurred_at': _date(message.get('internalDate'), milliseconds=True),
-                          'source_url': 'https://mail.google.com/mail/u/0/#all/' + thread_id, 'evidence': evidence})
+                          # Mailbox selection is an explicit browser hint. An
+                          # unknown identity must not silently open account 0.
+                          'source_url': 'https://mail.google.com/mail/u/?' + urlencode({'authuser': account}) + '#all/' + thread_id if account else None,
+                          'evidence': evidence})
         page = listing.get('nextPageToken')
         if not page: break
         page = _opaque(page, 2048)
@@ -438,7 +478,7 @@ async def fetch_source(source_id: str, credentials: dict, metadata: dict, *, tra
         async with _Client(transport) as client:
             if source.id == 'stripe': return await _stripe(client, source, credentials)
             google = _Google(client, source, credentials)
-            result = await (_ads(google, source) if source.id == 'google_ads' else _gmail(google, source))
+            result = await (_ads(google, source) if source.id == 'google_ads' else _gmail(google, source, metadata))
             if google.credentials != credentials: result['credentials'] = google.credentials
             return result
     try: return await asyncio.wait_for(fetch(), timeout=MAX_SYNC_SECONDS)

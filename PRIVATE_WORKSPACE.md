@@ -22,6 +22,7 @@
 | `PRIVATE_WORKSPACE_ENCRYPTION_KEY` | 新生成的高熵秘密，至少 32 字符；独立于 CRM 密钥，备份时与数据库分开保存。变更后原授权须重新连接。 |
 | `PRIVATE_WORKSPACE_PUBLIC_URL` | 固定 HTTPS 站点 origin，例如 `https://t24-crm.com`，无路径、查询或片段。 |
 | `GOOGLE_WORKSPACE_CLIENT_ID` / `GOOGLE_WORKSPACE_CLIENT_SECRET` | Google Web OAuth 应用。兼容 `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`，建议使用本模块专属应用。 |
+| `PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT` | 可选的本人 Gmail 邮箱。配置后，实际 Google profile 邮箱必须精确匹配（忽略大小写）；别名或其他账号会被拒绝。历史连接没有已确认邮箱时须重新授权，不允许继续同步。 |
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads 开发者令牌。 |
 | `PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID` | 本人的目标广告账户，10 位数字或带横线；兼容 `GOOGLE_ADS_CUSTOMER_ID`。 |
 | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | 经 MCC 访问时的经理账户 ID，可选。 |
@@ -40,6 +41,10 @@ https://t24-crm.com/api/v1/private-workspace/oauth/google_ads/callback
 Gmail 和银行邮件使用 `gmail.readonly`，由本人逐次授权。Google Ads 的官方 OAuth scope 是 `adwords`，本模块只允许两条固定查询，不调用广告修改接口；部署前按 Google 要求完成所需 API 启用、测试用户或应用审核配置。授权 state 十分钟过期、来源与本人绑定且只能使用一次。部署时须使反向代理和 API 访问日志仅记录路径，尤其 OAuth 回调不得记录查询参数、请求体或授权头，避免短期授权码进入日志。
 
 配置完成后，以指定本人账号进入「接入管理」，逐个连接并同步。没有配置的来源显示待配置，不生成样例资金或伪造连接成功。
+
+Gmail 首次接入建议使用独立 Google Cloud 项目，仅启用 Gmail API，并只登记 Gmail 回调。第一版只同步主题、发件人、摘要、时间和邮件标签，不读取完整正文或附件；重要程度来自 Gmail 的重要/星标标签。发件人是邮件头提供的信息，未经真实性验证。原邮件入口带已确认邮箱的选择提示，须在真实多账号浏览器中验收实际打开的邮箱和邮件。
+
+Google External 应用处于 Testing 时，Gmail 授权的 refresh token 通常在 7 天后过期，届时需要重新授权。正式长期使用须单独检查发布状态及适用的个人使用例外/验证要求；切换发布状态不代表授权永久有效。参考 [Google OAuth 文档](https://developers.google.com/identity/protocols/oauth2) 和 [受限权限验证要求](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification)。
 
 ## 独立 API 部署
 
@@ -66,6 +71,8 @@ python -m services.private_workspace_worker
 ```
 
 该进程不会启动 CRM 的初始化、财务定时任务或业务迁移。它每分钟检查已连接来源，默认每 15 分钟同步；私人偏好 API 可设置 5 分钟至 24 小时。每次复核本人当前访问资格，单来源超时隔离，断开连接会清除加密凭据并阻止旧同步结果写回。断开保留之前的私人记录，来源连接状态会明确显示。
+
+「停止同步」仅清除本服务的本地连接凭据，不自动撤销 Google 账号中的应用授权。如需撤销，须由本人在 Google 账号的第三方应用访问设置中完成。已有连接开始重新授权后，取消或失败会使本地连接断开；需再次成功授权才能继续同步。
 
 应由现有进程管理工具单独管理 worker，并保持 API 与 worker 的同一部署环境、独立数据库路径和加密密钥。该文档只提供部署配置，不代表真实账号已接入或生产已上线。
 

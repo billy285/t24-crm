@@ -223,3 +223,6 @@
 }
 @media (max-width: 380px) { .pw-main { padding: 18px 12px 22px; } .pw-page-header { padding-left: 16px; padding-right: 16px; } .pw-item { gap: 7px; } .pw-form-row { grid-template-columns: minmax(0, 1fr); } .pw-refresh { padding: 9px; } .pw-refresh span { display: none; } .pw-balance-group > div { gap: 12px; } }
 @media (pointer: coarse) { .pw-button, .pw-text-button, .pw-filter { min-height: 44px; } .pw-form input, .pw-form textarea, .pw-form select { min-height: 44px; font-size: 16px; } .pw-mobile-header > a { width: 44px; height: 44px; } }
+
+.pw-account-label { overflow-wrap: anywhere; min-width: 0; font-size: 12px; color: var(--pw-muted); }
+.pw-mail-sender { overflow-wrap: anywhere; }

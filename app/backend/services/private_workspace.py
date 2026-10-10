@@ -260,7 +260,7 @@ async def connection_for(private_db, owner_id: str, source_id: str, *, create=Fa
 def source_metadata(connection):
     stored = (connection.metadata_json or {}) if connection else {}
     allowed = {"coverage", "partial", "sync_window", "record_limit", "record_limit_per_resource",
-               "resources", "mode", "bank_data_verification", "read_only_adapter", "api_version", "importance_source"}
+               "resources", "mode", "bank_data_verification", "read_only_adapter", "api_version", "importance_source", "account_label"}
     result = safe_json({key: value for key, value in stored.items() if key in allowed})
     # Bounded records are never presented as account-level financial totals.
     result["aggregated_totals"] = False
@@ -551,8 +551,21 @@ async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seco
         if still_current.rowcount != 1:
             raise HTTPException(status_code=409, detail="来源授权已改变，请重新同步")
         counts, balances = await persist_provider_batch(private_db, owner_id, source_id, batch)
+        batch_metadata = safe_json(batch.get("metadata") or metadata)
+        if not isinstance(batch_metadata, dict):
+            raise ValueError("invalid provider metadata")
+        # Synchronization cannot replace the identity/scope established during
+        # authorization, or claim a new identity from a fetched snapshot.
+        for key in ("account_label", "connection_mode", "scope"):
+            if key in metadata:
+                batch_metadata[key] = safe_json(metadata[key])
+            else:
+                batch_metadata.pop(key, None)
+        for key in ("read_only_adapter", "mode"):
+            if key in metadata:
+                batch_metadata[key] = safe_json(metadata[key])
         changed = {"last_sync": utcnow(), "error": None,
-                   "metadata_json": {**safe_json(batch.get("metadata") or metadata), "balances": balances}}
+                   "metadata_json": {**batch_metadata, "balances": balances}}
         if batch.get("credentials"):
             changed["encrypted_credentials"] = encrypt_credentials(batch["credentials"])
         await private_db.execute(update(PrivateConnection).where(
