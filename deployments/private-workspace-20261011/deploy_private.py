@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Deploy only private API/worker and static frontend; never restart or write CRM."""
-import argparse, hashlib, importlib.util, json, os, re, secrets, shutil, socket, sqlite3, subprocess, time
+import argparse, hashlib, importlib.util, itertools, json, os, re, secrets, shutil, socket, sqlite3, subprocess, time
 from pathlib import Path
 import urllib.request, urllib.error
 
@@ -53,6 +53,17 @@ def inspect(name):
 def crm():
     c=inspect('t24-crm');need(c['Id']==BASE_CONTAINER and c['Image']==BASE_IMAGE and c['State']['StartedAt']==BASE_STARTED and c['State']['Running'] and c['State']['Health']['Status']=='healthy','CRM_RUNTIME_DRIFT')
     return c
+
+def crm_matches_preparation(prep, before):
+    # Docker serializes its mount map in varying list order. Preserve every
+    # Config/HostConfig value and accept only the exact original mount tuples.
+    observed=prep.crm_identity()
+    current=crm()
+    need(len(current['Mounts'])==2,'CRM_MOUNT_COUNT_DRIFT')
+    need(all(observed[key]==before[key] for key in ('container_id','image_id','started_at')),'CRM_PREPARATION_IDENTITY_DRIFT')
+    variants=[digest({'Config':current['Config'],'HostConfig':current['HostConfig'],'Mounts':list(order)})
+              for order in itertools.permutations(current['Mounts'])]
+    return before['configuration_sha256'] in variants
 
 def request(url):
     try:
@@ -156,7 +167,7 @@ def main(a):
     need(sha(release/'candidate-public-files.json')==c['public_manifest_sha256'] and sha(release/'candidate-current-assets.json')==c['current_assets_proof_sha256'],'ASSET_PROOF_DRIFT')
     public_map=json.loads((release/'candidate-public-files.json').read_text());need({'/'+x:y for x,y in prep.file_manifest(public).items()}==public_map,'PUBLIC_BYTES_DRIFT')
     need(prep.current_graph(public,c['version'])==json.loads((release/'candidate-current-assets.json').read_text()),'CURRENT_GRAPH_DRIFT')
-    original_crm=crm();need(prep.crm_identity()==json.loads((release/'crm-before-safe.json').read_text()),'CRM_CONFIGURATION_DRIFT')
+    original_crm=crm();need(crm_matches_preparation(prep,json.loads((release/'crm-before-safe.json').read_text())),'CRM_CONFIGURATION_DRIFT')
     need(NGINX.is_file() and NGINX.resolve()==NGINX and not NGINX.is_symlink() and sha(NGINX)==NGINX_SHA,'NGINX_BASELINE_DRIFT')
     original=NGINX.read_bytes();need(original.decode().count(OLD_BLOCK)==1,'EXACT_NGINX_BLOCK_REQUIRED')
     need(not PRIVATE.exists() and not PRIVATE.is_symlink(),'PRIVATE_LOCATION_ALREADY_EXISTS')
@@ -262,7 +273,7 @@ asyncio.run(main());print('PRIVATE_PERSISTENCE_PROBE_WRITTEN')
         # Bound HTTP only and no public worker port; startup/readiness after restart confirmed.
         ai=inspect('t24-private-api');wi=inspect('t24-private-worker')
         need(ai['HostConfig']['PortBindings']=={'8001/tcp':[{'HostIp':'127.0.0.1','HostPort':'8001'}]} and not wi['HostConfig']['PortBindings'] and wi['State']['Running'],'PRIVATE_NETWORK_DRIFT')
-        need(prep.crm_identity()==json.loads((release/'crm-before-safe.json').read_text()),'EXISTING_CRM_CHANGED')
+        need(crm_matches_preparation(prep,json.loads((release/'crm-before-safe.json').read_text())),'EXISTING_CRM_CHANGED')
         after=snapshot(BUSINESS,release/'business-after.db');save(release/'business-after-safe.json',after)
         changed=sorted(name for name in before if before[name]!=after[name])
         # Live users may legitimately update CRM during release; no global write pause is introduced.

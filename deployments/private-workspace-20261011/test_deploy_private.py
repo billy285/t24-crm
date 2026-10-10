@@ -1,17 +1,56 @@
 """Offline deployment rejection tests; no production paths, Docker or network."""
+import copy
 import hashlib
 import importlib.util
+import json
 from pathlib import Path
 import re
 import sqlite3
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("private_release_deployment", HERE / "deploy_private.py")
 deploy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deploy)
+prep_spec = importlib.util.spec_from_file_location("private_release_preparation", HERE / "prepare_private.py")
+prep = importlib.util.module_from_spec(prep_spec)
+prep_spec.loader.exec_module(prep)
+
+
+def fixture_crm_inspection():
+    return {
+        "Id": deploy.BASE_CONTAINER,
+        "Image": deploy.BASE_IMAGE,
+        "State": {"StartedAt": deploy.BASE_STARTED, "Running": True, "Health": {"Status": "healthy"}},
+        "Config": {
+            "Env": ["SYNTHETIC_SETTING=original"],
+            "Labels": {
+                "t24.source.sha": prep.BASE_SOURCE,
+                "com.docker.compose.service": "crm",
+                "com.docker.compose.project.working_dir": str(prep.APP),
+                "com.docker.compose.project.config_files": str(prep.APP / "docker-compose.yml") + "," +
+                    str(prep.BASE_RELEASE / "compose-new.json"),
+            },
+        },
+        "HostConfig": {"PortBindings": {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]},
+                       "Memory": 0},
+        "Mounts": [
+            {"Source": str(prep.APP / "data"), "Destination": "/app/backend/data", "Type": "bind", "RW": True},
+            {"Source": str(prep.APP / "logs"), "Destination": "/app/backend/logs", "Type": "bind", "RW": True},
+        ],
+    }
+
+
+def fixture_crm_identity(inspection):
+    return {
+        "container_id": inspection["Id"], "image_id": inspection["Image"],
+        "started_at": inspection["State"]["StartedAt"],
+        "configuration_sha256": deploy.digest({key: inspection[key] for key in ("Config", "HostConfig", "Mounts")}),
+    }
 
 
 def fixture_database(path):
@@ -27,6 +66,42 @@ def fixture_database(path):
 
 
 class DeploymentSafety(unittest.TestCase):
+    def matches_preparation(self, current, before):
+        # Exercise the real preparation identity guards and deploy runtime guard.
+        # Both inspections are synthetic; no Docker command or network is used.
+        result = SimpleNamespace(returncode=0, stdout=json.dumps([current]), stderr="")
+        with mock.patch.object(deploy, "inspect", return_value=current), \
+                mock.patch.object(prep.subprocess, "run", return_value=result):
+            return deploy.crm_matches_preparation(prep, before)
+
+    def test_crm_identity_accepts_only_mount_list_reordering(self):
+        original = fixture_crm_inspection()
+        before = fixture_crm_identity(original)
+        self.assertTrue(self.matches_preparation(original, before))
+        reordered = copy.deepcopy(original)
+        reordered["Mounts"].reverse()
+        self.assertTrue(self.matches_preparation(reordered, before))
+
+    def test_crm_identity_rejects_environment_or_host_configuration_changes(self):
+        original = fixture_crm_inspection()
+        before = fixture_crm_identity(original)
+        for field in ("Env", "HostConfig"):
+            with self.subTest(field=field):
+                changed = copy.deepcopy(original)
+                changed["Mounts"].reverse()
+                if field == "Env":
+                    changed["Config"]["Env"] = ["SYNTHETIC_SETTING=changed"]
+                else:
+                    changed["HostConfig"]["Memory"] = 1024
+                self.assertFalse(self.matches_preparation(changed, before))
+
+    def test_crm_identity_rejects_mount_read_write_permission_changes(self):
+        original = fixture_crm_inspection()
+        changed = copy.deepcopy(original)
+        changed["Mounts"][0]["RW"] = False
+        with self.assertRaisesRegex(prep.PrepareError, "CRM_MOUNTS_DRIFT"):
+            self.matches_preparation(changed, fixture_crm_identity(original))
+
     def test_static_html_retains_existing_crm_security_headers(self):
         block = deploy.static_block(Path("/opt/t24-crm/public-releases/synthetic-test"))
         locations = dict(re.findall(r"location ([^\n]+) \{\n(.*?)\n    \}", block, flags=re.S))
