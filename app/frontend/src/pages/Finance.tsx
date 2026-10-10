@@ -4411,7 +4411,6 @@ export default function Finance() {
           )}
 
           <Button variant="outline" className="min-h-11 w-full" onClick={() => navigate('/more?group=finance')}>全部财务功能</Button>
-          {['overview', 'ledger'].includes(mobileFinanceView) && <div className="finance-mobile-quick-toolbar" aria-label="固定财务操作"><Button disabled={mobileEntryDisabled || !canCreatePayment} onClick={openPaymentForm}>记一笔收款</Button><Button variant="outline" onClick={() => changeMobileFinanceView('ledger')}>查看流水</Button></div>}
         </div>
 
       </>
