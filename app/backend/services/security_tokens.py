@@ -21,8 +21,8 @@ _KNOWN_WEAK_SECRETS = {
 
 
 def _is_production_env() -> bool:
-    value = (os.environ.get("APP_ENV") or os.environ.get("ENVIRONMENT") or os.environ.get("ENV") or "").strip().lower()
-    return value in {"prod", "production"}
+    environments = {(os.getenv(name) or "").strip().lower() for name in ("APP_ENV", "ENVIRONMENT", "ENV")}
+    return bool(environments & {"prod", "production"})
 
 
 def _require_strong_secret(value: str, variable_name: str) -> str:
@@ -42,6 +42,8 @@ def _resolve_refresh_token_secret() -> str:
     """
     configured = (os.environ.get("REFRESH_TOKEN_SECRET") or "").strip()
     if configured:
+        if configured == (os.environ.get("JWT_SECRET_KEY") or "").strip():
+            raise RuntimeError("REFRESH_TOKEN_SECRET must differ from JWT_SECRET_KEY")
         return _require_strong_secret(configured, "REFRESH_TOKEN_SECRET")
 
     employee_jwt_secret = (os.environ.get("JWT_SECRET_KEY") or "").strip()

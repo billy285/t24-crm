@@ -1,6 +1,8 @@
 import json
+import math
 from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
@@ -211,6 +213,47 @@ async def _validate_catalog_selection(db: AsyncSession, payload: QuoteCreatePayl
     if plan and plan.platform_limit and len(selected_platforms) > plan.platform_limit:
         raise HTTPException(status_code=400, detail=f"该套餐最多可选择 {plan.platform_limit} 个运营平台")
     return line, product, plan
+
+
+@router.get("/catalog")
+async def get_sales_quote_catalog(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """A sales quote needs sellable prices, never the internal product directory."""
+    _ensure_sales_access(current_user)
+    today = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Shanghai")).date()
+    rows = (await db.execute(
+        select(ProductPlan, ProductCatalog, BusinessLine)
+        .join(ProductCatalog, ProductCatalog.id == ProductPlan.product_id)
+        .join(BusinessLine, BusinessLine.id == ProductCatalog.business_line_id)
+        .where(
+            BusinessLine.is_active.is_(True), ProductCatalog.is_active.is_(True),
+            ProductPlan.is_active.is_(True), ProductPlan.pricing_status == "published",
+            ProductPlan.standard_price.is_not(None), ProductPlan.standard_price >= 0,
+            or_(ProductCatalog.effective_from.is_(None), ProductCatalog.effective_from <= today),
+            or_(ProductCatalog.effective_to.is_(None), ProductCatalog.effective_to >= today),
+            or_(ProductPlan.effective_from.is_(None), ProductPlan.effective_from <= today),
+            or_(ProductPlan.effective_to.is_(None), ProductPlan.effective_to >= today),
+        )
+        .order_by(BusinessLine.id, ProductCatalog.id, ProductPlan.id)
+    )).all()
+    lines, products, plans = {}, {}, []
+    for plan, product, line in rows:
+        if not math.isfinite(float(plan.standard_price)):
+            continue
+        lines[line.id] = {"id": line.id, "code": line.code, "name": line.name}
+        products[product.id] = {
+            "id": product.id, "business_line_id": line.id, "name": product.name,
+            "default_currency": product.default_currency,
+        }
+        plans.append({
+            "id": plan.id, "product_id": product.id, "name": plan.name,
+            "standard_price": plan.standard_price, "default_currency": plan.default_currency,
+            "default_billing_cycle": plan.default_billing_cycle,
+            "platform_limit": plan.platform_limit, "scope_type": plan.scope_type,
+        })
+    return {"business_lines": list(lines.values()), "products": list(products.values()), "plans": plans}
 
 
 @router.get("/options")

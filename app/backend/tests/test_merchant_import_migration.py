@@ -26,7 +26,10 @@ def test_import_migration_preserves_all_historical_tables_amounts_and_phone_valu
     _run_alembic(database,"upgrade","head")
     _run_alembic(database,"check")
     with sqlite3.connect(database) as connection:
-        assert snapshot(connection) == before
+        after = snapshot(connection)
+        assert set(after) == set(before) | {"employee_auth_sessions"}
+        assert {table: after[table] for table in before} == before
         assert connection.execute("SELECT phone,status FROM customers WHERE id=9201").fetchone() == (' +1 212-555-0123 ext. 9 ','已合作')
         assert connection.execute("SELECT amount_paid FROM payments WHERE id=9201").fetchone() == (198,)
         assert connection.execute("SELECT count(*) FROM merchant_import_batches").fetchone() == (0,)
+        assert connection.execute("SELECT count(*) FROM employee_auth_sessions").fetchone() == (0,)

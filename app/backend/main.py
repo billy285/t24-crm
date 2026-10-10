@@ -6,7 +6,7 @@ import pkgutil
 import time
 import traceback
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -26,8 +26,11 @@ from services.emp_auth import decode_access_token as decode_employee_access_toke
 from services.deal_payment_sync import backfill_missing_payments_from_deals
 from services.customer_lifecycle import sync_lifecycle_from_payments
 from services.automation_monitor import start_automation_scheduler, stop_automation_scheduler
-from core.database import db_manager
+from core.database import db_manager, get_db
 from core.auth import decode_access_token as decode_platform_access_token
+from dependencies.auth import employee_status_enforcement_enabled, normalize_system_role
+from services.emp_auth import EmpAuthService
+from services.employee_sessions import require_employee_session, session_enforcement_enabled
 # MODULE_IMPORTS_END
 
 
@@ -212,25 +215,48 @@ PHONE_SALES_READONLY_CUSTOMER_API_PREFIXES = (
 )
 
 
-def _request_role(request: Request) -> str:
+async def _request_role(request: Request) -> str:
     authorization = request.headers.get("authorization", "")
     if not authorization.lower().startswith("bearer "):
         return ""
     token = authorization.split(" ", 1)[1].strip()
     payload = decode_employee_access_token(token)
+    if payload and payload.get("emp_id") and (employee_status_enforcement_enabled() or session_enforcement_enabled()):
+        try:
+            employee_id = int(payload["emp_id"])
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+        # A token's original role cannot prove current access after an account
+        # has been demoted, disabled, or its session has been revoked.
+        dependency = request.app.dependency_overrides.get(get_db, get_db)
+        async with aclosing(dependency()) as sessions:
+            async for db in sessions:
+                employee = await EmpAuthService(db).get_employee_by_id(employee_id)
+                if not employee or employee.get("status") not in {"active", "probation"}:
+                    raise HTTPException(status_code=401, detail="Employee account is inactive")
+                await require_employee_session(db, employee, payload)
+                return normalize_system_role(employee.get("role"))
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
     if not payload:
         try:
             payload = decode_platform_access_token(token)
         except Exception:
             payload = None
-    return str((payload or {}).get("role") or "").strip().lower()
+    return normalize_system_role((payload or {}).get("role")) if payload else ""
 
 
 @app.middleware("http")
 async def isolate_phone_sales_access(request: Request, call_next):
     """Keep pre-sale users out of contracted-customer and finance APIs."""
     path = request.url.path
-    role = _request_role(request)
+    # A fresh password login must remain possible when the browser still sends
+    # a revoked token from the previous session. Logout verifies its own cookie.
+    if not path.startswith("/api/") or path in {"/api/v1/emp-auth/login", "/api/v1/emp-auth/logout"}:
+        return await call_next(request)
+    try:
+        role = await _request_role(request)
+    except HTTPException as error:
+        return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
     if path.startswith("/api/") and role in PHONE_SALES_ROLES:
         is_allowed = any(path.startswith(prefix) for prefix in PHONE_SALES_ALLOWED_API_PREFIXES)
         is_allowed = is_allowed or (role == "sales_manager" and (path == "/api/v1/merchant-imports" or path.startswith("/api/v1/merchant-imports/")))

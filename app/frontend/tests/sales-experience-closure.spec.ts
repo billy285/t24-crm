@@ -41,7 +41,8 @@ async function fixture(page: Page, mode: 'pool' | 'workbench' | 'deals' | 'knowl
       questionAttempt++;
       if (mode === 'knowledge' && questionAttempt === 1) return route.fulfill({ status: 503, json: { detail: '模拟待解答读取失败' } });
       data = { items: [{ id: 11, question: '真实待解答问题', status: 'open', submitted_by_name: '模拟销售' }] };
-    } else if (path === '/api/v1/sales-leads') data = { items: [{ ...lead, assigned_sales_id: 27 }], total: 1 };
+    } else if (path.endsWith('/sales-leads/recovery/overview')) data = { items: [], summary: { recoverable: 0, watch: 0, protected: 0, extended: 0, extension_requests: 0 } };
+    else if (path === '/api/v1/sales-leads') data = { items: [{ ...lead, assigned_sales_id: 27 }], total: 1 };
     return route.fulfill({ json: data });
   });
   return { reads, writes };

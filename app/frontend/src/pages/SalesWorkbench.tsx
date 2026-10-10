@@ -197,6 +197,8 @@ function SalesWorkspace() {
   const [preparing, setPreparing] = useState(false);
   const requestedLeadRef = useRef(Number(new URLSearchParams(window.location.search).get('lead_id')) || null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [auxiliaryErrors, setAuxiliaryErrors] = useState<string[]>([]);
+  const setAuxiliaryError = (section: string, failed: boolean) => setAuxiliaryErrors(current => failed ? current.includes(section) ? current : [...current, section] : current.filter(item => item !== section));
   const [filter, setFilter] = useState(initialView.filter);
   const [queueQuery, setQueueQuery] = useState('');
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -291,7 +293,7 @@ function SalesWorkspace() {
       if (requestId !== workbenchRequestRef.current) return;
       const message = error?.data?.detail || error?.message || '每日任务加载失败';
       setLoadError(message);
-      if (!workbench) toast.error(message);
+
     } finally {
       if (requestId === workbenchRequestRef.current) {
         setLoading(false);
@@ -317,14 +319,16 @@ function SalesWorkspace() {
     try {
       const response = await invokeWithAuth({ url: '/api/v1/sales-leads/recovery/my-alerts', method: 'GET' });
       setRecoveryAlerts(response.data?.items || []);
-    } catch { setRecoveryAlerts([]); }
+      setAuxiliaryError('保护提醒', false);
+    } catch { setAuxiliaryError('保护提醒', true); }
   };
   const loadPersonalPerformance = async () => {
     if (role !== 'sales') { setPersonalPerformance(null); return; }
     try {
       const response = await invokeWithAuth({ url: '/api/v1/sales-leads/dashboard/performance?days=30', method: 'GET' });
       setPersonalPerformance(response.data?.items?.[0] || null);
-    } catch { setPersonalPerformance(null); }
+      setAuxiliaryError('个人绩效', false);
+    } catch { setAuxiliaryError('个人绩效', true); }
   };
   const loadRingCentral = async () => {
     try {
@@ -342,11 +346,12 @@ function SalesWorkspace() {
         }
       }
       setRingCentral(status);
+      setAuxiliaryError('通话连接状态', false);
       if (status.connected && !ringCentralBackfillRequestedRef.current) {
         ringCentralBackfillRequestedRef.current = true;
         void invokeWithAuth({ url: '/api/ringcentral/sync?days=2', method: 'POST' }).catch(() => undefined);
       }
-    } catch { setRingCentral(null); }
+    } catch { setAuxiliaryError('通话连接状态', true); }
   };
   const loadAutomationOverview = async () => {
     if (!canManage) return;
@@ -642,6 +647,7 @@ function SalesWorkspace() {
     </div>
     {!teamView && savedReceipt && <section className="sw-save-receipt" role="status" aria-label="上次保存结果"><CheckCircle2 size={17} /><span>已保存 · <strong>{savedReceipt.name}</strong>{savedReceipt.nextFollowUpAt && <time> · 回访 {formatDate(savedReceipt.nextFollowUpAt)}</time>}</span>{savedReceipt.action && <Button variant="outline" onClick={() => window.location.assign(`/sales-leads?lead_id=${savedReceipt.leadId}&action=${savedReceipt.action}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>{savedReceipt.action === 'quote' ? '准备报价' : '查看跟进'}</Button>}</section>}
     {assigneeLoadError && <div className="sales-v3-alert" role="alert">销售人员暂时无法读取<Button size="sm" variant="outline" onClick={() => void loadAssignees()}>重新加载</Button></div>}
+    {!teamView && auxiliaryErrors.length > 0 && <div className="sales-v3-alert" role="status">{auxiliaryErrors.join('、')}暂时无法更新，已保留最近读取的数据。<Button size="sm" variant="outline" onClick={() => void Promise.all([loadRecoveryAlerts(), loadPersonalPerformance(), loadRingCentral()])}>重试更新</Button></div>}
     {!teamView && loadError && <div className="sales-v3-alert" role="alert">今日任务暂时无法更新{workbench ? '，保留上次读取的任务' : ''}<Button size="sm" variant="outline" onClick={() => void loadWorkbench()}>重新加载</Button></div>}
     {teamView && canManage ? assigneesLoaded && !assigneeLoadError ? <SalesTeamToday employees={assignees} targetDate={date} onOpenWorkbench={openSalesTasks} /> : <div className="sc-empty">{assigneeLoadError ? '销售人员暂不可用' : '正在读取团队任务…'}</div> : <>
     {isMobile ? <MobileSalesQueue key={`${employee?.id}:${role}:${date}:${canManage ? selectedSalesId : employee?.id}`} workspaceScope={{ userId: employee?.id, role, date, salesId: canManage ? Number(selectedSalesId) : employee?.id }} businessDay={today()} tasks={filteredTasks} selectedTaskId={focusedTask?.task_id} filter={filter} overdueCount={overdueFollowUpCount} disabled={saving} onFilterChange={setFilter} onSelect={taskId => { const task = filteredTasks.find(item => item.task_id === taskId); if (task) chooseTask(task); }} /> : <div className="sw-mobile-queue"><label><span className="sr-only">选择客户</span><select aria-label="选择客户" value={focusedTask?.task_id || ''} disabled={saving} onChange={event => { const task = filteredTasks.find(item => String(item.task_id) === event.target.value); if (task) chooseTask(task); }}><option value="" disabled>选择客户</option>{filteredTasks.map((task, index) => <option key={task.task_id} value={task.task_id}>{index + 1}. {task.lead.business_name}{task.task_status === 'completed' ? ' · 已完成' : ''}</option>)}</select></label><label><span className="sr-only">队列状态</span><NativeSelect value={filter} onChange={value => setFilter(value as typeof filter)} disabled={saving} options={[{value:'all',label:'全部任务'},{value:'unfinished',label:'未完成'},{value:'overdue',label:`逾期 ${overdueFollowUpCount}`}]} /></label></div>}

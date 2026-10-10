@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-HEAD_REVISION = "fa9b2c6d0410"
+HEAD_REVISION = "ab6d8e2f0411"
 BRIDGE_PARENT_REVISION = "e4c7a1b9d305"
 PRE_ALIGNMENT_HEAD_REVISION = "f3a7c9d2e611"
 
@@ -204,7 +204,7 @@ def test_empty_sqlite_upgrade_head_is_complete_repeatable_and_clean(tmp_path: Pa
         orm_tables = _orm_table_names()
         database_tables = _database_table_names(connection)
 
-        assert len(orm_tables) == 76
+        assert len(orm_tables) == 77
         assert orm_tables <= database_tables
         assert BRIDGE_ORM_TABLES <= database_tables
         assert NON_ORM_PERSISTENT_TABLES <= database_tables

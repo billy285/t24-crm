@@ -548,7 +548,7 @@ async def test_customer_create_with_projects_is_atomic_and_admin_can_read_projec
             "customer_code": "C-NEW",
             "business_name": "New Multi Service Customer",
             "contact_name": "Owner",
-            "phone": "555-9000",
+            "phone": "+12125559000",
             "industry": "restaurant",
             "status": "closed",
         },

@@ -1,5 +1,6 @@
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Login from './Login';
+import AuthVerificationState from '@/components/AuthVerificationState';
 import { useRole } from '@/lib/role-context';
 import { requestBusinessDataRefresh } from '@/lib/data-refresh';
 import { getDesktopLoginPath } from '@/lib/app-navigation';
@@ -31,7 +32,7 @@ const resolvePostLoginPath = (role: string | undefined, requestedPath: string) =
 export default function LoginPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { loading, isLoggedIn, isDisabled, login, role } = useRole();
+  const { loading, authError, retryAuth, isLoggedIn, isDisabled, login, role } = useRole();
 
   const state = location.state as LoginLocationState | null;
   const requestedRedirect = requestedPathFromState(state);
@@ -44,6 +45,8 @@ export default function LoginPage() {
       </div>
     );
   }
+
+  if (authError) return <AuthVerificationState message={authError} onRetry={retryAuth} />;
 
   if (isDisabled) {
     return <Navigate to="/" replace />;

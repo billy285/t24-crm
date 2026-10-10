@@ -93,6 +93,8 @@ def test_refresh_cookie_defaults_to_secure_in_production(monkeypatch):
     assert _secure_cookie_enabled() is True
 
     monkeypatch.setenv("COOKIE_SECURE", "false")
+    assert _secure_cookie_enabled() is True
+    monkeypatch.setenv("APP_ENV", "test")
     assert _secure_cookie_enabled() is False
 
 

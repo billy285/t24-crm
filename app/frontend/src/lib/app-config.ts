@@ -1,6 +1,9 @@
 import { appConfigApi, type AppConfigKey } from '@/api/app-config';
+import { AUTH_SESSION_INVALIDATED_EVENT, getAuthSessionEpoch } from './auth-storage';
+import { authSessionChangedError, isAuthSessionCurrent } from './api';
 
 export const APP_CONFIG_UPDATED_EVENT = 'crm:app-config-updated';
+const suppressedCacheKeys = new Set<AppConfigKey>();
 
 // Sensitive server-only configuration (for example payroll_sheets_v1) must
 // never be mirrored into browser storage. Only explicitly listed keys are
@@ -18,7 +21,8 @@ export const APP_CONFIG_STORAGE_KEYS: Partial<Record<AppConfigKey, string>> = {
 };
 
 function hasStorage() {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+  try { return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'; }
+  catch { return false; }
 }
 
 export function emitAppConfigUpdated(keys: AppConfigKey[] = []) {
@@ -27,7 +31,7 @@ export function emitAppConfigUpdated(keys: AppConfigKey[] = []) {
 }
 
 export function readCachedAppConfig<T>(key: AppConfigKey, fallback: T): T {
-  if (!hasStorage()) return fallback;
+  if (!hasStorage() || suppressedCacheKeys.has(key)) return fallback;
   const storageKey = APP_CONFIG_STORAGE_KEYS[key];
   if (!storageKey) return fallback;
   try {
@@ -42,37 +46,47 @@ export function writeCachedAppConfig<T>(key: AppConfigKey, value: T, options?: {
   if (!hasStorage()) return;
   const storageKey = APP_CONFIG_STORAGE_KEYS[key];
   if (!storageKey) return;
-  window.localStorage.setItem(storageKey, JSON.stringify(value));
+  try { window.localStorage.setItem(storageKey, JSON.stringify(value)); }
+  catch { return; }
+  suppressedCacheKeys.delete(key);
   if (options?.emit !== false) {
     emitAppConfigUpdated([key]);
   }
 }
 
 export function clearCachedAppConfig() {
+  (Object.keys(APP_CONFIG_STORAGE_KEYS) as AppConfigKey[]).forEach(key => suppressedCacheKeys.add(key));
   if (!hasStorage()) return;
   (Object.keys(APP_CONFIG_STORAGE_KEYS) as AppConfigKey[]).forEach((key) => {
     const storageKey = APP_CONFIG_STORAGE_KEYS[key];
-    if (storageKey) window.localStorage.removeItem(storageKey);
+    try { if (storageKey) window.localStorage.removeItem(storageKey); } catch { /* Fall back to checked-in defaults. */ }
   });
   emitAppConfigUpdated(Object.keys(APP_CONFIG_STORAGE_KEYS) as AppConfigKey[]);
 }
 
 export async function loadRemoteAppConfig<T>(key: AppConfigKey, fallback: T): Promise<T> {
+  const epoch = getAuthSessionEpoch();
   const response = await appConfigApi.get<T>(key);
+  if (!isAuthSessionCurrent(epoch)) throw authSessionChangedError();
   const value = response?.value ?? fallback;
   writeCachedAppConfig(key, value);
   return value;
 }
 
 export async function saveRemoteAppConfig<T>(key: AppConfigKey, value: T): Promise<T> {
+  const epoch = getAuthSessionEpoch();
   const response = await appConfigApi.update<T>(key, value);
+  if (!isAuthSessionCurrent(epoch)) throw authSessionChangedError();
   const saved = response?.value ?? value;
   writeCachedAppConfig(key, saved);
   return saved;
 }
 
 export async function syncAppConfigCache(): Promise<Partial<Record<AppConfigKey, any>>> {
+  const epoch = getAuthSessionEpoch();
   const items = await appConfigApi.getAll();
+  if (!isAuthSessionCurrent(epoch)) throw authSessionChangedError();
+  clearCachedAppConfig();
   const touched: AppConfigKey[] = [];
 
   (Object.keys(APP_CONFIG_STORAGE_KEYS) as AppConfigKey[]).forEach((key) => {
@@ -87,4 +101,10 @@ export async function syncAppConfigCache(): Promise<Partial<Record<AppConfigKey,
   }
 
   return items;
+}
+
+// The auth transport invalidates identity without importing this cache module.
+// Clear sensitive convenience data even when the role UI is still mounting.
+if (typeof window !== 'undefined') {
+  window.addEventListener(AUTH_SESSION_INVALIDATED_EVENT, clearCachedAppConfig);
 }

@@ -1,7 +1,7 @@
 import logging
 import os
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
 import bcrypt
@@ -34,14 +34,18 @@ def _is_truthy_env(name: str) -> bool:
 
 
 def _is_production_env() -> bool:
-    raw = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("ENV") or "").strip().lower()
-    return raw in {"prod", "production"}
+    environments = {(os.getenv(name) or "").strip().lower() for name in ("APP_ENV", "ENVIRONMENT", "ENV")}
+    return bool(environments & {"prod", "production"})
 
 
 def _email_log_token(email: str) -> str:
     """Return a stable non-PII token for authentication audit logs."""
     normalized = (email or "").strip().lower()
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
+
+
+def normalize_employee_email(email: str | None) -> str | None:
+    return str(email or "").strip().lower() or None
 
 
 def validate_employee_auth_security_config() -> None:
@@ -95,15 +99,19 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
-    to_encode.update({"exp": expire})
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
+    to_encode.update({"exp": expire, "iat": now, "token_type": "employee_access"})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
-    """Decode and verify a JWT token."""
+def decode_access_token(token: str, *, allow_expired_for_session_identity: bool = False) -> Optional[Dict[str, Any]]:
+    """Verify a JWT; expired identity claims may only fence refresh or revoke."""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token, SECRET_KEY, algorithms=[ALGORITHM],
+            options={"verify_exp": not allow_expired_for_session_identity},
+        )
         return payload
     except Exception as e:
         logger.error(f"Token decode error: {e}")
@@ -133,14 +141,20 @@ class EmpAuthService:
     async def authenticate(self, email: str, password: str) -> Optional[Dict[str, Any]]:
         """Authenticate an employee by email and password. Returns dict with employee data."""
         await self.ensure_password_column()
-        normalized_email = (email or "").strip().lower()
+        normalized_email = normalize_employee_email(email)
+        if not normalized_email:
+            return None
         email_token = _email_log_token(normalized_email)
         try:
             result = await self.db.execute(
-                text("SELECT id, user_id, name, role, phone, email, status, password FROM employees WHERE email = :email"),
+                text("SELECT id, user_id, name, role, phone, email, status, password, updated_at FROM employees WHERE LOWER(TRIM(email)) = :email LIMIT 2"),
                 {"email": normalized_email},
             )
-            row = result.fetchone()
+            rows = result.fetchall()
+            if len(rows) > 1:
+                logger.warning("Ambiguous employee login identity rejected token=%s", email_token)
+                return None
+            row = rows[0] if rows else None
 
             if not row:
                 logger.warning("Employee login account not found token=%s", email_token)
@@ -155,6 +169,7 @@ class EmpAuthService:
                 "email": row[5],
                 "status": row[6],
                 "password": row[7],
+                "updated_at": row[8],
             }
 
             if not emp_data["password"]:
@@ -175,7 +190,7 @@ class EmpAuthService:
         await self.ensure_password_column()
         try:
             result = await self.db.execute(
-                text("SELECT id, user_id, name, role, phone, email, status, password FROM employees WHERE id = :id"),
+                text("SELECT id, user_id, name, role, phone, email, status, password, updated_at FROM employees WHERE id = :id"),
                 {"id": emp_id},
             )
             row = result.fetchone()
@@ -190,6 +205,7 @@ class EmpAuthService:
                 "email": row[5],
                 "status": row[6],
                 "password": row[7],
+                "updated_at": row[8],
             }
         except Exception as e:
             logger.error(f"Error fetching employee {emp_id}: {e}")
@@ -200,10 +216,16 @@ class EmpAuthService:
         await self.ensure_password_column()
         try:
             hashed = hash_password(new_password)
-            await self.db.execute(
+            result = await self.db.execute(
                 text("UPDATE employees SET password = :pwd WHERE id = :id"),
                 {"pwd": hashed, "id": emp_id},
             )
+            if not result.rowcount:
+                await self.db.rollback()
+                return False
+            from services.employee_sessions import revoke_employee_sessions
+
+            await revoke_employee_sessions(self.db, emp_id)
             await self.db.commit()
             return True
         except Exception as e:

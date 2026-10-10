@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from core.database import Base
 from core.mask_crypto import key_prefix
+from models.customers import Customers
 from services.media_accounts import (
     Media_accountsService,
     decrypt_media_account_password,
@@ -24,6 +25,8 @@ async def db_session():
 
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
     async with session_maker() as session:
+        session.add(Customers(id=1, business_name="Synthetic media customer", contact_name="Test contact", phone="+12125559000"))
+        await session.commit()
         yield session
 
     await engine.dispose()

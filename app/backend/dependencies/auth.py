@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from schemas.auth import UserResponse
 from services.emp_auth import EmpAuthService, decode_access_token as decode_employee_access_token
+from services.employee_sessions import require_employee_session, session_enforcement_enabled
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,9 @@ def enforce_sales_partner_route(user: UserResponse, request: Request) -> UserRes
 
 def employee_status_enforcement_enabled() -> bool:
     """Fail closed by default; tests can explicitly opt out for isolated fixtures."""
+    environments = {(os.getenv(name) or "").strip().lower() for name in ("APP_ENV", "ENVIRONMENT", "ENV")}
+    if environments & {"prod", "production"}:
+        return True
     return (os.environ.get("ENFORCE_EMPLOYEE_STATUS", "true").strip().lower() in {"1", "true", "yes", "on"})
 
 
@@ -80,15 +84,24 @@ async def get_current_user(
     employee-login flow.
     """
     employee_payload = decode_employee_access_token(token)
+    if employee_payload and employee_payload.get("token_type") == "employee_refresh":
+        # Even if an operator mistakenly configures equal signing keys, a
+        # refresh credential must never fall through to legacy platform auth.
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
     employee_id = employee_payload.get("emp_id") if employee_payload else None
     if employee_id:
-        if employee_status_enforcement_enabled():
-            employee = await EmpAuthService(db).get_employee_by_id(int(employee_id))
+        if employee_status_enforcement_enabled() or session_enforcement_enabled():
+            try:
+                parsed_employee_id = int(employee_id)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
+            employee = await EmpAuthService(db).get_employee_by_id(parsed_employee_id)
             if not employee or employee.get("status") not in ACTIVE_EMPLOYEE_STATUSES:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Employee account is inactive",
                 )
+            await require_employee_session(db, employee, employee_payload)
             return enforce_sales_partner_route(UserResponse(
                 id=str(employee["id"]),
                 email=employee.get("email") or "",

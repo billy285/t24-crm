@@ -20,6 +20,9 @@ MONTHLY_DEDUCTION_TABLES = frozenset(
     }
 )
 RUNTIME_REQUIRED_TABLE_COLUMNS = {
+    "employee_auth_sessions": frozenset({
+        "id", "employee_id", "credential_fingerprint", "created_at", "expires_at", "revoked_at",
+    }),
     APP_SETTINGS_TABLE: frozenset({"config_key", "value_json", "updated_at"}),
     "monthly_deduction_rates": frozenset({"id", "year_month", "rate", "created_at", "updated_at"}),
     "monthly_deduction_defaults": frozenset({"id", "rate", "updated_at"}),

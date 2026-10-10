@@ -154,6 +154,11 @@ function LeadCommunication({ notes, insight, loading }: { notes?: string; insigh
 }
 
 export default function SalesLeads() {
+  const { employee, role } = useRole();
+  return <SalesLeadWorkspace key={`${employee?.id || 'unknown'}:${role || 'unknown'}`} />;
+}
+
+function SalesLeadWorkspace() {
   const { role, isAdmin, employee } = useRole();
   const isMobile = useIsMobile();
   const canManage = isAdmin || role === 'sales_manager';
@@ -168,6 +173,7 @@ export default function SalesLeads() {
   const [compactRows, setCompactRows] = useState(false);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState(false);
+  const [dataErrors, setDataErrors] = useState<string[]>([]);
   const [initialParams] = useState(() => new URLSearchParams(window.location.search));
   const [view, setView] = useState<'leads' | 'calls' | 'performance' | 'intelligence'>(() => ['calls', 'performance', 'intelligence'].includes(initialParams.get('view') || '') ? initialParams.get('view') as 'calls' | 'performance' | 'intelligence' : 'leads');
   const [dossierId, setDossierId] = useState<number | null>(null);
@@ -217,6 +223,11 @@ export default function SalesLeads() {
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [productPlans, setProductPlans] = useState<PlanOption[]>([]);
   const [dealEmployees, setDealEmployees] = useState<DealEmployeeOption[]>([]);
+  const [dealOptionsLoading, setDealOptionsLoading] = useState(false);
+  const [dealOptionsErrors, setDealOptionsErrors] = useState<string[]>([]);
+  const [catalogReady, setCatalogReady] = useState(false);
+  const [dealEmployeesReady, setDealEmployeesReady] = useState(false);
+  const dealOptionsRequestRef = useRef(0);
   const [selectedRecoveryIds, setSelectedRecoveryIds] = useState<number[]>([]);
   const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>([]);
   const [bulkAssigneeId, setBulkAssigneeId] = useState('');
@@ -240,10 +251,10 @@ export default function SalesLeads() {
   const selectedQuotePlan = useMemo(() => productPlans.find(item => String(item.id) === quoteForm.product_plan_id), [productPlans, quoteForm.product_plan_id]);
   const selectedPlatforms = useMemo(() => quoteForm.selected_platforms.split(/[，,\n]/).map(item => item.trim()).filter(Boolean), [quoteForm.selected_platforms]);
 
-  const loadData = async (options?: { page?: number }) => {
+  const loadData = async (options?: { page?: number; background?: boolean }) => {
     const requestId = ++loadRequestSeqRef.current;
     const requestPage = options?.page ?? page;
-    setLoading(true);
+    if (!options?.background) setLoading(true);
     const params = new URLSearchParams({ skip: String((requestPage - 1) * pageSize), limit: String(pageSize) });
     if (search.trim()) params.set('search', search.trim());
     if (statusFilter) params.set('status', statusFilter);
@@ -296,9 +307,9 @@ export default function SalesLeads() {
         if (recoveryResult?.status === 'fulfilled') setRecoveryOverview(recoveryResult.value.data || null);
         else failedSections.push('保护提醒');
       }
-      if (failedSections.length) toast.error(`${failedSections.join('、')}加载失败，已保留其他可用数据`);
+      setDataErrors(failedSections.filter(section => section !== '线索列表'));
     } catch (error: any) {
-      if (requestId === loadRequestSeqRef.current) toast.error(error?.data?.detail || error?.message || '线索数据加载失败');
+      if (requestId === loadRequestSeqRef.current) { setListError(true); setSelectedLeadIds([]); }
     } finally {
       if (requestId === loadRequestSeqRef.current) setLoading(false);
     }
@@ -309,8 +320,9 @@ export default function SalesLeads() {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize, search, statusFilter, contactFilter, dueRange, performanceDays, callReportDays]);
+  useEffect(() => () => { loadRequestSeqRef.current += 1; dealOptionsRequestRef.current += 1; dealRequestRef.current += 1; historyRequestRef.current += 1; }, []);
 
-  useAutoRefresh(loadData, { intervalMs: 30000, enabled: !showForm });
+  useAutoRefresh(() => loadData({ background: true }), { intervalMs: 30000, enabled: !showForm && !dealLead });
 
   useEffect(() => {
     if (view !== 'leads' || !items.length) return;
@@ -327,23 +339,31 @@ export default function SalesLeads() {
     return () => { current = false; };
   }, [items, view, insightRetry]);
 
-  useEffect(() => {
-    const loadDealOptions = async () => {
-      try {
-        const [catalogResponse, employeeResponse] = await Promise.all([
-          invokeWithAuth({ url: '/api/v1/product-plans?active_only=true', method: 'GET' }),
-          invokeWithAuth({ url: '/api/v1/sales-deal-controls/options', method: 'GET' }),
-        ]);
-        setBusinessLines(catalogResponse.data?.business_lines || []);
-        setProducts(catalogResponse.data?.products || []);
-        setProductPlans(catalogResponse.data?.plans || []);
-        setDealEmployees(employeeResponse.data?.employees || []);
-      } catch (error: any) {
-        toast.error(error?.data?.detail || error?.message || '成交选项加载失败');
-      }
-    };
-    void loadDealOptions();
-  }, []);
+  const loadDealOptions = async () => {
+    const requestId = ++dealOptionsRequestRef.current;
+    setDealOptionsLoading(true);
+    setCatalogReady(false);
+    setDealEmployeesReady(false);
+    const results = await Promise.allSettled([
+      invokeWithAuth({ url: '/api/v1/sales-deal-controls/catalog', method: 'GET' }),
+      invokeWithAuth({ url: '/api/v1/sales-deal-controls/options', method: 'GET' }),
+    ]);
+    if (requestId !== dealOptionsRequestRef.current) return;
+    const [catalog, employees] = results;
+    const failures: string[] = [];
+    if (catalog.status === 'fulfilled' && ['business_lines', 'products', 'plans'].every(key => Array.isArray(catalog.value.data?.[key]))) {
+      setBusinessLines(catalog.value.data.business_lines);
+      setProducts(catalog.value.data.products);
+      setProductPlans(catalog.value.data.plans);
+      setCatalogReady(true);
+    } else failures.push('在售套餐');
+    if (employees.status === 'fulfilled' && Array.isArray(employees.value.data?.employees)) {
+      setDealEmployees(employees.value.data.employees);
+      setDealEmployeesReady(true);
+    } else failures.push('交接人员');
+    setDealOptionsErrors(failures);
+    setDealOptionsLoading(false);
+  };
 
   const scopeText = useMemo(() => {
     if (isAdmin) return '全部线索';
@@ -613,7 +633,7 @@ export default function SalesLeads() {
     setQuoteForm(emptyQuoteForm);
     setHandoffForm(emptyHandoffForm);
     setPaymentForm(createEmptyPaymentForm());
-    await loadDealReadiness(lead, true);
+    await Promise.all([loadDealReadiness(lead, true), loadDealOptions()]);
   };
 
   useEffect(() => {
@@ -640,12 +660,14 @@ export default function SalesLeads() {
     if (open || dealSaving || convertingId !== null) return;
     if (!dealGuard.confirmDiscard()) return;
     dealRequestRef.current += 1;
+    dealOptionsRequestRef.current += 1;
     setDealLead(null);
     setDealReadiness(null);
   };
 
   const submitQuote = async () => {
     if (!canEditDeal) return;
+    if (!catalogReady || dealOptionsLoading) { toast.error('请重新加载在售套餐后再提交报价'); return; }
     if (!dealLead || !quoteForm.business_line_id || !quoteForm.product_id || !quoteForm.list_amount) {
       toast.error('请选择业务线、具体产品并填写报价金额');
       return;
@@ -687,6 +709,7 @@ export default function SalesLeads() {
 
   const saveHandoff = async () => {
     if (!dealLead || !canEditDeal) return;
+    if (!dealEmployeesReady || dealOptionsLoading) { toast.error('请重新加载交接人员后再保存清单'); return; }
     setDealSaving(true);
     try {
       await invokeWithAuth({
@@ -817,6 +840,7 @@ export default function SalesLeads() {
       </div>
 
       {listError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">线索列表更新失败，当前显示上次读取的结果；批量操作已暂停。<Button variant="outline" className="ml-3" onClick={() => void loadData()}>重新加载列表</Button></div>}
+      {dataErrors.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">部分数据未能更新：{dataErrors.join('、')}。已保留其他可用数据。<Button variant="outline" className="ml-3" onClick={() => void loadData({ background: true })}>重试更新</Button></div>}
       <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} onSaved={() => void loadData()} />
       {(view === 'leads' || view === 'calls') && <div className="slr-utilities">
         <details className="slr-overview"><summary><BarChart3 size={15} />数据一览<ChevronDown size={14} /></summary><SalesLeadPulse stats={stats} report={callReport} days={callReportDays} onCalls={() => setView('calls')} loading={!statsReady} /></details>
@@ -1093,8 +1117,11 @@ export default function SalesLeads() {
         <DialogContent className="sales-center-ui slr-deal-dialog !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none rounded-none pb-0 sm:!h-auto sm:!max-h-[90vh] sm:!w-full sm:!max-w-4xl sm:rounded-lg sm:pb-6">
           <DialogHeader><DialogTitle>成交审核 · {dealLead?.business_name}</DialogTitle></DialogHeader>
           <nav className="slr-deal-steps" aria-label="成交步骤"><Button variant="ghost" aria-pressed={dealStep === 'quote'} onClick={() => setDealStep('quote')}>1 报价</Button><Button variant="ghost" aria-pressed={dealStep === 'handoff'} onClick={() => setDealStep('handoff')}>2 交接</Button>{canManage && <Button variant="ghost" aria-pressed={dealStep === 'payment'} onClick={() => setDealStep('payment')}>3 收款确认</Button>}</nav>
+          {dealOptionsLoading && <div role="status" className="text-sm text-slate-500">正在读取在售套餐和交接人员…</div>}
+          {dealOptionsErrors.length > 0 && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">{dealOptionsErrors.join('、')}暂时无法读取，请重试后继续。<Button variant="outline" className="ml-3" disabled={dealOptionsLoading} onClick={() => void loadDealOptions()}>重新加载成交选项</Button></div>}
+          {catalogReady && !productPlans.length && dealStep === 'quote' && <div role="status" className="rounded-xl border bg-slate-50 p-4 text-sm">暂无已发布的在售套餐，请联系主管发布后再报价。</div>}
           {dealReadiness && (dealReadiness.lead.converted_customer_id || dealReadiness.lead.do_not_contact || dealReadiness.lead.is_blacklisted) && <div role="status" className="rounded-xl border bg-slate-50 p-4 text-sm text-slate-700">{dealReadiness.lead.converted_customer_id ? <>已转为正式客户，售前资料只读。<a className="ml-3 font-medium text-blue-600" href={`/customers?detail=${dealReadiness.lead.converted_customer_id}&tab=info`}>查看客户</a></> : '该商家已停止联系，售前资料只读。'}</div>}
-          {dealError ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">成交审核资料读取失败，请重新加载后继续。<Button className="ml-3" variant="outline" onClick={() => dealLead && void loadDealReadiness(dealLead)}>重新加载审核资料</Button></div> : dealLoading ? <div className="py-16 text-center text-sm text-slate-500">正在加载成交审核资料...</div> : <fieldset disabled={!canEditDeal || convertingId !== null} className="space-y-5">
+          {dealError ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">成交审核资料读取失败，请重新加载后继续。<Button className="ml-3" variant="outline" onClick={() => dealLead && void loadDealReadiness(dealLead)}>重新加载审核资料</Button></div> : dealLoading ? <div className="py-16 text-center text-sm text-slate-500">正在加载成交审核资料...</div> : <fieldset disabled={!canEditDeal || convertingId !== null || dealOptionsLoading || (dealStep === 'quote' && !catalogReady) || (dealStep === 'handoff' && !dealEmployeesReady)} className="space-y-5">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><div className="flex items-start gap-2"><FileText className="mt-0.5 h-4 w-4 text-amber-700" /><div><p className="font-semibold text-amber-900">当前待完成项</p><div className="mt-2 flex flex-wrap gap-2">{(dealReadiness?.blockers || []).map(item => <Badge key={item} className="bg-white text-amber-800 ring-1 ring-amber-200">{item}</Badge>)}{dealReadiness && dealReadiness.blockers.length === 0 && <Badge className="bg-emerald-100 text-emerald-800">审核完成，可转入正式客户</Badge>}</div></div></div></div>
 
             <section hidden={dealStep !== 'quote'} className="slr-deal-section rounded-xl border border-slate-200 p-4"><div className="mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-blue-600" /><div><p className="font-semibold text-slate-900">1. 报价审批单</p><p className="text-xs text-slate-500">销售提交报价；销售主管或系统管理员审批。历史报价会保留，不会覆盖。</p></div></div>

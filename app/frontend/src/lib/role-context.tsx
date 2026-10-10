@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { client } from './api';
+import { client, authSessionChangedError, isAuthSessionCurrent, isRefreshTemporarilyUnavailable } from './api';
 import {
   type SystemRole, type ButtonPermission, type DataScope,
   getPermissions, canAccessPage, hasButtonPermission,
@@ -10,9 +10,11 @@ import { APP_CONFIG_UPDATED_EVENT, clearCachedAppConfig, readCachedAppConfig, sy
 import { clearSalesWorkspaceViewState } from './sales-workspace-view-state';
 import { getToken, setToken as setAccessToken, clearToken as clearTokenStore, refreshToken, invokeWithAuth } from './tokenStore';
 import {
+  AUTH_SESSION_EPOCH_KEY,
+  AUTH_SESSION_INVALIDATED_EVENT,
   clearStoredEmployee,
+  getAuthSessionEpoch,
   getAuthPersistence,
-  getStoredEmployee,
   markExplicitLogout,
   storeEmployee,
 } from './auth-storage';
@@ -25,6 +27,8 @@ interface RoleContextType {
   role: RoleType;
   systemRole: SystemRole | null;
   loading: boolean;
+  authError: string;
+  retryAuth: () => Promise<void>;
   isLoggedIn: boolean;
   isAdmin: boolean;
   isDisabled: boolean;
@@ -43,10 +47,10 @@ interface RoleContextType {
 
 const RoleContext = createContext<RoleContextType>({
   user: null, employee: null, role: '', systemRole: null,
-  loading: true, isLoggedIn: false, isAdmin: false, isDisabled: false,
+  loading: true, authError: '', retryAuth: async () => {}, isLoggedIn: false, isAdmin: false, isDisabled: false,
   login: async () => {}, logout: () => {}, refreshEmployee: async () => {},
-  canAccess: () => true, hasPermission: () => true,
-  dataScope: 'all', canViewPassword: true, canCopyPassword: true, canViewFinance: true,
+  canAccess: () => false, hasPermission: () => false,
+  dataScope: 'self', canViewPassword: false, canCopyPassword: false, canViewFinance: false,
   permissions: null,
 });
 
@@ -100,6 +104,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isDisabled, setIsDisabled] = useState(false);
   const [, setPermissionsVersion] = useState(0);
+  const [authError, setAuthError] = useState('');
 
   useEffect(() => {
     checkAuth();
@@ -112,79 +117,108 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(APP_CONFIG_UPDATED_EVENT, refreshPermissions as EventListener);
   }, []);
 
+  useEffect(() => {
+    const resetIdentity = () => {
+      clearStoredEmployee();
+      clearCachedAppConfig();
+      clearSalesWorkspaceViewState();
+      setEmployee(null);
+      setRole('');
+      setIsDisabled(false);
+      setAuthError('');
+      setLoading(false);
+    };
+    const handleOtherTab = (event: StorageEvent) => {
+      if (event.key === AUTH_SESSION_EPOCH_KEY) {
+        // A different tab changed identity. Its new credentials must never be
+        // combined with this tab's employee profile or mounted sales workspace.
+        clearSalesWorkspaceViewState();
+        setEmployee(null);
+        setRole('');
+        setIsDisabled(false);
+        setAuthError('');
+        setLoading(false);
+      }
+    };
+    window.addEventListener(AUTH_SESSION_INVALIDATED_EVENT, resetIdentity);
+    window.addEventListener('storage', handleOtherTab);
+    return () => {
+      window.removeEventListener(AUTH_SESSION_INVALIDATED_EVENT, resetIdentity);
+      window.removeEventListener('storage', handleOtherTab);
+    };
+  }, []);
+
+  const syncVerifiedConfig = async (epoch: string) => {
+    try {
+      await syncAppConfigCache();
+    } catch {
+      // Configuration is not proof of identity. A temporary outage keeps the
+      // verified employee, with checked-in role defaults and no stale cache.
+      if (isAuthSessionCurrent(epoch)) clearCachedAppConfig();
+    }
+  };
+
   const checkAuth = async () => {
+    const epoch = getAuthSessionEpoch();
+    setLoading(true);
+    setAuthError('');
+    setEmployee(null);
+    setRole('');
+    setIsDisabled(false);
+    clearCachedAppConfig();
     try {
       let token = getToken();
-      const savedEmp = getStoredEmployee();
-
-      // If no access token, try to refresh from HttpOnly cookie
+      if (!token) token = await refreshToken() || '';
+      if (!isAuthSessionCurrent(epoch)) return;
       if (!token) {
-        try {
-          const newTok = await refreshToken();
-          if (newTok) {
-            setAccessToken(newTok);
-            token = newTok;
-          }
-        } catch {
-          // ignore
+        if (isRefreshTemporarilyUnavailable(epoch)) {
+          const unavailable = new Error('身份验证服务暂不可用') as Error & { status: number };
+          unavailable.status = 503;
+          throw unavailable;
         }
-      }
-
-      const effectiveToken = token || getToken();
-      if (effectiveToken) {
-        setAccessToken(effectiveToken);
-      }
-      if (!effectiveToken && !savedEmp) {
-        setLoading(false);
-        return;
-      }
-
-      // If we have a token but no cached employee, fetch /me to populate
-      if (effectiveToken && !savedEmp) {
-        try {
-          const respEmp = await invokeWithAuth({ url: '/api/v1/emp-auth/me', method: 'GET' });
-          const emp = respEmp.data;
-          if (emp && emp.id) {
-            storeEmployee(emp, getAuthPersistence());
-            applyEmployee(emp);
-            await syncAppConfigCache();
-          } else {
-            clearAuth();
-          }
-        } catch {
-          clearAuth();
-        }
-        setLoading(false);
-        return;
-      }
-
-      // Verify token with /me when both exist
-      if (effectiveToken && savedEmp) {
-        try {
-          const response = await invokeWithAuth({
-            url: '/api/v1/emp-auth/me',
-            method: 'GET',
-          });
-          const emp = response.data;
-          if (emp && emp.id) {
-            storeEmployee(emp, getAuthPersistence());
-            applyEmployee(emp);
-            await syncAppConfigCache();
-          } else {
-            clearAuth();
-          }
-        } catch {
-          // Cached profile data never proves that an account is still active.
-          // Fail closed so disabled/logged-out users cannot reopen an installed app.
-          clearAuth();
-        }
-      } else if (savedEmp) {
         clearAuth();
+        return;
       }
-    } catch {
-      clearAuth();
+      let response;
+      // Retry only this read-only verification once for a transient outage.
+      // Cached employee data still cannot unlock any page or permission.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          response = await invokeWithAuth({ url: '/api/v1/emp-auth/me', method: 'GET' });
+          break;
+        } catch (error: any) {
+          const status = error?.response?.status || error?.data?.status || error?.status || 0;
+          if (attempt === 0 && (status === 0 || status >= 500) && isAuthSessionCurrent(epoch)) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            continue;
+          }
+          throw error;
+        }
+      }
+      if (!isAuthSessionCurrent(epoch)) return;
+      const emp = response?.data;
+      if (!emp?.id) {
+        clearAuth();
+        return;
+      }
+      storeEmployee(emp, getAuthPersistence());
+      applyEmployee(emp);
+      await syncVerifiedConfig(epoch);
+    } catch (error: any) {
+      if (!isAuthSessionCurrent(epoch)) return;
+      const status = error?.response?.status || error?.data?.status || error?.status || 0;
+      if (status === 401 || status === 403) {
+        clearAuth();
+      } else {
+        // Preserve credentials during network/server outages, but keep the
+        // unverified identity closed until a live verification succeeds.
+        setEmployee(null);
+        setRole('');
+        setIsDisabled(false);
+        setAuthError('暂时无法验证登录，请检查网络后重新尝试。');
+      }
     } finally {
-      setLoading(false);
+      if (epoch === getAuthSessionEpoch()) setLoading(false);
     }
   };
 
@@ -204,30 +238,37 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   const handleLogin = async (token: string, emp: any, rememberMe = false) => {
     setLoading(true);
+    setAuthError('');
+    // Clear previous identity-specific convenience and permission caches before
+    // exposing a newly verified login, even when optional config is unavailable.
+    clearCachedAppConfig();
+    clearSalesWorkspaceViewState();
+    const persistence = rememberMe ? 'persistent' : 'session';
+    setAccessToken(token, persistence);
+    const epoch = getAuthSessionEpoch();
+    storeEmployee(emp, persistence);
+    applyEmployee(emp);
     try {
-      const persistence = rememberMe ? 'persistent' : 'session';
-      setAccessToken(token, persistence);
-      storeEmployee(emp, persistence);
-      applyEmployee(emp);
-      await syncAppConfigCache();
-    } catch (err) {
-      // Keep the login usable even if non-critical app config sync is temporarily unavailable.
-      console.warn('Initial app config sync failed after login:', err);
+      await syncVerifiedConfig(epoch);
+      if (!isAuthSessionCurrent(epoch)) throw authSessionChangedError();
     } finally {
-      setLoading(false);
+      if (epoch === getAuthSessionEpoch()) setLoading(false);
     }
   };
 
   const clearAuth = () => {
     clearTokenStore();
     clearStoredEmployee();
+    clearCachedAppConfig();
+    clearSalesWorkspaceViewState();
     setEmployee(null);
     setRole('');
     setIsDisabled(false);
+    setAuthError('');
+    setLoading(false);
   };
 
   const handleLogout = async () => {
-    const employeeAtLogout = employee;
     const tokenAtLogout = getToken();
 
     // Clear browser-readable credentials before any network request. The marker
@@ -237,45 +278,35 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     clearSalesWorkspaceViewState();
     clearAuth();
 
-    const requests: Promise<unknown>[] = [
-      client.apiCall.invoke({
-        url: '/api/v1/emp-auth/logout',
-        method: 'POST',
-        options: { withCredentials: true },
-      }),
-    ];
-
-    if (employeeAtLogout && tokenAtLogout) {
-      requests.push(
-        client.apiCall.invoke({
-          url: '/api/v1/entities/operation_logs',
-          method: 'POST',
-          data: {
-            action_type: 'user_note',
-            action_detail: `用户备注（非系统审计）｜关联操作：退出登录｜员工退出登录: ${employeeAtLogout.name}`,
-          },
-          options: { headers: { Authorization: `Bearer ${tokenAtLogout}` } },
-        }),
-      );
-    }
-
-    await Promise.allSettled(requests);
+    // Revoke the bearer session too when the optional refresh cookie was never
+    // established; a browser-authored note is not a server audit record.
+    await client.apiCall.invoke({
+      url: '/api/v1/emp-auth/logout', method: 'POST',
+      options: {
+        withCredentials: true,
+        headers: tokenAtLogout ? { Authorization: `Bearer ${tokenAtLogout}` } : {},
+      },
+    }).catch(() => undefined);
   };
 
   const refreshEmployee = async () => {
+    const epoch = getAuthSessionEpoch();
     try {
-      const response = await invokeWithAuth({
-        url: '/api/v1/emp-auth/me',
-        method: 'GET',
-      });
+      const response = await invokeWithAuth({ url: '/api/v1/emp-auth/me', method: 'GET' });
+      if (!isAuthSessionCurrent(epoch)) return;
       const emp = response.data;
-      if (emp && emp.id) {
-        storeEmployee(emp, getAuthPersistence());
-        applyEmployee(emp);
-        await syncAppConfigCache();
+      if (!emp?.id) {
+        clearAuth();
+        return;
       }
-    } catch {
-      // ignore
+      storeEmployee(emp, getAuthPersistence());
+      applyEmployee(emp);
+      await syncVerifiedConfig(epoch);
+    } catch (error: any) {
+      // A business 403 elsewhere is not logout. Rejection from the authoritative
+      // identity endpoint itself cannot keep an old role active.
+      const status = error?.response?.status || error?.data?.status || error?.status;
+      if ((status === 401 || status === 403) && isAuthSessionCurrent(epoch)) clearAuth();
     }
   };
 
@@ -284,16 +315,16 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const perms = role ? getPermissions(role) : null;
 
   const canAccess = useCallback((path: string) => {
-    if (!role) return true;
+    if (!role || isDisabled) return false;
     return canAccessPage(role, path);
-  }, [role]);
+  }, [role, isDisabled]);
 
   const hasPermission = useCallback((btn: ButtonPermission) => {
-    if (!role) return true;
+    if (!role || isDisabled) return false;
     return hasButtonPermission(role, btn);
-  }, [role]);
+  }, [role, isDisabled]);
 
-  const ds = role ? getDataScope(role) : 'all' as DataScope;
+  const ds = role ? getDataScope(role) : 'self' as DataScope;
   const rawRolePermissions = readCachedAppConfig<Record<string, {
     buttons?: string[];
     sensitiveFields?: { viewPassword?: boolean };
@@ -308,8 +339,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   // Keep this precedence identical to the backend reveal endpoint: the modern
   // sensitive field is authoritative (including false), followed only by the
   // legacy button/security settings and finally checked-in role defaults.
-  const cvp = !role
-    ? true
+  const cvp = !role || isDisabled
+    ? false
     : hasExplicitPasswordDecision
       ? configuredSensitiveFields?.viewPassword === true
       : rawRoleConfig?.buttons?.includes('view_password')
@@ -317,13 +348,13 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         : Array.isArray(securityConfig.passwordViewRoles)
           ? securityConfig.passwordViewRoles.includes(sysRole || role)
           : canViewSensitive(role, 'viewPassword');
-  const ccp = role ? canViewSensitive(role, 'copyPassword') : true;
-  const cvf = role ? canViewSensitive(role, 'viewFinance') : true;
+  const ccp = role && !isDisabled ? canViewSensitive(role, 'copyPassword') : false;
+  const cvf = role && !isDisabled ? canViewSensitive(role, 'viewFinance') : false;
 
   return (
     <RoleContext.Provider value={{
-      user: employee, employee, role, systemRole: sysRole, loading,
-      isLoggedIn: !!employee && !isDisabled, isAdmin: !role || isAdminRole(role), isDisabled,
+      user: employee, employee, role, systemRole: sysRole, loading, authError, retryAuth: checkAuth,
+      isLoggedIn: !!employee && !isDisabled, isAdmin: !!role && !isDisabled && isAdminRole(role), isDisabled,
       login: handleLogin, logout: handleLogout, refreshEmployee,
       canAccess, hasPermission,
       dataScope: ds, canViewPassword: cvp, canCopyPassword: ccp, canViewFinance: cvf,

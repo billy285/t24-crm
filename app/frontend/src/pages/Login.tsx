@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { client } from '@/lib/api';
+import { client, authSessionChangedError } from '@/lib/api';
+import { beginAuthSession, getAuthSessionEpoch } from '@/lib/auth-storage';
 
 interface LoginProps {
   onLoginSuccess: (token: string, employee: any, rememberMe: boolean) => void | Promise<void>;
@@ -29,6 +30,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }
 
     setLoading(true);
+    // Claim the account intent before its request. A later login must win even
+    // while an earlier login or cookie-setting response is still in flight.
+    beginAuthSession();
+    const epoch = getAuthSessionEpoch();
     try {
       const response = await client.apiCall.invoke({
         url: '/api/v1/emp-auth/login',
@@ -36,6 +41,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         data: { email: email.trim(), username: email.trim(), password },
       });
 
+      if (epoch !== getAuthSessionEpoch()) throw authSessionChangedError();
       const data = response.data;
       if (data?.token && data?.employee) {
         let persistentLoginReady = rememberMe;
@@ -50,12 +56,14 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               withCredentials: true,
             },
           });
-        } catch {
+        } catch (error: any) {
+          if (error?.name === 'AuthSessionChangedError') throw error;
           // A remembered login is only safe when the HttpOnly refresh cookie was
           // established. Downgrade to this browser session if that step fails.
           persistentLoginReady = false;
           if (rememberMe) toast.warning('长期登录暂不可用，本次仅保持到当前浏览器会话结束。');
         }
+        if (epoch !== getAuthSessionEpoch()) throw authSessionChangedError();
         toast.success(`欢迎回来，${data.employee.name}！`);
         await onLoginSuccess(data.token, data.employee, persistentLoginReady);
       } else {

@@ -6,3 +6,4 @@ import os
 # explicitly turn it back on with monkeypatch.
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("ENFORCE_EMPLOYEE_STATUS", "false")
+os.environ.setdefault("ENFORCE_EMPLOYEE_SESSIONS", "false")

@@ -3,6 +3,7 @@ import './mobile-sales-layout.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
+import AuthVerificationState from './AuthVerificationState';
 import { pageLabels } from '../lib/permissions';
 import {
   ArrowLeft, LayoutDashboard, LogOut, Menu, ChevronDown, User,
@@ -58,7 +59,7 @@ export default function Layout({ children }: LayoutProps) {
   const navigationScope = isSalesWorkspace ? 'sales-center' : currentPath;
   const navigationCollapsed = isSalesWorkspace || isFocusedWorkspace ? !expandedWorkRoutes[navigationScope] : sidebarCollapsed;
   const salesSecondaryOverlayOpen = isSalesWorkspace && salesSecondaryFloats && !navigationCollapsed;
-  const { employee, role, loading, isLoggedIn, isDisabled, logout, canAccess } = useRole();
+  const { employee, role, loading, authError, retryAuth, isLoggedIn, isDisabled, logout, canAccess } = useRole();
 
   useEffect(() => {
     const query = window.matchMedia('(min-width: 1024px) and (max-width: 1359px)');
@@ -176,9 +177,10 @@ export default function Layout({ children }: LayoutProps) {
           headers: { Authorization: `Bearer ${token}` },
         },
       });
-      toast.success('密码修改成功');
+      toast.success('密码已修改，请使用新密码重新登录');
       setShowChangePwd(false);
       setPwdForm({ current: '', newPwd: '', confirm: '' });
+      await logout();
     } catch (err: any) {
       const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '密码修改失败';
       toast.error(detail);
@@ -194,6 +196,8 @@ export default function Layout({ children }: LayoutProps) {
       </div>
     );
   }
+
+  if (authError) return <AuthVerificationState message={authError} onRetry={retryAuth} />;
 
   if (!isLoggedIn && !isDisabled) {
     return <Navigate to="/login" replace state={{ from: location }} />;

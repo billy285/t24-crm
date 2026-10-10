@@ -14,6 +14,7 @@ from services.emp_auth import (
     verify_password,
 )
 from services.login_rate_limit import login_rate_limiter
+from services.employee_sessions import create_employee_session, require_employee_session
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ async def _get_active_employee(payload: dict, db: AsyncSession) -> dict:
     employee = await EmpAuthService(db).get_employee_by_id(emp_id)
     if not employee or employee.get("status") not in ACTIVE_EMPLOYEE_STATUSES:
         raise HTTPException(status_code=401, detail="账号已被停用")
+    await require_employee_session(db, employee, payload)
     return employee
 
 
@@ -111,11 +113,13 @@ async def employee_login(
 
     login_rate_limiter.clear(rate_limit_keys)
 
+    session_id = await create_employee_session(db, emp)
     token = create_access_token({
         "emp_id": emp["id"],
         "email": emp["email"],
         "role": emp["role"],
         "name": emp["name"],
+        "sid": session_id,
     })
 
     return LoginResponse(

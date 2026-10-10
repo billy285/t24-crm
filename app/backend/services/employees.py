@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 
 from sqlalchemy import select, func
@@ -102,8 +103,22 @@ class EmployeesService:
                 logger.warning(f"Employees {obj_id} not found for update")
                 return None
             for key, value in update_data.items():
-                if hasattr(obj, key):
+                if key != "updated_at" and hasattr(obj, key):
                     setattr(obj, key, value)
+
+            # A server-owned generation fences a login authenticated before a
+            # disable/re-enable cycle. Existing sessions remain password-bound.
+            now = datetime.now(timezone.utc)
+            previous = obj.updated_at
+            if previous is not None:
+                previous = previous.replace(tzinfo=timezone.utc) if previous.tzinfo is None else previous
+                now = max(now, previous + timedelta(microseconds=1))
+            obj.updated_at = now
+
+            if "status" in update_data and obj.status not in {"active", "probation"}:
+                from services.employee_sessions import revoke_employee_sessions
+
+                await revoke_employee_sessions(self.db, obj.id)
 
             if commit:
                 await self.db.commit()
@@ -124,6 +139,9 @@ class EmployeesService:
             if not obj:
                 logger.warning(f"Employees {obj_id} not found for deletion")
                 return False
+            from services.employee_sessions import revoke_employee_sessions
+
+            await revoke_employee_sessions(self.db, obj.id)
             await self.db.delete(obj)
             if commit:
                 await self.db.commit()

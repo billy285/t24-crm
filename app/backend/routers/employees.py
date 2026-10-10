@@ -23,6 +23,8 @@ from schemas.auth import UserResponse
 from services.commissions import transfer_partner_attributions_to_direct
 from services.employees import EmployeesService
 from services.phone_numbers import parse_phone_number
+from services.employee_sessions import revoke_employee_sessions
+from services.emp_auth import normalize_employee_email
 from services.operation_logs import Operation_logsService, build_server_operation_log_data
 
 # Set up logging
@@ -46,6 +48,19 @@ EmployeeStatus = Literal["active", "probation", "disabled", "inactive", "resigne
 def _employee_update_payload(data: "EmployeesUpdateData") -> dict:
     """Preserve the existing partial-update contract while ignoring omitted/null fields."""
     return data.model_dump(exclude_unset=True, exclude_none=True)
+
+
+async def _validate_employee_emails(db: AsyncSession, emails: Sequence[str | None], *, replaced_ids: Sequence[int] = ()) -> None:
+    requested = [email for email in emails if email]
+    if len(requested) != len(set(requested)):
+        raise HTTPException(status_code=409, detail="登录邮箱不能重复，请为每个员工使用独立邮箱")
+    if not requested:
+        return
+    query = select(Employees.id).where(func.lower(func.trim(Employees.email)).in_(requested))
+    if replaced_ids:
+        query = query.where(~Employees.id.in_(replaced_ids))
+    if await db.scalar(query.limit(1)) is not None:
+        raise HTTPException(status_code=409, detail="登录邮箱已被其他员工使用")
 
 
 def _validate_employee_phone(payload: dict, existing: Employees | None = None) -> None:
@@ -217,9 +232,13 @@ async def _preflight_employee_updates(
     by_id = await _load_employee_targets(db, [item.id for item in items])
     prepared: list[tuple[Employees, dict, bool]] = []
     continuity_updates: Dict[int, dict] = {}
+    email_updates: Dict[int, str | None] = {}
     for item in items:
         employee = by_id[item.id]
         update = _employee_update_payload(item.updates)
+        if "email" in update:
+            update["email"] = normalize_employee_email(update["email"])
+            email_updates[employee.id] = update["email"]
         _validate_employee_phone(update, employee)
         target_role = update.get("role", employee.role)
         linked_partner = await _linked_external_partner(db, employee.id)
@@ -238,6 +257,7 @@ async def _preflight_employee_updates(
         continuity_updates[employee.id] = update
         prepared.append((employee, update, managed_as_partner or target_role == "sales_partner"))
 
+    await _validate_employee_emails(db, list(email_updates.values()), replaced_ids=list(email_updates))
     await _assert_super_admin_continuity(db, updates=continuity_updates)
     return prepared
 
@@ -638,6 +658,8 @@ async def create_employees(
     service = EmployeesService(db)
     try:
         payload = data.model_dump()
+        payload["email"] = normalize_employee_email(payload.get("email"))
+        await _validate_employee_emails(db, [payload["email"]])
         _validate_employee_phone(payload)
         if not payload.get("user_id"):
             payload["user_id"] = (
@@ -690,10 +712,12 @@ async def create_employeess_batch(
                 status_code=400,
                 detail="销售合伙人账号请使用单个新增，以确保登录账号与分润档案同步建立",
             )
-        for item_data in request.items:
-            _validate_employee_phone(item_data.model_dump())
-        for index, item_data in enumerate(request.items):
-            payload = item_data.model_dump()
+        payloads = [item.model_dump() for item in request.items]
+        for payload in payloads:
+            payload["email"] = normalize_employee_email(payload.get("email"))
+            _validate_employee_phone(payload)
+        await _validate_employee_emails(db, [payload["email"] for payload in payloads])
+        for index, payload in enumerate(payloads):
             if not payload.get("user_id"):
                 payload["user_id"] = (
                     payload.get("login_username")
@@ -841,6 +865,7 @@ async def delete_employeess_batch(
         for item_id in request.ids:
             employee = targets[item_id]
             if employee.role == "sales_partner" or partner_targets[item_id] is not None:
+                await revoke_employee_sessions(db, employee.id)
                 employee.status = "disabled"
                 employee.updated_at = datetime.utcnow()
                 await _sync_sales_partner_profile(
@@ -903,6 +928,7 @@ async def delete_employees(
 
         linked_partner = await _linked_external_partner(db, id)
         if employee.role == "sales_partner" or linked_partner is not None:
+            await revoke_employee_sessions(db, employee.id)
             employee.status = "disabled"
             employee.updated_at = datetime.utcnow()
             await _sync_sales_partner_profile(
