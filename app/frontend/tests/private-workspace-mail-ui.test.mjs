@@ -1,0 +1,218 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+import * as jsx from 'react/jsx-runtime';
+import ts from 'typescript';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../src');
+const same = (left, right) => left && right && left.length === right.length && left.every((value, index) => Object.is(value, right[index]));
+const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+const mail = (id, bucket = 'today') => ({
+  id, source_id: 'gmail', kind: 'email', title: `Synthetic ${id}`, summary: 'Synthetic snippet', status: 'unread', priority: bucket === 'urgent' ? 'urgent' : 'high',
+  amount_minor: null, currency: null, occurred_at: null, due_at: null, source_url: null, evidence: { from: 'Synthetic <sender@example.com>' }, action_status: 'open', snoozed_until: null,
+  mail_relevance: { bucket, category: bucket === 'urgent' ? 'security' : 'business', reasons: ['Synthetic reason'], feedback: null, sender_address: 'sender@example.com', sender_verification: 'unverified' },
+});
+
+// Run the actual component, API and draft guard against synthetic transport and
+// controlled hook scheduling. No mailbox, browser storage or external API is used.
+function fixture(items = [mail('message')], initialView = 'gmail') {
+  let cursor = 0, epoch = 'synthetic-owner', tree;
+  const hooks = [], effects = [], requests = [], listeners = new Map(), modules = new Map();
+  const params = new URLSearchParams({ view: initialView });
+  let preferencesHandler;
+  const preferences = { sync_interval_seconds: 2700, gmail: { topics: ['finance', 'security'], watch_senders: [], watch_keywords: [], muted_senders: [] } };
+  const source = { id: 'gmail', status: 'connected', capabilities: [], missing_configuration: [], last_sync: null, error: null };
+  const react = {
+    useState(initial) { const index = cursor++; if (!hooks[index]) hooks[index] = { value: typeof initial === 'function' ? initial() : initial }; return [hooks[index].value, next => { hooks[index].value = typeof next === 'function' ? next(hooks[index].value) : next; }]; },
+    useRef(initial) { const index = cursor++; if (!hooks[index]) hooks[index] = { value: { current: initial } }; return hooks[index].value; },
+    useMemo(factory, dependencies) { const index = cursor++; if (!hooks[index] || !same(hooks[index].dependencies, dependencies)) hooks[index] = { value: factory(), dependencies }; return hooks[index].value; },
+    useCallback(callback, dependencies) { return react.useMemo(() => callback, dependencies); },
+    useEffect(effect, dependencies) { const index = cursor++; if (!hooks[index] || !same(hooks[index].dependencies, dependencies)) { const previous = hooks[index]; hooks[index] = { dependencies, cleanup: previous?.cleanup }; effects.push(() => { hooks[index].cleanup?.(); hooks[index].cleanup = effect(); }); } },
+  };
+  react.useLayoutEffect = react.useEffect;
+  const window = { confirm: () => true, location: { assign: () => { throw new Error('No OAuth expected'); } }, addEventListener: (name, listener) => { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(listener); }, removeEventListener: (name, listener) => listeners.get(name)?.delete(listener) };
+  const context = vm.createContext({ URL, URLSearchParams, Intl, window, console });
+  function load(relative) {
+    if (modules.has(relative)) return modules.get(relative);
+    const path = resolve(root, relative);
+    const compiled = ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+    const module = { exports: {} };
+    const require = name => {
+      if (name === 'react') return react;
+      if (name === 'react/jsx-runtime') return jsx;
+      if (name === 'react-router-dom') return { Link: 'a', useSearchParams: () => [params, next => { for (const key of [...params.keys()]) params.delete(key); for (const [key, value] of Object.entries(next)) params.set(key, value); }] };
+      if (name === 'lucide-react') return new Proxy({}, { get: () => props => jsx.jsx('svg', props) });
+      if (name.endsWith('.css')) return {};
+      if (name === '@/lib/auth-storage') return { AUTH_SESSION_INVALIDATED_EVENT: 'synthetic-auth-invalidated', getAuthSessionEpoch: () => epoch };
+      if (name === '@/lib/private-workspace-api') return load('lib/private-workspace-api.ts');
+      if (name === '@/lib/use-dialog-draft') return load('lib/use-dialog-draft.ts');
+      if (name === './use-unsaved-changes') return load('lib/use-unsaved-changes.ts');
+      if (name.startsWith('@/components/ui/')) return new Proxy({}, { get: (_, key) => key === 'Dialog' || key === 'Sheet' ? props => props.open ? props.children : null : props => jsx.jsx('div', props) });
+      if (name === './api') return { client: { apiCall: { invoke: async request => {
+        requests.push(request);
+        const url = new URL(request.url, 'https://synthetic.example');
+        if (url.pathname.endsWith('/access')) return { data: { allowed: true } };
+        if (url.pathname === '/api/v1/private-workspace') return { data: { sources: [source], items, balances: [], last_sync: null } };
+        if (url.pathname.endsWith('/preferences')) {
+          if (preferencesHandler) return { data: await preferencesHandler(request) };
+          if (request.method === 'PATCH') Object.assign(preferences.gmail, request.data.gmail);
+          return { data: structuredClone(preferences) };
+        }
+        if (url.pathname.endsWith('/mail-feedback')) {
+          const id = decodeURIComponent(url.pathname.split('/').at(-2));
+          const item = items.find(value => value.id === id); item.mail_relevance.feedback = request.data.feedback;
+          return { data: { item: structuredClone(item) } };
+        }
+        if (url.pathname.endsWith('/items')) {
+          const bucket = url.searchParams.get('mail_bucket');
+          const filtered = items.filter(item => !bucket || item.mail_relevance.bucket === bucket);
+          const counts = { urgent: 0, today: 0, digest: 0, low: 0 }; items.forEach(item => counts[item.mail_relevance.bucket]++);
+          return { data: { items: structuredClone(filtered.slice(0, Number(url.searchParams.get('limit') || 100))), total: filtered.length, mail_counts: counts } };
+        }
+        throw new Error(`Unexpected synthetic request ${url.pathname}`);
+      } } } };
+      throw new Error(`Unexpected module ${name}`);
+    };
+    vm.runInContext(`(function(require,module,exports){${compiled}\n})`, context, { filename: path })(require, module, module.exports);
+    modules.set(relative, module.exports); return module.exports;
+  }
+  const component = load('pages/PrivateWorkspace.tsx').default;
+  function expand(node) {
+    if (node === null || node === undefined || typeof node === 'boolean') return [];
+    if (Array.isArray(node)) return node.flatMap(expand);
+    if (typeof node !== 'object') return [String(node)];
+    if (typeof node.type === 'function') return expand(node.type(node.props));
+    return [{ ...node, children: expand(node.props?.children) }];
+  }
+  function render() { cursor = 0; tree = expand(component()); while (effects.length) effects.shift()(); return tree; }
+  const text = node => typeof node === 'string' ? node : (node.children || []).map(text).join('');
+  function all(nodes = tree) { return nodes.flatMap(node => typeof node === 'object' ? [node, ...all(node.children || [])] : []); }
+  async function flush() { for (let count = 0; count < 20; count++) { render(); await Promise.resolve(); } render(); }
+  return {
+    requests, window, preferences, params, flush, text: () => tree.map(text).join(''), nodes: () => all(),
+    find: (type, label) => all().find(node => node.type === type && text(node) === label),
+    button: label => all().find(node => node.type === 'button' && text(node).trim() === label),
+    setPreferencesHandler: handler => { preferencesHandler = handler; },
+    invalidate() { epoch = 'synthetic-new-account'; for (const listener of listeners.get('synthetic-auth-invalidated') || []) listener(); },
+    unmount() { hooks.forEach(hook => hook?.cleanup?.()); },
+  };
+}
+
+test('default Gmail groups collapse low priority and selecting a bucket asks the server', async () => {
+  const f = fixture([mail('urgent', 'urgent'), mail('digest', 'digest'), mail('low', 'low')]);
+  await f.flush();
+  const low = f.nodes().find(node => node.type === 'details' && node.props.className === 'pw-mail-group pw-mail-low');
+  assert.ok(low, f.text()); assert.equal(low.props.open, undefined);
+  f.button('每日摘要1').props.onClick(); await f.flush();
+  assert.ok(f.requests.at(-1).url.includes('mail_bucket=digest'));
+  assert.ok(!f.text().includes('Synthetic urgent'));
+  f.unmount();
+});
+
+test('message feedback defaults to one mail and sender feedback clearing requires explicit scope', async () => {
+  const f = fixture(); await f.flush();
+  f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-mail-row').props.onClick(); await f.flush();
+  const checkbox = () => f.nodes().find(node => node.type === 'input' && node.props.type === 'checkbox');
+  assert.equal(checkbox().props.checked, false);
+  await f.button('需要关注').props.onClick(); await f.flush();
+  assert.equal(f.requests.find(request => request.url.endsWith('mail-feedback')).data.apply_to_sender, false);
+  await f.button('取消本封反馈').props.onClick(); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('mail-feedback')).at(-1).data.apply_to_sender, false);
+  checkbox().props.onChange({ target: { checked: true } }); await f.flush();
+  await f.button('不相关').props.onClick(); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('mail-feedback')).at(-1).data.apply_to_sender, true);
+  checkbox().props.onChange({ target: { checked: true } }); await f.flush();
+  await f.button('取消本封及发件人反馈').props.onClick(); await f.flush();
+  const clear = f.requests.filter(request => request.url.endsWith('mail-feedback')).at(-1);
+  assert.equal(clear.data.feedback, null); assert.equal(clear.data.apply_to_sender, true);
+  f.unmount();
+});
+
+test('a later message without item feedback can explicitly reset its sender feedback without editing manual lists', async () => {
+  const f = fixture(); f.preferences.gmail.watch_senders = ['manual@example.com']; f.preferences.gmail.muted_senders = ['muted.example.com'];
+  await f.flush(); f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-mail-row').props.onClick(); await f.flush();
+  assert.equal(f.button('取消本封反馈').props.disabled, true);
+  f.nodes().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } }); await f.flush();
+  assert.ok(f.text().includes('手动填写的关注与低优先名单保留'));
+  const reset = f.button('取消本封及发件人反馈'); assert.equal(reset.props.disabled, false);
+  reset.props.onClick(); await f.flush();
+  const request = f.requests.find(value => value.url.endsWith('mail-feedback'));
+  assert.equal(request.data.feedback, null); assert.equal(request.data.apply_to_sender, true);
+  assert.equal(f.requests.filter(value => value.method === 'PATCH').length, 0);
+  assert.deepEqual(f.preferences.gmail.watch_senders, ['manual@example.com']);
+  assert.deepEqual(f.preferences.gmail.muted_senders, ['muted.example.com']);
+  f.unmount();
+});
+
+test('filtered results above the display cap explain the limit without a no-op group button', async () => {
+  const f = fixture(Array.from({ length: 103 }, (_, index) => mail(`digest-${index}`, 'digest')));
+  await f.flush(); assert.ok(f.text().includes('全部已同步103'));
+  f.button('每日摘要103').props.onClick(); await f.flush();
+  assert.equal(f.button('查看该组邮件'), undefined);
+  assert.ok(f.text().includes('当前显示前 100 封，已同步的该组共 103 封；更早邮件请在 Gmail 查看'));
+  assert.equal(f.nodes().filter(node => node.type === 'button' && node.props.className === 'pw-mail-row').length, 100);
+  f.unmount();
+});
+
+test('critical negative feedback visibly stays pending verification', async () => {
+  const item = mail('critical', 'urgent'); item.mail_relevance.feedback = 'not_relevant';
+  const f = fixture([item]); await f.flush();
+  f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-mail-row').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('这封资金或安全提醒仍保留，等待核实'));
+  assert.ok(f.text().includes('发件人身份待核实'));
+  f.unmount();
+});
+
+test('preference drafts can cancel dismissal and saving omits the existing sync interval', async () => {
+  const f = fixture(); await f.flush(); f.button('关注设置').props.onClick(); await f.flush();
+  f.nodes().find(node => node.type === 'textarea' && node.props.placeholder.includes('客户名')).props.onChange({ target: { value: 'Synthetic project' } }); await f.flush();
+  f.window.confirm = () => false; f.button('取消').props.onClick(); await f.flush();
+  assert.ok(f.button('保存关注设置'));
+  await f.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await f.flush();
+  const patch = f.requests.find(request => request.method === 'PATCH');
+  assert.equal(Object.hasOwn(patch.data, 'sync_interval_seconds'), false);
+  assert.equal(f.preferences.sync_interval_seconds, 2700);
+  assert.deepEqual(Array.from(patch.data.gmail.watch_keywords), ['Synthetic project']);
+  f.unmount();
+});
+
+test('failed settings load cannot save an empty replacement', async () => {
+  const f = fixture(); f.setPreferencesHandler(() => { throw new Error('Synthetic unavailable'); });
+  await f.flush(); f.button('关注设置').props.onClick(); await f.flush();
+  assert.equal(f.button('保存关注设置'), undefined);
+  await f.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await f.flush();
+  assert.equal(f.requests.filter(request => request.method === 'PATCH').length, 0);
+  f.unmount();
+});
+
+test('logout clears private mail and drafts and discards a delayed preference response', async () => {
+  const pending = deferred(); const f = fixture(); f.setPreferencesHandler(() => pending.promise);
+  await f.flush(); f.button('关注设置').props.onClick(); await f.flush();
+  f.invalidate(); await f.flush();
+  pending.resolve({ sync_interval_seconds: 2700, gmail: { topics: [], watch_senders: ['old-owner@example.com'], watch_keywords: [], muted_senders: [] } }); await f.flush();
+  assert.ok(f.text().includes('此空间仅对本人开放'));
+  assert.ok(!f.text().includes('Synthetic message'));
+  assert.ok(!f.text().includes('old-owner@example.com'));
+  assert.equal(f.button('保存关注设置'), undefined);
+  f.unmount();
+});
+
+test('today priorities exclude digest and low mail', async () => {
+  const f = fixture([mail('focus', 'today'), mail('digest', 'digest'), mail('low', 'low')], 'today'); await f.flush();
+  assert.ok(f.text().includes('Synthetic focus'), f.text());
+  assert.ok(!f.text().includes('Synthetic digest'));
+  assert.ok(!f.text().includes('Synthetic low'));
+  f.unmount();
+});
+
+test('expired authorization has a visible manual retry route and does not launch OAuth', async () => {
+  const f = fixture(); f.params.set('connection', 'expired'); await f.flush();
+  assert.ok(f.text().includes('这次授权链接已失效'));
+  f.button('打开工作接入').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'connections');
+  assert.ok(!f.requests.some(request => request.url.endsWith('/connect')));
+  f.unmount();
+});

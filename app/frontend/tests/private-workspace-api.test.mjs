@@ -113,3 +113,56 @@ test('BofA connect uses its own endpoint and accepts the returned Gmail OAuth re
   assert.equal(response.requires_redirect, true);
   assert.equal(f.api.verifiedPrivateAuthorizationUrl('bofa', response.authorization_url), authorization);
 });
+
+test('Gmail bucket queries reach the server before the result limit is applied', async () => {
+  const f = fixture(() => ({ items: [], total: 23, mail_counts: { urgent: 2, today: 5, digest: 23, low: 9 } }));
+  const response = await f.api.privateWorkspaceApi.items({ source_id: 'gmail', mail_bucket: 'digest', limit: 1000 });
+  const url = new URL(f.requests[0].url, 'https://synthetic.example');
+  assert.equal(url.searchParams.get('source_id'), 'gmail');
+  assert.equal(url.searchParams.get('mail_bucket'), 'digest');
+  assert.equal(url.searchParams.get('limit'), '100');
+  assert.equal(response.total, 23);
+  assert.equal(response.mail_counts.urgent, 2);
+});
+
+test('Gmail preference updates preserve the worker interval by omitting unrelated fields', async () => {
+  const f = fixture(() => ({ sync_interval_seconds: 2700, gmail: { topics: ['finance'], watch_senders: [], watch_keywords: [], muted_senders: [] } }));
+  await f.api.privateWorkspaceApi.preferences();
+  const response = await f.api.privateWorkspaceApi.updatePreferences({ gmail: { topics: ['finance'], watch_keywords: ['synthetic project'] } });
+  assert.equal(f.requests[0].url, '/api/v1/private-workspace/preferences');
+  assert.equal(f.requests[0].method, 'GET');
+  assert.equal(f.requests[1].method, 'PATCH');
+  assert.equal(Object.hasOwn(f.requests[1].data, 'sync_interval_seconds'), false);
+  assert.equal(response.sync_interval_seconds, 2700);
+});
+
+test('feedback applies only to the selected message unless sender scope is explicitly chosen', async () => {
+  const f = fixture(() => ({ item: { id: 'synthetic/mail' } }));
+  await f.api.privateWorkspaceApi.mailFeedback('synthetic/mail', 'not_relevant');
+  await f.api.privateWorkspaceApi.mailFeedback('synthetic/mail', 'important', true);
+  await f.api.privateWorkspaceApi.mailFeedback('synthetic/mail', null);
+  assert.equal(f.requests[0].url, '/api/v1/private-workspace/items/synthetic%2Fmail/mail-feedback');
+  assert.equal(f.requests[0].method, 'POST');
+  assert.equal(f.requests[0].data.apply_to_sender, false);
+  assert.equal(f.requests[1].data.apply_to_sender, true);
+  assert.equal(f.requests[2].data.feedback, null);
+  assert.equal(f.requests[2].data.apply_to_sender, false);
+  assert.ok(f.requests.every(request => request.url.startsWith('/api/v1/private-workspace/')));
+});
+
+test('unclassified old mail remains in the digest and digest or low mail does not enter today priorities', () => {
+  assert.equal(api.privateMailBucket({}), 'digest');
+  assert.equal(api.privateMailBucket({ mail_relevance: { bucket: 'invalid' } }), 'digest');
+  for (const bucket of ['urgent', 'today', 'digest', 'low']) {
+    assert.equal(api.privateMailBucket({ mail_relevance: { bucket } }), bucket);
+    assert.equal(api.privateMailNeedsAttention({ source_id: 'gmail', mail_relevance: { bucket } }), ['urgent', 'today'].includes(bucket));
+  }
+  assert.equal(api.privateMailNeedsAttention({ source_id: 'gmail' }), false);
+  assert.equal(api.privateMailNeedsAttention({ source_id: 'manual' }), true);
+});
+
+test('preference and feedback session changes remain authentication failures', async () => {
+  const f = fixture(() => { const error = new Error('synthetic old account'); error.name = 'AuthSessionChangedError'; throw error; });
+  await assert.rejects(() => f.api.privateWorkspaceApi.preferences(), error => error.status === 401);
+  await assert.rejects(() => f.api.privateWorkspaceApi.mailFeedback('synthetic', 'important'), error => error.status === 401);
+});

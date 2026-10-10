@@ -8,13 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.private_workspace import PrivateOwner, private_access_allowed, require_private_owner
-from models.private_workspace import PrivateItem, PrivatePreferences
+from models.private_workspace import PrivateItem
 from schemas.private_workspace import (
-    ActionStatus, PrivateItemCreate, PrivateItemPatch, PrivateItemResponse, PrivatePreferencesPatch, SourceId,
+    ActionStatus, MailBucket, PrivateItemCreate, PrivateItemPatch, PrivateItemResponse, PrivateMailFeedbackCreate, PrivatePreferencesPatch, SourceId,
 )
 from services.private_workspace import (
     complete_oauth, connect_source, disconnect_source, get_private_db, item_response, list_items,
-    preferences_for, sync_source, workspace_overview,
+    preferences_for, set_mail_feedback, stored_preferences_for, sync_source, update_private_preferences, workspace_overview,
 )
 
 
@@ -45,12 +45,13 @@ async def items(
     source_id: SourceId | None = None,
     kind: str | None = Query(default=None, max_length=48),
     action_status: ActionStatus | None = None,
+    mail_bucket: MailBucket | None = None,
     limit: int = Query(default=100, ge=1, le=100),
     owner: PrivateOwner = Depends(require_private_owner),
     private_db: AsyncSession = Depends(get_private_db),
 ):
     return await list_items(private_db, owner.employee_id, source_id=source_id, kind=kind,
-                            action_status=action_status, limit=limit)
+                            action_status=action_status, limit=limit, mail_bucket=mail_bucket)
 
 
 @router.post("/items", status_code=201)
@@ -63,7 +64,7 @@ async def create_item(
                       action_status="open", **payload.model_dump())
     private_db.add(row)
     await private_db.commit()
-    return {"item": PrivateItemResponse(**item_response(row)).model_dump()}
+    return {"item": PrivateItemResponse(**item_response(row, await stored_preferences_for(private_db, owner.employee_id))).model_dump()}
 
 
 async def _owned_item(private_db, owner_id: str, item_id: str):
@@ -97,7 +98,7 @@ async def update_item(
     if "snoozed_until" in changes and row.action_status == "snoozed":
         row.snoozed_until = changes["snoozed_until"]
     await private_db.commit()
-    return {"item": PrivateItemResponse(**item_response(row)).model_dump()}
+    return {"item": PrivateItemResponse(**item_response(row, await stored_preferences_for(private_db, owner.employee_id))).model_dump()}
 
 
 @router.delete("/items/{item_id}")
@@ -115,6 +116,17 @@ async def archive_item(
     return {"item": PrivateItemResponse(**item_response(row)).model_dump()}
 
 
+@router.post("/items/{item_id}/mail-feedback")
+async def mail_feedback(
+    item_id: str,
+    payload: PrivateMailFeedbackCreate,
+    owner: PrivateOwner = Depends(require_private_owner),
+    private_db: AsyncSession = Depends(get_private_db),
+):
+    return await set_mail_feedback(private_db, owner.employee_id, item_id, payload.feedback,
+                                   apply_to_sender=payload.apply_to_sender)
+
+
 @router.get("/preferences")
 async def preferences(
     owner: PrivateOwner = Depends(require_private_owner),
@@ -129,13 +141,7 @@ async def update_preferences(
     owner: PrivateOwner = Depends(require_private_owner),
     private_db: AsyncSession = Depends(get_private_db),
 ):
-    row = await private_db.get(PrivatePreferences, owner.employee_id)
-    if not row:
-        row = PrivatePreferences(owner_id=owner.employee_id)
-        private_db.add(row)
-    row.preferences_json = payload.model_dump()
-    await private_db.commit()
-    return await preferences_for(private_db, owner.employee_id)
+    return await update_private_preferences(private_db, owner.employee_id, payload.model_dump(exclude_unset=True))
 
 
 @router.post("/sources/{source_id}/connect")
@@ -168,14 +174,22 @@ async def synchronize(
 @router.get("/oauth/{source_id}/callback", include_in_schema=False)
 async def oauth_callback(
     source_id: SourceId,
-    state: str = Query(min_length=20, max_length=200),
+    state: str | None = Query(default=None, max_length=200),
     code: str | None = Query(default=None, max_length=4096),
     error: str | None = Query(default=None, max_length=200),
     business_db: AsyncSession = Depends(get_db),
     private_db: AsyncSession = Depends(get_private_db),
 ):
-    connected = await complete_oauth(private_db, business_db, source_id, state, code, error)
+    outcome = "expired"
+    if state and len(state) >= 20:
+        try:
+            connected = await complete_oauth(private_db, business_db, source_id, state, code, error)
+            outcome = "connected" if connected else "incomplete"
+        except HTTPException as exc:
+            if exc.status_code not in {400, 403}:
+                raise
+            outcome = "expired" if exc.status_code == 400 else "incomplete"
     return RedirectResponse(
-        url=f"/private-workspace?source={source_id}&connection={'connected' if connected else 'incomplete'}",
-        status_code=303, headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+        url=f"/private-workspace?view={source_id}&source={source_id}&connection={outcome}",
+        status_code=303, headers={"Cache-Control": "no-store", "Pragma": "no-cache", "Referrer-Policy": "no-referrer"},
     )

@@ -23,9 +23,10 @@ GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
 ADS_SCOPE = 'https://www.googleapis.com/auth/adwords'
 ADS_VERSION = 'v25'
 MAX_RESPONSE_BYTES = 1024 * 1024
-MAX_REQUESTS = 65
+MAX_REQUESTS = 90
 MAX_SYNC_SECONDS = 45
-GMAIL_LIMIT = 40
+GMAIL_LIMIT = 80
+BOFA_MAIL_LIMIT = 40
 STRIPE_LIMIT = 100
 ADS_ACCOUNT_QUERY = 'SELECT customer.id, customer.descriptive_name, customer.currency_code FROM customer LIMIT 1'
 ADS_CAMPAIGN_QUERY = ('SELECT campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros '
@@ -342,9 +343,10 @@ def _list(value: object) -> list:
 async def _gmail(google: _Google, source: SourceDefinition, metadata: dict) -> dict:
     account = _account_email(metadata['account_label']) if metadata.get('account_label') else None
     if source.id == 'gmail': _check_gmail_account(account)
-    query = 'newer_than:60d {is:important is:starred}' if source.id == 'gmail' else 'newer_than:60d {from:bankofamerica.com from:bofa.com}'
+    query = 'newer_than:60d {in:inbox is:important is:starred}' if source.id == 'gmail' else 'newer_than:60d {from:bankofamerica.com from:bofa.com}'
+    limit = GMAIL_LIMIT if source.id == 'gmail' else BOFA_MAIL_LIMIT
     items = []; seen = set(); page = None; partial = False
-    for _ in range(2):
+    for _ in range(limit // 20):
         parameters = {'maxResults': 20, 'q': query, 'includeSpamTrash': 'false'}
         if page: parameters['pageToken'] = page
         listing = await google.request('GET', 'https://gmail.googleapis.com/gmail/v1/users/me/messages', params=parameters)
@@ -367,6 +369,8 @@ async def _gmail(google: _Google, source: SourceDefinition, metadata: dict) -> d
             thread_id = _id(message.get('threadId') or message_id)
             labels = _list(message.get('labelIds', []))
             evidence = {'provider_message_id': message_id, 'provider_thread_id': thread_id}
+            if source.id == 'gmail':
+                evidence['labels'] = [str(label)[:80] for label in labels[:50] if isinstance(label, str)]
             if headers.get('from'):
                 evidence.update({'from': _text(headers['from']), 'sender_verification': 'unverified'})
             if source.id == 'bofa': evidence.update(type='email_alert', verification='unverified', accounting_effect='none')
@@ -374,7 +378,8 @@ async def _gmail(google: _Google, source: SourceDefinition, metadata: dict) -> d
                           'title': _text(headers.get('subject') or ('银行邮件提醒' if source.id == 'bofa' else '邮件'), 200),
                           'summary': _text(message.get('snippet')), 'status': 'unverified' if source.id == 'bofa' else
                           ('unread' if 'UNREAD' in labels else 'read'),
-                          'priority': 'high' if source.id == 'gmail' and any(label in labels for label in ('IMPORTANT', 'STARRED')) else 'normal',
+                          # Gmail's importance label is evidence, not personal urgency.
+                          'priority': 'normal',
                           'occurred_at': _date(message.get('internalDate'), milliseconds=True),
                           # Mailbox selection is an explicit browser hint. An
                           # unknown identity must not silently open account 0.
@@ -385,8 +390,8 @@ async def _gmail(google: _Google, source: SourceDefinition, metadata: dict) -> d
         page = _opaque(page, 2048)
     partial = bool(page)
     return {'items': items, 'balances': [], 'metadata': {'partial': partial, 'sync_window': 'last_60_days',
-             'coverage': 'bounded_recent_records', 'fetched_messages': len(seen), 'record_limit': GMAIL_LIMIT,
-             'importance_source': 'gmail_important_or_starred_labels' if source.id == 'gmail' else None,
+             'coverage': 'bounded_recent_records', 'fetched_messages': len(seen), 'record_limit': limit,
+             'importance_source': 'owner_metadata_rules' if source.id == 'gmail' else None,
              'bank_data_verification': 'unverified' if source.id == 'bofa' else None}}
 
 

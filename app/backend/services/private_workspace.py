@@ -25,6 +25,7 @@ from dependencies.private_workspace import configured_owner_ids, valid_private_o
 from models.private_workspace import (
     PrivateConnection, PrivateItem, PrivatePreferences, PrivateSyncRun, PrivateWorkspaceBase, utcnow,
 )
+from services.private_mail_relevance import BUCKETS, BUCKET_PRIORITY, classify_mail, gmail_preferences
 
 
 SOURCE_IDS = ("gmail", "google_ads", "bofa", "stripe", "manual")
@@ -226,8 +227,8 @@ def _aware(value):
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
-def item_response(row):
-    return {
+def item_response(row, stored_preferences=None):
+    result = {
         "id": row.id, "source_id": row.source_id, "kind": row.kind,
         "title": row.local_title if row.local_title is not None else row.title,
         "summary": row.local_summary if row.local_summary is not None else row.summary,
@@ -236,6 +237,13 @@ def item_response(row):
         "source_url": safe_source_url(row.source_id, row.source_url), "evidence": safe_json(row.evidence),
         "action_status": row.action_status, "snoozed_until": _aware(row.snoozed_until),
     }
+    if row.source_id == "gmail":
+        # Local notes cannot turn untrusted provider metadata into confirmed facts.
+        relevance = classify_mail({"id": row.id, "title": row.title, "summary": row.summary,
+                                   "evidence": row.evidence}, stored_preferences)
+        result["mail_relevance"] = relevance
+        result["priority"] = BUCKET_PRIORITY[relevance["bucket"]]
+    return result
 
 
 async def connection_for(private_db, owner_id: str, source_id: str, *, create=False):
@@ -294,7 +302,11 @@ def source_descriptors():
     return [descriptors[source_id] for source_id in SOURCE_IDS if source_id in descriptors]
 
 
-async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, action_status=None, limit=100):
+async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, action_status=None, limit=100, mail_bucket=None):
+    if mail_bucket:
+        if mail_bucket not in BUCKETS or source_id not in {None, "gmail"}:
+            raise HTTPException(status_code=422, detail="邮件分组仅用于 Gmail")
+        source_id = "gmail"
     conditions = [PrivateItem.owner_id == owner_id]
     if source_id:
         require_source(source_id)
@@ -305,11 +317,23 @@ async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, ac
         conditions.append(PrivateItem.action_status == action_status)
     else:
         conditions.append(PrivateItem.action_status != "archived")
+    if source_id == "gmail":
+        stored = await stored_preferences_for(private_db, owner_id)
+        rows = (await private_db.execute(select(PrivateItem).where(*conditions).order_by(
+            func.coalesce(PrivateItem.occurred_at, PrivateItem.created_at).desc(), PrivateItem.id,
+        ))).scalars().all()
+        computed = [item_response(row, stored) for row in rows]
+        counts = {bucket: sum(item["mail_relevance"]["bucket"] == bucket for item in computed) for bucket in BUCKETS}
+        computed.sort(key=lambda item: BUCKETS.index(item["mail_relevance"]["bucket"]))
+        if mail_bucket:
+            computed = [item for item in computed if item["mail_relevance"]["bucket"] == mail_bucket]
+        return {"items": computed[:limit], "total": len(computed), "mail_counts": counts}
     total = (await private_db.execute(select(func.count()).select_from(PrivateItem).where(*conditions))).scalar_one()
+    stored = await stored_preferences_for(private_db, owner_id)
     rows = (await private_db.execute(select(PrivateItem).where(*conditions).order_by(
         PrivateItem.created_at.desc(), PrivateItem.id,
     ).limit(limit))).scalars().all()
-    return {"items": [item_response(row) for row in rows], "total": total}
+    return {"items": [item_response(row, stored) for row in rows], "total": total}
 
 
 async def overview_items(private_db, owner_id: str, *, reference_time=None):
@@ -323,16 +347,26 @@ async def overview_items(private_db, owner_id: str, *, reference_time=None):
                           (PrivateItem.priority == "normal", 2), else_=3)
     # Arrival dates on ordinary payouts do not turn them into work to be done.
     work = (await private_db.execute(select(PrivateItem).where(
-        PrivateItem.owner_id == owner_id, actionable, PrivateItem.source_id != "bofa",
-        or_(PrivateItem.source_id.in_(["manual", "gmail"]), PrivateItem.priority.in_(["high", "urgent"])),
+        PrivateItem.owner_id == owner_id, actionable, PrivateItem.source_id.notin_(["bofa", "gmail"]),
+        or_(PrivateItem.source_id == "manual", PrivateItem.priority.in_(["high", "urgent"])),
     ).order_by(priority_order, case((PrivateItem.due_at.is_(None), 1), else_=0),
                PrivateItem.due_at.asc(), PrivateItem.created_at.asc(), PrivateItem.id).limit(100))).scalars().all()
+    stored = await stored_preferences_for(private_db, owner_id)
+    gmail = (await private_db.execute(select(PrivateItem).where(
+        PrivateItem.owner_id == owner_id, PrivateItem.source_id == "gmail", actionable,
+    ).order_by(PrivateItem.occurred_at.desc(), PrivateItem.id))).scalars().all()
+    focus = [item_response(row, stored) for row in [*work, *gmail]]
+    focus = [item for item in focus if item.get("mail_relevance", {}).get("bucket", "today") in {"urgent", "today"}]
+    epoch = datetime.min.replace(tzinfo=timezone.utc)
+    focus.sort(key=lambda item: ({"urgent": 0, "high": 1, "normal": 2, "low": 3}[item["priority"]],
+                                 item["due_at"] is None, item["due_at"] or epoch,
+                                 item["occurred_at"] or epoch, item["id"]))
     # Bank emails remain an independently labelled, unverified reminder stream.
     bank = (await private_db.execute(select(PrivateItem).where(
         PrivateItem.owner_id == owner_id, PrivateItem.source_id == "bofa", actionable,
     ).order_by(case((PrivateItem.occurred_at.is_(None), 1), else_=0), PrivateItem.occurred_at.desc(),
                PrivateItem.created_at.desc(), PrivateItem.id).limit(10))).scalars().all()
-    return [item_response(row) for row in [*work, *bank]]
+    return focus[:100] + [item_response(row) for row in bank]
 
 
 async def workspace_overview(private_db, owner_id: str):
@@ -487,6 +521,15 @@ async def persist_provider_batch(private_db, owner_id: str, source_id: str, batc
         raise ValueError("invalid provider batch")
     # A single update can include the same object multiple times; latest occurrence wins.
     normalized = {row["external_id"]: row for row in (_provider_item(owner_id, source_id, value) for value in values)}
+    if source_id == "gmail":
+        stored = await stored_preferences_for(private_db, owner_id)
+        # Existing row IDs key feedback, so resyncs preserve the owner's choices.
+        existing_ids = dict((await private_db.execute(select(PrivateItem.external_id, PrivateItem.id).where(
+            PrivateItem.owner_id == owner_id, PrivateItem.source_id == "gmail",
+        ))).all())
+        for value in normalized.values():
+            relevance = classify_mail({**value, "id": existing_ids.get(value["external_id"])}, stored)
+            value["priority"] = BUCKET_PRIORITY[relevance["bucket"]]
     existing = set((await private_db.execute(select(PrivateItem.external_id).where(
         PrivateItem.owner_id == owner_id, PrivateItem.source_id == source_id,
     ))).scalars().all())
@@ -589,10 +632,88 @@ async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seco
     return {"source": await _source_after(private_db, owner_id, source_id), "counts": counts}
 
 
-async def preferences_for(private_db, owner_id: str):
+async def stored_preferences_for(private_db, owner_id: str):
     row = await private_db.get(PrivatePreferences, owner_id)
-    interval = (row.preferences_json or {}).get("sync_interval_seconds", 900) if row else 900
-    return {"sync_interval_seconds": max(300, min(86400, int(interval)))}
+    return dict(row.preferences_json or {}) if row and isinstance(row.preferences_json, dict) else {}
+
+
+async def preferences_for(private_db, owner_id: str):
+    stored = await stored_preferences_for(private_db, owner_id)
+    try:
+        interval = int(stored.get("sync_interval_seconds", 900))
+    except (TypeError, ValueError):
+        interval = 900
+    return {"sync_interval_seconds": max(300, min(86400, interval)), "gmail": gmail_preferences(stored)}
+
+
+async def _locked_preferences_row(private_db, owner_id):
+    if private_db.bind.dialect.name == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert
+    else:
+        from sqlalchemy.dialects.postgresql import insert
+    # INSERT takes SQLite's write lock; FOR UPDATE serializes Postgres JSON merges.
+    await private_db.execute(insert(PrivatePreferences).values(owner_id=owner_id, preferences_json={})
+                             .on_conflict_do_nothing(index_elements=["owner_id"]))
+    return (await private_db.execute(select(PrivatePreferences).where(PrivatePreferences.owner_id == owner_id)
+                                    .with_for_update().execution_options(populate_existing=True))).scalar_one()
+
+
+async def _reclassify_gmail(private_db, owner_id, stored):
+    rows = (await private_db.execute(select(PrivateItem).where(
+        PrivateItem.owner_id == owner_id, PrivateItem.source_id == "gmail",
+    ))).scalars().all()
+    for item in rows:
+        item.priority = item_response(item, stored)["priority"]
+
+
+async def update_private_preferences(private_db, owner_id, changes):
+    row = await _locked_preferences_row(private_db, owner_id)
+    stored = dict(row.preferences_json or {})
+    if "sync_interval_seconds" in changes:
+        stored["sync_interval_seconds"] = changes["sync_interval_seconds"]
+    if "gmail" in changes:
+        stored["gmail"] = {**gmail_preferences(stored), **changes["gmail"]}
+    row.preferences_json = stored
+    await _reclassify_gmail(private_db, owner_id, stored)
+    await private_db.commit()
+    return await preferences_for(private_db, owner_id)
+
+
+async def set_mail_feedback(private_db, owner_id, item_id, feedback, *, apply_to_sender=False):
+    row = (await private_db.execute(select(PrivateItem).where(
+        PrivateItem.id == item_id, PrivateItem.owner_id == owner_id,
+    ))).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="未找到此私人邮件")
+    if row.source_id != "gmail":
+        raise HTTPException(status_code=409, detail="仅 Gmail 邮件支持关注反馈")
+    preference_row = await _locked_preferences_row(private_db, owner_id)
+    stored = dict(preference_row.preferences_json or {})
+    prior = stored.get("gmail_feedback", {})
+    prior = prior if isinstance(prior, dict) else {}
+    items = dict(prior.get("items", {})) if isinstance(prior.get("items"), dict) else {}
+    senders = dict(prior.get("senders", {})) if isinstance(prior.get("senders"), dict) else {}
+    if feedback is None:
+        items.pop(row.id, None)
+    else:
+        if row.id not in items and len(items) >= 1000:
+            raise HTTPException(status_code=409, detail="邮件反馈已达上限，请先清除不再需要的反馈")
+        items[row.id] = feedback
+    if apply_to_sender:
+        address = item_response(row, stored)["mail_relevance"]["sender_address"]
+        if not address:
+            raise HTTPException(status_code=422, detail="无法安全识别发件邮箱，请仅设置这封邮件")
+        if feedback is None:
+            senders.pop(address, None)
+        else:
+            if address not in senders and len(senders) >= 100:
+                raise HTTPException(status_code=409, detail="发件人反馈已达上限，请先清除不再需要的反馈")
+            senders[address] = feedback
+    stored["gmail_feedback"] = {"items": items, "senders": senders}
+    preference_row.preferences_json = stored
+    await _reclassify_gmail(private_db, owner_id, stored)
+    await private_db.commit()
+    return {"item": item_response(row, stored)}
 
 
 async def sync_due_sources(business_db, private_db, *, now=None):

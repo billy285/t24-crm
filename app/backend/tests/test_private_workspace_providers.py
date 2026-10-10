@@ -192,7 +192,7 @@ async def test_gmail_metadata_only_and_stable_ids_exclude_full_body(configured):
     async def handler(request):
         calls.append(request)
         if request.url.path.endswith('/messages'):
-            assert request.url.params['q'] == 'newer_than:60d {is:important is:starred}'
+            assert request.url.params['q'] == 'newer_than:60d {in:inbox is:important is:starred}'
             return httpx.Response(200, json={'messages': [{'id': 'a1'}]})
         assert request.url.params['format'] == 'metadata'
         return httpx.Response(200, json=message())
@@ -235,16 +235,17 @@ async def test_configured_mailbox_requires_confirmed_identity_before_sync(config
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('labels,priority', [(['UNREAD', 'IMPORTANT'], 'high'), (['STARRED'], 'high'), (['UNREAD'], 'normal')])
-async def test_gmail_priority_uses_provider_labels_without_ai_claim(configured, labels, priority):
+@pytest.mark.parametrize('labels', [['UNREAD', 'IMPORTANT'], ['STARRED'], ['UNREAD']])
+async def test_gmail_labels_are_evidence_not_automatic_personal_urgency(configured, labels):
     async def handler(request):
         if request.url.path.endswith('/messages'):
-            assert request.url.params['q'] == 'newer_than:60d {is:important is:starred}'
+            assert request.url.params['q'] == 'newer_than:60d {in:inbox is:important is:starred}'
             return httpx.Response(200, json={'messages': [{'id': 'a1'}]})
         return httpx.Response(200, json={**message(), 'labelIds': labels})
     batch = await providers.fetch_source('gmail', GOOGLE, {}, transport=httpx.MockTransport(handler))
-    assert batch['items'][0]['priority'] == priority
-    assert batch['metadata']['importance_source'] == 'gmail_important_or_starred_labels'
+    assert batch['items'][0]['priority'] == 'normal'
+    assert batch['items'][0]['evidence']['labels'] == labels
+    assert batch['metadata']['importance_source'] == 'owner_metadata_rules'
 
 
 @pytest.mark.asyncio
@@ -305,11 +306,12 @@ async def test_gmail_bounded_pages_report_partial_instead_of_complete_mailbox(co
     async def handler(request):
         calls.append(request)
         if request.url.path.endswith('/messages'):
-            page = 1 if request.url.params.get('pageToken') else 0
-            return httpx.Response(200, json={'messages': [{'id': 'm'+str(page*20+n)} for n in range(20)], 'nextPageToken': 'next-page'})
+            page = int(request.url.params.get('pageToken') or 0)
+            return httpx.Response(200, json={'messages': [{'id': 'm'+str(page*20+n)} for n in range(20)], 'nextPageToken': str(page + 1)})
         return httpx.Response(200, json=message(request.url.path.rsplit('/', 1)[1]))
     batch = await providers.fetch_source('gmail', GOOGLE, {}, transport=httpx.MockTransport(handler))
-    assert len(batch['items']) == 40 and len(calls) == 42
+    assert len(batch['items']) == 80 and len(calls) == 84
+    assert batch['metadata']['record_limit'] == 80
     assert batch['metadata']['partial'] is True and batch['metadata']['coverage'] == 'bounded_recent_records'
 
 

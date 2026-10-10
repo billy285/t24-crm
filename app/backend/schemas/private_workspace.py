@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 SourceId = Literal["gmail", "google_ads", "bofa", "stripe", "manual"]
 ActionStatus = Literal["open", "done", "snoozed", "archived"]
 Priority = Literal["low", "normal", "high", "urgent"]
+MailBucket = Literal["urgent", "today", "digest", "low"]
+MailFeedback = Literal["important", "not_relevant"]
 
 
 class PrivateItemCreate(BaseModel):
@@ -84,9 +86,65 @@ class PrivateSourceResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class GmailPreferencesPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    topics: list[Literal["finance", "ads", "security", "business"]] | None = Field(default=None, max_length=4)
+    watch_senders: list[str] | None = Field(default=None, max_length=50)
+    watch_keywords: list[str] | None = Field(default=None, max_length=30)
+    muted_senders: list[str] | None = Field(default=None, max_length=50)
+
+    @field_validator("watch_senders", "muted_senders")
+    @classmethod
+    def normalize_senders(cls, value):
+        from services.private_mail_relevance import normalize_sender_rule
+        return list(dict.fromkeys(normalize_sender_rule(item) for item in value)) if value is not None else None
+
+    @field_validator("watch_keywords")
+    @classmethod
+    def normalize_keywords(cls, value):
+        if value is None:
+            return value
+        if any(not 1 <= len(item.strip()) <= 80 or any(c in item for c in "\r\n") for item in value):
+            raise ValueError("关键词应为 1–80 个字，不能包含换行")
+        return list(dict.fromkeys(item.strip().casefold() for item in value))
+
+    @field_validator("topics")
+    @classmethod
+    def unique_topics(cls, value):
+        return list(dict.fromkeys(value)) if value is not None else None
+
+    @model_validator(mode="after")
+    def reject_null_fields(self):
+        if any(getattr(self, name) is None for name in self.model_fields_set):
+            raise ValueError("关注设置不能为空，清空列表请使用 []")
+        return self
+
+
 class PrivatePreferencesPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    sync_interval_seconds: int = Field(ge=300, le=86400, strict=True)
+    sync_interval_seconds: int | None = Field(default=None, ge=300, le=86400, strict=True)
+    gmail: GmailPreferencesPatch | None = None
+
+    @model_validator(mode="after")
+    def reject_null_fields(self):
+        if any(getattr(self, name) is None for name in self.model_fields_set):
+            raise ValueError("设置不能为空")
+        return self
+
+
+class PrivateMailFeedbackCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    feedback: MailFeedback | None
+    apply_to_sender: bool = Field(default=False, strict=True)
+
+
+class PrivateMailRelevance(BaseModel):
+    bucket: MailBucket
+    category: Literal["finance", "ads", "security", "business", "general", "promotion"]
+    reasons: list[str]
+    feedback: MailFeedback | None
+    sender_address: str | None
+    sender_verification: Literal["unverified"]
 
 
 class PrivateItemResponse(BaseModel):
@@ -105,3 +163,4 @@ class PrivateItemResponse(BaseModel):
     evidence: dict[str, Any]
     action_status: ActionStatus
     snoozed_until: datetime | None
+    mail_relevance: PrivateMailRelevance | None = None

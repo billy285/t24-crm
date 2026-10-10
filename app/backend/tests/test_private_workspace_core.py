@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from core.config import settings
 from core.database import Base, get_db
 from models.employees import Employees
-from models.private_workspace import PrivateConnection, PrivateItem, PrivateSyncRun, PrivateWorkspaceBase, utcnow
+from models.private_workspace import PrivateConnection, PrivateItem, PrivatePreferences, PrivateSyncRun, PrivateWorkspaceBase, utcnow
 from routers.private_workspace import router
 from services import emp_auth, private_workspace as service, private_workspace_providers as real_providers
 
@@ -206,7 +206,7 @@ async def test_canceled_oauth_is_consumed_and_malicious_authorization_urls_rejec
     canceled = await workspace.client.get("/api/v1/private-workspace/oauth/gmail/callback", params={"state": state, "error": "access_denied"})
     assert canceled.status_code == 303 and canceled.headers["location"].endswith("connection=incomplete")
     replay = await workspace.client.get("/api/v1/private-workspace/oauth/gmail/callback", params={"state": state, "code": "synthetic-code"})
-    assert replay.status_code == 400 and workspace.fake.exchanges == []
+    assert replay.status_code == 303 and replay.headers['location'].endswith('connection=expired') and workspace.fake.exchanges == []
 
     async def malicious_connect(source_id, state):
         return {"authorization_url": "https://evil.test/?state=" + state}
@@ -272,11 +272,11 @@ async def oauth_state(client):
 async def test_oauth_state_is_owner_bound_single_use_and_source_bound(workspace):
     state = await oauth_state(workspace.client)
     wrong_source = await workspace.client.get("/api/v1/private-workspace/oauth/bofa/callback", params={"state": state, "code": "synthetic-code"})
-    assert wrong_source.status_code == 400
+    assert wrong_source.status_code == 303 and wrong_source.headers['location'].endswith('connection=expired')
     completed = await workspace.client.get("/api/v1/private-workspace/oauth/gmail/callback", params={"state": state, "code": "synthetic-code"})
-    assert completed.status_code == 303 and completed.headers["location"] == "/private-workspace?source=gmail&connection=connected"
+    assert completed.status_code == 303 and completed.headers["location"] == "/private-workspace?view=gmail&source=gmail&connection=connected"
     replay = await workspace.client.get("/api/v1/private-workspace/oauth/gmail/callback", params={"state": state, "code": "synthetic-code"})
-    assert replay.status_code == 400 and len(workspace.fake.exchanges) == 1
+    assert replay.status_code == 303 and replay.headers['location'].endswith('connection=expired') and len(workspace.fake.exchanges) == 1
     sessions = await service.private_session_factory()
     async with sessions() as db:
         connection = (await db.execute(select(PrivateConnection))).scalar_one()
@@ -370,13 +370,15 @@ async def test_expired_and_demoted_owner_oauth_state_never_exchanges(workspace):
         await db.execute(update(PrivateConnection).values(oauth_expires_at=utcnow() - timedelta(seconds=1)))
         await db.commit()
     expired = await workspace.client.get("/api/v1/private-workspace/oauth/gmail/callback", params={"state": state, "code": "synthetic-code"})
-    assert expired.status_code == 400
+    assert expired.status_code == 303 and expired.headers['location'].endswith('connection=expired')
+    assert state not in expired.headers['location'] and 'synthetic-code' not in expired.headers['location']
+    assert expired.headers['referrer-policy'] == 'no-referrer' and expired.headers['cache-control'] == 'no-store'
     state = await oauth_state(workspace.client)
     async with workspace.business_sessions() as db:
         await db.execute(update(Employees).where(Employees.id == 1).values(role="admin"))
         await db.commit()
     denied = await workspace.client.get("/api/v1/private-workspace/oauth/gmail/callback", params={"state": state, "code": "synthetic-code"})
-    assert denied.status_code == 403 and workspace.fake.exchanges == []
+    assert denied.status_code == 303 and denied.headers['location'].endswith('connection=incomplete') and workspace.fake.exchanges == []
 
 
 @pytest.mark.asyncio
@@ -432,7 +434,9 @@ async def test_disconnect_during_sync_prevents_old_snapshot_writes_and_parallel_
 async def test_preferences_minimum_interval_and_safe_url_filter(workspace):
     assert (await workspace.client.patch("/api/v1/private-workspace/preferences", headers=headers(), json={"sync_interval_seconds": 299})).status_code == 422
     result = await workspace.client.patch("/api/v1/private-workspace/preferences", headers=headers(), json={"sync_interval_seconds": 600})
-    assert result.json() == {"sync_interval_seconds": 600}
+    assert result.json()['sync_interval_seconds'] == 600
+    assert result.json()['gmail'] == {'topics': ['finance', 'ads', 'security', 'business'],
+                                      'watch_senders': [], 'muted_senders': [], 'watch_keywords': []}
     assert service.safe_source_url("stripe", "http://127.0.0.1/private") is None
     assert service.safe_source_url("stripe", "https://dashboard.stripe.com.evil.test/") is None
     assert service.safe_source_url("stripe", "https://dashboard.stripe.com/?access_token=private") is None
@@ -479,3 +483,127 @@ async def test_overview_keeps_old_urgent_work_when_recent_completed_and_normal_r
     # Source detail retains its separate recent-record view, including completed records.
     details = (await workspace.client.get("/api/v1/private-workspace/items?source_id=stripe", headers=headers())).json()
     assert len(details["items"]) == 100 and all(row["kind"] == "payout" for row in details["items"])
+
+
+async def seed_mail(workspace, external_id, *, owner_id="1", title="Notice", sender="Mail <notice@example.com>",
+                    priority="normal", action_status="open", occurred_at=None, labels=None):
+    sessions = await service.private_session_factory()
+    async with sessions() as db:
+        item = PrivateItem(owner_id=owner_id, source_id="gmail", external_id=external_id, kind="email",
+                           title=title, summary="Synthetic metadata", status="unread", priority=priority,
+                           action_status=action_status, occurred_at=occurred_at or utcnow(),
+                           evidence={"from": sender, "labels": labels or [], "sender_verification": "unverified"})
+        db.add(item)
+        await db.commit()
+        return item.id
+
+
+@pytest.mark.asyncio
+async def test_gmail_bucket_counts_and_sort_happen_before_response_limit(workspace):
+    sessions = await service.private_session_factory()
+    now = utcnow()
+    async with sessions() as db:
+        for index in range(105):
+            db.add(PrivateItem(owner_id="1", source_id="gmail", external_id=str(index), kind="email",
+                               title="Your payment failed" if index == 0 else "Receipt", summary="", status="read",
+                               priority="normal", occurred_at=now - timedelta(days=20) if index == 0 else now,
+                               evidence={"from": "unknown@example.com", "labels": []}))
+        db.add(PrivateItem(owner_id="2", source_id="gmail", external_id="other", kind="email",
+                           title="New dispute", summary="", status="read", priority="urgent", evidence={}))
+        await db.commit()
+    result = (await workspace.client.get("/api/v1/private-workspace/items?source_id=gmail&limit=1", headers=headers())).json()
+    assert result["total"] == 105 and result["mail_counts"] == {"urgent": 1, "today": 0, "digest": 104, "low": 0}
+    assert result["items"][0]["title"] == "Your payment failed" and result["items"][0]["priority"] == "urgent"
+    result = (await workspace.client.get("/api/v1/private-workspace/items?mail_bucket=digest&limit=1", headers=headers())).json()
+    assert result["total"] == 104 and result["mail_counts"]["urgent"] == 1 and len(result["items"]) == 1
+    focus = (await workspace.client.get("/api/v1/private-workspace", headers=headers())).json()["items"]
+    assert len(focus) == 1 and focus[0]["priority"] == "urgent"
+    assert (await workspace.client.get("/api/v1/private-workspace/items?source_id=stripe&mail_bucket=urgent", headers=headers())).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_gmail_preferences_merge_and_feedback_survive_sync_with_owner_actions(workspace):
+    item_id = await seed_mail(workspace, "feedback", action_status="done")
+    sessions = await service.private_session_factory()
+    async with sessions() as db:
+        db.add(PrivatePreferences(owner_id="1", preferences_json={"future_provider": {"keep": True}}))
+        await db.commit()
+    client = workspace.client
+    first = await client.patch("/api/v1/private-workspace/preferences", headers=headers(),
+                               json={"gmail": {"watch_senders": ["WATCH@EXAMPLE.COM"], "watch_keywords": ["Contract"]}})
+    assert first.status_code == 200 and first.json()["gmail"]["watch_senders"] == ["watch@example.com"]
+    marked = await client.post(f"/api/v1/private-workspace/items/{item_id}/mail-feedback", headers=headers(),
+                               json={"feedback": "important"})
+    assert marked.status_code == 200 and marked.json()["item"]["mail_relevance"]["feedback"] == "important"
+    await client.patch("/api/v1/private-workspace/preferences", headers=headers(), json={"sync_interval_seconds": 600})
+    await client.patch("/api/v1/private-workspace/preferences", headers=headers(), json={"gmail": {"topics": ["finance"]}})
+    async with sessions() as db:
+        await service.persist_provider_batch(db, "1", "gmail", {"items": [{"external_id": "feedback", "kind": "email",
+            "title": "Updated notice", "summary": "Provider changes are separate", "status": "read", "priority": "low",
+            "evidence": {"from": "notice@example.com", "labels": []}}]})
+        await db.commit()
+        item = await db.get(PrivateItem, item_id)
+        prefs = await db.get(PrivatePreferences, "1")
+        assert item.action_status == "done" and item.priority == "high"
+        assert prefs.preferences_json["future_provider"] == {"keep": True}
+        assert prefs.preferences_json["gmail_feedback"]["items"][item_id] == "important"
+    result = (await client.get("/api/v1/private-workspace/preferences", headers=headers())).json()
+    assert result["sync_interval_seconds"] == 600 and result["gmail"]["watch_keywords"] == ["contract"]
+    assert result["gmail"]["watch_senders"] == ["watch@example.com"] and "gmail_feedback" not in result
+    assert all(statement.lstrip().upper().startswith("SELECT") for statement in workspace.statements)
+
+
+@pytest.mark.asyncio
+async def test_gmail_sender_feedback_is_opt_in_clear_preserves_manual_watchlist_and_risk(workspace):
+    first = await seed_mail(workspace, "first")
+    second = await seed_mail(workspace, "second")
+    risk = await seed_mail(workspace, "risk", title="Your payment failed")
+    client = workspace.client
+    endpoint = f"/api/v1/private-workspace/items/{first}/mail-feedback"
+    await client.post(endpoint, headers=headers(), json={"feedback": "important", "apply_to_sender": False})
+    items = (await client.get("/api/v1/private-workspace/items?source_id=gmail", headers=headers())).json()["items"]
+    assert next(row for row in items if row["id"] == second)["mail_relevance"]["bucket"] == "digest"
+    await client.post(endpoint, headers=headers(), json={"feedback": "important", "apply_to_sender": True})
+    future = await seed_mail(workspace, "future")
+    items = (await client.get("/api/v1/private-workspace/items?source_id=gmail", headers=headers())).json()["items"]
+    assert next(row for row in items if row["id"] == future)["mail_relevance"]["bucket"] == "today"
+    await client.post(endpoint, headers=headers(), json={"feedback": "not_relevant", "apply_to_sender": True})
+    items = (await client.get("/api/v1/private-workspace/items?source_id=gmail", headers=headers())).json()["items"]
+    assert next(row for row in items if row["id"] == risk)["mail_relevance"]["bucket"] == "urgent"
+    assert next(row for row in items if row["id"] == second)["mail_relevance"]["bucket"] == "low"
+    await client.patch("/api/v1/private-workspace/preferences", headers=headers(), json={"gmail": {"watch_senders": ["notice@example.com"]}})
+    cleared = await client.post(endpoint, headers=headers(), json={"feedback": None, "apply_to_sender": True})
+    assert cleared.json()["item"]["mail_relevance"]["feedback"] is None and cleared.json()["item"]["mail_relevance"]["bucket"] == "today"
+    assert (await client.get("/api/v1/private-workspace/preferences", headers=headers())).json()["gmail"]["watch_senders"] == ["notice@example.com"]
+
+
+@pytest.mark.asyncio
+async def test_gmail_owner_isolation_and_strict_preference_feedback_validation(workspace, monkeypatch):
+    monkeypatch.setenv("PRIVATE_WORKSPACE_OWNER_IDS", "1,2")
+    first = await seed_mail(workspace, "owner1")
+    await seed_mail(workspace, "owner2", owner_id="2")
+    client = workspace.client
+    endpoint = f"/api/v1/private-workspace/items/{first}/mail-feedback"
+    assert (await client.post(endpoint, headers=headers(2), json={"feedback": "important"})).status_code == 404
+    assert (await client.post(endpoint, headers=headers(4), json={"feedback": "important"})).status_code == 403
+    for payload in ({"gmail": {"watch_senders": ["*.example.com"]}}, {"gmail": {"watch_senders": ["a@example.com"] * 51}},
+                    {"gmail": {"watch_keywords": ["x" * 81]}}, {"gmail": {"topics": None}}, {"gmail": None},
+                    {"sync_interval_seconds": None}, {"gmail": {"watch_senders": ["@example.com"]}}):
+        assert (await client.patch("/api/v1/private-workspace/preferences", headers=headers(), json=payload)).status_code == 422
+    for payload in ({"feedback": "auto-approved"}, {"feedback": "important", "apply_to_sender": "yes"}, {"feedback": None, "owner_id": "2"}):
+        assert (await client.post(endpoint, headers=headers(), json=payload)).status_code == 422
+    await client.patch("/api/v1/private-workspace/preferences", headers=headers(), json={"gmail": {"topics": []}})
+    assert (await client.get("/api/v1/private-workspace/preferences", headers=headers(2))).json()["gmail"]["topics"] == ["finance", "ads", "security", "business"]
+    manual = (await client.post("/api/v1/private-workspace/items", headers=headers(), json={"title": "Manual"})).json()["item"]
+    assert (await client.post(f"/api/v1/private-workspace/items/{manual['id']}/mail-feedback", headers=headers(), json={"feedback": "important"})).status_code == 409
+    malformed = await seed_mail(workspace, "malformed", sender="a@example.com, b@example.com")
+    assert (await client.post(f"/api/v1/private-workspace/items/{malformed}/mail-feedback", headers=headers(), json={"feedback": "important", "apply_to_sender": True})).status_code == 422
+    assert all(statement.lstrip().upper().startswith("SELECT") for statement in workspace.statements)
+
+
+@pytest.mark.asyncio
+async def test_missing_callback_state_uses_fixed_safe_expired_redirect(workspace):
+    result = await workspace.client.get("/api/v1/private-workspace/oauth/gmail/callback", params={"code": "synthetic-one-time-code"})
+    assert result.status_code == 303 and result.headers["location"] == "/private-workspace?view=gmail&source=gmail&connection=expired"
+    assert result.headers["referrer-policy"] == "no-referrer" and "synthetic" not in result.headers["location"]
+    assert workspace.fake.exchanges == []
