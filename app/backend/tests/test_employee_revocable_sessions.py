@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, inspect, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -21,6 +21,7 @@ from models.employee_auth_sessions import EmployeeAuthSession
 from models.employees import Employees
 from models.commissions import SalesPartner
 from routers.emp_auth_tokens import COOKIE_NAME, _secure_cookie_enabled
+from routers import employees as employee_routes
 from services.emp_auth import EmpAuthService, create_access_token, decode_access_token, hash_password
 from services.employee_sessions import create_employee_session, session_enforcement_enabled
 from services.security_tokens import create_refresh_token
@@ -62,6 +63,59 @@ async def session_auth(monkeypatch):
     else:
         app.dependency_overrides[get_db] = previous_override
     await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def file_identity_auth(monkeypatch, tmp_path):
+    """Actual endpoints share a file DB through independent request connections."""
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("ENV", "test")
+    monkeypatch.setenv("ENFORCE_EMPLOYEE_STATUS", "true")
+    monkeypatch.setenv("ENFORCE_EMPLOYEE_SESSIONS", "true")
+    locked, release, waiter_started = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    class ControlledSession(AsyncSession):
+        async def execute(self, statement, *args, **kwargs):
+            identity_lock = str(statement) == "UPDATE employees SET id = id WHERE 1 = 0"
+            if identity_lock and self.info.get("identity_order") == "second":
+                waiter_started.set()
+            result = await super().execute(statement, *args, **kwargs)
+            if identity_lock and self.info.get("identity_order") == "first":
+                locked.set()
+                await release.wait()
+            return result
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'identity-order.sqlite'}", connect_args={"timeout": 5})
+    sessions = async_sessionmaker(engine, class_=ControlledSession, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    password_hash = hash_password(PASSWORD)
+    async with sessions() as db:
+        for employee_id, role in ((301, "sales"), (302, "sales"), (303, "super_admin")):
+            db.add(Employees(id=employee_id, user_id=f"identity-{employee_id}", name=f"Identity {employee_id}",
+                email=f"sales-{employee_id}@example.test", password=password_hash, role=role, status="active"))
+        await db.commit()
+
+    async def override_db(request: Request = None):
+        # Middleware invokes the override directly; dependency injection supplies
+        # the Request for the route's separate transaction.
+        async with sessions(info={"identity_order": request.headers.get("X-Test-Identity-Order") if request else None}) as db:
+            yield db
+
+    previous_override = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override_db
+    monkeypatch.setattr(db_manager, "async_session_maker", sessions)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as client:
+            yield client, sessions, locked, release, waiter_started
+    finally:
+        release.set()
+        if previous_override is None:
+            app.dependency_overrides.pop(get_db, None)
+        else:
+            app.dependency_overrides[get_db] = previous_override
+        await engine.dispose()
 
 
 async def sign_in(client, employee_id=301, password=PASSWORD):
@@ -732,6 +786,190 @@ async def test_batch_email_edits_check_final_unique_identity_before_any_status_c
     ]})
     assert response.status_code == 200, response.text
     assert {row["email"] for row in response.json()} == {"new-301@example.test", "new-302@example.test"}
+
+
+async def run_identity_requests(fixture, admin, first_request, second_request):
+    client, _, locked, release, waiter_started = fixture
+    first_method, first_path, first_payload = first_request
+    second_method, second_path, second_payload = second_request
+    first = asyncio.create_task(client.request(first_method, first_path, json=first_payload,
+        headers={**headers(admin), "X-Test-Identity-Order": "first"}))
+    second = None
+    try:
+        await asyncio.wait_for(locked.wait(), 5)
+        second = asyncio.create_task(client.request(second_method, second_path, json=second_payload,
+            headers={**headers(admin), "X-Test-Identity-Order": "second"}))
+        await asyncio.wait_for(waiter_started.wait(), 5)
+        await asyncio.sleep(0.05)
+        assert not second.done(), "The identity lock must hold through commit/rollback"
+        release.set()
+        return await asyncio.wait_for(first, 5), await asyncio.wait_for(second, 5)
+    finally:
+        release.set()
+        await asyncio.gather(first, *([second] if second is not None else []), return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_kind,second_kind", [
+    ("create", "create"), ("create", "update"), ("update", "create"), ("update", "update"),
+    ("batch_create", "create"), ("create", "batch_create"),
+    ("batch_update", "create"), ("update", "batch_update"),
+])
+async def test_employee_email_identity_serializes_real_file_requests(file_identity_auth, first_kind, second_kind):
+    client, sessions, *_ = file_identity_auth
+    admin = await sign_in(client, 303)
+    sales_tokens = [await sign_in(client, employee_id) for employee_id in (301, 302)]
+    async with sessions() as db:
+        owner = await db.get(Employees, 303)
+        owner_before = (owner.email, owner.name, owner.password, owner.role, owner.status, owner.updated_at, owner.notes)
+
+    prefix = "/api/v1/entities/employees"
+    def request(kind, first):
+        email = "  SHARED-IDENTITY@EXAMPLE.TEST  " if first else "shared-identity@example.test"
+        if kind == "create":
+            return "POST", prefix, {"name": "Identity Winner" if first else "Rejected Create", "role": "sales", "email": email}
+        if kind == "update":
+            return "PUT", prefix + ("/301" if first or first_kind == "create" else "/302"), {
+                "email": email, **({} if first else {"status": "disabled", "notes": "must not persist"}),
+            }
+        if kind == "batch_create":
+            return "POST", prefix + "/batch", {"items": [
+                {"name": "First Batch Other" if first else "Rejected Batch Other", "role": "sales",
+                    "email": "first-other@example.test" if first else "second-unused@example.test"},
+                {"name": "First Batch Shared" if first else "Rejected Batch Shared", "role": "sales", "email": email},
+            ]}
+        if first:
+            return "PUT", prefix + "/batch", {"items": [
+                {"id": 301, "updates": {"email": email}},
+                {"id": 302, "updates": {"email": "first-other@example.test"}},
+            ]}
+        return "PUT", prefix + "/batch", {"items": [
+            {"id": 302, "updates": {"email": email, "status": "disabled"}},
+            {"id": 303, "updates": {"notes": "must not persist"}},
+        ]}
+
+    first, second = await run_identity_requests(file_identity_auth, admin, request(first_kind, True), request(second_kind, False))
+    assert first.status_code == (201 if "create" in first_kind else 200), first.text
+    assert second.status_code == 409, second.text
+    async with sessions() as db:
+        rows = (await db.scalars(select(Employees))).all()
+        emails = [str(row.email).strip().lower() for row in rows if row.email]
+        assert len(emails) == len(set(emails))
+        assert emails.count("shared-identity@example.test") == 1
+        assert "second-unused@example.test" not in emails
+        assert not any(row.name.startswith("Rejected") for row in rows)
+        owner = await db.get(Employees, 303)
+        assert (owner.email, owner.name, owner.password, owner.role, owner.status, owner.updated_at, owner.notes) == owner_before
+        for employee_id in (301, 302):
+            assert (await db.get(Employees, employee_id)).status == "active"
+    for token in [admin, *sales_tokens]:
+        await check_access(client, token, 200)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["batch_create", "batch_update"])
+async def test_employee_identity_failed_batch_rolls_back_and_releases_lock(file_identity_auth, monkeypatch, kind):
+    from services.employees import EmployeesService
+
+    client, sessions, *_ = file_identity_auth
+    admin = await sign_in(client, 303)
+    sales = await sign_in(client, 301)
+    prefix = "/api/v1/entities/employees"
+    if kind == "batch_create":
+        original = EmployeesService.create
+        async def fail_second(self, data, **kwargs):
+            if data.get("name") == "Trigger Failure":
+                raise RuntimeError("synthetic employee create failure")
+            return await original(self, data, **kwargs)
+        monkeypatch.setattr(EmployeesService, "create", fail_second)
+        first = "POST", prefix + "/batch", {"items": [
+            {"name": "Must Roll Back", "role": "sales", "email": "rollback-identity@example.test"},
+            {"name": "Trigger Failure", "role": "sales", "email": "second-rollback@example.test"},
+        ]}
+    else:
+        original = EmployeesService.update
+        async def fail_second(self, employee_id, data, **kwargs):
+            if employee_id == 302:
+                raise RuntimeError("synthetic employee update failure")
+            return await original(self, employee_id, data, **kwargs)
+        monkeypatch.setattr(EmployeesService, "update", fail_second)
+        first = "PUT", prefix + "/batch", {"items": [
+            {"id": 301, "updates": {"email": "rollback-identity@example.test", "status": "disabled"}},
+            {"id": 302, "updates": {"email": "second-rollback@example.test"}},
+        ]}
+    second = "POST", prefix, {"name": "After Rollback", "role": "sales", "email": "rollback-identity@example.test"}
+    failed, accepted = await run_identity_requests(file_identity_auth, admin, first, second)
+    assert failed.status_code == 500, failed.text
+    assert accepted.status_code == 201, accepted.text
+    async with sessions() as db:
+        rows = (await db.scalars(select(Employees))).all()
+        assert len(rows) == 4
+        assert not any(row.name == "Must Roll Back" for row in rows)
+        assert (await db.get(Employees, 301)).email == "sales-301@example.test"
+        assert (await db.get(Employees, 301)).status == "active"
+        assert (await db.get(Employees, 302)).email == "sales-302@example.test"
+        assert not any(row.email == "second-rollback@example.test" for row in rows)
+    await check_access(client, sales, 200)
+    await check_access(client, admin, 200)
+
+
+@pytest.mark.asyncio
+async def test_employee_identity_preflight_refreshes_cached_target_after_lock(file_identity_auth):
+    _, sessions, *_ = file_identity_auth
+    async with sessions() as cached_db:
+        cached = await cached_db.get(Employees, 301)
+        assert cached.status == "active"
+        async with sessions() as other_db:
+            await other_db.execute(update(Employees).where(Employees.id == 301).values(status="disabled", email="fresh@example.test"))
+            await other_db.commit()
+        await employee_routes._lock_employee_identity_mutation(cached_db)
+        targets = await employee_routes._load_employee_targets(cached_db, [301])
+        assert targets[301] is cached
+        assert cached.status == "disabled" and cached.email == "fresh@example.test"
+        await cached_db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_employee_identity_lock_works_with_empty_table_without_changing_rows(tmp_path):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'empty-identity.sqlite'}")
+    sessions = async_sessionmaker(engine)
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(lambda conn: Base.metadata.create_all(conn, tables=[Employees.__table__]))
+        async with sessions() as db:
+            await employee_routes._lock_employee_identity_mutation(db)
+            assert not (await db.scalars(select(Employees))).all()
+            await db.rollback()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dialect", ["postgresql", "unsupported"])
+async def test_employee_identity_lock_is_transaction_owned_or_fails_closed(dialect):
+    from types import SimpleNamespace
+
+    class Probe:
+        def __init__(self):
+            self.calls = []
+        def get_bind(self):
+            return SimpleNamespace(dialect=SimpleNamespace(name=dialect))
+        async def execute(self, statement, parameters):
+            self.calls.append((str(statement), parameters))
+        async def commit(self):
+            raise AssertionError("identity helper must not commit")
+        async def rollback(self):
+            raise AssertionError("identity helper must not release caller transaction")
+
+    db = Probe()
+    if dialect == "postgresql":
+        await employee_routes._lock_employee_identity_mutation(db)
+        assert db.calls == [("SELECT pg_advisory_xact_lock(:namespace, :identity)", {"namespace": 0x543234, "identity": 1})]
+    else:
+        with pytest.raises(HTTPException) as denied:
+            await employee_routes._lock_employee_identity_mutation(db)
+        assert denied.value.status_code == 503
+        assert not db.calls
 
 
 def test_production_cannot_disable_session_checks_or_secure_refresh_cookies(monkeypatch):

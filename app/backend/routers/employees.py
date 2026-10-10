@@ -7,7 +7,7 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -48,6 +48,23 @@ EmployeeStatus = Literal["active", "probation", "disabled", "inactive", "resigne
 def _employee_update_payload(data: "EmployeesUpdateData") -> dict:
     """Preserve the existing partial-update contract while ignoring omitted/null fields."""
     return data.model_dump(exclude_unset=True, exclude_none=True)
+
+
+async def _lock_employee_identity_mutation(db: AsyncSession) -> None:
+    """Serialize identity checks and writes until the caller commits or rolls back."""
+    dialect = db.get_bind().dialect.name
+    if dialect == "sqlite":
+        # SQLite takes a writer lock even when no rows match. Raw SQL leaves
+        # every employee value/generation untouched and also works on an empty table.
+        await db.execute(text("UPDATE employees SET id = id WHERE 1 = 0"))
+    elif dialect == "postgresql":
+        # A transaction-scoped namespace lock has no dependency on an employee
+        # row remaining present, so concurrent creates also serialize on an empty table.
+        await db.execute(text("SELECT pg_advisory_xact_lock(:namespace, :identity)"), {
+            "namespace": 0x543234, "identity": 1,
+        })
+    else:
+        raise HTTPException(status_code=503, detail="当前数据库暂不支持安全修改账号，请联系管理员")
 
 
 async def _validate_employee_emails(db: AsyncSession, emails: Sequence[str | None], *, replaced_ids: Sequence[int] = ()) -> None:
@@ -99,7 +116,9 @@ async def _load_employee_targets(
         raise HTTPException(status_code=400, detail="批量请求不能重复包含同一员工")
     if not ids:
         return {}
-    rows = list((await db.scalars(select(Employees).where(Employees.id.in_(ids)))).all())
+    rows = list((await db.scalars(
+        select(Employees).where(Employees.id.in_(ids)).execution_options(populate_existing=True)
+    )).all())
     by_id = {row.id: row for row in rows}
     missing = [employee_id for employee_id in ids if employee_id not in by_id]
     if missing:
@@ -657,6 +676,7 @@ async def create_employees(
     
     service = EmployeesService(db)
     try:
+        await _lock_employee_identity_mutation(db)
         payload = data.model_dump()
         payload["email"] = normalize_employee_email(payload.get("email"))
         await _validate_employee_emails(db, [payload["email"]])
@@ -707,6 +727,7 @@ async def create_employeess_batch(
     results = []
     
     try:
+        await _lock_employee_identity_mutation(db)
         if any(item.role == "sales_partner" for item in request.items):
             raise HTTPException(
                 status_code=400,
@@ -758,6 +779,7 @@ async def update_employeess_batch(
     results = []
 
     try:
+        await _lock_employee_identity_mutation(db)
         prepared = await _preflight_employee_updates(db, request.items)
         for employee, update_dict, is_sales_partner in prepared:
             status_changed = "status" in update_dict and update_dict["status"] != employee.status
@@ -803,6 +825,7 @@ async def update_employees(
 
     service = EmployeesService(db)
     try:
+        await _lock_employee_identity_mutation(db)
         item = EmployeesBatchUpdateItem(id=id, updates=data)
         prepared = await _preflight_employee_updates(db, [item])
         existing, update_dict, is_sales_partner = prepared[0]
