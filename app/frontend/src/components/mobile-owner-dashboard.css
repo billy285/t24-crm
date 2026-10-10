@@ -1,0 +1,108 @@
+/* Owner dashboard only. Existing desktop sections remain available on mobile. */
+.owner-mobile-dashboard,
+.owner-mobile-detail-toggle { display: none; }
+.t24-system .t24-owner-layout > .owner-desktop-hero { margin-top: 0; }
+
+@media (max-width: 767px) {
+  .t24-system .calm-admin-dashboard { --owner-ink: #17243b; --owner-muted: #69788e; --owner-line: #e9edf3; --owner-blue: #255de8; --owner-amber: #956622; }
+  .t24-system .owner-mobile-dashboard { display: flex; flex-direction: column; gap: 20px; color: var(--owner-ink); font-size: 15px; line-height: 1.5; }
+  .t24-system .owner-mobile-dashboard * { min-width: 0; }
+  .t24-system .owner-mobile-dashboard h2,
+  .t24-system .owner-mobile-dashboard p { margin: 0; }
+  .t24-system .owner-mobile-dashboard h2 { font-size: 15px; font-weight: 600; line-height: 1.5; }
+  .t24-system .owner-mobile-dashboard button,
+  .t24-system .owner-mobile-dashboard summary { font: inherit; color: inherit; cursor: pointer; }
+  .t24-system .owner-mobile-dashboard button { border: 0; box-shadow: none; background: none; }
+  .t24-system .owner-mobile-dashboard button:disabled { cursor: default; }
+  .t24-system .owner-mobile-dashboard button:focus-visible,
+  .t24-system .owner-mobile-dashboard summary:focus-visible,
+  .t24-system .owner-mobile-detail-toggle:focus-visible { outline: 2px solid var(--owner-blue); outline-offset: 3px; }
+  .t24-system .owner-mobile-dashboard svg { width: 18px; height: 18px; flex-shrink: 0; stroke-width: 1.7; }
+  .t24-system .owner-mobile-context { display: flex; align-items: center; justify-content: space-between; color: var(--owner-muted); font-size: 13px; padding: 0 2px; margin-bottom: -5px; }
+  .t24-system .owner-mobile-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 2px 10px; }
+  .t24-system .owner-mobile-heading > span { color: var(--owner-muted); font-size: 12px; font-weight: 400; }
+  .t24-system .owner-mobile-attention { padding: 16px 17px 0; border-radius: 16px; background: #fff9ed; }
+  .t24-system .owner-mobile-attention .owner-mobile-heading { margin: 0; }
+  .t24-system .owner-mobile-attention .owner-mobile-heading > span { color: var(--owner-amber); }
+  .t24-system .owner-mobile-attention-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; margin-top: 14px; }
+  .t24-system .owner-mobile-attention-metrics > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+  .t24-system .owner-mobile-attention-metrics span { font-size: 12px; color: var(--owner-muted); }
+  .t24-system .owner-mobile-attention-metrics strong { font-size: 24px; line-height: 1.15; font-weight: 600; color: var(--owner-amber); font-variant-numeric: tabular-nums; }
+  .t24-system .owner-mobile-attention-metrics small { font-size: 11px; font-weight: 400; }
+  .t24-system .owner-mobile-dashboard summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; list-style: none; }
+  .t24-system .owner-mobile-dashboard summary::-webkit-details-marker { display: none; }
+  .t24-system .owner-mobile-attention-details > summary { padding: 10px 0; margin-top: 12px; border-top: 1px solid #eadfc9; font-size: 13px; color: var(--owner-amber); }
+  .t24-system .owner-mobile-attention-details > summary svg { width: 17px; height: 17px; }
+  .t24-system .owner-mobile-decision-list { padding-bottom: 8px; }
+  .t24-system .owner-mobile-dashboard .owner-mobile-decision { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 0; border-top: 1px solid #eadfc9; text-align: left; }
+  .t24-system .owner-mobile-decision-copy { flex: 1; }
+  .t24-system .owner-mobile-decision-copy strong { display: block; font-size: 13px; font-weight: 500; }
+  .t24-system .owner-mobile-decision-copy small { display: block; margin-top: 4px; font-size: 11px; line-height: 1.6; color: var(--owner-muted); }
+  .t24-system .owner-mobile-decision-count { color: var(--owner-amber); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .t24-system .owner-mobile-decision-critical .owner-mobile-decision-count { color: #b4534b; }
+  .t24-system .owner-mobile-decision > svg { color: var(--owner-muted); width: 15px; height: 15px; }
+  .t24-system .owner-mobile-healthy { background: #edf7f2; padding-bottom: 16px; }
+  .t24-system .owner-mobile-healthy .owner-mobile-heading > span { color: #2f7658; }
+  .t24-system .owner-mobile-no-attention { display: flex; align-items: center; gap: 7px; margin-top: 12px !important; color: #2f7658; font-size: 13px; }
+  .t24-system .owner-mobile-finance-card { background: white; border: 1px solid var(--owner-line); border-radius: 16px; overflow: hidden; }
+  .t24-system .owner-mobile-finance-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; padding: 18px 17px 15px; }
+  .t24-system .owner-mobile-finance-metrics > div + div { border-left: 1px solid var(--owner-line); padding-left: 17px; }
+  .t24-system .owner-mobile-finance-metrics span { display: block; font-size: 13px; color: var(--owner-muted); margin-bottom: 4px; }
+  .t24-system .owner-mobile-finance-metrics strong { display: block; font-size: clamp(20px, 6.3vw, 31px); line-height: 1.2; font-weight: 600; letter-spacing: -.035em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .t24-system .owner-mobile-finance-metrics strong.owner-mobile-negative { color: #b4534b; }
+  .t24-system .owner-mobile-finance-details > summary { padding: 10px 17px; font-size: 12px; color: var(--owner-muted); border-top: 1px solid var(--owner-line); }
+  .t24-system .owner-mobile-finance-details > summary svg,
+  .t24-system .owner-mobile-rules > summary svg { width: 15px; height: 15px; }
+  .t24-system .owner-mobile-finance-details[open] > summary svg,
+  .t24-system .owner-mobile-rules[open] > summary svg:last-child { transform: rotate(180deg); }
+  .t24-system .owner-mobile-finance-details dl { margin: 0; padding: 6px 17px; }
+  .t24-system .owner-mobile-finance-details dl > div { display: flex; justify-content: space-between; gap: 18px; padding: 10px 0; border-bottom: 1px dashed var(--owner-line); font-size: 13px; }
+  .t24-system .owner-mobile-finance-details dt { color: var(--owner-muted); }
+  .t24-system .owner-mobile-finance-details dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .t24-system .owner-mobile-finance-details > p { padding: 8px 17px; color: var(--owner-muted); font-size: 12px; }
+  .t24-system .owner-mobile-dashboard .owner-mobile-inline { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 12px 17px; color: var(--owner-blue); font-size: 13px; }
+  .t24-system .owner-mobile-inline svg { width: 15px; height: 15px; }
+  .t24-system .owner-mobile-progress-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+  .t24-system .owner-mobile-dashboard .owner-mobile-progress-card { display: block; position: relative; padding: 14px 14px 12px; border: 1px solid var(--owner-line); background: white; border-radius: 15px; text-align: left; }
+  .t24-system .owner-mobile-progress-card > span { display: block; font-size: 12px; color: var(--owner-muted); }
+  .t24-system .owner-mobile-progress-card > strong { display: block; font-size: 27px; line-height: 1.3; font-weight: 600; margin: 3px 0; padding-right: 16px; font-variant-numeric: tabular-nums; }
+  .t24-system .owner-mobile-progress-card > small { display: block; font-size: 11px; color: var(--owner-muted); }
+  .t24-system .owner-mobile-progress-card > svg { position: absolute; right: 12px; top: 48px; width: 16px; height: 16px; color: var(--owner-muted); }
+  .t24-system .owner-mobile-progress-card:disabled > svg { display: none; }
+  .t24-system .owner-mobile-shortcuts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .t24-system .owner-mobile-shortcuts button { display: flex; flex-direction: column; align-items: center; gap: 7px; min-height: 66px; padding: 3px 0; }
+  .t24-system .owner-mobile-shortcuts button > span { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--owner-line); border-radius: 12px; background: white; color: var(--owner-blue); }
+  .t24-system .owner-mobile-shortcuts small { font-size: 12px; font-weight: 400; color: var(--owner-muted); white-space: nowrap; }
+  .t24-system .owner-mobile-rules { margin-top: -6px; }
+  .t24-system .owner-mobile-rules > summary { gap: 7px; justify-content: flex-start; padding: 10px 2px; font-size: 12px; color: var(--owner-muted); }
+  .t24-system .owner-mobile-rules > summary svg:last-child { margin-left: auto; }
+  .t24-system .owner-mobile-rules > div { padding: 12px 14px; background: white; border: 1px solid var(--owner-line); border-radius: 13px; font-size: 13px; color: var(--owner-muted); }
+  .t24-system .owner-mobile-rules p + p { margin-top: 10px; }
+  .t24-system .owner-mobile-asof { margin-top: -18px !important; padding: 0 2px; font-size: 11px; color: var(--owner-muted); }
+  .t24-system .owner-desktop-hero { display: none; }
+  .t24-system .owner-mobile-operational-details,
+  .t24-system .owner-mobile-additional-details { display: none; }
+  .t24-system .owner-mobile-operational-details.is-expanded,
+  .t24-system .owner-mobile-additional-details.is-expanded,
+  .t24-system .owner-mobile-operational-details.owner-detail-fallback,
+  .t24-system .owner-mobile-additional-details.owner-detail-fallback { display: block; }
+  .t24-system .owner-mobile-detail-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 11px 13px; background: white; border: 1px solid var(--owner-line); border-radius: 12px; color: #475569; font-size: 13px; }
+  .t24-system .owner-mobile-detail-toggle svg { width: 16px; height: 16px; }
+  .t24-system .owner-mobile-detail-toggle[aria-expanded='true'] svg { transform: rotate(180deg); }
+  .t24-system.app-shell:has(.owner-mobile-dashboard) .app-topbar { min-height: 64px; padding-top: 8px; padding-bottom: 8px; }
+  .t24-system.app-shell:has(.owner-mobile-dashboard) .app-topbar-actions > button { border-radius: 12px; box-shadow: none; }
+  .t24-system.app-shell:has(.owner-mobile-dashboard) .app-main { padding-left: 18px; padding-right: 18px; padding-top: 18px; }
+  .t24-system .calm-admin-dashboard:has(.owner-mobile-dashboard) { padding-bottom: 0; }
+  .t24-system .calm-admin-dashboard:has(.owner-mobile-dashboard) > * + * { margin-top: 16px; }
+  .t24-system .t24-owner-layout:has(.owner-mobile-dashboard) > * + * { margin-top: 0; }
+  .t24-system .t24-owner-layout:has(.owner-mobile-dashboard) > .owner-mobile-detail-toggle { margin-top: 14px; }
+  .t24-system .t24-owner-layout:has(.owner-mobile-dashboard) > .owner-mobile-operational-details.is-expanded { margin-top: 16px; }
+}
+
+@media (max-width: 370px) {
+  .t24-system.app-shell:has(.owner-mobile-dashboard) .app-main { padding-left: 14px; padding-right: 14px; }
+  .t24-system .owner-mobile-attention-metrics { gap: 8px; }
+  .t24-system .owner-mobile-attention-metrics > div { display: block; }
+  .t24-system .owner-mobile-attention-metrics strong { display: block; margin-top: 6px; }
+  .t24-system .owner-mobile-shortcuts small { font-size: 11px; }
+}

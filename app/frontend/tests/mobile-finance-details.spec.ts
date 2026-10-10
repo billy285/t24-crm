@@ -89,6 +89,15 @@ async function fixture(page: Page, options: Options = {}) {
 const detailsRegion = (page: Page) => page.getByRole('region', { name: '手机财务明细', exact: true });
 const record = (page: Page, text: string) => detailsRegion(page).locator('.mfd-record').filter({ hasText: text });
 async function openRecord(row: Locator) { await row.locator(':scope > summary').click(); await expect(row).toHaveAttribute('open', ''); }
+async function openMonthlyRecord(page: Page, month: string) {
+  await detailsRegion(page).getByRole('button', { name: `打开${month}明细`, exact: true }).click();
+  const detail = detailsRegion(page).getByRole('region', { name: `${month}月度账目详情`, exact: true });
+  await expect(detail).toBeVisible();
+  for (const group of await detail.locator('.mfd-monthly-group').all()) {
+    if (!await group.evaluate(el => (el as HTMLDetailsElement).open)) await group.locator(':scope > summary').click();
+  }
+  return detail;
+}
 async function expectField(row: Locator, label: string, value: string) {
   await expect(row.locator('dl > div').filter({ has: row.page().getByText(label, { exact: true }) }).locator('dd')).toHaveText(value);
 }
@@ -112,7 +121,8 @@ for (const width of [320, 390, 430]) {
       await expect(region.getByRole('heading', { name: title, exact: true, level: 1 })).toBeVisible();
       await expect(region.locator('.mfd-record').first()).toBeVisible();
       await expect(region.getByRole('button', { name: '本月', exact: true })).toHaveAttribute('aria-pressed', 'true');
-      await openRecord(region.locator('.mfd-record').first());
+      if (tab === 'monthly_detail') await openMonthlyRecord(page, '2026-10');
+      else await openRecord(region.locator('.mfd-record').first());
       await noOverflow(page);
       if (screenshotDir && width === 390 && ['monthly_detail', 'refunds', 'company_expense'].includes(tab)) await page.screenshot({ path: `${screenshotDir}/local-mock-${tab}-${width}.png`, fullPage: true });
     }
@@ -124,14 +134,18 @@ test('月度明细保留退款、投流、手续费和佣金原口径，搜索�
   await page.setViewportSize({ width: 390, height: 844 });
   const { requests } = await fixture(page);
   await page.goto(`${baseUrl}/finance?tab=monthly_detail`);
-  const row = record(page, '2026-10');
-  await openRecord(row);
+  const row = await openMonthlyRecord(page, '2026-10');
   for (const [label, value] of [
+    ['月份', '2026-10'], ['关账状态', '未关账'],
     ['总收款 · USD', '$1,400'], ['退款 · USD', '$100'], ['净收款 · USD', '$1,300'],
     ['服务收入 · USD', '$790'], ['管理费收入 · USD', '$740'], ['投流客户资金 · USD', '$560'],
-    ['确认投流差价 · USD', '$50'], ['Stripe 手续费 · USD', '$28'], ['管理费扣点 · USD', '$74'],
-    ['客户成本 · USD', '$750'], ['运营支出 · USD', '$30'], ['渠道佣金 · USD', '$20'], ['经营利润 · USD', '$-112'],
+    ['确认投流差价 · USD', '$50'], ['广告实支 · USD', '$300'], ['投流结余 · USD', '$20'],
+    ['管理费扣点率', '10.0%'], ['Stripe 手续费 · USD', '$28'], ['管理费扣点 · USD', '$74'], ['总扣点 · USD', '$74'],
+    ['客户成本 · USD', '$750'], ['运营支出 · USD', '$30'], ['渠道佣金 · USD', '$20'], ['总成本 · USD', '$828'], ['经营利润 · USD', '$-112'],
   ]) await expectField(row, label, value);
+  await expect(row.locator('dt')).toHaveCount(20);
+  await row.getByRole('button', { name: '返回按月明细', exact: true }).click();
+  await expect(detailsRegion(page).getByRole('button', { name: '打开2026-10明细', exact: true })).toBeFocused();
   const summaries = detailsRegion(page).locator('.mfd-summaries');
   const before = await summaries.innerText();
   await detailsRegion(page).getByRole('searchbox', { name: '搜索当前明细' }).fill('不存在的模拟记录');
@@ -267,14 +281,41 @@ test('月份与全部筛选沿用真实日期范围，切换重置加载数且�
   await region.getByLabel('账目月份', { exact: true }).fill('2026-09');
   await expect(region.getByText('共 1 条', { exact: true })).toBeVisible();
   await page.goto(`${baseUrl}/finance?tab=monthly_detail`);
-  const september = record(page, '2026-09');
-  await openRecord(september);
+  const september = await openMonthlyRecord(page, '2026-09');
   await expectField(september, '经营利润 · USD', '$60');
   await page.goto(`${baseUrl}/finance?tab=income`);
   const ledger = page.getByRole('region', { name: '流水列表' });
   await expect(ledger.getByText('已显示 15 / 共 30 条', { exact: true })).toBeVisible();
   await expect(ledger.getByText('模拟待结算客户丙', { exact: true })).toBeVisible();
   await expect(ledger.getByText('模拟九月运营成本', { exact: true })).toHaveCount(0);
+  readOnly(requests);
+});
+
+test('月份输入聚焦时可见，键盘选择与月度列表返回保留月份', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  const { requests } = await fixture(page);
+  await page.goto(`${baseUrl}/finance?tab=monthly_detail`);
+  const region = detailsRegion(page);
+  const input = region.getByLabel('账目月份', { exact: true });
+  await input.focus();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveCSS('opacity', '1');
+  await input.press('ArrowUp');
+  await expect(input).toHaveCSS('opacity', '1');
+  await input.fill('2026-09');
+  await expect(region.getByRole('button', { name: '打开2026-09明细', exact: true })).toBeVisible();
+  await expect(region.getByRole('button', { name: '打开2026-10明细', exact: true })).toHaveCount(0);
+  const detail = await openMonthlyRecord(page, '2026-09');
+  await expectField(detail, '经营利润 · USD', '$60');
+  await detail.getByRole('button', { name: '返回按月明细', exact: true }).click();
+  await expect(input).toHaveValue('2026-09');
+  const bounds = await region.locator('.mobile-finance-date-filter').evaluate(el => {
+    const controls = Array.from(el.children).map(child => child.getBoundingClientRect());
+    return controls.map(rect => ({ top: rect.top, bottom: rect.bottom }));
+  });
+  expect(bounds[0].top).toBe(bounds[1].top);
+  expect(bounds[0].bottom).toBe(bounds[1].bottom);
+  await noOverflow(page);
   readOnly(requests);
 });
 

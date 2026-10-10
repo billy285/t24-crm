@@ -1,8 +1,8 @@
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useSessionViewState } from '@/hooks/use-session-view-state';
 import { useRole } from '@/lib/role-context';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { ChevronDown, Search } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { getFinanceNavigationItem } from '@/lib/finance-navigation';
 import './mobile-finance-details.css';
 
@@ -31,7 +31,13 @@ export function MobileFinanceDateFilter({ mode, start, end, onModeChange, onMont
           <button key={value} type="button" aria-pressed={mode === value} onClick={() => onModeChange(value)}>{label}</button>
         ))}
       </div>
-      <label className="mfd-month"><span>选择月份</span><input aria-label="账目月份" type="month" value={month} onChange={event => { if (event.target.value) onMonthChange(event.target.value); }} /></label>
+      <label className="mfd-month">
+        <CalendarDays aria-hidden="true" /><span>{month || '选月份'}</span>
+        <input aria-label="账目月份" type="month" value={month} onClick={event => {
+          // Keep the native month control for mobile browsers and keyboard users.
+          try { event.currentTarget.showPicker?.(); } catch { /* The native control remains available. */ }
+        }} onChange={event => { if (event.target.value) onMonthChange(event.target.value); }} />
+      </label>
     </div>
   );
 }
@@ -99,7 +105,7 @@ type RecordCard = MobileFinanceRecordAction & {
   fields: Field[];
 };
 
-const detailViewDefaults = { query: '', visibleLimit: 20, currency: 'all', category: 'all', status: 'all', chartView: 'trend', expandedIds: [] as string[] };
+const detailViewDefaults = { query: '', visibleLimit: 20, currency: 'all', category: 'all', status: 'all', chartView: 'trend', expandedIds: [] as string[], selectedMonthlyId: '', monthlyGroups: ['receipts'], monthlyListScroll: 0 };
 const present = (value: unknown) => value !== undefined && value !== null && String(value).trim() !== '';
 const text = (value: unknown, fallback = '未填写') => present(value) ? String(value) : fallback;
 const shortDate = (value: unknown) => present(value) ? String(value).slice(0, 10) : '日期待补充';
@@ -110,7 +116,12 @@ export default function MobileFinanceDetails(props: MobileFinanceDetailsProps) {
   const { tab, dateFilter, periodLabel, loading, error, hasLoaded, lastUpdated, onRetry, calculationNote, calculationWarning, data, formatMoney, customerExpenseCurrency, companyExpenseCurrency, actions, renderRecordActions } = props;
   const { employee } = useRole();
   const [view, setView] = useSessionViewState(`t24:finance-detail-view:${employee?.id || 'guest'}:${tab}`, detailViewDefaults);
-  const { query, visibleLimit, currency, category, status, chartView, expandedIds } = view;
+  const { query, visibleLimit, currency, category, status, chartView, expandedIds, selectedMonthlyId, monthlyGroups, monthlyListScroll } = view;
+  const sectionRef = useRef<HTMLElement>(null);
+  const monthlyBackRef = useRef<HTMLButtonElement>(null);
+  const monthlyListTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const monthlyReturnIdRef = useRef('');
+  const monthlyNavigationRef = useRef<'detail' | 'list' | null>(null);
   const setQuery = (value: string) => setView('query', value);
   const setVisibleLimit = (value: number | ((current: number) => number)) => setView('visibleLimit', value);
   const money = (value: unknown, currency: Currency = 'USD') => {
@@ -120,6 +131,12 @@ export default function MobileFinanceDetails(props: MobileFinanceDetailsProps) {
   const amountField = (label: string, value: unknown, currency: Currency = 'USD'): Field => ({ label: `${label} · ${currency}`, value: money(value, currency) });
   const field = (label: string, value: unknown, wide = false): Field => ({ label, value: text(value), wide });
   const percent = (value: unknown) => finiteAmount(value) === null ? '待补充' : `${Number((Number(value) * 100).toFixed(6))}%`;
+  const monthlyPercent = (value: unknown) => {
+    const amount = finiteAmount(value);
+    if (amount === null) return '待补充';
+    const display = Number((amount * 100).toFixed(6)).toString();
+    return `${display.includes('.') ? display : `${display}.0`}%`;
+  };
   const customerName = (row: any) => row.customer_name || data.customerMap[row.customer_id]?.business_name || '未关联客户';
 
   useEffect(() => { setVisibleLimit(20); }, [query, tab, periodLabel, currency, category, status, chartView]);
@@ -135,7 +152,7 @@ export default function MobileFinanceDetails(props: MobileFinanceDetailsProps) {
         amountField('总收款', row.gross_receipts), amountField('退款', row.refund_amount), amountField('净收款', row.net_receipts),
         amountField('服务收入', row.revenue_gross), amountField('管理费收入', row.management_revenue), amountField('投流客户资金', row.ads_recharge_revenue),
         amountField('确认投流差价', row.recognized_ad_spread), amountField('广告实支', row.actual_ad_spend), amountField('投流结余', row.ad_closing_balance),
-        field('管理费扣点率', percent(row.management_rate)), amountField('管理费扣点', row.management_deduction_amount),
+        field('管理费扣点率', monthlyPercent(row.management_rate)), amountField('管理费扣点', row.management_deduction_amount),
         amountField('Stripe 手续费', row.stripe_platform_fee), amountField('总扣点', row.deduction_amount), amountField('客户成本', row.customer_cost),
         amountField('运营支出', row.operating_cost_usd), amountField('渠道佣金', row.channel_commission_usd), amountField('总成本', row.cost), amountField('经营利润', row.profit)],
     }));
@@ -250,15 +267,91 @@ export default function MobileFinanceDetails(props: MobileFinanceDetailsProps) {
   const expenseCategories = [...new Set(records.map(row => row.fields.find(item => item.label === '费用类型')?.value).filter(Boolean))];
   const shownRecords = filteredRecords.slice(0, visibleLimit);
   const pending = !hasLoaded;
+  const selectedMonthlyRecord = tab === 'monthly_detail' && hasLoaded
+    ? records.find(row => row.id === selectedMonthlyId)
+    : undefined;
+  const monthlyFieldGroups = selectedMonthlyRecord ? [
+    { id: 'receipts', label: '收款明细', fields: selectedMonthlyRecord.fields.slice(2, 5) },
+    { id: 'income', label: '服务与管理费收入', fields: selectedMonthlyRecord.fields.slice(5, 7) },
+    { id: 'ads', label: '投流收支与差价', fields: selectedMonthlyRecord.fields.slice(7, 11) },
+    { id: 'deductions', label: '扣点与手续费', fields: selectedMonthlyRecord.fields.slice(11, 15) },
+    { id: 'costs', label: '成本明细', fields: selectedMonthlyRecord.fields.slice(15, 19) },
+  ] : [];
+  const scrollContainer = () => {
+    let parent = sectionRef.current?.parentElement;
+    while (parent) {
+      if (/(auto|scroll)/.test(getComputedStyle(parent).overflowY)) return parent;
+      parent = parent.parentElement;
+    }
+    return document.scrollingElement as HTMLElement | null;
+  };
+  const openMonthlyRecord = (row: RecordCard, trigger: HTMLButtonElement) => {
+    monthlyListTriggerRef.current = trigger;
+    setView('monthlyListScroll', scrollContainer()?.scrollTop || 0);
+    monthlyNavigationRef.current = 'detail';
+    setView('selectedMonthlyId', row.id);
+  };
+  const returnToMonthlyList = () => {
+    monthlyReturnIdRef.current = selectedMonthlyId;
+    monthlyNavigationRef.current = 'list';
+    setView('selectedMonthlyId', '');
+  };
+
+  useLayoutEffect(() => {
+    if (selectedMonthlyRecord) {
+      scrollContainer()?.scrollTo({ top: 0, behavior: 'auto' });
+      monthlyBackRef.current?.focus({ preventScroll: true });
+    } else if (monthlyNavigationRef.current === 'list') {
+      scrollContainer()?.scrollTo({ top: monthlyListScroll, behavior: 'auto' });
+      const trigger = monthlyListTriggerRef.current || Array.from(sectionRef.current?.querySelectorAll<HTMLButtonElement>('.mfd-monthly-record') || [])
+        .find(button => button.dataset.recordId === monthlyReturnIdRef.current);
+      trigger?.focus({ preventScroll: true });
+    }
+    monthlyNavigationRef.current = null;
+  }, [selectedMonthlyRecord?.id]);
+
+  useEffect(() => {
+    if (tab === 'monthly_detail' && hasLoaded && !loading && selectedMonthlyId && !selectedMonthlyRecord) {
+      setView('selectedMonthlyId', '');
+    }
+  }, [tab, hasLoaded, loading, selectedMonthlyId, selectedMonthlyRecord?.id]);
 
   return (
-    <section className="mobile-finance-details" aria-label="手机财务明细">
-      <header className="mfd-header"><div><h1>{getFinanceNavigationItem(tab).label}</h1><p>{periodLabel}</p></div>{actions && <div className="mfd-actions">{actions}</div>}</header>
-      <MobileFinanceDateFilter {...dateFilter} />
+    <section ref={sectionRef} className={`mobile-finance-details${tab === 'monthly_detail' ? ' mfd-monthly' : ''}`} aria-label="手机财务明细">
+      <div hidden={Boolean(selectedMonthlyRecord)}>
+        <header className="mfd-header"><div><h1>{getFinanceNavigationItem(tab).label}</h1><p>{periodLabel}</p></div>{actions && <div className="mfd-actions">{actions}</div>}</header>
+        <MobileFinanceDateFilter {...dateFilter} />
+      </div>
       {error && <div className="mfd-alert" role="alert"><strong>{hasLoaded ? '读取失败，当前显示上次同步数据' : '数据暂时无法加载'}</strong><p>{error}</p>{hasLoaded && lastUpdated && <p>上次同步：{lastUpdated.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) + '（北京时间）'}</p>}<button type="button" disabled={loading} onClick={onRetry}>重新加载</button></div>}
       {pending && !error ? <div className="mfd-empty" role="status">正在读取财务明细…</div> : !pending && <>
         {calculationWarning && <p className="mfd-data-notice" role="status">{calculationWarning}</p>}
         {missingAmounts > 0 && <p className="mfd-data-notice" role="status">{missingAmounts} 条记录的金额待补充，当前汇总需核对。</p>}
+        {selectedMonthlyRecord && <div className="mfd-monthly-detail" role="region" aria-label={`${selectedMonthlyRecord.title}月度账目详情`} data-record-kind="monthly_detail" data-record-id={selectedMonthlyRecord.id}>
+          <button ref={monthlyBackRef} type="button" className="mfd-monthly-back" onClick={returnToMonthlyList}><ArrowLeft aria-hidden="true" />返回按月明细</button>
+          <dl className="mfd-monthly-meta">
+            <div><dt>{selectedMonthlyRecord.fields[0].label}</dt><dd><h1>{selectedMonthlyRecord.fields[0].value}</h1></dd></div>
+            <div><dt>{selectedMonthlyRecord.fields[1].label}</dt><dd><span className={`mfd-badge ${selectedMonthlyRecord.record.is_closed ? 'positive' : ''}`}>{selectedMonthlyRecord.fields[1].value}</span></dd></div>
+          </dl>
+          <p className="mfd-monthly-caption">{selectedMonthlyRecord.subtitle} · USD</p>
+          <section className="mfd-monthly-overview" aria-label="月度经营摘要">
+            <dl><div><dt>{selectedMonthlyRecord.primary.label}</dt><dd className={selectedMonthlyRecord.tone === 'warning' ? 'mfd-warning-amount' : ''}>{selectedMonthlyRecord.primary.value}</dd></div></dl>
+            <div className="mfd-monthly-secondary">
+              {[selectedMonthlyRecord.fields[5], selectedMonthlyRecord.fields[4]].map(item => <div key={item.label}><span>{item.label}</span><strong>{item.value}</strong></div>)}
+            </div>
+          </section>
+          <div className="mfd-monthly-groups" aria-label="完整财务明细">
+            {monthlyFieldGroups.map((group, index) => <details className="mfd-monthly-group" key={`${selectedMonthlyRecord.id}-${group.id}`} open={monthlyGroups.includes(group.id)} onToggle={event => {
+              const open = event.currentTarget.open;
+              setView('monthlyGroups', ids => open ? ids.includes(group.id) ? ids : [...ids, group.id] : ids.filter(id => id !== group.id));
+            }}>
+              <summary><span><span className="mfd-group-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>{group.label}</span><span>{group.fields.length} 项<ChevronDown aria-hidden="true" /></span></summary>
+              <dl>{group.fields.map(item => <div key={item.label} className={['净收款 · USD', '总扣点 · USD', '总成本 · USD'].includes(item.label) ? 'mfd-monthly-subtotal' : ''}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>
+            </details>)}
+          </div>
+          {renderRecordActions && <div className="mfd-monthly-detail-actions mfd-actions">{renderRecordActions({ kind: selectedMonthlyRecord.kind, record: selectedMonthlyRecord.record })}</div>}
+          {calculationNote && <details className="mfd-basis"><summary>口径说明<ChevronDown aria-hidden="true" /></summary><p>{calculationNote}</p></details>}
+        </div>}
+        <div hidden={Boolean(selectedMonthlyRecord)}>
         <div className="mfd-summaries" aria-label="当前范围概要">{summaries.map(item => <div className="mfd-summary" key={item.label}><span>{item.label}</span><strong>{missingAmounts > 0 && / · (USD|CNY)$/.test(item.label) ? '待核对' : item.value}</strong></div>)}</div>
         {tab === 'charts' && <><div className="mfd-segments" aria-label="分析分组">{[['trend', '经营趋势'], ['income', '收入结构'], ['expense', '支出结构']].map(([key, label]) => <button type="button" key={key} aria-pressed={chartView === key} onClick={() => setView('chartView', key)}>{label}</button>)}</div>{chartView === 'trend' && <div className="mfd-trend" aria-label="美元经营利润趋势"><h2>经营利润 · USD</h2><ResponsiveContainer width="100%" height={168}><BarChart data={data.monthlyTrend}><XAxis dataKey="key" tick={{ fontSize: 12 }} /><Tooltip formatter={(value: number) => [formatMoney(value, 'USD'), '经营利润']} /><Bar dataKey="profitUsd" radius={[4, 4, 0, 0]}>{data.monthlyTrend.map(row => <Cell key={row.key} fill={row.profitUsd < 0 ? '#b45309' : '#2563eb'} />)}</Bar></BarChart></ResponsiveContainer></div>}</>}
         {(['customer_expense', 'company_expense', 'refunds', 'ad_funds'].includes(tab)) && <div className="mfd-filters"><select aria-label="明细币种" value={currency} onChange={event => setView('currency', event.target.value)}><option value="all">全部币种</option><option value="USD">USD · 美元</option><option value="CNY">CNY · 人民币</option></select>{expenseCategories.length > 0 && <select aria-label="费用类型筛选" value={category} onChange={event => setView('category', event.target.value)}><option value="all">全部费用类型</option>{expenseCategories.map(value => <option key={value} value={value}>{value}</option>)}</select>}{(tab === 'refunds' || tab === 'ad_funds') && <select aria-label="明细状态" value={status} onChange={event => setView('status', event.target.value)}><option value="all">全部状态</option>{(tab === 'refunds' ? [['completed', '已完成'], ['pending', '处理中'], ['failed', '失败']] : [['unsettled', '待月结'], ['draft', '草稿'], ['closed', '已结算']]).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>}</div>}
@@ -266,17 +359,21 @@ export default function MobileFinanceDetails(props: MobileFinanceDetailsProps) {
         <div className="mfd-list-meta" role="status"><span>{query ? `找到 ${filteredRecords.length} 条` : `共 ${records.length} 条`}</span><span>已显示 {shownRecords.length} 条</span></div>
         {shownRecords.length === 0 ? <div className="mfd-empty"><p>{query || currency !== 'all' || category !== 'all' || status !== 'all' ? '没有匹配的明细' : '当前时间范围暂无明细'}</p>{(currency !== 'all' || category !== 'all' || status !== 'all') && <button type="button" onClick={() => { setView('currency', 'all'); setView('category', 'all'); setView('status', 'all'); }}>清除明细筛选</button>}{query && <button type="button" onClick={() => setQuery('')}>清除搜索</button>}{dateFilter.mode !== 'all' && <button type="button" onClick={() => dateFilter.onModeChange('all')}>查看全部时间</button>}</div> : <div className="mfd-records">{shownRecords.map((row, index) => <div key={row.id}>
           {(index === 0 || row.section !== shownRecords[index - 1].section) && <h2 className="mfd-section-title">{row.section}</h2>}
-          <details open={expandedIds.includes(row.id)} onToggle={event => { const open = event.currentTarget.open; setView('expandedIds', ids => open ? ids.includes(row.id) ? ids : [...ids, row.id] : ids.filter(id => id !== row.id)); }} className="mfd-record" data-record-kind={row.kind} data-record-id={row.id}>
+          {row.kind === 'monthly_detail' ? <button type="button" className="mfd-record mfd-monthly-record" data-record-kind={row.kind} data-record-id={row.id} aria-label={`打开${row.title}明细`} onClick={event => openMonthlyRecord(row, event.currentTarget)}>
+            <div className="mfd-monthly-record-head"><h3>{row.title}</h3><div><span className="mfd-monthly-currency">USD</span>{row.badge && <span className={`mfd-badge ${row.record.is_closed ? 'positive' : ''}`}>{row.badge}</span>}<ChevronRight aria-hidden="true" /></div></div>
+            <div className="mfd-monthly-record-amounts">{[row.primary, row.secondary].filter((item): item is Field => Boolean(item)).map(item => <div key={item.label}><span>{item.label}</span><strong className={row.tone === 'warning' && item === row.primary ? 'mfd-warning-amount' : ''}>{item.value}</strong></div>)}</div>
+          </button> : <details open={expandedIds.includes(row.id)} onToggle={event => { const open = event.currentTarget.open; setView('expandedIds', ids => open ? ids.includes(row.id) ? ids : [...ids, row.id] : ids.filter(id => id !== row.id)); }} className="mfd-record" data-record-kind={row.kind} data-record-id={row.id}>
             <summary aria-label={`展开${row.title}明细`}>
               <div className="mfd-record-head"><div><h3>{row.title}</h3><p>{row.subtitle}</p></div><ChevronDown aria-hidden="true" /></div>
               {row.badge && <span className={`mfd-badge ${row.tone || ''}`}>{row.badge}</span>}
               <div className="mfd-card-amounts"><div><span>{row.primary.label}</span><strong className={row.tone === 'warning' ? 'mfd-warning-amount' : ''}>{row.primary.value}</strong></div>{row.secondary && <div><span>{row.secondary.label}</span><strong>{row.secondary.value}</strong></div>}</div>
             </summary>
-            <div className="mfd-record-body"><dl>{row.fields.flatMap((item, fieldIndex) => { const group = row.kind === 'monthly_detail' ? ({2: '资金往来', 5: '收入与投流', 11: '费用与利润'} as Record<number, string>)[fieldIndex] : undefined; return [group && <div className="mfd-group-heading" key={`group-${fieldIndex}`}><dt>{group}</dt><dd /></div>, <div className={item.wide ? 'mfd-field-wide' : ''} key={`${item.label}-${fieldIndex}`}><dt>{item.label}</dt><dd>{item.value}</dd></div>]; })}</dl>{renderRecordActions && <div className="mfd-actions">{renderRecordActions({ kind: row.kind, record: row.record })}</div>}</div>
-          </details>
+            <div className="mfd-record-body"><dl>{row.fields.map((item, fieldIndex) => <div className={item.wide ? 'mfd-field-wide' : ''} key={`${item.label}-${fieldIndex}`}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>{renderRecordActions && <div className="mfd-actions">{renderRecordActions({ kind: row.kind, record: row.record })}</div>}</div>
+          </details>}
         </div>)}</div>}
         {filteredRecords.length > visibleLimit && <button type="button" className="mfd-load-more" onClick={() => setVisibleLimit(limit => limit + 20)}>加载更多<span>还有 {filteredRecords.length - shownRecords.length} 条</span></button>}
         {calculationNote && <details className="mfd-basis"><summary>口径说明<ChevronDown aria-hidden="true" /></summary><p>{calculationNote}</p></details>}
+        </div>
       </>}
     </section>
   );

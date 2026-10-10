@@ -22,6 +22,7 @@ import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage } from '../lib/load-utils';
+import MobileOwnerDashboard from '@/components/MobileOwnerDashboard';
 
 interface Reminder {
   id: string;
@@ -121,6 +122,7 @@ export default function Dashboard() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [salesPeriod, setSalesPeriod] = useState<1 | 7 | 30>(7);
   const [showMoreOwnerDetails, setShowMoreOwnerDetails] = useState(false);
+  const [showOwnerOperationalDetails, setShowOwnerOperationalDetails] = useState(false);
   const [salesManagement, setSalesManagement] = useState<SalesManagementDashboard | null>(null);
   const [salesPerformance, setSalesPerformance] = useState<SalesPerformanceDashboard | null>(null);
   const [salesRecovery, setSalesRecovery] = useState<SalesRecoveryOverview | null>(null);
@@ -667,7 +669,8 @@ export default function Dashboard() {
 
     return (
       <section className="t24-owner-layout space-y-4">
-        <Card className="t24-command-hero overflow-hidden border border-slate-800 bg-[#0f1b34] text-white shadow-[0_16px_42px_-30px_rgba(15,23,42,0.9)]">
+        <MobileOwnerDashboard cockpit={ownerCockpit} />
+        <Card className="owner-desktop-hero t24-command-hero overflow-hidden border border-slate-800 bg-[#0f1b34] text-white shadow-[0_16px_42px_-30px_rgba(15,23,42,0.9)]">
           <CardContent className="p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
@@ -698,6 +701,8 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
+        <button type="button" className="owner-mobile-detail-toggle" aria-expanded={showOwnerOperationalDetails} aria-controls="owner-operational-details owner-additional-details" onClick={() => setShowOwnerOperationalDetails(value => !value)}><span>{showOwnerOperationalDetails ? '收起业务与团队明细' : '业务与团队明细'}</span><ChevronDown aria-hidden="true" /></button>
+        <div id="owner-operational-details" className={`owner-mobile-operational-details space-y-4${showOwnerOperationalDetails ? ' is-expanded' : ''}`}>
         <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
           <Card className="border-slate-200">
             <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-4 w-4 text-rose-500" />老板今天需要推动</CardTitle><p className="mt-1 text-xs text-slate-500">按影响程度排序，点击直接进入处理页面。</p></div><Button size="sm" variant="outline" onClick={() => navigate('/tasks?source=system')}>查看系统任务</Button></div></CardHeader>
@@ -734,6 +739,7 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card></details>
+        </div>
       </section>
     );
   };
@@ -974,6 +980,7 @@ export default function Dashboard() {
   return (
     <div className="t24-command-center calm-admin-page calm-admin-dashboard app-page space-y-6">
       {renderOwnerCommandCenter()}
+      <div id="owner-additional-details" className={`owner-mobile-additional-details space-y-6${showOwnerOperationalDetails ? ' is-expanded' : ''}${!ownerCockpit ? ' owner-detail-fallback' : ''}`}>
       {renderReminders()}
       <Collapsible open={showMoreOwnerDetails} onOpenChange={setShowMoreOwnerDetails} className="space-y-6">
         <Card className="border-dashed border-slate-300 bg-slate-50/70">
@@ -1068,6 +1075,7 @@ export default function Dashboard() {
           </div>
         </CollapsibleContent>
       </Collapsible>
+      </div>
     </div>
   );
 }
