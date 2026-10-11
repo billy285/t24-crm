@@ -639,6 +639,45 @@ const stripePayment = (source, extra = {}) => ({ ...mail('stripe-payment'), sour
   evidence: { stripe_account_id: 'acct_synthetic', stripe_mode: 'live', stripe_snapshot_id: 'synthetic-stripe-snapshot', stripe_observed_at: source.metadata.stripe_snapshot.observed_at,
     payment_state: 'authorized', amount_authorized_minor: 10000, amount_captured_minor: 0, amount_refunded_minor: 0, captured: false, paid: true }, ...extra });
 
+test('Stripe connection can visibly retry a failed read with the bound credential and no reconnect request', async () => {
+  const source = stripeSource({ action_availability: { can_connect: false, can_sync: true } });
+  const f = fixture([], 'connections', [source]);
+  const descendants = node => [node, ...(node.children || []).filter(value => typeof value === 'object').flatMap(descendants)];
+  const stripeButtons = () => {
+    const card = f.nodes().find(node => node.type === 'section' && node.props.className === 'pw-connection' && f.textOf(node).includes('Stripe'));
+    return descendants(card).filter(node => node.type === 'button');
+  };
+  let fail = true;
+  f.setSyncHandler(request => {
+    assert.ok(request.url.endsWith('/sources/stripe/sync'));
+    if (fail) {
+      source.status = 'error'; source.error = '来源读取暂不可用';
+      throw { response: { status: 502, data: { detail: source.error } } };
+    }
+    source.status = 'connected'; source.error = null;
+    return { source, counts: { created: 1, updated: 0 } };
+  });
+  await f.flush();
+  stripeButtons().find(node => f.textOf(node) === '同步').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('来源读取暂不可用'));
+  assert.equal(stripeButtons().some(node => f.textOf(node).includes('重新连接')), false);
+  const retry = stripeButtons().find(node => f.textOf(node) === '同步'); assert.ok(retry); assert.equal(retry.props.disabled, false);
+  fail = false; retry.props.onClick(); await f.flush();
+  assert.ok(f.text().includes('同步完成：新增 1 条，更新 0 条。'));
+  assert.equal(f.requests.filter(request => request.url.endsWith('/sources/stripe/sync')).length, 2);
+  assert.equal(f.requests.filter(request => request.url.endsWith('/sources/stripe/connect')).length, 0);
+  f.unmount();
+});
+
+test('Stripe denied server actions hide both retry and unavailable reconnect for a source error', async () => {
+  const source = stripeSource({ status: 'error', error: '来源账户绑定需要检查', action_availability: { can_connect: false, can_sync: false } });
+  const f = fixture([], 'connections', [source]); await f.flush();
+  const card = f.nodes().find(node => node.type === 'section' && node.props.className === 'pw-connection' && f.textOf(node).includes('Stripe'));
+  assert.ok(f.textOf(card).includes('停止同步')); assert.ok(!f.textOf(card).includes('重新连接 / 授权'));
+  assert.equal(f.requests.filter(request => request.url.endsWith('/sources/stripe/sync') || request.url.endsWith('/sources/stripe/connect')).length, 0);
+  f.unmount();
+});
+
 test('Stripe balances are snapshots with account mode and coverage folded away', async () => {
   const source = stripeSource(); const f = fixture([stripePayment(source)], 'stripe', [source], [{ source_id: 'stripe', currency: 'USD', available_minor: 25000, pending_minor: 7500 }]);
   await f.flush();

@@ -303,13 +303,16 @@ def source_metadata(connection):
 def source_response(descriptor, connection=None):
     source_id = descriptor["id"]
     missing = [str(value) for value in descriptor.get("missing_configuration", []) if re.fullmatch(r"[A-Z0-9_]+", str(value))]
-    if (source_id == "stripe" and connection and connection.encrypted_credentials
-            and stripe_connection_identity(connection, require_snapshot=False)):
+    setup_missing = list(missing)
+    stripe_bound_credentials = bool(source_id == "stripe" and connection and connection.encrypted_credentials
+                                    and stripe_connection_identity(connection, require_snapshot=False))
+    if stripe_bound_credentials:
         # A connected source uses its encrypted DB credential. Its one-time
         # setup key can be removed from both API and worker environments.
         missing = [value for value in missing if value != "PRIVATE_WORKSPACE_STRIPE_KEY"]
     if source_id != "manual" and not encryption_configured():
         missing.append("PRIVATE_WORKSPACE_ENCRYPTION_KEY")
+        setup_missing.append("PRIVATE_WORKSPACE_ENCRYPTION_KEY")
     source_status = "connected" if source_id == "manual" else "not_configured" if missing else "disconnected"
     if connection:
         source_status = connection.status
@@ -334,12 +337,20 @@ def source_response(descriptor, connection=None):
             # expose an old account snapshot when its server binding is invalid.
             public_metadata.pop("bank_accounts", None)
             public_metadata.pop("bank_snapshot", None)
-    return {
+    result = {
         "id": source_id, "name": str(descriptor.get("name") or source_id),
         "status": source_status, "capabilities": [str(value) for value in descriptor.get("capabilities", [])],
         "missing_configuration": sorted(set(missing)), "last_sync": _aware(connection.last_sync) if connection else None,
         "error": source_error, "metadata": public_metadata,
     }
+    if source_id == "stripe":
+        # A failed read does not revoke a bound encrypted connection. Explicit
+        # actions allow retry without offering an unavailable setup-key connect.
+        result["action_availability"] = {
+            "can_connect": not setup_missing and not stripe_bound_credentials and source_status != "connected",
+            "can_sync": stripe_bound_credentials and not missing,
+        }
+    return result
 
 
 def source_descriptors():

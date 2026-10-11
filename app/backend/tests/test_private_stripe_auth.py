@@ -2,6 +2,7 @@
 import asyncio
 from datetime import timedelta
 import hashlib
+import os
 import sqlite3
 from types import SimpleNamespace
 
@@ -171,3 +172,38 @@ async def test_first_sync_is_not_started_when_request_owner_validator_already_fa
     assert caught.value.status_code == 403
     assert len(stripe_auth.requests) == network_calls
     assert private_financial_state(value) == before
+
+
+@pytest.mark.asyncio
+async def test_bound_stripe_failed_read_can_retry_without_reconnect_or_environment_key(stripe_auth, monkeypatch):
+    auth, value = stripe_auth, stripe_auth.value
+    await prepare_sync(auth)
+    monkeypatch.delenv('PRIVATE_WORKSPACE_STRIPE_KEY')
+    original_fetch = providers.fetch_source
+    failure = {'next': True}
+
+    async def transient_read(source_id, credentials, metadata):
+        if failure['next']:
+            failure['next'] = False
+            raise providers.ProviderError('upstream_unavailable')
+        return await original_fetch(source_id, credentials, metadata)
+
+    monkeypatch.setattr(providers, 'fetch_source', transient_read)
+    business_before = hashlib.sha256(value.business_path.read_bytes()).hexdigest()
+    before = private_financial_state(value)
+    failed = await value.client.post('/api/v1/private-workspace/sources/stripe/sync', headers=value.headers(4))
+    assert failed.status_code == 502
+    overview = await value.client.get('/api/v1/private-workspace', headers=value.headers(4))
+    assert overview.status_code == 200
+    source = next(row for row in overview.json()['sources'] if row['id'] == 'stripe')
+    assert source['status'] == 'error' and source['action_availability'] == {'can_connect': False, 'can_sync': True}
+    assert not source['missing_configuration']
+    assert private_financial_state(value) == before
+    retried = await value.client.post('/api/v1/private-workspace/sources/stripe/sync', headers=value.headers(4))
+    assert retried.status_code == 200, retried.text
+    assert retried.json()['source']['status'] == 'connected'
+    assert retried.json()['source']['action_availability'] == {'can_connect': False, 'can_sync': True}
+    saved, _ = private_financial_state(value)
+    assert saved[0][1] == before[0][0][1] and saved[0][3] == before[0][0][3]
+    assert 'PRIVATE_WORKSPACE_STRIPE_KEY' not in os.environ
+    assert hashlib.sha256(value.business_path.read_bytes()).hexdigest() == business_before

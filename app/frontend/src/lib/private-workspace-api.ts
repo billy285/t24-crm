@@ -174,6 +174,7 @@ export interface PrivateSource {
   missing_configuration: string[];
   last_sync: string | null;
   error: string | null;
+  action_availability?: { can_connect: boolean; can_sync: boolean };
   metadata?: {
     account_label?: string;
     bank_item_id?: string;
@@ -412,10 +413,11 @@ export function verifiedBankAuthorizationUrl(value: string | null | undefined): 
 export function privateSourceActionAvailability(source: PrivateSource) {
   const pendingConfiguration = source.status === 'not_configured' || source.missing_configuration.length > 0;
   const external = source.id !== 'manual';
+  const stripeActions = source.id === 'stripe' ? source.action_availability : undefined;
   return {
     pendingConfiguration,
-    canConnect: external && !pendingConfiguration && source.status !== 'connected',
-    canSync: external && !pendingConfiguration && source.status === 'connected',
+    canConnect: external && !pendingConfiguration && (stripeActions ? stripeActions.can_connect === true : source.status !== 'connected'),
+    canSync: external && !pendingConfiguration && (stripeActions ? stripeActions.can_sync === true : source.status === 'connected'),
     canDisconnect: external && ['connected', 'connecting', 'error'].includes(source.status),
   };
 }

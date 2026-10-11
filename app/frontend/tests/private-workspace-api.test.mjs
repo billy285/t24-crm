@@ -125,6 +125,19 @@ test('BofA connect uses its own endpoint and accepts the returned Gmail OAuth re
   assert.equal(f.api.verifiedPrivateAuthorizationUrl('bofa', response.authorization_url), authorization);
 });
 
+test('Stripe retry uses explicit server actions and never treats an arbitrary error as connected', () => {
+  const source = { id: 'stripe', status: 'error', missing_configuration: [] };
+  assert.equal(api.privateSourceActionAvailability(source).canSync, false);
+  const retry = api.privateSourceActionAvailability({ ...source, action_availability: { can_connect: false, can_sync: true } });
+  assert.equal(retry.canSync, true); assert.equal(retry.canConnect, false); assert.equal(retry.canDisconnect, true);
+  for (const action_availability of [{ can_connect: false, can_sync: false }, { can_connect: 'true', can_sync: 'true' }]) {
+    const actions = api.privateSourceActionAvailability({ ...source, action_availability });
+    assert.equal(actions.canSync, false); assert.equal(actions.canConnect, false);
+  }
+  const blocked = api.privateSourceActionAvailability({ ...source, missing_configuration: ['PRIVATE_WORKSPACE_STRIPE_ACCOUNT_ID'], action_availability: { can_connect: true, can_sync: true } });
+  assert.equal(blocked.canSync, false); assert.equal(blocked.canConnect, false);
+});
+
 test('Gmail bucket queries reach the server before the result limit is applied', async () => {
   const f = fixture(() => ({ items: [], total: 23, mail_counts: { urgent: 2, today: 5, digest: 23, low: 9 } }));
   const response = await f.api.privateWorkspaceApi.items({ source_id: 'gmail', mail_bucket: 'digest', limit: 1000 });

@@ -43,6 +43,35 @@ async def test_stripe_worker_uses_encrypted_connection_credential_without_enviro
     assert 'PRIVATE_WORKSPACE_STRIPE_KEY' not in core.source_response(descriptor, row)['missing_configuration']
 
 
+@pytest.mark.parametrize('changes,expected_sync', [
+    ({}, True), ({'error': 'Upstream read failed'}, True),
+    ({'status': 'error'}, False), ({'status': 'disconnected'}, False),
+    ({'encrypted_credentials': None}, False),
+    ({'metadata_json': {'stripe_account_id': 'acct_another12345678', 'mode': 'test'}}, False),
+    ({'metadata_json': {'stripe_account_id': STRIPE_ACCOUNT, 'mode': 'live'}}, False),
+])
+def test_stripe_action_contract_requires_bound_credential_without_one_time_setup_key(configured, monkeypatch, changes, expected_sync):
+    monkeypatch.setenv('PRIVATE_WORKSPACE_ENCRYPTION_KEY', 'synthetic-private-action-encryption-only')
+    monkeypatch.delenv('PRIVATE_WORKSPACE_STRIPE_KEY')
+    row = SimpleNamespace(status='connected', encrypted_credentials='synthetic-encrypted',
+                          metadata_json=dict(STRIPE_METADATA), error=None, last_sync=None)
+    for key, value in changes.items(): setattr(row, key, value)
+    descriptor = next(value for value in providers.describe_sources() if value['id'] == 'stripe')
+    source = core.source_response(descriptor, row)
+    assert source['action_availability'] == {'can_connect': False, 'can_sync': expected_sync}
+    assert 'synthetic-encrypted' not in json.dumps(source)
+
+
+def test_stripe_action_contract_requires_real_setup_or_complete_sync_configuration(configured, monkeypatch):
+    monkeypatch.setenv('PRIVATE_WORKSPACE_ENCRYPTION_KEY', 'synthetic-private-action-encryption-only')
+    descriptor = next(value for value in providers.describe_sources() if value['id'] == 'stripe')
+    assert core.source_response(descriptor)['action_availability'] == {'can_connect': True, 'can_sync': False}
+    row = SimpleNamespace(status='connected', encrypted_credentials='synthetic-encrypted',
+                          metadata_json=dict(STRIPE_METADATA), error='Upstream read failed', last_sync=None)
+    monkeypatch.delenv('PRIVATE_WORKSPACE_ENCRYPTION_KEY')
+    assert core.source_response(descriptor, row)['action_availability'] == {'can_connect': False, 'can_sync': False}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('resource', ['charges', 'refunds', 'disputes', 'payouts'])
 async def test_stripe_connect_does_not_claim_success_with_missing_resource_read_permission(configured, resource):
