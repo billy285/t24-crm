@@ -554,10 +554,21 @@ async def test_background_sync_skips_inactive_owners_and_isolates_source_failure
         await db.commit()
     workspace.fake.fail_sources.add("gmail")
     async with workspace.business_sessions() as business_db, sessions() as db:
+        # Keep these instances alive: the same worker session must read committed
+        # attempts rather than depend on weak identity-map garbage collection.
+        retained_connections = (await db.execute(select(PrivateConnection).where(
+            PrivateConnection.owner_id == "1",
+        ))).scalars().all()
+        assert len(retained_connections) == 2
         result = await service.sync_due_sources(business_db, db)
         assert result == {"attempted": 2, "succeeded": 1, "failed": 1, "skipped": 1}
+        committed_attempts = (await db.execute(select(PrivateConnection.last_attempt_at).where(
+            PrivateConnection.owner_id == "1",
+        ))).scalars().all()
+        assert len(committed_attempts) == 2 and all(value is not None for value in committed_attempts)
         repeated = await service.sync_due_sources(business_db, db)
         assert repeated == {"attempted": 0, "succeeded": 0, "failed": 0, "skipped": 3}
+        assert all(connection.last_attempt_at is not None for connection in retained_connections)
     assert all(credentials == {"key": "synthetic"} for _, credentials in workspace.fake.fetches)
     assert len(workspace.fake.fetches) == 2
 

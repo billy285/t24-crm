@@ -24,18 +24,30 @@ class LegacyAsyncTimeout(Exception):
 def old_asyncio(monkeypatch):
     original = asyncio.wait_for
     native_timeout = asyncio.TimeoutError
-    state = SimpleNamespace(original=original, short=False, calls=[])
+    state = SimpleNamespace(original=original, short=False, start_after=None, calls=[])
     monkeypatch.delattr(asyncio, 'timeout', raising=False)
     monkeypatch.setattr(asyncio, 'TimeoutError', LegacyAsyncTimeout)
 
     async def wait_for(coro, timeout):
         state.calls.append(timeout)
+        pending = None
         try:
+            if state.short and state.start_after is not None:
+                # These tests target cancellation of in-flight upstream work.
+                # Slow DB preparation must not consume the synthetic deadline
+                # before that work has entered its blocking hook.
+                pending = asyncio.ensure_future(coro)
+                await original(state.start_after.wait(), timeout=5)
+                coro = pending
             return await original(coro, min(timeout, 0.08) if state.short else timeout)
         # On the actual 3.10 runtime wait_for raises its native asyncio class.
         # Capture it before replacing the exported class for this simulator.
         except (TimeoutError, native_timeout):
             raise LegacyAsyncTimeout() from None
+        finally:
+            if pending is not None and not pending.done():
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
 
     monkeypatch.setattr(asyncio, 'wait_for', wait_for)
     return state
@@ -78,7 +90,9 @@ async def test_bank_request_success_without_new_asyncio_timeout(bank_config, old
 
 @pytest.mark.asyncio
 async def test_translation_legacy_timeout_cancels_work_and_marks_failed(translation_workspace, old_asyncio):
-    cleanup = []; translation_workspace.hooks.append(lambda: blocked(cleanup)); old_asyncio.short = True
+    cleanup = []; entered = asyncio.Event()
+    translation_workspace.hooks.append(lambda: blocked(cleanup, entered))
+    old_asyncio.short = True; old_asyncio.start_after = entered
     async with translation_workspace.sessions() as db:
         result = await translation.translate_item(db, '4', translation_workspace.ids['mail'], mode='preview')
         row = (await db.execute(select(PrivateMailTranslation))).scalar_one()
@@ -88,7 +102,13 @@ async def test_translation_legacy_timeout_cancels_work_and_marks_failed(translat
 
 @pytest.mark.asyncio
 async def test_mail_brief_legacy_timeout_keeps_uncertain_budget_reserved(workspace, old_asyncio):
-    cleanup = []; workspace.hooks.append(lambda: blocked(cleanup)); old_asyncio.short = True
+    cleanup = []; entered = asyncio.Event()
+    # Preparation deliberately exceeds the short upstream timeout. The legacy
+    # timeout still must cancel and await the entered provider, then preserve
+    # its uncertain budget reservation.
+    workspace.content_hooks.append(lambda: asyncio.sleep(0.12))
+    workspace.hooks.append(lambda: blocked(cleanup, entered))
+    old_asyncio.short = True; old_asyncio.start_after = entered
     async with workspace.sessions() as db:
         result = await mail.brief_item(db, '4', workspace.ids['mail'])
         row = (await db.execute(select(PrivateMailBrief))).scalar_one()
@@ -100,7 +120,9 @@ async def test_mail_brief_legacy_timeout_keeps_uncertain_budget_reserved(workspa
 @pytest.mark.asyncio
 async def test_workspace_legacy_timeout_keeps_shared_budget_reserved(boss, old_asyncio, monkeypatch):
     monkeypatch.setenv('PRIVATE_WORKSPACE_BRIEF_EXTERNAL_CONSENT', 'true')
-    cleanup = []; boss.boss_hooks.append(lambda: blocked(cleanup)); old_asyncio.short = True
+    cleanup = []; entered = asyncio.Event()
+    boss.boss_hooks.append(lambda: blocked(cleanup, entered))
+    old_asyncio.short = True; old_asyncio.start_after = entered
     result = await generate(boss, await get(boss))
     async with boss.sessions() as db: row = (await db.execute(select(PrivateWorkspaceBrief))).scalar_one()
     assert result['ai']['code'] == 'upstream_unavailable' and result['ai']['state'] == 'failed'
@@ -118,8 +140,9 @@ class BlockingStream(httpx.AsyncByteStream):
 
 @pytest.mark.asyncio
 async def test_bank_legacy_timeout_closes_response_stream(bank_config, old_asyncio):
-    cleanup = []; old_asyncio.short = True
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, stream=BlockingStream(cleanup)))
+    cleanup = []; entered = asyncio.Event()
+    old_asyncio.short = True; old_asyncio.start_after = entered
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, stream=BlockingStream(cleanup, entered)))
     async with bank.BankClient(bank.bank_settings(), transport) as client:
         with pytest.raises(bank.BankProviderError) as error:
             await client.request('/item/get', {'access_token': 'synthetic-access'})

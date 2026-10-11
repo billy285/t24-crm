@@ -947,7 +947,7 @@ async def sync_due_sources(business_db, private_db, *, now=None):
         connections = (await private_db.execute(select(PrivateConnection).where(
             PrivateConnection.owner_id == owner_id, PrivateConnection.status == "connected",
             PrivateConnection.encrypted_credentials.is_not(None),
-        ))).scalars().all()
+        ).execution_options(populate_existing=True))).scalars().all()
         targets = [(row.source_id, _aware(row.last_sync), _aware(row.last_attempt_at)) for row in connections]
         for source_id, last_sync, last_attempt in targets:
             latest = max((value for value in (last_sync, last_attempt) if value), default=None)
