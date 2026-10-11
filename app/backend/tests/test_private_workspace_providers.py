@@ -77,14 +77,14 @@ def daily_campaign(identity=1, day='2026-10-09'):
 
 
 def stripe_row(resource):
-    prefix = {'charges': 'ch_', 'refunds': 're_', 'disputes': 'dp_', 'payouts': 'po_'}[resource]
+    prefix = {'charges': 'ch_', 'refunds': 're_', 'disputes': 'du_', 'payouts': 'po_'}[resource]
     row = {'id': prefix+'synthetic1', 'amount': 1, 'currency': 'jpy', 'created': 1700000000, 'livemode': False,
            'status': 'needs_response' if resource == 'disputes' else 'succeeded' if resource != 'payouts' else 'in_transit'}
     if resource == 'charges': row.update(captured=True, paid=True, refunded=False, amount_captured=1, amount_refunded=0)
     if resource == 'refunds':
         row.update(object='refund', charge='ch_synthetic1')
         row.pop('livemode')  # Refund's official object contract omits this field.
-    if resource == 'disputes': row['evidence_details'] = {'due_by': 1700001000}
+    if resource == 'disputes': row.update(object='dispute', evidence_details={'due_by': 1700001000})
     if resource == 'payouts': row['arrival_date'] = 1700002000
     return row
 

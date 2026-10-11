@@ -778,6 +778,7 @@ def _stripe_livemode(row: dict, mode: str) -> None:
 
 
 def _stripe_resource_mode(row: dict, mode: str, kind: str | None = None) -> None:
+    if kind == 'dispute' and row.get('object') != 'dispute': raise ProviderError('invalid_response')
     if kind == 'refund':
         if row.get('object') != 'refund': raise ProviderError('invalid_response')
         # Refund objects omit livemode. Only this verified resource uses the
@@ -785,6 +786,16 @@ def _stripe_resource_mode(row: dict, mode: str, kind: str | None = None) -> None
         # https://docs.stripe.com/api/refunds/object
         if 'livemode' not in row: return
     _stripe_livemode(row, mode)
+
+
+def _stripe_resource_id(value: object, kind: str, prefix: str) -> str:
+    if kind == 'dispute':
+        identity = _id(value)
+        # Current Dispute objects use du_; retain the existing dp_ form.
+        # https://docs.stripe.com/api/disputes/object
+        if not re.fullmatch(r'(?:dp|du)_[A-Za-z0-9]+', identity): raise ProviderError('invalid_response')
+        return identity
+    return _id(value, prefix)
 
 
 def _stripe_balances(balance: dict, mode: str) -> list[dict]:
@@ -831,7 +842,7 @@ def _stripe_list(response: dict, mode: str, limit: int, *, kind: str | None = No
 
 def _stripe_item(row: dict, kind: str, prefix: str, identity: dict, mode: str, snapshot_id: str, observed_at: str) -> dict:
     _stripe_resource_mode(row, mode, kind)
-    identity_id = _id(row.get('id'), prefix); status = _text(row.get('status'), 80)
+    identity_id = _stripe_resource_id(row.get('id'), kind, prefix); status = _text(row.get('status'), 80)
     amount = _integer(row.get('amount')); currency = _currency(row.get('currency'))
     evidence = {'provider_id': identity_id, 'provider_status': status, 'accounting_effect': 'none',
                 'stripe_account_id': identity['stripe_account_id'], 'stripe_mode': mode,
@@ -893,13 +904,13 @@ async def _stripe(client: _Client, source: SourceDefinition, credentials: dict, 
             response = await client.request('GET', 'https://api.stripe.com/v1/' + resource, headers=headers, params=parameters)
             rows, has_more = _stripe_list(response, mode, 50, kind=kind)
             for row in rows:
-                row_id = _id(row.get('id'), prefix)
+                row_id = _stripe_resource_id(row.get('id'), kind, prefix)
                 if row_id in seen: raise ProviderError('invalid_response')
                 seen.add(row_id)
                 items.append(_stripe_item(row, kind, prefix, {'stripe_account_id': expected}, mode, snapshot_id, observed_at))
             if not has_more: break
             if not rows: raise ProviderError('invalid_response')
-            cursor = _id(rows[-1].get('id'), prefix)
+            cursor = _stripe_resource_id(rows[-1].get('id'), kind, prefix)
         partial = partial or bool(has_more)
         resource_coverage[resource] = {'fetched': len(seen), 'partial': bool(has_more)}
     return {'items': items, 'balances': balances, 'metadata': {**identity, 'partial': partial, 'read_only_adapter': True,
