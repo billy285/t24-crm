@@ -3,6 +3,7 @@ from copy import deepcopy
 from contextlib import redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -187,6 +188,25 @@ class CandidateTests(unittest.TestCase):
                              (xml.replace(b'<testcase/>', b'<testcase><failure/></testcase>', 1), 2),
                              (xml.replace(b'<testcase/>', b'', 1), 2)]:
             with self.assertRaisesRegex(candidate.PrepareError, 'COMPLETE_CANDIDATE_REGRESSIONS_REQUIRED'): candidate.test_report(bad, minimum)
+
+    def test_completed_container_report_is_sealed_for_private_seed_reader(self):
+        xml = b'<testsuite tests="1" failures="0" errors="0" skipped="0"><testcase/></testsuite>'
+        results = self.root/'results'; results.mkdir(mode=0o700)
+        path = results/'regressions.xml'; path.write_bytes(xml); path.chmod(0o644)
+        self.assertEqual(candidate.protected_test_report(path, 1), 1)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(path.read_bytes(), xml)
+
+    def test_external_or_aliased_container_report_is_not_modified(self):
+        results = self.root/'reports'; results.mkdir(mode=0o700)
+        target = results/'actual.xml'; target.write_bytes(b'fictional'); target.chmod(0o644)
+        link = results/'link.xml'; link.symlink_to(target)
+        with self.assertRaises(OSError): candidate.protected_test_report(link, 1)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o644)
+        alias = results/'alias.xml'; os.link(target, alias)
+        with self.assertRaisesRegex(candidate.PrepareError, 'ISOLATED_TEST_REPORT_FILE_REQUIRED'):
+            candidate.protected_test_report(alias, 1)
+        self.assertEqual(target.stat().st_mode & 0o777, 0o644)
 
     def test_wheels_exact_hash_version_inventory_and_immutable_modes(self):
         wheels = self.root / 'wheels'; wheels.mkdir(mode=0o700); inventory = {}

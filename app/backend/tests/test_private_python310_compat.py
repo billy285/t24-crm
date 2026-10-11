@@ -23,6 +23,7 @@ class LegacyAsyncTimeout(Exception):
 @pytest.fixture
 def old_asyncio(monkeypatch):
     original = asyncio.wait_for
+    native_timeout = asyncio.TimeoutError
     state = SimpleNamespace(original=original, short=False, calls=[])
     monkeypatch.delattr(asyncio, 'timeout', raising=False)
     monkeypatch.setattr(asyncio, 'TimeoutError', LegacyAsyncTimeout)
@@ -31,7 +32,9 @@ def old_asyncio(monkeypatch):
         state.calls.append(timeout)
         try:
             return await original(coro, min(timeout, 0.08) if state.short else timeout)
-        except TimeoutError:
+        # On the actual 3.10 runtime wait_for raises its native asyncio class.
+        # Capture it before replacing the exported class for this simulator.
+        except (TimeoutError, native_timeout):
             raise LegacyAsyncTimeout() from None
 
     monkeypatch.setattr(asyncio, 'wait_for', wait_for)

@@ -279,6 +279,22 @@ def test_report(xml, minimum):
     return total
 
 
+def protected_test_report(path, minimum):
+    protected(path.parent, directory=True)
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+             and 0 < info.st_size <= 8 * 1024**2 and not stat.S_IMODE(info.st_mode) & 0o022,
+             'ISOLATED_TEST_REPORT_FILE_REQUIRED')
+        # Docker's own initial umask need not equal the host release umask.
+        # Seal the finished fictional-test evidence for the later seed reader.
+        os.fchmod(stream.fileno(), 0o600)
+        xml = stream.read(8 * 1024**2 + 1)
+        need(len(xml) == info.st_size, 'ISOLATED_TEST_REPORT_SIZE_DRIFT')
+    return test_report(xml, minimum)
+
+
 def wheel_tools(wheels, manifest):
     need(isinstance(manifest,dict) and manifest, 'FROZEN_TEST_WHEELS_REQUIRED'); protected(wheels, directory=True)
     actual = {}; tools = []
@@ -406,7 +422,7 @@ def main(args):
     code = "import os,sys,subprocess\n" + "subprocess.check_call([sys.executable,'-m','pip','install','--disable-pip-version-check','--no-cache-dir','--no-index','--find-links','/test-wheels','--target','/tmp/test-deps','--no-deps',*" + repr(tools) + "])\n"
     code += "os.environ['PYTHONPATH']='/tmp/test-deps:/app:/app/backend'\nsubprocess.check_call([sys.executable,'-c'," + repr(VERIFY_LOADED_TEST_TOOLS) + "])\nsubprocess.check_call([sys.executable,'-m','pytest',*" + repr(['/app/'+name.removeprefix('app/') for name in manifest['private_tests'] if name.endswith('.py') and not name.endswith('/conftest.py')]) + ",'-q','--disable-warnings','--tb=short','-p','no:cacheprovider','--junitxml=/test-results/regressions.xml'],cwd='/app/backend')\n"
     runner.isolated('candidate-regressions',image,code,mounts=[(wheels,'/test-wheels',True),(results,'/test-results',False)],timeout=600)
-    total = test_report((results/'regressions.xml').read_bytes(),frozen['backend_regression_tests_minimum'])
+    total = protected_test_report(results/'regressions.xml',frozen['backend_regression_tests_minimum'])
     schema = schema_rehearsal(runner,image,manifest)
     live.compare_baseline(live.preflight(),baseline)
     # Re-read frozen evidence after all external waits before issuing a receipt.
