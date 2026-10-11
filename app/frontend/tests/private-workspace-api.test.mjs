@@ -236,3 +236,19 @@ test('Chinese mail uses only ready nonempty translation and retains names and or
   item.mail_translation.state = 'ready'; item.source_id = 'stripe'; assert.equal(api.privateMailChinese(item, 'title'), 'Original Stripe subject');
   assert.ok(!api.privateMailTranslationNotice('raw-secret-details').includes('raw-secret-details'));
 });
+
+test('smart mail capabilities are private reads and a brief explicitly requests only the selected item body', async () => {
+  const f = fixture(() => ({ configured: true, item_id: 'synthetic/id', brief: { state: 'ready' } }));
+  await f.api.privateWorkspaceApi.mailCapabilities(); await f.api.privateWorkspaceApi.organizeMail('synthetic/id');
+  assert.equal(f.requests[0].url, '/api/v1/private-workspace/mail-capabilities'); assert.equal(f.requests[0].method, 'GET');
+  assert.equal(f.requests[1].url, '/api/v1/private-workspace/items/synthetic%2Fid/mail-brief'); assert.equal(f.requests[1].method, 'POST');
+  assert.equal(f.requests[1].data.mode, 'body'); assert.equal(f.requests[1].options.timeout, 65000); assert.equal(f.requests.length, 2);
+});
+test('ready Chinese brief takes precedence without changing original fields or financial source display', () => {
+  const item = { source_id: 'gmail', title: 'Original subject', summary: 'Original snippet', mail_translation: { state: 'ready', title_zh: '旧译文', summary_zh: '旧摘要' }, mail_brief: { state: 'ready', title_zh: '整理后的标题', summary_zh: '整理后的重点' } };
+  assert.equal(api.privateMailChinese(item, 'title'), '整理后的标题'); assert.equal(api.privateMailChinese(item, 'summary'), '整理后的重点');
+  assert.equal(item.title, 'Original subject'); assert.equal(item.summary, 'Original snippet');
+  item.mail_brief.state = 'failed'; assert.equal(api.privateMailChinese(item, 'title'), '旧译文');
+  item.source_id = 'bofa'; assert.equal(api.privateMailChinese(item, 'title'), 'Original subject');
+  assert.ok(!api.privateMailBriefNotice('RAW PROVIDER SECRET').includes('RAW PROVIDER SECRET'));
+});

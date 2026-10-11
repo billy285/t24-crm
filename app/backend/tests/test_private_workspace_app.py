@@ -133,9 +133,27 @@ async def test_other_admins_and_sales_are_denied_despite_signed_super_admin_clai
     response = await value.client.get("/api/v1/private-workspace", headers=value.headers(employee_id))
     assert response.status_code == 403 and response.headers["cache-control"] == "no-store"
     for path, payload in (("/mail-translations/batch", {"item_ids": ["00000000-0000-0000-0000-000000000001"]}),
-                          ("/items/00000000-0000-0000-0000-000000000001/mail-translation", {"mode": "body"})):
+                          ("/items/00000000-0000-0000-0000-000000000001/mail-translation", {"mode": "body"}),
+                          ("/items/00000000-0000-0000-0000-000000000001/mail-brief", {"mode": "body"})):
         denied = await value.client.post("/api/v1/private-workspace" + path, headers=value.headers(employee_id), json=payload)
         assert denied.status_code == 403 and denied.headers["cache-control"] == "no-store"
+    denied = await value.client.get("/api/v1/private-workspace/mail-capabilities", headers=value.headers(employee_id))
+    assert denied.status_code == 403 and denied.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_mail_capabilities_fail_closed_and_brief_payload_cannot_enable_ai(private_app, monkeypatch):
+    value = private_app
+    monkeypatch.delenv("PRIVATE_MAIL_BRIEF_ENABLED", raising=False)
+    monkeypatch.delenv("PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT", raising=False)
+    before = hashlib.sha256(value.business_path.read_bytes()).hexdigest()
+    response = await value.client.get("/api/v1/private-workspace/mail-capabilities", headers=value.headers())
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    assert response.json()["smart_brief"] == {"enabled": True, "configured": False, "code": "not_configured"}
+    invalid = await value.client.post("/api/v1/private-workspace/items/00000000-0000-0000-0000-000000000001/mail-brief",
+                                     headers=value.headers(), json={"mode": "body", "enabled": True, "provider": "arbitrary"})
+    assert invalid.status_code == 422 and invalid.headers["cache-control"] == "no-store"
+    assert hashlib.sha256(value.business_path.read_bytes()).hexdigest() == before
 
 
 @pytest.mark.asyncio

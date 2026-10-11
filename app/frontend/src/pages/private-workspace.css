@@ -419,3 +419,38 @@
 .pw-mail-translation-status svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 3px; }
 .pw-mail-language button:focus-visible { outline: 3px solid var(--pw-blue); outline-offset: 2px; }
 @media (pointer: coarse) { .pw-mail-language button { min-height: 44px; } }
+
+.pw-mail-brief { margin: 20px 0 26px; min-width: 0; }
+.pw-mail-brief-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 22px; }
+.pw-mail-brief-toolbar > span { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--pw-blue); font-weight: 500; }
+.pw-mail-brief-toolbar > span svg { width: 16px; height: 16px; }
+.pw-mail-brief-headline > span, .pw-mail-next-action > span, .pw-mail-brief-relevance > span, .pw-mail-brief-original > span { font-size: 12px; color: var(--pw-muted); }
+.pw-mail-brief-headline p { margin: 8px 0 0; font-size: 17px; line-height: 1.7; font-weight: 500; overflow-wrap: anywhere; }
+.pw-mail-key-points { margin: 15px 0 22px; padding: 0 0 0 17px; color: var(--pw-text); }
+.pw-mail-key-points li { margin: 8px 0; padding-left: 3px; font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; }
+.pw-mail-key-points li::marker { color: var(--pw-muted); }
+.pw-mail-next-action { margin: 21px 0; padding: 17px 18px; border-radius: 13px; background: var(--pw-neutral); border-left: 3px solid var(--pw-blue); }
+.pw-mail-next-action > span { color: var(--pw-blue); }
+.pw-mail-next-action p { margin: 8px 0 14px; font-size: 15px; line-height: 1.75; overflow-wrap: anywhere; }
+.pw-mail-brief-deadline { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; padding-top: 11px; border-top: 1px dashed var(--pw-line); font-size: 12px; }
+.pw-mail-brief-deadline > span, .pw-mail-brief-deadline small { color: var(--pw-muted); }
+.pw-mail-brief-deadline strong { font-weight: 500; overflow-wrap: anywhere; }
+.pw-mail-brief-relevance p { margin: 7px 0 17px; font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
+.pw-mail-brief-evidence { border-top: 1px dashed var(--pw-line); padding-top: 14px; }
+.pw-mail-brief-evidence summary { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--pw-muted); cursor: pointer; list-style: none; }
+.pw-mail-brief-evidence summary::-webkit-details-marker { display: none; }
+.pw-mail-brief-evidence summary svg { width: 15px; height: 15px; }
+.pw-mail-brief-evidence[open] summary svg { transform: rotate(90deg); }
+.pw-mail-brief-evidence p { margin: 12px 0; font-size: 12px; line-height: 1.7; color: var(--pw-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.pw-mail-brief-note { margin: 16px 0 0; font-size: 11px; line-height: 1.75; color: var(--pw-muted); }
+.pw-mail-brief-original h3 { margin: 0 0 17px; font-size: 15px; line-height: 1.6; font-weight: 500; overflow-wrap: anywhere; }
+.pw-mail-brief-original > p:not(.pw-mail-brief-note) { margin: 8px 0 18px; font-size: 14px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pw-mail-brief-status { display: flex; align-items: flex-start; gap: 7px; margin: 17px 0; font-size: 12px; line-height: 1.75; color: var(--pw-muted); }
+.pw-mail-brief-status svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 3px; }
+.pw-mail-organize { margin-top: 15px; }
+@media (max-width: 640px) {
+  .pw-mail-brief-toolbar { gap: 8px; margin-bottom: 19px; }
+  .pw-mail-brief-headline p { font-size: 16px; }
+  .pw-mail-next-action { padding: 15px; }
+  .pw-mail-organize { width: 100%; min-height: 44px; }
+}

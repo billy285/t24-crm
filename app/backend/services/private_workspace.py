@@ -371,7 +371,9 @@ async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, ac
         computed.sort(key=lambda item: BUCKETS.index(item["mail_relevance"]["bucket"]))
         if mail_bucket:
             computed = [item for item in computed if item["mail_relevance"]["bucket"] == mail_bucket]
+        from services.private_mail_brief_service import attach_cached_previews as attach_briefs
         from services.private_mail_translation_service import attach_cached_previews
+        await attach_briefs(private_db, owner_id, computed[:limit])
         return {"items": await attach_cached_previews(private_db, owner_id, computed[:limit]),
                 "total": len(computed), "mail_counts": counts}
     total = (await private_db.execute(select(func.count()).select_from(PrivateItem).where(*conditions))).scalar_one()
@@ -380,7 +382,9 @@ async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, ac
         PrivateItem.created_at.desc(), PrivateItem.id,
     ).limit(limit))).scalars().all()
     from services.private_mail_translation_service import attach_cached_previews
-    return {"items": await attach_cached_previews(private_db, owner_id, [item_response(row, stored) for row in rows]), "total": total}
+    from services.private_mail_brief_service import attach_cached_previews as attach_briefs
+    computed = await attach_briefs(private_db, owner_id, [item_response(row, stored) for row in rows])
+    return {"items": await attach_cached_previews(private_db, owner_id, computed), "total": total}
 
 
 async def overview_items(private_db, owner_id: str, *, reference_time=None):
@@ -430,7 +434,9 @@ async def workspace_overview(private_db, owner_id: str):
                                  "available_minor": value["available_minor"], "pending_minor": value["pending_minor"]})
     times = [_aware(row.last_sync) for row in connections if row.last_sync]
     from services.private_mail_translation_service import attach_cached_previews
-    return {"sources": sources, "items": await attach_cached_previews(private_db, owner_id, await overview_items(private_db, owner_id)),
+    from services.private_mail_brief_service import attach_cached_previews as attach_briefs
+    computed = await attach_briefs(private_db, owner_id, await overview_items(private_db, owner_id))
+    return {"sources": sources, "items": await attach_cached_previews(private_db, owner_id, computed),
             "balances": balances, "last_sync": max(times) if times else None}
 
 

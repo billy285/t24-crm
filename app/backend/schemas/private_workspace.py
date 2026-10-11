@@ -176,6 +176,40 @@ class PrivateMailTranslationResponse(BaseModel):
     updated_at: str | None = None
 
 
+class PrivateMailBriefRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["body"] = "body"
+
+
+class PrivateMailBriefDeadline(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    at: None = None
+    text: str | None = Field(default=None, max_length=240)
+    confirmed: Literal[False] = False
+    evidence: str | None = Field(default=None, max_length=1000)
+
+
+class PrivateMailBriefResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state: Literal["ready", "failed", "pending", "unavailable"]
+    title_zh: str | None = Field(default=None, max_length=1000)
+    summary_zh: str | None = Field(default=None, max_length=3000)
+    key_points: list[str] = Field(default_factory=list, max_length=3)
+    relevance: str | None = Field(default=None, max_length=2000)
+    next_action: str | None = Field(default=None, max_length=2000)
+    needs_action: bool | None = None
+    deadline: PrivateMailBriefDeadline | None = None
+    importance: Literal["urgent", "today", "read", "uncertain"] = "uncertain"
+    source_scope: Literal["body", "preview"] = "preview"
+    source_evidence: list[str] = Field(default_factory=list, max_length=12)
+    evidence_limited: bool = False
+    original_body: str | None = Field(default=None, max_length=25000)
+    truncated: bool = False
+    updated_at: str | None = Field(default=None, max_length=80)
+    provider_label: str = "AI 中文整理"
+    code: str | None = Field(default=None, max_length=40)
+
+
 class PrivateItemResponse(BaseModel):
     id: str
     source_id: SourceId
@@ -194,3 +228,4 @@ class PrivateItemResponse(BaseModel):
     snoozed_until: datetime | None
     mail_relevance: PrivateMailRelevance | None = None
     mail_translation: PrivateMailTranslationResponse | None = None
+    mail_brief: PrivateMailBriefResponse | None = None

@@ -24,7 +24,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
   class SyntheticDate extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
   const hooks = [], effects = [], requests = [], listeners = new Map(), modules = new Map();
   const params = new URLSearchParams({ view: initialView });
-  let preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler;
+  let preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler, mailCapabilitiesHandler, mailBriefHandler;
   const preferences = { sync_interval_seconds: 2700, gmail: { topics: ['finance', 'security'], watch_senders: [], watch_keywords: [], muted_senders: [] } };
   const source = { id: 'gmail', status: 'connected', capabilities: [], missing_configuration: [], last_sync: null, error: null };
   const react = {
@@ -53,6 +53,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
       if (name === '@/lib/private-ads') return load('lib/private-ads.ts');
       if (name === './PrivateAdsDashboard') return load('pages/PrivateAdsDashboard.tsx');
       if (name === './PrivateMailContent') return load('pages/PrivateMailContent.tsx');
+      if (name === './PrivateMailBrief') return load('pages/PrivateMailBrief.tsx');
       if (name === '@/lib/use-dialog-draft') return load('lib/use-dialog-draft.ts');
       if (name === './use-unsaved-changes') return load('lib/use-unsaved-changes.ts');
       if (name.startsWith('@/components/ui/')) return new Proxy({}, { get: (_, key) => key === 'Dialog' || key === 'Sheet' ? props => props.open ? props.children : null : props => jsx.jsx('div', props) });
@@ -61,6 +62,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
         const url = new URL(request.url, 'https://synthetic.example');
         if (url.pathname.endsWith('/access')) return { data: { allowed: true } };
         if (url.pathname === '/api/v1/private-workspace') return { data: { sources: [source, ...extraSources], items, balances: [], last_sync: null } };
+        if (url.pathname.endsWith('/mail-capabilities')) return { data: mailCapabilitiesHandler ? await mailCapabilitiesHandler(request) : { smart_brief: { enabled: false, configured: false }, translation: { enabled: true, configured: true } } };
+        if (url.pathname.endsWith('/mail-brief')) return { data: mailBriefHandler ? await mailBriefHandler(request) : { configured: false, item_id: decodeURIComponent(url.pathname.split('/').at(-2)), brief: { state: 'unavailable' }, code: 'not_configured' } };
         if (url.pathname.endsWith('/preferences')) {
           if (preferencesHandler) return { data: await preferencesHandler(request) };
           if (request.method === 'PATCH') Object.assign(preferences.gmail, request.data.gmail);
@@ -107,6 +110,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     setSyncHandler: handler => { syncHandler = handler; },
     setTranslationPreviewHandler: handler => { translationPreviewHandler = handler; },
     setTranslationBodyHandler: handler => { translationBodyHandler = handler; },
+    setMailCapabilitiesHandler: handler => { mailCapabilitiesHandler = handler; },
+    setMailBriefHandler: handler => { mailBriefHandler = handler; },
     advanceTime(milliseconds) { now += milliseconds; for (const callback of timers.values()) callback(); },
     invalidate() { epoch = 'synthetic-new-account'; for (const listener of listeners.get('synthetic-auth-invalidated') || []) listener(); },
     unmount() { hooks.forEach(hook => hook?.cleanup?.()); },
@@ -426,4 +431,89 @@ test('a preview response arriving after an explicit body response cannot replace
   await f.flush(); f.nodes().find(node => node.props.className === 'pw-mail-row').props.onClick(); await f.flush(); f.button('翻译正文').props.onClick(); await f.flush();
   assert.ok(f.text().includes('正文保持可见')); pending.resolve({ configured: true, items: [{ item_id: item.id, translation: translated('race') }] }); await f.flush();
   assert.ok(f.text().includes('正文保持可见')); f.unmount();
+});
+
+const briefCapabilities = (configured = true) => ({ smart_brief: { enabled: true, configured, ...(!configured ? { code: 'consent_required' } : {}) }, translation: { enabled: true, configured: true } });
+const organized = (overrides = {}) => ({
+  state: 'ready', title_zh: '客户需要确认广告方案', summary_zh: '客户询问下周广告安排，等待你的确认。', key_points: ['客户希望先确认安排'], relevance: '与你负责的广告项目有关', next_action: '核对方案后回复客户', needs_action: true,
+  deadline: { at: null, text: '下周', confirmed: false, evidence: 'Please confirm next week.' }, importance: 'today', source_scope: 'body', original_body: 'Synthetic full mail. Please confirm next week.', source_evidence: ['Please confirm next week.'], truncated: false, ...overrides,
+});
+const openMail = async f => { f.nodes().find(node => node.props.className === 'pw-mail-row').props.onClick(); await f.flush(); };
+
+test('smart brief mode reads capabilities first and makes no eager AI or parallel translation requests', async () => {
+  const f = fixture(Array.from({ length: 149 }, (_, index) => mail(`smart-${index}`))); const pending = deferred(); f.setMailCapabilitiesHandler(() => pending.promise);
+  await f.flush(); assert.equal(f.requests.filter(request => request.url.includes('/mail-translation') || request.url.endsWith('/mail-brief')).length, 0);
+  await openMail(f); assert.equal(f.button('整理这封邮件').props.disabled, true);
+  pending.resolve(briefCapabilities()); await f.flush(); assert.equal(f.button('整理这封邮件').props.disabled, false);
+  assert.equal(f.requests.filter(request => request.url.includes('/mail-translation') || request.url.endsWith('/mail-brief')).length, 0);
+  assert.equal(f.button('翻译更多摘要'), undefined); assert.equal(f.button('翻译正文'), undefined); f.unmount();
+});
+test('single explicit organize keeps original available while busy, blocks duplicate dispatch, and renders a concise Chinese hierarchy', async () => {
+  const f = fixture(); const pending = deferred(); f.setMailCapabilitiesHandler(() => briefCapabilities()); f.setMailBriefHandler(() => pending.promise);
+  await f.flush(); await openMail(f); f.button('整理这封邮件').props.onClick(); await f.flush();
+  const busy = f.button('正在整理…'); assert.equal(busy.props.disabled, true); busy.props.onClick(); await f.flush();
+  assert.ok(f.text().includes('Synthetic snippet')); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief')).length, 1);
+  pending.resolve({ configured: true, item_id: 'message', brief: organized() }); await f.flush();
+  for (const text of ['发生了什么', '建议下一步', '与你有关', '客户询问下周广告安排', '核对方案后回复客户', '下周', '待确认', 'AI 阅读整理']) assert.ok(f.text().includes(text), text);
+  f.button('原文').props.onClick(); await f.flush(); assert.ok(f.text().includes('Synthetic full mail. Please confirm next week.')); assert.ok(f.text().includes('Synthetic message'));
+  f.button('重点').props.onClick(); await f.flush(); assert.ok(!f.text().includes('Synthetic full mail. Please confirm next week.'));
+  assert.ok(f.requests.every(request => request.url.startsWith('/api/v1/private-workspace'))); f.unmount();
+});
+test('unconfigured smart service keeps Gmail connected, disables organize, and does not fall back to billed translation', async () => {
+  const f = fixture(); f.setMailCapabilitiesHandler(() => briefCapabilities(false)); await f.flush(); await openMail(f);
+  assert.ok(f.text().includes('智能整理尚待确认接入')); assert.ok(f.text().includes('Synthetic snippet')); assert.equal(f.button('整理这封邮件').props.disabled, true);
+  f.button('整理这封邮件').props.onClick(); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief') || request.url.includes('/mail-translation')).length, 0); f.unmount();
+});
+test('unavailable capabilities never initiate AI or legacy translation and do not expose transport detail', async () => {
+  const f = fixture(); f.setMailCapabilitiesHandler(() => { throw new Error('RAW CAPABILITY SECRET'); }); await f.flush(); await openMail(f);
+  assert.ok(f.text().includes('暂时无法检查智能整理服务')); assert.ok(!f.text().includes('RAW CAPABILITY SECRET')); assert.equal(f.button('整理这封邮件').props.disabled, true);
+  assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief') || request.url.includes('/mail-translation')).length, 0); f.unmount();
+});
+test('summary-only AI response cannot be labeled as full body and missing deadlines remain unconfirmed', async () => {
+  const f = fixture(); f.setMailCapabilitiesHandler(() => briefCapabilities()); f.setMailBriefHandler(() => ({ configured: true, item_id: 'message', brief: organized({ source_scope: 'preview', original_body: null, deadline: null, truncated: true }) }));
+  await f.flush(); await openMail(f); f.button('整理这封邮件').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('发生了什么 · 依据摘要')); assert.ok(f.text().includes('仅依据标题与摘要')); assert.ok(f.text().includes('待确认')); assert.ok(f.text().includes('未找到可读取正文'));
+  f.button('原文').props.onClick(); await f.flush(); assert.ok(f.text().includes('原始摘要')); assert.ok(!f.text().includes('邮件原文')); f.unmount();
+});
+test('evidence-limited complete body brief remains visibly uncertain without changing the rule group', async () => {
+  const item = mail('limited', 'urgent'); const f = fixture([item]); f.setMailCapabilitiesHandler(() => briefCapabilities());
+  f.setMailBriefHandler(() => ({ configured: true, item_id: item.id, brief: organized({ evidence_limited: true, truncated: false, deadline: null, needs_action: null, next_action: null }) }));
+  await f.flush(); await openMail(f); f.button('整理这封邮件').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('部分依据不足')); assert.ok(f.text().includes('暂未提取到明确行动')); assert.ok(f.text().includes('待确认'));
+  assert.ok(f.text().includes('立即关注')); assert.equal(item.mail_relevance.bucket, 'urgent'); f.unmount();
+});
+test('cached brief does not trigger AI and list previews cannot retain a detail-only original body', async () => {
+  const item = mail('cached-smart'); item.mail_brief = organized({ original_body: undefined }); const f = fixture([item]); f.setMailCapabilitiesHandler(() => briefCapabilities());
+  f.setMailBriefHandler(() => ({ configured: true, item_id: item.id, brief: organized({ original_body: 'Detail-only private original' }) }));
+  await f.flush(); assert.ok(f.text().includes('客户需要确认广告方案')); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief')).length, 0);
+  await openMail(f); f.button('查看原文正文').props.onClick(); await f.flush(); f.button('原文').props.onClick(); await f.flush(); assert.ok(f.text().includes('Detail-only private original'));
+  await openMail(f); assert.ok(!f.text().includes('Detail-only private original')); assert.ok(f.text().includes('原始摘要')); assert.ok(f.button('查看原文正文')); f.unmount();
+});
+test('successful brief keeps quoted source and deadline evidence only in the selected detail', async () => {
+  const f = fixture(); f.setMailCapabilitiesHandler(() => briefCapabilities()); f.setMailBriefHandler(() => ({ configured: true, item_id: 'message', brief: organized({ source_evidence: ['Detail-only source quotation'], deadline: { at: null, text: '下周', confirmed: false, evidence: 'Detail-only deadline quotation' } }) }));
+  await f.flush(); await openMail(f); f.button('整理这封邮件').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('Detail-only source quotation')); assert.ok(f.text().includes('Detail-only deadline quotation'));
+  await openMail(f); assert.ok(!f.text().includes('Detail-only source quotation')); assert.ok(!f.text().includes('Detail-only deadline quotation')); assert.ok(f.text().includes('下周')); assert.ok(f.text().includes('客户询问下周广告安排')); f.unmount();
+});
+test('logout discards both delayed smart content and delayed capabilities without repopulating private mail', async () => {
+  const f = fixture(); const pending = deferred(); f.setMailCapabilitiesHandler(() => briefCapabilities()); f.setMailBriefHandler(() => pending.promise); await f.flush(); await openMail(f);
+  f.button('整理这封邮件').props.onClick(); await f.flush(); f.invalidate(); await f.flush(); pending.resolve({ configured: true, item_id: 'message', brief: organized({ summary_zh: 'Old owner private summary', original_body: 'Old owner private body' }) }); await f.flush();
+  assert.ok(f.text().includes('此空间仅对本人开放')); assert.ok(!f.text().includes('Old owner private')); f.unmount();
+  const later = fixture(); const capabilities = deferred(); later.setMailCapabilitiesHandler(() => capabilities.promise); await later.flush(); later.invalidate(); await later.flush(); capabilities.resolve(briefCapabilities()); await later.flush();
+  assert.equal(later.button('整理这封邮件'), undefined); assert.equal(later.requests.filter(request => request.url.endsWith('/mail-brief')).length, 0); later.unmount();
+});
+test('a mismatched brief response and provider failure never replace the selected original or leak details', async () => {
+  const f = fixture(); f.setMailCapabilitiesHandler(() => briefCapabilities()); f.setMailBriefHandler(() => ({ configured: true, item_id: 'different', brief: organized({ summary_zh: 'Wrong message summary' }) })); await f.flush(); await openMail(f); f.button('整理这封邮件').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('Synthetic snippet')); assert.ok(!f.text().includes('Wrong message summary'));
+  f.setMailBriefHandler(() => { throw new Error('RAW PROVIDER SECRET'); }); f.button('整理这封邮件').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('暂时无法整理这封邮件')); assert.ok(!f.text().includes('RAW PROVIDER SECRET')); assert.ok(f.text().includes('Synthetic snippet')); f.unmount();
+});
+test('AI-generated HTML and bank claims remain escaped reading suggestions without due date, financial, or account mutations', async () => {
+  const item = mail('bank-mail', 'urgent'); item.mail_relevance.category = 'finance'; const f = fixture([item]); f.setMailCapabilitiesHandler(() => briefCapabilities());
+  f.setMailBriefHandler(() => ({ configured: true, item_id: item.id, brief: organized({ title_zh: '<script>bank</script>', summary_zh: '邮件提及付款，请核对银行实际流水', next_action: '<a href="javascript:alert(1)">核对银行</a>', importance: 'read', deadline: { at: null, text: 'Friday', confirmed: false } }) }));
+  await f.flush(); await openMail(f); f.button('整理这封邮件').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('<script>bank</script>')); assert.equal(f.nodes().filter(node => node.type === 'script').length, 0); assert.equal(f.nodes().filter(node => node.type === 'a' && node.props.href?.startsWith('javascript:')).length, 0);
+  assert.ok(f.text().includes('立即关注')); assert.equal(item.due_at, null); assert.equal(item.amount_minor, null); assert.equal(item.mail_relevance.bucket, 'urgent');
+  assert.equal(f.requests.filter(request => ['PATCH', 'DELETE'].includes(request.method)).length, 0); assert.ok(f.requests.every(request => request.url.startsWith('/api/v1/private-workspace'))); f.unmount();
 });

@@ -11,7 +11,7 @@ from dependencies.private_workspace import PrivateOwner, private_access_allowed,
 from models.private_workspace import PrivateItem
 from schemas.private_workspace import (
     ActionStatus, MailBucket, PrivateItemCreate, PrivateItemPatch, PrivateItemResponse, PrivateMailFeedbackCreate, PrivatePreferencesPatch, SourceId,
-    PrivateMailTranslationBatch, PrivateMailTranslationRequest,
+    PrivateMailTranslationBatch, PrivateMailTranslationRequest, PrivateMailBriefRequest,
 )
 from services.private_workspace import (
     complete_oauth, connect_source, disconnect_source, get_private_db, item_response, list_items,
@@ -136,6 +136,28 @@ async def mail_translation_batch(
 ):
     from services.private_mail_translation_service import translate_batch
     return await translate_batch(private_db, owner.employee_id, payload.item_ids)
+
+
+@router.get("/mail-capabilities")
+async def mail_capabilities(owner: PrivateOwner = Depends(require_private_owner)):
+    import os
+    from services import private_mail_brief, private_mail_translation
+    preferred = (os.getenv("PRIVATE_MAIL_BRIEF_UI_ENABLED", "true").strip().lower() != "false")
+    ready = private_mail_brief.configured()
+    return {"smart_brief": {"enabled": preferred, "configured": ready,
+                            **({"code": "not_configured"} if not ready else {})},
+            "translation": {"enabled": not preferred, "configured": private_mail_translation.configured()}}
+
+
+@router.post("/items/{item_id}/mail-brief")
+async def mail_brief(
+    item_id: str,
+    payload: PrivateMailBriefRequest,
+    owner: PrivateOwner = Depends(require_private_owner),
+    private_db: AsyncSession = Depends(get_private_db),
+):
+    from services.private_mail_brief_service import brief_item
+    return await brief_item(private_db, owner.employee_id, item_id, mode=payload.mode)
 
 
 @router.post("/items/{item_id}/mail-translation")

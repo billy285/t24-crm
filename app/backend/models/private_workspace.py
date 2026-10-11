@@ -110,3 +110,34 @@ class PrivateTranslationUsage(PrivateWorkspaceBase):
     # Reservations include failed/ambiguous requests; never risk undercounting.
     characters = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class PrivateMailBrief(PrivateWorkspaceBase):
+    __tablename__ = "private_mail_briefs"
+    cache_key = Column(String(64), primary_key=True)
+    owner_id = Column(String(64), nullable=False, index=True)
+    connection_id = Column(String(36), nullable=False)
+    generation = Column(Integer, nullable=False)
+    item_id = Column(String(36), nullable=False, index=True)
+    # Snapshot hash for the immutable Gmail message; full input hash is checked
+    # against the encrypted result without re-fetching the same message body.
+    source_hash = Column(String(64), nullable=False)
+    input_hash = Column(String(64), nullable=True)
+    model = Column(String(80), nullable=False)
+    state = Column(String(16), nullable=False, default="pending")
+    lease_token = Column(String(64), nullable=True)
+    lease_until = Column(DateTime(timezone=True), nullable=True)
+    encrypted_content = Column(Text, nullable=True)
+    error_code = Column(String(40), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class PrivateMailBriefUsage(PrivateWorkspaceBase):
+    __tablename__ = "private_mail_brief_usage"
+    owner_id = Column(String(64), primary_key=True)
+    month = Column(String(7), primary_key=True)
+    # Ambiguous failures remain reserved to avoid spending beyond the limits.
+    characters = Column(Integer, nullable=False, default=0)
+    requests = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

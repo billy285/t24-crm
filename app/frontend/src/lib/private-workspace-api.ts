@@ -65,6 +65,35 @@ export interface PrivateMailTranslationBatch {
   items: { item_id: string; translation: PrivateMailTranslation }[];
   code?: string;
 }
+export interface PrivateMailBrief {
+  state: 'ready' | 'failed' | 'pending' | 'unavailable';
+  title_zh: string | null;
+  summary_zh: string | null;
+  key_points: string[];
+  relevance: string | null;
+  next_action: string | null;
+  needs_action: boolean | null;
+  deadline: { at: string | null; text: string | null; confirmed: boolean; evidence?: string } | null;
+  importance: 'urgent' | 'today' | 'read' | 'uncertain';
+  source_scope: 'body' | 'preview';
+  original_body?: string | null;
+  source_evidence?: string[];
+  evidence_limited?: boolean;
+  provider_label?: string;
+  truncated: boolean;
+  updated_at?: string | null;
+  code?: string;
+}
+export interface PrivateMailCapabilities {
+  smart_brief: { enabled: boolean; configured: boolean; code?: string };
+  translation: { enabled: boolean; configured: boolean; code?: string };
+}
+export interface PrivateMailBriefResult {
+  configured: boolean;
+  item_id: string;
+  brief: PrivateMailBrief;
+  code?: string;
+}
 export interface PrivateMailRelevance {
   bucket: PrivateMailBucket;
   category: PrivateMailTopic | 'general' | 'promotion';
@@ -134,6 +163,7 @@ export interface PrivateItem {
   snoozed_until: string | null;
   mail_relevance?: PrivateMailRelevance;
   mail_translation?: PrivateMailTranslation;
+  mail_brief?: PrivateMailBrief;
 }
 
 export interface PrivateBalance {
@@ -229,6 +259,8 @@ export const privateWorkspaceApi = {
   create: (data: CreatePrivateItem) => request<{ item: PrivateItem }>('/items', 'POST', { ...data, source_id: 'manual', kind: 'task' }),
   update: (id: string, data: UpdatePrivateItem) => request<{ item: PrivateItem }>(`/items/${encodeURIComponent(id)}`, 'PATCH', data),
   mailFeedback: (id: string, feedback: PrivateMailFeedback, applyToSender = false) => request<{ item: PrivateItem }>(`/items/${encodeURIComponent(id)}/mail-feedback`, 'POST', { feedback, apply_to_sender: applyToSender }),
+  mailCapabilities: () => request<PrivateMailCapabilities>('/mail-capabilities', 'GET'),
+  organizeMail: (id: string) => request<PrivateMailBriefResult>(`/items/${encodeURIComponent(id)}/mail-brief`, 'POST', { mode: 'body' }, { timeout: 65_000 }),
   translateMailPreviews: (ids: string[]) => request<PrivateMailTranslationBatch>('/mail-translations/batch', 'POST', { item_ids: [...new Set(ids)].slice(0, 10) }, { timeout: 65_000 }),
   translateMailBody: (id: string) => request<PrivateMailTranslationResult>(`/items/${encodeURIComponent(id)}/mail-translation`, 'POST', { mode: 'body' }, { timeout: 65_000 }),
   archive: (id: string) => request<{ item: PrivateItem }>(`/items/${encodeURIComponent(id)}`, 'DELETE'),
@@ -238,9 +270,23 @@ export const privateWorkspaceApi = {
 };
 
 export function privateMailChinese(item: PrivateItem, part: 'title' | 'summary'): string {
+  const brief = item.mail_brief;
+  const organized = part === 'title' ? brief?.title_zh : brief?.summary_zh;
+  if (item.source_id === 'gmail' && brief?.state === 'ready' && typeof organized === 'string' && organized.trim()) return organized;
   const translation = item.mail_translation;
   const value = part === 'title' ? translation?.title_zh : translation?.summary_zh;
   return item.source_id === 'gmail' && translation?.state === 'ready' && typeof value === 'string' && value.trim() ? value : item[part];
+}
+export function privateMailBriefNotice(code?: string): string {
+  return ({
+    not_configured: '智能整理尚待接入，当前可查看邮件原文',
+    consent_required: '智能整理尚待确认接入，当前可查看邮件原文',
+    limit_reached: '本月整理额度已用完，已整理的邮件仍可查看',
+    upstream_unavailable: '暂时无法整理这封邮件，可先查看原文',
+    authorization_expired: 'Gmail 授权已过期，请在工作接入重新连接',
+    body_unavailable: '未找到可读取正文，当前仅依据邮件摘要整理',
+    pending: '这封邮件正在整理，请稍后手动重试',
+  } as Record<string, string>)[code || ''] || '暂时无法整理这封邮件，可先查看原文';
 }
 export function privateMailTranslationNotice(code?: string): string {
   return ({ not_configured: '中文翻译尚未开通', limit_reached: '本月翻译额度已用完，可先查看原文', upstream_unavailable: '中文翻译暂时无法完成，可先查看原文', authorization_expired: 'Gmail 授权已过期，请在工作接入重新连接', body_unavailable: '未找到可翻译正文，可在 Gmail 查看完整邮件' } as Record<string, string>)[code || ''] || '中文翻译暂时无法完成，可先查看原文';
