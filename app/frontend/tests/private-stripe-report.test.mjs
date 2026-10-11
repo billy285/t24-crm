@@ -147,6 +147,68 @@ test('funds show current timestamped balances and payout events outside period i
   assert.ok(screen.text.includes('Stripe 已支付 · 银行待核对')); assert.ok(screen.text.includes('-USD 700.00')); assert.ok(screen.text.includes('其他资金变动')); assert.ok(screen.text.includes('提现不计入收入'));
   assert.ok(!screen.text.includes('USD 1,000.00')); assert.ok(!screen.text.includes('Synthetic payment-1'));
 });
+test('provider lowercase balances, subscriptions, plans, payouts and disputes stay visible with uppercase summary selection', () => {
+  const f = fixture(), initial = { ...f.createPrivateStripeSelection(new Date('2026-10-12')), currency: 'USD' };
+  // Match provider/service output: income summary uppercase, other rows lower.
+  const data = report({
+    balances: [{ currency: 'usd', available_minor: 1234, pending_minor: 5678, observed_at: '2026-10-12T07:00:00Z' }],
+    subscriptions: [{ id: 'sub-provider', customer_label: 'Provider subscriber', status: 'active', currency: 'usd', next_payment_at: null, amount_minor: null, source_url: null, period_end: '2026-11-01T12:00:00Z', plans: [{ label: 'Provider plan', amount_minor: 9876, currency: 'usd', quantity: 1, interval: 'month', interval_count: 1 }] }],
+    records: [record('provider-payout', { title: 'Provider payout', kind: 'payout', category: null, currency: 'usd', amount_minor: -12500, status: 'paid' }), record('provider-dispute', { title: 'Provider dispute', kind: 'dispute', category: null, currency: 'usd', amount_minor: 5800, status: 'needs_response' })],
+  });
+  const funds = f.render({ report: data, selection: { ...initial, tab: 'funds' } });
+  assert.ok(funds.text.includes('可用余额USD 12.34')); assert.ok(funds.text.includes('待结算余额USD 56.78'));
+  assert.ok(funds.text.includes('Provider payout')); assert.ok(funds.text.includes('-USD 125.00'));
+  assert.ok(!funds.text.includes('当前余额待确认')); assert.ok(!funds.text.includes('Provider dispute'));
+  const subscriptions = f.render({ report: data, selection: { ...initial, tab: 'subscriptions', expanded_subscription_id: 'sub-provider' } });
+  assert.ok(subscriptions.text.includes('Provider subscriber')); assert.ok(subscriptions.text.includes('Provider plan · USD 98.76 / 每月'));
+  assert.ok(!subscriptions.text.includes('当前没有可查看的订阅'));
+  const disputes = f.render({ report: data, selection: { ...initial, tab: 'records', filter: 'dispute' } });
+  assert.ok(disputes.text.includes('Provider dispute')); assert.ok(disputes.text.includes('USD 58.00'));
+  assert.ok(!disputes.text.includes('所选期间暂无此类流水')); assert.ok(!disputes.text.includes('Provider payout'));
+});
+test('selection boundary normalizes mixed ASCII currency copies without mutating reports or amounts', () => {
+  const f = fixture(), selection = { ...f.createPrivateStripeSelection(new Date('2026-10-12')), currency: 'JPY' };
+  const data = report({ currencies: [row({ currency: 'uSd' }), row({ currency: 'jpy', gross_minor: 500 })],
+    records: [record('mixed-dollar', { currency: 'uSd', amount_minor: null }), record('mixed-yen', { currency: 'jPy', amount_minor: -500 })],
+    balances: [{ currency: 'jpy', available_minor: 0, pending_minor: null, observed_at: null }],
+    subscriptions: [{ id: 'sub-mixed', customer_label: null, status: 'active', currency: 'jPy', next_payment_at: null, amount_minor: null, source_url: null, plans: [{ label: 'Mixed yen plan', currency: 'jpY', amount_minor: 500, quantity: 1, interval: 'month', interval_count: 1 }] }],
+  });
+  const original = JSON.stringify(data);
+  function freeze(value) { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } }
+  freeze(data);
+  const normalized = f.privateStripeReportForSelection(data, selection);
+  assert.notStrictEqual(normalized, data); assert.notStrictEqual(normalized.balances[0], data.balances[0]);
+  assert.notStrictEqual(normalized.subscriptions[0].plans[0], data.subscriptions[0].plans[0]);
+  assert.equal(normalized.currencies[0].currency, 'USD'); assert.equal(normalized.currencies[1].currency, 'JPY');
+  assert.equal(normalized.records[0].currency, 'USD'); assert.equal(normalized.records[1].currency, 'JPY');
+  assert.equal(normalized.balances[0].currency, 'JPY'); assert.equal(normalized.subscriptions[0].currency, 'JPY');
+  assert.equal(normalized.subscriptions[0].plans[0].currency, 'JPY');
+  assert.equal(normalized.records[0].amount_minor, null); assert.equal(normalized.records[1].amount_minor, -500);
+  assert.equal(normalized.balances[0].available_minor, 0); assert.equal(normalized.balances[0].pending_minor, null);
+  assert.strictEqual(normalized.coverage, data.coverage); assert.strictEqual(normalized.currencies[0].trend, data.currencies[0].trend);
+  assert.equal(JSON.stringify(data), original);
+  assert.equal(f.privateStripeReportRecords(normalized, selection).length, 1);
+  assert.equal(f.privateStripeReportRecords(normalized, selection)[0].id, 'mixed-yen');
+  assert.equal(f.privateStripeReportMoney(normalized.records[1].amount_minor, normalized.records[1].currency).replace(/\s/g, ' '), '-JPY 500');
+});
+test('currency normalization rejects whitespace, non-ASCII, malformed and non-string codes across all views', () => {
+  const f = fixture(), selection = { ...f.createPrivateStripeSelection(new Date('2026-10-12')), currency: 'USD' };
+  const invalid = [' usd', 'usd ', 'usd\n', 'USD\n', 'usd\r', 'u$d', 'US', 'USDD', 'ＵＳＤ', 'uſd', null, 123];
+  const data = report({ currencies: [row({ currency: 'usd' }), ...invalid.map(currency => row({ currency }))],
+    balances: invalid.map(currency => ({ currency, available_minor: 999999, pending_minor: 999999, observed_at: null })),
+    records: invalid.map((currency, index) => record(`invalid-${index}`, { currency })),
+    subscriptions: invalid.map((currency, index) => ({ id: `invalid-sub-${index}`, customer_label: 'Invalid currency subscriber', status: 'active', currency, next_payment_at: null, amount_minor: 999999, source_url: null })),
+  });
+  const normalized = f.privateStripeReportForSelection(data, selection);
+  invalid.forEach((currency, index) => assert.equal(normalized.balances[index].currency, currency));
+  assert.equal(f.privateStripeReportCurrencies(normalized).length, 1);
+  assert.equal(f.privateStripeReportRecords(normalized, selection).length, 0);
+  assert.equal(f.privateStripeReportSubscriptions(normalized, selection).length, 0);
+  const funds = f.render({ report: data, selection: { ...selection, tab: 'funds' } });
+  assert.ok(funds.text.includes('当前余额待确认')); assert.ok(!funds.text.includes('9,999.99'));
+  assert.equal(funds.nodes.filter(node => node.type === 'option' && node.props.value === 'USD').length, 1);
+  assert.equal(f.privateStripeReportMoney(500, 'usd'), '待确认');
+});
 test('subscription amounts remain source amounts and pending collection never becomes actual income', () => {
   const f = fixture(), selection = { ...f.createPrivateStripeSelection(new Date('2026-10-12')), tab: 'subscriptions', expanded_subscription_id: 'sub-synthetic' };
   const screen = f.render({ selection }); assert.ok(screen.text.includes('来源订阅金额')); assert.ok(screen.text.includes('实际收款以期间已收款记录为准')); assert.ok(screen.text.includes('下次付款'));

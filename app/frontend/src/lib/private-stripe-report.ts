@@ -98,7 +98,7 @@ export const PRIVATE_STRIPE_FILTER_NAMES: Record<PrivateStripeRecordFilter, stri
 export const PRIVATE_STRIPE_CATEGORY_NAMES: Record<PrivateStripeIncomeCategory, string> = { subscription: '订阅相关收款', one_time: '单次收款', unclassified: '待分类收款' };
 export const privateStripeReportText = (value: unknown, limit = 600): string => typeof value === 'string' ? value.trim().slice(0, limit) : '';
 export const privateStripeReportMinor = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value);
-export const privateStripeReportCurrencyCode = (value: unknown): value is string => typeof value === 'string' && /^[A-Z]{3}$/.test(value);
+export const privateStripeReportCurrencyCode = (value: unknown): value is string => typeof value === 'string' && value.length === 3 && /^[A-Z]{3}$/.test(value);
 export function privateStripeReportMoney(value: unknown, currency: unknown): string {
   return privateStripeReportMinor(value) && privateStripeReportCurrencyCode(currency) ? formatPrivateAmount(value, currency, 'stripe') : '待确认';
 }
@@ -122,13 +122,30 @@ export function createPrivateStripeSelection(now = new Date()): PrivateStripeSel
   const end = now.toISOString().slice(0, 10);
   return { preset: 'month', start_date: `${end.slice(0, 7)}-01`, end_date: end, currency: '', tab: 'overview', filter: 'all', search: '', expanded_record_id: null, expanded_subscription_id: null };
 }
+function copyPrivateStripeCurrencyRow<T extends { currency: string }>(row: T): T {
+  if (!row || typeof row !== 'object') return row;
+  const currency = typeof row.currency === 'string' && row.currency.length === 3 && /^[A-Za-z]{3}$/.test(row.currency) ? row.currency.toUpperCase() : row.currency;
+  return { ...row, currency };
+}
 /** Period and currency selection never combine provider amounts across currencies. */
 export function privateStripeReportForSelection(report: PrivateStripeReport | null, selection: PrivateStripeSelection): PrivateStripeReport | null {
   if (!report || !['ready', 'partial', 'unavailable'].includes(report.state) || !privateStripeReportText(report.snapshot_id, 200)
     || report.period?.preset !== selection.preset || !privateStripeReportDate(report.period.start_date) || !privateStripeReportDate(report.period.end_date)
     || report.period.start_date > report.period.end_date) return null;
   if (selection.preset === 'custom' && (report.period.start_date !== selection.start_date || report.period.end_date !== selection.end_date)) return null;
-  return report;
+  // Stripe provider rows can retain lowercase codes while summary rows use
+  // uppercase. Normalize copies once, before every view validates and filters.
+  return {
+    ...report,
+    currencies: Array.isArray(report.currencies) ? report.currencies.map(copyPrivateStripeCurrencyRow) : report.currencies,
+    records: Array.isArray(report.records) ? report.records.map(copyPrivateStripeCurrencyRow) : report.records,
+    balances: Array.isArray(report.balances) ? report.balances.map(copyPrivateStripeCurrencyRow) : report.balances,
+    subscriptions: Array.isArray(report.subscriptions) ? report.subscriptions.map(row => {
+      const subscription = copyPrivateStripeCurrencyRow(row);
+      return subscription && typeof subscription === 'object' && Array.isArray(subscription.plans)
+        ? { ...subscription, plans: subscription.plans.map(copyPrivateStripeCurrencyRow) } : subscription;
+    }) : report.subscriptions,
+  };
 }
 export function privateStripeReportCurrencies(report: PrivateStripeReport | null): PrivateStripeReportCurrency[] {
   const seen = new Set<string>();
