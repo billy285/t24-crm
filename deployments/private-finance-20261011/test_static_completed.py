@@ -96,3 +96,24 @@ def test_late_success_receipt_failure_never_claims_deployed_after_rollback(tmp_p
     rollback.assert_called_once()
     assert receipts[-1]['phase']=='COMPLETED_STATIC_ROLLBACK_VERIFIED'
     assert receipts[-1]['deployed'] is False
+
+
+@pytest.mark.parametrize('where',['state_only','candidate_only','mismatch'])
+def test_seeded_public_lineage_cannot_be_missing_or_rebound(where):
+    c=candidate();v=state()
+    if where!='state_only':c['seeded_repair_lineage']={'ancestor':'c'*64}
+    if where!='candidate_only':v['seeded_repair_lineage']={'ancestor':'d'*64}
+    with pytest.raises(s.SwitchError,match='EXACT_SEEDED_REPAIR_PUBLIC_LINEAGE_REQUIRED'):
+        s.checked_state(v,c)
+
+
+def test_seeded_public_requires_checked_final_not_only_common_status():
+    import seeded_repair
+    c=candidate();v=state();lineage={'ancestor':'c'*64}
+    c['seeded_repair_lineage']=lineage;v['seeded_repair_lineage']=lineage
+    with patch.object(seeded_repair,'checked_final') as checked:
+        assert s.checked_state(v,c) is v
+    checked.assert_called_once_with(v,c)
+    with patch.object(seeded_repair,'checked_final',side_effect=RuntimeError('SYNTHETIC_SEED_LINEAGE_REJECTED')):
+        with pytest.raises(RuntimeError,match='SYNTHETIC_SEED_LINEAGE_REJECTED'):
+            s.checked_state(v,c)

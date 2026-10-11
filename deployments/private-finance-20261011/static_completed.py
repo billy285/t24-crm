@@ -329,6 +329,12 @@ def checked_state(state,candidate):
          state.get('business_tables_verified')==83,'ACCEPTED_COMPLETED_SERVER_RELEASE_REQUIRED')
     need(set(state.get('new_ids',{}))=={'api','worker'} and set(state.get('new_private',{}))=={'api','worker'},
          'BOTH_PRIVATE_ROLES_REQUIRED')
+    if state.get('seeded_repair_lineage') is not None or candidate.get('seeded_repair_lineage') is not None:
+        need(isinstance(state.get('seeded_repair_lineage'),dict) and
+             state['seeded_repair_lineage']==candidate.get('seeded_repair_lineage'),
+             'EXACT_SEEDED_REPAIR_PUBLIC_LINEAGE_REQUIRED')
+        import seeded_repair
+        seeded_repair.checked_final(state,candidate)
     return state
 
 

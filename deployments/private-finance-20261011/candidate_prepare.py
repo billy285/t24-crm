@@ -382,7 +382,30 @@ def resume_requested(args):
     return all(flags)
 
 
+def seeded_requested(args):
+    names = ('seeded_api_state', 'seeded_api_state_sha256')
+    flags = [bool(getattr(args, name, None)) for name in names]
+    need(not any(flags) or all(flags), 'EXPLICIT_SEEDED_API_STATE_AND_HASH_REQUIRED_TOGETHER')
+    if all(flags):
+        need(not any(getattr(args, name, None) for name in
+            ('resume_schema_state', 'resume_schema_state_sha256', 'rollback_state', 'rollback_state_sha256')),
+            'SEEDED_REPAIR_AND_ABSENT_STRIPE_RESUME_ARE_MUTUALLY_EXCLUSIVE')
+    return all(flags)
+
+
+def seeded_helper():
+    # The repair verifier imports seed/switch helpers, which import this module.
+    # Keep the selected path lazy; ordinary and absent-Stripe resumes are intact.
+    import seeded_repair
+    return seeded_repair
+
+
 def checked_running_baseline(args, baseline):
+    if seeded_requested(args):
+        repair = seeded_helper()
+        current = repair.preflight(api_state=args.seeded_api_state, api_state_sha256=args.seeded_api_state_sha256)
+        repair.compare_baseline(current, baseline)
+        return 'seeded_repair'
     if not resume_requested(args):
         live.compare_baseline(live.preflight(), baseline)
         return False
@@ -403,17 +426,22 @@ def main(args):
     baseline_blob = frozen_file(args.baseline,args.baseline_sha256,4*1024**2)
     baseline = json.loads(baseline_blob)
     resuming = checked_running_baseline(args, baseline)
-    if resuming:
+    if resuming is True:
         need(type(frozen['backend_regression_tests_minimum']) is int and frozen['backend_regression_tests_minimum'] >= 807,
              'RESUME_REQUIRES_ALL_807_PRIVATE_REGRESSIONS')
+    elif resuming == 'seeded_repair':
+        need(type(frozen['backend_regression_tests_minimum']) is int and frozen['backend_regression_tests_minimum'] >= 845,
+             'SEEDED_REPAIR_REQUIRES_ALL_845_PRIVATE_REGRESSIONS')
     need(args.release.is_absolute() and args.release.parent == Path('/opt/t24-crm/releases') and
          re.fullmatch('private-finance-' + frozen['source_sha'][:12] + '-20261011-candidate(?:-[a-z0-9]{1,16})?',args.release.name)
          and not args.release.exists() and not args.release.is_symlink(),'NEW_REVIEWED_RELEASE_DIRECTORY_REQUIRED')
     need(shutil.disk_usage(args.release.parent).free > 4*1024**3,'MINIMUM_CANDIDATE_SPACE_REQUIRED')
     args.release.mkdir(mode=0o700); protected(args.release,directory=True); runner = Runner(args.release)
     save(args.release/'running-baseline.json',baseline)
-    if resuming:
+    if resuming is True:
         builder.write_new(args.release/'resume-baseline.json',baseline_blob)
+    elif resuming == 'seeded_repair':
+        builder.write_new(args.release/'repair-baseline.json',baseline_blob)
     root = args.release/'payload'; extract(archive,manifest,root)
     # Image inspection is captured in memory only: baked production credentials are forbidden.
     base_inspection = inspect_image(builder.BASE_IMAGE)
@@ -448,7 +476,8 @@ def main(args):
     runner.isolated('candidate-regressions',image,code,mounts=[(wheels,'/test-wheels',True),(results,'/test-results',False)],timeout=600)
     total = protected_test_report(results/'regressions.xml',frozen['backend_regression_tests_minimum'])
     schema = schema_rehearsal(runner,image,manifest)
-    need(checked_running_baseline(args, baseline) is resuming, 'CANDIDATE_RESUME_MODE_CHANGED')
+    final_mode = checked_running_baseline(args, baseline)
+    need(type(final_mode) is type(resuming) and final_mode == resuming, 'CANDIDATE_RESUME_MODE_CHANGED')
     # Re-read frozen evidence after all external waits before issuing a receipt.
     need(frozen_file(args.freeze,args.freeze_sha256)==frozen_blob,'FROZEN_SOURCE_CHANGED')
     frozen_file(args.manifest,args.manifest_sha256); frozen_file(args.payload,args.payload_sha256); frozen_file(args.baseline,args.baseline_sha256)
@@ -463,8 +492,10 @@ def main(args):
         'test_tools_proof_sha256':sha((args.release/'candidate-test-tools.json').read_bytes()),
         'production_environment_loaded':False,'production_database_access':False},'synthetic_schema':schema,
         'production_services_modified':False,'public_assets_published':False,'production_databases_modified':False,'deployed':False}
-    if resuming:
+    if resuming is True:
         receipt['resume_lineage'] = resume.candidate_lineage(args, baseline)
+    elif resuming == 'seeded_repair':
+        receipt['seeded_repair_lineage'] = seeded_helper().candidate_lineage(args, baseline)
     save(args.release/'candidate.json',receipt)
     print(json.dumps({'stage':receipt['stage'],'image_id':image,'tests':total,'candidate_sha256':sha((args.release/'candidate.json').read_bytes()),'deployed':False},sort_keys=True))
 
@@ -475,6 +506,7 @@ if __name__=='__main__':
     for name in ('freeze','manifest','payload','baseline','test-wheel-manifest'):parser.add_argument('--'+name+'-sha256',required=True)
     for name in ('resume-schema-state', 'rollback-state'):
         parser.add_argument('--'+name,type=Path);parser.add_argument('--'+name+'-sha256')
+    parser.add_argument('--seeded-api-state',type=Path);parser.add_argument('--seeded-api-state-sha256')
     try:main(parser.parse_args())
     except Exception as error:
         code=str(error) if isinstance(error,(PrepareError,builder.PayloadError,live.PreflightError,guard.GuardError,resume.ResumeError)) and re.fullmatch('[A-Z0-9_]+',str(error)) else 'CANDIDATE_PREPARATION_FAILED'

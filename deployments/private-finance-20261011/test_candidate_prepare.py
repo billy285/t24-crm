@@ -19,6 +19,10 @@ import candidate_prepare as candidate
 
 class CandidateTests(unittest.TestCase):
     def setUp(self):
+        # main intentionally seals its operator process umask; synthetic tests
+        # must restore it so unrelated mode-rejection tests remain meaningful.
+        previous_umask = os.umask(0o077); os.umask(previous_umask)
+        self.addCleanup(os.umask, previous_umask)
         temporary = tempfile.TemporaryDirectory(); self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name).resolve(); self.root.chmod(0o700)
         self.files = {'backend/services/private_workspace.py': b'private module',
@@ -129,6 +133,144 @@ class CandidateTests(unittest.TestCase):
             with self.assertRaisesRegex(candidate.PrepareError, 'EXACT_RETAINED_TEST_WHEEL_MANIFEST_HASH_REQUIRED'):
                 candidate.main(SimpleNamespace(test_wheel_manifest_sha256='a' * 64))
             preflight.assert_not_called()
+
+    def test_seeded_repair_requires_both_explicit_flags_and_rejects_any_absent_stripe_resume_flag(self):
+        for fields in ({'seeded_api_state': self.root/'api-state.json'}, {'seeded_api_state_sha256': 'a'*64}):
+            with self.subTest(fields=list(fields)), mock.patch.object(candidate.live, 'preflight') as ordinary, \
+                 mock.patch.object(candidate.resume, 'preflight') as absent, mock.patch.object(candidate, 'seeded_helper') as repair:
+                with self.assertRaisesRegex(candidate.PrepareError, 'EXPLICIT_SEEDED_API_STATE_AND_HASH_REQUIRED_TOGETHER'):
+                    candidate.checked_running_baseline(SimpleNamespace(**fields), {})
+                ordinary.assert_not_called(); absent.assert_not_called(); repair.assert_not_called()
+        for name in ('resume_schema_state', 'resume_schema_state_sha256', 'rollback_state', 'rollback_state_sha256'):
+            args = SimpleNamespace(seeded_api_state=self.root/'api-state.json', seeded_api_state_sha256='a'*64,
+                **{name: 'explicit-other-path'})
+            with self.subTest(name=name), mock.patch.object(candidate, 'seeded_helper') as repair:
+                with self.assertRaisesRegex(candidate.PrepareError, 'SEEDED_REPAIR_AND_ABSENT_STRIPE_RESUME_ARE_MUTUALLY_EXCLUSIVE'):
+                    candidate.checked_running_baseline(args, {})
+                repair.assert_not_called()
+
+    def test_seeded_repair_uses_exact_ancestor_readonly_preflight_and_preserves_ordinary_dispatch(self):
+        args = SimpleNamespace(seeded_api_state=self.root/'api-state.json', seeded_api_state_sha256='a'*64)
+        helper = candidate.seeded_helper()
+        baseline = {'format_version': 1, 'stage': helper.STAGE, 'mutation_performed': False,
+            'stripe_authorization': {'encrypted_credentials_sha256': 'b'*64}}
+        with mock.patch.object(helper, 'preflight', return_value=baseline) as read, \
+             mock.patch.object(candidate.live, 'preflight') as ordinary, mock.patch.object(candidate.resume, 'preflight') as absent:
+            self.assertEqual(candidate.checked_running_baseline(args, baseline), 'seeded_repair')
+            read.assert_called_once_with(api_state=args.seeded_api_state, api_state_sha256=args.seeded_api_state_sha256)
+            ordinary.assert_not_called(); absent.assert_not_called()
+            for damaged in ({**baseline, 'stage': candidate.resume.STAGE},
+                {**baseline, 'mutation_performed': True}, {**baseline, 'stripe_authorization': {'encrypted_credentials_sha256': 'c'*64}}):
+                with self.subTest(damaged=damaged), self.assertRaisesRegex(helper.RepairError, 'FROZEN_SEEDED_REPAIR_BASELINE_DRIFT'):
+                    candidate.checked_running_baseline(args, damaged)
+        with mock.patch.object(candidate.live, 'preflight', return_value={'stage': 'old'}) as ordinary, \
+             mock.patch.object(candidate.live, 'compare_baseline') as compare, mock.patch.object(candidate, 'seeded_helper') as repair:
+            self.assertIs(candidate.checked_running_baseline(SimpleNamespace(), {'stage': 'old'}), False)
+            ordinary.assert_called_once(); compare.assert_called_once(); repair.assert_not_called()
+
+    def test_seeded_repair_refuses_frozen_test_minimum_below_accepted_private_suite(self):
+        args = SimpleNamespace(test_wheel_manifest_sha256=candidate.BASE_WHEEL_MANIFEST_SHA,
+            freeze=Path('synthetic'), freeze_sha256='a'*64, manifest=Path('synthetic'), manifest_sha256='b'*64,
+            payload=Path('synthetic'), payload_sha256='c'*64, baseline=Path('synthetic'), baseline_sha256='d'*64)
+        with mock.patch.object(candidate, 'frozen_file', return_value=b'{}'), \
+             mock.patch.object(candidate.builder, 'freeze', return_value={'backend_regression_tests_minimum': 844}), \
+             mock.patch.object(candidate, 'checked_payload'), \
+             mock.patch.object(candidate, 'checked_running_baseline', return_value='seeded_repair'), \
+             mock.patch.object(candidate.json, 'loads', return_value={'frozen_manifest_sha256': args.freeze_sha256}), \
+             mock.patch.object(candidate.Runner, 'isolated') as isolated:
+            with self.assertRaisesRegex(candidate.PrepareError, 'SEEDED_REPAIR_REQUIRES_ALL_845_PRIVATE_REGRESSIONS'):
+                candidate.main(args)
+            isolated.assert_not_called()
+
+    def run_seeded_candidate(self, *, post_build_drift=False, actual_tests=846):
+        """Real protected payload/receipt files; all Docker execution is fictional."""
+        frozen = {**self.frozen, 'backend_regression_tests_minimum': 846}
+        frozen_blob = (json.dumps(frozen, sort_keys=True)+'\n').encode()
+        archive = self.archive()
+        manifest = {**self.manifest, 'frozen_manifest_sha256': candidate.sha(frozen_blob),
+            'payload_sha256': candidate.sha(archive), 'backend_regression_tests_expected_minimum': 846}
+        baseline = {'format_version': 1, 'stage': candidate.seeded_helper().STAGE, 'mutation_performed': False,
+            'ancestor_api_state': str(self.root/'ancestor-api-state.json'), 'ancestor_api_state_sha256': 'f'*64,
+            'stripe_authorization': {'encrypted_credentials_sha256': 'b'*64}}
+        baseline_blob = ('  '+json.dumps(baseline, indent=1)+'\n').encode()
+        args = SimpleNamespace(test_wheel_manifest_sha256=candidate.BASE_WHEEL_MANIFEST_SHA,
+            release=self.root/('private-finance-'+frozen['source_sha'][:12]+'-20261011-candidate'),
+            seeded_api_state=Path(baseline['ancestor_api_state']), seeded_api_state_sha256=baseline['ancestor_api_state_sha256'])
+        for name, blob in (('freeze', frozen_blob), ('manifest', json.dumps(manifest).encode()),
+                           ('payload', archive), ('baseline', baseline_blob)):
+            path = self.root/(name+'.fixture'); path.write_bytes(blob); path.chmod(0o600)
+            setattr(args, name, path); setattr(args, name+'_sha256', candidate.sha(blob))
+        image = 'sha256:'+'d'*64; packages = {'sha256': 'e'*64, 'files': 123}
+        runtime = {'python': candidate.BASE_PYTHON_VERSION,
+            'packages': {**candidate.BASE_PACKAGE_VERSIONS, **{name: None for name in candidate.WHEEL_VERSIONS}}}
+        scans = {'base-test-runtime': runtime, 'base-backend': {}, 'base-packages': packages, 'base-static': {},
+            'candidate-backend': candidate.expected_backend({}, manifest), 'candidate-packages': packages,
+            'candidate-static': candidate.expected_dist({}, manifest)}
+        runner = mock.Mock(); runner.scan.side_effect = lambda stage, *_: scans[stage]
+        runner.run.side_effect = lambda stage, *_args, **_kwargs: (image+'\n').encode() if stage == 'candidate-image-id' else b''
+        def isolated(stage, *_args, **_kwargs):
+            xml = ('<testsuite tests="'+str(actual_tests)+'" failures="0" errors="0" skipped="0">'+
+                '<testcase/>'*actual_tests+'</testsuite>').encode()
+            path = args.release/'test-results/regressions.xml'; path.write_bytes(xml); path.chmod(0o644)
+            return b'synthetic-only'
+        runner.isolated.side_effect = isolated
+        helper = candidate.seeded_helper(); observed = [baseline, {**baseline, 'unexpected_sync': True} if post_build_drift else baseline]
+        # All ancestor identity/receipt data is delegated to its separate verifier.
+        # This test proves its exact state is checked before and after the build.
+        read = mock.Mock(side_effect=observed)
+        lineage = {'format_version': 1, 'ancestor_api_state': baseline['ancestor_api_state'],
+            'ancestor_api_state_sha256': baseline['ancestor_api_state_sha256'],
+            'new_baseline': str(args.release/'repair-baseline.json'), 'new_baseline_sha256': args.baseline_sha256}
+        original_path = Path
+        def host_path(value):
+            return self.root if value == '/opt/t24-crm/releases' else original_path(value)
+        original_file = candidate.frozen_file
+        def frozen_file(path, expected, maximum=64*1024**2):
+            return b'{}' if path == candidate.BASE_TEST_ROOT/'test-wheel-manifest.json' else original_file(path, expected, maximum)
+        with mock.patch.object(candidate, 'Path', side_effect=host_path), mock.patch.object(candidate, 'frozen_file', side_effect=frozen_file), \
+             mock.patch.object(candidate.builder, 'freeze', return_value=frozen), \
+             mock.patch.object(candidate.shutil, 'disk_usage', return_value=SimpleNamespace(free=5*1024**3)), \
+             mock.patch.object(candidate, 'Runner', return_value=runner), \
+             mock.patch.object(candidate, 'inspect_image', side_effect=[{'Config': {'Env': []}, 'RootFS': {'Layers': ['base']}},
+                 {'RootFS': {'Layers': ['base', 'candidate']}}]), \
+             mock.patch.object(candidate, 'wheel_tools', return_value=['pytest==8.4.2']), \
+             mock.patch.object(candidate.subprocess, 'run', return_value=SimpleNamespace(returncode=1)), \
+             mock.patch.object(candidate, 'pin_base_image', return_value='t24-private-finance-base:'+frozen['source_sha'][:12]+'-'+'b'*12), \
+             mock.patch.object(candidate, 'verify_base_pin'), \
+             mock.patch.object(candidate, 'schema_rehearsal', return_value={'schema_objects': {}, 'production_database_access': False}), \
+             mock.patch.object(helper, 'preflight', read), mock.patch.object(helper, 'candidate_lineage', return_value=lineage), \
+             mock.patch.object(candidate.resume, 'preflight') as absent, mock.patch.object(candidate.live, 'preflight') as ordinary, \
+             redirect_stdout(io.StringIO()):
+            try: candidate.main(args)
+            finally: absent.assert_not_called(); ordinary.assert_not_called()
+        self.assertEqual(read.call_count, 2)
+        return args, baseline_blob, lineage, runner
+
+    def test_seeded_candidate_preserves_raw_baseline_emits_exclusive_lineage_and_keeps_isolated_regressions(self):
+        args, raw, lineage, runner = self.run_seeded_candidate()
+        self.assertEqual((args.release/'repair-baseline.json').read_bytes(), raw)
+        self.assertEqual(candidate.sha(raw), args.baseline_sha256)
+        receipt = json.loads((args.release/'candidate.json').read_bytes())
+        self.assertEqual(receipt['seeded_repair_lineage'], lineage)
+        self.assertNotIn('resume_lineage', receipt); self.assertFalse((args.release/'resume-baseline.json').exists())
+        self.assertFalse(receipt['production_services_modified']); self.assertFalse(receipt['production_databases_modified'])
+        self.assertEqual(receipt['candidate_regressions']['minimum'], 846)
+        self.assertEqual(receipt['candidate_regressions']['tests'], 846)
+        self.assertEqual(runner.isolated.call_args.args[0], 'candidate-regressions')
+        self.assertFalse(receipt['candidate_regressions']['production_database_access'])
+        self.assertNotIn('api_key', json.dumps(receipt))
+
+    def test_seeded_candidate_refuses_baseline_drift_after_build_without_candidate_receipt(self):
+        with self.assertRaisesRegex(candidate.seeded_helper().RepairError, 'FROZEN_SEEDED_REPAIR_BASELINE_DRIFT'):
+            self.run_seeded_candidate(post_build_drift=True)
+        release = self.root/('private-finance-'+self.frozen['source_sha'][:12]+'-20261011-candidate')
+        self.assertFalse((release/'candidate.json').exists())
+
+    def test_seeded_candidate_requires_frozen_regression_count_without_skips(self):
+        with self.assertRaisesRegex(candidate.PrepareError, 'COMPLETE_CANDIDATE_REGRESSIONS_REQUIRED'):
+            self.run_seeded_candidate(actual_tests=845)
+        release = self.root/('private-finance-'+self.frozen['source_sha'][:12]+'-20261011-candidate')
+        self.assertFalse((release/'candidate.json').exists())
 
     def test_offline_loaded_test_tools_cover_nine_without_downgrading_base(self):
         versions = {**candidate.BASE_PACKAGE_VERSIONS, **candidate.WHEEL_VERSIONS}
