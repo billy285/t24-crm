@@ -167,7 +167,7 @@ test('preference and feedback session changes remain authentication failures', a
   await assert.rejects(() => f.api.privateWorkspaceApi.mailFeedback('synthetic', 'important'), error => error.status === 401);
 });
 
-test('only private source sync extends the per-request timeout; other private routes retain defaults', async () => {
+test('private source sync extends its timeout while existing private reads and mutations retain defaults', async () => {
   const f = fixture(() => ({ sources: [], items: [], total: 0, counts: { created: 0, updated: 0 } }));
   await f.api.privateWorkspaceApi.overview();
   await f.api.privateWorkspaceApi.preferences();
@@ -216,4 +216,23 @@ test('sync session denial keeps authentication handling instead of an uncertain-
   }
   const ordinary = fixture(() => { throw { code: 'ECONNABORTED', message: 'synthetic trace' }; });
   await assert.rejects(() => ordinary.api.privateWorkspaceApi.overview(), error => error.message === '操作暂时无法完成，请重试。');
+});
+
+test('private mail translation preview requests deduplicate and cap at ten without requesting body', async () => {
+  const f = fixture(() => ({ configured: true, items: [] }));
+  await f.api.privateWorkspaceApi.translateMailPreviews(['same', 'same', ...Array.from({ length: 20 }, (_, index) => `synthetic-${index}`)]);
+  const request = f.requests[0]; assert.equal(request.url, '/api/v1/private-workspace/mail-translations/batch'); assert.equal(request.method, 'POST'); assert.equal(request.data.item_ids.length, 10); assert.equal(new Set(request.data.item_ids).size, 10); assert.equal(request.options.timeout, 65000);
+  assert.equal(request.data.mode, undefined);
+});
+test('full-body mail translation uses the private item endpoint and explicit body mode', async () => {
+  const f = fixture(() => ({ configured: false, item_id: 'synthetic/id', translation: { state: 'unavailable' } }));
+  await f.api.privateWorkspaceApi.translateMailBody('synthetic/id');
+  assert.equal(f.requests[0].url, '/api/v1/private-workspace/items/synthetic%2Fid/mail-translation'); assert.equal(f.requests[0].data.mode, 'body'); assert.equal(f.requests[0].options.timeout, 65000);
+});
+test('Chinese mail uses only ready nonempty translation and retains names and original fallbacks', () => {
+  const item = { source_id: 'gmail', title: 'Original Stripe subject', summary: 'Original snippet', mail_translation: { state: 'ready', title_zh: 'Stripe 付款提醒', summary_zh: '' } };
+  assert.equal(api.privateMailChinese(item, 'title'), 'Stripe 付款提醒'); assert.equal(api.privateMailChinese(item, 'summary'), 'Original snippet');
+  item.mail_translation.state = 'pending'; assert.equal(api.privateMailChinese(item, 'title'), 'Original Stripe subject');
+  item.mail_translation.state = 'ready'; item.source_id = 'stripe'; assert.equal(api.privateMailChinese(item, 'title'), 'Original Stripe subject');
+  assert.ok(!api.privateMailTranslationNotice('raw-secret-details').includes('raw-secret-details'));
 });

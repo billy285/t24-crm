@@ -24,7 +24,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
   class SyntheticDate extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
   const hooks = [], effects = [], requests = [], listeners = new Map(), modules = new Map();
   const params = new URLSearchParams({ view: initialView });
-  let preferencesHandler, syncHandler;
+  let preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler;
   const preferences = { sync_interval_seconds: 2700, gmail: { topics: ['finance', 'security'], watch_senders: [], watch_keywords: [], muted_senders: [] } };
   const source = { id: 'gmail', status: 'connected', capabilities: [], missing_configuration: [], last_sync: null, error: null };
   const react = {
@@ -52,6 +52,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
       if (name === '@/lib/private-workspace-api') return load('lib/private-workspace-api.ts');
       if (name === '@/lib/private-ads') return load('lib/private-ads.ts');
       if (name === './PrivateAdsDashboard') return load('pages/PrivateAdsDashboard.tsx');
+      if (name === './PrivateMailContent') return load('pages/PrivateMailContent.tsx');
       if (name === '@/lib/use-dialog-draft') return load('lib/use-dialog-draft.ts');
       if (name === './use-unsaved-changes') return load('lib/use-unsaved-changes.ts');
       if (name.startsWith('@/components/ui/')) return new Proxy({}, { get: (_, key) => key === 'Dialog' || key === 'Sheet' ? props => props.open ? props.children : null : props => jsx.jsx('div', props) });
@@ -66,6 +67,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
           return { data: structuredClone(preferences) };
         }
         if (url.pathname.endsWith('/sync')) return { data: syncHandler ? await syncHandler(request) : { source, counts: { created: 0, updated: 0 } } };
+        if (url.pathname.endsWith('/mail-translations/batch')) return { data: translationPreviewHandler ? await translationPreviewHandler(request) : { configured: false, items: [], code: 'not_configured' } };
+        if (url.pathname.endsWith('/mail-translation')) return { data: translationBodyHandler ? await translationBodyHandler(request) : { configured: false, item_id: decodeURIComponent(url.pathname.split('/').at(-2)), translation: { state: 'unavailable', title_zh: null, summary_zh: null, body_available: false, truncated: false }, code: 'not_configured' } };
         if (url.pathname.endsWith('/mail-feedback')) {
           const id = decodeURIComponent(url.pathname.split('/').at(-2));
           const item = items.find(value => value.id === id); item.mail_relevance.feedback = request.data.feedback;
@@ -102,6 +105,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     button: label => all().find(node => node.type === 'button' && text(node).trim() === label),
     setPreferencesHandler: handler => { preferencesHandler = handler; },
     setSyncHandler: handler => { syncHandler = handler; },
+    setTranslationPreviewHandler: handler => { translationPreviewHandler = handler; },
+    setTranslationBodyHandler: handler => { translationBodyHandler = handler; },
     advanceTime(milliseconds) { now += milliseconds; for (const callback of timers.values()) callback(); },
     invalidate() { epoch = 'synthetic-new-account'; for (const listener of listeners.get('synthetic-auth-invalidated') || []) listener(); },
     unmount() { hooks.forEach(hook => hook?.cleanup?.()); },
@@ -340,4 +345,85 @@ test('Ads detail shows the actual platform configuration reason and actual versu
   f.nodes().find(node => node.props.className === 'pw-ads-row').props.onClick(); await f.flush();
   assert.ok(f.text().includes('预算配置错误')); assert.ok(f.text().includes('近7日实际 CPAUSD 3.33')); assert.ok(f.text().includes('当前目标 CPAUSD 10.00'));
   assert.ok(!f.text().includes('BUDGET_MISCONFIGURED')); f.unmount();
+});
+
+const translated = (id, extra = {}) => ({ state: 'ready', title_zh: `中文 ${id} · Stripe`, summary_zh: `中文摘要 ${id}`, body_available: false, truncated: false, ...extra });
+test('Gmail automatically translates only the first ten and each manual next batch stays bounded', async () => {
+  const f = fixture(Array.from({ length: 149 }, (_, index) => mail(`translate-${index}`)));
+  f.setTranslationPreviewHandler(request => ({ configured: true, items: request.data.item_ids.map(id => ({ item_id: id, translation: translated(id) })) }));
+  await f.flush(); await f.flush();
+  let calls = f.requests.filter(request => request.url.endsWith('/mail-translations/batch'));
+  assert.equal(calls.length, 1); assert.equal(calls[0].data.item_ids.length, 10); assert.ok(f.text().includes('中文 translate-0 · Stripe')); assert.ok(f.text().includes('中文摘要 translate-0'));
+  f.button('翻译更多摘要').props.onClick(); await f.flush();
+  calls = f.requests.filter(request => request.url.endsWith('/mail-translations/batch'));
+  assert.equal(calls.length, 2); assert.equal(calls[1].data.item_ids.length, 10); assert.ok(calls[1].data.item_ids.every(id => !calls[0].data.item_ids.includes(id)));
+  f.button('每日摘要0').props.onClick(); await f.flush(); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-translations/batch')).length, 2); f.unmount();
+});
+test('unconfigured translation keeps original mail and stops retries or next-batch actions', async () => {
+  const f = fixture(Array.from({ length: 15 }, (_, index) => mail(`unconfigured-${index}`))); await f.flush(); await f.flush();
+  assert.ok(f.text().includes('中文翻译尚未开通')); assert.ok(f.text().includes('Synthetic unconfigured-0')); assert.equal(f.button('翻译更多摘要'), undefined);
+  assert.equal(f.requests.filter(request => request.url.endsWith('/mail-translations/batch')).length, 1);
+  f.nodes().find(node => node.props.className === 'pw-mail-row').props.onClick(); await f.flush(); assert.equal(f.button('翻译正文').props.disabled, true); f.unmount();
+});
+test('body translation keeps summary distinct, retains the original while waiting and switches Chinese or original body', async () => {
+  const item = mail('body'); item.mail_translation = translated('body');
+  const f = fixture([item]); const pending = deferred(); f.setTranslationBodyHandler(() => pending.promise); await f.flush();
+  f.nodes().find(node => node.props.className === 'pw-mail-row').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('邮件摘要')); assert.ok(!f.text().includes('邮件正文')); assert.ok(f.text().includes('当前显示邮件摘要，正文需单独读取与翻译'));
+  const action = f.button('翻译正文').props.onClick; action(); action(); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/mail-translation')).length, 1); assert.ok(f.text().includes('正在读取并翻译正文'));
+  f.button('原文').props.onClick(); await f.flush(); assert.ok(f.text().includes('Original') === false); assert.ok(f.text().includes('Synthetic snippet'));
+  pending.resolve({ configured: true, item_id: item.id, translation: translated('body', { body_original: 'Original full body <script>literal only</script> USD 263.94', body_zh: '中文完整正文 · USD 263.94', body_available: true, truncated: true }) }); await f.flush();
+  assert.ok(f.text().includes('邮件正文仅展示已读取的部分')); assert.ok(f.text().includes('Original full body <script>literal only</script>'));
+  assert.ok(!f.nodes().some(node => node.props.dangerouslySetInnerHTML));
+  f.button('中文').props.onClick(); await f.flush(); assert.ok(f.text().includes('中文完整正文 · USD 263.94'));
+  f.button('今日重点').props.onClick(); await f.flush(); assert.ok(!f.text().includes('Original full body')); assert.ok(!f.text().includes('中文完整正文')); assert.ok(f.text().includes('中文 body · Stripe')); f.unmount();
+});
+test('cached Chinese previews do not trigger another automatic translation and original title remains available', async () => {
+  const item = mail('cached'); item.mail_translation = translated('cached'); const f = fixture([item]); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/mail-translations/batch')).length, 0);
+  f.nodes().find(node => node.props.className === 'pw-mail-row').props.onClick(); await f.flush(); f.button('原文').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('Synthetic cached')); assert.ok(f.text().includes('Synthetic snippet')); f.unmount();
+});
+test('a delayed translation reply after logout cannot repopulate private mail or body', async () => {
+  const f = fixture(); const pending = deferred(); f.setTranslationPreviewHandler(() => pending.promise); await f.flush();
+  f.invalidate(); await f.flush(); pending.resolve({ configured: true, items: [{ item_id: 'message', translation: translated('secret') }] }); await f.flush();
+  assert.ok(f.text().includes('此空间仅对本人开放')); assert.ok(!f.text().includes('中文 secret')); f.unmount();
+  const item = mail('body-logout'); item.mail_translation = translated('body-logout'); const body = fixture([item]); const later = deferred(); body.setTranslationBodyHandler(() => later.promise); await body.flush();
+  body.nodes().find(node => node.props.className === 'pw-mail-row').props.onClick(); await body.flush(); body.button('翻译正文').props.onClick(); await body.flush(); body.invalidate(); await body.flush();
+  later.resolve({ configured: true, item_id: item.id, translation: translated('body-logout', { body_available: true, body_original: 'Private original', body_zh: '私人正文' }) }); await body.flush();
+  assert.ok(!body.text().includes('私人正文')); assert.ok(!body.text().includes('Private original')); body.unmount();
+});
+test('quota exhaustion stops further list translation and failures never expose upstream details', async () => {
+  const f = fixture(Array.from({ length: 15 }, (_, index) => mail(`quota-${index}`)));
+  f.setTranslationPreviewHandler(() => ({ configured: true, items: [], code: 'limit_reached' })); await f.flush();
+  assert.ok(f.text().includes('本月翻译额度已用完')); assert.equal(f.button('翻译更多摘要'), undefined); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-translations/batch')).length, 1); f.unmount();
+  const failed = fixture(); failed.setTranslationPreviewHandler(() => { throw new Error('RAW PROVIDER SECRET'); }); await failed.flush();
+  assert.ok(failed.text().includes('可先查看原文')); assert.ok(!failed.text().includes('RAW PROVIDER SECRET')); failed.unmount();
+});
+test('preview replies cannot display cached body before an explicit body request', async () => {
+  const f = fixture(); f.setTranslationPreviewHandler(request => ({ configured: true, items: request.data.item_ids.map(id => ({ item_id: id, translation: translated(id, { body_available: true, body_original: 'Unexpected private body', body_zh: '不应提前出现正文' }) })) }));
+  await f.flush(); f.nodes().find(node => node.props.className === 'pw-mail-row').props.onClick(); await f.flush();
+  assert.ok(!f.text().includes('Unexpected private body')); assert.ok(!f.text().includes('不应提前出现正文')); assert.ok(!f.text().includes('邮件正文')); assert.ok(f.button('翻译正文')); f.unmount();
+});
+test('monthly quota still allows the user to open a previously cached full-body translation', async () => {
+  const uncached = mail('quota-trigger'); const cached = mail('cached-body'); cached.mail_translation = translated('cached-body');
+  const f = fixture([uncached, cached]); f.setTranslationPreviewHandler(() => ({ configured: true, items: [], code: 'limit_reached' }));
+  f.setTranslationBodyHandler(() => ({ configured: true, item_id: cached.id, translation: translated('cached-body', { body_available: true, body_original: 'Cached original', body_zh: '已缓存的中文正文' }) }));
+  await f.flush(); f.nodes().find(node => node.props.className === 'pw-mail-row' && f.textOf(node).includes('中文 cached-body')).props.onClick(); await f.flush();
+  assert.equal(f.button('翻译正文').props.disabled, false); f.button('翻译正文').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('已缓存的中文正文')); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-translation')).length, 1); f.unmount();
+});
+test('a successful preview-only body response clearly explains that the message has no readable body', async () => {
+  const item = mail('no-body'); item.mail_translation = translated('no-body'); const f = fixture([item]);
+  f.setTranslationBodyHandler(() => ({ configured: true, item_id: item.id, translation: translated('no-body') })); await f.flush();
+  f.nodes().find(node => node.props.className === 'pw-mail-row').props.onClick(); await f.flush(); f.button('翻译正文').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('未找到可翻译正文，可在 Gmail 查看完整邮件')); assert.ok(!f.text().includes('邮件正文')); f.unmount();
+});
+test('a preview response arriving after an explicit body response cannot replace the full body', async () => {
+  const item = mail('race'); const f = fixture([item]); const pending = deferred();
+  f.setTranslationPreviewHandler(() => pending.promise); f.setTranslationBodyHandler(() => ({ configured: true, item_id: item.id, translation: translated('race', { body_available: true, body_original: 'Race original', body_zh: '正文保持可见' }) }));
+  await f.flush(); f.nodes().find(node => node.props.className === 'pw-mail-row').props.onClick(); await f.flush(); f.button('翻译正文').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('正文保持可见')); pending.resolve({ configured: true, items: [{ item_id: item.id, translation: translated('race') }] }); await f.flush();
+  assert.ok(f.text().includes('正文保持可见')); f.unmount();
 });

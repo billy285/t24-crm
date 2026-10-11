@@ -399,3 +399,23 @@
 @media (pointer: coarse) { .pw-ads-filters button, .pw-ads-search { min-height: 44px; } }
 
 .pw-ads-actual-reasons { margin: 8px 0 0; color: var(--pw-warning); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+
+.pw-mail-translation-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 14px; margin: -12px 0 18px; }
+.pw-mail-translation-toolbar:empty { display: none; }
+.pw-mail-translation-toolbar p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--pw-muted); }
+.pw-mail-translation-toolbar .pw-text-button { margin-left: auto; font-size: 12px; }
+.pw-mail-content { margin: 20px 0 24px; min-width: 0; }
+.pw-mail-language { display: inline-flex; align-items: center; gap: 4px; padding: 4px; border-radius: 10px; background: var(--pw-neutral); }
+.pw-mail-language button { min-height: 36px; padding: 7px 15px; border: 0; border-radius: 7px; background: transparent; color: var(--pw-muted); font-size: 12px; }
+.pw-mail-language button[aria-pressed="true"] { color: var(--pw-blue); background: var(--pw-surface); }
+.pw-mail-content-title { margin: 18px 0; font-size: 15px; font-weight: 500; line-height: 1.6; overflow-wrap: anywhere; }
+.pw-mail-summary, .pw-mail-full-body { margin: 17px 0; min-width: 0; }
+.pw-mail-content h4 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; color: var(--pw-muted); font-size: 12px; font-weight: 400; }
+.pw-mail-content h4 span { font-size: 12px; color: var(--pw-warning); }
+.pw-mail-summary > p, .pw-mail-full-body > p { margin: 0; font-size: 14px; line-height: 1.85; overflow-wrap: anywhere; white-space: pre-wrap; }
+.pw-mail-full-body { padding-top: 18px; border-top: 1px dashed var(--pw-line); }
+.pw-mail-translation-hint, .pw-mail-translation-status { margin: 12px 0; font-size: 12px; line-height: 1.75; color: var(--pw-muted); overflow-wrap: anywhere; }
+.pw-mail-translation-status { display: flex; gap: 7px; align-items: flex-start; }
+.pw-mail-translation-status svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 3px; }
+.pw-mail-language button:focus-visible { outline: 3px solid var(--pw-blue); outline-offset: 2px; }
+@media (pointer: coarse) { .pw-mail-language button { min-height: 44px; } }

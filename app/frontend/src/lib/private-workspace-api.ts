@@ -44,6 +44,27 @@ export interface PrivateAdsHealth {
 export type PrivateMailBucket = 'urgent' | 'today' | 'digest' | 'low';
 export type PrivateMailTopic = 'finance' | 'ads' | 'security' | 'business';
 export type PrivateMailFeedback = 'important' | 'not_relevant' | null;
+export interface PrivateMailTranslation {
+  state: 'ready' | 'failed' | 'pending' | 'unavailable';
+  title_zh: string | null;
+  summary_zh: string | null;
+  body_zh?: string | null;
+  body_original?: string | null;
+  body_available: boolean;
+  truncated: boolean;
+  updated_at?: string | null;
+}
+export interface PrivateMailTranslationResult {
+  configured: boolean;
+  item_id: string;
+  translation: PrivateMailTranslation;
+  code?: string;
+}
+export interface PrivateMailTranslationBatch {
+  configured: boolean;
+  items: { item_id: string; translation: PrivateMailTranslation }[];
+  code?: string;
+}
 export interface PrivateMailRelevance {
   bucket: PrivateMailBucket;
   category: PrivateMailTopic | 'general' | 'promotion';
@@ -112,6 +133,7 @@ export interface PrivateItem {
   action_status: PrivateActionStatus;
   snoozed_until: string | null;
   mail_relevance?: PrivateMailRelevance;
+  mail_translation?: PrivateMailTranslation;
 }
 
 export interface PrivateBalance {
@@ -207,11 +229,22 @@ export const privateWorkspaceApi = {
   create: (data: CreatePrivateItem) => request<{ item: PrivateItem }>('/items', 'POST', { ...data, source_id: 'manual', kind: 'task' }),
   update: (id: string, data: UpdatePrivateItem) => request<{ item: PrivateItem }>(`/items/${encodeURIComponent(id)}`, 'PATCH', data),
   mailFeedback: (id: string, feedback: PrivateMailFeedback, applyToSender = false) => request<{ item: PrivateItem }>(`/items/${encodeURIComponent(id)}/mail-feedback`, 'POST', { feedback, apply_to_sender: applyToSender }),
+  translateMailPreviews: (ids: string[]) => request<PrivateMailTranslationBatch>('/mail-translations/batch', 'POST', { item_ids: [...new Set(ids)].slice(0, 10) }, { timeout: 65_000 }),
+  translateMailBody: (id: string) => request<PrivateMailTranslationResult>(`/items/${encodeURIComponent(id)}/mail-translation`, 'POST', { mode: 'body' }, { timeout: 65_000 }),
   archive: (id: string) => request<{ item: PrivateItem }>(`/items/${encodeURIComponent(id)}`, 'DELETE'),
   connect: (id: PrivateSourceId) => request<PrivateConnectResult>(`/sources/${id}/connect`, 'POST'),
   disconnect: (id: PrivateSourceId) => request<{ source: PrivateSource }>(`/sources/${id}/disconnect`, 'POST'),
   sync: (id: PrivateSourceId) => request<PrivateSyncResult>(`/sources/${id}/sync`, 'POST', undefined, { timeout: 65_000 }),
 };
+
+export function privateMailChinese(item: PrivateItem, part: 'title' | 'summary'): string {
+  const translation = item.mail_translation;
+  const value = part === 'title' ? translation?.title_zh : translation?.summary_zh;
+  return item.source_id === 'gmail' && translation?.state === 'ready' && typeof value === 'string' && value.trim() ? value : item[part];
+}
+export function privateMailTranslationNotice(code?: string): string {
+  return ({ not_configured: '中文翻译尚未开通', limit_reached: '本月翻译额度已用完，可先查看原文', upstream_unavailable: '中文翻译暂时无法完成，可先查看原文', authorization_expired: 'Gmail 授权已过期，请在工作接入重新连接', body_unavailable: '未找到可翻译正文，可在 Gmail 查看完整邮件' } as Record<string, string>)[code || ''] || '中文翻译暂时无法完成，可先查看原文';
+}
 
 /** Older records remain visible without inventing a personal relevance judgment. */
 export function privateMailBucket(item: Pick<PrivateItem, 'mail_relevance'>): PrivateMailBucket {

@@ -132,6 +132,10 @@ async def test_other_admins_and_sales_are_denied_despite_signed_super_admin_clai
     assert (await value.client.get("/api/v1/private-workspace/access", headers=value.headers(employee_id))).json() == {"allowed": False}
     response = await value.client.get("/api/v1/private-workspace", headers=value.headers(employee_id))
     assert response.status_code == 403 and response.headers["cache-control"] == "no-store"
+    for path, payload in (("/mail-translations/batch", {"item_ids": ["00000000-0000-0000-0000-000000000001"]}),
+                          ("/items/00000000-0000-0000-0000-000000000001/mail-translation", {"mode": "body"})):
+        denied = await value.client.post("/api/v1/private-workspace" + path, headers=value.headers(employee_id), json=payload)
+        assert denied.status_code == 403 and denied.headers["cache-control"] == "no-store"
 
 
 @pytest.mark.asyncio

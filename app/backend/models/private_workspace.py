@@ -82,3 +82,31 @@ class PrivateSyncRun(PrivateWorkspaceBase):
     created_count = Column(Integer, nullable=False, default=0)
     updated_count = Column(Integer, nullable=False, default=0)
     error = Column(String(240), nullable=True)
+
+
+class PrivateMailTranslation(PrivateWorkspaceBase):
+    __tablename__ = "private_mail_translations"
+    # Mail text is encrypted; this index contains identifiers and hashes only.
+    cache_key = Column(String(64), primary_key=True)
+    owner_id = Column(String(64), nullable=False, index=True)
+    connection_id = Column(String(36), nullable=False)
+    generation = Column(Integer, nullable=False)
+    item_id = Column(String(36), nullable=False, index=True)
+    source_hash = Column(String(64), nullable=False)
+    mode = Column(String(12), nullable=False)
+    state = Column(String(16), nullable=False, default="pending")
+    lease_token = Column(String(64), nullable=True)
+    lease_until = Column(DateTime(timezone=True), nullable=True)
+    encrypted_content = Column(Text, nullable=True)
+    error_code = Column(String(40), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class PrivateTranslationUsage(PrivateWorkspaceBase):
+    __tablename__ = "private_translation_usage"
+    owner_id = Column(String(64), primary_key=True)
+    month = Column(String(7), primary_key=True)
+    # Reservations include failed/ambiguous requests; never risk undercounting.
+    characters = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

@@ -147,6 +147,35 @@ class PrivateMailRelevance(BaseModel):
     sender_verification: Literal["unverified"]
 
 
+class PrivateMailTranslationBatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    item_ids: list[str] = Field(min_length=1, max_length=10)
+
+    @field_validator("item_ids")
+    @classmethod
+    def validate_ids(cls, value):
+        from uuid import UUID
+        for item_id in value:
+            UUID(item_id)
+        return list(dict.fromkeys(value))
+
+
+class PrivateMailTranslationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["preview", "body"] = "body"
+
+
+class PrivateMailTranslationResponse(BaseModel):
+    state: Literal["ready", "failed", "pending", "unavailable"]
+    title_zh: str | None = None
+    summary_zh: str | None = None
+    body_zh: str | None = None
+    body_original: str | None = None
+    body_available: bool = False
+    truncated: bool = False
+    updated_at: str | None = None
+
+
 class PrivateItemResponse(BaseModel):
     id: str
     source_id: SourceId
@@ -164,3 +193,4 @@ class PrivateItemResponse(BaseModel):
     action_status: ActionStatus
     snoozed_until: datetime | None
     mail_relevance: PrivateMailRelevance | None = None
+    mail_translation: PrivateMailTranslationResponse | None = None

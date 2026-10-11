@@ -11,6 +11,7 @@ from dependencies.private_workspace import PrivateOwner, private_access_allowed,
 from models.private_workspace import PrivateItem
 from schemas.private_workspace import (
     ActionStatus, MailBucket, PrivateItemCreate, PrivateItemPatch, PrivateItemResponse, PrivateMailFeedbackCreate, PrivatePreferencesPatch, SourceId,
+    PrivateMailTranslationBatch, PrivateMailTranslationRequest,
 )
 from services.private_workspace import (
     complete_oauth, connect_source, disconnect_source, get_private_db, item_response, list_items,
@@ -125,6 +126,27 @@ async def mail_feedback(
 ):
     return await set_mail_feedback(private_db, owner.employee_id, item_id, payload.feedback,
                                    apply_to_sender=payload.apply_to_sender)
+
+
+@router.post("/mail-translations/batch")
+async def mail_translation_batch(
+    payload: PrivateMailTranslationBatch,
+    owner: PrivateOwner = Depends(require_private_owner),
+    private_db: AsyncSession = Depends(get_private_db),
+):
+    from services.private_mail_translation_service import translate_batch
+    return await translate_batch(private_db, owner.employee_id, payload.item_ids)
+
+
+@router.post("/items/{item_id}/mail-translation")
+async def mail_translation(
+    item_id: str,
+    payload: PrivateMailTranslationRequest,
+    owner: PrivateOwner = Depends(require_private_owner),
+    private_db: AsyncSession = Depends(get_private_db),
+):
+    from services.private_mail_translation_service import translate_item
+    return await translate_item(private_db, owner.employee_id, item_id, mode=payload.mode)
 
 
 @router.get("/preferences")

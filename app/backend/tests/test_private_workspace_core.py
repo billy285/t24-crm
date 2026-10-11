@@ -156,7 +156,8 @@ async def test_empty_state_and_physical_database_isolation(workspace):
     assert result["items"] == [] and result["balances"] == [] and result["last_sync"] is None
     assert [source["id"] for source in result["sources"]] == list(service.SOURCE_IDS)
     assert "private_items" not in Base.metadata.tables
-    assert set(PrivateWorkspaceBase.metadata.tables) == {"private_connections", "private_items", "private_preferences", "private_sync_runs"}
+    assert set(PrivateWorkspaceBase.metadata.tables) == {"private_connections", "private_items", "private_preferences", "private_sync_runs",
+                                                        "private_mail_translations", "private_translation_usage"}
     assert stat.S_IMODE(workspace.private_path.stat().st_mode) == 0o600
     assert stat.S_IMODE(workspace.private_path.parent.stat().st_mode) == 0o700
     async with workspace.business_sessions() as db:

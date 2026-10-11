@@ -371,13 +371,16 @@ async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, ac
         computed.sort(key=lambda item: BUCKETS.index(item["mail_relevance"]["bucket"]))
         if mail_bucket:
             computed = [item for item in computed if item["mail_relevance"]["bucket"] == mail_bucket]
-        return {"items": computed[:limit], "total": len(computed), "mail_counts": counts}
+        from services.private_mail_translation_service import attach_cached_previews
+        return {"items": await attach_cached_previews(private_db, owner_id, computed[:limit]),
+                "total": len(computed), "mail_counts": counts}
     total = (await private_db.execute(select(func.count()).select_from(PrivateItem).where(*conditions))).scalar_one()
     stored = await stored_preferences_for(private_db, owner_id)
     rows = (await private_db.execute(select(PrivateItem).where(*conditions).order_by(
         PrivateItem.created_at.desc(), PrivateItem.id,
     ).limit(limit))).scalars().all()
-    return {"items": [item_response(row, stored) for row in rows], "total": total}
+    from services.private_mail_translation_service import attach_cached_previews
+    return {"items": await attach_cached_previews(private_db, owner_id, [item_response(row, stored) for row in rows]), "total": total}
 
 
 async def overview_items(private_db, owner_id: str, *, reference_time=None):
@@ -426,7 +429,8 @@ async def workspace_overview(private_db, owner_id: str):
                 balances.append({"source_id": connection.source_id, "currency": value["currency"],
                                  "available_minor": value["available_minor"], "pending_minor": value["pending_minor"]})
     times = [_aware(row.last_sync) for row in connections if row.last_sync]
-    return {"sources": sources, "items": await overview_items(private_db, owner_id),
+    from services.private_mail_translation_service import attach_cached_previews
+    return {"sources": sources, "items": await attach_cached_previews(private_db, owner_id, await overview_items(private_db, owner_id)),
             "balances": balances, "last_sync": max(times) if times else None}
 
 

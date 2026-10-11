@@ -6,10 +6,15 @@ Ads' fixed search RPC uses POST, but no provider mutation endpoint is permitted.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from email.header import decode_header
 from email.utils import getaddresses
+from email.message import Message
+from html.parser import HTMLParser
 import json
 import os
 import re
@@ -29,6 +34,10 @@ MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_REQUESTS = 90
 MAX_SYNC_SECONDS = 45
 GMAIL_LIMIT = 80
+MAIL_BODY_MAX_CHARS = 50000
+MAIL_BODY_MAX_BYTES = 200000
+MAIL_MIME_MAX_DEPTH = 8
+MAIL_MIME_MAX_PARTS = 64
 BOFA_MAIL_LIMIT = 40
 STRIPE_LIMIT = 100
 ADS_ACCOUNT_QUERY = ('SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.manager, customer.time_zone, '
@@ -376,6 +385,175 @@ class _Google:
             if error.code != 'authorization_expired' or self.refreshed: raise
             await self.refresh()
             return await self.client.request(method, url, headers={**headers, 'Authorization': 'Bearer ' + self.credentials['access_token']}, **arguments)
+
+
+def _mail_headers(part: dict) -> dict[str, str]:
+    values = part.get('headers', [])
+    if not isinstance(values, list) or len(values) > 100: raise ProviderError('invalid_response')
+    headers = {}
+    for value in values:
+        if (not isinstance(value, dict) or not isinstance(value.get('name'), str)
+                or not isinstance(value.get('value'), str) or len(value['name']) > 128 or len(value['value']) > 10000):
+            raise ProviderError('invalid_response')
+        headers[value['name'].lower()] = value['value']
+    return headers
+
+
+def _mail_plain(value: str) -> str:
+    # Keep paragraph structure for reading and translation. Never interpret the
+    # result as markup; even a text/plain message can contain literal HTML.
+    return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff]', '', value.replace('\r\n', '\n').replace('\r', '\n')).strip()
+
+
+def _mail_subject(value: str) -> str:
+    decoded = []
+    try:
+        for part, charset in decode_header(value):
+            if isinstance(part, bytes):
+                try: part = part.decode((charset or 'utf-8')[:64], errors='replace')
+                except (LookupError, TypeError): part = part.decode('utf-8', errors='replace')
+            decoded.append(part)
+    except (ValueError, binascii.Error): raise ProviderError('invalid_response') from None
+    return _text(_mail_plain(''.join(decoded)) or '邮件', 1000)
+
+
+class _MailHTMLText(HTMLParser):
+    """Visible text only: no attributes, links, embedded media or network I/O."""
+    _HIDDEN = {'script', 'style', 'head', 'iframe', 'object', 'embed', 'svg', 'math', 'template', 'noscript'}
+    _VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
+    _BLOCK = {'address', 'article', 'blockquote', 'div', 'dl', 'dt', 'dd', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+              'header', 'li', 'main', 'ol', 'p', 'pre', 'section', 'table', 'tr', 'ul'}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.output = []; self.length = 0; self.stack = []; self.overflow = 0; self.truncated = False
+
+    def _append(self, text: str):
+        remaining = MAIL_BODY_MAX_CHARS + 1 - self.length
+        if len(text) > remaining: self.truncated = True
+        if remaining > 0:
+            self.output.append(text[:remaining]); self.length += len(text[:remaining])
+
+    def handle_starttag(self, tag, attrs):
+        hidden = bool(self.overflow or self.stack and self.stack[-1][1])
+        attributes = dict(attrs)
+        style = (attributes.get('style') or '').replace(' ', '').lower()
+        hidden = hidden or tag in self._HIDDEN or 'hidden' in attributes or attributes.get('aria-hidden') == 'true' or 'display:none' in style or 'visibility:hidden' in style
+        if not hidden and (tag in self._BLOCK or tag in {'br', 'hr'}): self._append('\n')
+        if tag not in self._VOID:
+            if len(self.stack) >= 128 or self.overflow:
+                self.overflow += 1; self.truncated = True
+            else: self.stack.append((tag, hidden))
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in self._VOID: self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        if self.overflow:
+            if tag not in self._VOID: self.overflow -= 1
+            return
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == tag:
+                hidden = self.stack[index][1]; del self.stack[index:]
+                if not hidden and tag in self._BLOCK: self._append('\n')
+                break
+
+    def handle_data(self, data):
+        if not self.overflow and not (self.stack and self.stack[-1][1]): self._append(data)
+
+
+def _mail_body(payload: dict) -> tuple[str, bool]:
+    candidates = {'text/plain': [], 'text/html': []}; visited = 0; truncated = False; remaining_bytes = MAIL_BODY_MAX_BYTES
+
+    def visit(part: object, depth: int):
+        nonlocal visited, truncated
+        if depth > MAIL_MIME_MAX_DEPTH or visited >= MAIL_MIME_MAX_PARTS:
+            truncated = True; return
+        visited += 1
+        if not isinstance(part, dict): raise ProviderError('invalid_response')
+        headers = _mail_headers(part)
+        descriptor = Message(); descriptor['Content-Type'] = headers.get('content-type', 'text/plain')
+        if headers.get('content-disposition'): descriptor['Content-Disposition'] = headers['content-disposition']
+        # Do not parse attached messages, text files or an attachment subtree.
+        if part.get('filename') or descriptor.get_content_disposition() == 'attachment' or descriptor.get_filename(): return
+        if not isinstance(part.get('mimeType', ''), str): raise ProviderError('invalid_response')
+        mime = part.get('mimeType', '').lower()
+        if mime in candidates: candidates[mime].append((part, descriptor.get_content_charset() or 'utf-8'))
+        elif mime.startswith('multipart/'):
+            parts = part.get('parts', [])
+            if not isinstance(parts, list): raise ProviderError('invalid_response')
+            for child in parts[:MAIL_MIME_MAX_PARTS]: visit(child, depth + 1)
+            if len(parts) > MAIL_MIME_MAX_PARTS: truncated = True
+
+    def decode(part: dict, charset: str) -> str:
+        nonlocal truncated, remaining_bytes
+        body = part.get('body', {})
+        if not isinstance(body, dict): raise ProviderError('invalid_response')
+        encoded = body.get('data')
+        if encoded is None:
+            # Gmail may store a body outside this response. That attachment
+            # endpoint remains forbidden; report incomplete content instead.
+            if body.get('attachmentId') or body.get('size'): truncated = True
+            return ''
+        if (not isinstance(encoded, str) or not re.fullmatch(r'[A-Za-z0-9_-]*={0,2}', encoded)
+                or len(encoded) % 4 == 1): raise ProviderError('invalid_response')
+        if not remaining_bytes:
+            if encoded: truncated = True
+            return ''
+        max_encoded = ((remaining_bytes + 2) // 3) * 4
+        if len(encoded) > max_encoded:
+            encoded = encoded[:max_encoded]; truncated = True
+        try: decoded = base64.b64decode(encoded + '=' * (-len(encoded) % 4), altchars=b'-_', validate=True)
+        except (ValueError, binascii.Error): raise ProviderError('invalid_response') from None
+        if len(decoded) > remaining_bytes: truncated = True
+        decoded = decoded[:remaining_bytes]; remaining_bytes -= len(decoded)
+        if 'size' in body and _integer(body['size']) > len(decoded): truncated = True
+        try: return decoded.decode(charset[:64], errors='replace')
+        except (LookupError, TypeError): return decoded.decode('utf-8', errors='replace')
+
+    visit(payload, 0)
+    # A multipart alternative contains duplicate content. Prefer actual plain
+    # text; use the HTML fallback only when no readable plain body is present.
+    plain = '\n\n'.join(_mail_plain(decode(part, charset)) for part, charset in candidates['text/plain']).strip()
+    if plain:
+        body = plain
+    else:
+        texts = []
+        for part, charset in candidates['text/html']:
+            parser = _MailHTMLText()
+            try: parser.feed(decode(part, charset)); parser.close()
+            except (AssertionError, ValueError): raise ProviderError('invalid_response') from None
+            texts.append(_mail_plain(''.join(parser.output))); truncated = truncated or parser.truncated
+        body = '\n\n'.join(texts).strip()
+    if len(body) > MAIL_BODY_MAX_CHARS: truncated = True
+    return body[:MAIL_BODY_MAX_CHARS], truncated
+
+
+async def fetch_mail_content(credentials: dict, metadata: dict, message_id: str, *, transport: httpx.AsyncBaseTransport | None = None) -> dict:
+    """Explicit Gmail body read. Refreshed credentials are for the private core only."""
+    source = _source('gmail'); _configured(source)
+    if not isinstance(credentials, dict) or not isinstance(metadata, dict): raise ProviderError('invalid_credentials')
+    message_id = _id(message_id)
+    if not metadata.get('account_label'): raise ProviderError('authorization_expired')
+    account = _account_email(metadata['account_label']); _check_gmail_account(account)
+
+    async def fetch():
+        async with _Client(transport) as client:
+            google = _Google(client, source, credentials)
+            profile = await google.request('GET', 'https://gmail.googleapis.com/gmail/v1/users/me/profile')
+            actual = _account_email(profile.get('emailAddress')); _check_gmail_account(actual)
+            if actual.casefold() != account.casefold(): raise ProviderError('access_denied')
+            message = await google.request('GET', 'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + message_id, params={'format': 'full'})
+            if message.get('id') != message_id or not isinstance(message.get('payload'), dict): raise ProviderError('invalid_response')
+            headers = _mail_headers(message['payload']); body, truncated = _mail_body(message['payload'])
+            result = {'title': _mail_subject(headers.get('subject') or '邮件'), 'summary': _text(message.get('snippet'), 1000),
+                      'body': body, 'has_body': bool(body), 'truncated': truncated}
+            if google.credentials != credentials: result['credentials'] = google.credentials
+            return result
+    try: return await asyncio.wait_for(fetch(), timeout=MAX_SYNC_SECONDS)
+    except asyncio.TimeoutError: raise ProviderError('upstream_timeout') from None
+    except (TypeError, ValueError, KeyError, AttributeError, OverflowError): raise ProviderError('invalid_response') from None
 
 
 def _list(value: object) -> list:
