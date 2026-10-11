@@ -81,7 +81,9 @@ def stripe_row(resource):
     row = {'id': prefix+'synthetic1', 'amount': 1, 'currency': 'jpy', 'created': 1700000000, 'livemode': False,
            'status': 'needs_response' if resource == 'disputes' else 'succeeded' if resource != 'payouts' else 'in_transit'}
     if resource == 'charges': row.update(captured=True, paid=True, refunded=False, amount_captured=1, amount_refunded=0)
-    if resource == 'refunds': row['charge'] = 'ch_synthetic1'
+    if resource == 'refunds':
+        row.update(object='refund', charge='ch_synthetic1')
+        row.pop('livemode')  # Refund's official object contract omits this field.
     if resource == 'disputes': row['evidence_details'] = {'due_by': 1700001000}
     if resource == 'payouts': row['arrival_date'] = 1700002000
     return row

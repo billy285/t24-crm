@@ -109,6 +109,75 @@ async def test_stripe_balance_or_record_mode_cannot_cross_live_and_test(configur
     assert caught.value.code == 'stripe_account_changed'
 
 
+def refund_contract_transport(*, live=False, changes=None, missing_mode_resource=None):
+    calls = []
+
+    async def handler(request):
+        assert request.method == 'GET'
+        calls.append(request.url.path)
+        if request.url.path in {'/v1/account', '/v1/balance'}:
+            return httpx.Response(200, json=response_for(request, live=live))
+        resource = request.url.path.rsplit('/', 1)[1]
+        row = stripe_row(resource)
+        if resource == 'refunds': row.update(changes or {})
+        else: row['livemode'] = live
+        if resource == missing_mode_resource: row.pop('livemode', None)
+        return httpx.Response(200, json={'object': 'list', 'data': [row], 'has_more': False})
+
+    return httpx.MockTransport(handler), calls
+
+
+async def read_refund_contract(phase, mode, transport):
+    if phase == 'connect': return await providers.begin_connect('stripe', '', transport=transport)
+    key = KEY.replace('rk_test_', 'rk_live_') if mode == 'live' else KEY
+    return await providers.fetch_source('stripe',
+        {**STRIPE_CREDENTIALS, 'api_key': key, 'mode': mode}, {**STRIPE_METADATA, 'mode': mode}, transport=transport)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['connect', 'sync'])
+@pytest.mark.parametrize('mode', ['test', 'live'])
+@pytest.mark.parametrize('explicit_mode', [False, True])
+async def test_official_refund_contract_uses_verified_request_mode(configured, monkeypatch, phase, mode, explicit_mode):
+    live = mode == 'live'
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_MODE', mode)
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_KEY', KEY.replace('rk_test_', 'rk_live_') if live else KEY)
+    transport, calls = refund_contract_transport(live=live, changes={'livemode': live} if explicit_mode else None)
+    result = await read_refund_contract(phase, mode, transport)
+    assert calls == ['/v1/account', '/v1/balance', '/v1/charges', '/v1/refunds', '/v1/disputes', '/v1/payouts']
+    assert result['metadata']['stripe_account_id'] == STRIPE_ACCOUNT and result['metadata']['mode'] == mode
+    if phase == 'sync':
+        refund = next(row for row in result['items'] if row['kind'] == 'refund')
+        assert refund['evidence']['stripe_account_id'] == STRIPE_ACCOUNT and refund['evidence']['stripe_mode'] == mode
+        assert refund['evidence']['accounting_effect'] == 'none' and refund['amount_minor'] == 1
+        assert refund['source_url'] == 'https://dashboard.stripe.com/' + ('test/' if not live else '') + 'payments/ch_synthetic1'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['connect', 'sync'])
+@pytest.mark.parametrize('changes,code', [
+    ({'livemode': None}, 'invalid_response'), ({'livemode': 0}, 'invalid_response'),
+    ({'livemode': 'false'}, 'invalid_response'), ({'livemode': True}, 'stripe_account_changed'),
+    ({'object': 'charge'}, 'invalid_response'), ({'object': None}, 'invalid_response'),
+])
+async def test_refund_contract_rejects_explicit_invalid_mode_or_wrong_object(configured, phase, changes, code):
+    transport, calls = refund_contract_transport(changes=changes)
+    with pytest.raises(providers.ProviderError) as caught:
+        await read_refund_contract(phase, 'test', transport)
+    assert caught.value.code == code
+    assert calls == ['/v1/account', '/v1/balance', '/v1/charges', '/v1/refunds']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['connect', 'sync'])
+@pytest.mark.parametrize('resource', ['charges', 'disputes', 'payouts'])
+async def test_other_stripe_resources_still_require_explicit_livemode(configured, phase, resource):
+    transport, _ = refund_contract_transport(missing_mode_resource=resource)
+    with pytest.raises(providers.ProviderError) as caught:
+        await read_refund_contract(phase, 'test', transport)
+    assert caught.value.code == 'invalid_response'
+
+
 @pytest.mark.asyncio
 async def test_stripe_server_binding_or_mode_change_is_rejected_before_network(configured, monkeypatch):
     async def forbidden(request): raise AssertionError('No outbound request permitted')

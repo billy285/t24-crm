@@ -353,7 +353,7 @@ async def begin_connect(source_id: str, state: str, *, transport: httpx.AsyncBas
             # No write, account mutation, refund or payout endpoint is ever called.
             for resource, kind, prefix in STRIPE_RESOURCES:
                 result = await client.request('GET', 'https://api.stripe.com/v1/' + resource, headers=headers, params={'limit': 1})
-                rows, _ = _stripe_list(result, mode, 1)
+                rows, _ = _stripe_list(result, mode, 1, kind=kind)
                 for row in rows: _stripe_item(row, kind, prefix, identity, mode, 'connect-probe', datetime.now(timezone.utc).isoformat())
         return {'credentials': {'api_key': key, 'stripe_account_id': identity['stripe_account_id'], 'mode': mode},
                 'metadata': {**identity, 'mode': mode, 'connection_mode': 'restricted_api_key', 'read_only_adapter': True}}
@@ -777,6 +777,16 @@ def _stripe_livemode(row: dict, mode: str) -> None:
     if row['livemode'] != (mode == 'live'): raise ProviderError('stripe_account_changed')
 
 
+def _stripe_resource_mode(row: dict, mode: str, kind: str | None = None) -> None:
+    if kind == 'refund':
+        if row.get('object') != 'refund': raise ProviderError('invalid_response')
+        # Refund objects omit livemode. Only this verified resource uses the
+        # same key/account/balance request context; an explicit field must match.
+        # https://docs.stripe.com/api/refunds/object
+        if 'livemode' not in row: return
+    _stripe_livemode(row, mode)
+
+
 def _stripe_balances(balance: dict, mode: str) -> list[dict]:
     if balance.get('object') != 'balance': raise ProviderError('invalid_response')
     _stripe_livemode(balance, mode)
@@ -797,8 +807,8 @@ async def _stripe_identity(client: _Client, headers: dict, mode: str) -> tuple[d
     if account.get('object') != 'account': raise ProviderError('invalid_response')
     account_id = _id(account.get('id'), 'acct_')
     if account_id != expected: raise ProviderError('stripe_account_changed')
-    # Account objects do not carry a livemode property. The key and balance,
-    # and later every resource object, establish the environment independently.
+    # Account objects do not carry livemode. The key and balance establish the
+    # environment; resource objects with livemode additionally corroborate it.
     balance = await client.request('GET', 'https://api.stripe.com/v1/balance', headers=headers)
     balances = _stripe_balances(balance, mode)
     profile = account.get('business_profile') or {}; settings = account.get('settings') or {}
@@ -809,18 +819,18 @@ async def _stripe_identity(client: _Client, headers: dict, mode: str) -> tuple[d
     return {'stripe_account_id': account_id, 'account_label': label}, balances
 
 
-def _stripe_list(response: dict, mode: str, limit: int) -> tuple[list, bool]:
+def _stripe_list(response: dict, mode: str, limit: int, *, kind: str | None = None) -> tuple[list, bool]:
     if response.get('object') != 'list': raise ProviderError('invalid_response')
     rows = _list(response.get('data')); has_more = response.get('has_more')
     if len(rows) > limit or type(has_more) is not bool: raise ProviderError('invalid_response')
     for row in rows:
         if not isinstance(row, dict): raise ProviderError('invalid_response')
-        _stripe_livemode(row, mode)
+        _stripe_resource_mode(row, mode, kind)
     return rows, has_more
 
 
 def _stripe_item(row: dict, kind: str, prefix: str, identity: dict, mode: str, snapshot_id: str, observed_at: str) -> dict:
-    _stripe_livemode(row, mode)
+    _stripe_resource_mode(row, mode, kind)
     identity_id = _id(row.get('id'), prefix); status = _text(row.get('status'), 80)
     amount = _integer(row.get('amount')); currency = _currency(row.get('currency'))
     evidence = {'provider_id': identity_id, 'provider_status': status, 'accounting_effect': 'none',
@@ -881,7 +891,7 @@ async def _stripe(client: _Client, source: SourceDefinition, credentials: dict, 
             parameters = {'limit': 50}
             if cursor: parameters['starting_after'] = cursor
             response = await client.request('GET', 'https://api.stripe.com/v1/' + resource, headers=headers, params=parameters)
-            rows, has_more = _stripe_list(response, mode, 50)
+            rows, has_more = _stripe_list(response, mode, 50, kind=kind)
             for row in rows:
                 row_id = _id(row.get('id'), prefix)
                 if row_id in seen: raise ProviderError('invalid_response')
