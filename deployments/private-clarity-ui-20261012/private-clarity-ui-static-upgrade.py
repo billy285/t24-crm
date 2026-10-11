@@ -17,6 +17,8 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import socket
+import sqlite3
+import subprocess
 import stat
 import sys
 import tarfile
@@ -190,7 +192,7 @@ def checked_backend_release(verifier, upgrade, base, nav, preparation, switch, a
     return candidate, receipt, manifest, after, profiles, roles, public
 
 
-def checked_current_release(upgrade, base, backend_receipt, roles):
+def checked_current_release(upgrade, base, backend_receipt, roles, *, authorization_checker=None):
     """Bind the active currency UI and its rollback bytes before any new writes."""
     previous = upgrade.fixed_json(PREVIOUS_RELEASE / 'static-state.json', PREVIOUS_RECEIPT_SHA)
     need(previous.get('format_version') == 1
@@ -261,9 +263,162 @@ def checked_current_release(upgrade, base, backend_receipt, roles):
     need(upgrade.digest(baseline) == previous.get('baseline_sha256')
          and baseline['private']['identity'] == previous['private_identity'],
          'CURRENT_CURRENCY_BASELINE_PROOF_DRIFT')
-    need(upgrade.stable_authorization(base) == previous.get('stable_authorization'),
-         'CURRENT_STATIC_AUTHORIZATION_DRIFT')
+    if authorization_checker is None:
+        need(upgrade.stable_authorization(base) == previous.get('stable_authorization'),
+             'CURRENT_STATIC_AUTHORIZATION_DRIFT')
+    else:
+        authorization_checker(previous)
     return previous, desired
+
+
+AUTHORIZATION_FIELDS = (
+    'id', 'owner_id', 'source_id', 'status', 'generation', 'encrypted_credentials',
+    'oauth_state_hash', 'oauth_expires_at', 'oauth_used_at', 'created_at')
+AUTHORIZATION_METADATA_FIELDS = (
+    'stripe_account_id', 'mode', 'read_only_adapter', 'account_label', 'scope',
+    'connection_mode', 'ads_customer_id')
+ORIGINAL_PRIVATE = BACKEND_RELEASE / 'live-upgrade/original-private.db'
+REFRESH_SOURCES = frozenset({'gmail', 'google_ads'})
+REFRESH_PLAINTEXT_FIELDS = frozenset({'access_token', 'expires_at', 'expires_in'})
+
+# Only encrypted pairs travel through stdin. Nothing sensitive enters argv,
+# environment overrides, files, stdout or a provider request.
+REFRESH_CREDENTIAL_PROBE = r"""import json,sys
+try:
+ from services.private_workspace import decrypt_credentials
+ raw=sys.stdin.buffer.read(1024*1024+1)
+ assert len(raw)<=1024*1024
+ pairs=json.loads(raw)
+ assert isinstance(pairs,list) and 0<len(pairs)<=100
+ sources=set(); changed=set()
+ allowed={'access_token','expires_at','expires_in'}
+ for pair in pairs:
+  assert isinstance(pair,dict) and set(pair)=={'source_id','old_encrypted','current_encrypted'}
+  assert pair['source_id'] in {'gmail','google_ads'}
+  assert all(isinstance(pair[key],str) and 0<len(pair[key])<=100000 for key in ('old_encrypted','current_encrypted'))
+  old=decrypt_credentials(pair['old_encrypted']); current=decrypt_credentials(pair['current_encrypted'])
+  for value in (old,current):
+   assert isinstance(value,dict)
+   assert all(isinstance(value.get(key),str) and 0<len(value[key])<=65536 for key in ('access_token','refresh_token','scope','token_type'))
+   assert value['token_type'].lower()=='bearer'
+   assert type(value.get('expires_at')) is int and value['expires_at']>0
+   assert 'expires_in' not in value or (type(value['expires_in']) is int and value['expires_in']>0)
+  assert old.keys()==current.keys()
+  differences={key for key in old.keys()|current.keys() if old.get(key)!=current.get(key) or (key in old)!=(key in current)}
+  assert differences<=allowed
+  assert json.dumps({key:value for key,value in old.items() if key not in allowed},sort_keys=True,separators=(',',':'))==json.dumps({key:value for key,value in current.items() if key not in allowed},sort_keys=True,separators=(',',':'))
+  sources.add(pair['source_id']); changed.update(differences)
+ print(json.dumps({'stage':'OAUTH_REFRESH_CREDENTIAL_IDENTITY_VERIFIED','changed_sources':sorted(sources),'checked_connections':len(pairs),'changed_plaintext_fields':sorted(changed),'writes':False,'provider_requests':False},sort_keys=True))
+except BaseException:
+ print(json.dumps({'stage':'OAUTH_REFRESH_CREDENTIAL_IDENTITY_REJECTED'}))
+ sys.exit(1)
+"""
+
+
+def connection_authorization_rows(upgrade, path, *, immutable=False):
+    uri = path.as_uri() + '?mode=ro' + ('&immutable=1' if immutable else '')
+    with sqlite3.connect(uri, uri=True, timeout=15) as db:
+        db.execute('PRAGMA query_only=ON')
+        db.execute('BEGIN')
+        columns = [row[1] for row in db.execute('PRAGMA table_info(private_connections)')]
+        result = {}
+        for row in db.execute('SELECT * FROM private_connections ORDER BY id'):
+            value = dict(zip(columns, row))
+            metadata = json.loads(value.get('metadata_json') or '{}')
+            bound = {key: value.get(key) for key in AUTHORIZATION_FIELDS}
+            bound['metadata'] = {key: metadata.get(key) for key in AUTHORIZATION_METADATA_FIELDS}
+            identity = upgrade.digest(value['id'])
+            need(identity not in result, 'UNIQUE_AUTHORIZATION_IDENTITY_REQUIRED')
+            result[identity] = bound
+    return result
+
+
+def checked_refresh_api_identity(base, receipt, roles):
+    row = receipt['roles']['api']
+    info = base.inspect('t24-private-api')
+    need(HASH.fullmatch(row.get('id', '')) and row.get('image') == receipt['candidate_image']
+         and info.get('Id') == row['id'] and info.get('Name') == '/t24-private-api'
+         and info.get('Image') == row['image'] and info.get('State', {}).get('Running') is True
+         and info['State'].get('Health', {}).get('Status') == 'healthy'
+         and roles.get('api') == row.get('runtime'), 'EXACT_HEALTHY_REFRESH_API_REQUIRED')
+    return row['id']
+
+
+def verify_refresh_credentials(base, receipt, roles, pairs):
+    identity = checked_refresh_api_identity(base, receipt, roles)
+    blob = json.dumps(pairs, separators=(',', ':')).encode()
+    need(0 < len(blob) <= 1024**2, 'BOUNDED_REFRESH_CREDENTIAL_INPUT_REQUIRED')
+    try:
+        result = subprocess.run([
+            'docker', 'exec', '-i', '--workdir', '/app/backend', '--env',
+            'PYTHONDONTWRITEBYTECODE=1', identity, 'python', '-B', '-c', REFRESH_CREDENTIAL_PROBE],
+            input=blob, capture_output=True, timeout=25, check=False)
+    except Exception:
+        raise StaticError('OAUTH_REFRESH_CREDENTIAL_PROBE_REJECTED') from None
+    # Captured stderr and all failure output stay private and are never forwarded.
+    need(result.returncode == 0 and len(result.stdout) <= 4096 and not result.stderr,
+         'OAUTH_REFRESH_CREDENTIAL_PROBE_REJECTED')
+    try:
+        value = json.loads(result.stdout)
+    except Exception:
+        raise StaticError('OAUTH_REFRESH_CREDENTIAL_PROOF_REQUIRED') from None
+    need(isinstance(value, dict) and set(value) == {
+             'stage', 'changed_sources', 'checked_connections', 'changed_plaintext_fields', 'writes', 'provider_requests'}
+         and value['stage'] == 'OAUTH_REFRESH_CREDENTIAL_IDENTITY_VERIFIED'
+         and value['changed_sources'] == sorted({pair['source_id'] for pair in pairs})
+         and type(value['checked_connections']) is int and value['checked_connections'] == len(pairs)
+         and isinstance(value['changed_plaintext_fields'], list)
+         and value['changed_plaintext_fields'] == sorted(set(value['changed_plaintext_fields']))
+         and set(value['changed_plaintext_fields']) <= REFRESH_PLAINTEXT_FIELDS
+         and value['writes'] is False and value['provider_requests'] is False,
+         'OAUTH_REFRESH_CREDENTIAL_PROOF_REQUIRED')
+    need(checked_refresh_api_identity(base, receipt, roles) == identity, 'REFRESH_API_IDENTITY_CHANGED')
+    return value
+
+
+def checked_refreshed_authorization(upgrade, base, receipt, roles, historical, expected_current):
+    need(isinstance(historical, dict) and isinstance(expected_current, dict)
+         and historical.keys() == expected_current.keys(), 'AUTHORIZATION_CONNECTION_SET_CHANGED')
+    if historical == expected_current:
+        need(upgrade.stable_authorization(base) == expected_current, 'CAPTURED_AUTHORIZATION_DRIFT')
+        return {}
+    expected_backup = receipt.get('backup_sha256', '')
+    need(HASH.fullmatch(expected_backup), 'PINNED_ORIGINAL_PRIVATE_BACKUP_REQUIRED')
+    before = upgrade.protected(ORIGINAL_PRIVATE)
+    need(sha(upgrade.read_protected(ORIGINAL_PRIVATE, 64 * 1024**2)) == expected_backup,
+         'ORIGINAL_PRIVATE_BACKUP_HASH_DRIFT')
+    old = connection_authorization_rows(upgrade, ORIGINAL_PRIVATE, immutable=True)
+    need(stamp(upgrade.protected(ORIGINAL_PRIVATE)) == stamp(before), 'ORIGINAL_PRIVATE_BACKUP_IDENTITY_DRIFT')
+    old_map = {identity: upgrade.digest(row) for identity, row in old.items()}
+    need(old_map == historical, 'ORIGINAL_BACKUP_AUTHORIZATION_HISTORY_DRIFT')
+    current = connection_authorization_rows(upgrade, base.PRIVATE_DB)
+    need({identity: upgrade.digest(row) for identity, row in current.items()} == expected_current,
+         'CAPTURED_AUTHORIZATION_DRIFT')
+    pairs = []
+    for identity in old:
+        previous, now = old[identity], current[identity]
+        need(upgrade.digest({key: value for key, value in previous.items() if key != 'encrypted_credentials'})
+             == upgrade.digest({key: value for key, value in now.items() if key != 'encrypted_credentials'}),
+             'AUTHORIZATION_IDENTITY_SCOPE_OR_OAUTH_STATE_CHANGED')
+        if previous['encrypted_credentials'] != now['encrypted_credentials']:
+            need(now['source_id'] in REFRESH_SOURCES and now['status'] == 'connected'
+                 and now['metadata'].get('connection_mode') == 'oauth'
+                 and now['metadata'].get('read_only_adapter') is True
+                 and isinstance(previous['encrypted_credentials'], str) and previous['encrypted_credentials']
+                 and isinstance(now['encrypted_credentials'], str) and now['encrypted_credentials'],
+                 'ONLY_EXISTING_GOOGLE_OAUTH_REFRESH_ALLOWED')
+            pairs.append({'source_id': now['source_id'], 'old_encrypted': previous['encrypted_credentials'],
+                          'current_encrypted': now['encrypted_credentials']})
+    need(pairs, 'EXACT_REFRESH_CREDENTIAL_CHANGE_REQUIRED')
+    proof = verify_refresh_credentials(base, receipt, roles, pairs)
+    need(upgrade.stable_authorization(base) == expected_current, 'CAPTURED_AUTHORIZATION_DRIFT')
+    need(stamp(upgrade.protected(ORIGINAL_PRIVATE)) == stamp(before)
+         and sha(upgrade.read_protected(ORIGINAL_PRIVATE, 64 * 1024**2)) == expected_backup,
+         'ORIGINAL_PRIVATE_BACKUP_CHANGED')
+    return {**proof, 'original_private_backup_sha256': expected_backup,
+            'historical_authorization_sha256': upgrade.digest(historical),
+            'captured_authorization_sha256': upgrade.digest(expected_current),
+            'all_bound_identity_scope_generation_oauth_fields_unchanged': True}
 
 
 def checked_manifest(upgrade, base, release, args):
@@ -378,8 +533,16 @@ def apply(args, release, verifier):
         need(stamp(lock.lstat()) == stamp(before), 'EXISTING_RELEASE_LOCK_REBOUND')
         candidate, receipt, _, _, _, roles, _ = checked_backend_release(
             verifier, upgrade, base, nav, preparation, switch, SimpleNamespace(**PINS))
-        previous, old_public = checked_current_release(upgrade, base, receipt, roles)
         owner = upgrade.fixed_json(OWNER_AFTER, OWNER_AFTER_SHA)
+        refreshed = {}
+        def check_authorization(previous):
+            historical = owner.get('stable_authorization')
+            need(historical == previous.get('stable_authorization'), 'SAME_ACCEPTED_AUTHORIZATION_HISTORY_REQUIRED')
+            captured = upgrade.stable_authorization(base)
+            proof = checked_refreshed_authorization(upgrade, base, receipt, roles, historical, captured)
+            refreshed.update(authorization=captured, proof=proof)
+        previous, old_public = checked_current_release(
+            upgrade, base, receipt, roles, authorization_checker=check_authorization)
         need(owner.get('stage') == 'STRIPE_REPORT_OWNER_UI_AFTER_VERIFIED'
              and owner.get('source_sha') == BACKEND_SOURCE and owner.get('frontend_version') == BACKEND_VERSION
              and owner.get('pins') == PINS and owner.get('roles') == roles
@@ -389,10 +552,9 @@ def apply(args, release, verifier):
         baseline = preparation.release_snapshot(base.PRIVATE_DB, base.BUSINESS)
         authorization = upgrade.stable_authorization(base)
         records = verifier.stable_digests(upgrade, switch, base.PRIVATE_DB)
-        need(authorization == owner.get('stable_authorization'), 'POST_UI_AUTHORIZATION_DRIFT')
+        need(authorization == refreshed['authorization'], 'CAPTURED_AUTHORIZATION_DRIFT')
         # Local notes are compared within this publication window, not against
         # historical UI evidence. Current credential identity stays pinned.
-        need(authorization == previous.get('stable_authorization'), 'CURRENT_STATIC_AUTHORIZATION_DRIFT')
         need(baseline['private']['identity'] == previous.get('private_identity'), 'CURRENT_PRIVATE_IDENTITY_DRIFT')
         manifest, archive = checked_manifest(upgrade, base, release, args)
         payload = extract_static(base, release, manifest, archive, args.frontend_version)
@@ -415,6 +577,7 @@ def apply(args, release, verifier):
                  'old_nginx_sha256': sha(original), 'new_nginx_sha256': sha(changed),
                  'roles': roles, 'private_identity': baseline['private']['identity'],
                  'baseline_sha256': upgrade.digest(baseline), 'stable_authorization': authorization,
+                 'oauth_refresh_proof': refreshed['proof'],
                  'business_tables_verified': 83, 'private_tables_verified': 11,
                  'backend_services_modified': False, 'database_mutation_performed': False,
                  'environment_modified': False, 'bank_enabled': False, 'ai_enabled': False, 'deployed': False}
@@ -472,7 +635,7 @@ def main(args):
     need(args.frontend_source_sha == FRONTEND_SOURCE and args.frontend_version == FRONTEND_VERSION,
          'NEW_IMMUTABLE_FRONTEND_REQUIRED')
     release = Path(__file__).resolve().parent
-    need(release == Path('/opt/t24-crm/releases') / ('private-clarity-ui-' + args.frontend_source_sha[:12] + '-20261012'),
+    need(release == Path('/opt/t24-crm/releases') / ('private-clarity-ui-' + args.frontend_source_sha[:12] + '-20261012-retry2'),
          'EXACT_NEW_STATIC_RELEASE_PATH_REQUIRED')
     return apply(args, release, load_verifier(release))
 

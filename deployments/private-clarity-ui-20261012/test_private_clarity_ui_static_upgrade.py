@@ -1,15 +1,20 @@
 """Offline regressions; never import a server helper or contact production."""
 import copy
+import base64
 import hashlib
 import importlib.util
 import io
 import json
 import os
 from pathlib import Path
+import sqlite3
+import subprocess
+import sys
 import tarfile
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from cryptography.fernet import Fernet
 import pytest
 
 
@@ -517,3 +522,286 @@ def test_safe_errors_do_not_disclose_raw_commands_or_credentials():
     assert s.safe_error(RuntimeError('rk_live_SECRET output')) == 'STATIC_RELEASE_REJECTED'
     assert s.safe_error(s.StaticError('SAFE_UPPERCASE_CODE')) == 'SAFE_UPPERCASE_CODE'
     assert s.safe_error(s.StaticError('SELECT secret FROM private_connections')) == 'STATIC_RELEASE_REJECTED'
+
+
+@pytest.fixture
+def oauth_refresh(frozen, monkeypatch):
+    """Real local SQLite/Fernet evidence; only provider transport is substituted."""
+    runtime = make_runtime(frozen, monkeypatch)
+    database = runtime.release / 'current-private.db'
+    backup = runtime.release / 'original-private.db'
+    secret = 'SYNTHETIC-LOCAL-ONLY-ENCRYPTION-KEY'
+    cipher = Fernet(base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest()))
+    credentials = {}
+    with sqlite3.connect(database) as db:
+        db.execute('''CREATE TABLE private_connections (
+            id TEXT PRIMARY KEY, owner_id TEXT, source_id TEXT, status TEXT,
+            generation INTEGER, encrypted_credentials TEXT, metadata_json TEXT,
+            oauth_state_hash TEXT, oauth_expires_at TEXT, oauth_used_at TEXT,
+            created_at TEXT, updated_at TEXT)''')
+        for source in ('gmail', 'google_ads', 'stripe', 'bofa_bank'):
+            metadata = {'connection_mode': 'oauth' if source in {'gmail', 'google_ads'} else 'server',
+                        'account_label': 'synthetic-account', 'scope': f'synthetic-{source}-scope',
+                        'stripe_account_id': 'acct_synthetic' if source == 'stripe' else None,
+                        'mode': 'live', 'read_only_adapter': True,
+                        'ads_customer_id': '1234567890' if source == 'google_ads' else None}
+            credentials[source] = {'access_token': f'SYNTHETIC-{source}-OLD-ACCESS', 'expires_at': 1000,
+                                   'refresh_token': f'SYNTHETIC-{source}-REFRESH', 'scope': metadata['scope'],
+                                   'client_id': 'SYNTHETIC-CLIENT', 'client_secret': 'SYNTHETIC-CLIENT-SECRET',
+                                   'token_type': 'Bearer'}
+            encrypted = cipher.encrypt(encoded(credentials[source])).decode()
+            db.execute('INSERT INTO private_connections VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                       (f'synthetic-{source}', '4', source, 'connected', 7, encrypted, json.dumps(metadata),
+                        'SYNTHETIC-STATE-HASH', '2026-10-12T04:00:00Z', '2026-10-12T03:00:00Z',
+                        '2026-10-11T04:00:00Z', '2026-10-12T03:00:00Z'))
+    backup.write_bytes(database.read_bytes())
+    database.chmod(0o600); backup.chmod(0o600)
+    monkeypatch.setattr(s, 'ORIGINAL_PRIVATE', backup)
+    runtime.base.PRIVATE_DB = database
+    runtime.upgrade.stable_authorization = lambda base: {
+        key: runtime.upgrade.digest(value)
+        for key, value in s.connection_authorization_rows(runtime.upgrade, base.PRIVATE_DB).items()}
+    historical = runtime.upgrade.stable_authorization(runtime.base)
+    runtime.currency.previous['stable_authorization'] = historical
+    runtime.receipt['backup_sha256'] = s.sha(backup.read_bytes())
+    old_fixed = runtime.upgrade.fixed_json
+    owner = {'stage': 'STRIPE_REPORT_OWNER_UI_AFTER_VERIFIED', 'source_sha': s.BACKEND_SOURCE,
+             'frontend_version': s.BACKEND_VERSION, 'pins': s.PINS, 'roles': runtime.roles,
+             'stable_records_and_authorization_preserved': True, 'database_mutation_performed': False,
+             'services_modified': False, 'stable_authorization': historical}
+    runtime.upgrade.fixed_json = lambda path, expected: owner if path == s.OWNER_AFTER else old_fixed(path, expected)
+    calls = []
+    def decrypt_probe(base, receipt, roles, pairs):
+        calls.append(copy.deepcopy(pairs))
+        # Supply only the established Fernet credential decoder. The full probe
+        # comparison runs unchanged, without loading any business DB/service.
+        decoder = '''import os,sys,types,json,base64,hashlib
+from cryptography.fernet import Fernet
+service=types.ModuleType('services.private_workspace')
+def decrypt_credentials(value):
+ key=os.environ['PRIVATE_WORKSPACE_ENCRYPTION_KEY'].strip()
+ cipher=Fernet(base64.urlsafe_b64encode(hashlib.sha256(key.encode()).digest()))
+ return json.loads(cipher.decrypt(value.encode()))
+service.decrypt_credentials=decrypt_credentials
+sys.modules['services']=types.ModuleType('services')
+sys.modules['services.private_workspace']=service
+'''
+        process = subprocess.run([sys.executable, '-B', '-c', decoder + s.REFRESH_CREDENTIAL_PROBE],
+            input=encoded(pairs), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env={**os.environ, 'PRIVATE_WORKSPACE_ENCRYPTION_KEY': secret}, check=False, timeout=5)
+        s.need(process.returncode == 0, 'ONLY_ACCESS_TOKEN_REFRESH_ALLOWED')
+        return json.loads(process.stdout)
+    monkeypatch.setattr(s, 'verify_refresh_credentials', decrypt_probe)
+    def write_credentials(source, values):
+        encrypted = cipher.encrypt(encoded(values)).decode()
+        with sqlite3.connect(database) as db:
+            db.execute('UPDATE private_connections SET encrypted_credentials=? WHERE source_id=?', (encrypted, source))
+    for source in ('gmail', 'google_ads'):
+        write_credentials(source, {**credentials[source], 'access_token': f'SYNTHETIC-{source}-NEW-ACCESS', 'expires_at': 2000})
+    return SimpleNamespace(runtime=runtime, database=database, backup=backup, historical=historical,
+                           credentials=credentials, write_credentials=write_credentials,
+                           probe_calls=calls, secret=secret)
+
+
+def refresh_check(fixture):
+    runtime = fixture.runtime
+    current = runtime.upgrade.stable_authorization(runtime.base)
+    proof = s.checked_refreshed_authorization(runtime.upgrade, runtime.base, runtime.receipt, runtime.roles,
+                                              fixture.historical, current)
+    return current, proof
+
+
+def test_only_google_access_token_and_expiry_refresh_preserves_authorization(oauth_refresh):
+    fixture = oauth_refresh
+    database_before, backup_before = fixture.database.read_bytes(), fixture.backup.read_bytes()
+    live, proof = refresh_check(fixture)
+    assert live == fixture.runtime.upgrade.stable_authorization(fixture.runtime.base)
+    assert live != fixture.historical
+    assert {pair['source_id'] for pair in fixture.probe_calls[0]} == {'gmail', 'google_ads'}
+    assert fixture.database.read_bytes() == database_before and fixture.backup.read_bytes() == backup_before
+    assert proof['stage'] == 'OAUTH_REFRESH_CREDENTIAL_IDENTITY_VERIFIED'
+    assert proof['changed_plaintext_fields'] == ['access_token', 'expires_at']
+    assert proof['writes'] is False and proof['provider_requests'] is False
+    evidence = json.dumps(proof)
+    assert 'SYNTHETIC-' not in evidence
+    assert not any(name in evidence for name in ('old_encrypted', 'current_encrypted', 'refresh_token', 'client_secret'))
+    assert 'gAAAA' not in evidence
+
+
+@pytest.mark.parametrize('field', ['refresh_token', 'scope', 'client_secret', 'client_id', 'token_type'])
+@pytest.mark.parametrize('source', ['gmail', 'google_ads'])
+def test_refresh_exception_rejects_any_long_lived_credential_change(oauth_refresh, source, field):
+    fixture = oauth_refresh
+    fixture.write_credentials(source, {**fixture.credentials[source], 'access_token': 'SYNTHETIC-NEW-ACCESS',
+                                      'expires_at': 2000, field: 'SYNTHETIC-CHANGED'})
+    with pytest.raises(s.StaticError):
+        refresh_check(fixture)
+
+
+@pytest.mark.parametrize('column,value', [
+    ('owner_id', '5'), ('generation', 8), ('status', 'error'),
+    ('source_id', 'stripe'),
+    ('oauth_state_hash', 'SYNTHETIC-DIFFERENT-STATE'), ('oauth_expires_at', '2099-01-01T00:00:00Z'),
+    ('oauth_used_at', '2099-01-01T00:00:00Z'), ('created_at', '2099-01-01T00:00:00Z'),
+])
+def test_refresh_exception_rejects_connection_owner_generation_state_and_identity_change(oauth_refresh, column, value):
+    fixture = oauth_refresh
+    with sqlite3.connect(fixture.database) as db:
+        db.execute(f'UPDATE private_connections SET {column}=? WHERE source_id=?', (value, 'gmail'))
+    with pytest.raises(s.StaticError):
+        refresh_check(fixture)
+
+
+@pytest.mark.parametrize('field', ['scope', 'account_label', 'connection_mode', 'ads_customer_id', 'read_only_adapter'])
+def test_refresh_exception_rejects_connection_metadata_scope_and_account_change(oauth_refresh, field):
+    fixture = oauth_refresh
+    with sqlite3.connect(fixture.database) as db:
+        metadata = json.loads(db.execute('SELECT metadata_json FROM private_connections WHERE source_id=?', ('google_ads',)).fetchone()[0])
+        metadata[field] = 'SYNTHETIC-CHANGED'
+        db.execute('UPDATE private_connections SET metadata_json=? WHERE source_id=?', (json.dumps(metadata), 'google_ads'))
+    with pytest.raises(s.StaticError):
+        refresh_check(fixture)
+
+
+def test_normal_google_refresh_cannot_hide_non_google_metadata_boolean_to_number_drift(oauth_refresh):
+    fixture = oauth_refresh
+    with sqlite3.connect(fixture.database) as db:
+        original_cipher, raw = db.execute(
+            'SELECT encrypted_credentials,metadata_json FROM private_connections WHERE source_id=?',
+            ('stripe',)).fetchone()
+        metadata = json.loads(raw)
+        assert metadata['read_only_adapter'] is True
+        metadata['read_only_adapter'] = 1
+        db.execute('UPDATE private_connections SET metadata_json=? WHERE source_id=?',
+                   (json.dumps(metadata), 'stripe'))
+        assert db.execute('SELECT encrypted_credentials FROM private_connections WHERE source_id=?',
+                          ('stripe',)).fetchone()[0] == original_cipher
+    with pytest.raises(s.StaticError, match='AUTHORIZATION_IDENTITY_SCOPE_OR_OAUTH_STATE_CHANGED'):
+        refresh_check(fixture)
+
+
+@pytest.mark.parametrize('case', ['backup_hash', 'missing_backup_hash', 'missing_connection', 'new_connection'])
+def test_refresh_exception_requires_the_exact_backup_and_both_historical_maps(oauth_refresh, case):
+    fixture = oauth_refresh
+    runtime = fixture.runtime
+    if case == 'backup_hash':
+        runtime.receipt['backup_sha256'] = 'f'*64
+    elif case == 'missing_backup_hash':
+        del runtime.receipt['backup_sha256']
+    elif case == 'missing_connection':
+        with sqlite3.connect(fixture.database) as db:
+            db.execute("DELETE FROM private_connections WHERE source_id='gmail'")
+    else:
+        with sqlite3.connect(fixture.database) as db:
+            db.execute("INSERT INTO private_connections SELECT id||'-new',owner_id,source_id,status,generation,encrypted_credentials,metadata_json,oauth_state_hash,oauth_expires_at,oauth_used_at,created_at,updated_at FROM private_connections WHERE source_id='gmail'")
+    with pytest.raises(s.StaticError):
+        refresh_check(fixture)
+
+
+@pytest.mark.parametrize('source', ['stripe', 'bofa_bank'])
+def test_refresh_exception_rejects_non_google_source_credential_changes(oauth_refresh, source):
+    fixture = oauth_refresh
+    fixture.write_credentials(source, {**fixture.credentials[source], 'access_token': 'SYNTHETIC-NEW-ACCESS', 'expires_at': 2000})
+    with pytest.raises(s.StaticError):
+        refresh_check(fixture)
+
+
+def test_refresh_exception_rejects_backup_historical_full_map_mismatch(oauth_refresh):
+    fixture = oauth_refresh
+    historical = dict(fixture.historical)
+    historical[next(iter(historical))] = 'f'*64
+    runtime = fixture.runtime
+    current = runtime.upgrade.stable_authorization(runtime.base)
+    with pytest.raises(s.StaticError, match='ORIGINAL_BACKUP_AUTHORIZATION_HISTORY_DRIFT'):
+        s.checked_refreshed_authorization(runtime.upgrade, runtime.base, runtime.receipt,
+                                          runtime.roles, historical, current)
+
+
+def test_publisher_requires_owner_and_currency_receipt_to_bind_the_same_full_history(frozen, monkeypatch):
+    runtime = make_runtime(frozen, monkeypatch)
+    runtime.currency.previous['stable_authorization'] = {'opaque': 'other-history'}
+    with pytest.raises(s.StaticError, match='SAME_ACCEPTED_AUTHORIZATION_HISTORY_REQUIRED'):
+        s.apply(runtime.args, runtime.release, runtime.verifier)
+    assert not (runtime.release / 'payload').exists()
+    runtime.base.atomic_nginx.assert_not_called()
+    assert runtime.commands == []
+
+
+def test_refresh_between_capture_and_authorization_verification_is_rejected(oauth_refresh):
+    fixture = oauth_refresh
+    runtime = fixture.runtime
+    captured = runtime.upgrade.stable_authorization(runtime.base)
+    fixture.write_credentials('gmail', {**fixture.credentials['gmail'], 'access_token': 'SYNTHETIC-CONCURRENT-REFRESH', 'expires_at': 3000})
+    with pytest.raises(s.StaticError, match='CAPTURED_AUTHORIZATION_DRIFT'):
+        s.checked_refreshed_authorization(runtime.upgrade, runtime.base, runtime.receipt,
+                                          runtime.roles, fixture.historical, captured)
+
+
+def test_refresh_after_proof_during_publication_is_rejected_without_nginx_switch(oauth_refresh):
+    fixture = oauth_refresh
+    runtime = fixture.runtime
+    def concurrent_refresh(payload):
+        fixture.write_credentials('gmail', {**fixture.credentials['gmail'], 'access_token': 'SYNTHETIC-PUBLISH-REFRESH', 'expires_at': 3000})
+        return {**runtime.currency.public, 'assets/new.js': 'b'*64}
+    runtime.base.install_public.side_effect = concurrent_refresh
+    with pytest.raises(s.StaticError, match='BACKEND_OR_CREDENTIAL_GENERATION_CHANGED'):
+        s.apply(runtime.args, runtime.release, runtime.verifier)
+    runtime.base.atomic_nginx.assert_not_called()
+    assert runtime.current_nginx == [runtime.original] and runtime.commands == []
+    state = json.loads((runtime.release / 'static-state.json').read_bytes())
+    assert state['phase'] == 'PRIVATE_CLARITY_UI_STATIC_ROLLED_BACK'
+    assert state['deployed'] is False
+
+
+def test_legitimate_prepublication_refresh_can_publish_with_the_captured_full_map(oauth_refresh):
+    fixture = oauth_refresh
+    runtime = fixture.runtime
+    expected = runtime.upgrade.stable_authorization(runtime.base)
+    result = s.apply(runtime.args, runtime.release, runtime.verifier)
+    assert result['deployed'] is True
+    state = json.loads((runtime.release / 'static-state.json').read_bytes())
+    assert state['stable_authorization'] == expected
+    assert state['stable_authorization'] != fixture.historical
+    assert state['oauth_refresh_proof']['changed_sources'] == ['gmail', 'google_ads']
+    assert state['oauth_refresh_proof']['all_bound_identity_scope_generation_oauth_fields_unchanged'] is True
+
+
+@pytest.mark.parametrize('case', ['add_access_field', 'add_expires_in', 'delete_refresh_token', 'delete_scope', 'delete_client_secret'])
+def test_refresh_exception_requires_the_same_credential_keyset(oauth_refresh, case):
+    fixture = oauth_refresh
+    credentials = {**fixture.credentials['gmail'], 'access_token': 'SYNTHETIC-NEW-ACCESS', 'expires_at': 2000}
+    if case == 'add_access_field':
+        credentials['extra_access_token'] = 'SYNTHETIC-UNREVIEWED-ACCESS'
+    elif case == 'add_expires_in':
+        credentials['expires_in'] = 3600
+    else:
+        del credentials[case.removeprefix('delete_')]
+    fixture.write_credentials('gmail', credentials)
+    with pytest.raises(s.StaticError, match='ONLY_ACCESS_TOKEN_REFRESH_ALLOWED'):
+        refresh_check(fixture)
+
+
+def test_credential_probe_uses_stdin_only_and_rechecks_the_same_healthy_api(monkeypatch):
+    identity, image = 'a'*64, 'sha256:'+'b'*64
+    runtime = {'id': identity, 'image': image, 'started_at': 'accepted'}
+    info = {'Id': identity, 'Name': '/t24-private-api', 'Image': image,
+            'State': {'Running': True, 'Health': {'Status': 'healthy'}}}
+    base = SimpleNamespace(inspect=Mock(return_value=info))
+    receipt = {'candidate_image': image, 'roles': {'api': {'id': identity, 'image': image, 'runtime': runtime}}}
+    pairs = [{'source_id': 'gmail', 'old_encrypted': 'SYNTHETIC-OLD-CIPHERTEXT',
+              'current_encrypted': 'SYNTHETIC-CURRENT-CIPHERTEXT'}]
+    proof = {'stage': 'OAUTH_REFRESH_CREDENTIAL_IDENTITY_VERIFIED', 'changed_sources': ['gmail'],
+             'checked_connections': 1, 'changed_plaintext_fields': ['access_token', 'expires_at'],
+             'writes': False, 'provider_requests': False}
+    invoke = Mock(return_value=SimpleNamespace(returncode=0, stdout=encoded(proof), stderr=b''))
+    monkeypatch.setattr(s.subprocess, 'run', invoke)
+    actual = s.verify_refresh_credentials(base, receipt, {'api': runtime}, pairs)
+    assert actual == proof
+    command = invoke.call_args.args[0]
+    assert command == ['docker', 'exec', '-i', '--workdir', '/app/backend', '--env',
+                       'PYTHONDONTWRITEBYTECODE=1', identity, 'python', '-B', '-c', s.REFRESH_CREDENTIAL_PROBE]
+    assert 'SYNTHETIC-' not in ' '.join(command)
+    assert json.loads(invoke.call_args.kwargs['input']) == pairs
+    assert 'env' not in invoke.call_args.kwargs
+    assert invoke.call_args.kwargs['capture_output'] is True
+    assert base.inspect.call_args_list == [((('t24-private-api',)), {}), ((('t24-private-api',)), {})]
