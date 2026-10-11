@@ -170,6 +170,42 @@ def test_failure_receipts_do_not_echo_provider_or_secret_text():
     assert r.safe_failure(ValueError("synthetic-secret-never-echo")) == "VALUEERROR"
 
 
+@pytest.mark.parametrize("changed_field", [None, "st_atime_ns", "st_dev", "st_ino", "st_uid", "st_gid",
+    "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns"])
+def test_frozen_wheel_reader_allows_only_read_access_time_change(monkeypatch, tmp_path, changed_field):
+    path = tmp_path / "test-wheel-manifest.json"
+    data = b'{"synthetic-pytest-wheel.whl":"reviewed-synthetic-hash"}'
+    path.write_bytes(data)
+    info = path.stat()
+    names = ["st_dev", "st_ino", "st_uid", "st_gid", "st_mode", "st_nlink", "st_size",
+             "st_atime_ns", "st_mtime_ns", "st_ctime_ns"]
+    baseline = {name: getattr(info, name) for name in names}
+    calls = []
+    def observed(_path):
+        values = dict(baseline)
+        if calls and changed_field:
+            values[changed_field] += 1
+        calls.append(_path)
+        return SimpleNamespace(**values)
+    monkeypatch.setattr(r, "protected", observed)
+    prep = SimpleNamespace(BASE_TEST_ROOT=tmp_path, BASE_WHEEL_MANIFEST_SHA=r.sha(data))
+    if changed_field in {None, "st_atime_ns"}:
+        assert r.retained_wheel_manifest(prep) == json.loads(data)
+    else:
+        with pytest.raises(r.ReleaseError, match="PROTECTED_FILE_CHANGED"):
+            r.retained_wheel_manifest(prep)
+    assert len(calls) == 2
+
+
+def test_frozen_wheel_manifest_still_requires_approved_bytes(monkeypatch, tmp_path):
+    path = tmp_path / "test-wheel-manifest.json"
+    path.write_bytes(b'{"synthetic":"unexpected"}')
+    monkeypatch.setattr(r, "protected", lambda _path: Path(_path).stat())
+    prep = SimpleNamespace(BASE_TEST_ROOT=tmp_path, BASE_WHEEL_MANIFEST_SHA="0" * 64)
+    with pytest.raises(r.ReleaseError, match="RETAINED_TEST_WHEEL_MANIFEST_HASH_DRIFT"):
+        r.retained_wheel_manifest(prep)
+
+
 def test_prepare_offline_test_mount_preserves_real_test_paths(monkeypatch, tmp_path):
     calls = []
     class BaseRunner:

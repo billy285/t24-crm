@@ -28,7 +28,7 @@ SOURCE = "1a9232dcc04a6d09d0f4f60193c693bbb6243476"
 BASE_SOURCE = "c1ae19b38fec8f62f044d4b0789f31662da12fbf"
 HOST = "iZj6c4cj7edgnhdimts4l7Z"
 BASE_IMAGE = "sha256:3edf765dac63430764b5f294a1ac0e0114763c3a59e5afa6790bf3dfc49f5734"
-RELEASE = Path("/opt/t24-crm/releases/personal-finance-1a9232dcc04a-20261012")
+RELEASE = Path("/opt/t24-crm/releases/personal-finance-1a9232dcc04a-20261012-retry2")
 LEGACY = Path("/opt/t24-crm/releases/stripe-report-c1ae19b38fec-20261012")
 LEGACY_HASHES = {
     "prepare_candidate.py": "989dc1de81a0b3a39ad978c395bdfd7a3c31725a3e2ebee57a5713cfc8faa613",
@@ -168,6 +168,16 @@ def load_legacy(name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def retained_wheel_manifest(prep):
+    # atime can change because this is a read. Keep every protection, identity,
+    # length and mutation stamp; do not alter the retained reader or its pins.
+    data = read(prep.BASE_TEST_ROOT / "test-wheel-manifest.json", 1024**2)
+    need(sha(data) == prep.BASE_WHEEL_MANIFEST_SHA, "RETAINED_TEST_WHEEL_MANIFEST_HASH_DRIFT")
+    value = json.loads(data)
+    need(isinstance(value, dict) and value, "RETAINED_TEST_WHEEL_MANIFEST_REQUIRED")
+    return value
 
 
 def checked_manifest(manifest):
@@ -461,7 +471,7 @@ def prepare(release, manifest, archive, preflight, *, manifest_sha256, preflight
     write_new(rollback_root / "services/private_workspace.py", rollback_bytes)
     rollback_hashes = {"models/private_personal_finance.py": sha(model_bytes), "services/private_workspace.py": sha(rollback_bytes)}
     wheels = prep.BASE_TEST_ROOT / "test-wheels"
-    wheel_manifest = json.loads(prep.frozen_file(prep.BASE_TEST_ROOT / "test-wheel-manifest.json", prep.BASE_WHEEL_MANIFEST_SHA, 1024**2))
+    wheel_manifest = retained_wheel_manifest(prep)
     tools = prep.wheel_tools(wheels, wheel_manifest)
     base_tag = "t24-private-personal-base:" + SOURCE[:12] + "-" + uuid4().hex[:12]
     missing = subprocess.run(["docker", "image", "inspect", base_tag], capture_output=True, timeout=30, check=False)
@@ -876,6 +886,6 @@ if __name__ == "__main__":
     try:
         print(json.dumps(main(parser.parse_args()), sort_keys=True))
     except BaseException as error:
-        code = str(error) if isinstance(error, ReleaseError) and re.fullmatch(r"[A-Z0-9_]{1,100}", str(error)) else "PERSONAL_FINANCE_RELEASE_REJECTED"
+        code = safe_failure(error)
         print(json.dumps({"stage": "PERSONAL_FINANCE_RELEASE_REJECTED", "code": code, "deployed": False}, sort_keys=True))
         raise SystemExit(1)
