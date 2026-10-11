@@ -4,6 +4,7 @@ import { privateSourceActionAvailability, verifiedPrivateSourceUrl, type Private
 import { ADS_BUCKET_NAMES, ADS_BUCKETS, privateAdsActualCpa, privateAdsReasons, privateAdsConversions, privateAdsMetric, privateAdsMoney, privateAdsNumber, privateAdsObservation, privateAdsPeriod, privateAdsStatus, privateAdsTime } from '@/lib/private-ads';
 
 type AdsRow = { item: PrivateItem; observation: ReturnType<typeof privateAdsObservation> };
+export type PrivateAdsNavigation = { query: string; choice: { snapshot: string; bucket: 'all' | PrivateAdsBucket } };
 type Props = {
   source?: PrivateSource;
   now: number;
@@ -18,6 +19,8 @@ type Props = {
   onManage: () => void;
   onSync: () => void;
   onRetry: () => void;
+  initialNavigation?: PrivateAdsNavigation;
+  onNavigationChange?: (navigation: PrivateAdsNavigation) => void;
 };
 function Badge({ bucket }: { bucket: PrivateAdsBucket }) {
   return <span className={`pw-ads-badge pw-ads-badge-${bucket}`}>{ADS_BUCKET_NAMES[bucket]}</span>;
@@ -30,9 +33,11 @@ function Row({ row, onSelect }: { row: AdsRow; onSelect: Props['onSelect'] }) {
   </button>;
 }
 
-export default function PrivateAdsDashboard({ source, now, accountLabel, items, total, loading, error, busy, syncing, onSelect, onManage, onSync, onRetry }: Props) {
-  const [query, setQuery] = useState('');
-  const [choice, setChoice] = useState<{ snapshot: string; bucket: 'all' | PrivateAdsBucket }>({ snapshot: '', bucket: 'all' });
+export default function PrivateAdsDashboard({ source, now, accountLabel, items, total, loading, error, busy, syncing, onSelect, onManage, onSync, onRetry, initialNavigation, onNavigationChange }: Props) {
+  const [query, setQuery] = useState(initialNavigation?.query || '');
+  const [choice, setChoice] = useState<PrivateAdsNavigation['choice']>(initialNavigation?.choice || { snapshot: '', bucket: 'all' });
+  function changeQuery(next: string) { setQuery(next); onNavigationChange?.({ query: next, choice }); }
+  function changeBucket(next: PrivateAdsNavigation['choice']) { setQuery(''); setChoice(next); onNavigationChange?.({ query: '', choice: next }); }
   const snapshot = source?.metadata?.ads_snapshot;
   const rows = useMemo(() => items.filter(item => item.source_id === 'google_ads').map(item => ({ item, observation: privateAdsObservation(item, source, now) })), [items, source, now]);
   const counts = Object.fromEntries(ADS_BUCKETS.map(bucket => [bucket, rows.filter(row => row.observation.bucket === bucket).length])) as Record<PrivateAdsBucket, number>;
@@ -52,8 +57,8 @@ export default function PrivateAdsDashboard({ source, now, accountLabel, items, 
       <div className="pw-ads-summary" aria-label="已同步广告检查概况"><div><span>需处理</span><strong>{counts.problem + counts.attention}</strong><small>{counts.problem ? `${counts.problem} 项异常停投` : counts.attention ? '有事项需要复核' : !rows.length || counts.unknown === rows.length ? '待完成检查' : '当前已查记录未见待处理问题'}</small></div><div><span>正常投放</span><strong>{counts.healthy}</strong><small>已查投放项未见异常</small></div><div><span>暂停结束</span><strong>{counts.paused}</strong><small>与投放异常分开查看</small></div></div>
       <p className={`pw-ads-coverage ${unreliable || partial ? 'pw-ads-coverage-warning' : ''}`}>{!rows.length ? '尚无可判断的广告检查数据。' : `当前显示 ${rows.length} 条已同步广告系列${partial ? '，仅包含部分广告系列' : ''}。`}{unreliable && ' 部分记录待观察，请检查同步与数据依据。'}{partial && ' 分类数量不代表完整账户。'}</p>
       {priority.length > 0 && <section className="pw-ads-priority"><div className="pw-section-heading"><h2>优先处理<small>{counts.problem + counts.attention > 3 ? '先看这 3 项' : `${counts.problem + counts.attention} 项`}</small></h2></div><div className="pw-ads-priority-grid">{priority.map(row => <article key={row.item.id}><div className="pw-ads-priority-title"><strong>{row.item.title}</strong><Badge bucket={row.observation.bucket} /></div><dl><div><dt>问题</dt><dd>{row.observation.reason}</dd></div><div><dt>影响</dt><dd>{row.observation.impact}</dd></div><div><dt>下一步</dt><dd>{row.observation.nextAction}</dd></div></dl><button type="button" className="pw-text-button" onClick={() => onSelect(row.item)}>查看检查<ArrowUpRight aria-hidden="true" /></button></article>)}</div></section>}
-      <section className="pw-ads-records"><div className="pw-ads-toolbar"><div className="pw-ads-filters" aria-label="广告投放分类"><button type="button" aria-pressed={!query.trim() && bucket === 'all'} onClick={() => { setQuery(''); setChoice({ snapshot: snapshotKey, bucket: 'all' }); }}>全部<small>{rows.length}</small></button>{ADS_BUCKETS.filter(value => counts[value] > 0).map(value => <button key={value} type="button" aria-pressed={!query.trim() && bucket === value} onClick={() => { setQuery(''); setChoice({ snapshot: snapshotKey, bucket: value }); }}>{ADS_BUCKET_NAMES[value]}<small>{counts[value]}</small></button>)}</div><label className="pw-ads-search"><Search aria-hidden="true" /><input aria-label="搜索已同步广告系列" placeholder="搜索广告系列" value={query} onChange={event => setQuery(event.target.value)} /></label></div>
-        {filtered.length ? <div className="pw-list pw-ads-list">{filtered.map(row => <Row key={row.item.id} row={row} onSelect={onSelect} />)}</div> : <div className="pw-ads-empty"><h3>{query.trim() ? '没有找到匹配的广告系列' : '暂无广告检查记录'}</h3><p>{query.trim() ? '搜索范围是当前已同步记录。' : source?.status === 'connected' ? '同步后查看真实投放状态与指标。' : '连接广告账户后显示真实数据。'}</p>{query.trim() && <button type="button" className="pw-text-button" onClick={() => setQuery('')}>清除搜索</button>}</div>}
+      <section className="pw-ads-records"><div className="pw-ads-toolbar"><div className="pw-ads-filters" aria-label="广告投放分类"><button type="button" aria-pressed={!query.trim() && bucket === 'all'} onClick={() => { changeBucket({ snapshot: snapshotKey, bucket: 'all' }); }}>全部<small>{rows.length}</small></button>{ADS_BUCKETS.filter(value => counts[value] > 0).map(value => <button key={value} type="button" aria-pressed={!query.trim() && bucket === value} onClick={() => { changeBucket({ snapshot: snapshotKey, bucket: value }); }}>{ADS_BUCKET_NAMES[value]}<small>{counts[value]}</small></button>)}</div><label className="pw-ads-search"><Search aria-hidden="true" /><input aria-label="搜索已同步广告系列" placeholder="搜索广告系列" value={query} onChange={event => changeQuery(event.target.value)} /></label></div>
+        {filtered.length ? <div className="pw-list pw-ads-list">{filtered.map(row => <Row key={row.item.id} row={row} onSelect={onSelect} />)}</div> : <div className="pw-ads-empty"><h3>{query.trim() ? '没有找到匹配的广告系列' : '暂无广告检查记录'}</h3><p>{query.trim() ? '搜索范围是当前已同步记录。' : source?.status === 'connected' ? '同步后查看真实投放状态与指标。' : '连接广告账户后显示真实数据。'}</p>{query.trim() && <button type="button" className="pw-text-button" onClick={() => changeQuery('')}>清除搜索</button>}</div>}
       </section>
     </>}
   </div>;

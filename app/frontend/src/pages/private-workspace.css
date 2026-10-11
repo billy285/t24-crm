@@ -522,3 +522,25 @@
   .pw-stripe-row-amount { max-width: none; flex: 1; align-items: flex-start; text-align: left; }
   .pw-stripe-evidence dl > div { grid-template-columns: 88px minmax(0, 1fr); gap: 10px; }
 }
+
+
+/* Return inside the private space is separate from leaving for the customer system. */
+.pw-sidebar-brand { font-size: 19px; }
+.pw-page-context { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.pw-private-back { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 0; border: 0; background: transparent; color: var(--pw-text); font: inherit; font-size: 13px !important; white-space: nowrap; }
+.pw-private-back svg { width: 17px; height: 17px; }
+.pw-desktop-back { min-height: 24px; padding: 0; color: var(--pw-muted); font-size: 12px !important; }
+.pw-detail-back { margin: 0 0 18px; color: var(--pw-muted); }
+.pw-mobile-crm-exit { display: none; }
+@media (max-width: 900px) {
+  .pw-mobile-header { position: sticky; top: 0; z-index: 20; min-height: 60px; padding-top: calc(8px + env(safe-area-inset-top)); padding-bottom: 8px; border-bottom: 1px solid var(--pw-line); }
+  .pw-mobile-header strong { min-width: 0; font-size: 14px; }
+  .pw-mobile-header > .pw-private-back { flex-shrink: 0; }
+  .pw-mobile-header > span { flex-shrink: 0; }
+  .pw-desktop-back { display: none; }
+  .pw-mobile-crm-exit { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 17px; margin-top: 18px; border-radius: 15px; background: var(--pw-surface); color: var(--pw-muted); }
+  .pw-mobile-crm-exit > span { display: grid; gap: 4px; }
+  .pw-mobile-crm-exit strong { color: var(--pw-text); font-size: 14px; }
+  .pw-mobile-crm-exit small { font-size: 11px; }
+}
+@media (pointer: coarse) { .pw-private-back { min-height: 44px; } }

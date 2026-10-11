@@ -23,24 +23,53 @@ const briefSnapshot = (period = 'today', overrides = {}) => ({
 
 // Run the actual component, API and draft guard against synthetic transport and
 // controlled hook scheduling. No mailbox, browser storage or external API is used.
-function fixture(items = [mail('message')], initialView = 'gmail', extraSources = [], overviewBalances = []) {
+function fixture(items = [mail('message')], initialView = 'gmail', extraSources = [], overviewBalances = [], navigation = {}) {
   let cursor = 0, epoch = 'synthetic-owner', tree, now = Date.now();
   const timers = new Map();
   class SyntheticDate extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
-  const hooks = [], effects = [], requests = [], listeners = new Map(), modules = new Map();
-  const params = new URLSearchParams({ view: initialView });
+  let hooks = [];
+  const componentHooks = new Map([['root', hooks]]), effects = [], requests = [], listeners = new Map(), modules = new Map();
+  const params = new URLSearchParams({ view: initialView, ...navigation.params });
+  let historyIndex = 0, routeSequence = 0;
+  const history = [{ pathname: '/private-workspace', search: `?${params}`, key: 'route-0', state: navigation.state || null }];
+  const navigationCalls = [], scrollCalls = [];
   let overviewHandler, bankStartHandler, bankCompleteHandler, preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler, mailCapabilitiesHandler, mailBriefHandler, briefHandler, explainHandler;
   const preferences = { sync_interval_seconds: 2700, gmail: { topics: ['finance', 'security'], watch_senders: [], watch_keywords: [], muted_senders: [] } };
   const source = { id: 'gmail', status: 'connected', capabilities: [], missing_configuration: [], last_sync: null, error: null };
   const react = {
-    useState(initial) { const index = cursor++; if (!hooks[index]) hooks[index] = { value: typeof initial === 'function' ? initial() : initial }; return [hooks[index].value, next => { hooks[index].value = typeof next === 'function' ? next(hooks[index].value) : next; }]; },
+    useState(initial) { const index = cursor++; if (!hooks[index]) hooks[index] = { value: typeof initial === 'function' ? initial() : initial }; const hook = hooks[index]; return [hook.value, next => { hook.value = typeof next === 'function' ? next(hook.value) : next; }]; },
     useRef(initial) { const index = cursor++; if (!hooks[index]) hooks[index] = { value: { current: initial } }; return hooks[index].value; },
     useMemo(factory, dependencies) { const index = cursor++; if (!hooks[index] || !same(hooks[index].dependencies, dependencies)) hooks[index] = { value: factory(), dependencies }; return hooks[index].value; },
     useCallback(callback, dependencies) { return react.useMemo(() => callback, dependencies); },
-    useEffect(effect, dependencies) { const index = cursor++; if (!hooks[index] || !same(hooks[index].dependencies, dependencies)) { const previous = hooks[index]; hooks[index] = { dependencies, cleanup: previous?.cleanup }; effects.push(() => { hooks[index].cleanup?.(); hooks[index].cleanup = effect(); }); } },
+    useEffect(effect, dependencies) { const index = cursor++; if (!hooks[index] || !same(hooks[index].dependencies, dependencies)) { const previous = hooks[index]; const hook = hooks[index] = { dependencies, cleanup: previous?.cleanup }; effects.push({ cleanup: () => hook.cleanup?.(), setup: () => { hook.cleanup = effect(); } }); } },
   };
   react.useLayoutEffect = react.useEffect;
-  const window = { setInterval: callback => { const id = timers.size + 1; timers.set(id, callback); return id; }, clearInterval: id => timers.delete(id), confirm: () => true, location: { assign: () => { throw new Error('No OAuth expected'); } }, addEventListener: (name, listener) => { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(listener); }, removeEventListener: (name, listener) => listeners.get(name)?.delete(listener) };
+  const window = { scrollY: 0, scrollTo: options => { scrollCalls.push(options); window.scrollY = typeof options === 'number' ? options : options.top; }, setInterval: callback => { const id = timers.size + 1; timers.set(id, callback); return id; }, clearInterval: id => timers.delete(id), confirm: () => true, location: { assign: () => { throw new Error('No OAuth expected'); } }, addEventListener: (name, listener) => { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(listener); }, removeEventListener: (name, listener) => listeners.get(name)?.delete(listener) };
+  function copyParams(search) { for (const key of [...params.keys()]) params.delete(key); for (const [key, value] of new URLSearchParams(search)) params.append(key, value); }
+  function allowNavigation(nextSearch) {
+    // The real application's router blocker protects native POP as well as its
+    // buttons. Run its shared draft guard instead of making back always succeed.
+    if (nextSearch === `?${params}`) return true;
+    return load('lib/use-unsaved-changes.ts').confirmDiscardAllChanges();
+  }
+  function setSearchParams(next, options = {}) {
+    const search = `?${new URLSearchParams(typeof next === 'function' ? next(params) : next)}`;
+    if (!allowNavigation(search)) return;
+    const entry = { pathname: '/private-workspace', search, key: `route-${++routeSequence}`, state: options.state || null };
+    navigationCalls.push({ type: options.replace ? 'REPLACE' : 'PUSH', search, state: options.state || null });
+    if (options.replace) history[historyIndex] = entry;
+    else { history.splice(historyIndex + 1); history.push(entry); historyIndex++; }
+    copyParams(search);
+  }
+  function navigateRoute(delta) {
+    assert.equal(typeof delta, 'number', 'private internal back must use a history delta');
+    const nextIndex = historyIndex + delta;
+    if (nextIndex < 0 || nextIndex >= history.length) return false;
+    const next = history[nextIndex];
+    if (!allowNavigation(next.search)) return false;
+    navigationCalls.push({ type: 'POP', delta }); historyIndex = nextIndex; copyParams(next.search);
+    return true;
+  }
   const context = vm.createContext({ URL, URLSearchParams, Intl, Date: SyntheticDate, window, console });
   function load(relative) {
     if (modules.has(relative)) return modules.get(relative);
@@ -50,7 +79,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     const require = name => {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return jsx;
-      if (name === 'react-router-dom') return { Link: 'a', useSearchParams: () => [params, next => { for (const key of [...params.keys()]) params.delete(key); for (const [key, value] of Object.entries(next)) params.set(key, value); }] };
+      if (name === 'react-router-dom') return { Link: 'a', useLocation: () => history[historyIndex], useNavigate: () => navigateRoute, useSearchParams: () => [params, setSearchParams] };
       if (name === 'lucide-react') return new Proxy({}, { get: () => props => jsx.jsx('svg', props) });
       if (name.endsWith('.css')) return {};
       if (name === '@/lib/auth-storage') return { AUTH_SESSION_INVALIDATED_EVENT: 'synthetic-auth-invalidated', getAuthSessionEpoch: () => epoch };
@@ -59,11 +88,13 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
       if (name === './PrivateBankDashboard') return load('pages/PrivateBankDashboard.tsx');
       if (name === '@/lib/private-ads') return load('lib/private-ads.ts');
       if (name === '@/lib/private-boss-brief') return load('lib/private-boss-brief.ts');
+      if (name === '@/lib/private-workspace-navigation') return load('lib/private-workspace-navigation.ts');
       if (name === './PrivateAdsDashboard') return load('pages/PrivateAdsDashboard.tsx');
       if (name === './PrivateMailContent') return load('pages/PrivateMailContent.tsx');
       if (name === './PrivateMailBrief') return load('pages/PrivateMailBrief.tsx');
       if (name === './PrivateBossBrief') return load('pages/PrivateBossBrief.tsx');
       if (name === '@/lib/use-dialog-draft') return load('lib/use-dialog-draft.ts');
+      if (name === '@/lib/use-unsaved-changes') return load('lib/use-unsaved-changes.ts');
       if (name === './use-unsaved-changes') return load('lib/use-unsaved-changes.ts');
       if (name.startsWith('@/components/ui/')) return new Proxy({}, { get: (_, key) => key === 'Dialog' || key === 'Sheet' ? props => props.open ? props.children : null : props => jsx.jsx('div', props) });
       if (name === './api') return { client: { apiCall: { invoke: async request => {
@@ -96,9 +127,15 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
             items.push(item); return { data: { item } };
           }
           const bucket = url.searchParams.get('mail_bucket');
-          const filtered = items.filter(item => !bucket || item.mail_relevance?.bucket === bucket);
+          const sourceId = url.searchParams.get('source_id'), kind = url.searchParams.get('kind'), status = url.searchParams.get('action_status');
+          const filtered = items.filter(item => (!sourceId || item.source_id === sourceId) && (!kind || item.kind === kind) && (!status || item.action_status === status) && (!bucket || item.mail_relevance?.bucket === bucket));
           const counts = { urgent: 0, today: 0, digest: 0, low: 0 }; items.forEach(item => { if (item.mail_relevance) counts[item.mail_relevance.bucket]++; });
           return { data: { items: structuredClone(filtered.slice(0, Number(url.searchParams.get('limit') || 100))), total: filtered.length, mail_counts: counts } };
+        }
+        if (/\/items\/[^/]+$/.test(url.pathname) && request.method === 'PATCH') {
+          const item = items.find(value => value.id === decodeURIComponent(url.pathname.split('/').at(-1)));
+          assert.ok(item, 'only existing synthetic personal records may be updated');
+          Object.assign(item, request.data); return { data: { item: structuredClone(item) } };
         }
         throw new Error(`Unexpected synthetic request ${url.pathname}`);
       } } } };
@@ -108,19 +145,48 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     modules.set(relative, module.exports); return module.exports;
   }
   const component = load('pages/PrivateWorkspace.tsx').default;
-  function expand(node) {
+  let renderedComponents, renderedInputs = [];
+  function expand(node, path = 'root') {
     if (node === null || node === undefined || typeof node === 'boolean') return [];
-    if (Array.isArray(node)) return node.flatMap(expand);
+    if (Array.isArray(node)) return node.flatMap((child, index) => expand(child, `${path}/${child?.key ?? index}`));
     if (typeof node !== 'object') return [String(node)];
-    if (typeof node.type === 'function') return expand(node.type(node.props));
-    return [{ ...node, children: expand(node.props?.children) }];
+    if (typeof node.type === 'function') {
+      renderedInputs.push(node);
+      const id = `${path}/${node.type.name || 'component'}`;
+      if (!componentHooks.has(id)) componentHooks.set(id, []);
+      renderedComponents.add(id);
+      const previousHooks = hooks, previousCursor = cursor;
+      hooks = componentHooks.get(id); cursor = 0;
+      const result = node.type(node.props);
+      hooks = previousHooks; cursor = previousCursor;
+      return expand(result, id);
+    }
+    return [{ ...node, children: expand(node.props?.children, `${path}/${String(node.type)}`) }];
   }
-  function render() { cursor = 0; tree = expand(component()); while (effects.length) effects.shift()(); return tree; }
+  function render() {
+    hooks = componentHooks.get('root'); cursor = 0; renderedComponents = new Set(['root']); renderedInputs = [];
+    tree = expand(component());
+    for (const [id, ownedHooks] of componentHooks) if (!renderedComponents.has(id)) { ownedHooks.forEach(hook => hook?.cleanup?.()); componentHooks.delete(id); }
+    const committed = effects.splice(0);
+    // React performs passive effect destruction before creation, which matters
+    // when the old page captures its position before the next page restores one.
+    committed.forEach(effect => effect.cleanup()); committed.forEach(effect => effect.setup()); return tree;
+  }
   const text = node => typeof node === 'string' ? node : (node.children || []).map(text).join('');
   function all(nodes = tree) { return nodes.flatMap(node => typeof node === 'object' ? [node, ...all(node.children || [])] : []); }
   async function flush() { for (let count = 0; count < 20; count++) { render(); await Promise.resolve(); } render(); }
   return {
-    requests, window, preferences, params, flush, text: () => tree.map(text).join(''), textOf: text, nodes: () => all(),
+    requests, window, preferences, params, flush, navigationCalls, scrollCalls,
+    location: () => ({ ...history[historyIndex] }), history: () => history.map(entry => ({ ...entry })),
+    back: async () => { const moved = navigateRoute(-1); await flush(); return moved; },
+    forward: async () => { const moved = navigateRoute(1); await flush(); return moved; },
+    remount: async () => {
+      for (const ownedHooks of componentHooks.values()) ownedHooks.forEach(hook => hook?.cleanup?.());
+      componentHooks.clear(); componentHooks.set('root', []); effects.splice(0); await flush();
+    },
+    changeSession: value => { epoch = value; for (const listener of listeners.get('synthetic-auth-invalidated') || []) listener(); },
+    text: () => tree.map(text).join(''), textOf: text, nodes: () => all(),
+    componentProps: name => renderedInputs.find(node => node.type.name === name)?.props,
     find: (type, label) => all().find(node => node.type === type && text(node) === label),
     button: label => all().find(node => node.type === 'button' && text(node).trim() === label),
     setOverviewHandler: handler => { overviewHandler = handler; },
@@ -136,7 +202,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     setExplainHandler: handler => { explainHandler = handler; },
     advanceTime(milliseconds) { now += milliseconds; for (const callback of timers.values()) callback(); },
     invalidate() { epoch = 'synthetic-new-account'; for (const listener of listeners.get('synthetic-auth-invalidated') || []) listener(); },
-    unmount() { hooks.forEach(hook => hook?.cleanup?.()); },
+    unmount() { for (const ownedHooks of componentHooks.values()) ownedHooks.forEach(hook => hook?.cleanup?.()); },
   };
 }
 
@@ -836,4 +902,350 @@ test('owner permission loss during the local bank refresh erases the successful 
   f.setBankCompleteHandler(() => ({ state: 'connected', session_id: bankCallbackSession, source_id: 'bofa_bank' })); f.setSyncHandler(() => ({ source, counts: { created: 0, updated: 0 } })); await f.flush();
   f.setOverviewHandler(() => { throw { response: { status: 403 } }; }); f.button('确认银行连接').props.onClick(); await f.flush();
   assert.ok(f.text().includes('此空间仅对本人开放')); assert.ok(!f.text().includes('银行账户与交易记录已同步')); assert.ok(!f.text().includes('银行缓存余额')); assert.equal(f.requests.filter(request => request.url.endsWith('/sources/bofa_bank/sync')).length, 1); f.unmount();
+});
+
+const privateHeaderBack = f => f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-private-back');
+const privateDetailBack = f => f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-private-back pw-detail-back');
+const titleInput = f => f.nodes().find(node => node.type === 'input' && node.props.maxLength === 240);
+
+test('private navigation returns detail to Gmail and Gmail to its brief without entering CRM', async () => {
+  const f = fixture([mail('navigation-message')], 'today'); f.setMailCapabilitiesHandler(() => briefCapabilities(false)); await f.flush();
+  const briefKey = f.location().key;
+  f.button('重要邮件').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'gmail');
+  assert.equal(f.location().state.privateWorkspace.parentKey, briefKey);
+  f.window.scrollY = 524;
+  await openMail(f);
+  assert.equal(f.params.get('item'), 'navigation-message');
+  assert.ok(privateDetailBack(f));
+  privateDetailBack(f).props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'gmail'); assert.equal(f.params.get('item'), null);
+  assert.equal(privateDetailBack(f), undefined); assert.equal(f.window.scrollY, 524);
+  privateHeaderBack(f).props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'today'); assert.equal(f.location().key, briefKey);
+  assert.equal(privateHeaderBack(f), undefined);
+  assert.ok(f.history().every(entry => entry.pathname === '/private-workspace'));
+  assert.equal(f.requests.filter(request => request.method === 'PATCH' || request.method === 'POST').length, 0);
+  f.unmount();
+});
+
+test('Stripe record type and Gmail bucket survive a trip to connections and browser back', async () => {
+  const source = stripeSource(); const payment = stripePayment(source);
+  const refund = { ...stripePayment(source), id: 'navigation-refund', kind: 'refund', title: 'Synthetic refund' };
+  const stripe = fixture([payment, refund], 'stripe', [source]); await stripe.flush();
+  stripe.button('退款').props.onClick(); await stripe.flush(); stripe.window.scrollY = 742;
+  stripe.button('管理接入').props.onClick(); await stripe.flush();
+  assert.equal(stripe.params.get('view'), 'connections'); assert.equal(await stripe.back(), true);
+  assert.equal(stripe.params.get('view'), 'stripe'); assert.equal(stripe.button('退款').props['aria-pressed'], true);
+  assert.equal(stripe.button('支付').props['aria-pressed'], false); assert.equal(stripe.window.scrollY, 742);
+  assert.ok(stripe.text().includes('Synthetic refund')); assert.ok(!stripe.text().includes('Synthetic authorization'));
+  assert.ok(stripe.requests.filter(request => request.url.includes('/items?')).at(-1).url.includes('kind=refund')); stripe.unmount();
+
+  const gmail = fixture([mail('navigation-digest', 'digest'), mail('navigation-urgent', 'urgent')]); await gmail.flush();
+  gmail.button('每日摘要1').props.onClick(); await gmail.flush(); gmail.window.scrollY = 318;
+  gmail.button('工作接入').props.onClick(); await gmail.flush();
+  assert.equal(await gmail.back(), true); assert.equal(gmail.params.get('view'), 'gmail');
+  assert.equal(gmail.button('每日摘要1').props['aria-pressed'], true); assert.equal(gmail.window.scrollY, 318);
+  assert.ok(gmail.text().includes('Synthetic navigation-digest')); assert.ok(!gmail.text().includes('Synthetic navigation-urgent'));
+  gmail.unmount();
+});
+
+test('the private brief has no return arrow to CRM and More gives the explicit customer-system exit', async () => {
+  const f = fixture([], 'today'); await f.flush();
+  const header = f.nodes().find(node => node.type === 'header' && node.props.className === 'pw-mobile-header');
+  assert.ok(f.textOf(header).includes('私人空间')); assert.ok(f.textOf(header).includes('仅本人'));
+  assert.equal(privateHeaderBack(f), undefined); assert.equal(privateDetailBack(f), undefined);
+  f.button('更多').props.onClick(); await f.flush();
+  const exit = f.nodes().find(node => node.type === 'a' && node.props.className === 'pw-mobile-crm-exit');
+  assert.ok(exit); assert.equal(exit.props.to, '/apps');
+  assert.ok(f.textOf(exit).includes('返回客户系统')); assert.ok(f.textOf(exit).includes('离开私人空间'));
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+});
+
+test('direct or reloaded source entries fall back to the private brief instead of an untrusted previous route', async () => {
+  for (const state of [null, { privateWorkspace: { session: 'synthetic-owner', parentKey: 'missing-route', parentView: 'gmail' } }, { privateWorkspace: { session: 'previous-owner', parentKey: 'route-0', parentView: 'stripe' } }]) {
+    const f = fixture([], 'stripe', [stripeSource()], [], { state }); await f.flush();
+    assert.ok(privateHeaderBack(f)); privateHeaderBack(f).props.onClick(); await f.flush();
+    assert.equal(f.params.get('view'), 'today'); assert.equal(f.navigationCalls.some(call => call.type === 'POP'), false);
+    assert.equal(f.history().length, 1); f.unmount();
+  }
+  const f = fixture([mail('reload-message')], 'today'); await f.flush(); f.button('重要邮件').props.onClick(); await f.flush(); await openMail(f);
+  assert.ok(privateDetailBack(f)); await f.remount();
+  assert.equal(f.params.get('item'), null); assert.equal(privateDetailBack(f), undefined);
+  privateHeaderBack(f).props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'today'); assert.equal(f.navigationCalls.some(call => call.type === 'POP'), false); f.unmount();
+});
+
+test('native back closes only the current detail layer and forward reopens its trusted in-session record', async () => {
+  const f = fixture([mail('pop-message')], 'today'); await f.flush(); f.button('重要邮件').props.onClick(); await f.flush(); await openMail(f);
+  const initialWrites = f.requests.filter(request => request.method !== 'GET').length;
+  const detailKey = f.location().key;
+  assert.equal(await f.back(), true); assert.equal(f.params.get('view'), 'gmail'); assert.equal(f.params.get('item'), null);
+  assert.equal(privateDetailBack(f), undefined); assert.equal(f.nodes().some(node => node.props.className === 'pw-mail-feedback'), false);
+  assert.equal(await f.forward(), true); assert.equal(f.location().key, detailKey); assert.equal(f.params.get('item'), 'pop-message'); assert.ok(privateDetailBack(f));
+  assert.equal(await f.back(), true); assert.equal(await f.back(), true); assert.equal(f.params.get('view'), 'today');
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, initialWrites); f.unmount();
+});
+
+test('native back closes snooze above a detail and dirty time changes require confirmation', async () => {
+  const f = fixture(); await f.flush(); await openMail(f); f.button('稍后处理').props.onClick(); await f.flush();
+  const initialWrites = f.requests.filter(request => request.method !== 'GET').length;
+  assert.equal(f.params.get('panel'), 'snooze'); assert.ok(f.button('保存时间'));
+  const due = f.nodes().find(node => node.type === 'input' && node.props.type === 'datetime-local');
+  due.props.onChange({ target: { value: '2030-12-01T09:00' } }); await f.flush();
+  let prompts = 0; f.window.confirm = () => { prompts++; return false; };
+  assert.equal(await f.back(), false); assert.equal(prompts, 1); assert.equal(f.params.get('panel'), 'snooze');
+  assert.ok(f.button('保存时间')); assert.equal(f.requests.filter(request => request.method !== 'GET').length, initialWrites);
+  f.window.confirm = () => { prompts++; return true; };
+  assert.equal(await f.back(), true); assert.equal(prompts, 2); assert.equal(f.params.get('panel'), null);
+  assert.equal(f.params.get('item'), 'message'); assert.ok(privateDetailBack(f)); assert.equal(f.button('保存时间'), undefined);
+  assert.equal(await f.back(), true); assert.equal(f.params.get('item'), null); assert.equal(privateDetailBack(f), undefined); f.unmount();
+});
+
+test('native back protects a nested personal editor then returns to the unchanged detail before the list', async () => {
+  const item = { ...mail('navigation-task'), source_id: 'manual', kind: 'task', title: 'Existing personal task', status: 'manual', mail_relevance: undefined };
+  const f = fixture([item], 'manual'); await f.flush();
+  f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-item ').props.onClick(); await f.flush();
+  f.button('编辑').props.onClick(); await f.flush(); assert.equal(f.params.get('panel'), 'editor');
+  titleInput(f).props.onChange({ target: { value: 'Unsaved private title' } }); await f.flush();
+  let prompts = 0; f.window.confirm = () => { prompts++; return false; };
+  assert.equal(await f.back(), false); assert.equal(prompts, 1); assert.equal(titleInput(f).props.value, 'Unsaved private title');
+  f.window.confirm = () => { prompts++; return true; };
+  assert.equal(await f.back(), true); assert.equal(prompts, 2); assert.equal(f.params.get('panel'), null);
+  assert.equal(titleInput(f), undefined); assert.equal(f.params.get('item'), item.id); assert.ok(privateDetailBack(f));
+  assert.ok(f.text().includes('Existing personal task')); assert.ok(!f.text().includes('Unsaved private title'));
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0);
+  await f.back(); assert.equal(f.params.get('item'), null); assert.equal(f.params.get('view'), 'manual'); f.unmount();
+});
+
+test('saved personal edits return to the updated detail and the next back reaches the source list', async () => {
+  const item = { ...mail('saved-task'), source_id: 'manual', kind: 'task', title: 'Before save', status: 'manual', mail_relevance: undefined };
+  const f = fixture([item], 'manual'); await f.flush();
+  f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-item ').props.onClick(); await f.flush();
+  f.button('编辑').props.onClick(); await f.flush(); titleInput(f).props.onChange({ target: { value: 'Saved private task' } }); await f.flush();
+  f.window.confirm = () => { throw new Error('A saved draft must not require discard confirmation'); };
+  await f.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await f.flush();
+  assert.equal(f.params.get('panel'), null); assert.equal(f.params.get('item'), item.id); assert.equal(titleInput(f), undefined);
+  assert.ok(f.text().includes('Saved private task')); assert.ok(f.text().includes('个人事项已保存'));
+  assert.equal(f.requests.filter(request => request.method === 'PATCH').length, 1);
+  assert.ok(f.requests.every(request => request.url.startsWith('/api/v1/private-workspace')));
+  assert.equal(await f.back(), true); assert.equal(f.params.get('item'), null); assert.equal(f.params.get('view'), 'manual'); f.unmount();
+});
+
+test('history contains navigation metadata only and a new owner session cannot restore earlier detail caches', async () => {
+  const item = mail('session-message'); item.summary = 'Private body must never enter router history';
+  const f = fixture([item], 'today'); await f.flush(); f.button('重要邮件').props.onClick(); await f.flush(); await openMail(f);
+  const states = f.history().map(entry => entry.state).filter(Boolean);
+  for (const state of states) {
+    assert.deepEqual(Object.keys(state), ['privateWorkspace']);
+    assert.ok(Object.keys(state.privateWorkspace).every(key => ['session', 'parentKey', 'parentView', 'panelToken'].includes(key)));
+    assert.ok(!JSON.stringify(state).includes(item.summary)); assert.ok(!JSON.stringify(state).includes(item.title));
+  }
+  f.changeSession('synthetic-second-owner'); await f.flush();
+  assert.ok(f.text().includes('此空间仅对本人开放')); assert.equal(privateDetailBack(f), undefined);
+  await f.remount(); assert.equal(f.params.get('item'), null); assert.equal(f.params.get('panel'), null); assert.equal(privateDetailBack(f), undefined);
+  privateHeaderBack(f).props.onClick(); await f.flush(); assert.equal(f.params.get('view'), 'today');
+  assert.equal(f.navigationCalls.some(call => call.type === 'POP'), false); f.unmount();
+});
+
+test('native back protects preference edits and forward rereads saved preferences without reviving discarded text', async () => {
+  const f = fixture(); await f.flush(); f.button('关注设置').props.onClick(); await f.flush();
+  const keywords = () => f.nodes().find(node => node.type === 'textarea' && node.props.placeholder.includes('项目名'));
+  assert.equal(f.params.get('panel'), 'preferences');
+  keywords().props.onChange({ target: { value: 'Unsaved navigation keyword' } }); await f.flush();
+  let prompts = 0; f.window.confirm = () => { prompts++; return false; };
+  assert.equal(await f.back(), false); assert.equal(prompts, 1); assert.equal(keywords().props.value, 'Unsaved navigation keyword');
+  f.window.confirm = () => { prompts++; return true; };
+  assert.equal(await f.back(), true); assert.equal(prompts, 2); assert.equal(f.params.get('panel'), null);
+  assert.equal(f.button('保存关注设置'), undefined); assert.equal(f.requests.filter(request => request.method === 'PATCH').length, 0);
+  const previousReads = f.requests.filter(request => request.url.endsWith('/preferences') && request.method === 'GET').length;
+  assert.equal(await f.forward(), true); assert.equal(f.params.get('panel'), 'preferences');
+  assert.ok(f.button('保存关注设置')); assert.equal(keywords().props.value, '');
+  assert.equal(f.requests.filter(request => request.url.endsWith('/preferences') && request.method === 'GET').length, previousReads + 1);
+  assert.equal(f.requests.filter(request => request.method === 'PATCH').length, 0); f.unmount();
+});
+
+test('saving preferences returns to the same Gmail list and later back remains inside the private space', async () => {
+  const f = fixture([mail('preferences-save')], 'today'); await f.flush(); f.button('重要邮件').props.onClick(); await f.flush();
+  f.button('关注设置').props.onClick(); await f.flush();
+  f.nodes().find(node => node.type === 'textarea' && node.props.placeholder.includes('项目名')).props.onChange({ target: { value: 'Saved keyword' } }); await f.flush();
+  f.window.confirm = () => { throw new Error('Saving preferences must release the draft guard'); };
+  await f.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await f.flush();
+  assert.equal(f.params.get('panel'), null); assert.equal(f.params.get('view'), 'gmail'); assert.equal(f.button('保存关注设置'), undefined);
+  assert.deepEqual(Array.from(f.preferences.gmail.watch_keywords), ['Saved keyword']);
+  assert.equal(f.requests.filter(request => request.method === 'PATCH').length, 1);
+  assert.equal(await f.back(), true); assert.equal(f.params.get('view'), 'today'); f.unmount();
+});
+
+test('new personal item save replaces its editor with the detail so one back reaches the list', async () => {
+  const f = fixture([], 'manual'); await f.flush(); f.button('新增事项').props.onClick(); await f.flush();
+  titleInput(f).props.onChange({ target: { value: 'New navigation task' } }); await f.flush();
+  f.window.confirm = () => { throw new Error('A newly saved item must not prompt discard'); };
+  await f.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await f.flush();
+  assert.equal(f.params.get('panel'), null); assert.equal(f.params.get('item'), 'new-personal'); assert.ok(privateDetailBack(f));
+  assert.ok(f.text().includes('New navigation task')); assert.equal(titleInput(f), undefined);
+  assert.equal(f.requests.filter(request => request.method === 'POST').length, 1);
+  assert.equal(f.requests.find(request => request.method === 'POST').url, '/api/v1/private-workspace/items');
+  assert.equal(await f.back(), true); assert.equal(f.params.get('item'), null); assert.equal(f.params.get('view'), 'manual');
+  assert.ok(f.text().includes('New navigation task')); assert.equal(privateDetailBack(f), undefined); f.unmount();
+});
+
+test('returning from Ads connections restores the selected delivery bucket and local search', async () => {
+  const fixtures = ['problem', 'healthy'].map((bucket, index) => adsFixture(bucket, index));
+  const f = fixture(fixtures.map(value => value.item), 'google_ads', [fixtures[0].source]); await f.flush();
+  f.button('正常投放1').props.onClick(); await f.flush();
+  f.nodes().find(node => node.type === 'input' && node.props['aria-label'] === '搜索已同步广告系列').props.onChange({ target: { value: '合成广告系列 1' } }); await f.flush();
+  f.button('管理接入').props.onClick(); await f.flush(); assert.equal(f.params.get('view'), 'connections');
+  assert.equal(await f.back(), true); assert.equal(f.params.get('view'), 'google_ads');
+  const search = f.nodes().find(node => node.type === 'input' && node.props['aria-label'] === '搜索已同步广告系列');
+  assert.equal(search.props.value, '合成广告系列 1');
+  assert.equal(f.nodes().filter(node => node.props.className === 'pw-ads-row').length, 1);
+  search.props.onChange({ target: { value: '' } }); await f.flush();
+  assert.equal(f.button('正常投放1').props['aria-pressed'], true);
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+});
+
+const editorFields = f => ({
+  title: titleInput(f),
+  summary: f.nodes().find(node => node.type === 'textarea' && node.props.maxLength === 5000),
+  priority: f.nodes().find(node => node.type === 'select'),
+  due: f.nodes().find(node => node.type === 'input' && node.props.type === 'datetime-local'),
+});
+
+test('forward to a discarded new personal editor restores its blank starting values without resurrecting its draft', async () => {
+  const f = fixture([], 'manual'); await f.flush(); f.button('新增事项').props.onClick(); await f.flush();
+  const editorKey = f.location().key;
+  const fields = editorFields(f);
+  fields.title.props.onChange({ target: { value: 'Discarded private task title' } });
+  fields.summary.props.onChange({ target: { value: 'Discarded private task notes' } });
+  fields.priority.props.onChange({ target: { value: 'urgent' } });
+  fields.due.props.onChange({ target: { value: '2030-12-01T09:00' } }); await f.flush();
+  let prompts = 0; f.window.confirm = () => { prompts++; return true; };
+  assert.equal(await f.back(), true); assert.equal(prompts, 1); assert.equal(f.params.get('panel'), null);
+  assert.equal(await f.forward(), true); assert.equal(f.location().key, editorKey); assert.equal(f.params.get('panel'), 'editor');
+  const restored = editorFields(f);
+  assert.equal(restored.title.props.value, ''); assert.equal(restored.summary.props.value, '');
+  assert.equal(restored.priority.props.value, 'normal'); assert.equal(restored.due.props.value, '');
+  assert.ok(!JSON.stringify(f.history()).includes('Discarded private task'));
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0);
+  f.window.confirm = () => { throw new Error('Restored initial editor values must be clean'); };
+  assert.equal(await f.back(), true); assert.equal(f.params.get('view'), 'manual'); f.unmount();
+});
+
+test('brief proposal editor restores its own proposal on forward even after another new editor was visited', async () => {
+  const f = fixture([], 'today'); f.setBriefHandler(() => briefSnapshot('today', { issues: [bossIssue] })); await f.flush();
+  f.button('加入个人事项').props.onClick(); await f.flush(); const proposalKey = f.location().key;
+  const initial = editorFields(f); const proposalSummary = initial.summary.props.value;
+  assert.equal(initial.title.props.value, bossIssue.title); assert.ok(proposalSummary.includes(bossIssue.next_action));
+  initial.title.props.onChange({ target: { value: 'Discarded proposal title' } });
+  initial.summary.props.onChange({ target: { value: 'Discarded proposal notes' } });
+  initial.priority.props.onChange({ target: { value: 'high' } });
+  initial.due.props.onChange({ target: { value: '2030-12-02T09:00' } }); await f.flush();
+  let prompts = 0; f.window.confirm = () => { prompts++; return true; };
+  assert.equal(await f.back(), true); assert.equal(prompts, 1); assert.equal(await f.forward(), true);
+  assert.equal(f.location().key, proposalKey); assert.equal(editorFields(f).title.props.value, bossIssue.title);
+  assert.equal(editorFields(f).summary.props.value, proposalSummary); assert.equal(editorFields(f).priority.props.value, 'normal');
+  assert.equal(editorFields(f).due.props.value, '');
+
+  f.button('个人事项').props.onClick(); await f.flush(); f.button('新增事项').props.onClick(); await f.flush();
+  editorFields(f).title.props.onChange({ target: { value: 'Another discarded editor title' } });
+  editorFields(f).summary.props.onChange({ target: { value: 'Another discarded editor notes' } }); await f.flush();
+  assert.equal(await f.back(), true); assert.equal(prompts, 2); assert.equal(f.params.get('view'), 'manual');
+  assert.equal(await f.back(), true); assert.equal(f.location().key, proposalKey);
+  assert.equal(editorFields(f).title.props.value, bossIssue.title); assert.equal(editorFields(f).summary.props.value, proposalSummary);
+  f.window.confirm = () => { throw new Error('Discarded drafts must not dirty restored proposal values'); };
+  assert.equal(await f.back(), true); assert.equal(f.params.get('view'), 'today'); assert.equal(f.params.get('panel'), null);
+  assert.equal(await f.forward(), true); assert.equal(f.location().key, proposalKey);
+  assert.equal(editorFields(f).title.props.value, bossIssue.title); assert.equal(editorFields(f).summary.props.value, proposalSummary);
+  assert.equal(editorFields(f).priority.props.value, 'normal'); assert.equal(editorFields(f).due.props.value, '');
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+});
+
+test('forward to an earlier detail uses refreshed authoritative item fields rather than its old panel snapshot', async () => {
+  const item = mail('authoritative-detail'); const f = fixture([item]);
+  f.setMailCapabilitiesHandler(() => briefCapabilities(false)); await f.flush(); await openMail(f);
+  const detail = () => f.nodes().find(node => node.type === 'div' && node.props.className === 'pw-surface pw-detail-sheet');
+  assert.ok(f.textOf(detail()).includes('Synthetic authoritative-detail'));
+  assert.equal(await f.back(), true);
+  item.title = 'Updated authoritative private title'; item.summary = 'Updated authoritative private summary'; item.action_status = 'done';
+  f.button('刷新').props.onClick(); await f.flush();
+  assert.ok(f.text().includes(item.title)); assert.equal(await f.forward(), true);
+  assert.ok(detail()); assert.ok(f.textOf(detail()).includes(item.title)); assert.ok(f.textOf(detail()).includes(item.summary));
+  assert.ok(f.textOf(detail()).includes('已处理')); assert.ok(!f.textOf(detail()).includes('Synthetic authoritative-detail'));
+  assert.equal(f.button('标记已处理'), undefined); assert.ok(f.button('恢复待处理'));
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+});
+
+test('forward to a Stripe detail after refresh shows current captured and refund amounts instead of old authorization fields', async () => {
+  const source = stripeSource(); const item = stripePayment(source); const f = fixture([item], 'stripe', [source]); await f.flush();
+  f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-stripe-row ').props.onClick(); await f.flush();
+  const detail = () => f.nodes().find(node => node.type === 'div' && node.props.className === 'pw-stripe-detail');
+  assert.ok(f.textOf(detail()).includes('授权金额尚未捕获，不代表实际收款'));
+  assert.equal(await f.back(), true);
+  item.evidence = { ...item.evidence, captured: true, payment_state: 'partially_refunded', amount_captured_minor: 8000, amount_refunded_minor: 2500 };
+  f.button('刷新').props.onClick(); await f.flush(); assert.equal(await f.forward(), true);
+  const current = f.textOf(detail()).replace(/\s/g, ' ');
+  assert.ok(current.includes('部分退款')); assert.ok(current.includes('已收款金额USD 80.00')); assert.ok(current.includes('已退款金额USD 25.00'));
+  assert.ok(!current.includes('授权金额尚未捕获')); assert.ok(!current.includes('已收款金额USD 0.00'));
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+});
+
+test('successful mail body or brief enrichment remains detail-only and survives back and forward without another provider request', async () => {
+  for (const mode of ['body', 'brief']) {
+    const item = mail(`enriched-${mode}`); const f = fixture([item]); const original = `Private enriched ${mode} original`;
+    if (mode === 'body') {
+      item.mail_translation = translated(item.id);
+      f.setTranslationBodyHandler(() => ({ configured: true, item_id: item.id, translation: translated(item.id, { updated_at: '2026-10-11T08:30:00Z', body_original: original, body_zh: '详情中文正文保留', body_available: true }) }));
+    } else {
+      f.setMailCapabilitiesHandler(() => briefCapabilities());
+      f.setMailBriefHandler(() => ({ configured: true, item_id: item.id, brief: organized({ updated_at: '2026-10-11T08:30:00Z', original_body: original, summary_zh: '已经整理的中文重点保留' }) }));
+    }
+    await f.flush(); await openMail(f); f.button(mode === 'body' ? '翻译正文' : '整理这封邮件').props.onClick(); await f.flush();
+    assert.ok(f.text().includes(mode === 'body' ? '详情中文正文保留' : '已经整理的中文重点保留'));
+    assert.equal(await f.back(), true); assert.ok(!f.text().includes(original)); assert.equal(privateDetailBack(f), undefined);
+    assert.equal(await f.forward(), true); assert.ok(privateDetailBack(f));
+    const detail = f.nodes().find(node => node.type === 'div' && node.props.className === 'pw-surface pw-detail-sheet');
+    assert.ok(f.textOf(detail).includes(mode === 'body' ? '详情中文正文保留' : '已经整理的中文重点保留'));
+    f.button('原文').props.onClick(); await f.flush(); assert.ok(f.text().includes(original));
+    const providerRequests = f.requests.filter(request => request.url.endsWith(mode === 'body' ? '/mail-translation' : '/mail-brief'));
+    assert.equal(providerRequests.length, 1); assert.ok(!JSON.stringify(f.history()).includes(original));
+    f.unmount();
+  }
+});
+
+test('refreshed mail previews retain detail-only body only for matching text and version while keeping latest server brief fields', async () => {
+  for (const mode of ['body', 'brief']) for (const revision of ['same', 'version', 'missing-version', 'title', 'summary']) {
+    const item = mail(`preview-${mode}-${revision}`); const f = fixture([item]); const original = `Private cached ${mode} ${revision} body`;
+    const enriched = mode === 'body'
+      ? translated(item.id, { updated_at: '2026-10-11T08:30:00Z', body_original: original, body_zh: '已缓存中文正文', body_available: true })
+      : organized({ updated_at: '2026-10-11T08:30:00Z', original_body: original, importance: 'urgent', needs_action: true, summary_zh: '旧版处理建议' });
+    if (mode === 'body') {
+      item.mail_translation = translated(item.id);
+      f.setTranslationBodyHandler(() => ({ configured: true, item_id: item.id, translation: enriched }));
+    } else {
+      f.setMailCapabilitiesHandler(() => briefCapabilities());
+      f.setMailBriefHandler(() => ({ configured: true, item_id: item.id, brief: enriched }));
+    }
+    await f.flush(); await openMail(f); f.button(mode === 'body' ? '翻译正文' : '整理这封邮件').props.onClick(); await f.flush();
+    assert.equal(await f.back(), true);
+    if (mode === 'body') item.mail_translation = { ...enriched, body_original: undefined, body_zh: undefined, body_available: false, summary_zh: '来源最新中文摘要' };
+    else item.mail_brief = { ...enriched, original_body: undefined, source_evidence: undefined,
+      importance: 'read', needs_action: false, summary_zh: '来源最新阅读建议', next_action: '阅读后了解即可', deadline: { ...enriched.deadline, evidence: undefined } };
+    const preview = mode === 'body' ? item.mail_translation : item.mail_brief;
+    if (revision === 'version') preview.updated_at = '2026-10-11T09:00:00Z';
+    if (revision === 'missing-version') delete preview.updated_at;
+    if (revision === 'title') item.title = 'Changed source mail subject';
+    if (revision === 'summary') item.summary = 'Changed source mail snippet';
+    f.button('刷新').props.onClick(); await f.flush(); assert.equal(await f.forward(), true);
+    if (mode === 'brief') {
+      const props = f.componentProps('PrivateMailBrief'); assert.ok(props);
+      assert.equal(props.item.mail_brief.importance, 'read'); assert.equal(props.item.mail_brief.needs_action, false);
+      assert.ok(f.text().includes('了解即可')); assert.ok(f.text().includes('来源最新阅读建议')); assert.ok(!f.text().includes('旧版处理建议'));
+    }
+    f.button('原文').props.onClick(); await f.flush();
+    assert.equal(f.text().includes(original), revision === 'same', `${mode}/${revision} detail cache provenance`);
+    assert.ok(!JSON.stringify(f.history()).includes(original));
+    assert.equal(f.requests.filter(request => request.url.endsWith(mode === 'body' ? '/mail-translation' : '/mail-brief')).length, 1);
+    f.unmount();
+  }
 });
