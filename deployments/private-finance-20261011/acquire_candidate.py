@@ -18,7 +18,8 @@ ROOT = Path('/opt/t24-crm/releases')
 PREFIX = 'deployments/private-finance-20261011/'
 ARTIFACTS = ('frozen-source.json', 'private-finance-manifest.json', 'private-finance-payload.tar.gz')
 TOOLS = ('acquire_candidate.py', 'build_payload.py', 'candidate_prepare.py', 'credential_transfer.py',
-         'live_preflight.py', 'private_schema_guard.py', 'seed_private_stripe.py')
+         'live_preflight.py', 'private_schema_guard.py', 'seed_private_stripe.py',
+         'switch_completed.py', 'static_completed.py')
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
 SHA = re.compile(r'[a-f0-9]{64}')
