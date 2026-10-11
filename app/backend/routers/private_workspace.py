@@ -1,18 +1,19 @@
 """A separately stored personal workspace; provider operations remain read-only."""
+import asyncio
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.private_workspace import PrivateOwner, private_access_allowed, require_private_owner
+from dependencies.private_workspace import PrivateOwner, private_access_allowed, require_private_owner, revalidate_private_owner, valid_private_owner
 from models.private_workspace import PrivateItem
 from schemas.private_workspace import (
     ActionStatus, MailBucket, PrivateItemCreate, PrivateItemPatch, PrivateItemResponse, PrivateMailFeedbackCreate, PrivatePreferencesPatch, SourceId,
     PrivateMailTranslationBatch, PrivateMailTranslationRequest, PrivateMailBriefRequest,
-    PrivateWorkspaceBriefRequest,
+    PrivateWorkspaceBriefRequest, PrivateBankCompleteRequest,
 )
 from services.private_workspace import (
     complete_oauth, connect_source, disconnect_source, get_private_db, item_response, list_items,
@@ -217,6 +218,47 @@ async def connect(
     return await connect_source(private_db, owner.employee_id, source_id)
 
 
+@router.post("/bank/link/start")
+async def bank_link_start(
+    request: Request,
+    owner: PrivateOwner = Depends(require_private_owner),
+    private_db: AsyncSession = Depends(get_private_db),
+    business_db: AsyncSession = Depends(get_db),
+):
+    from services.private_bank_service import begin_bank_link
+    from services.private_bank_provider import BankProviderError
+    try:
+        return await asyncio.wait_for(begin_bank_link(
+            private_db, owner.employee_id,
+            owner_validator=lambda: revalidate_private_owner(request, owner.employee_id),
+        ), timeout=90)
+    except BankProviderError as error:
+        raise HTTPException(status_code=502, detail=error.public_message) from None
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="银行授权响应超时，请稍后重试") from None
+
+
+@router.post("/bank/link/complete")
+async def bank_link_complete(
+    payload: PrivateBankCompleteRequest,
+    request: Request,
+    owner: PrivateOwner = Depends(require_private_owner),
+    private_db: AsyncSession = Depends(get_private_db),
+    business_db: AsyncSession = Depends(get_db),
+):
+    from services.private_bank_service import complete_bank_link
+    from services.private_bank_provider import BankProviderError
+    try:
+        return await asyncio.wait_for(complete_bank_link(
+            private_db, owner.employee_id, payload.session_id,
+            owner_validator=lambda: revalidate_private_owner(request, owner.employee_id),
+        ), timeout=90)
+    except BankProviderError as error:
+        raise HTTPException(status_code=502, detail=error.public_message) from None
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="银行授权确认超时，请稍后重试") from None
+
+
 @router.post("/sources/{source_id}/disconnect")
 async def disconnect(
     source_id: SourceId,
@@ -229,10 +271,17 @@ async def disconnect(
 @router.post("/sources/{source_id}/sync")
 async def synchronize(
     source_id: SourceId,
+    request: Request,
     owner: PrivateOwner = Depends(require_private_owner),
     private_db: AsyncSession = Depends(get_private_db),
+    business_db: AsyncSession = Depends(get_db),
 ):
-    return await sync_source(private_db, owner.employee_id, source_id)
+    result = await sync_source(private_db, owner.employee_id, source_id)
+    still_allowed = (await revalidate_private_owner(request, owner.employee_id) if source_id == "bofa_bank"
+                     else await valid_private_owner(owner.employee_id, business_db))
+    if not still_allowed:
+        raise HTTPException(status_code=403, detail="私人空间访问权限已失效")
+    return result
 
 
 @router.get("/oauth/{source_id}/callback", include_in_schema=False)

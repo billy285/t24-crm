@@ -23,13 +23,13 @@ const briefSnapshot = (period = 'today', overrides = {}) => ({
 
 // Run the actual component, API and draft guard against synthetic transport and
 // controlled hook scheduling. No mailbox, browser storage or external API is used.
-function fixture(items = [mail('message')], initialView = 'gmail', extraSources = []) {
+function fixture(items = [mail('message')], initialView = 'gmail', extraSources = [], overviewBalances = []) {
   let cursor = 0, epoch = 'synthetic-owner', tree, now = Date.now();
   const timers = new Map();
   class SyntheticDate extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
   const hooks = [], effects = [], requests = [], listeners = new Map(), modules = new Map();
   const params = new URLSearchParams({ view: initialView });
-  let preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler, mailCapabilitiesHandler, mailBriefHandler, briefHandler, explainHandler;
+  let overviewHandler, bankStartHandler, bankCompleteHandler, preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler, mailCapabilitiesHandler, mailBriefHandler, briefHandler, explainHandler;
   const preferences = { sync_interval_seconds: 2700, gmail: { topics: ['finance', 'security'], watch_senders: [], watch_keywords: [], muted_senders: [] } };
   const source = { id: 'gmail', status: 'connected', capabilities: [], missing_configuration: [], last_sync: null, error: null };
   const react = {
@@ -54,7 +54,9 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
       if (name === 'lucide-react') return new Proxy({}, { get: () => props => jsx.jsx('svg', props) });
       if (name.endsWith('.css')) return {};
       if (name === '@/lib/auth-storage') return { AUTH_SESSION_INVALIDATED_EVENT: 'synthetic-auth-invalidated', getAuthSessionEpoch: () => epoch };
-      if (name === '@/lib/private-workspace-api') return load('lib/private-workspace-api.ts');
+      if (name === '@/lib/private-workspace-api' || name === './private-workspace-api') return load('lib/private-workspace-api.ts');
+      if (name === '@/lib/private-bank') return load('lib/private-bank.ts');
+      if (name === './PrivateBankDashboard') return load('pages/PrivateBankDashboard.tsx');
       if (name === '@/lib/private-ads') return load('lib/private-ads.ts');
       if (name === '@/lib/private-boss-brief') return load('lib/private-boss-brief.ts');
       if (name === './PrivateAdsDashboard') return load('pages/PrivateAdsDashboard.tsx');
@@ -67,8 +69,10 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
       if (name === './api') return { client: { apiCall: { invoke: async request => {
         requests.push(request);
         const url = new URL(request.url, 'https://synthetic.example');
+        if (url.pathname.endsWith('/bank/link/start')) return { data: bankStartHandler ? await bankStartHandler(request) : { session_id: 'synthetic-session', authorization_url: '', expires_at: null, mode: 'production' } };
+        if (url.pathname.endsWith('/bank/link/complete')) return { data: bankCompleteHandler ? await bankCompleteHandler(request) : { state: 'pending', session_id: request.data.session_id, source_id: 'bofa_bank' } };
         if (url.pathname.endsWith('/access')) return { data: { allowed: true } };
-        if (url.pathname === '/api/v1/private-workspace') return { data: { sources: [source, ...extraSources], items, balances: [], last_sync: null } };
+        if (url.pathname === '/api/v1/private-workspace') return { data: overviewHandler ? await overviewHandler(request) : { sources: [source, ...extraSources], items, balances: overviewBalances, last_sync: null } };
         if (url.pathname.endsWith('/brief')) return { data: briefHandler ? await briefHandler(request) : briefSnapshot(url.searchParams.get('period')) };
         if (url.pathname.endsWith('/brief/explain')) return { data: explainHandler ? await explainHandler(request) : briefSnapshot(request.data.period, { capabilities: { configured: false, code: 'not_configured' } }) };
         if (url.pathname.endsWith('/mail-capabilities')) return { data: mailCapabilitiesHandler ? await mailCapabilitiesHandler(request) : { smart_brief: { enabled: false, configured: false }, translation: { enabled: true, configured: true } } };
@@ -119,6 +123,9 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     requests, window, preferences, params, flush, text: () => tree.map(text).join(''), textOf: text, nodes: () => all(),
     find: (type, label) => all().find(node => node.type === type && text(node) === label),
     button: label => all().find(node => node.type === 'button' && text(node).trim() === label),
+    setOverviewHandler: handler => { overviewHandler = handler; },
+    setBankStartHandler: handler => { bankStartHandler = handler; },
+    setBankCompleteHandler: handler => { bankCompleteHandler = handler; },
     setPreferencesHandler: handler => { preferencesHandler = handler; },
     setSyncHandler: handler => { syncHandler = handler; },
     setTranslationPreviewHandler: handler => { translationPreviewHandler = handler; },
@@ -618,4 +625,132 @@ test('month change preserves the original and requires a new explicit organize c
   f.button('原文').props.onClick(); await f.flush(); assert.ok(f.text().includes('Synthetic snippet'));
   await f.flush(); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief')).length, 1); assert.equal(f.requests.filter(request => request.url.includes('/mail-translation')).length, 0);
   f.button('整理这封邮件').props.onClick(); await f.flush(); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief')).length, 2); f.unmount();
+});
+
+
+const stripeSource = (overrides = {}) => {
+  const observed_at = new Date().toISOString();
+  return { id: 'stripe', name: 'Stripe', status: 'connected', capabilities: [], missing_configuration: [], error: null, last_sync: observed_at,
+    metadata: { account_label: 'Synthetic account', stripe_account_id: 'acct_synthetic', mode: 'live',
+      stripe_snapshot: { id: 'synthetic-stripe-snapshot', observed_at, account_id: 'acct_synthetic', mode: 'live' },
+      resources: { charges: { fetched: 1, partial: true }, refunds: { fetched: 0, partial: false }, disputes: { fetched: 0, partial: false }, payouts: { fetched: 0, partial: false } } }, ...overrides };
+};
+const stripePayment = (source, extra = {}) => ({ ...mail('stripe-payment'), source_id: 'stripe', kind: 'payment', title: 'Synthetic payment', summary: 'ch_synthetic', status: 'succeeded', amount_minor: 10000, currency: 'USD', mail_relevance: undefined,
+  evidence: { stripe_account_id: 'acct_synthetic', stripe_mode: 'live', stripe_snapshot_id: 'synthetic-stripe-snapshot', stripe_observed_at: source.metadata.stripe_snapshot.observed_at,
+    payment_state: 'authorized', amount_authorized_minor: 10000, amount_captured_minor: 0, amount_refunded_minor: 0, captured: false, paid: true }, ...extra });
+
+test('Stripe balances are snapshots with account mode and coverage folded away', async () => {
+  const source = stripeSource(); const f = fixture([stripePayment(source)], 'stripe', [source], [{ source_id: 'stripe', currency: 'USD', available_minor: 25000, pending_minor: 7500 }]);
+  await f.flush();
+  assert.ok(f.text().replace(/\s/g, ' ').includes('Synthetic account · acct_synthetic')); assert.ok(f.text().replace(/\s/g, ' ').includes('正式模式')); assert.ok(f.text().replace(/\s/g, ' ').includes('同步余额'));
+  assert.ok(f.text().replace(/\s/g, ' ').includes('USD 250.00')); assert.ok(!f.text().replace(/\s/g, ' ').includes('实时余额'));
+  const coverage = f.nodes().find(node => node.type === 'details' && node.props.className === 'pw-stripe-coverage');
+  assert.ok(coverage); assert.equal(coverage.props.open, undefined); assert.ok(f.textOf(coverage).includes('还有较早记录未包含'));
+  f.unmount();
+});
+
+test('Stripe balances without account bound snapshot are hidden rather than showing zero or legacy amounts', async () => {
+  const source = stripeSource({ metadata: { mode: 'live' } }); const f = fixture([], 'stripe', [source], [{ source_id: 'stripe', currency: 'USD', available_minor: 25000, pending_minor: 0 }]);
+  await f.flush(); assert.ok(f.text().replace(/\s/g, ' ').includes('待重新同步')); assert.ok(!f.text().replace(/\s/g, ' ').includes('USD 250.00')); assert.ok(!f.text().replace(/\s/g, ' ').includes('USD 0.00')); f.unmount();
+});
+
+test('Stripe authorization does not become successful income and detail separates capture and refunds', async () => {
+  const source = stripeSource(); const f = fixture([stripePayment(source)], 'stripe', [source]); await f.flush();
+  assert.ok(f.text().replace(/\s/g, ' ').includes('已授权 · 待捕获')); assert.ok(f.text().replace(/\s/g, ' ').includes('授权金额')); assert.ok(!f.text().replace(/\s/g, ' ').includes('收款成功'));
+  f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-stripe-row ').props.onClick(); await f.flush();
+  assert.ok(f.text().replace(/\s/g, ' ').includes('授权金额尚未捕获，不代表实际收款。'));
+  assert.ok(f.text().replace(/\s/g, ' ').includes('请求金额USD 100.00')); assert.ok(f.text().replace(/\s/g, ' ').includes('已收款金额USD 0.00')); assert.ok(f.text().replace(/\s/g, ' ').includes('已退款金额USD 0.00'));
+  const evidence = f.nodes().find(node => node.type === 'details' && node.props.className === 'pw-stripe-evidence'); assert.ok(evidence); assert.equal(evidence.props.open, undefined);
+  assert.equal(f.requests.filter(request => request.method === 'POST' || request.method === 'PATCH').length, 0); f.unmount();
+});
+
+test('Stripe partial refunds display captured and refunded amounts rather than treating requested amount as collected', async () => {
+  const source = stripeSource(); const item = stripePayment(source);
+  item.evidence = { ...item.evidence, payment_state: 'partially_refunded', amount_captured_minor: 8000, amount_refunded_minor: 2500, captured: true };
+  const f = fixture([item], 'stripe', [source]); await f.flush();
+  const row = f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-stripe-row ');
+  assert.ok(f.textOf(row).replace(/\s/g, ' ').includes('部分退款')); assert.ok(f.textOf(row).replace(/\s/g, ' ').includes('USD 80.00')); assert.ok(f.textOf(row).replace(/\s/g, ' ').includes('已退款 USD 25.00')); assert.ok(!f.textOf(row).replace(/\s/g, ' ').includes('USD 100.00')); f.unmount();
+});
+
+test('Stripe snapshots become stale without a new sync and test mode remains explicit on every record', async () => {
+  const source = stripeSource(); source.metadata.mode = 'test'; source.metadata.stripe_snapshot.mode = 'test';
+  const item = stripePayment(source); item.evidence.stripe_mode = 'test';
+  const f = fixture([item], 'stripe', [source], [{ source_id: 'stripe', currency: 'USD', available_minor: 1000, pending_minor: 0 }]); await f.flush();
+  assert.ok(f.text().replace(/\s/g, ' ').includes('测试模式')); assert.ok(f.text().replace(/\s/g, ' ').includes('已授权 · 待捕获测试'));
+  f.advanceTime(24 * 60 * 60 * 1000 + 60_000); await f.flush();
+  assert.ok(f.text().replace(/\s/g, ' ').includes('上次同步 · 需更新')); assert.ok(f.text().replace(/\s/g, ' ').includes('上次同步记录 · 需更新')); f.unmount();
+});
+
+
+const bankCallbackSession = '12345678-abcd-1234-abcd-123456789abc';
+const bankUiSource = () => ({ id: 'bofa_bank', name: 'Bank of America', status: 'connecting', capabilities: [], missing_configuration: [], error: null, last_sync: null, metadata: { bank_environment: 'production' } });
+
+test('bank return parameters alone never complete authorization, sync, or fetch AI automatically', async () => {
+  const f = fixture([], 'bofa_bank', [bankUiSource()]); f.params.set('bank_session', bankCallbackSession); await f.flush();
+  assert.ok(f.button('确认银行连接')); assert.equal(f.requests.filter(request => request.method === 'POST').length, 0); f.unmount();
+});
+
+test('bank explicit Hosted Link rejects non-Plaid redirects and does not use Gmail authorization', async () => {
+  const f = fixture([], 'bofa_bank', [bankUiSource()]); const redirects = []; f.window.location.assign = value => redirects.push(value);
+  f.setBankStartHandler(() => ({ session_id: bankCallbackSession, authorization_url: 'https://secure.plaid.com.evil.example/hl/example', expires_at: new Date(Date.now() + 60_000).toISOString(), mode: 'production' })); await f.flush();
+  f.button('继续授权').props.onClick(); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/bank/link/start')).length, 1); assert.equal(redirects.length, 0); assert.equal(f.requests.filter(request => request.url.includes('/sources/bofa_bank/connect')).length, 0); f.unmount();
+});
+
+test('bank confirmation double-click dispatches once and pending response cannot claim connected or sync', async () => {
+  const f = fixture([], 'bofa_bank', [bankUiSource()]); const response = deferred(); f.params.set('bank_session', bankCallbackSession); f.setBankCompleteHandler(() => response.promise); await f.flush();
+  const confirm = f.button('确认银行连接'); confirm.props.onClick(); confirm.props.onClick(); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/bank/link/complete')).length, 1);
+  response.resolve({ state: 'pending', session_id: bankCallbackSession, source_id: 'bofa_bank' }); await f.flush(); assert.ok(f.text().includes('银行授权尚未完成')); assert.equal(f.requests.filter(request => request.url.endsWith('/sources/bofa_bank/sync')).length, 0); f.unmount();
+});
+
+test('bank completion validates the same session and exact connected state before beginning provider sync', async () => {
+  for (const result of [{ state: 'unknown', session_id: bankCallbackSession, source_id: 'bofa_bank' }, { state: 'connected', session_id: 'other-session', source_id: 'bofa_bank' }, { state: 'connected', session_id: bankCallbackSession, source_id: 'stripe' }]) {
+    const f = fixture([], 'bofa_bank', [bankUiSource()]); f.params.set('bank_session', bankCallbackSession); f.setBankCompleteHandler(() => result); await f.flush(); f.button('确认银行连接').props.onClick(); await f.flush();
+    assert.equal(f.requests.filter(request => request.url.endsWith('/sources/bofa_bank/sync')).length, 0); assert.ok(!f.text().includes('银行账户与交易记录已同步。')); f.unmount();
+  }
+});
+
+test('a bank completion arriving after owner logout is discarded without syncing another session', async () => {
+  const f = fixture([], 'bofa_bank', [bankUiSource()]); const response = deferred(); f.params.set('bank_session', bankCallbackSession); f.setBankCompleteHandler(() => response.promise); await f.flush(); f.button('确认银行连接').props.onClick(); await f.flush();
+  f.invalidate(); await f.flush(); response.resolve({ state: 'connected', session_id: bankCallbackSession, source_id: 'bofa_bank' }); await f.flush(); assert.equal(f.requests.filter(request => request.url.endsWith('/sources/bofa_bank/sync')).length, 0); assert.ok(!f.text().includes('银行账户与交易记录已同步。')); f.unmount();
+});
+
+test('a bank completion from an earlier callback session is discarded when a different callback is opened', async () => {
+  const f = fixture([], 'bofa_bank', [bankUiSource()]); const response = deferred(); f.params.set('bank_session', bankCallbackSession); f.setBankCompleteHandler(() => response.promise); await f.flush(); f.button('确认银行连接').props.onClick(); await f.flush();
+  f.params.set('bank_session', '87654321-abcd-1234-abcd-123456789abc'); await f.flush(); response.resolve({ state: 'connected', session_id: bankCallbackSession, source_id: 'bofa_bank' }); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/sources/bofa_bank/sync')).length, 0); assert.ok(!f.text().includes('银行账户与交易记录已同步。')); f.unmount();
+});
+
+test('a confirmed bank connection visibly reports the first sync failure and never claims data synchronized', async () => {
+  const source = bankUiSource(); const f = fixture([], 'bofa_bank', [source]); f.params.set('bank_session', bankCallbackSession);
+  f.setBankCompleteHandler(() => { source.status = 'connected'; return { state: 'connected', session_id: bankCallbackSession, source_id: 'bofa_bank' }; });
+  const sync = deferred(); f.setSyncHandler(() => sync.promise); await f.flush(); f.button('确认银行连接').props.onClick(); await f.flush();
+  sync.resolve(Promise.reject({ response: { status: 503, data: { detail: 'Synthetic bank sync unavailable' } } })); await f.flush();
+  assert.ok(f.text().includes('Synthetic bank sync unavailable')); assert.ok(!f.text().includes('银行账户与交易记录已同步。')); f.unmount();
+});
+
+test('bank start double-click creates only one Hosted Link and a late logout result cannot navigate', async () => {
+  const f = fixture([], 'bofa_bank', [bankUiSource()]); const response = deferred(); const redirects = []; f.window.location.assign = value => redirects.push(value); f.setBankStartHandler(() => response.promise); await f.flush();
+  const start = f.button('继续授权'); start.props.onClick(); start.props.onClick(); await f.flush(); assert.equal(f.requests.filter(request => request.url.endsWith('/bank/link/start')).length, 1);
+  f.invalidate(); await f.flush(); response.resolve({ session_id: bankCallbackSession, authorization_url: 'https://secure.plaid.com/hl/synthetic-session', expires_at: new Date(Date.now() + 60_000).toISOString(), mode: 'production' }); await f.flush(); assert.equal(redirects.length, 0); f.unmount();
+});
+
+
+test('successful bank confirmation followed by a failed local refresh exposes the read error and keeps retry read-only', async () => {
+  const source = bankUiSource(); const f = fixture([], 'bofa_bank', [source]); f.params.set('bank_session', bankCallbackSession);
+  f.setBankCompleteHandler(() => { source.status = 'connected'; return { state: 'connected', session_id: bankCallbackSession, source_id: 'bofa_bank' }; });
+  f.setSyncHandler(() => ({ source, counts: { created: 0, updated: 0 } })); await f.flush();
+  f.setOverviewHandler(() => { throw { response: { status: 503, data: { detail: 'Synthetic overview unavailable' } } }; });
+  f.button('确认银行连接').props.onClick(); await f.flush(); assert.ok(f.text().includes('暂时无法读取工作空间')); assert.ok(f.text().includes('Synthetic overview unavailable'));
+  assert.ok(!f.text().includes('银行已连接，正在读取账户和交易记录')); assert.equal(f.params.get('bank_session'), null);
+  f.setOverviewHandler(null); f.button('重新读取').props.onClick(); await f.flush(); assert.ok(!f.text().includes('Synthetic overview unavailable'));
+  assert.equal(f.requests.filter(request => request.url.endsWith('/bank/link/complete')).length, 1); assert.equal(f.requests.filter(request => request.url.endsWith('/sources/bofa_bank/sync')).length, 1); f.unmount();
+});
+
+test('owner permission loss during the local bank refresh erases the successful connection notice and private UI', async () => {
+  const source = bankUiSource(); const f = fixture([], 'bofa_bank', [source]); f.params.set('bank_session', bankCallbackSession);
+  f.setBankCompleteHandler(() => ({ state: 'connected', session_id: bankCallbackSession, source_id: 'bofa_bank' })); f.setSyncHandler(() => ({ source, counts: { created: 0, updated: 0 } })); await f.flush();
+  f.setOverviewHandler(() => { throw { response: { status: 403 } }; }); f.button('确认银行连接').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('此空间仅对本人开放')); assert.ok(!f.text().includes('银行账户与交易记录已同步')); assert.ok(!f.text().includes('银行缓存余额')); assert.equal(f.requests.filter(request => request.url.endsWith('/sources/bofa_bank/sync')).length, 1); f.unmount();
 });

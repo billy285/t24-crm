@@ -68,6 +68,7 @@ _ERRORS = {
     'ads_project_not_approved': 'Google Cloud 项目尚未获准读取正式广告账户，请在 Google Ads API 概览申请 Explorer 或更高访问级别后重新连接',
     'ads_account_changed': '广告账户配置与已授权账户不一致，请重新连接',
     'ads_manager_account': '请选择具体广告账户，经理账户不能作为广告观察的目标账户',
+    'stripe_account_changed': 'Stripe 账户或模式与私人空间配置不一致，请核对后重新连接',
 }
 
 
@@ -92,6 +93,7 @@ REGISTRY = MappingProxyType({source.id: source for source in (
     SourceDefinition('gmail', 'Gmail', ('read_email',), GMAIL_SCOPE),
     SourceDefinition('google_ads', 'Google Ads', ('read_campaign_metrics',), ADS_SCOPE),
     SourceDefinition('bofa', 'Bank of America', ('read_bank_email_alerts',), GMAIL_SCOPE),
+    SourceDefinition('bofa_bank', 'Bank of America 账户', ('read_bank_balances', 'read_bank_transactions')),
     SourceDefinition('stripe', 'Stripe', ('read_payments', 'read_refunds', 'read_disputes', 'read_payouts', 'read_balance')),
     SourceDefinition('manual', '手动事项', ('manual_entry',)),
 )})
@@ -156,8 +158,26 @@ def _stripe_key(value: object) -> str:
     return value
 
 
+def stripe_expected_identity() -> tuple[str, str]:
+    """The dedicated private account is fixed by server configuration, never a browser hint."""
+    account = os.getenv('PRIVATE_WORKSPACE_STRIPE_ACCOUNT_ID', '').strip()
+    mode = os.getenv('PRIVATE_WORKSPACE_STRIPE_MODE', 'live').strip()
+    if not re.fullmatch(r'acct_[A-Za-z0-9]{8,128}', account) or mode not in {'live', 'test'}:
+        raise ProviderError('not_configured')
+    return account, mode
+
+
+def _stripe_mode(key: str) -> str:
+    mode = 'test' if key.startswith('rk_test_') else 'live'
+    if mode != stripe_expected_identity()[1]: raise ProviderError('stripe_account_changed')
+    return mode
+
+
 def _missing(source: SourceDefinition) -> list[str]:
     result = []
+    if source.id == 'bofa_bank':
+        from services.private_bank_provider import missing_configuration
+        return missing_configuration()
     if source.scope:
         client_id, secret = _google_settings()
         if not client_id: result.append('GOOGLE_WORKSPACE_CLIENT_ID')
@@ -174,6 +194,10 @@ def _missing(source: SourceDefinition) -> list[str]:
             try: _customer_id(os.environ['GOOGLE_ADS_LOGIN_CUSTOMER_ID'])
             except ProviderError: result.append('GOOGLE_ADS_LOGIN_CUSTOMER_ID')
     if source.id == 'stripe':
+        if not re.fullmatch(r'acct_[A-Za-z0-9]{8,128}', os.getenv('PRIVATE_WORKSPACE_STRIPE_ACCOUNT_ID', '').strip()):
+            result.append('PRIVATE_WORKSPACE_STRIPE_ACCOUNT_ID')
+        if os.getenv('PRIVATE_WORKSPACE_STRIPE_MODE', 'live').strip() not in {'live', 'test'}:
+            result.append('PRIVATE_WORKSPACE_STRIPE_MODE')
         try: _stripe_key(os.getenv('PRIVATE_WORKSPACE_STRIPE_KEY'))
         except ProviderError: result.append('PRIVATE_WORKSPACE_STRIPE_KEY')
     return result
@@ -252,7 +276,7 @@ class _Client:
                    method == 'POST' and parsed.hostname == 'googleads.googleapis.com' and
                    re.fullmatch(r'/v25/customers/\d{10}/googleAds:search', parsed.path) or
                    method == 'GET' and parsed.hostname == 'api.stripe.com' and parsed.path in
-                   {'/v1/charges', '/v1/refunds', '/v1/disputes', '/v1/payouts', '/v1/balance'})
+                   {'/v1/account', '/v1/charges', '/v1/refunds', '/v1/disputes', '/v1/payouts', '/v1/balance'})
         if (not allowed or parsed.scheme != 'https' or parsed.port not in (None, 443) or parsed.username or parsed.password
                 or parsed.query or parsed.fragment): raise ProviderError('request_not_allowed')
         if parsed.hostname == 'googleads.googleapis.com':
@@ -321,12 +345,18 @@ async def begin_connect(source_id: str, state: str, *, transport: httpx.AsyncBas
     source = _source(source_id); _configured(source)
     if source.id == 'manual': return {'credentials': {}, 'metadata': {'connection_mode': 'manual'}}
     if source.id == 'stripe':
-        key = _stripe_key(os.getenv('PRIVATE_WORKSPACE_STRIPE_KEY'))
+        key = _stripe_key(os.getenv('PRIVATE_WORKSPACE_STRIPE_KEY')); mode = _stripe_mode(key)
         async with _Client(transport) as client:
-            balance = await client.request('GET', 'https://api.stripe.com/v1/balance', headers={'Authorization': 'Bearer ' + key})
-            if balance.get('object') != 'balance' or not isinstance(balance.get('available'), list) or not isinstance(balance.get('pending'), list):
-                raise ProviderError('invalid_response')
-        return {'credentials': {'api_key': key}, 'metadata': {'connection_mode': 'restricted_api_key', 'read_only_adapter': True}}
+            headers = {'Authorization': 'Bearer ' + key}
+            identity, _ = await _stripe_identity(client, headers, mode)
+            # Verify every required read before claiming this source is connected.
+            # No write, account mutation, refund or payout endpoint is ever called.
+            for resource, kind, prefix in STRIPE_RESOURCES:
+                result = await client.request('GET', 'https://api.stripe.com/v1/' + resource, headers=headers, params={'limit': 1})
+                rows, _ = _stripe_list(result, mode, 1)
+                for row in rows: _stripe_item(row, kind, prefix, identity, mode, 'connect-probe', datetime.now(timezone.utc).isoformat())
+        return {'credentials': {'api_key': key, 'stripe_account_id': identity['stripe_account_id'], 'mode': mode},
+                'metadata': {**identity, 'mode': mode, 'connection_mode': 'restricted_api_key', 'read_only_adapter': True}}
     if not isinstance(state, str) or not re.fullmatch(r'[A-Za-z0-9_-]{32,256}', state): raise ProviderError('invalid_credentials')
     client_id, _ = _google_settings()
     parameters = {'client_id': client_id, 'redirect_uri': _public_origin() + '/api/v1/private-workspace/oauth/' + source.id + '/callback',
@@ -739,10 +769,17 @@ async def _ads(google: _Google, source: SourceDefinition, metadata: dict) -> dic
                               'metrics_complete': metrics_complete, 'record_limit': 100}}}
 
 
-async def _stripe(client: _Client, source: SourceDefinition, credentials: dict) -> dict:
-    key = _stripe_key(credentials.get('api_key')); headers = {'Authorization': 'Bearer ' + key}
-    balance = await client.request('GET', 'https://api.stripe.com/v1/balance', headers=headers)
+STRIPE_RESOURCES = (('charges', 'payment', 'ch_'), ('refunds', 'refund', 're_'), ('disputes', 'dispute', 'dp_'), ('payouts', 'payout', 'po_'))
+
+
+def _stripe_livemode(row: dict, mode: str) -> None:
+    if type(row.get('livemode')) is not bool: raise ProviderError('invalid_response')
+    if row['livemode'] != (mode == 'live'): raise ProviderError('stripe_account_changed')
+
+
+def _stripe_balances(balance: dict, mode: str) -> list[dict]:
     if balance.get('object') != 'balance': raise ProviderError('invalid_response')
+    _stripe_livemode(balance, mode)
     balances = {}
     for field, output in (('available', 'available_minor'), ('pending', 'pending_minor')):
         seen = set()
@@ -751,50 +788,130 @@ async def _stripe(client: _Client, source: SourceDefinition, credentials: dict) 
             if currency in seen: raise ProviderError('invalid_response')
             seen.add(currency)
             balances.setdefault(currency, {'currency': currency, 'available_minor': 0, 'pending_minor': 0})[output] = _integer(row.get('amount'), negative=True)
+    return list(balances.values())
+
+
+async def _stripe_identity(client: _Client, headers: dict, mode: str) -> tuple[dict, list[dict]]:
+    expected, _ = stripe_expected_identity()
+    account = await client.request('GET', 'https://api.stripe.com/v1/account', headers=headers)
+    if account.get('object') != 'account': raise ProviderError('invalid_response')
+    account_id = _id(account.get('id'), 'acct_')
+    if account_id != expected: raise ProviderError('stripe_account_changed')
+    # Account objects do not carry a livemode property. The key and balance,
+    # and later every resource object, establish the environment independently.
+    balance = await client.request('GET', 'https://api.stripe.com/v1/balance', headers=headers)
+    balances = _stripe_balances(balance, mode)
+    profile = account.get('business_profile') or {}; settings = account.get('settings') or {}
+    if not isinstance(profile, dict) or not isinstance(settings, dict): raise ProviderError('invalid_response')
+    dashboard = settings.get('dashboard') or {}
+    if not isinstance(dashboard, dict): raise ProviderError('invalid_response')
+    label = _text(profile.get('name') or dashboard.get('display_name') or account_id, 200)
+    return {'stripe_account_id': account_id, 'account_label': label}, balances
+
+
+def _stripe_list(response: dict, mode: str, limit: int) -> tuple[list, bool]:
+    if response.get('object') != 'list': raise ProviderError('invalid_response')
+    rows = _list(response.get('data')); has_more = response.get('has_more')
+    if len(rows) > limit or type(has_more) is not bool: raise ProviderError('invalid_response')
+    for row in rows:
+        if not isinstance(row, dict): raise ProviderError('invalid_response')
+        _stripe_livemode(row, mode)
+    return rows, has_more
+
+
+def _stripe_item(row: dict, kind: str, prefix: str, identity: dict, mode: str, snapshot_id: str, observed_at: str) -> dict:
+    _stripe_livemode(row, mode)
+    identity_id = _id(row.get('id'), prefix); status = _text(row.get('status'), 80)
+    amount = _integer(row.get('amount')); currency = _currency(row.get('currency'))
+    evidence = {'provider_id': identity_id, 'provider_status': status, 'accounting_effect': 'none',
+                'stripe_account_id': identity['stripe_account_id'], 'stripe_mode': mode,
+                'stripe_snapshot_id': snapshot_id, 'stripe_observed_at': observed_at}
+    if kind == 'payment':
+        captured, paid, refunded = row.get('captured'), row.get('paid'), row.get('refunded')
+        if any(type(value) is not bool for value in (captured, paid, refunded)) or status not in {'succeeded', 'pending', 'failed'}:
+            raise ProviderError('invalid_response')
+        captured_amount = _integer(row.get('amount_captured')); refunded_amount = _integer(row.get('amount_refunded'))
+        if refunded_amount > captured_amount or captured_amount > amount or captured_amount and not paid:
+            raise ProviderError('invalid_response')
+        if status == 'failed': state = 'failed'
+        elif status == 'pending': state = 'pending'
+        elif captured_amount and refunded_amount == captured_amount: state = 'refunded'
+        elif refunded_amount: state = 'partially_refunded'
+        elif captured_amount and (captured_amount < amount or not captured): state = 'partially_captured'
+        elif captured: state = 'captured'
+        elif paid: state = 'authorized'
+        else: raise ProviderError('invalid_response')
+        evidence.update(payment_state=state, amount_authorized_minor=amount if paid else 0,
+                        amount_captured_minor=captured_amount, amount_refunded_minor=refunded_amount,
+                        captured=captured, paid=paid, refunded=refunded)
+    if kind == 'payout': evidence['funds_movement'] = 'stripe_balance_to_bank'
+    details = row.get('evidence_details') or {}
+    if not isinstance(details, dict): raise ProviderError('invalid_response')
+    due = details.get('due_by') if kind == 'dispute' else row.get('arrival_date') if kind == 'payout' else None
+    dashboard = 'https://dashboard.stripe.com/' + ('test/' if mode == 'test' else '')
+    detail = 'disputes/' if kind == 'dispute' else 'payouts/' if kind == 'payout' else 'payments/'
+    link_id = identity_id
+    if kind == 'refund':
+        charge = row.get('charge'); charge = charge.get('id') if isinstance(charge, dict) else charge
+        link_id = _id(charge, 'ch_') if isinstance(charge, str) else None
+    elif kind == 'payment' and isinstance(row.get('payment_intent'), str):
+        link_id = _id(row['payment_intent'], 'pi_')
+    resource = {'payment': 'charges', 'refund': 'refunds', 'dispute': 'disputes', 'payout': 'payouts'}[kind]
+    return {'external_id': resource + ':' + identity_id, 'kind': kind,
+            'title': _text(row.get('description') or {'payment': 'Stripe 支付', 'refund': 'Stripe 退款', 'dispute': 'Stripe 争议', 'payout': 'Stripe 提现'}[kind], 200),
+            'summary': _text(row.get('reason') or identity_id), 'status': status,
+            'priority': 'high' if kind == 'dispute' and status in {'needs_response', 'warning_needs_response'} else 'normal',
+            'amount_minor': amount, 'currency': currency, 'occurred_at': _date(row.get('created')), 'due_at': _date(due),
+            'source_url': dashboard + detail + link_id if link_id else None, 'evidence': evidence}
+
+
+async def _stripe(client: _Client, source: SourceDefinition, credentials: dict, metadata: dict) -> dict:
+    key = _stripe_key(credentials.get('api_key')); mode = _stripe_mode(key)
+    expected, expected_mode = stripe_expected_identity()
+    if (credentials.get('stripe_account_id') != expected or credentials.get('mode') != expected_mode
+            or metadata.get('stripe_account_id') != expected or metadata.get('mode') != expected_mode):
+        raise ProviderError('stripe_account_changed')
+    headers = {'Authorization': 'Bearer ' + key}
+    identity, balances = await _stripe_identity(client, headers, mode)
+    snapshot_id = str(uuid4()); observed_at = datetime.now(timezone.utc).isoformat()
     items = []; partial = False; resource_coverage = {}
-    for resource, kind, prefix in (('charges', 'payment', 'ch_'), ('refunds', 'refund', 're_'), ('disputes', 'dispute', 'dp_'), ('payouts', 'payout', 'po_')):
+    for resource, kind, prefix in STRIPE_RESOURCES:
         cursor = None; seen = set()
         for _ in range(2):
             parameters = {'limit': 50}
             if cursor: parameters['starting_after'] = cursor
             response = await client.request('GET', 'https://api.stripe.com/v1/' + resource, headers=headers, params=parameters)
-            rows = _list(response.get('data', []))
-            if len(rows) > 50 or response.get('has_more', False) not in (True, False): raise ProviderError('invalid_response')
+            rows, has_more = _stripe_list(response, mode, 50)
             for row in rows:
-                identity = _id(row.get('id'), prefix)
-                if identity in seen: raise ProviderError('invalid_response')
-                seen.add(identity)
-                status = _text(row.get('status'), 80)
-                evidence = {'provider_id': identity, 'provider_status': status, 'accounting_effect': 'none'}
-                if kind == 'payout': evidence['funds_movement'] = 'stripe_balance_to_bank'
-                due = (row.get('evidence_details') or {}).get('due_by') if kind == 'dispute' else row.get('arrival_date') if kind == 'payout' else None
-                dashboard = 'https://dashboard.stripe.com/' + ('test/' if key.startswith('rk_test_') else '')
-                detail = ('disputes/' if kind == 'dispute' else 'payouts/' if kind == 'payout' else 'payments/')
-                link_id = identity
-                if kind == 'refund': link_id = _id(row.get('charge'), 'ch_') if isinstance(row.get('charge'), str) else ''
-                items.append({'external_id': resource + ':' + identity, 'kind': kind, 'title': _text(row.get('description') or
-                              {'payment': 'Stripe 收款', 'refund': 'Stripe 退款', 'dispute': 'Stripe 争议', 'payout': 'Stripe 提现'}[kind], 200),
-                              'summary': _text(row.get('reason') or identity), 'status': status, 'priority': 'high' if kind == 'dispute' and status == 'needs_response' else 'normal',
-                              'amount_minor': _integer(row.get('amount')), 'currency': _currency(row.get('currency')),
-                              'occurred_at': _date(row.get('created')), 'due_at': _date(due), 'source_url': dashboard + detail + link_id, 'evidence': evidence})
-            has_more = response.get('has_more', False)
+                row_id = _id(row.get('id'), prefix)
+                if row_id in seen: raise ProviderError('invalid_response')
+                seen.add(row_id)
+                items.append(_stripe_item(row, kind, prefix, {'stripe_account_id': expected}, mode, snapshot_id, observed_at))
             if not has_more: break
             if not rows: raise ProviderError('invalid_response')
             cursor = _id(rows[-1].get('id'), prefix)
         partial = partial or bool(has_more)
         resource_coverage[resource] = {'fetched': len(seen), 'partial': bool(has_more)}
-    return {'items': items, 'balances': list(balances.values()), 'metadata': {'partial': partial, 'read_only_adapter': True,
+    return {'items': items, 'balances': balances, 'metadata': {**identity, 'partial': partial, 'read_only_adapter': True,
              'coverage': 'bounded_recent_records', 'record_limit_per_resource': STRIPE_LIMIT, 'resources': resource_coverage,
-             'aggregated_totals': False, 'mode': 'test' if key.startswith('rk_test_') else 'live', 'payouts_are_income': False}}
+             'aggregated_totals': False, 'mode': mode, 'payouts_are_income': False,
+             'stripe_snapshot': {'id': snapshot_id, 'observed_at': observed_at, 'account_id': expected, 'mode': mode}}}
 
 
 async def fetch_source(source_id: str, credentials: dict, metadata: dict, *, transport: httpx.AsyncBaseTransport | None = None) -> dict:
-    source = _source(source_id); _configured(source)
+    source = _source(source_id)
+    if source.id == 'bofa_bank':
+        from services.private_bank_provider import fetch_bofa_bank
+        return await fetch_bofa_bank(credentials, transport=transport)
+    # A connected Stripe worker receives its key only from encrypted private
+    # credentials. The one-time setup environment key is not a runtime dependency.
+    if source.id == 'stripe': stripe_expected_identity()
+    else: _configured(source)
     if not isinstance(credentials, dict) or not isinstance(metadata, dict): raise ProviderError('invalid_credentials')
     if source.id == 'manual': return {'items': [], 'balances': [], 'metadata': {'connection_mode': 'manual'}}
     async def fetch():
         async with _Client(transport) as client:
-            if source.id == 'stripe': return await _stripe(client, source, credentials)
+            if source.id == 'stripe': return await _stripe(client, source, credentials, metadata)
             google = _Google(client, source, credentials)
             result = await (_ads(google, source, metadata) if source.id == 'google_ads' else _gmail(google, source, metadata))
             if google.credentials != credentials: result['credentials'] = google.credentials

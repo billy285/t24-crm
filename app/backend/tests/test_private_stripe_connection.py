@@ -1,0 +1,214 @@
+"""Dedicated private Stripe identity, read-only permission and money semantics.
+
+Every provider request uses MockTransport. API tests use isolated fixture databases;
+no Stripe credential, real network request or customer financial mutation occurs.
+"""
+import json
+from types import SimpleNamespace
+
+import httpx
+import pytest
+from sqlalchemy import func, select
+
+from models.private_workspace import PrivateConnection, PrivateItem, utcnow
+from services import private_workspace as core, private_workspace_providers as providers
+from test_private_workspace_core import workspace, headers
+from test_private_workspace_providers import (
+    configured, settings, balance, stripe_row, KEY, STRIPE_ACCOUNT, STRIPE_CREDENTIALS, STRIPE_METADATA,
+)
+
+
+def response_for(request, *, account=STRIPE_ACCOUNT, live=False, charges=None):
+    if request.url.path == '/v1/account':
+        return {'object': 'account', 'id': account, 'business_profile': {'name': 'Synthetic owner account'}}
+    if request.url.path == '/v1/balance': return {**balance(), 'livemode': live}
+    return {'object': 'list', 'data': charges or [] if request.url.path == '/v1/charges' else [], 'has_more': False}
+
+
+@pytest.mark.asyncio
+async def test_stripe_worker_uses_encrypted_connection_credential_without_environment_key(configured, monkeypatch):
+    calls = []
+    async def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=response_for(request))
+    connected = await providers.begin_connect('stripe', '', transport=httpx.MockTransport(handler))
+    monkeypatch.delenv('PRIVATE_WORKSPACE_STRIPE_KEY')
+    fetched = await providers.fetch_source('stripe', connected['credentials'], connected['metadata'], transport=httpx.MockTransport(handler))
+    assert len(calls) == 12 and all(call.method == 'GET' for call in calls)
+    assert fetched['metadata']['stripe_account_id'] == STRIPE_ACCOUNT
+    assert fetched['metadata']['stripe_snapshot']['mode'] == 'test'
+    assert KEY not in json.dumps(fetched)
+    row = SimpleNamespace(status='connected', encrypted_credentials='encrypted', metadata_json=connected['metadata'], error=None, last_sync=None)
+    descriptor = next(value for value in providers.describe_sources() if value['id'] == 'stripe')
+    assert 'PRIVATE_WORKSPACE_STRIPE_KEY' not in core.source_response(descriptor, row)['missing_configuration']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('resource', ['charges', 'refunds', 'disputes', 'payouts'])
+async def test_stripe_connect_does_not_claim_success_with_missing_resource_read_permission(configured, resource):
+    calls = []
+    async def handler(request):
+        calls.append(request)
+        if request.url.path == '/v1/' + resource:
+            return httpx.Response(403, json={'message': KEY + ' private permission details'})
+        return httpx.Response(200, json=response_for(request))
+    with pytest.raises(providers.ProviderError) as caught:
+        await providers.begin_connect('stripe', '', transport=httpx.MockTransport(handler))
+    assert caught.value.code == 'access_denied' and KEY not in str(caught.value)
+    assert all(request.method == 'GET' for request in calls)
+
+
+@pytest.mark.asyncio
+async def test_stripe_wrong_account_fails_before_balance_or_record_reads(configured):
+    calls = []
+    async def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=response_for(request, account='acct_another12345678'))
+    with pytest.raises(providers.ProviderError) as caught:
+        await providers.begin_connect('stripe', '', transport=httpx.MockTransport(handler))
+    assert caught.value.code == 'stripe_account_changed' and len(calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('where', ['balance', 'record'])
+async def test_stripe_balance_or_record_mode_cannot_cross_live_and_test(configured, where):
+    async def handler(request):
+        row = {**stripe_row('charges'), 'livemode': where == 'record'}
+        return httpx.Response(200, json=response_for(request, live=where == 'balance', charges=[row]))
+    with pytest.raises(providers.ProviderError) as caught:
+        await providers.fetch_source('stripe', STRIPE_CREDENTIALS, STRIPE_METADATA, transport=httpx.MockTransport(handler))
+    assert caught.value.code == 'stripe_account_changed'
+
+
+@pytest.mark.asyncio
+async def test_stripe_server_binding_or_mode_change_is_rejected_before_network(configured, monkeypatch):
+    async def forbidden(request): raise AssertionError('No outbound request permitted')
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_ACCOUNT_ID', 'acct_another12345678')
+    with pytest.raises(providers.ProviderError) as caught:
+        await providers.fetch_source('stripe', STRIPE_CREDENTIALS, STRIPE_METADATA, transport=httpx.MockTransport(forbidden))
+    assert caught.value.code == 'stripe_account_changed'
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_ACCOUNT_ID', STRIPE_ACCOUNT)
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_MODE', 'live')
+    with pytest.raises(providers.ProviderError) as caught:
+        await providers.fetch_source('stripe', STRIPE_CREDENTIALS, STRIPE_METADATA, transport=httpx.MockTransport(forbidden))
+    assert caught.value.code == 'stripe_account_changed'
+
+
+@pytest.mark.asyncio
+async def test_stripe_legacy_unbound_credentials_cannot_sync_under_new_account(configured):
+    async def forbidden(request): raise AssertionError('Unbound connection must reauthorize')
+    with pytest.raises(providers.ProviderError) as caught:
+        await providers.fetch_source('stripe', {'api_key': KEY}, {}, transport=httpx.MockTransport(forbidden))
+    assert caught.value.code == 'stripe_account_changed'
+
+
+@pytest.mark.parametrize('changes,state,authorized', [
+    ({'captured': False, 'amount_captured': 0}, 'authorized', 1000),
+    ({'captured': False, 'amount_captured': 300}, 'partially_captured', 1000),
+    ({'captured': True, 'amount_captured': 300}, 'partially_captured', 1000),
+    ({}, 'captured', 1000),
+    ({'amount_refunded': 200}, 'partially_refunded', 1000),
+    ({'amount_refunded': 1000, 'refunded': True}, 'refunded', 1000),
+    ({'status': 'failed', 'captured': False, 'paid': False, 'amount_captured': 0}, 'failed', 0),
+    ({'status': 'pending', 'captured': False, 'paid': False, 'amount_captured': 0}, 'pending', 0),
+])
+def test_stripe_charge_capture_and_refund_amounts_remain_authoritative(changes, state, authorized):
+    row = {**stripe_row('charges'), 'amount': 1000, 'amount_captured': 1000, **changes}
+    normalized = providers._stripe_item(row, 'payment', 'ch_', {'stripe_account_id': STRIPE_ACCOUNT}, 'test', 'synthetic-current-snapshot', '2026-10-11T00:00:00+00:00')
+    assert normalized['title'] == 'Stripe 支付' and normalized['amount_minor'] == 1000
+    evidence = normalized['evidence']
+    assert evidence['payment_state'] == state and evidence['amount_authorized_minor'] == authorized
+    assert evidence['amount_captured_minor'] == row['amount_captured'] and evidence['amount_refunded_minor'] == row['amount_refunded']
+    assert evidence['accounting_effect'] == 'none'
+
+
+@pytest.mark.parametrize('changes', [
+    {'captured': 1}, {'paid': None}, {'refunded': 'false'}, {'amount_captured': 2},
+    {'amount_refunded': 2}, {'paid': False}, {'amount_captured': -1}, {'amount_refunded': 0.1},
+    {'livemode': None}, {'livemode': 0}, {'status': 'imagined_payment'},
+])
+def test_stripe_malformed_capture_refund_or_mode_never_becomes_money_facts(changes):
+    with pytest.raises(providers.ProviderError):
+        providers._stripe_item({**stripe_row('charges'), **changes}, 'payment', 'ch_', {'stripe_account_id': STRIPE_ACCOUNT}, 'test', 'synthetic-current-snapshot', '2026-10-11T00:00:00+00:00')
+
+
+@pytest.mark.asyncio
+async def test_stripe_snapshot_binds_every_item_and_keeps_four_resource_coverage_counts(configured):
+    async def handler(request):
+        if request.url.path in {'/v1/account', '/v1/balance'}: return httpx.Response(200, json=response_for(request))
+        return httpx.Response(200, json={'object': 'list', 'data': [stripe_row(request.url.path.rsplit('/', 1)[1])], 'has_more': False})
+    fetched = await providers.fetch_source('stripe', STRIPE_CREDENTIALS, STRIPE_METADATA, transport=httpx.MockTransport(handler))
+    snapshot = fetched['metadata']['stripe_snapshot']
+    assert set(fetched['metadata']['resources']) == {'charges', 'refunds', 'disputes', 'payouts'}
+    for item in fetched['items']:
+        assert item['evidence']['stripe_snapshot_id'] == snapshot['id']
+        assert item['evidence']['stripe_observed_at'] == snapshot['observed_at']
+        assert item['evidence']['stripe_account_id'] == snapshot['account_id']
+        assert item['evidence']['stripe_mode'] == snapshot['mode']
+
+
+@pytest.mark.asyncio
+async def test_stripe_old_account_mode_and_snapshot_are_retained_but_hidden(workspace, monkeypatch):
+    client = workspace.client
+    await client.post('/api/v1/private-workspace/sources/stripe/connect', headers=headers())
+    assert (await client.post('/api/v1/private-workspace/sources/stripe/sync', headers=headers())).status_code == 200
+    sessions = await core.private_session_factory()
+    async with sessions() as db:
+        connection = (await db.execute(select(PrivateConnection).where(PrivateConnection.source_id == 'stripe'))).scalar_one()
+        snapshot = connection.metadata_json['stripe_snapshot']
+        for identity, changes in [('old-account', {'stripe_account_id': 'acct_another12345678'}),
+                                  ('test-live-cross', {'stripe_mode': 'live'}), ('old-snapshot', {'stripe_snapshot_id': 'synthetic-old-snapshot'}),
+                                  ('legacy-no-binding', {'stripe_account_id': None})]:
+            evidence = {'stripe_account_id': STRIPE_ACCOUNT, 'stripe_mode': 'test', 'stripe_snapshot_id': snapshot['id'], **changes}
+            db.add(PrivateItem(owner_id='1', source_id='stripe', external_id=identity, kind='dispute', title=identity,
+                summary='', status='needs_response', priority='urgent', evidence=evidence))
+        await db.commit()
+    listed = (await client.get('/api/v1/private-workspace/items?source_id=stripe', headers=headers())).json()
+    overview = (await client.get('/api/v1/private-workspace', headers=headers())).json()
+    assert listed['total'] == 1 and len(overview['items']) == 1 and len(overview['balances']) == 1
+    async with sessions() as db:
+        assert (await db.execute(select(func.count()).select_from(PrivateItem).where(PrivateItem.source_id == 'stripe'))).scalar_one() == 5
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_ACCOUNT_ID', 'acct_another12345678')
+    listed = (await client.get('/api/v1/private-workspace/items?source_id=stripe', headers=headers())).json()
+    overview = (await client.get('/api/v1/private-workspace', headers=headers())).json()
+    assert listed['total'] == 0 and not overview['items'] and not overview['balances']
+    source = next(row for row in overview['sources'] if row['id'] == 'stripe')
+    assert source['status'] == 'error'
+    assert all(statement.lstrip().upper().startswith('SELECT') for statement in workspace.statements)
+
+
+@pytest.mark.asyncio
+async def test_stripe_new_snapshot_excludes_old_unsynced_status_without_deleting_history(workspace):
+    client = workspace.client
+    await client.post('/api/v1/private-workspace/sources/stripe/connect', headers=headers())
+    await client.post('/api/v1/private-workspace/sources/stripe/sync', headers=headers())
+    original = workspace.fake.fetch_source
+    async def new_batch(source_id, credentials, metadata):
+        result = await original(source_id, credentials, metadata)
+        result['items'][0]['external_id'] = 'pi_new_snapshot'
+        return result
+    workspace.fake.fetch_source = new_batch
+    await client.post('/api/v1/private-workspace/sources/stripe/sync', headers=headers())
+    listed = (await client.get('/api/v1/private-workspace/items?source_id=stripe', headers=headers())).json()
+    assert listed['total'] == 1
+    sessions = await core.private_session_factory()
+    async with sessions() as db:
+        assert (await db.execute(select(func.count()).select_from(PrivateItem).where(PrivateItem.source_id == 'stripe'))).scalar_one() == 2
+
+
+@pytest.mark.asyncio
+async def test_stripe_sync_rejects_forged_batch_identity_atomically(workspace):
+    client = workspace.client
+    await client.post('/api/v1/private-workspace/sources/stripe/connect', headers=headers())
+    await client.post('/api/v1/private-workspace/sources/stripe/sync', headers=headers())
+    original = workspace.fake.fetch_source
+    async def forged(source_id, credentials, metadata):
+        result = await original(source_id, credentials, metadata)
+        result['items'][0]['evidence']['stripe_account_id'] = 'acct_another12345678'
+        return result
+    workspace.fake.fetch_source = forged
+    assert (await client.post('/api/v1/private-workspace/sources/stripe/sync', headers=headers())).status_code == 502
+    overview = (await client.get('/api/v1/private-workspace', headers=headers())).json()
+    assert len(overview['balances']) == 1 and len(overview['items']) == 1
+    source = next(row for row in overview['sources'] if row['id'] == 'stripe')
+    assert source['status'] == 'error'

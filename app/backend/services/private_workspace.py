@@ -23,12 +23,12 @@ from sqlalchemy.pool import NullPool
 from core.config import settings
 from dependencies.private_workspace import configured_owner_ids, valid_private_owner
 from models.private_workspace import (
-    PrivateConnection, PrivateItem, PrivatePreferences, PrivateSyncRun, PrivateWorkspaceBase, utcnow,
+    PrivateBankLink, PrivateConnection, PrivateItem, PrivatePreferences, PrivateSyncRun, PrivateWorkspaceBase, utcnow,
 )
 from services.private_mail_relevance import BUCKETS, BUCKET_PRIORITY, classify_mail, gmail_preferences
 
 
-SOURCE_IDS = ("gmail", "google_ads", "bofa", "stripe", "manual")
+SOURCE_IDS = ("gmail", "google_ads", "bofa", "bofa_bank", "stripe", "manual")
 DEFAULT_PRIVATE_URL = "sqlite+aiosqlite:///./private-data/workspace.db"
 _storage = None
 _storage_lock = asyncio.Lock()
@@ -37,6 +37,7 @@ _SECRET_VALUE = re.compile(r"(?:[sr]k_(?:live|test)_\w+|ya29\.[\w.-]+|Bearer\s+\
 _SOURCE_HOSTS = {
     "gmail": {"mail.google.com"},
     "bofa": {"mail.google.com", "www.bankofamerica.com", "secure.bankofamerica.com"},
+    "bofa_bank": {"www.bankofamerica.com", "secure.bankofamerica.com"},
     "google_ads": {"ads.google.com"},
     "stripe": {"dashboard.stripe.com"},
 }
@@ -50,10 +51,16 @@ def _provider_setup_message(source_id, error, fallback):
     # Expose only fixed setup guidance for this adapter. Never return provider
     # response bodies or arbitrary exception/public_message text.
     provider_error = importlib.import_module("services.private_workspace_providers").ProviderError
+    if source_id == "bofa_bank":
+        from services.private_bank_provider import BankProviderError, ERRORS
+        return ERRORS.get(error.code, fallback) if isinstance(error, BankProviderError) else fallback
     messages = {
         "ads_project_not_approved": "Google Cloud 项目尚未获准读取正式广告账户，请在 Google Ads API 概览申请 Explorer 或更高访问级别后重新连接",
         "ads_account_changed": "广告账户配置与已授权账户不一致，请重新连接",
+        "stripe_account_changed": "Stripe 账户或模式与私人空间配置不一致，请核对后重新连接",
     }
+    if source_id == "stripe" and isinstance(error, provider_error) and error.code == "stripe_account_changed":
+        return messages["stripe_account_changed"]
     return messages.get(error.code, fallback) if source_id == "google_ads" and isinstance(error, provider_error) else fallback
 
 
@@ -282,7 +289,10 @@ async def connection_for(private_db, owner_id: str, source_id: str, *, create=Fa
 def source_metadata(connection):
     stored = (connection.metadata_json or {}) if connection else {}
     allowed = {"coverage", "partial", "sync_window", "record_limit", "record_limit_per_resource",
-               "resources", "mode", "bank_data_verification", "read_only_adapter", "api_version", "importance_source", "account_label", "ads_customer_id", "ads_snapshot"}
+               "resources", "mode", "bank_data_verification", "read_only_adapter", "api_version", "importance_source", "account_label", "ads_customer_id", "ads_snapshot",
+               "stripe_account_id", "stripe_snapshot", "bank_environment", "bank_item_id",
+               "bank_institution_id", "bank_institution_name", "bank_snapshot", "bank_accounts",
+               "bank_cursor_state", "transactions_update_status", "balance_source"}
     result = safe_json({key: value for key, value in stored.items() if key in allowed})
     # Bounded records are never presented as account-level financial totals.
     result["aggregated_totals"] = False
@@ -293,6 +303,11 @@ def source_metadata(connection):
 def source_response(descriptor, connection=None):
     source_id = descriptor["id"]
     missing = [str(value) for value in descriptor.get("missing_configuration", []) if re.fullmatch(r"[A-Z0-9_]+", str(value))]
+    if (source_id == "stripe" and connection and connection.encrypted_credentials
+            and stripe_connection_identity(connection, require_snapshot=False)):
+        # A connected source uses its encrypted DB credential. Its one-time
+        # setup key can be removed from both API and worker environments.
+        missing = [value for value in missing if value != "PRIVATE_WORKSPACE_STRIPE_KEY"]
     if source_id != "manual" and not encryption_configured():
         missing.append("PRIVATE_WORKSPACE_ENCRYPTION_KEY")
     source_status = "connected" if source_id == "manual" else "not_configured" if missing else "disconnected"
@@ -302,11 +317,28 @@ def source_response(descriptor, connection=None):
             source_status = "error"
         if missing and source_status not in {"connected", "connecting", "error"}:
             source_status = "not_configured"
+    source_error = connection.error if connection else None
+    if (source_id == "stripe" and connection and connection.status == "connected"
+            and not stripe_connection_identity(connection, require_snapshot=False)):
+        source_status = "error"
+        source_error = "Stripe 账户或模式未完成绑定，请核对私人空间配置后重新连接"
+    public_metadata = source_metadata(connection)
+    if source_id == "bofa_bank":
+        from services.private_bank_service import bank_connection_identity
+        bank_identity = bank_connection_identity(connection, require_snapshot=False)
+        if connection and connection.status == "connected" and not bank_identity:
+            source_status = "error"
+            source_error = "银行账户或环境未完成绑定，请核对后重新连接"
+        if not bank_identity:
+            # Preserve cached balances after an ordinary sync failure, but never
+            # expose an old account snapshot when its server binding is invalid.
+            public_metadata.pop("bank_accounts", None)
+            public_metadata.pop("bank_snapshot", None)
     return {
         "id": source_id, "name": str(descriptor.get("name") or source_id),
         "status": source_status, "capabilities": [str(value) for value in descriptor.get("capabilities", [])],
         "missing_configuration": sorted(set(missing)), "last_sync": _aware(connection.last_sync) if connection else None,
-        "error": connection.error if connection else None, "metadata": source_metadata(connection),
+        "error": source_error, "metadata": public_metadata,
     }
 
 
@@ -345,6 +377,37 @@ async def current_ads_condition(private_db, owner_id, *, focus_time=None):
     return and_(*membership) if membership else PrivateItem.source_id == "google_ads"
 
 
+def stripe_connection_identity(connection, *, require_snapshot=True):
+    """A bound identity must still match the dedicated server account."""
+    if not connection or connection.status != "connected": return None
+    from services.private_workspace_providers import ProviderError, stripe_expected_identity
+    try: account, mode = stripe_expected_identity()
+    except ProviderError: return None
+    metadata = connection.metadata_json or {}
+    if metadata.get("stripe_account_id") != account or metadata.get("mode") != mode: return None
+    identity = {"account_id": account, "mode": mode}
+    if not require_snapshot: return identity
+    snapshot = metadata.get("stripe_snapshot")
+    if (not isinstance(snapshot, dict) or not isinstance(snapshot.get("id"), str)
+            or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", snapshot["id"])
+            or snapshot.get("account_id") != account or snapshot.get("mode") != mode): return None
+    try:
+        observed = _aware(snapshot.get("observed_at")); last_sync = _aware(connection.last_sync)
+    except (TypeError, ValueError): return None
+    if not observed or not last_sync or observed > last_sync: return None
+    return {**identity, "snapshot_id": snapshot["id"], "observed_at": observed}
+
+
+async def current_stripe_condition(private_db, owner_id: str, *, snapshot_only=True):
+    connection = await connection_for(private_db, owner_id, "stripe")
+    identity = stripe_connection_identity(connection, require_snapshot=snapshot_only)
+    if not identity: return false()
+    conditions = [PrivateItem.evidence["stripe_account_id"].as_string() == identity["account_id"],
+                  PrivateItem.evidence["stripe_mode"].as_string() == identity["mode"]]
+    if snapshot_only: conditions.append(PrivateItem.evidence["stripe_snapshot_id"].as_string() == identity["snapshot_id"])
+    return and_(*conditions)
+
+
 async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, action_status=None, limit=100, mail_bucket=None):
     if mail_bucket:
         if mail_bucket not in BUCKETS or source_id not in {None, "gmail"}:
@@ -364,6 +427,13 @@ async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, ac
     if source_id in {None, "google_ads"}:
         current_ads = await current_ads_condition(private_db, owner_id)
         conditions.append(or_(PrivateItem.source_id != "google_ads", current_ads))
+    if source_id in {None, "stripe"}:
+        current_stripe = await current_stripe_condition(private_db, owner_id)
+        conditions.append(or_(PrivateItem.source_id != "stripe", current_stripe))
+    if source_id in {None, "bofa_bank"}:
+        from services.private_bank_service import current_bank_condition
+        current_bank = await current_bank_condition(private_db, owner_id)
+        conditions.append(or_(PrivateItem.source_id != "bofa_bank", current_bank))
     if source_id == "gmail":
         stored = await stored_preferences_for(private_db, owner_id)
         rows = (await private_db.execute(select(PrivateItem).where(*conditions).order_by(
@@ -381,8 +451,9 @@ async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, ac
                 "total": len(computed), "mail_counts": counts}
     total = (await private_db.execute(select(func.count()).select_from(PrivateItem).where(*conditions))).scalar_one()
     stored = await stored_preferences_for(private_db, owner_id)
+    bank_order = (PrivateItem.evidence['transaction_date'].as_string().desc().nullslast(), PrivateItem.occurred_at.desc().nullslast(), PrivateItem.id) if source_id == "bofa_bank" else (PrivateItem.created_at.desc(), PrivateItem.id)
     rows = (await private_db.execute(select(PrivateItem).where(*conditions).order_by(
-        PrivateItem.created_at.desc(), PrivateItem.id,
+        *bank_order,
     ).limit(limit))).scalars().all()
     from services.private_mail_translation_service import attach_cached_previews
     from services.private_mail_brief_service import attach_cached_previews as attach_briefs
@@ -400,10 +471,15 @@ async def overview_items(private_db, owner_id: str, *, reference_time=None):
     priority_order = case((PrivateItem.priority == "urgent", 0), (PrivateItem.priority == "high", 1),
                           (PrivateItem.priority == "normal", 2), else_=3)
     current_ads = await current_ads_condition(private_db, owner_id, focus_time=now)
+    current_stripe = await current_stripe_condition(private_db, owner_id)
+    from services.private_bank_service import current_bank_condition
+    current_bank = await current_bank_condition(private_db, owner_id)
     # Arrival dates on ordinary payouts do not turn them into work to be done.
     work = (await private_db.execute(select(PrivateItem).where(
         PrivateItem.owner_id == owner_id, actionable, PrivateItem.source_id.notin_(["bofa", "gmail"]),
         or_(PrivateItem.source_id != "google_ads", current_ads),
+        or_(PrivateItem.source_id != "stripe", current_stripe),
+        or_(PrivateItem.source_id != "bofa_bank", current_bank),
         or_(PrivateItem.source_id == "manual", PrivateItem.priority.in_(["high", "urgent"])),
     ).order_by(priority_order, case((PrivateItem.due_at.is_(None), 1), else_=0),
                PrivateItem.due_at.asc(), PrivateItem.created_at.asc(), PrivateItem.id).limit(100))).scalars().all()
@@ -431,7 +507,7 @@ async def workspace_overview(private_db, owner_id: str):
     sources = [source_response(descriptor, by_source.get(descriptor["id"])) for descriptor in source_descriptors()]
     balances = []
     for connection in connections:
-        if connection.status == "connected":
+        if connection.status == "connected" and (connection.source_id != "stripe" or stripe_connection_identity(connection)):
             for value in (connection.metadata_json or {}).get("balances", []):
                 balances.append({"source_id": connection.source_id, "currency": value["currency"],
                                  "available_minor": value["available_minor"], "pending_minor": value["pending_minor"]})
@@ -450,6 +526,8 @@ async def _source_after(private_db, owner_id, source_id):
 
 async def connect_source(private_db, owner_id: str, source_id: str):
     require_source(source_id, external=True)
+    if source_id == "bofa_bank":
+        raise HTTPException(status_code=409, detail="请使用银行安全授权入口连接账户")
     descriptor = next(row for row in source_descriptors() if row["id"] == source_id)
     if source_response(descriptor)["missing_configuration"]:
         raise HTTPException(status_code=503, detail="此来源尚未完成服务器配置")
@@ -540,6 +618,11 @@ async def disconnect_source(private_db, owner_id: str, source_id: str):
         metadata_json={}, oauth_state_hash=None, oauth_expires_at=None, oauth_used_at=None,
         sync_lease_until=None, error=None,
     ).execution_options(synchronize_session=False))
+    if source_id == "bofa_bank":
+        await private_db.execute(update(PrivateBankLink).where(
+            PrivateBankLink.owner_id == owner_id, PrivateBankLink.connection_id == connection.id,
+            PrivateBankLink.state.in_(["pending", "exchanging"]),
+        ).values(state="canceled", encrypted_context=None, lease_until=None))
     await private_db.commit()
     return {"source": await _source_after(private_db, owner_id, source_id)}
 
@@ -577,7 +660,7 @@ def _provider_item(owner_id: str, source_id: str, value: dict):
 
 async def persist_provider_batch(private_db, owner_id: str, source_id: str, batch: dict):
     values = batch.get("items") or []
-    if not isinstance(values, list) or len(values) > 2000:
+    if not isinstance(values, list) or len(values) > (10000 if source_id == "bofa_bank" else 2000):
         raise ValueError("invalid provider batch")
     # A single update can include the same object multiple times; latest occurrence wins.
     normalized = {row["external_id"]: row for row in (_provider_item(owner_id, source_id, value) for value in values)}
@@ -630,6 +713,8 @@ async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seco
     credentials = decrypt_credentials(connection.encrypted_credentials)
     metadata = dict(connection.metadata_json or {})
     timeout_seconds = max(5, min(90, timeout_seconds))
+    if source_id == "bofa_bank":
+        timeout_seconds = 90
     now = utcnow()
     claimed = await private_db.execute(update(PrivateConnection).where(
         PrivateConnection.id == connection_id, PrivateConnection.generation == generation,
@@ -653,13 +738,47 @@ async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seco
         ).values(sync_lease_until=None))
         if still_current.rowcount != 1:
             raise HTTPException(status_code=409, detail="来源授权已改变，请重新同步")
+        if source_id == "stripe":
+            # Identity was established at connect, not learned from a fetched
+            # batch. Recheck the server binding after the external wait.
+            binding = stripe_connection_identity(connection, require_snapshot=False)
+            batch_meta = batch.get("metadata") or {}; snapshot = batch_meta.get("stripe_snapshot")
+            if (not binding or batch_meta.get("stripe_account_id") != binding["account_id"]
+                    or batch_meta.get("mode") != binding["mode"] or not isinstance(snapshot, dict)
+                    or snapshot.get("account_id") != binding["account_id"] or snapshot.get("mode") != binding["mode"]
+                    or not isinstance(snapshot.get("id"), str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", snapshot["id"])):
+                raise ValueError("invalid Stripe account snapshot")
+            observed = _aware(snapshot.get("observed_at"))
+            if not observed or not now - timedelta(seconds=5) <= observed <= utcnow():
+                raise ValueError("invalid Stripe snapshot time")
+            for value in batch.get("items") or []:
+                evidence = value.get("evidence") or {}
+                if (evidence.get("stripe_account_id") != binding["account_id"] or evidence.get("stripe_mode") != binding["mode"]
+                        or evidence.get("stripe_snapshot_id") != snapshot["id"] or evidence.get("stripe_observed_at") != snapshot["observed_at"]):
+                    raise ValueError("invalid Stripe item identity")
+        if source_id == "bofa_bank":
+            from services.private_bank_service import validate_bank_batch
+            validate_bank_batch(connection, batch, now)
         counts, balances = await persist_provider_batch(private_db, owner_id, source_id, batch)
+        if source_id == "bofa_bank":
+            from services.private_bank_service import current_bank_condition
+            bank_binding = await current_bank_condition(private_db, owner_id, require_snapshot=False)
+            for key, state in (("removed_external_ids", "removed"), ("replaced_pending_external_ids", "replaced")):
+                ids = batch.get(key) or []
+                if not isinstance(ids, list) or len(ids) > 10000 or any(not isinstance(value, str) or not value or len(value) > 512 for value in ids):
+                    raise ValueError("invalid bank removal identifiers")
+                # Keep personal notes and actions; upstream deletions change only source status.
+                for start in range(0, len(ids), 500):
+                    await private_db.execute(update(PrivateItem).where(
+                        PrivateItem.owner_id == owner_id, PrivateItem.source_id == "bofa_bank",
+                        bank_binding, PrivateItem.external_id.in_(ids[start:start + 500]),
+                    ).values(status=state, updated_at=utcnow()))
         batch_metadata = safe_json(batch.get("metadata") or metadata)
         if not isinstance(batch_metadata, dict):
             raise ValueError("invalid provider metadata")
         # Synchronization cannot replace the identity/scope established during
         # authorization, or claim a new identity from a fetched snapshot.
-        for key in ("account_label", "ads_customer_id", "connection_mode", "scope"):
+        for key in ("account_label", "ads_customer_id", "connection_mode", "scope", "stripe_account_id"):
             if key in metadata:
                 batch_metadata[key] = safe_json(metadata[key])
             else:

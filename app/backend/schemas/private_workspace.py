@@ -4,7 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-SourceId = Literal["gmail", "google_ads", "bofa", "stripe", "manual"]
+SourceId = Literal["gmail", "google_ads", "bofa", "bofa_bank", "stripe", "manual"]
 ActionStatus = Literal["open", "done", "snoozed", "archived"]
 Priority = Literal["low", "normal", "high", "urgent"]
 MailBucket = Literal["urgent", "today", "digest", "low"]
@@ -185,6 +185,11 @@ class PrivateWorkspaceBriefRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     period: Literal['today', 'last7days'] = 'today'
     snapshot_id: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class PrivateBankCompleteRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    session_id: str = Field(pattern=r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
 
 
 class PrivateMailBriefDeadline(BaseModel):

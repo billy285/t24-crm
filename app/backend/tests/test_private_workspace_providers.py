@@ -10,12 +10,15 @@ import pytest
 from services import private_workspace_providers as providers
 
 KEY = 'rk_test_synthetic1234567890'
+STRIPE_ACCOUNT = 'acct_synthetic12345678'
+STRIPE_CREDENTIALS = {'api_key': KEY, 'stripe_account_id': STRIPE_ACCOUNT, 'mode': 'test'}
+STRIPE_METADATA = {'stripe_account_id': STRIPE_ACCOUNT, 'mode': 'test'}
 GOOGLE = {'access_token': 'synthetic-access', 'refresh_token': 'synthetic-refresh', 'expires_at': 2000000000,
           'scope': providers.GMAIL_SCOPE, 'token_type': 'Bearer'}
 ENVIRONMENTS = ('GOOGLE_WORKSPACE_CLIENT_ID', 'GOOGLE_WORKSPACE_CLIENT_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
                 'PRIVATE_WORKSPACE_PUBLIC_URL', 'GOOGLE_ADS_DEVELOPER_TOKEN', 'PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID',
                 'GOOGLE_ADS_CUSTOMER_ID', 'GOOGLE_ADS_LOGIN_CUSTOMER_ID', 'PRIVATE_WORKSPACE_STRIPE_KEY',
-                'PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT')
+                'PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT', 'PRIVATE_WORKSPACE_STRIPE_ACCOUNT_ID', 'PRIVATE_WORKSPACE_STRIPE_MODE')
 
 
 @pytest.fixture(autouse=True)
@@ -30,10 +33,12 @@ def configured(monkeypatch):
     monkeypatch.setenv('PRIVATE_WORKSPACE_PUBLIC_URL', 'https://t24-crm.com')
     monkeypatch.setenv('PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID', '123-456-7890')
     monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_KEY', KEY)
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_ACCOUNT_ID', STRIPE_ACCOUNT)
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_MODE', 'test')
 
 
 def balance():
-    return {'object': 'balance', 'available': [{'currency': 'usd', 'amount': -123}, {'currency': 'jpy', 'amount': 1}],
+    return {'object': 'balance', 'livemode': False, 'available': [{'currency': 'usd', 'amount': -123}, {'currency': 'jpy', 'amount': 1}],
             'pending': [{'currency': 'usd', 'amount': 456}]}
 
 
@@ -73,8 +78,9 @@ def daily_campaign(identity=1, day='2026-10-09'):
 
 def stripe_row(resource):
     prefix = {'charges': 'ch_', 'refunds': 're_', 'disputes': 'dp_', 'payouts': 'po_'}[resource]
-    row = {'id': prefix+'synthetic1', 'amount': 1, 'currency': 'jpy', 'created': 1700000000,
+    row = {'id': prefix+'synthetic1', 'amount': 1, 'currency': 'jpy', 'created': 1700000000, 'livemode': False,
            'status': 'needs_response' if resource == 'disputes' else 'succeeded' if resource != 'payouts' else 'in_transit'}
+    if resource == 'charges': row.update(captured=True, paid=True, refunded=False, amount_captured=1, amount_refunded=0)
     if resource == 'refunds': row['charge'] = 'ch_synthetic1'
     if resource == 'disputes': row['evidence_details'] = {'due_by': 1700001000}
     if resource == 'payouts': row['arrival_date'] = 1700002000
@@ -83,7 +89,7 @@ def stripe_row(resource):
 
 def test_unconfigured_registry_is_honest_and_contains_no_configuration_values():
     sources = providers.describe_sources()
-    assert [row['id'] for row in sources] == ['gmail', 'google_ads', 'bofa', 'stripe', 'manual']
+    assert [row['id'] for row in sources] == ['gmail', 'google_ads', 'bofa', 'bofa_bank', 'stripe', 'manual']
     assert all(row['status'] == 'not_configured' for row in sources[:-1])
     assert sources[-1]['status'] == 'disconnected'
     assert all(isinstance(row['capabilities'], list) for row in sources)
@@ -628,10 +634,15 @@ async def test_ads_error_message_text_cannot_invent_approval_error(configured):
 async def test_stripe_restricted_key_connect_validates_balance_read_only(configured):
     calls = []
     async def handler(request):
-        calls.append(request); return httpx.Response(200, json=balance())
+        calls.append(request)
+        if request.url.path == '/v1/account': return httpx.Response(200, json={'object': 'account', 'id': STRIPE_ACCOUNT})
+        if request.url.path == '/v1/balance': return httpx.Response(200, json=balance())
+        return httpx.Response(200, json={'object': 'list', 'data': [], 'has_more': False})
     connected = await providers.begin_connect('stripe', '', transport=httpx.MockTransport(handler))
-    assert connected['credentials'] == {'api_key': KEY} and len(calls) == 1
-    assert calls[0].method == 'GET' and str(calls[0].url) == 'https://api.stripe.com/v1/balance'
+    assert connected['credentials'] == STRIPE_CREDENTIALS and len(calls) == 6
+    assert all(call.method == 'GET' for call in calls)
+    assert str(calls[0].url) == 'https://api.stripe.com/v1/account'
+    assert connected['metadata']['stripe_account_id'] == STRIPE_ACCOUNT
     assert KEY not in json.dumps(connected['metadata'])
 
 
@@ -649,11 +660,12 @@ async def test_stripe_preserves_status_minor_units_and_distinguishes_payouts_fro
         calls.append(request)
         assert request.method == 'GET' and request.url.host == 'api.stripe.com'
         assert request.headers['authorization'] == 'Bearer '+KEY and KEY not in str(request.url)
+        if request.url.path == '/v1/account': return httpx.Response(200, json={'object': 'account', 'id': STRIPE_ACCOUNT})
         if request.url.path == '/v1/balance': return httpx.Response(200, json=balance())
         resource = request.url.path.rsplit('/', 1)[1]
-        return httpx.Response(200, json={'data': [stripe_row(resource)], 'has_more': False})
-    batch = await providers.fetch_source('stripe', {'api_key': KEY}, {}, transport=httpx.MockTransport(handler))
-    assert len(calls) == 5 and {row['kind'] for row in batch['items']} == {'payment', 'refund', 'dispute', 'payout'}
+        return httpx.Response(200, json={'object': 'list', 'data': [stripe_row(resource)], 'has_more': False})
+    batch = await providers.fetch_source('stripe', STRIPE_CREDENTIALS, STRIPE_METADATA, transport=httpx.MockTransport(handler))
+    assert len(calls) == 6 and {row['kind'] for row in batch['items']} == {'payment', 'refund', 'dispute', 'payout'}
     assert all(row['amount_minor'] == 1 and row['currency'] == 'jpy' for row in batch['items'])
     payout = next(row for row in batch['items'] if row['kind'] == 'payout')
     assert payout['status'] == 'in_transit' and payout['evidence']['funds_movement'] == 'stripe_balance_to_bank'
@@ -667,13 +679,14 @@ async def test_stripe_paging_is_bounded_and_has_resource_specific_coverage(confi
     calls = []
     async def handler(request):
         calls.append(request)
+        if request.url.path == '/v1/account': return httpx.Response(200, json={'object': 'account', 'id': STRIPE_ACCOUNT})
         if request.url.path == '/v1/balance': return httpx.Response(200, json=balance())
-        if request.url.path != '/v1/charges': return httpx.Response(200, json={'data': [], 'has_more': False})
+        if request.url.path != '/v1/charges': return httpx.Response(200, json={'object': 'list', 'data': [], 'has_more': False})
         page = 1 if request.url.params.get('starting_after') else 0
         rows = [{**stripe_row('charges'), 'id': 'ch_'+str(page*50+index)} for index in range(50)]
-        return httpx.Response(200, json={'data': rows, 'has_more': True})
-    batch = await providers.fetch_source('stripe', {'api_key': KEY}, {}, transport=httpx.MockTransport(handler))
-    assert len(batch['items']) == 100 and len(calls) == 6 and batch['metadata']['partial'] is True
+        return httpx.Response(200, json={'object': 'list', 'data': rows, 'has_more': True})
+    batch = await providers.fetch_source('stripe', STRIPE_CREDENTIALS, STRIPE_METADATA, transport=httpx.MockTransport(handler))
+    assert len(batch['items']) == 100 and len(calls) == 7 and batch['metadata']['partial'] is True
     assert batch['metadata']['resources']['charges'] == {'fetched': 100, 'partial': True}
 
 
@@ -758,12 +771,13 @@ async def test_stripe_second_resource_failure_does_not_return_partial_success(co
     calls = []
     async def handler(request):
         calls.append(request)
+        if request.url.path == '/v1/account': return httpx.Response(200, json={'object': 'account', 'id': STRIPE_ACCOUNT})
         if request.url.path == '/v1/balance': return httpx.Response(200, json=balance())
-        if request.url.path == '/v1/charges': return httpx.Response(200, json={'data': [stripe_row('charges')], 'has_more': False})
+        if request.url.path == '/v1/charges': return httpx.Response(200, json={'object': 'list', 'data': [stripe_row('charges')], 'has_more': False})
         return httpx.Response(403, json={'key': KEY, 'message': 'missing secret permission'})
     with pytest.raises(providers.ProviderError) as error:
-        await providers.fetch_source('stripe', {'api_key': KEY}, {}, transport=httpx.MockTransport(handler))
-    assert len(calls) == 3 and error.value.code == 'access_denied' and KEY not in str(error.value)
+        await providers.fetch_source('stripe', STRIPE_CREDENTIALS, STRIPE_METADATA, transport=httpx.MockTransport(handler))
+    assert len(calls) == 4 and error.value.code == 'access_denied' and KEY not in str(error.value)
 
 
 @pytest.mark.asyncio
@@ -775,18 +789,21 @@ async def test_stripe_second_resource_failure_does_not_return_partial_success(co
     {'data': [{**stripe_row('charges'), 'id': 'ch_../../redirect'}], 'has_more': False}])
 async def test_stripe_malformed_paging_amount_currency_or_identifier_fails_closed(configured, response):
     async def handler(request):
-        return httpx.Response(200, json=balance() if request.url.path == '/v1/balance' else response)
+        if request.url.path == '/v1/account': return httpx.Response(200, json={'object': 'account', 'id': STRIPE_ACCOUNT})
+        return httpx.Response(200, json=balance() if request.url.path == '/v1/balance' else {'object': 'list', **response})
     with pytest.raises(providers.ProviderError) as error:
-        await providers.fetch_source('stripe', {'api_key': KEY}, {}, transport=httpx.MockTransport(handler))
+        await providers.fetch_source('stripe', STRIPE_CREDENTIALS, STRIPE_METADATA, transport=httpx.MockTransport(handler))
     assert error.value.code == 'invalid_response'
 
 
 @pytest.mark.asyncio
 async def test_duplicate_balance_currency_is_rejected_instead_of_double_counted(configured):
     response = balance(); response['available'].append(response['available'][0])
-    async def handler(request): return httpx.Response(200, json=response)
+    async def handler(request):
+        if request.url.path == '/v1/account': return httpx.Response(200, json={'object': 'account', 'id': STRIPE_ACCOUNT})
+        return httpx.Response(200, json=response)
     with pytest.raises(providers.ProviderError) as error:
-        await providers.fetch_source('stripe', {'api_key': KEY}, {}, transport=httpx.MockTransport(handler))
+        await providers.fetch_source('stripe', STRIPE_CREDENTIALS, STRIPE_METADATA, transport=httpx.MockTransport(handler))
     assert error.value.code == 'invalid_response'
 
 

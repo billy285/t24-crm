@@ -208,40 +208,43 @@ async def translate_item(db, owner_id, item_id, *, mode="body"):
         if not (await db.execute(select(_live_context(row, context)))).scalar_one():
             return {**response, "code": "authorization_expired"}
         return {**response, "translation": cached, **({"code": code} if code else {})}
+
+    async def operation():
+        plan = context["plan"]
+        content = None
+        if mode == "body":
+            content = await gmail.fetch_mail_content(decrypt_credentials(context["credentials"]),
+                                                    context["metadata"], context["message_id"])
+            if content.get("credentials"):
+                # Do not overwrite a concurrent sync's newer refresh token.
+                await db.execute(update(PrivateConnection).where(
+                    PrivateConnection.id == context["connection_id"], PrivateConnection.owner_id == owner_id,
+                    PrivateConnection.generation == context["generation"], PrivateConnection.status == "connected",
+                    PrivateConnection.encrypted_credentials == context["credentials"],
+                ).values(encrypted_credentials=encrypt_credentials(content["credentials"])))
+                await db.commit()
+            plan = translator.prepare_mail_translation(content["title"], content["summary"],
+                content["body"] if content["has_body"] else None, body_truncated=content["truncated"])
+        # Check connection again immediately before any external disclosure.
+        live = (await db.execute(select(_live_context(row, context)))).scalar_one()
+        if not live:
+            raise gmail.ProviderError("authorization_expired")
+        if not await reserve_characters(db, owner_id, plan.character_count):
+            await _finish(db, row, context, token, code="limit_reached")
+            return {**response, "translation": _empty("failed"), "code": "limit_reached"}
+        translated = await translator.translate_mail(plan)
+        result = {"state": "ready", "title_zh": translated["title"], "summary_zh": translated["summary"],
+                  "body_available": bool(content and content["has_body"]),
+                  "truncated": translated["body_truncated"], "updated_at": translated["translated_at"]}
+        if mode == "body":
+            result.update(body_zh=translated["body"], body_original=content["body"] if content["has_body"] else None)
+        if not await _finish(db, row, context, token, result=result):
+            return {**response, "code": "authorization_expired"}
+        return {**response, "translation": result}
+
     try:
-        async with asyncio.timeout(55):
-            plan = context["plan"]
-            content = None
-            if mode == "body":
-                content = await gmail.fetch_mail_content(decrypt_credentials(context["credentials"]),
-                                                        context["metadata"], context["message_id"])
-                if content.get("credentials"):
-                    # Do not overwrite a concurrent sync's newer refresh token.
-                    await db.execute(update(PrivateConnection).where(
-                        PrivateConnection.id == context["connection_id"], PrivateConnection.owner_id == owner_id,
-                        PrivateConnection.generation == context["generation"], PrivateConnection.status == "connected",
-                        PrivateConnection.encrypted_credentials == context["credentials"],
-                    ).values(encrypted_credentials=encrypt_credentials(content["credentials"])))
-                    await db.commit()
-                plan = translator.prepare_mail_translation(content["title"], content["summary"],
-                    content["body"] if content["has_body"] else None, body_truncated=content["truncated"])
-            # Check connection again immediately before any external disclosure.
-            live = (await db.execute(select(_live_context(row, context)))).scalar_one()
-            if not live:
-                raise gmail.ProviderError("authorization_expired")
-            if not await reserve_characters(db, owner_id, plan.character_count):
-                await _finish(db, row, context, token, code="limit_reached")
-                return {**response, "translation": _empty("failed"), "code": "limit_reached"}
-            translated = await translator.translate_mail(plan)
-            result = {"state": "ready", "title_zh": translated["title"], "summary_zh": translated["summary"],
-                      "body_available": bool(content and content["has_body"]),
-                      "truncated": translated["body_truncated"], "updated_at": translated["translated_at"]}
-            if mode == "body":
-                result.update(body_zh=translated["body"], body_original=content["body"] if content["has_body"] else None)
-            if not await _finish(db, row, context, token, result=result):
-                return {**response, "code": "authorization_expired"}
-            return {**response, "translation": result}
-    except (translator.TranslationError, gmail.ProviderError, HTTPException, TimeoutError) as exc:
+        return await asyncio.wait_for(operation(), timeout=55)
+    except (translator.TranslationError, gmail.ProviderError, HTTPException, asyncio.TimeoutError, TimeoutError) as exc:
         code = _public_error(exc)
         await db.rollback()
         await _finish(db, row, context, token, code=code)

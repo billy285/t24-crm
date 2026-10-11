@@ -169,3 +169,19 @@ class PrivateWorkspaceBrief(PrivateWorkspaceBase):
     reservation_state = Column(String(16), nullable=False, default='none')
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class PrivateBankLink(PrivateWorkspaceBase):
+    """Short-lived owner-bound bank consent session; tokens remain encrypted."""
+    __tablename__ = 'private_bank_links'
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    owner_id = Column(String(64), nullable=False, index=True)
+    connection_id = Column(String(36), nullable=False)
+    generation = Column(Integer, nullable=False)
+    state = Column(String(16), nullable=False, default='pending')
+    encrypted_context = Column(Text, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    lease_until = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

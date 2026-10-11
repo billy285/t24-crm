@@ -393,57 +393,60 @@ async def brief_item(db, owner_id, item_id, *, mode="body"):
             return {**response, "code": "authorization_expired"}
         cached["importance"] = importance
         return {**response, "brief": cached, **({"code": code} if code else {})}
-    try:
-        async with asyncio.timeout(55):
-            content = await gmail.fetch_mail_content(decrypt_credentials(context["credentials"]),
-                                                    context["metadata"], context["message_id"])
-            if content.get("credentials"):
-                await db.execute(update(PrivateConnection).where(
-                    PrivateConnection.id == context["connection_id"], PrivateConnection.owner_id == owner_id,
-                    PrivateConnection.generation == context["generation"], PrivateConnection.status == "connected",
-                    PrivateConnection.encrypted_credentials == context["credentials"],
-                ).values(encrypted_credentials=encrypt_credentials(content["credentials"])))
-                await db.commit()
-            plan = provider.prepare_mail_brief(content["title"], content["summary"],
-                content["body"] if content["has_body"] else None, body_truncated=content["truncated"])
-            # The provider rechecks enabled + consent itself immediately before
-            # HTTP. Do not reserve any usage on a stale connection/source.
-            if not (await db.execute(select(_live_context(context)))).scalar_one():
-                raise gmail.ProviderError("authorization_expired")
-            if not provider.configured():
-                raise provider.MailBriefError("not_configured")
-            reservation = provider.preflight_reservation(plan)
-            if not await reserve_usage(db, owner_id, plan.character_count,
-                                       reservation_micro_usd=reservation['reservation_micro_usd'],
-                                       price_policy=reservation['price_policy'], context=context, token=token):
-                code = await _reservation_failure_code(db, owner_id, context['reservation_month'],
-                                                       reservation['reservation_micro_usd'])
-                await _finish(db, context, token, code=code)
-                return {**response, "brief": _empty("failed"), "code": code}
-            # End the prior transaction BEFORE the final authorization check.
-            # Do not yield for a separate commit after checking and before
-            # entering the provider. In-flight HTTP cannot be recalled later.
+
+    async def operation():
+        content = await gmail.fetch_mail_content(decrypt_credentials(context["credentials"]),
+                                                context["metadata"], context["message_id"])
+        if content.get("credentials"):
+            await db.execute(update(PrivateConnection).where(
+                PrivateConnection.id == context["connection_id"], PrivateConnection.owner_id == owner_id,
+                PrivateConnection.generation == context["generation"], PrivateConnection.status == "connected",
+                PrivateConnection.encrypted_credentials == context["credentials"],
+            ).values(encrypted_credentials=encrypt_credentials(content["credentials"])))
             await db.commit()
-            now = utcnow()
-            current_claim = exists(select(PrivateMailBrief.cache_key).where(
-                PrivateMailBrief.cache_key == context['key'], PrivateMailBrief.owner_id == owner_id,
-                PrivateMailBrief.lease_token == token, PrivateMailBrief.state == 'pending',
-                PrivateMailBrief.lease_until > now, PrivateMailBrief.reservation_state == 'held',
-                PrivateMailBrief.reservation_month == context['reservation_month'],
-                PrivateMailBrief.reservation_micro_usd == reservation['reservation_micro_usd'],
-                PrivateMailBrief.reservation_price_policy == reservation['price_policy'],
-            ))
-            if not (await db.execute(select(and_(_live_context(context), current_claim)))).scalar_one():
-                raise gmail.ProviderError("authorization_expired")
-            if utcnow().strftime('%Y-%m') != context['reservation_month']:
-                raise provider.MailBriefError('budget_month_changed')
-            brief = await provider.brief_mail(plan,
-                reserved_micro_usd=reservation['reservation_micro_usd'], price_policy=reservation['price_policy'])
-            result = _result(brief, plan, importance)
-            if not await _finish(db, context, token, result=result, input_hash=plan.source_hash, billing=brief.get('billing')):
-                return {**response, "code": "authorization_expired"}
-            return {**response, "brief": result}
-    except (provider.MailBriefError, gmail.ProviderError, HTTPException, TimeoutError, ValidationError) as exc:
+        plan = provider.prepare_mail_brief(content["title"], content["summary"],
+            content["body"] if content["has_body"] else None, body_truncated=content["truncated"])
+        # The provider rechecks enabled + consent itself immediately before
+        # HTTP. Do not reserve any usage on a stale connection/source.
+        if not (await db.execute(select(_live_context(context)))).scalar_one():
+            raise gmail.ProviderError("authorization_expired")
+        if not provider.configured():
+            raise provider.MailBriefError("not_configured")
+        reservation = provider.preflight_reservation(plan)
+        if not await reserve_usage(db, owner_id, plan.character_count,
+                                   reservation_micro_usd=reservation['reservation_micro_usd'],
+                                   price_policy=reservation['price_policy'], context=context, token=token):
+            code = await _reservation_failure_code(db, owner_id, context['reservation_month'],
+                                                   reservation['reservation_micro_usd'])
+            await _finish(db, context, token, code=code)
+            return {**response, "brief": _empty("failed"), "code": code}
+        # End the prior transaction BEFORE the final authorization check.
+        # Do not yield for a separate commit after checking and before
+        # entering the provider. In-flight HTTP cannot be recalled later.
+        await db.commit()
+        now = utcnow()
+        current_claim = exists(select(PrivateMailBrief.cache_key).where(
+            PrivateMailBrief.cache_key == context['key'], PrivateMailBrief.owner_id == owner_id,
+            PrivateMailBrief.lease_token == token, PrivateMailBrief.state == 'pending',
+            PrivateMailBrief.lease_until > now, PrivateMailBrief.reservation_state == 'held',
+            PrivateMailBrief.reservation_month == context['reservation_month'],
+            PrivateMailBrief.reservation_micro_usd == reservation['reservation_micro_usd'],
+            PrivateMailBrief.reservation_price_policy == reservation['price_policy'],
+        ))
+        if not (await db.execute(select(and_(_live_context(context), current_claim)))).scalar_one():
+            raise gmail.ProviderError("authorization_expired")
+        if utcnow().strftime('%Y-%m') != context['reservation_month']:
+            raise provider.MailBriefError('budget_month_changed')
+        brief = await provider.brief_mail(plan,
+            reserved_micro_usd=reservation['reservation_micro_usd'], price_policy=reservation['price_policy'])
+        result = _result(brief, plan, importance)
+        if not await _finish(db, context, token, result=result, input_hash=plan.source_hash, billing=brief.get('billing')):
+            return {**response, "code": "authorization_expired"}
+        return {**response, "brief": result}
+
+    try:
+        return await asyncio.wait_for(operation(), timeout=55)
+    except (provider.MailBriefError, gmail.ProviderError, HTTPException, asyncio.TimeoutError, TimeoutError, ValidationError) as exc:
         code = _public_error(exc)
         await db.rollback()
         await _finish(db, context, token, code=code)

@@ -41,9 +41,9 @@ export interface PrivateBossBriefData {
   limitations: string[];
 }
 export interface PrivateBossTaskDraft { title: string; summary: string }
-export const PRIVATE_BOSS_SOURCE_NAMES: Record<PrivateSourceId, string> = { gmail: '重要邮件', google_ads: '广告观察', stripe: 'Stripe', bofa: '银行提醒', manual: '个人事项' };
+export const PRIVATE_BOSS_SOURCE_NAMES: Record<PrivateSourceId, string> = { gmail: '重要邮件', google_ads: '广告观察', stripe: 'Stripe', bofa: '银行邮件提醒', bofa_bank: '银行余额与流水', manual: '个人事项' };
 export const PRIVATE_BOSS_PERIOD_NAMES: Record<PrivateBossPeriod, string> = { today: '今日', last7days: '近7天' };
-const sources: PrivateSourceId[] = ['gmail', 'google_ads', 'stripe', 'bofa', 'manual'];
+const sources: PrivateSourceId[] = ['gmail', 'google_ads', 'stripe', 'bofa_bank', 'bofa', 'manual'];
 const dataStates: PrivateBossDataState[] = ['ready', 'partial', 'stale', 'missing', 'unsupported'];
 const text = (value: unknown, maximum = 600) => typeof value === 'string' ? value.trim().slice(0, maximum) : '';
 export function bossBriefForPeriod(data: PrivateBossBriefData | null, period: PrivateBossPeriod): PrivateBossBriefData | null {

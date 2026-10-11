@@ -102,7 +102,7 @@ test('bank reminders remain unverified and each source keeps its own time withou
   const ads = { ...source('google_ads', ['近7日费用 USD 41.20']), last_sync: '2026-10-10T02:00:00Z', data_state: 'stale' };
   const bank = source('bofa', ['银行邮件提醒 · 待核实']); const f = fixture(data({ sources: [source('gmail'), ads, source('stripe', ['提现 USD 129.00 · 银行待核对']), bank] }));
   const cards = f.nodes.filter(node => node.type === 'details' && node.props.className === 'pw-boss-source');
-  const bankCard = cards.find(card => f.textOf(card).includes('银行提醒')); assert.ok(f.textOf(bankCard).includes('待核实')); assert.ok(!f.textOf(bankCard).includes('已到账'));
+  const bankCard = cards.find(card => f.textOf(card).includes('银行邮件提醒')); assert.ok(f.textOf(bankCard).includes('待核实')); assert.ok(!f.textOf(bankCard).includes('已到账'));
   const adsCard = cards.find(card => f.textOf(card).includes('广告观察')); assert.ok(f.textOf(adsCard).includes(helpers.bossBriefTime(ads.last_sync))); assert.ok(f.textOf(adsCard).includes('需更新'));
   assert.ok(f.text.includes('提现 USD 129.00 · 银行待核对')); assert.ok(!f.text.includes('经营收入')); assert.equal(f.actions.length, 0);
 });
@@ -119,7 +119,7 @@ test('error and loading states hide stale private details and use explicit refre
 test('a system issue without an item id opens only its private source and task draft has no due date or financial writes', () => {
   const item = { ...issue('connection', 'bofa'), item_id: null, task_title: null }; const f = fixture(data({ issues: [item] }));
   f.button('查看来源').props.onClick(); assert.deepEqual(f.actions, [['source', 'bofa']]); f.button('加入个人事项').props.onClick();
-  const draft = f.actions[1][1]; assert.deepEqual(Object.keys(draft).sort(), ['summary', 'title']); assert.equal(draft.title, 'Synthetic connection'); assert.ok(draft.summary.includes('银行提醒'));
+  const draft = f.actions[1][1]; assert.deepEqual(Object.keys(draft).sort(), ['summary', 'title']); assert.equal(draft.title, 'Synthetic connection'); assert.ok(draft.summary.includes('银行邮件提醒'));
 });
 test('valid shared monthly budget is confined to collapsed coverage and does not claim actual money spent', () => {
   const budget = { configured: true, limit_usd: '5.00', reserved_usd: '4.65', remaining_usd: '0.35', month: '2026-10' }; const f = fixture(data({ budget }));
@@ -133,4 +133,16 @@ test('changed snapshot has a safe manual-refresh notice and no automatic explana
   const f = fixture(data({ ai: { state: 'failed', summary: '', issue_notes: [], code: 'snapshot_changed' } }));
   assert.ok(f.text.includes('数据已更新，请重新读取简报后再解读')); assert.ok(f.text.includes('Synthetic mail')); assert.equal(f.actions.length, 0);
   f.button('中文解读').props.onClick(); assert.deepEqual(f.actions, [['explain']]); assert.ok(!helpers.bossBriefNotice('RAW SECRET').includes('RAW SECRET'));
+});
+
+
+test('actual bank source stays separate from bank emails and its count-only coverage opens the bank dashboard', () => {
+  const bank = source('bofa_bank', ['当前绑定银行已入账 3 条；待入账 1 条']);
+  const mail = source('bofa', ['银行邮件提醒 · 待核实']);
+  const f = fixture(data({ sources: [bank, mail], issues: [] }));
+  assert.ok(f.text.includes('银行余额与流水')); assert.ok(f.text.includes('银行邮件提醒'));
+  const cards = f.nodes.filter(node => node.type === 'details' && node.props.className === 'pw-boss-source'); assert.equal(cards.length, 2);
+  const bankCard = cards.find(node => f.textOf(node).includes('银行余额与流水'));
+  assert.ok(f.textOf(bankCard).includes('已同步')); assert.ok(!f.textOf(bankCard).includes('待核实'));
+  f.button('打开银行余额与流水').props.onClick(); assert.deepEqual(f.actions, [['source', 'bofa_bank']]);
 });

@@ -23,7 +23,7 @@ export interface PrivateBossBriefProps {
   onOpenItem: (id: string) => void;
   onCreateTask: (draft: PrivateBossTaskDraft) => void;
 }
-const sourceIcons = { gmail: Mail, google_ads: Megaphone, stripe: CreditCard, bofa: Landmark, manual: FileText };
+const sourceIcons = { gmail: Mail, google_ads: Megaphone, stripe: CreditCard, bofa: Landmark, bofa_bank: Landmark, manual: FileText };
 
 export default function PrivateBossBrief({ data, period, loading, error = '', busy = false, aiConfigured, aiBusy, aiNotice = '', onPeriodChange, onExplain, onRefresh, onOpenSource, onOpenItem, onCreateTask }: PrivateBossBriefProps) {
   const current = bossBriefForPeriod(data, period);

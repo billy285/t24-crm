@@ -1,12 +1,58 @@
 import { client } from './api';
 import type { PrivateBossBriefData, PrivateBossPeriod } from './private-boss-brief';
 
-export type PrivateSourceId = 'gmail' | 'google_ads' | 'bofa' | 'stripe' | 'manual';
+export type PrivateSourceId = 'gmail' | 'google_ads' | 'bofa' | 'bofa_bank' | 'stripe' | 'manual';
 export type PrivateSourceStatus = 'not_configured' | 'disconnected' | 'connecting' | 'connected' | 'error';
 export type PrivateActionStatus = 'open' | 'done' | 'snoozed' | 'archived';
 export type PrivatePriority = 'low' | 'normal' | 'high' | 'urgent';
 export type PrivateEvidence = Record<string, unknown>;
 export type PrivateAdsBucket = 'problem' | 'attention' | 'healthy' | 'paused' | 'unknown';
+export type PrivateBankEnvironment = 'production' | 'sandbox';
+export interface PrivateBankAccount {
+  account_id: string;
+  name: string;
+  mask: string | null;
+  type: string;
+  subtype: string | null;
+  currency: string | null;
+  unofficial_currency?: string | null;
+  current_minor: number | null;
+  available_minor: number | null;
+  limit_minor: number | null;
+  balance_kind: 'funds' | 'owed' | 'other';
+  balance_source: 'cached_accounts_get';
+  balance_updated_at: string | null;
+}
+export interface PrivateBankSnapshot {
+  id: string;
+  observed_at: string;
+  item_id: string;
+  environment: PrivateBankEnvironment;
+  institution_id: string;
+  accounts_complete: boolean;
+  transactions_complete: boolean;
+  pagination_complete?: boolean;
+  transaction_update_status: string;
+  bank_updated_at: string | null;
+  balance_realtime: false;
+}
+export interface PrivateBankLinkStart {
+  session_id: string;
+  authorization_url: string;
+  expires_at: string;
+  mode: PrivateBankEnvironment;
+}
+export interface PrivateBankLinkComplete {
+  state: 'pending' | 'connected';
+  session_id: string;
+  source_id: 'bofa_bank';
+}
+export interface PrivateStripeSnapshot {
+  id: string;
+  observed_at: string;
+  account_id: string;
+  mode: 'live' | 'test';
+}
 export interface PrivateAdsSnapshot {
   id: string;
   observed_at: string;
@@ -130,6 +176,14 @@ export interface PrivateSource {
   error: string | null;
   metadata?: {
     account_label?: string;
+    bank_item_id?: string;
+    bank_environment?: PrivateBankEnvironment;
+    bank_institution_id?: string;
+    bank_institution_name?: string;
+    bank_accounts?: PrivateBankAccount[];
+    bank_snapshot?: PrivateBankSnapshot;
+    stripe_account_id?: string;
+    stripe_snapshot?: PrivateStripeSnapshot;
     ads_customer_id?: string;
     ads_snapshot?: PrivateAdsSnapshot;
     coverage?: string;
@@ -268,6 +322,8 @@ export const privateWorkspaceApi = {
   translateMailPreviews: (ids: string[]) => request<PrivateMailTranslationBatch>('/mail-translations/batch', 'POST', { item_ids: [...new Set(ids)].slice(0, 10) }, { timeout: 65_000 }),
   translateMailBody: (id: string) => request<PrivateMailTranslationResult>(`/items/${encodeURIComponent(id)}/mail-translation`, 'POST', { mode: 'body' }, { timeout: 65_000 }),
   archive: (id: string) => request<{ item: PrivateItem }>(`/items/${encodeURIComponent(id)}`, 'DELETE'),
+  bankLinkStart: () => request<PrivateBankLinkStart>('/bank/link/start', 'POST', undefined, { timeout: 95_000 }),
+  bankLinkComplete: (sessionId: string) => request<PrivateBankLinkComplete>('/bank/link/complete', 'POST', { session_id: sessionId }, { timeout: 95_000 }),
   connect: (id: PrivateSourceId) => request<PrivateConnectResult>(`/sources/${id}/connect`, 'POST'),
   disconnect: (id: PrivateSourceId) => request<{ source: PrivateSource }>(`/sources/${id}/disconnect`, 'POST'),
   sync: (id: PrivateSourceId) => request<PrivateSyncResult>(`/sources/${id}/sync`, 'POST', undefined, { timeout: 65_000 }),
@@ -319,6 +375,7 @@ export function verifiedPrivateSourceUrl(source: PrivateSourceId, value: string 
     google_ads: ['ads.google.com'],
     bofa: ['www.bankofamerica.com', 'secure.bankofamerica.com', 'online.bankofamerica.com', 'mail.google.com'],
     stripe: ['dashboard.stripe.com'],
+    bofa_bank: ['secure.bankofamerica.com', 'online.bankofamerica.com', 'www.bankofamerica.com'],
   };
   try {
     const url = new URL(value);
@@ -339,6 +396,17 @@ export function verifiedGoogleAuthorizationUrl(value: string | null | undefined)
 
 export function verifiedPrivateAuthorizationUrl(source: PrivateSourceId, value: string | null | undefined): string | null {
   return ['gmail', 'google_ads', 'bofa'].includes(source) ? verifiedGoogleAuthorizationUrl(value) : null;
+}
+
+/** Hosted bank authorization only opens the exact approved Plaid HTTPS origin and Link path. */
+export function verifiedBankAuthorizationUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'secure.plaid.com' && !url.username && !url.password
+      && (!url.port || url.port === '443') && url.pathname.startsWith('/hl/') && url.pathname.length > 4
+      ? url.href : null;
+  } catch { return null; }
 }
 
 export function privateSourceActionAvailability(source: PrivateSource) {
@@ -372,4 +440,71 @@ export function formatPrivateAmount(minor: number | null | undefined, currency: 
       ? new Intl.NumberFormat('zh-CN', { ...options, minimumFractionDigits: displayDigits, maximumFractionDigits: displayDigits }) : isoFormat;
     return format.format(minor / 10 ** digits);
   } catch { return '待确认'; }
+}
+
+
+export type PrivateStripePaymentState = 'pending' | 'failed' | 'authorized' | 'partially_captured' | 'captured' | 'partially_refunded' | 'refunded';
+const STRIPE_PAYMENT_STATES: Record<PrivateStripePaymentState, string> = {
+  pending: '待处理', failed: '收款失败', authorized: '已授权 · 待捕获', partially_captured: '部分收款',
+  captured: '已收款', partially_refunded: '部分退款', refunded: '已退款',
+};
+const STRIPE_SNAPSHOT_MAX_AGE = 24 * 60 * 60 * 1000;
+function privateStripeMinor(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+/** A stored snapshot is never a real-time balance or verified bank settlement. */
+export function privateStripeSnapshot(source?: PrivateSource, now = Date.now()) {
+  const snapshot = source?.metadata?.stripe_snapshot;
+  const accountId = source?.metadata?.stripe_account_id;
+  const mode = source?.metadata?.mode;
+  const observed = snapshot ? Date.parse(snapshot.observed_at) : NaN;
+  const verified = Boolean(source?.id === 'stripe' && ['connected', 'error'].includes(source.status)
+    && typeof accountId === 'string' && /^acct_[A-Za-z0-9]+$/.test(accountId)
+    && (mode === 'live' || mode === 'test') && snapshot?.id && snapshot.account_id === accountId && snapshot.mode === mode
+    && Number.isFinite(observed) && observed <= now + 5 * 60_000);
+  const fresh = verified && source?.status === 'connected' && !source.error && now - observed <= STRIPE_SNAPSHOT_MAX_AGE;
+  return {
+    state: !verified ? 'unverified' as const : fresh ? 'fresh' as const : 'stale' as const,
+    accountId: typeof accountId === 'string' ? accountId : null,
+    mode: mode === 'live' || mode === 'test' ? mode : null,
+    observedAt: verified ? snapshot!.observed_at : null,
+    snapshotId: verified ? snapshot!.id : null,
+    label: !verified ? '待重新同步' : fresh ? '同步余额' : '上次同步 · 需更新',
+  };
+}
+
+/** Keep capture, refunds and transfers distinct; never turn a Charge authorization into income. */
+export function privateStripeRecord(item: PrivateItem, source?: PrivateSource, now = Date.now()) {
+  const snapshot = privateStripeSnapshot(source, now);
+  const evidence = item.evidence || {};
+  const observed = typeof evidence.stripe_observed_at === 'string' ? evidence.stripe_observed_at : null;
+  const mode = evidence.stripe_mode === 'live' || evidence.stripe_mode === 'test' ? evidence.stripe_mode : null;
+  const current = item.source_id === 'stripe' && snapshot.state !== 'unverified'
+    && evidence.stripe_account_id === snapshot.accountId && mode === snapshot.mode
+    && evidence.stripe_snapshot_id === snapshot.snapshotId && observed === snapshot.observedAt;
+  const rawState = evidence.payment_state;
+  const paymentState = item.kind === 'payment' && typeof rawState === 'string' && Object.prototype.hasOwnProperty.call(STRIPE_PAYMENT_STATES, rawState)
+    ? rawState as PrivateStripePaymentState : null;
+  const captured = privateStripeMinor(evidence.amount_captured_minor);
+  const refunded = privateStripeMinor(evidence.amount_refunded_minor);
+  const authorized = privateStripeMinor(evidence.amount_authorized_minor);
+  const raw = privateStripeMinor(item.amount_minor);
+  const amountMinor = paymentState === 'authorized' ? authorized
+    : paymentState && ['captured', 'partially_captured', 'partially_refunded', 'refunded'].includes(paymentState) ? captured : raw;
+  const amountLabel = paymentState === 'authorized' ? '授权金额'
+    : paymentState && ['captured', 'partially_captured', 'partially_refunded', 'refunded'].includes(paymentState) ? '已收款金额'
+    : item.kind === 'payment' ? '请求金额' : item.kind === 'refund' ? '退款记录金额' : item.kind === 'dispute' ? '争议金额' : '提现金额';
+  const statusLabels: Record<string, string> = {
+    succeeded: '已完成', paid: item.kind === 'payout' ? 'Stripe 标记支付 · 银行待核对' : '已支付',
+    pending: '待处理', in_transit: '转账途中', failed: '失败', canceled: '已取消', cancelled: '已取消',
+    needs_response: '需要回应', under_review: '审核中', won: '争议已胜诉', lost: '争议未胜诉',
+  };
+  return {
+    current, observedAt: observed, mode,
+    freshnessLabel: !current ? '历史记录 · 待重新同步' : snapshot.state === 'stale' ? '上次同步记录 · 需更新' : '同步记录',
+    statusLabel: item.kind === 'payment' ? paymentState ? STRIPE_PAYMENT_STATES[paymentState] : '收款状态待复核' : statusLabels[item.status] || '来源状态待复核',
+    paymentState, amountMinor, amountLabel, capturedMinor: captured, refundedMinor: refunded, authorizedMinor: authorized,
+    hasRefund: Boolean(paymentState && ['partially_refunded', 'refunded'].includes(paymentState)),
+  };
 }

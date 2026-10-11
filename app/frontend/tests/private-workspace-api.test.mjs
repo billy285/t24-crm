@@ -275,3 +275,54 @@ test('budget exhaustion notice shows only a validated configured USD limit and k
   }
   assert.ok(!api.privateMailBriefNotice('not_configured', budget).includes('US$'));
 });
+
+const syntheticStripeSource = {
+  id: 'stripe', status: 'connected', error: null,
+  metadata: { stripe_account_id: 'acct_synthetic', mode: 'live', stripe_snapshot: { id: 'snapshot-synthetic', account_id: 'acct_synthetic', mode: 'live', observed_at: '2026-10-11T01:00:00Z' } },
+};
+const stripeNow = Date.parse('2026-10-11T02:00:00Z');
+const syntheticStripeItem = (kind = 'payment', evidence = {}) => ({
+  source_id: 'stripe', kind, amount_minor: 10000, currency: 'USD', status: 'succeeded',
+  evidence: { stripe_account_id: 'acct_synthetic', stripe_mode: 'live', stripe_snapshot_id: 'snapshot-synthetic', stripe_observed_at: '2026-10-11T01:00:00Z',
+    amount_authorized_minor: 10000, amount_captured_minor: 0, amount_refunded_minor: 0, paid: true, captured: false, ...evidence },
+});
+
+test('Stripe freshness is account and mode bound and never labels snapshots real-time', () => {
+  assert.equal(api.privateStripeSnapshot(syntheticStripeSource, stripeNow).state, 'fresh');
+  assert.equal(api.privateStripeSnapshot(syntheticStripeSource, stripeNow).label, '同步余额');
+  assert.equal(api.privateStripeSnapshot(syntheticStripeSource, stripeNow + 24 * 60 * 60_000).state, 'stale');
+  assert.equal(api.privateStripeSnapshot({ ...syntheticStripeSource, status: 'error' }, stripeNow).state, 'stale');
+  for (const source of [undefined, { ...syntheticStripeSource, status: 'disconnected' }, { ...syntheticStripeSource, metadata: { mode: 'live' } },
+    { ...syntheticStripeSource, metadata: { ...syntheticStripeSource.metadata, stripe_account_id: 'acct_other' } },
+    { ...syntheticStripeSource, metadata: { ...syntheticStripeSource.metadata, mode: 'test' } },
+    { ...syntheticStripeSource, metadata: { ...syntheticStripeSource.metadata, stripe_snapshot: { ...syntheticStripeSource.metadata.stripe_snapshot, observed_at: 'not-a-time' } } },
+  ]) assert.equal(api.privateStripeSnapshot(source, stripeNow).state, 'unverified');
+});
+
+test('Stripe pending capture and partial capture use their explicit source amounts', () => {
+  const authorization = api.privateStripeRecord(syntheticStripeItem('payment', { payment_state: 'authorized' }), syntheticStripeSource, stripeNow);
+  assert.equal(authorization.amountMinor, 10000); assert.equal(authorization.amountLabel, '授权金额'); assert.equal(authorization.statusLabel, '已授权 · 待捕获'); assert.equal(authorization.current, true);
+  const captured = api.privateStripeRecord(syntheticStripeItem('payment', { payment_state: 'partially_captured', amount_captured_minor: 6000, captured: true }), syntheticStripeSource, stripeNow);
+  assert.equal(captured.amountMinor, 6000); assert.equal(captured.amountLabel, '已收款金额'); assert.equal(captured.statusLabel, '部分收款');
+  const legacy = api.privateStripeRecord(syntheticStripeItem('payment'), syntheticStripeSource, stripeNow);
+  assert.equal(legacy.statusLabel, '收款状态待复核'); assert.equal(legacy.amountLabel, '请求金额');
+});
+
+test('Stripe refunds preserve captured and refunded values without inventing net income', () => {
+  const record = api.privateStripeRecord(syntheticStripeItem('payment', { payment_state: 'partially_refunded', amount_captured_minor: 8000, amount_refunded_minor: 2500, captured: true }), syntheticStripeSource, stripeNow);
+  assert.equal(record.amountMinor, 8000); assert.equal(record.refundedMinor, 2500); assert.equal(record.hasRefund, true); assert.equal(record.statusLabel, '部分退款');
+  assert.ok(!Object.hasOwn(record, 'income') && !Object.hasOwn(record, 'net_income'));
+  const payout = api.privateStripeRecord({ ...syntheticStripeItem('payout'), status: 'paid' }, syntheticStripeSource, stripeNow);
+  assert.equal(payout.statusLabel, 'Stripe 标记支付 · 银行待核对'); assert.equal(payout.amountLabel, '提现金额');
+});
+
+test('Stripe old snapshots and missing monetary evidence remain visibly unconfirmed', () => {
+  const old = syntheticStripeItem('payment', { payment_state: 'captured', stripe_snapshot_id: 'older-snapshot', amount_captured_minor: undefined });
+  const record = api.privateStripeRecord(old, syntheticStripeSource, stripeNow);
+  assert.equal(record.current, false); assert.equal(record.freshnessLabel, '历史记录 · 待重新同步'); assert.equal(record.amountMinor, null);
+  for (const bad of [-1, '1000', 10.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(api.privateStripeRecord(syntheticStripeItem('payment', { payment_state: 'captured', amount_captured_minor: bad }), syntheticStripeSource, stripeNow).amountMinor, null);
+  }
+  const prototypeState = api.privateStripeRecord(syntheticStripeItem('payment', { payment_state: 'constructor' }), syntheticStripeSource, stripeNow);
+  assert.equal(prototypeState.statusLabel, '收款状态待复核');
+});

@@ -21,15 +21,18 @@ from models.private_workspace import PrivateConnection, PrivateItem, PrivatePref
 from services import private_mail_brief as shared
 from services import private_mail_brief_service as mail
 from services import private_workspace_brief_provider as provider
-from services.private_workspace import _aware, _cipher, item_response, stored_preferences_for
+from services.private_workspace import (_aware, _cipher, current_stripe_condition, item_response,
+    stored_preferences_for, stripe_connection_identity)
 
-SOURCES = ('gmail', 'google_ads', 'stripe', 'bofa', 'manual')
-LABELS = {'gmail': '重要邮件', 'google_ads': '广告观察', 'stripe': 'Stripe 事件', 'bofa': '银行邮件提醒', 'manual': '我的待办'}
+SOURCES = ('gmail', 'google_ads', 'stripe', 'bofa_bank', 'bofa', 'manual')
+LABELS = {'gmail': '重要邮件', 'google_ads': '广告观察', 'stripe': 'Stripe 事件',
+          'bofa_bank': '银行账户', 'bofa': '银行邮件提醒', 'manual': '我的待办'}
 MAX_ROWS = 1000
-RULE_VERSION = 'owner-brief-rules-v1'
+RULE_VERSION = 'owner-brief-rules-v2'
 LIMITATIONS = ['仅汇总独立私人工作空间，不读取或改动客户财务。',
                '邮件与银行提醒尚未核验；同步记录不代表全部账户活动。',
                'Stripe 按来源创建时间统计已同步事件；提现不计新增收入，争议和退款变化可能来自更早的记录。',
+               '真实银行仅显示本地同步状态与流水条数；余额、金额及交易描述未纳入 AI 整理。',
                '广告采用账户原时区的昨日或近七个完整日期指标；可投放不等于效果良好或盈利。']
 
 
@@ -42,8 +45,17 @@ def _json(value): return json.dumps(value, ensure_ascii=False, sort_keys=True, s
 def _state(connection, source, now):
     if source == 'manual': return 'ready'
     if not connection or not connection.last_sync: return 'missing'
+    identity = None
+    if source == 'stripe':
+        identity = stripe_connection_identity(connection)
+    elif source == 'bofa_bank':
+        from services.private_bank_service import bank_connection_identity
+        identity = bank_connection_identity(connection)
+    if source in {'stripe', 'bofa_bank'} and connection.status == 'connected' and not identity:
+        return 'unsupported'
     age = now - _aware(connection.last_sync)
     if connection.status != 'connected' or connection.error or not timedelta(0) <= age <= timedelta(hours=24): return 'stale'
+    if identity and not timedelta(0) <= now - identity['observed_at'] <= timedelta(hours=24): return 'stale'
     meta = connection.metadata_json or {}
     if source == 'google_ads':
         snapshot = meta.get('ads_snapshot')
@@ -54,6 +66,10 @@ def _state(connection, source, now):
         if not timedelta(0) <= now - observed <= timedelta(hours=24): return 'stale'
         if not snapshot.get('inventory_complete') or not snapshot.get('metrics_complete'): return 'partial'
         return 'ready'
+    if source == 'bofa_bank':
+        snapshot = meta['bank_snapshot']
+        return 'ready' if all(snapshot.get(key) is True for key in
+                             ('accounts_complete', 'pagination_complete', 'transactions_complete')) else 'partial'
     # Email and Stripe synchronization always has bounded source coverage.
     return 'partial'
 
@@ -137,6 +153,12 @@ async def _snapshot(db, owner, period):
                 conditions.extend([PrivateItem.evidence['ads_snapshot_id'].as_string() == str(ads['id']),
                                    PrivateItem.evidence['customer_id'].as_string() == str(metadata['ads_customer_id'])])
             else: conditions.append(false())
+        elif source == 'stripe':
+            conditions.append(await current_stripe_condition(db, owner))
+        elif source == 'bofa_bank':
+            from services.private_bank_service import current_bank_condition
+            conditions.extend([await current_bank_condition(db, owner), PrivateItem.kind == 'bank_transaction',
+                               PrivateItem.status.in_(['posted', 'pending'])])
         important = case((and_(PrivateItem.kind == 'dispute', PrivateItem.status.in_(['needs_response', 'warning_needs_response'])), 0),
                          (PrivateItem.priority == 'urgent', 1), (PrivateItem.priority == 'high', 2), else_=3)
         source_rows = (await db.execute(select(PrivateItem).where(*conditions).order_by(important,
@@ -206,6 +228,7 @@ async def _snapshot(db, owner, period):
             currencies = Counter(row.currency for row in period_rows if isinstance(row.currency, str) and re.fullmatch('[A-Z]{3}', row.currency))
             facts.extend(f'{currency} 事件 {count} 条' for currency, count in sorted(currencies.items()))
             source_summary = '只统计已同步事件，不代表全账户流水、余额、收入或利润；提现不等于银行到账。'
+            if state == 'unsupported': facts = ['Stripe 账户、环境或同步快照身份无法核实；历史事件不参与简报。']
             for row in source_rows:
                 if state not in {'ready', 'partial'}: continue
                 if row.kind == 'dispute' and row.status in {'needs_response', 'warning_needs_response'}:
@@ -218,6 +241,17 @@ async def _snapshot(db, owner, period):
             source_summary = '来源为银行相关邮件提醒，尚未直连银行账户；不能据此确认到账。'
             for row in period_rows:
                 if _open(row, now): candidates.append(_issue(row, 8, '银行相关邮件提醒尚未核验，不代表真实资金已经变动。', '在银行官方账户核对实际流水，先标记已阅。'))
+        elif source == 'bofa_bank':
+            source_summary = '仅展示本人银行连接与本地流水状态；需在银行官方账户核实，不据此判断收入或资金到账。'
+            if state in {'ready', 'partial', 'stale'} and source_rows:
+                kinds = Counter(row.status for row in source_rows if row.kind == 'bank_transaction')
+                facts = [f'当前本地已入账 {kinds["posted"]} 条，待入账 {kinds["pending"]} 条',
+                         '以上为同步记录条数，不是收支金额或经营收入。']
+            elif state in {'ready', 'partial'}:
+                facts = ['当前绑定的本地流水暂无记录；平台数据覆盖范围仍需核实。']
+            if state == 'partial': facts.append('银行历史流水仍在准备，未加载记录不视为零。')
+            if state == 'stale': facts.append('银行同步状态已过期或同步失败；当前流水需重新核实。')
+            if state == 'unsupported': facts = ['银行连接或同步快照身份无法核实；历史流水不参与简报。']
         else:
             pending = [row for row in source_rows if _open(row, now)]
             overdue = [row for row in pending if row.due_at and _aware(row.due_at) < now]
@@ -246,8 +280,9 @@ async def _snapshot(db, owner, period):
     for connection in connections:
         if _state(connection, connection.source_id, now) in {'ready', 'partial'}:
             if connection.last_sync: valid_until.append(_aware(connection.last_sync) + timedelta(hours=24))
-            if connection.source_id == 'google_ads':
-                observed = (connection.metadata_json or {}).get('ads_snapshot', {}).get('observed_at')
+            if connection.source_id in {'google_ads', 'stripe', 'bofa_bank'}:
+                key = {'google_ads': 'ads_snapshot', 'stripe': 'stripe_snapshot', 'bofa_bank': 'bank_snapshot'}[connection.source_id]
+                observed = (connection.metadata_json or {}).get(key, {}).get('observed_at')
                 try: valid_until.append(_aware(datetime.fromisoformat(observed)) + timedelta(hours=24))
                 except (ValueError, TypeError): pass
     revision['valid_until'] = min(valid_until).astimezone(timezone.utc)
@@ -348,33 +383,36 @@ async def explain(db, owner, period, snapshot_id):
         data['ai'] = {**cached, **({'code': code} if code else {})}; return data
     context = {'owner_id': owner, 'key': key, 'snapshot_id': snapshot_id, 'revision': revision,
                'valid_until': revision['valid_until']}
+
+    async def operation():
+        reservation = provider.reservation(data)
+        if not await mail.reserve_usage(db, owner, reservation['characters'],
+                reservation_micro_usd=reservation['reservation_micro_usd'], price_policy=reservation['price_policy'],
+                context=context, token=token, receipt_model=PrivateWorkspaceBrief, live_condition=_live(owner, revision)):
+            code = await mail._reservation_failure_code(db, owner, context['reservation_month'], reservation['reservation_micro_usd'])
+            await _finish(db, context, token, code=code)
+            data['ai'] = {'state': 'failed', 'summary': '', 'issue_notes': [], 'code': code}; return data
+        await db.commit()
+        now = utcnow()
+        claimed = exists(select(PrivateWorkspaceBrief.cache_key).where(PrivateWorkspaceBrief.cache_key == key,
+            PrivateWorkspaceBrief.owner_id == owner, PrivateWorkspaceBrief.lease_token == token,
+            PrivateWorkspaceBrief.state == 'pending', PrivateWorkspaceBrief.lease_until > now,
+            PrivateWorkspaceBrief.reservation_state == 'held', PrivateWorkspaceBrief.reservation_month == context['reservation_month'],
+            PrivateWorkspaceBrief.reservation_micro_usd == reservation['reservation_micro_usd'],
+            PrivateWorkspaceBrief.reservation_price_policy == reservation['price_policy']))
+        if not (await db.execute(select(and_(_live(owner, revision), claimed)))).scalar_one():
+            raise shared.MailBriefError('snapshot_changed')
+        if utcnow().strftime('%Y-%m') != context['reservation_month']: raise shared.MailBriefError('budget_month_changed')
+        if _aware(utcnow()) >= context['valid_until']: raise shared.MailBriefError('snapshot_changed')
+        ai = await provider.explain(data, reserved_micro_usd=reservation['reservation_micro_usd'], price_policy=reservation['price_policy'])
+        public = {key: value for key, value in ai.items() if key != 'billing'}
+        if not await _finish(db, context, token, ai=public, billing=ai.get('billing')):
+            data['ai']['code'] = 'snapshot_changed'; return data
+        data['ai'] = public; data['budget'] = await mail.budget_snapshot(db, owner); return data
+
     try:
-        async with asyncio.timeout(55):
-            reservation = provider.reservation(data)
-            if not await mail.reserve_usage(db, owner, reservation['characters'],
-                    reservation_micro_usd=reservation['reservation_micro_usd'], price_policy=reservation['price_policy'],
-                    context=context, token=token, receipt_model=PrivateWorkspaceBrief, live_condition=_live(owner, revision)):
-                code = await mail._reservation_failure_code(db, owner, context['reservation_month'], reservation['reservation_micro_usd'])
-                await _finish(db, context, token, code=code)
-                data['ai'] = {'state': 'failed', 'summary': '', 'issue_notes': [], 'code': code}; return data
-            await db.commit()
-            now = utcnow()
-            claimed = exists(select(PrivateWorkspaceBrief.cache_key).where(PrivateWorkspaceBrief.cache_key == key,
-                PrivateWorkspaceBrief.owner_id == owner, PrivateWorkspaceBrief.lease_token == token,
-                PrivateWorkspaceBrief.state == 'pending', PrivateWorkspaceBrief.lease_until > now,
-                PrivateWorkspaceBrief.reservation_state == 'held', PrivateWorkspaceBrief.reservation_month == context['reservation_month'],
-                PrivateWorkspaceBrief.reservation_micro_usd == reservation['reservation_micro_usd'],
-                PrivateWorkspaceBrief.reservation_price_policy == reservation['price_policy']))
-            if not (await db.execute(select(and_(_live(owner, revision), claimed)))).scalar_one():
-                raise shared.MailBriefError('snapshot_changed')
-            if utcnow().strftime('%Y-%m') != context['reservation_month']: raise shared.MailBriefError('budget_month_changed')
-            if _aware(utcnow()) >= context['valid_until']: raise shared.MailBriefError('snapshot_changed')
-            ai = await provider.explain(data, reserved_micro_usd=reservation['reservation_micro_usd'], price_policy=reservation['price_policy'])
-            public = {key: value for key, value in ai.items() if key != 'billing'}
-            if not await _finish(db, context, token, ai=public, billing=ai.get('billing')):
-                data['ai']['code'] = 'snapshot_changed'; return data
-            data['ai'] = public; data['budget'] = await mail.budget_snapshot(db, owner); return data
-    except (shared.MailBriefError, TimeoutError, HTTPException) as error:
+        return await asyncio.wait_for(operation(), timeout=55)
+    except (shared.MailBriefError, asyncio.TimeoutError, TimeoutError, HTTPException) as error:
         await db.rollback(); code = mail._public_error(error)
         await _finish(db, context, token, code=code)
         data['ai'] = {'state': 'failed', 'summary': '', 'issue_notes': [], 'code': code}

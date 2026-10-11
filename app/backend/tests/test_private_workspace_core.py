@@ -21,6 +21,8 @@ from models.private_workspace import PrivateConnection, PrivateItem, PrivatePref
 from routers.private_workspace import router
 from services import emp_auth, private_workspace as service, private_workspace_providers as real_providers
 
+STRIPE_ACCOUNT = 'acct_synthetic12345678'
+
 
 def headers(employee_id=1, role="super_admin"):
     return {"Authorization": "Bearer " + emp_auth.create_access_token({"emp_id": employee_id, "role": role})}
@@ -39,7 +41,7 @@ class FakeProviders:
 
     async def begin_connect(self, source_id, state):
         if source_id == "stripe":
-            return {"credentials": {"key": "rk_test_mockprivateonly"}, "metadata": {"secret": "hidden-metadata"}}
+            return {"credentials": {"key": "rk_test_mockprivateonly"}, "metadata": {"secret": "hidden-metadata", "stripe_account_id": STRIPE_ACCOUNT, "mode": "test"}}
         return {"authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(
             {"state": state, "response_type": "code", "client_id": "synthetic-client"})}
 
@@ -52,13 +54,15 @@ class FakeProviders:
         self.fetches.append((source_id, credentials))
         if source_id in self.fail_sources:
             raise RuntimeError("Bearer private-synthetic-access raw-response-body")
+        observed = utcnow().isoformat(); snapshot = "synthetic-stripe-snapshot-" + str(len(self.fetches))
+        binding = {"stripe_account_id": STRIPE_ACCOUNT, "stripe_mode": "test", "stripe_snapshot_id": snapshot, "stripe_observed_at": observed} if source_id == "stripe" else {}
         return {"items": [{"external_id": "pi_synthetic", "kind": "payment", "title": "测试收款",
                            "summary": "来源快照", "status": self.provider_status, "priority": "high",
                            "amount_minor": 1000, "currency": "usd", "occurred_at": utcnow().isoformat(),
                            "source_url": "https://dashboard.stripe.com/payments/pi_synthetic",
-                           "evidence": {"provider_id": "pi_synthetic", "access_token": "private-synthetic-access", "raw_body": "hidden-body"}}],
+                           "evidence": {"provider_id": "pi_synthetic", "access_token": "private-synthetic-access", "raw_body": "hidden-body", **binding}}],
                 "balances": [{"currency": "USD", "available_minor": 900, "pending_minor": 100}] if source_id == "stripe" else [],
-                "metadata": {"partial": False}}
+                "metadata": {"partial": False, **({"stripe_account_id": STRIPE_ACCOUNT, "mode": "test", "stripe_snapshot": {"id": snapshot, "observed_at": observed, "account_id": STRIPE_ACCOUNT, "mode": "test"}} if source_id == "stripe" else {})}}
 
 
 @pytest_asyncio.fixture
@@ -67,6 +71,8 @@ async def workspace(monkeypatch, tmp_path):
     monkeypatch.setenv("ENFORCE_EMPLOYEE_SESSIONS", "false")
     monkeypatch.setenv("PRIVATE_WORKSPACE_OWNER_IDS", "1")
     monkeypatch.setenv("PRIVATE_WORKSPACE_ENCRYPTION_KEY", "synthetic-private-encryption-key-for-local-tests-only")
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_ACCOUNT_ID', STRIPE_ACCOUNT)
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_MODE', 'test')
     private_path = tmp_path / "private" / "private-workspace.db"
     monkeypatch.setenv("PRIVATE_WORKSPACE_DATABASE_URL", f"sqlite+aiosqlite:///{private_path}")
     business_path = tmp_path / "business.db"
@@ -158,7 +164,7 @@ async def test_empty_state_and_physical_database_isolation(workspace):
     assert "private_items" not in Base.metadata.tables
     assert set(PrivateWorkspaceBase.metadata.tables) == {"private_connections", "private_items", "private_preferences", "private_sync_runs",
                                                         "private_mail_translations", "private_translation_usage",
-                                                            "private_mail_briefs", "private_mail_brief_usage", "private_workspace_briefs"}
+                                                            "private_mail_briefs", "private_mail_brief_usage", "private_workspace_briefs", "private_bank_links"}
     assert stat.S_IMODE(workspace.private_path.stat().st_mode) == 0o600
     assert stat.S_IMODE(workspace.private_path.parent.stat().st_mode) == 0o700
     async with workspace.business_sessions() as db:
@@ -261,7 +267,7 @@ async def test_credentials_errors_and_provider_raw_data_never_return(workspace):
     failure = await client.post("/api/v1/private-workspace/sources/stripe/sync", headers=headers())
     assert failure.status_code == 502 and "private-synthetic" not in failure.text
     result = await client.get("/api/v1/private-workspace", headers=headers())
-    assert len(result.json()["items"]) == 1 and result.json()["sources"][3]["status"] == "error"
+    assert len(result.json()["items"]) == 1 and next(source for source in result.json()["sources"] if source["id"] == "stripe")["status"] == "error"
 
 
 async def oauth_state(client):
@@ -524,7 +530,8 @@ async def test_background_sync_skips_inactive_owners_and_isolates_source_failure
     async with sessions() as db:
         for owner_id, source_id in [("1", "gmail"), ("1", "stripe"), ("2", "stripe")]:
             db.add(PrivateConnection(owner_id=owner_id, source_id=source_id, status="connected",
-                                     encrypted_credentials=service.encrypt_credentials({"key": "synthetic"})))
+                                     encrypted_credentials=service.encrypt_credentials({"key": "synthetic"}),
+                                     metadata_json={"stripe_account_id": STRIPE_ACCOUNT, "mode": "test"} if source_id == 'stripe' else {}))
         await db.commit()
     async with workspace.business_sessions() as db:
         await db.execute(update(Employees).where(Employees.id == 2).values(status="inactive"))
@@ -585,6 +592,8 @@ async def test_overview_keeps_old_urgent_work_when_recent_completed_and_normal_r
     sessions = await service.private_session_factory()
     now = utcnow()
     old = now - timedelta(days=40)
+    snapshot = 'synthetic-stripe-current-snapshot'
+    stripe_evidence = {'stripe_account_id': STRIPE_ACCOUNT, 'stripe_mode': 'test', 'stripe_snapshot_id': snapshot, 'stripe_observed_at': now.isoformat()}
 
     def item(external_id, **values):
         defaults = {"owner_id": "1", "source_id": "manual", "external_id": external_id, "kind": "task",
@@ -593,8 +602,10 @@ async def test_overview_keeps_old_urgent_work_when_recent_completed_and_normal_r
         return PrivateItem(**{**defaults, **values})
 
     async with sessions() as db:
+        db.add(PrivateConnection(owner_id='1', source_id='stripe', status='connected', last_sync=now,
+            metadata_json={'stripe_account_id': STRIPE_ACCOUNT, 'mode': 'test', 'stripe_snapshot': {'id': snapshot, 'observed_at': now.isoformat(), 'account_id': STRIPE_ACCOUNT, 'mode': 'test'}}))
         db.add(item("old-urgent-dispute", source_id="stripe", kind="dispute", status="needs_response",
-                    priority="urgent", due_at=now + timedelta(hours=5), created_at=old))
+                    priority="urgent", due_at=now + timedelta(hours=5), created_at=old, evidence=stripe_evidence))
         db.add(item("old-high-early", priority="high", due_at=now - timedelta(days=2), created_at=old))
         db.add(item("old-high-later", priority="high", due_at=now + timedelta(days=2), created_at=old))
         db.add(item("due-snoozed", priority="urgent", action_status="snoozed", snoozed_until=now - timedelta(minutes=1), created_at=old))
@@ -602,7 +613,7 @@ async def test_overview_keeps_old_urgent_work_when_recent_completed_and_normal_r
         db.add(item("another-owner", owner_id="2", priority="urgent"))
         db.add_all(item(f"completed-{index}", action_status="done", priority="urgent") for index in range(120))
         db.add_all(item(f"normal-payout-{index}", source_id="stripe", kind="payout", status="paid",
-                        due_at=now - timedelta(days=1)) for index in range(120))
+                        due_at=now - timedelta(days=1), evidence=stripe_evidence) for index in range(120))
         db.add_all(item(f"normal-task-{index}") for index in range(120))
         db.add(item("bank-latest", source_id="bofa", kind="email_alert", status="unverified", occurred_at=now,
                     evidence={"type": "email_alert", "verification": "unverified"}))
