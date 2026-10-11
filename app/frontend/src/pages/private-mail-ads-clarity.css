@@ -1,0 +1,70 @@
+.pw-mail-clarity .pw-mail-brief-toolbar { margin-bottom: 18px; }
+.pw-mail-clarity .pw-mail-brief-toolbar > span { color: var(--pw-text); font-size: 14px; }
+.pw-mail-clarity .pw-mail-brief-headline p { margin: 8px 0 0; font-size: 15px; font-weight: 500; line-height: 1.75; }
+.pw-mail-clarity .pw-mail-brief-headline .pw-mail-evidence-pending { display: inline-block; margin-left: 9px; color: var(--pw-warning); font-size: 12px; }
+.pw-mail-clarity .pw-mail-next-action { margin: 18px 0; padding: 16px 18px; }
+.pw-mail-clarity .pw-mail-next-action > p { margin: 7px 0 0; font-size: 14px; line-height: 1.75; }
+.pw-mail-clarity .pw-mail-brief-deadline { margin-top: 13px; }
+.pw-mail-clarity .pw-mail-brief-status,
+.pw-mail-clarity .pw-mail-translation-status { margin: 14px 0; }
+.pw-mail-clarity .pw-mail-key-points { margin: 14px 0; }
+.pw-mail-clarity .pw-mail-key-points li { font-size: 13px; }
+.pw-mail-clarity .pw-mail-organize { margin-top: 14px; }
+.pw-mail-clarity .pw-clarity-original { margin: 18px 0; padding: 17px; border: 1px solid var(--pw-line); border-radius: 12px; background: var(--pw-neutral); }
+.pw-mail-clarity .pw-clarity-original > span { color: var(--pw-muted); font-size: 12px; }
+.pw-mail-clarity .pw-clarity-original > h3 { margin: 0 0 12px; }
+.pw-mail-clarity .pw-clarity-original > p { margin: 10px 0 0; font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pw-mail-clarity .pw-clarity-original .pw-mail-full-body { margin-bottom: 0; }
+.pw-mail-clarity .pw-clarity-original .pw-mail-full-body > p { font-size: 13px; }
+.pw-mail-clarity .pw-mail-summary { margin-top: 0; }
+.pw-mail-clarity .pw-mail-summary > p { font-size: 15px; }
+
+.pw-mail-clarity .pw-clarity-disclosure,
+.pw-ads-clarity .pw-clarity-disclosure,
+.pw-ads-detail-clarity .pw-clarity-disclosure { margin-top: 14px; padding-top: 8px; border-top: 1px solid var(--pw-line); }
+.pw-mail-clarity .pw-clarity-disclosure summary,
+.pw-ads-clarity .pw-clarity-disclosure summary,
+.pw-ads-detail-clarity .pw-clarity-disclosure summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; color: var(--pw-muted); font-size: 12px; line-height: 1.65; cursor: pointer; list-style: none; }
+.pw-mail-clarity .pw-clarity-disclosure summary::-webkit-details-marker,
+.pw-ads-clarity .pw-clarity-disclosure summary::-webkit-details-marker,
+.pw-ads-detail-clarity .pw-clarity-disclosure summary::-webkit-details-marker { display: none; }
+.pw-mail-clarity .pw-clarity-disclosure summary svg,
+.pw-ads-clarity .pw-clarity-disclosure summary svg,
+.pw-ads-detail-clarity .pw-clarity-disclosure summary svg { width: 15px; height: 15px; flex-shrink: 0; }
+.pw-mail-clarity .pw-clarity-disclosure[open] > summary svg,
+.pw-ads-clarity .pw-clarity-disclosure[open] > summary svg,
+.pw-ads-detail-clarity .pw-clarity-disclosure[open] > summary svg { transform: rotate(90deg); }
+.pw-mail-clarity .pw-clarity-disclosure > p,
+.pw-ads-clarity .pw-clarity-disclosure > p { margin: 9px 0; color: var(--pw-muted); font-size: 12px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pw-mail-clarity .pw-clarity-disclosure summary:focus-visible,
+.pw-ads-clarity .pw-clarity-disclosure summary:focus-visible { outline: 3px solid var(--pw-blue); outline-offset: 2px; }
+
+.pw-ads-clarity .pw-ads-coverage-detail { margin: -10px 0 0; padding: 0; border: 0; }
+.pw-ads-clarity .pw-ads-summary > div { padding: 20px; }
+.pw-ads-clarity .pw-ads-summary > div:last-child strong { color: var(--pw-muted); }
+.pw-ads-clarity .pw-ads-priority dl > div,
+.pw-ads-detail-clarity .pw-ads-detail-decision dl > div { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
+.pw-ads-clarity .pw-ads-priority dl > div:last-child dd { color: var(--pw-blue); }
+.pw-ads-clarity .pw-ads-priority-title strong { font-weight: 600; }
+.pw-ads-detail-clarity .pw-ads-detail-decision { margin: 18px 0; padding: 16px 18px; background: var(--pw-neutral); border: 0; border-left: 3px solid var(--pw-blue); }
+.pw-ads-detail-clarity .pw-ads-detail-decision dl { margin: 0; gap: 13px; }
+.pw-ads-detail-clarity .pw-ads-detail-decision dd { font-size: 14px; line-height: 1.75; }
+.pw-ads-detail-clarity .pw-ads-detail-assessment { margin: 18px 0 20px; }
+.pw-ads-detail-clarity .pw-ads-detail-assessment > h3 { margin: 0 0 7px; font-size: 14px; }
+.pw-ads-detail-clarity .pw-ads-detail-assessment > p { color: var(--pw-text); font-size: 13px; }
+.pw-ads-detail-clarity .pw-ads-detail-origin dd { text-align: right; }
+
+@media (max-width: 640px) {
+  .pw-mail-clarity .pw-mail-brief-toolbar { gap: 8px; }
+  .pw-mail-clarity .pw-mail-next-action,
+  .pw-mail-clarity .pw-clarity-original { padding: 15px; }
+  .pw-ads-clarity .pw-ads-summary > div { padding: 16px 11px; }
+  .pw-ads-clarity .pw-ads-priority .pw-section-heading { flex-wrap: wrap; gap: 8px; }
+  .pw-ads-clarity .pw-ads-priority dl > div,
+  .pw-ads-detail-clarity .pw-ads-detail-decision dl > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+@media (pointer: coarse) {
+  .pw-mail-clarity .pw-clarity-disclosure summary,
+  .pw-ads-clarity .pw-clarity-disclosure summary,
+  .pw-ads-detail-clarity .pw-clarity-disclosure summary { min-height: 44px; }
+}

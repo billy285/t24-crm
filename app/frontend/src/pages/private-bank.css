@@ -1,47 +1,55 @@
 .pw-bank-dashboard { display: grid; gap: 25px; min-width: 0; }
+.pw-bank-dashboard button:focus-visible, .pw-bank-dashboard a:focus-visible, .pw-bank-dashboard summary:focus-visible, .pw-bank-detail a:focus-visible, .pw-bank-detail summary:focus-visible { outline: 3px solid var(--pw-blue); outline-offset: 3px; }
 .pw-bank-sandbox { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px 15px; padding: 12px 15px; border: 1px solid var(--pw-warning); border-radius: 11px; background: var(--pw-warning-soft); color: var(--pw-warning); font-size: 12px; }
 .pw-bank-sandbox strong { font-weight: 600; }
 .pw-bank-source { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .pw-bank-source > div { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .pw-bank-source > div > svg { width: 24px; height: 24px; color: var(--pw-muted); }
 .pw-bank-source > div > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.pw-bank-source strong { font-size: 14px; overflow-wrap: anywhere; }
-.pw-bank-source span { color: var(--pw-muted); font-size: 11px; }
+.pw-bank-source strong { font-size: 15px; overflow-wrap: anywhere; }
+.pw-bank-source span { color: var(--pw-muted); font-size: 12px; }
 .pw-bank-source .pw-button { flex-shrink: 0; }
 .pw-bank-source .pw-button:disabled:not([aria-busy="true"]) { cursor: not-allowed; }
 .pw-bank-section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 7px 12px; margin-bottom: 12px; }
-.pw-bank-section-heading h2 { font-size: 14px; }
-.pw-bank-section-heading time { font-size: 11px; color: var(--pw-muted); }
+.pw-bank-section-heading h2 { font-size: 15px; margin: 0; }
+.pw-bank-section-heading time { font-size: 12px; color: var(--pw-muted); }
+.pw-bank-snapshot-label { margin-left: auto; color: var(--pw-muted); font-size: 12px; }
 .pw-bank-account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 14px; }
 .pw-bank-account { min-width: 0; padding: 20px; border: 1px solid var(--pw-line); border-radius: 15px; background: var(--pw-surface); }
+.pw-bank-account.is-debt { background: var(--pw-neutral); }
 .pw-bank-account-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .pw-bank-account-heading > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .pw-bank-account-heading strong { font-size: 13px; overflow-wrap: anywhere; }
-.pw-bank-account-heading span, .pw-bank-account-heading small { font-size: 11px; color: var(--pw-muted); }
+.pw-bank-account-heading span { font-size: 12px; color: var(--pw-muted); }
+.pw-bank-account-heading small { padding: 4px 7px; border-radius: 5px; background: var(--pw-neutral); color: var(--pw-muted); font-size: 11px; }
+.pw-bank-account.is-debt .pw-bank-account-heading small { background: var(--pw-surface); }
 .pw-bank-account-primary { display: flex; flex-direction: column; gap: 5px; padding: 21px 0 13px; }
-.pw-bank-account-primary > span { font-size: 11px; color: var(--pw-muted); }
-.pw-bank-account-primary > strong { font-size: 25px; letter-spacing: -.025em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pw-bank-account-primary > span { font-size: 12px; color: var(--pw-muted); }
+.pw-bank-account-primary > strong { font-size: 28px; letter-spacing: -.025em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .pw-bank-account-secondary { display: flex; justify-content: space-between; gap: 15px; padding: 8px 0; border-top: 1px dashed var(--pw-line); }
 .pw-bank-account-secondary > span { color: var(--pw-muted); font-size: 12px; }
 .pw-bank-account-secondary > strong { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.pw-bank-account-update { margin-top: 5px; font-size: 10px; color: var(--pw-muted); }
+.pw-bank-account-update { margin-top: 7px; font-size: 12px; color: var(--pw-muted); }
 .pw-bank-account-update > summary, .pw-bank-coverage > summary, .pw-bank-detail-evidence > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; cursor: pointer; list-style: none; }
 .pw-bank-account-update > summary::-webkit-details-marker, .pw-bank-coverage > summary::-webkit-details-marker, .pw-bank-detail-evidence > summary::-webkit-details-marker { display: none; }
 .pw-bank-account-update > summary svg, .pw-bank-coverage > summary svg, .pw-bank-detail-evidence > summary svg { width: 12px; height: 12px; }
 .pw-bank-account-update[open] > summary svg, .pw-bank-coverage[open] > summary svg, .pw-bank-detail-evidence[open] > summary svg { transform: rotate(90deg); }
-.pw-bank-account-update p { padding: 3px 0; }
+.pw-bank-account-update p { padding: 3px 0; overflow-wrap: anywhere; line-height: 1.7; }
 .pw-bank-empty { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 30px 15px; border: 1px dashed var(--pw-line); border-radius: 14px; color: var(--pw-muted); text-align: center; }
 .pw-bank-empty > svg { width: 28px; height: 28px; }
 .pw-bank-empty h3 { color: var(--pw-text); font-size: 14px; }
 .pw-bank-empty p { font-size: 12px; }
 .pw-bank-empty > button { margin-top: 6px; }
-.pw-bank-source-error { color: var(--pw-warning); font-size: 12px; }
+.pw-bank-source-error { display: grid; gap: 5px; padding: 13px 15px; border: 1px solid var(--pw-line); border-radius: 11px; background: var(--pw-neutral); color: var(--pw-warning); font-size: 12px; }
+.pw-bank-source-error strong { font-weight: 500; }
+.pw-bank-source-error p { margin: 0; overflow-wrap: anywhere; line-height: 1.65; }
 .pw-bank-tabs { display: flex; gap: 6px; margin-bottom: 13px; padding: 4px; border-radius: 11px; background: var(--pw-neutral); }
 .pw-bank-tabs > button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; flex: 1; min-height: 39px; padding: 9px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--pw-muted); font-size: 13px; }
 .pw-bank-tabs > button[aria-pressed=true] { background: var(--pw-surface); color: var(--pw-text); }
-.pw-bank-tabs small { color: var(--pw-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
-.pw-bank-preparing, .pw-bank-list-count, .pw-bank-quiet-empty { color: var(--pw-muted); font-size: 11px; }
-.pw-bank-preparing { padding: 0 0 12px; }
+.pw-bank-tabs small { color: var(--pw-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.pw-bank-preparing, .pw-bank-list-count, .pw-bank-quiet-empty, .pw-bank-pending-note { color: var(--pw-muted); font-size: 12px; line-height: 1.7; }
+.pw-bank-preparing { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: var(--pw-warning-soft); color: var(--pw-warning); }
+.pw-bank-pending-note { margin: 0 0 12px; }
 .pw-bank-list-count { margin-top: 12px !important; }
 .pw-bank-quiet-empty { padding: 24px 15px; border-radius: 12px; background: var(--pw-surface); text-align: center; }
 .pw-bank-records { border: 1px solid var(--pw-line); border-radius: 14px; background: var(--pw-surface); }
@@ -55,15 +63,17 @@
 .pw-bank-record-copy span { font-size: 11px; color: var(--pw-muted); }
 .pw-bank-record-money { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; max-width: 42%; min-width: 0; text-align: right; }
 .pw-bank-record-money strong { font-size: 14px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.pw-bank-record-money small { color: var(--pw-muted); font-size: 10px; }
+.pw-bank-record-money small { color: var(--pw-muted); font-size: 11px; }
 .pw-bank-record > svg { width: 13px; height: 13px; color: var(--pw-muted); }
 .pw-bank-record-money.is-inflow, .pw-bank-detail-amount.is-inflow { color: light-dark(#087f5b, #8ed8b8); }
 .pw-bank-record-money.is-outflow, .pw-bank-detail-amount.is-outflow { color: var(--pw-text); }
 .pw-bank-loading { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; min-height: 135px; color: var(--pw-muted); font-size: 12px; }
 .pw-bank-loading > svg { animation: pw-spin 1s linear infinite; }
 .pw-bank-load-error { flex-direction: column; }
-.pw-bank-coverage { padding-top: 3px; color: var(--pw-muted); font-size: 11px; }
-.pw-bank-coverage p { padding: 5px 0; }
+.pw-bank-load-error > p { max-width: 100%; text-align: center; overflow-wrap: anywhere; }
+.pw-bank-load-error > strong { color: var(--pw-text); font-weight: 500; }
+.pw-bank-coverage { padding-top: 3px; color: var(--pw-muted); font-size: 12px; }
+.pw-bank-coverage p { padding: 5px 0; line-height: 1.7; }
 .pw-bank-detail { display: grid; gap: 21px; }
 .pw-bank-detail-amount { display: flex; flex-direction: column; gap: 6px; padding: 19px; border-radius: 14px; background: var(--pw-neutral); }
 .pw-bank-detail-amount > span, .pw-bank-detail-amount > small { color: var(--pw-muted); font-size: 12px; }
@@ -79,7 +89,7 @@
   .pw-bank-dashboard { gap: 22px; }
   .pw-bank-account { padding: 17px; }
   .pw-bank-account-primary { padding-top: 18px; }
-  .pw-bank-account-primary > strong { font-size: 24px; }
+  .pw-bank-account-primary > strong { font-size: 26px; }
   .pw-bank-record { padding: 15px 13px; gap: 9px; }
   .pw-bank-record-money { max-width: 40%; }
   .pw-bank-record-money strong { font-size: 13px; }
@@ -87,11 +97,15 @@
 @media (max-width: 380px) {
   .pw-bank-source { align-items: flex-start; }
   .pw-bank-source .pw-button { font-size: 11px; padding: 8px 10px; }
-  .pw-bank-source strong { font-size: 12px; }
+  .pw-bank-source strong { font-size: 14px; }
+  .pw-bank-source > div > svg { width: 20px; height: 20px; flex-shrink: 0; }
+  .pw-bank-section-heading time { flex-basis: 100%; }
+  .pw-bank-account-secondary { flex-wrap: wrap; gap: 5px 12px; }
+  .pw-bank-account-secondary > strong { max-width: 100%; }
   .pw-bank-record { flex-wrap: wrap; }
   .pw-bank-record-copy { flex-basis: calc(100% - 22px); }
   .pw-bank-record-money { flex: 1; max-width: none; align-items: flex-start; text-align: left; }
 }
 @media (pointer: coarse) { .pw-bank-tabs > button { min-height: 44px; } .pw-bank-account-update > summary, .pw-bank-coverage > summary, .pw-bank-detail-evidence > summary { min-height: 44px; } }
 
-.pw-bank-stale-label { color: var(--pw-warning); font-size: 11px; }
+.pw-bank-stale-label { color: var(--pw-warning); font-size: 12px; }

@@ -51,3 +51,11 @@ test('platform reasons are translated without exposing raw metadata on the prima
   const { health } = adsFixture('problem'); assert.equal(api.privateAdsReasons(health).join(''), '预算配置错误');
   health.current.primary_status_reasons = ['NEW_UNKNOWN_REASON']; assert.equal(api.privateAdsReasons(health).join(''), 'Google 状态原因待确认');
 });
+test('system-generated campaign names use a display alias without changing source evidence', () => {
+  for (const title of ['LocalServicesCampaign:SystemGenerated:000657ec92f7095e', 'SystemGenerated-2026-10-10-09-00', 'SystemGenerated_local_service', 'systemgenerated: 12345', 'SystemGenerated']) {
+    const item = { title }; assert.equal(api.privateAdsDisplayTitle(item), '本地服务广告'); assert.equal(item.title, title);
+  }
+  assert.equal(api.privateAdsDisplayTitle({ title: '秋季获客广告' }), '秋季获客广告');
+  assert.equal(api.privateAdsDisplayTitle({ title: 'SystemGeneratedCustomName' }), 'SystemGeneratedCustomName');
+  assert.equal(api.ADS_BUCKET_NAMES.unknown, '数据待确认');
+});

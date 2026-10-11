@@ -1,7 +1,7 @@
 import type { PrivateAdsBucket, PrivateAdsHealth, PrivateAdsMetric, PrivateItem, PrivateSource } from './private-workspace-api';
 
 export const ADS_BUCKET_NAMES: Record<PrivateAdsBucket, string> = {
-  problem: '异常停投', attention: '需关注', healthy: '正常投放', paused: '暂停结束', unknown: '待观察',
+  problem: '异常停投', attention: '需关注', healthy: '正常投放', paused: '暂停结束', unknown: '数据待确认',
 };
 export const ADS_BUCKETS: PrivateAdsBucket[] = ['problem', 'attention', 'healthy', 'paused', 'unknown'];
 const MAX_AGE = 24 * 60 * 60 * 1000;
@@ -11,6 +11,12 @@ const timestamp = (value: unknown) => typeof value === 'string' ? Date.parse(val
 const fresh = (value: unknown, now: number) => Number.isFinite(timestamp(value)) && now - timestamp(value) <= MAX_AGE && timestamp(value) - now <= 5 * 60 * 1000;
 const strings = (value: unknown) => Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string').slice(0, 30) : [];
 const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+/** A display alias only. The provider name remains on the unchanged item. */
+export function privateAdsDisplayTitle(item: Pick<PrivateItem, 'title'>): string {
+  const title = text(item.title);
+  return /^(?:LocalServicesCampaign:)?SystemGenerated(?:$|[-_\s:])/i.test(title) ? '本地服务广告' : title || '未命名广告系列';
+}
 function readHealth(raw: Record<string, unknown> | null): PrivateAdsHealth | null {
   if (!raw || raw.version !== 1 || !ADS_BUCKETS.includes(raw.bucket as PrivateAdsBucket)) return null;
   const current = object(raw.current); const metrics = object(raw.metrics); const periods = object(raw.periods);

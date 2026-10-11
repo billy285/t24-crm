@@ -16,8 +16,8 @@
 .ps-dashboard button:disabled { cursor: default; }
 .ps-dashboard button:focus-visible, .ps-dashboard a:focus-visible, .ps-dashboard select:focus-visible, .ps-dashboard input:focus-visible, .ps-dashboard summary:focus-visible { outline: 3px solid var(--ps-accent); outline-offset: 3px; }
 .ps-account-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.ps-account-line > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; min-width: 0; color: var(--pw-muted); font-size: 11px; }
-.ps-account-name { color: var(--pw-text); font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.ps-account-line > div { display: grid; gap: 4px; min-width: 0; color: var(--pw-muted); font-size: 12px; }
+.ps-account-name { color: var(--pw-text); font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
 .ps-text-button { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 4px; min-height: 44px; padding: 7px 0; border: 0; background: none; color: var(--ps-accent); font-size: 12px !important; text-decoration: none; }
 .ps-dashboard .ps-text-button svg { width: 13px; height: 13px; }
 .ps-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--pw-line); }
@@ -25,9 +25,8 @@
 .ps-tabs > button[aria-selected=true] { color: var(--pw-text); font-weight: 600; }
 .ps-tabs > button[aria-selected=true]::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--ps-accent); content: ''; }
 .ps-period-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.ps-period-presets { display: flex; flex-wrap: wrap; gap: 5px; }
-.ps-period-presets > button { min-height: 44px; padding: 8px 13px; border: 0; border-radius: 9px; background: transparent; color: var(--pw-muted); font-size: 12px; white-space: nowrap; }
-.ps-period-presets > button[aria-pressed=true] { color: var(--ps-accent); background: var(--ps-accent-soft); font-weight: 600; }
+.ps-period-selector { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--pw-muted); font-size: 12px; }
+.ps-period-selector select { min-width: 98px; min-height: 44px; padding: 8px 28px 8px 11px; border: 1px solid var(--pw-line); border-radius: 9px; background: var(--pw-surface); color: var(--pw-text); font-size: 13px; font-weight: 500; }
 .ps-period-actions { display: flex; align-items: center; gap: 7px; }
 .ps-currency select, .ps-record-filter select { min-height: 44px; padding: 8px 28px 8px 10px; border: 1px solid var(--pw-line); border-radius: 9px; background: var(--pw-surface); color: var(--pw-text); font-size: 12px; }
 .ps-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--pw-line); border-radius: 9px; background: var(--pw-surface); color: var(--pw-muted); }
@@ -36,31 +35,42 @@
 .ps-custom-period > label { display: grid; flex: 1; gap: 5px; min-width: 0; font-size: 11px; }
 .ps-custom-period > span { align-self: end; padding-bottom: 12px; font-size: 12px; }
 .ps-custom-period input { width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid var(--pw-line); border-radius: 9px; background: var(--pw-surface); color: var(--pw-text); font-size: 12px; }
-.ps-period-caption { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: -8px; color: var(--pw-muted); font-size: 10px; }
+.ps-period-caption { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: -8px; color: var(--pw-muted); font-size: 11px; overflow-wrap: anywhere; }
 .ps-overview { display: grid; gap: 22px; }
 .ps-income { padding: 22px 26px; border: 1px solid var(--pw-line); border-radius: 16px; background: var(--pw-surface); }
-.ps-income-title { display: flex; align-items: center; justify-content: space-between; gap: 15px; color: var(--pw-muted); font-size: 12px; }
-.ps-income-title > span:last-child { font-size: 11px; }
+.ps-income-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; color: var(--pw-muted); font-size: 12px; }
+.ps-income-title > div { display: grid; gap: 7px; }
+.ps-income-title h2 { color: var(--pw-text); font-size: 15px; }
+.ps-currency-tag { flex-shrink: 0; padding: 4px 7px; border-radius: 5px; background: var(--pw-neutral); color: var(--pw-muted); font-size: 11px; font-weight: 500; }
 .ps-income .ps-income-amount { display: block; margin: 9px 0 4px; color: var(--pw-text); font-size: clamp(29px, 3.3vw, 42px); font-weight: 600; letter-spacing: -1.5px; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .ps-comparison { margin-top: 8px !important; color: var(--pw-muted); font-size: 11px; }
 .ps-narrative { display: grid; gap: 5px; max-width: 850px; margin-top: 17px; font-size: 13px; line-height: 1.7; }
 .ps-narrative p + p { color: var(--pw-muted); font-size: 12px; }
-.ps-income-split { display: flex; flex-wrap: wrap; gap: 16px 42px; margin: 22px 0 0; padding: 18px 0 0; border-top: 1px solid var(--pw-line); }
-.ps-income-split > div { display: grid; gap: 6px; min-width: 115px; }
-.ps-income-split dt { color: var(--pw-muted); font-size: 11px; }
+.ps-income-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 18px 24px; margin: 20px 0 0; padding: 18px 0 0; border-top: 1px solid var(--pw-line); }
+.ps-income-split > div { display: grid; gap: 7px; min-width: 0; }
+.ps-income-split dt { color: var(--pw-muted); font-size: 12px; }
 .ps-income-split dd { margin: 0; color: var(--pw-text); font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .ps-income-split > div:first-child dd { color: var(--ps-accent); }
 .ps-income-adjustments { margin-top: 17px; padding: 14px 0 0; border-top: 1px solid var(--pw-line); }
-.ps-income-adjustments dl { display: flex; flex-wrap: wrap; gap: 8px 30px; margin: 0; }
-.ps-income-adjustments dl > div { display: flex; align-items: baseline; gap: 9px; font-size: 11px; }
+.ps-income-adjustments h3 { margin-bottom: 13px; font-size: 12px; color: var(--pw-muted); }
+.ps-income-adjustments dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 15px 24px; margin: 0; }
+.ps-income-adjustments dl > div { display: grid; gap: 6px; min-width: 0; font-size: 13px; }
 .ps-income-adjustments dt { color: var(--pw-muted); }
-.ps-income-adjustments dd { margin: 0; font-variant-numeric: tabular-nums; }
-.ps-income-adjustments p { margin-top: 9px !important; color: var(--pw-muted); font-size: 10px; }
+.ps-income-adjustments dl small { display: block; margin-top: 5px; color: var(--pw-muted); font-size: 11px; }
+.ps-income-adjustments dd { margin: 0; font-size: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ps-income-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--pw-line); }
+.ps-income-evidence { min-width: 0; color: var(--pw-muted); font-size: 12px; }
+.ps-income-evidence > summary { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; list-style: none; }
+.ps-income-evidence > summary::-webkit-details-marker { display: none; }
+.ps-income-evidence > summary svg { width: 12px; height: 12px; }
+.ps-income-evidence[open] > summary svg { transform: rotate(90deg); }
+.ps-income-evidence .ps-narrative { margin-top: 5px; }
+.ps-income-evidence > p { margin-top: 8px !important; font-size: 11px; line-height: 1.7; }
 .ps-panel { border: 1px solid var(--pw-line); border-radius: 14px; background: var(--pw-surface); }
 .ps-insight-grid { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
 .ps-insight-grid.has-attention { grid-template-columns: minmax(0, 1.65fr) minmax(250px, 1fr); }
-.ps-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.ps-section-heading > span, .ps-section-heading > time { color: var(--pw-muted); font-size: 10px; }
+.ps-section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin-bottom: 12px; }
+.ps-section-heading > span, .ps-section-heading > time { color: var(--pw-muted); font-size: 11px; }
 .ps-section-heading .ps-text-button { margin: -10px 0; }
 .ps-trend { min-width: 0; padding: 19px 21px 15px; }
 .ps-chart { position: relative; width: 100%; min-height: 158px; }
@@ -88,12 +98,12 @@
 .ps-record-button { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; min-height: 75px; padding: 14px 18px; border: 0; background: transparent; color: var(--pw-text); text-align: left; }
 .ps-record-button:hover { background: var(--pw-neutral); }
 .ps-record-copy { display: grid; flex: 1; gap: 5px; min-width: 0; }
-.ps-record-copy strong { font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
-.ps-record-copy > span { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; color: var(--pw-muted); font-size: 10px; }
+.ps-record-copy strong { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.ps-record-copy > span { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; color: var(--pw-muted); font-size: 11px; }
 .ps-record-copy i { font-style: normal; }
 .ps-record-value { display: grid; gap: 4px; flex-shrink: 0; max-width: 43%; text-align: right; }
 .ps-record-value > strong { font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.ps-record-value > time, .ps-record-value > span { color: var(--pw-muted); font-size: 10px; }
+.ps-record-value > time, .ps-record-value > span { color: var(--pw-muted); font-size: 11px; }
 .ps-dashboard .ps-record-button > svg { width: 13px; height: 13px; color: var(--pw-muted); transition: transform .15s ease; }
 .ps-record.is-expanded .ps-record-button > svg { transform: rotate(180deg); }
 .ps-inline-detail { padding: 0 18px 13px; background: var(--pw-neutral); }
@@ -138,48 +148,48 @@
 .ps-coverage > summary::-webkit-details-marker { display: none; }
 .ps-dashboard .ps-coverage > summary svg { width: 12px; height: 12px; }
 .ps-coverage[open] > summary svg { transform: rotate(90deg); }
-.ps-coverage > p { max-width: 830px; padding: 5px 0; line-height: 1.7; }
+.ps-coverage > p { max-width: 830px; padding: 5px 0; line-height: 1.7; overflow-wrap: anywhere; }
 .ps-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 @media (max-width: 900px) { .ps-insight-grid.has-attention { grid-template-columns: minmax(0, 1fr); } .ps-attention { padding-bottom: 13px; } .ps-attention article:first-of-type { padding-top: 4px; } }
 @media (max-width: 639px) {
   .ps-dashboard { gap: 13px; }
   .ps-account-line { align-items: flex-start; gap: 8px; }
-  .ps-account-line > div { display: grid; gap: 3px; padding: 7px 0; font-size: 10px; }
-  .ps-account-name { font-size: 11px; }
+  .ps-account-line > div { gap: 4px; padding: 7px 0; font-size: 11px; }
+  .ps-account-name { font-size: 14px; }
   .ps-account-line > .ps-text-button { font-size: 11px !important; }
   .ps-tabs { justify-content: space-between; gap: 12px; }
   .ps-tabs > button { flex: 1; font-size: 13px; }
-  .ps-period-toolbar { flex-wrap: wrap; gap: 6px; }
-  .ps-period-presets { flex: 1; gap: 2px; }
-  .ps-period-presets > button { padding: 7px 9px; font-size: 11px; }
+  .ps-period-toolbar { flex-wrap: wrap; gap: 8px; }
+  .ps-period-selector { gap: 7px; font-size: 11px; }
+  .ps-period-selector select { min-width: 91px; padding-left: 8px; font-size: 12px; }
   .ps-period-actions { gap: 4px; }
   .ps-currency select { padding: 8px 20px 8px 7px; font-size: 11px; }
   .ps-icon-button { width: 44px; }
-  .ps-period-caption { margin-top: -2px; font-size: 9px; }
+  .ps-period-caption { margin-top: -2px; font-size: 11px; }
   .ps-overview { gap: 18px; }
   .ps-income { padding: 19px 18px 16px; }
-  .ps-income-title { font-size: 11px; }
+  .ps-income-title { font-size: 12px; }
   .ps-income .ps-income-amount { margin-top: 11px; font-size: clamp(28px, 7.5vw, 36px); letter-spacing: -.9px; }
   .ps-narrative { margin-top: 15px; font-size: 12px; }
   .ps-narrative p + p { font-size: 11px; }
-  .ps-income-split { gap: 14px 24px; margin-top: 18px; padding-top: 16px; }
-  .ps-income-split > div { flex: 1; min-width: 108px; }
-  .ps-income-split dt { font-size: 10px; }
+  .ps-income-split { grid-template-columns: repeat(auto-fit, minmax(min(115px, 100%), 1fr)); gap: 16px 20px; margin-top: 18px; padding-top: 16px; }
+  .ps-income-split dt { font-size: 12px; }
   .ps-income-split dd { font-size: 15px; }
-  .ps-income-adjustments dl { gap: 7px 18px; }
-  .ps-income-adjustments dl > div { flex: 1; min-width: 122px; gap: 7px; font-size: 10px; }
-  .ps-income-adjustments p { font-size: 9px; }
+  .ps-income-adjustments dl { grid-template-columns: repeat(auto-fit, minmax(min(115px, 100%), 1fr)); gap: 15px 20px; }
+  .ps-income-adjustments dl > div { font-size: 12px; }
+  .ps-income-adjustments dd { font-size: 15px; }
+  .ps-income-footer { flex-wrap: wrap; gap: 0 10px; }
   .ps-section-heading h2 { font-size: 14px; }
   .ps-trend { padding: 17px 16px 15px; }
   .ps-dashboard .ps-chart svg { height: 156px; }
   .ps-chart { min-height: 156px; }
   .ps-attention { padding: 16px 17px 10px; }
   .ps-record-button { gap: 9px; min-height: 74px; padding: 13px 13px; }
-  .ps-record-copy strong { font-size: 11px; }
-  .ps-record-copy > span { font-size: 9px; gap: 4px; }
+  .ps-record-copy strong { font-size: 12px; }
+  .ps-record-copy > span { font-size: 11px; gap: 4px; }
   .ps-record-value { max-width: 40%; }
   .ps-record-value > strong { font-size: 12px; }
-  .ps-record-value > time, .ps-record-value > span { font-size: 9px; }
+  .ps-record-value > time, .ps-record-value > span { font-size: 11px; }
   .ps-inline-detail { padding: 0 13px 11px; }
   .ps-inline-detail dl { grid-template-columns: minmax(0, 1fr); gap: 11px; }
   .ps-inline-detail dl > div { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; align-items: baseline; }
@@ -190,14 +200,14 @@
   .ps-balance { padding: 17px 18px; }
   .ps-balance dl { gap: 15px 25px; }
   .ps-balance dd { font-size: 20px; }
-  .ps-notice { padding: 10px 12px; font-size: 10px; }
-  .ps-coverage { font-size: 10px; }
+  .ps-notice { padding: 10px 12px; font-size: 12px; }
+  .ps-coverage { font-size: 12px; }
 }
 @media (max-width: 380px) {
   .ps-period-actions { margin-left: auto; }
-  .ps-period-presets > button { padding-right: 8px; padding-left: 8px; }
+  .ps-period-selector > span { display: none; }
   .ps-record-value { max-width: 39%; }
   .ps-balance dl { flex-direction: column; }
 }
-@media (pointer: coarse) { .ps-search > input, .ps-custom-period input, .ps-currency select, .ps-record-filter select { font-size: 16px; } .ps-record-toolbar { flex-wrap: wrap; } .ps-record-toolbar > .ps-search { flex-basis: 150px; } }
+@media (pointer: coarse) { .ps-search > input, .ps-custom-period input, .ps-period-selector select, .ps-currency select, .ps-record-filter select { font-size: 16px; } .ps-record-toolbar { flex-wrap: wrap; } .ps-record-toolbar > .ps-search { flex-basis: 150px; } }
 @media (prefers-reduced-motion: reduce) { .ps-record-button > svg { transition: none; } .ps-load > svg { animation: none; } }

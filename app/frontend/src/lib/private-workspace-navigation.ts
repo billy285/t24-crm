@@ -1,4 +1,4 @@
-export const PRIVATE_WORKSPACE_VIEWS = ['today', 'gmail', 'google_ads', 'bofa', 'bofa_bank', 'stripe', 'manual', 'connections'] as const;
+export const PRIVATE_WORKSPACE_VIEWS = ['today', 'gmail', 'google_ads', 'funds', 'bofa', 'bofa_bank', 'stripe', 'manual', 'connections'] as const;
 export type PrivateWorkspaceView = typeof PRIVATE_WORKSPACE_VIEWS[number];
 export type PrivateWorkspacePanel = 'editor' | 'preferences' | 'snooze';
 

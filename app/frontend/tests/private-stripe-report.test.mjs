@@ -137,7 +137,7 @@ test('tabs, filters and inline details are controlled and emit no navigation or 
 });
 test('custom dates and currency changes preserve controlled navigation while clearing old details', () => {
   const f = fixture(), screen = f.render({ selection: { ...f.createPrivateStripeSelection(new Date('2026-10-12')), tab: 'funds', search: 'Synthetic', expanded_record_id: 'payment-1' } });
-  screen.find('button', '自定义').props.onClick(); assert.equal(screen.events.at(-1).value.preset, 'custom'); assert.equal(screen.events.at(-1).value.tab, 'funds'); assert.equal(screen.events.at(-1).value.expanded_record_id, null);
+  screen.nodes.find(node => node.type === 'select' && node.props['aria-label'] === '收款统计期间').props.onChange({ target: { value: 'custom' } }); assert.equal(screen.events.at(-1).value.preset, 'custom'); assert.equal(screen.events.at(-1).value.tab, 'funds'); assert.equal(screen.events.at(-1).value.expanded_record_id, null);
   const invalid = f.render({ selection: { ...screen.events.at(-1).value, start_date: '2026-10-15', end_date: '2026-10-01' } }); assert.ok(invalid.text.includes('请选择有效的开始与结束日期')); assert.ok(!invalid.text.includes('USD 1,000.00'));
 });
 test('funds show current timestamped balances and payout events outside period income', () => {

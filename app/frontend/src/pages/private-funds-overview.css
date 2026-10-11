@@ -1,0 +1,37 @@
+.pw-funds-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; min-width: 0; }
+.pw-funds-overview.is-compact { grid-template-columns: minmax(0, 1fr); }
+.pw-funds-provider { container-type: inline-size; min-width: 0; padding: 23px; border: 1px solid var(--pw-line); border-radius: 16px; background: var(--pw-surface); }
+.pw-funds-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.pw-funds-heading h2 { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; }
+.pw-funds-heading h2 svg { width: 16px; height: 16px; color: var(--pw-muted); }
+.pw-funds-state { font-size: 11px; color: var(--pw-muted); }
+.pw-funds-state.is-stale { color: var(--pw-warning); }
+.pw-funds-context { margin-top: 11px !important; font-size: 12px; color: var(--pw-muted); }
+.pw-funds-currencies, .pw-funds-bank-accounts { display: grid; gap: 18px; margin-top: 20px; }
+.pw-funds-currency + .pw-funds-currency, .pw-funds-bank-account + .pw-funds-bank-account { padding-top: 16px; border-top: 1px dashed var(--pw-line); }
+.pw-funds-currency > span, .pw-funds-bank-account > span { color: var(--pw-muted); font-size: 12px; }
+.pw-funds-currency dl, .pw-funds-bank-account dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 18px; margin: 8px 0 0; }
+.pw-funds-overview dt { color: var(--pw-muted); font-size: 12px; }
+.pw-funds-overview dd { margin: 6px 0 0; color: var(--pw-text); font-size: 21px; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pw-funds-bank-account h3 { margin: 0 0 4px; font-size: 14px; overflow-wrap: anywhere; }
+.pw-funds-bank-account dd { font-size: 19px; }
+.pw-funds-time { margin-top: 18px !important; font-size: 11px; color: var(--pw-muted); }
+.pw-funds-provider > .pw-text-button { margin-top: 15px; color: var(--pw-blue); }
+.pw-funds-missing { display: grid; gap: 5px; padding: 23px 0 8px; }
+.pw-funds-missing strong { font-size: 20px; }
+.pw-funds-missing p { color: var(--pw-muted); font-size: 12px; }
+.pw-funds-boundary { grid-column: 1 / -1; color: var(--pw-muted); font-size: 12px; }
+@media (max-width: 700px) {
+  .pw-funds-overview { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .pw-funds-provider { padding: 19px; }
+  .pw-funds-overview dd { font-size: 20px; }
+}
+@media (max-width: 380px) {
+  .pw-funds-currency dl, .pw-funds-bank-account dl { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}
+
+@container (max-width: 340px) {
+  .pw-funds-currency dl, .pw-funds-bank-account dl { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .pw-funds-currency dl > div, .pw-funds-bank-account dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+  .pw-funds-currency dd, .pw-funds-bank-account dd { margin-top: 0; font-size: 20px; text-align: right; }
+}

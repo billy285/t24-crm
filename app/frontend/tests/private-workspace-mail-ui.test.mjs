@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import * as jsx from 'react/jsx-runtime';
 import ts from 'typescript';
+import { adsFixture } from './fixtures/private-ads.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../src');
 const same = (left, right) => left && right && left.length === right.length && left.every((value, index) => Object.is(value, right[index]));
@@ -20,6 +21,7 @@ const briefSnapshot = (period = 'today', overrides = {}) => ({
   window: { start: '2026-10-10T16:00:00Z', end: '2026-10-11T16:00:00Z', timezone: 'Asia/Shanghai' },
   issues: [], sources: [], capabilities: { configured: false, code: 'not_configured' }, limitations: [], ai: null, ...overrides,
 });
+const bossSource = (source_id = 'stripe', data_state = 'partial') => ({ source_id, status: 'connected', last_sync: new Date().toISOString(), data_state, summary: '已同步局部来源记录，完整范围仍需核对。', facts: [] });
 
 // Run the actual component, API and draft guard against synthetic transport and
 // controlled hook scheduling. No mailbox, browser storage or external API is used.
@@ -88,6 +90,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
       if (name === '@/lib/private-stripe-report') return load('lib/private-stripe-report.ts');
       if (name === './PrivateStripeDashboard') return load('pages/PrivateStripeDashboard.tsx');
       if (name === './PrivateBankDashboard') return load('pages/PrivateBankDashboard.tsx');
+      if (name === './PrivateFundsOverview') return load('pages/PrivateFundsOverview.tsx');
       if (name === '@/lib/private-ads') return load('lib/private-ads.ts');
       if (name === '@/lib/private-boss-brief') return load('lib/private-boss-brief.ts');
       if (name === '@/lib/private-workspace-navigation') return load('lib/private-workspace-navigation.ts');
@@ -225,7 +228,7 @@ test('Stripe report period switch discards a slower previous-period response and
   const waiting = deferred(); const f = fixture([], 'stripe', [stripeSource()]);
   f.setStripeReportHandler(request => request.data.period === 'month' ? waiting.promise : stripePeriodReport(request.data.period, '季度经过核对的结果'));
   await f.flush(); assert.ok(f.text().includes('正在读取所选期间'));
-  f.button('本季度').props.onClick(); await f.flush(); assert.ok(f.text().includes('季度经过核对的结果'));
+  f.nodes().find(node => node.type === 'select' && node.props['aria-label'] === '收款统计期间').props.onChange({ target: { value: 'quarter' } }); await f.flush(); assert.ok(f.text().includes('季度经过核对的结果'));
   waiting.resolve(stripePeriodReport('month', '不得出现的旧月份结果')); await f.flush();
   assert.ok(!f.text().includes('不得出现的旧月份结果'));
   const calls = f.requests.filter(request => request.url.endsWith('/stripe/report')).length;
@@ -243,11 +246,11 @@ test('Stripe report in flight cannot repopulate another login session', async ()
 
 test('Stripe invalid custom range makes no upstream report call, and connection back retains report tab and period', async () => {
   const f = fixture([], 'stripe', [stripeSource()]); f.setStripeReportHandler(request => stripePeriodReport(request.data.period)); await f.flush();
-  f.button('本年').props.onClick(); await f.flush(); f.button('订阅').props.onClick(); await f.flush();
+  f.nodes().find(node => node.type === 'select' && node.props['aria-label'] === '收款统计期间').props.onChange({ target: { value: 'year' } }); await f.flush(); f.button('订阅').props.onClick(); await f.flush();
   f.button('管理接入').props.onClick(); await f.flush(); assert.equal(f.params.get('view'), 'connections');
   await f.back(); assert.equal(f.params.get('view'), 'stripe');
-  assert.equal(f.button('本年').props['aria-pressed'], true); assert.equal(f.button('订阅').props['aria-selected'], true);
-  f.button('自定义').props.onClick(); await f.flush();
+  assert.equal(f.nodes().find(node => node.type === 'select' && node.props['aria-label'] === '收款统计期间').props.value, 'year'); assert.equal(f.button('订阅').props['aria-selected'], true);
+  f.nodes().find(node => node.type === 'select' && node.props['aria-label'] === '收款统计期间').props.onChange({ target: { value: 'custom' } }); await f.flush();
   const input = label => f.nodes().find(node => node.type === 'input' && node.props['aria-label'] === label);
   const count = f.requests.filter(request => request.url.endsWith('/stripe/report')).length;
   input('收款开始日期').props.onChange({ target: { value: '2026-12-31' } }); await f.flush();
@@ -356,8 +359,8 @@ test('logout clears private mail and drafts and discards a delayed preference re
 
 test('today priorities exclude digest and low mail', async () => {
   const f = fixture([mail('focus', 'today'), mail('digest', 'digest'), mail('low', 'low')], 'today');
-  f.setBriefHandler(() => briefSnapshot('today', { issues: [{ id: 'focus-issue', source_id: 'gmail', item_id: 'focus', title: 'Synthetic focus', summary: 'Synthetic snippet', next_action: '核对来源', priority: 'high', observed_at: null }] })); await f.flush();
-  assert.ok(f.text().includes('Synthetic focus'), f.text());
+  f.setBriefHandler(() => briefSnapshot('today', { issues: [{ id: 'focus-issue', source_id: 'gmail', item_id: 'focus', title: '核对业务邮件', summary: 'Synthetic snippet', next_action: '核对来源', priority: 'high', observed_at: null }], sources: [bossSource('gmail')] })); await f.flush();
+  assert.ok(f.text().includes('核对业务邮件'), f.text());
   assert.ok(!f.text().includes('Synthetic digest'));
   assert.ok(!f.text().includes('Synthetic low'));
   f.unmount();
@@ -365,27 +368,26 @@ test('today priorities exclude digest and low mail', async () => {
 
 const bossIssue = { id: 'payment-check', source_id: 'stripe', item_id: 'private-payment', title: '核对最近失败收款记录', summary: '最后记录状态，待核查', next_action: '打开 Stripe 核对原因', priority: 'high', observed_at: null };
 test('boss brief is local GET only and unavailable AI cannot invoke a provider', async () => {
-  const f = fixture([], 'today'); f.setBriefHandler(() => briefSnapshot('today', { issues: [bossIssue] })); await f.flush();
+  const f = fixture([], 'today'); f.setBriefHandler(() => briefSnapshot('today', { issues: [bossIssue], sources: [bossSource()] })); await f.flush();
   assert.ok(f.text().includes(bossIssue.title));
   assert.equal(f.requests.filter(request => request.url.includes('/brief?')).length, 1);
   assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0);
-  assert.equal(f.button('中文解读').props.disabled, true);
-  f.button('中文解读').props.onClick(); await f.flush();
+  assert.equal(f.button('中文解读'), undefined); assert.ok(f.text().includes('中文解读尚待接入'));
   assert.equal(f.requests.filter(request => request.url.endsWith('/brief/explain')).length, 0); f.unmount();
 });
 test('boss brief period change discards a late previous-period snapshot', async () => {
   const f = fixture([], 'today'); const pending = deferred();
-  f.setBriefHandler(request => request.url.includes('last7days') ? briefSnapshot('last7days', { issues: [{ ...bossIssue, title: '近7天已同步事件' }] }) : pending.promise);
+  f.setBriefHandler(request => request.url.includes('last7days') ? briefSnapshot('last7days', { issues: [{ ...bossIssue, title: '近7天已同步事件' }], sources: [bossSource()] }) : pending.promise);
   await f.flush(); f.button('近7天').props.onClick(); await f.flush();
   assert.ok(f.text().includes('近7天已同步事件'));
-  pending.resolve(briefSnapshot('today', { issues: [{ ...bossIssue, title: '旧期间私密内容' }] })); await f.flush();
+  pending.resolve(briefSnapshot('today', { issues: [{ ...bossIssue, title: '旧期间私密内容' }], sources: [bossSource()] })); await f.flush();
   assert.ok(!f.text().includes('旧期间私密内容')); assert.ok(f.text().includes('近7天已同步事件')); f.unmount();
 });
 test('boss brief rereads source freshness locally while an open page never automatically generates AI', async () => {
   const f = fixture([], 'today'); let expired = false;
-  f.setBriefHandler(() => briefSnapshot('today', { issues: expired ? [] : [bossIssue], sources: [{ source_id: 'stripe', status: 'connected', last_sync: null, data_state: expired ? 'stale' : 'partial', summary: expired ? '来源需更新' : '已同步局部事件', facts: [] }] }));
+  f.setBriefHandler(() => briefSnapshot('today', { issues: [bossIssue], sources: [{ ...bossSource(), data_state: expired ? 'stale' : 'partial', summary: expired ? '来源需更新' : '已同步局部事件' }] }));
   await f.flush(); assert.ok(f.text().includes(bossIssue.title)); expired = true; f.advanceTime(25 * 3600000); await f.flush();
-  assert.ok(!f.text().includes(bossIssue.title)); assert.ok(f.text().includes('来源需更新'));
+  assert.ok(!f.text().includes(bossIssue.title)); assert.ok(f.text().includes('核实 Stripe 同步记录')); assert.ok(f.text().includes('数据待核实')); assert.ok(f.text().includes('来源需更新'));
   assert.equal(f.requests.filter(request => request.url.includes('/brief?')).length, 2);
   assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
 });
@@ -409,23 +411,23 @@ test('boss brief source outside the old capped overview opens its source rather 
 });
 test('explicit boss AI double-click has one request and never replaces system facts or writes a task', async () => {
   const f = fixture([], 'today'); const pending = deferred();
-  const snapshot = briefSnapshot('today', { issues: [bossIssue], capabilities: { configured: true } });
+  const snapshot = briefSnapshot('today', { issues: [bossIssue], sources: [bossSource()], capabilities: { configured: true } });
   f.setBriefHandler(() => snapshot); f.setExplainHandler(() => pending.promise); await f.flush();
   const action = f.button('中文解读').props.onClick; action(); action(); await f.flush();
   assert.equal(f.requests.filter(request => request.url.endsWith('/brief/explain')).length, 1);
   assert.equal(f.requests.at(-1).data.snapshot_id, snapshot.snapshot_id);
-  pending.resolve({ ...snapshot, ai: { state: 'ready', summary: '人工核对后再决定', issue_notes: [] } }); await f.flush();
+  pending.resolve({ ...snapshot, ai: { state: 'ready', summary: '人工核对后再决定', source_refs: ['stripe'], issue_notes: [] } }); await f.flush();
   assert.ok(f.text().includes('人工核对后再决定')); assert.ok(f.text().includes(bossIssue.title));
   assert.equal(f.requests.filter(request => request.url.endsWith('/items') && request.method === 'POST').length, 0); f.unmount();
 });
 test('late boss snapshot and AI result are erased when owner session changes', async () => {
   for (const stage of ['read', 'ai']) {
     const f = fixture([], 'today'); const pending = deferred();
-    const snapshot = briefSnapshot('today', { issues: [bossIssue], capabilities: { configured: true } });
+    const snapshot = briefSnapshot('today', { issues: [bossIssue], sources: [bossSource()], capabilities: { configured: true } });
     f.setBriefHandler(() => stage === 'read' ? pending.promise : snapshot);
     f.setExplainHandler(() => pending.promise); await f.flush();
     if (stage === 'ai') { f.button('中文解读').props.onClick(); await f.flush(); }
-    f.invalidate(); pending.resolve({ ...snapshot, ai: { state: 'ready', summary: '旧老板的秘密解读', issue_notes: [] } }); await f.flush();
+    f.invalidate(); pending.resolve({ ...snapshot, ai: { state: 'ready', summary: '旧老板的秘密解读', source_refs: ['stripe'], issue_notes: [] } }); await f.flush();
     assert.ok(f.text().includes('此空间仅对本人开放')); assert.ok(!f.text().includes(bossIssue.title)); assert.ok(!f.text().includes('旧老板的秘密解读')); f.unmount();
   }
 });
@@ -472,7 +474,7 @@ test('Ads labels the verified advertiser and explains missing health data withou
   const ads = { id: 'google_ads', status: 'connected', capabilities: ['read_campaign_metrics'], missing_configuration: [], last_sync: null, error: null, metadata: { account_label: 'Synthetic Ads Account', sync_window: 'last_30_days' } };
   const f = fixture([], 'google_ads', [ads]); await f.flush();
   assert.ok(f.text().includes('广告账户：Synthetic Ads Account'));
-  assert.ok(f.text().includes('尚无可判断的广告检查数据'));
+  assert.ok(f.text().includes('尚无检查记录')); assert.ok(f.text().includes('数据待确认')); assert.ok(!f.text().includes('全部正常'));
   assert.ok(f.text().includes('待完成检查'));
   assert.ok(!f.text().includes('Google邮箱'));
   f.params.set('connection', 'expired'); f.params.set('source', 'google_ads'); await f.flush();
@@ -506,7 +508,6 @@ test('Ads never creates an advertiser ID from missing, malformed, or numeric met
   }
 });
 
-import { adsFixture } from './fixtures/private-ads.mjs';
 test('Ads opens real problems first, includes attention in top three, and separates delivery from local work status', async () => {
   const fixtures = ['problem', 'attention', 'healthy', 'paused', 'unknown'].map((bucket, index) => adsFixture(bucket, index));
   const f = fixture(fixtures.map(value => value.item), 'google_ads', [fixtures[0].source]); await f.flush();
@@ -587,7 +588,7 @@ test('body translation keeps summary distinct, retains the original while waitin
   assert.ok(f.text().includes('邮件正文仅展示已读取的部分')); assert.ok(f.text().includes('Original full body <script>literal only</script>'));
   assert.ok(!f.nodes().some(node => node.props.dangerouslySetInnerHTML));
   f.button('中文').props.onClick(); await f.flush(); assert.ok(f.text().includes('中文完整正文 · USD 263.94'));
-  f.setBriefHandler(() => briefSnapshot('today', { issues: [{ id: 'translated-issue', source_id: 'gmail', title: '中文 body · Stripe', summary: '', next_action: '核对原文', priority: 'high', observed_at: null }] }));
+  f.setBriefHandler(() => briefSnapshot('today', { issues: [{ id: 'translated-issue', source_id: 'gmail', title: '中文 body · Stripe', summary: '', next_action: '核对原文', priority: 'high', observed_at: null }], sources: [bossSource('gmail')] }));
   f.button('经营简报').props.onClick(); await f.flush(); assert.ok(!f.text().includes('Original full body')); assert.ok(!f.text().includes('中文完整正文')); assert.ok(f.text().includes('中文 body · Stripe')); f.unmount();
 });
 test('cached Chinese previews do not trigger another automatic translation and original title remains available', async () => {
@@ -660,7 +661,7 @@ test('single explicit organize keeps original available while busy, blocks dupli
   const busy = f.button('正在整理…'); assert.equal(busy.props.disabled, true); busy.props.onClick(); await f.flush();
   assert.ok(f.text().includes('Synthetic snippet')); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief')).length, 1);
   pending.resolve({ configured: true, item_id: 'message', brief: organized() }); await f.flush();
-  for (const text of ['发生了什么', '建议下一步', '与你有关', '客户询问下周广告安排', '核对方案后回复客户', '下周', '待确认', 'AI 阅读整理']) assert.ok(f.text().includes(text), text);
+  for (const text of ['发生了什么', '我该做什么', '与你有关', '客户询问下周广告安排', '核对方案后回复客户', '下周', '待确认', 'AI 阅读整理']) assert.ok(f.text().includes(text), text);
   f.button('原文').props.onClick(); await f.flush(); assert.ok(f.text().includes('Synthetic full mail. Please confirm next week.')); assert.ok(f.text().includes('Synthetic message'));
   f.button('重点').props.onClick(); await f.flush(); assert.ok(!f.text().includes('Synthetic full mail. Please confirm next week.'));
   assert.ok(f.requests.every(request => request.url.startsWith('/api/v1/private-workspace'))); f.unmount();
@@ -680,6 +681,8 @@ test('summary-only AI response cannot be labeled as full body and missing deadli
   const f = fixture(); f.setMailCapabilitiesHandler(() => briefCapabilities()); f.setMailBriefHandler(() => ({ configured: true, item_id: 'message', brief: organized({ source_scope: 'preview', original_body: null, deadline: null, truncated: true }) }));
   await f.flush(); await openMail(f); f.button('整理这封邮件').props.onClick(); await f.flush();
   assert.ok(f.text().includes('发生了什么 · 依据摘要')); assert.ok(f.text().includes('仅依据标题与摘要')); assert.ok(f.text().includes('待确认')); assert.ok(f.text().includes('未找到可读取正文'));
+  const headline = f.nodes().find(node => node.props.className === 'pw-mail-brief-headline');
+  assert.ok(f.textOf(headline).includes('内容待确认')); assert.ok(!f.nodes().some(node => node.props.className === 'pw-mail-brief-deadline'));
   f.button('原文').props.onClick(); await f.flush(); assert.ok(f.text().includes('原始摘要')); assert.ok(!f.text().includes('邮件原文')); f.unmount();
 });
 test('evidence-limited complete body brief remains visibly uncertain without changing the rule group', async () => {
@@ -687,6 +690,8 @@ test('evidence-limited complete body brief remains visibly uncertain without cha
   f.setMailBriefHandler(() => ({ configured: true, item_id: item.id, brief: organized({ evidence_limited: true, truncated: false, deadline: null, needs_action: null, next_action: null }) }));
   await f.flush(); await openMail(f); f.button('整理这封邮件').props.onClick(); await f.flush();
   assert.ok(f.text().includes('部分依据不足')); assert.ok(f.text().includes('暂未提取到明确行动')); assert.ok(f.text().includes('待确认'));
+  const headline = f.nodes().find(node => node.props.className === 'pw-mail-brief-headline');
+  assert.ok(f.textOf(headline).includes('内容待确认')); assert.ok(!f.nodes().some(node => node.props.className === 'pw-mail-brief-deadline'));
   assert.ok(f.text().includes('立即关注')); assert.equal(item.mail_relevance.bucket, 'urgent'); f.unmount();
 });
 test('cached brief does not trigger AI and list previews cannot retain a detail-only original body', async () => {
@@ -753,6 +758,88 @@ const stripeSource = (overrides = {}) => {
 const stripePayment = (source, extra = {}) => ({ ...mail('stripe-payment'), source_id: 'stripe', kind: 'payment', title: 'Synthetic payment', summary: 'ch_synthetic', status: 'succeeded', amount_minor: 10000, currency: 'USD', mail_relevance: undefined,
   evidence: { stripe_account_id: 'acct_synthetic', stripe_mode: 'live', stripe_snapshot_id: 'synthetic-stripe-snapshot', stripe_observed_at: source.metadata.stripe_snapshot.observed_at,
     payment_state: 'authorized', amount_authorized_minor: 10000, amount_captured_minor: 0, amount_refunded_minor: 0, captured: false, paid: true }, ...extra });
+
+test('mobile funds entry opens the cached overview without provider report, sync, or a nonexistent funds item query', async () => {
+  const source = stripeSource();
+  const f = fixture([], 'today', [source], [{ source_id: 'stripe', currency: 'USD', available_minor: 25000, pending_minor: 7500 }]);
+  await f.flush();
+  const mobileNav = f.nodes().find(node => node.type === 'nav' && node.props['aria-label'] === '手机版工作空间');
+  mobileNav.children.find(node => node.type === 'button' && f.textOf(node) === '资金').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'funds');
+  assert.ok(f.text().includes('Stripe 当前余额')); assert.ok(f.text().replace(/\s/g, ' ').includes('USD 250.00'));
+  assert.equal(f.requests.filter(request => request.url.endsWith('/stripe/report') || request.url.endsWith('/sync')).length, 0);
+  assert.equal(f.requests.filter(request => request.url.includes('source_id=funds')).length, 0);
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+});
+
+test('funds overview keeps each current Stripe currency separate and unconfigured bank data unconfirmed', async () => {
+  const source = stripeSource();
+  const bank = { id: 'bofa_bank', status: 'not_configured', capabilities: [], missing_configuration: ['bank'], last_sync: null, error: null };
+  const f = fixture([], 'funds', [source, bank], [
+    { source_id: 'stripe', currency: 'USD', available_minor: 25000, pending_minor: 7500 },
+    { source_id: 'stripe', currency: 'CNY', available_minor: 62000, pending_minor: 900 },
+  ]); await f.flush();
+  const stripeCard = f.nodes().find(node => node.type === 'section' && node.props['aria-label'] === 'Stripe 缓存余额');
+  const bankCard = f.nodes().find(node => node.type === 'section' && node.props['aria-label'] === '银行缓存余额');
+  const currencyRows = f.nodes().filter(node => node.props.className === 'pw-funds-currency');
+  assert.equal(currencyRows.length, 2);
+  assert.ok(f.textOf(currencyRows[0]).replace(/\s/g, ' ').includes('USD 250.00')); assert.ok(!f.textOf(currencyRows[0]).includes('CNY'));
+  assert.ok(f.textOf(currencyRows[1]).replace(/\s/g, ' ').includes('CNY 620.00')); assert.ok(!f.textOf(currencyRows[1]).includes('USD'));
+  assert.ok(f.textOf(stripeCard).includes('已读取快照')); assert.ok(!f.textOf(stripeCard).includes('合计'));
+  assert.ok(f.textOf(bankCard).includes('尚待配置')); assert.ok(f.textOf(bankCard).includes('余额与流水待获取')); assert.ok(!f.textOf(bankCard).includes('0.00'));
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+});
+
+test('funds to Stripe or bank and internal back preserve the overview route, position, and mobile active destination', async () => {
+  for (const [target, label] of [['stripe', '查看收款、订阅与流水'], ['bofa_bank', '查看银行账户与流水']]) {
+    const f = fixture([], 'funds', [stripeSource()]); await f.flush();
+    const key = f.location().key; const initialReads = f.requests.filter(request => request.url === '/api/v1/private-workspace').length;
+    f.window.scrollY = 386;
+    f.button(label).props.onClick(); await f.flush();
+    assert.equal(f.params.get('view'), target); assert.equal(f.location().state.privateWorkspace.parentKey, key);
+    const mobileNav = f.nodes().find(node => node.type === 'nav' && node.props['aria-label'] === '手机版工作空间');
+    assert.equal(mobileNav.children.find(node => node.type === 'button' && f.textOf(node) === '资金').props['aria-current'], 'page');
+    privateHeaderBack(f).props.onClick(); await f.flush();
+    assert.equal(f.params.get('view'), 'funds'); assert.equal(f.location().key, key); assert.equal(f.window.scrollY, 386);
+    assert.equal(f.requests.filter(request => request.url === '/api/v1/private-workspace').length, initialReads);
+    assert.ok(f.history().every(entry => entry.pathname === '/private-workspace'));
+    assert.equal(f.requests.filter(request => request.url.endsWith('/sync')).length, 0); f.unmount();
+  }
+});
+
+test('stale and account-mismatched funds snapshots never appear as fresh zero balances', async () => {
+  const source = stripeSource(); const observed_at = new Date(Date.now() - 25 * 3600000).toISOString();
+  const stale = { ...source, last_sync: observed_at, metadata: { ...source.metadata, stripe_snapshot: { ...source.metadata.stripe_snapshot, observed_at } } };
+  const balances = [{ source_id: 'stripe', currency: 'USD', available_minor: 1600, pending_minor: 340 }];
+  const f = fixture([], 'funds', [stale], balances); await f.flush();
+  assert.ok(f.text().includes('数据需更新')); assert.ok(f.text().replace(/\s/g, ' ').includes('USD 16.00')); assert.ok(!f.text().includes('已读取快照')); assert.ok(!f.text().includes('0.00'));
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+  const mismatch = { ...source, metadata: { ...source.metadata, stripe_account_id: 'acct_anotherowner' } };
+  const missing = fixture([], 'funds', [mismatch], balances); await missing.flush();
+  assert.ok(missing.text().includes('余额待确认')); assert.ok(missing.text().includes('余额待同步'));
+  assert.ok(!missing.text().replace(/\s/g, ' ').includes('USD 16.00')); assert.ok(!missing.text().includes('0.00')); assert.ok(!missing.text().includes('已读取快照'));
+  assert.equal(missing.requests.filter(request => request.method !== 'GET').length, 0); missing.unmount();
+});
+
+test('mail add-to-personal opens an attributed draft, waits for Save, and returns to the same source detail', async () => {
+  const original = mail('draft-source-mail'); const f = fixture([original]); f.setMailCapabilitiesHandler(() => briefCapabilities(false));
+  await f.flush(); await openMail(f);
+  const detailKey = f.location().key;
+  f.button('加入个人事项').props.onClick(); await f.flush();
+  assert.equal(f.params.get('panel'), 'editor'); assert.equal(f.location().state.privateWorkspace.parentKey, detailKey);
+  assert.ok(titleInput(f).props.value.includes(original.title));
+  assert.ok(f.nodes().find(node => node.type === 'textarea' && node.props.maxLength === 5000).props.value.includes('来源：'));
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0);
+  assert.equal(await f.back(), true); assert.equal(f.location().key, detailKey); assert.equal(f.params.get('item'), original.id); assert.equal(f.params.get('panel'), null);
+  assert.ok(privateDetailBack(f)); assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0);
+  f.button('加入个人事项').props.onClick(); await f.flush();
+  await f.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await f.flush();
+  const writes = f.requests.filter(request => request.method !== 'GET');
+  assert.equal(writes.length, 1); assert.equal(writes[0].url, '/api/v1/private-workspace/items'); assert.equal(writes[0].data.source_id, 'manual'); assert.equal(writes[0].data.due_at, null);
+  assert.equal(original.action_status, 'open'); assert.equal(f.requests.filter(request => request.method === 'PATCH').length, 0);
+  assert.equal(await f.back(), true); assert.equal(f.location().key, detailKey); assert.equal(f.params.get('item'), original.id); assert.ok(privateDetailBack(f));
+  f.unmount();
+});
 
 test('Stripe connection can visibly retry a failed read with the bound credential and no reconnect request', async () => {
   const source = stripeSource({ action_availability: { can_connect: false, can_sync: true } });
@@ -1297,4 +1384,24 @@ test('refreshed mail previews retain detail-only body only for matching text and
     assert.equal(f.requests.filter(request => request.url.endsWith(mode === 'body' ? '/mail-translation' : '/mail-brief')).length, 1);
     f.unmount();
   }
+});
+
+
+test('Ads detail creates a readable source-based personal draft without changing an ad or saving automatically', async () => {
+  const { item, source } = adsFixture('problem');
+  item.title = 'LocalServicesCampaign:SystemGenerated:000657ec92f7095e';
+  const f = fixture([item], 'google_ads', [source]); f.setMailCapabilitiesHandler(() => briefCapabilities(false));
+  await f.flush(); f.button('查看检查').props.onClick(); await f.flush();
+  const detailKey = f.location().key;
+  const heading = f.nodes().find(node => node.type === 'div' && node.props.className === 'pw-surface pw-detail-sheet');
+  assert.ok(f.textOf(heading).includes('本地服务广告'));
+  f.button('加入个人事项').props.onClick(); await f.flush();
+  assert.ok(titleInput(f).props.value.includes('本地服务广告'));
+  const summary = f.nodes().find(node => node.type === 'textarea');
+  assert.ok(summary.props.value.includes('检查预算配置原因'));
+  assert.ok(summary.props.value.includes('https://ads.google.com/aw/overview'));
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0);
+  assert.equal(await f.back(), true); assert.equal(f.location().key, detailKey);
+  assert.equal(f.params.get('item'), item.id); assert.ok(privateDetailBack(f));
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
 });
