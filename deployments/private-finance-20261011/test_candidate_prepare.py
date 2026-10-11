@@ -1,5 +1,6 @@
 """Candidate preparation boundaries with synthetic files and mocked Docker only."""
 from copy import deepcopy
+from contextlib import redirect_stdout
 import io
 import json
 from pathlib import Path
@@ -102,11 +103,66 @@ class CandidateTests(unittest.TestCase):
         with self.assertRaises(candidate.PrepareError): candidate.frozen_file(alias, candidate.sha(b'frozen'))
 
     def test_recipe_pins_existing_private_image_and_complete_private_delta(self):
-        recipe = candidate.recipe(self.manifest).decode()
-        self.assertTrue(recipe.startswith('FROM ' + candidate.builder.BASE_IMAGE + '\n'))
+        tag = 't24-private-finance-base:' + self.frozen['source_sha'][:12] + '-' + 'b' * 12
+        recipe = candidate.recipe(self.manifest, tag).decode()
+        self.assertTrue(recipe.startswith('FROM ' + tag + '\n'))
         self.assertIn('COPY backend/tests/test_private_candidate.py /app/backend/tests/test_private_candidate.py', recipe)
         self.assertIn('COPY frontend/dist/ /app/frontend/dist/', recipe)
         self.assertNotIn('RUN ', recipe); self.assertNotIn('ENV ', recipe); self.assertNotIn('latest', recipe)
+        with self.assertRaisesRegex(candidate.PrepareError, 'EXCLUSIVE_REVIEWED_BASE_TAG_REQUIRED'):
+            candidate.recipe(self.manifest, candidate.builder.BASE_IMAGE)
+
+    def test_base_runtime_preserves_actual_python_and_three_installed_versions(self):
+        runtime = {'python': '3.10.22', 'packages': {**candidate.BASE_PACKAGE_VERSIONS,
+                   **{name: None for name in candidate.WHEEL_VERSIONS}}}
+        self.assertEqual(candidate.checked_base_runtime(runtime), runtime)
+        for name, version in [('tomli', '2.2.1'), ('exceptiongroup', '1.3.0'), ('packaging', '26.2'), ('pytest', '8.4.2')]:
+            changed = deepcopy(runtime); changed['packages'][name] = version
+            with self.subTest(name=name), self.assertRaisesRegex(candidate.PrepareError, 'RETAINED_BASE_PYTHON_OR_TEST_TOOLS_DRIFT'):
+                candidate.checked_base_runtime(changed)
+        changed = deepcopy(runtime); changed['python'] = '3.12.0'
+        with self.assertRaises(candidate.PrepareError): candidate.checked_base_runtime(changed)
+
+    def test_retained_manifest_hash_is_independent_fixed_evidence(self):
+        with mock.patch.object(candidate.live, 'preflight') as preflight, mock.patch.object(candidate.os, 'umask'):
+            with self.assertRaisesRegex(candidate.PrepareError, 'EXACT_RETAINED_TEST_WHEEL_MANIFEST_HASH_REQUIRED'):
+                candidate.main(SimpleNamespace(test_wheel_manifest_sha256='a' * 64))
+            preflight.assert_not_called()
+
+    def test_offline_loaded_test_tools_cover_nine_without_downgrading_base(self):
+        versions = {**candidate.BASE_PACKAGE_VERSIONS, **candidate.WHEEL_VERSIONS}
+        code = compile(candidate.VERIFY_LOADED_TEST_TOOLS, '<synthetic-tools>', 'exec')
+        with mock.patch('platform.python_version', return_value='3.10.22'), mock.patch('importlib.metadata.version', side_effect=versions.__getitem__), redirect_stdout(io.StringIO()) as output:
+            exec(code, {})
+        report = json.loads(output.getvalue()); self.assertEqual(report['test_tool_versions'], versions)
+        self.assertEqual(versions['tomli'], '2.5.0'); self.assertEqual(versions['exceptiongroup'], '1.3.1')
+        with mock.patch('platform.python_version', return_value='3.10.22'), mock.patch('importlib.metadata.version', return_value='downgraded'):
+            with self.assertRaises(AssertionError): exec(code, {})
+
+    def test_base_pin_uses_new_local_tag_and_inspects_actual_image(self):
+        runner = candidate.Runner(self.root)
+        with mock.patch.object(candidate, 'uuid4', return_value=SimpleNamespace(hex='b' * 32)), mock.patch.object(candidate.subprocess, 'run', return_value=SimpleNamespace(returncode=1)), mock.patch.object(runner, 'run', side_effect=[b'', (candidate.builder.BASE_IMAGE+'\n').encode()]) as run:
+            tag = candidate.pin_base_image(runner, self.frozen['source_sha'])
+        self.assertEqual(run.call_args_list[0].args[1], ['docker','tag',candidate.builder.BASE_IMAGE,tag])
+        self.assertEqual(run.call_args_list[1].args[1], ['docker','image','inspect','-f','{{.Id}}',tag])
+        self.assertEqual(candidate.recipe(self.manifest,tag).decode().splitlines()[0], 'FROM ' + tag)
+
+    def test_base_tag_collision_or_drift_cannot_build_or_replace_a_tag(self):
+        runner = candidate.Runner(self.root)
+        with mock.patch.object(candidate.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), mock.patch.object(runner, 'run') as run:
+            with self.assertRaisesRegex(candidate.PrepareError, 'NEW_EXCLUSIVE_BASE_IMAGE_TAG_REQUIRED'):
+                candidate.pin_base_image(runner, self.frozen['source_sha'])
+            run.assert_not_called()
+        with mock.patch.object(candidate.subprocess, 'run', return_value=SimpleNamespace(returncode=1)), mock.patch.object(runner, 'run', side_effect=[b'', b'sha256:wrong\n']):
+            with self.assertRaisesRegex(candidate.PrepareError, 'PRIVATE_BASE_PIN_DRIFT'):
+                candidate.pin_base_image(runner, self.frozen['source_sha'])
+
+    def test_candidate_layer_proof_requires_exact_retained_base_ancestry(self):
+        base = {'RootFS': {'Layers': ['sha256:one','sha256:two']}}
+        candidate.verify_candidate_base(base, {'RootFS': {'Layers': ['sha256:one','sha256:two','sha256:new']}})
+        for layers in ([], ['sha256:one','sha256:two'], ['sha256:other','sha256:two','sha256:new']):
+            with self.assertRaisesRegex(candidate.PrepareError, 'CANDIDATE_RETAINED_BASE_LAYER_DRIFT'):
+                candidate.verify_candidate_base(base, {'RootFS': {'Layers': layers}})
 
     def test_expected_backend_preserves_every_unrelated_byte(self):
         base = {'services/private_workspace.py': 'old', 'services/customer_finance.py': 'finance', 'requirements.txt': 'dependencies'}
@@ -137,11 +193,23 @@ class CandidateTests(unittest.TestCase):
         for package, version in candidate.WHEEL_VERSIONS.items():
             path = wheels / (package.replace('-', '_') + '-' + version + '-py3-none-any.whl')
             path.write_bytes(package.encode()); path.chmod(0o644); inventory[path.name] = candidate.sha(path.read_bytes())
-        self.assertEqual(len(candidate.wheel_tools(wheels, inventory)), 9)
+        self.assertEqual(len(candidate.wheel_tools(wheels, inventory)), 6)
         path.chmod(0o666)
         with self.assertRaisesRegex(candidate.PrepareError, 'IMMUTABLE_TEST_WHEEL_REQUIRED'): candidate.wheel_tools(wheels, inventory)
         path.chmod(0o600); path.write_bytes(b'drift')
         with self.assertRaisesRegex(candidate.PrepareError, 'TEST_WHEEL_INVENTORY_DRIFT'): candidate.wheel_tools(wheels, inventory)
+
+    def test_missing_sixth_wheel_or_unneeded_base_package_wheel_is_rejected(self):
+        wheels = self.root / 'six-wheels'; wheels.mkdir(mode=0o700); inventory = {}
+        for package, version in candidate.WHEEL_VERSIONS.items():
+            path = wheels / (package.replace('-', '_') + '-' + version + '-py3-none-any.whl')
+            path.write_bytes(package.encode()); path.chmod(0o600); inventory[path.name] = candidate.sha(path.read_bytes())
+        path.unlink(); incomplete = {name: value for name,value in inventory.items() if name != path.name}
+        with self.assertRaisesRegex(candidate.PrepareError, 'TEST_WHEEL_INVENTORY_DRIFT'): candidate.wheel_tools(wheels,incomplete)
+        path.write_bytes(b'missing restored'); path.chmod(0o600); inventory[path.name] = candidate.sha(path.read_bytes())
+        unneeded = wheels/'tomli-2.2.1-py3-none-any.whl'; unneeded.write_bytes(b'forbidden downgrade'); unneeded.chmod(0o600)
+        inventory[unneeded.name] = candidate.sha(unneeded.read_bytes())
+        with self.assertRaisesRegex(candidate.PrepareError, 'ONLY_PINNED_TEST_TOOLS_ALLOWED'): candidate.wheel_tools(wheels,inventory)
 
     def test_isolated_containers_have_no_network_credentials_live_data_or_ports(self):
         runner = candidate.Runner(self.root); synthetic = self.root / 'synthetic'; synthetic.mkdir(mode=0o700)

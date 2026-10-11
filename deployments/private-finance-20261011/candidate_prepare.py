@@ -27,8 +27,12 @@ import private_schema_guard as guard
 TARGET_TABLES = guard.BASE_TABLES | frozenset({'private_mail_translations', 'private_translation_usage',
     'private_mail_briefs', 'private_mail_brief_usage', 'private_workspace_briefs', 'private_bank_links'})
 WHEEL_VERSIONS = {'pytest': '8.4.2', 'pytest-asyncio': '1.2.0', 'iniconfig': '2.3.1', 'pluggy': '1.6.0',
-    'pygments': '2.21.0', 'packaging': '26.3', 'tomli': '2.2.1', 'exceptiongroup': '1.3.0',
-    'backports-asyncio-runner': '1.2.0'}
+    'pygments': '2.21.0', 'backports-asyncio-runner': '1.2.0'}
+# Readonly verification of the exact retained image on 2026-10-11. These three
+# packages remain in the original image; never download or downgrade them.
+BASE_PACKAGE_VERSIONS = {'packaging': '26.3', 'tomli': '2.5.0', 'exceptiongroup': '1.3.1'}
+BASE_PYTHON_VERSION = '3.10.22'
+BASE_WHEEL_MANIFEST_SHA = '4ad12c82c5d9c50727d6342965d49b2401f3b5b04d7f5f3f4705b8f40fc661f8'
 BASE_TEST_ROOT = Path('/opt/t24-crm/releases/private-workspace-1a4c952-20261011-retry2')
 SCAN_BACKEND = """import hashlib,json,pathlib
 r=pathlib.Path('/app/backend');out={}
@@ -51,6 +55,19 @@ assert count>100
 print(json.dumps({'files':count,'sha256':h.hexdigest()},sort_keys=True))
 """
 SCAN_DIST = SCAN_BACKEND.replace("'/app/backend'", "'/app/frontend/dist'")
+SCAN_BASE_RUNTIME = """import importlib.metadata,json,platform
+out={}
+for name in NAMES:
+ try:out[name]=importlib.metadata.version(name)
+ except importlib.metadata.PackageNotFoundError:out[name]=None
+print(json.dumps({'python':platform.python_version(),'packages':out},sort_keys=True))
+""".replace('NAMES', repr(sorted(set(WHEEL_VERSIONS) | set(BASE_PACKAGE_VERSIONS))))
+VERIFY_LOADED_TEST_TOOLS = """import importlib.metadata,json,platform
+assert platform.python_version()==PYTHON
+expected=EXPECTED
+assert {name:importlib.metadata.version(name) for name in expected}==expected
+print(json.dumps({'python':platform.python_version(),'test_tool_versions':expected},sort_keys=True))
+""".replace('PYTHON', repr(BASE_PYTHON_VERSION)).replace('EXPECTED', repr({**BASE_PACKAGE_VERSIONS, **WHEEL_VERSIONS}))
 SYNTHETIC_ENV = {
     'APP_ENV': 'test', 'ENVIRONMENT': 'test', 'ENV': 'test', 'TZ': 'Asia/Shanghai',
     'DATABASE_URL': 'sqlite+aiosqlite:////tmp/synthetic-business.db', 'DATABASE_SCHEMA_MODE': 'verify_only',
@@ -182,11 +199,56 @@ def extract(blob, manifest, root):
     need(files == manifest['payload_files'], 'PAYLOAD_INCOMPLETE'); return files
 
 
-def recipe(manifest):
+def checked_base_tag(base_tag, source_sha):
+    need(builder.SOURCE_HASH.fullmatch(source_sha or '') and
+         re.fullmatch('t24-private-finance-base:' + source_sha[:12] + '-[a-f0-9]{12}', base_tag or ''),
+         'EXCLUSIVE_REVIEWED_BASE_TAG_REQUIRED')
+    return base_tag
+
+
+def recipe(manifest, base_tag):
     backend = sorted(name for name in manifest['payload_files'] if name.startswith('backend/'))
     need(backend and builder.SOURCE_HASH.fullmatch(manifest['source_sha']), 'PRIVATE_IMAGE_RECIPE_REQUIRED')
-    return ('FROM ' + builder.BASE_IMAGE + '\n' + ''.join('COPY ' + name + ' /app/' + name + '\n' for name in backend)
+    checked_base_tag(base_tag, manifest['source_sha'])
+    return ('FROM ' + base_tag + '\n' + ''.join('COPY ' + name + ' /app/' + name + '\n' for name in backend)
         + 'COPY frontend/dist/ /app/frontend/dist/\nLABEL t24.private.source.sha="' + manifest['source_sha'] + '"\n').encode()
+
+
+def checked_base_runtime(runtime):
+    expected = {**BASE_PACKAGE_VERSIONS, **{name: None for name in WHEEL_VERSIONS}}
+    need(isinstance(runtime, dict) and runtime.get('python') == BASE_PYTHON_VERSION and
+         runtime.get('packages') == expected, 'RETAINED_BASE_PYTHON_OR_TEST_TOOLS_DRIFT')
+    return runtime
+
+
+def verify_base_pin(runner, base_tag, stage):
+    image = runner.run(stage, ['docker','image','inspect','-f','{{.Id}}',base_tag]).decode().strip()
+    need(image == builder.BASE_IMAGE, 'PRIVATE_BASE_PIN_DRIFT')
+
+
+def pin_base_image(runner, source_sha):
+    base_tag = checked_base_tag('t24-private-finance-base:' + source_sha[:12] + '-' + uuid4().hex[:12], source_sha)
+    exists = subprocess.run(['docker','image','inspect',base_tag],capture_output=True,timeout=30,check=False)
+    need(exists.returncode != 0, 'NEW_EXCLUSIVE_BASE_IMAGE_TAG_REQUIRED')
+    runner.run('base-image-pin', ['docker','tag',builder.BASE_IMAGE,base_tag])
+    verify_base_pin(runner,base_tag,'base-image-pin-before-build')
+    return base_tag
+
+
+def inspect_image(image):
+    # Never write raw image configuration/environment to logs or receipts.
+    result = subprocess.run(['docker','image','inspect',image],capture_output=True,timeout=30,check=False)
+    need(result.returncode == 0, 'EXACT_EXISTING_PRIVATE_IMAGE_REQUIRED')
+    rows = json.loads(result.stdout)
+    need(len(rows) == 1 and rows[0]['Id'] == image, 'EXACT_EXISTING_PRIVATE_IMAGE_REQUIRED')
+    return rows[0]
+
+
+def verify_candidate_base(base, candidate):
+    layers = base.get('RootFS', {}).get('Layers')
+    actual = candidate.get('RootFS', {}).get('Layers')
+    need(isinstance(layers, list) and layers and isinstance(actual, list) and
+         len(actual) > len(layers) and actual[:len(layers)] == layers, 'CANDIDATE_RETAINED_BASE_LAYER_DRIFT')
 
 
 def expected_backend(base, manifest):
@@ -230,7 +292,8 @@ def wheel_tools(wheels, manifest):
         name = path.name; bits = name.split('-'); normalized = re.sub('[-_.]+','-',bits[0]).lower()
         need(name.endswith('.whl') and len(bits) >= 5 and WHEEL_VERSIONS.get(normalized) == bits[1], 'ONLY_PINNED_TEST_TOOLS_ALLOWED')
         actual[name] = sha(path.read_bytes()); tools.append(normalized + '==' + bits[1])
-    need(actual == manifest and {tool.split('==')[0] for tool in tools} == set(WHEEL_VERSIONS), 'TEST_WHEEL_INVENTORY_DRIFT')
+    need(actual == manifest and len(tools) == len(WHEEL_VERSIONS) and
+         {tool.split('==')[0] for tool in tools} == set(WHEEL_VERSIONS), 'TEST_WHEEL_INVENTORY_DRIFT')
     return sorted(tools)
 
 
@@ -297,6 +360,7 @@ def schema_rehearsal(runner,image,manifest):
 
 def main(args):
     os.umask(0o077)
+    need(args.test_wheel_manifest_sha256 == BASE_WHEEL_MANIFEST_SHA, 'EXACT_RETAINED_TEST_WHEEL_MANIFEST_HASH_REQUIRED')
     frozen_blob = frozen_file(args.freeze,args.freeze_sha256,4*1024**2); frozen = builder.freeze(args.freeze,args.freeze_sha256)
     manifest = json.loads(frozen_file(args.manifest,args.manifest_sha256,4*1024**2))
     archive = frozen_file(args.payload,args.payload_sha256)
@@ -310,31 +374,37 @@ def main(args):
     need(shutil.disk_usage(args.release.parent).free > 4*1024**3,'MINIMUM_CANDIDATE_SPACE_REQUIRED')
     args.release.mkdir(mode=0o700); protected(args.release,directory=True); runner = Runner(args.release)
     save(args.release/'running-baseline.json',baseline)
-    root = args.release/'payload'; extract(archive,manifest,root); builder.write_new(root/'Dockerfile',recipe(manifest))
+    root = args.release/'payload'; extract(archive,manifest,root)
     # Image inspection is captured in memory only: baked production credentials are forbidden.
-    inspection = subprocess.run(['docker','image','inspect',builder.BASE_IMAGE], capture_output=True,
-                                timeout=30, check=False)
-    need(inspection.returncode == 0, 'EXACT_EXISTING_PRIVATE_BASE_IMAGE_REQUIRED')
-    inspect = json.loads(inspection.stdout)
-    need(len(inspect)==1 and inspect[0]['Id']==builder.BASE_IMAGE,'EXACT_EXISTING_PRIVATE_BASE_IMAGE_REQUIRED')
-    env = dict(value.split('=',1) for value in inspect[0]['Config'].get('Env',[]))
+    base_inspection = inspect_image(builder.BASE_IMAGE)
+    env = dict(value.split('=',1) for value in base_inspection['Config'].get('Env',[]))
     need(not any(value and re.search('SECRET|TOKEN|PASSWORD|PRIVATE_.*KEY|OPENAI|PLAID',key) for key,value in env.items()),'PRODUCTION_CREDENTIALS_BAKED_IN_BASE_IMAGE')
+    runtime = checked_base_runtime(runner.scan('base-test-runtime',builder.BASE_IMAGE,SCAN_BASE_RUNTIME))
     base = runner.scan('base-backend',builder.BASE_IMAGE,SCAN_BACKEND); packages = runner.scan('base-packages',builder.BASE_IMAGE,SCAN_PACKAGES)
     dist = runner.scan('base-static',builder.BASE_IMAGE,SCAN_DIST)
+    wheels = BASE_TEST_ROOT/'test-wheels'; wheel_manifest = json.loads(frozen_file(BASE_TEST_ROOT/'test-wheel-manifest.json',args.test_wheel_manifest_sha256,1024**2))
+    tools = wheel_tools(wheels,wheel_manifest)
+    tools_proof = {'base_image_id':builder.BASE_IMAGE,'python':runtime['python'],
+        'base_package_versions':BASE_PACKAGE_VERSIONS,'retained_wheel_versions':WHEEL_VERSIONS,
+        'retained_wheel_manifest_sha256':args.test_wheel_manifest_sha256,'retained_wheel_file_sha256':wheel_manifest,
+        'runtime_packages_modified':False,'network':'none'}
+    save(args.release/'candidate-test-tools.json',tools_proof)
     tag = 't24-private-finance-candidate:' + frozen['source_sha'][:12]
     exists = subprocess.run(['docker','image','inspect',tag],capture_output=True,timeout=30,check=False)
     need(exists.returncode!=0,'NEW_CANDIDATE_IMAGE_TAG_REQUIRED')
+    base_tag = pin_base_image(runner,frozen['source_sha'])
+    builder.write_new(root/'Dockerfile',recipe(manifest,base_tag))
     runner.run('candidate-build',['docker','build','--pull=false','--network=none','--no-cache','-t',tag,'.'],timeout=600,cwd=root)
+    verify_base_pin(runner,base_tag,'base-image-pin-after-build')
     image = runner.run('candidate-image-id',['docker','image','inspect','-f','{{.Id}}',tag]).decode().strip()
     need(re.fullmatch('sha256:[a-f0-9]{64}',image) and image!=builder.BASE_IMAGE,'IMMUTABLE_DISTINCT_CANDIDATE_REQUIRED')
+    verify_candidate_base(base_inspection,inspect_image(image))
     need(runner.scan('candidate-backend',image,SCAN_BACKEND)==expected_backend(base,manifest),'UNRELATED_BACKEND_OR_DEPENDENCY_BYTES_CHANGED')
     need(runner.scan('candidate-packages',image,SCAN_PACKAGES)==packages,'RUNTIME_PACKAGE_BYTES_CHANGED')
     need(runner.scan('candidate-static',image,SCAN_DIST)==expected_dist(dist,manifest),'COMPLETE_CANDIDATE_STATIC_BYTES_CHANGED')
-    wheels = BASE_TEST_ROOT/'test-wheels'; wheel_manifest = json.loads(frozen_file(BASE_TEST_ROOT/'test-wheel-manifest.json',args.test_wheel_manifest_sha256,1024**2))
-    tools = wheel_tools(wheels,wheel_manifest)
     results = args.release/'test-results'; results.mkdir(mode=0o700)
     code = "import os,sys,subprocess\n" + "subprocess.check_call([sys.executable,'-m','pip','install','--disable-pip-version-check','--no-cache-dir','--no-index','--find-links','/test-wheels','--target','/tmp/test-deps','--no-deps',*" + repr(tools) + "])\n"
-    code += "os.environ['PYTHONPATH']='/tmp/test-deps:/app:/app/backend'\nsubprocess.check_call([sys.executable,'-m','pytest',*" + repr(['/app/'+name.removeprefix('app/') for name in manifest['private_tests'] if name.endswith('.py') and not name.endswith('/conftest.py')]) + ",'-q','--disable-warnings','--tb=short','-p','no:cacheprovider','--junitxml=/test-results/regressions.xml'],cwd='/app/backend')\n"
+    code += "os.environ['PYTHONPATH']='/tmp/test-deps:/app:/app/backend'\nsubprocess.check_call([sys.executable,'-c'," + repr(VERIFY_LOADED_TEST_TOOLS) + "])\nsubprocess.check_call([sys.executable,'-m','pytest',*" + repr(['/app/'+name.removeprefix('app/') for name in manifest['private_tests'] if name.endswith('.py') and not name.endswith('/conftest.py')]) + ",'-q','--disable-warnings','--tb=short','-p','no:cacheprovider','--junitxml=/test-results/regressions.xml'],cwd='/app/backend')\n"
     runner.isolated('candidate-regressions',image,code,mounts=[(wheels,'/test-wheels',True),(results,'/test-results',False)],timeout=600)
     total = test_report((results/'regressions.xml').read_bytes(),frozen['backend_regression_tests_minimum'])
     schema = schema_rehearsal(runner,image,manifest)
@@ -344,11 +414,13 @@ def main(args):
     frozen_file(args.manifest,args.manifest_sha256); frozen_file(args.payload,args.payload_sha256); frozen_file(args.baseline,args.baseline_sha256)
     receipt = {'format_version':1,'stage':'PRIVATE_FINANCE_CANDIDATE_VERIFIED','source_sha':frozen['source_sha'],
         'frontend_version':frozen['frontend_version'],'image_id':image,'base_image_id':builder.BASE_IMAGE,
+        'base_pin_tag':base_tag,'base_pin_verified_before_and_after_build':True,'base_layers_verified':True,
         'frozen_source_sha256':args.freeze_sha256,'payload_manifest_sha256':args.manifest_sha256,'payload_sha256':args.payload_sha256,
         'baseline_sha256':args.baseline_sha256,'all_other_backend_bytes_identical':True,'all_package_bytes_identical':True,
         'complete_frontend_dist_bytes_verified':True,'existing_hashed_static_assets_preserved':True,
         'candidate_regressions':{'tests':total,'minimum':frozen['backend_regression_tests_minimum'],'network':'none',
         'xml_sha256':sha((results/'regressions.xml').read_bytes()),'all_private_tests':manifest['private_tests'],
+        'test_tools_proof_sha256':sha((args.release/'candidate-test-tools.json').read_bytes()),
         'production_environment_loaded':False,'production_database_access':False},'synthetic_schema':schema,
         'production_services_modified':False,'public_assets_published':False,'production_databases_modified':False,'deployed':False}
     save(args.release/'candidate.json',receipt)
