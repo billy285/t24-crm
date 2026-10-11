@@ -711,6 +711,31 @@ test('Stripe partial refunds display captured and refunded amounts rather than t
   assert.ok(f.textOf(row).replace(/\s/g, ' ').includes('部分退款')); assert.ok(f.textOf(row).replace(/\s/g, ' ').includes('USD 80.00')); assert.ok(f.textOf(row).replace(/\s/g, ' ').includes('已退款 USD 25.00')); assert.ok(!f.textOf(row).replace(/\s/g, ' ').includes('USD 100.00')); f.unmount();
 });
 
+test('Stripe negative payout list and detail preserve source sign and require bank verification', async () => {
+  const source = stripeSource();
+  const item = stripePayment(source, { id: 'negative-payout', kind: 'payout', title: 'Synthetic negative payout',
+    amount_minor: -1100, status: 'paid', due_at: '2026-10-12T00:00:00Z' });
+  item.evidence = { stripe_account_id: 'acct_synthetic', stripe_mode: 'live',
+    stripe_snapshot_id: 'synthetic-stripe-snapshot', stripe_observed_at: source.metadata.stripe_snapshot.observed_at,
+    funds_movement: 'bank_to_stripe_balance', accounting_effect: 'none' };
+  const f = fixture([item], 'stripe', [source]); await f.flush();
+  f.button('提现').props.onClick(); await f.flush();
+  const row = f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-stripe-row ');
+  const rowText = f.textOf(row).replace(/\s/g, ' ');
+  assert.ok(rowText.includes('反向划转金额') && rowText.includes('-USD 11.00'));
+  assert.ok(rowText.includes('Stripe 标记完成 · 银行待核对'));
+  assert.ok(!rowText.includes('收入') && !rowText.includes('银行已到账'));
+  row.props.onClick(); await f.flush();
+  const detail = f.nodes().find(node => node.type === 'div' && node.props.className === 'pw-stripe-detail');
+  const detailText = f.textOf(detail).replace(/\s/g, ' ');
+  assert.ok(detailText.includes('反向划转金额-USD 11.00'));
+  assert.ok(detailText.includes('保留 Stripe 原始金额符号，银行实际资金变化需核对流水'));
+  const meta = f.nodes().find(node => node.type === 'div' && node.props.className === 'pw-detail-meta');
+  assert.ok(f.textOf(meta).includes('来源预计日期：')); assert.ok(!f.textOf(meta).includes('预计到账'));
+  assert.equal(f.requests.filter(request => request.method === 'POST' || request.method === 'PATCH').length, 0);
+  f.unmount();
+});
+
 test('Stripe uncaptured source refund marks show original fields with no received cash label', async () => {
   const source = stripeSource(); const item = stripePayment(source);
   item.evidence = { ...item.evidence, payment_state: 'uncaptured_refunded', amount_refunded_minor: 10000, refunded: true };

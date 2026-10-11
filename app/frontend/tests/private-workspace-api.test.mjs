@@ -329,6 +329,21 @@ test('Stripe refunds preserve captured and refunded values without inventing net
   assert.equal(payout.statusLabel, 'Stripe 标记支付 · 银行待核对'); assert.equal(payout.amountLabel, '提现金额');
 });
 
+test('only Stripe payout displays a safe signed source amount with a neutral bank verification label', () => {
+  const item = { ...syntheticStripeItem('payout'), amount_minor: -1100, status: 'paid' };
+  const payout = api.privateStripeRecord(item, syntheticStripeSource, stripeNow);
+  assert.equal(payout.amountMinor, -1100); assert.equal(payout.amountLabel, '反向划转金额');
+  assert.equal(payout.statusLabel, 'Stripe 标记完成 · 银行待核对');
+  assert.equal(amount(payout.amountMinor, 'USD', 'stripe'), '-USD 11.00');
+  assert.ok(!Object.hasOwn(payout, 'income') && !Object.hasOwn(payout, 'net_income') && !Object.hasOwn(payout, 'bank_received_minor'));
+  for (const kind of ['payment', 'refund', 'dispute']) {
+    assert.equal(api.privateStripeRecord({ ...syntheticStripeItem(kind), amount_minor: -1100 }, syntheticStripeSource, stripeNow).amountMinor, null);
+  }
+  for (const bad of [-1.5, '-1100', -(Number.MAX_SAFE_INTEGER + 1), null]) {
+    assert.equal(api.privateStripeRecord({ ...item, amount_minor: bad }, syntheticStripeSource, stripeNow).amountMinor, null);
+  }
+});
+
 test('uncaptured source refund marks retain raw evidence without becoming collected or refunded cash', () => {
   const item = syntheticStripeItem('payment', { payment_state: 'uncaptured_refunded', amount_refunded_minor: 10000, refunded: true });
   const record = api.privateStripeRecord(item, syntheticStripeSource, stripeNow);

@@ -85,7 +85,7 @@ def stripe_row(resource):
         row.update(object='refund', charge='ch_synthetic1')
         row.pop('livemode')  # Refund's official object contract omits this field.
     if resource == 'disputes': row.update(object='dispute', evidence_details={'due_by': 1700001000})
-    if resource == 'payouts': row['arrival_date'] = 1700002000
+    if resource == 'payouts': row.update(object='payout', arrival_date=1700002000)
     return row
 
 

@@ -780,6 +780,7 @@ def _stripe_livemode(row: dict, mode: str) -> None:
 def _stripe_resource_mode(row: dict, mode: str, kind: str | None = None) -> None:
     if kind == 'payment' and row.get('object') != 'charge': raise ProviderError('invalid_response')
     if kind == 'dispute' and row.get('object') != 'dispute': raise ProviderError('invalid_response')
+    if kind == 'payout' and row.get('object') != 'payout': raise ProviderError('invalid_response')
     if kind == 'refund':
         if row.get('object') != 'refund': raise ProviderError('invalid_response')
         # Refund objects omit livemode. Only this verified resource uses the
@@ -790,12 +791,15 @@ def _stripe_resource_mode(row: dict, mode: str, kind: str | None = None) -> None
 
 
 def _stripe_resource_id(value: object, kind: str, prefix: str) -> str:
-    if kind in {'payment', 'dispute'}:
+    if kind in {'payment', 'dispute', 'refund'}:
         identity = _id(value)
         # Charges use ch_ or py_; current Disputes use du_, alongside dp_.
+        # Refund IDs are unique strings; retain the verified legacy pyr_ form.
         # https://support.stripe.com/questions/getting-started-with-stripe-through-a-third-party-platform
         # https://docs.stripe.com/api/disputes/object
-        pattern = r'(?:ch|py)_[A-Za-z0-9]+' if kind == 'payment' else r'(?:dp|du)_[A-Za-z0-9]+'
+        # https://docs.stripe.com/api/refunds/object
+        pattern = {'payment': r'(?:ch|py)_[A-Za-z0-9]+', 'dispute': r'(?:dp|du)_[A-Za-z0-9]+',
+                   'refund': r'(?:re|pyr)_[A-Za-z0-9]+'}[kind]
         if not re.fullmatch(pattern, identity): raise ProviderError('invalid_response')
         return identity
     return _id(value, prefix)
@@ -846,7 +850,11 @@ def _stripe_list(response: dict, mode: str, limit: int, *, kind: str | None = No
 def _stripe_item(row: dict, kind: str, prefix: str, identity: dict, mode: str, snapshot_id: str, observed_at: str) -> dict:
     _stripe_resource_mode(row, mode, kind)
     identity_id = _stripe_resource_id(row.get('id'), kind, prefix); status = _text(row.get('status'), 80)
-    amount = _integer(row.get('amount')); currency = _currency(row.get('currency'))
+    # Negative Payouts can represent bank-to-Stripe movements. Other resource
+    # amounts stay nonnegative; the source sign is never an income calculation.
+    # https://docs.stripe.com/api/payouts/reverse
+    # https://support.stripe.com/questions/what-happens-when-i-have-a-negative-balance
+    amount = _integer(row.get('amount'), negative=kind == 'payout'); currency = _currency(row.get('currency'))
     evidence = {'provider_id': identity_id, 'provider_status': status, 'accounting_effect': 'none',
                 'stripe_account_id': identity['stripe_account_id'], 'stripe_mode': mode,
                 'stripe_snapshot_id': snapshot_id, 'stripe_observed_at': observed_at}
@@ -876,7 +884,7 @@ def _stripe_item(row: dict, kind: str, prefix: str, identity: dict, mode: str, s
         evidence.update(payment_state=state, amount_authorized_minor=amount if paid else 0,
                         amount_captured_minor=captured_amount, amount_refunded_minor=refunded_amount,
                         captured=captured, paid=paid, refunded=refunded)
-    if kind == 'payout': evidence['funds_movement'] = 'stripe_balance_to_bank'
+    if kind == 'payout': evidence['funds_movement'] = 'bank_to_stripe_balance' if amount < 0 else 'stripe_balance_to_bank'
     details = row.get('evidence_details') or {}
     if not isinstance(details, dict): raise ProviderError('invalid_response')
     due = details.get('due_by') if kind == 'dispute' else row.get('arrival_date') if kind == 'payout' else None

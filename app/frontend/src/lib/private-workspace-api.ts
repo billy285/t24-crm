@@ -451,8 +451,8 @@ const STRIPE_PAYMENT_STATES: Record<PrivateStripePaymentState, string> = {
   captured: '已收款', partially_refunded: '部分退款', refunded: '已退款', uncaptured_refunded: '未捕获 · 来源标记退款',
 };
 const STRIPE_SNAPSHOT_MAX_AGE = 24 * 60 * 60 * 1000;
-function privateStripeMinor(value: unknown): number | null {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+function privateStripeMinor(value: unknown, signed = false): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && (signed || value >= 0) ? value : null;
 }
 
 /** A stored snapshot is never a real-time balance or verified bank settlement. */
@@ -491,14 +491,15 @@ export function privateStripeRecord(item: PrivateItem, source?: PrivateSource, n
   const captured = privateStripeMinor(evidence.amount_captured_minor);
   const refunded = privateStripeMinor(evidence.amount_refunded_minor);
   const authorized = privateStripeMinor(evidence.amount_authorized_minor);
-  const raw = privateStripeMinor(item.amount_minor);
+  const raw = privateStripeMinor(item.amount_minor, item.kind === 'payout');
+  const negativePayout = item.kind === 'payout' && raw !== null && raw < 0;
   const amountMinor = paymentState === 'authorized' ? authorized
     : paymentState && ['captured', 'partially_captured', 'partially_refunded', 'refunded'].includes(paymentState) ? captured : raw;
-  const amountLabel = paymentState === 'uncaptured_refunded' ? '来源请求金额' : paymentState === 'authorized' ? '授权金额'
+  const amountLabel = negativePayout ? '反向划转金额' : paymentState === 'uncaptured_refunded' ? '来源请求金额' : paymentState === 'authorized' ? '授权金额'
     : paymentState && ['captured', 'partially_captured', 'partially_refunded', 'refunded'].includes(paymentState) ? '已收款金额'
     : item.kind === 'payment' ? '请求金额' : item.kind === 'refund' ? '退款记录金额' : item.kind === 'dispute' ? '争议金额' : '提现金额';
   const statusLabels: Record<string, string> = {
-    succeeded: '已完成', paid: item.kind === 'payout' ? 'Stripe 标记支付 · 银行待核对' : '已支付',
+    succeeded: '已完成', paid: item.kind === 'payout' ? negativePayout ? 'Stripe 标记完成 · 银行待核对' : 'Stripe 标记支付 · 银行待核对' : '已支付',
     pending: '待处理', in_transit: '转账途中', failed: '失败', canceled: '已取消', cancelled: '已取消',
     needs_response: '需要回应', under_review: '审核中', won: '争议已胜诉', lost: '争议未胜诉',
   };

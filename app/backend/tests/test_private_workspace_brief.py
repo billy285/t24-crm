@@ -178,6 +178,23 @@ async def test_uncaptured_source_refund_mark_is_only_an_event_in_owner_brief(bos
 
 
 @pytest.mark.asyncio
+async def test_negative_payout_is_only_an_event_in_brief_without_income_or_bank_amount_inference(boss):
+    async with boss.sessions() as db:
+        db.add(PrivateItem(owner_id='4', source_id='stripe', external_id='payouts:po_FICTIONNegative',
+            kind='payout', title='Synthetic negative payout', status='paid', priority='normal',
+            amount_minor=-753219, currency='USD', occurred_at=boss.now, evidence={**stripe_evidence(boss.now),
+                'funds_movement': 'bank_to_stripe_balance', 'accounting_effect': 'none'}))
+        await db.commit()
+    data = await get(boss)
+    stripe = next(source for source in data['sources'] if source['source_id'] == 'stripe')
+    assert stripe['facts'][0] == '同期已同步事件 3 条'
+    assert stripe['facts'][1] == '付款 0 条，退款 0 条，争议 1 条，提现 2 条'
+    assert '不代表全账户流水、余额、收入或利润' in stripe['summary'] and '提现不等于银行到账' in stripe['summary']
+    assert '753219' not in json.dumps(data) and '7532.19' not in json.dumps(data)
+    assert boss.boss_calls == boss.calls == boss.content_calls == []
+
+
+@pytest.mark.asyncio
 async def test_last7days_uses_source_windows_and_not_combined_financial_totals(boss):
     data = await get(boss, period='last7days')
     assert data['window']['start'].startswith('2026-10-05')
