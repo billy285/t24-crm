@@ -187,6 +187,14 @@ class PrivateWorkspaceBriefRequest(BaseModel):
     snapshot_id: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 
+class PrivateStripeReportRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    period: Literal['month', 'quarter', 'year', 'custom'] = 'month'
+    start_date: str | None = Field(default=None, max_length=10)
+    end_date: str | None = Field(default=None, max_length=10)
+    refresh: bool = Field(default=False, strict=True)
+
+
 class PrivateBankCompleteRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     session_id: str = Field(pattern=r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')

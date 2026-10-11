@@ -276,7 +276,10 @@ class _Client:
                    method == 'POST' and parsed.hostname == 'googleads.googleapis.com' and
                    re.fullmatch(r'/v25/customers/\d{10}/googleAds:search', parsed.path) or
                    method == 'GET' and parsed.hostname == 'api.stripe.com' and parsed.path in
-                   {'/v1/account', '/v1/charges', '/v1/refunds', '/v1/disputes', '/v1/payouts', '/v1/balance'})
+                   {'/v1/account', '/v1/charges', '/v1/refunds', '/v1/disputes', '/v1/payouts', '/v1/balance',
+                    '/v1/balance_transactions', '/v1/subscriptions', '/v1/invoices'} or
+                   method == 'GET' and parsed.hostname == 'api.stripe.com' and
+                   re.fullmatch(r'/v1/(?:charges/(?:ch_|py_)[A-Za-z0-9]{1,128}|refunds/(?:re_|pyr_)[A-Za-z0-9]{1,128}|invoices/in_[A-Za-z0-9]{1,128})', parsed.path))
         if (not allowed or parsed.scheme != 'https' or parsed.port not in (None, 443) or parsed.username or parsed.password
                 or parsed.query or parsed.fragment): raise ProviderError('request_not_allowed')
         if parsed.hostname == 'googleads.googleapis.com':

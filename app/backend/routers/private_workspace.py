@@ -14,6 +14,7 @@ from schemas.private_workspace import (
     ActionStatus, MailBucket, PrivateItemCreate, PrivateItemPatch, PrivateItemResponse, PrivateMailFeedbackCreate, PrivatePreferencesPatch, SourceId,
     PrivateMailTranslationBatch, PrivateMailTranslationRequest, PrivateMailBriefRequest,
     PrivateWorkspaceBriefRequest, PrivateBankCompleteRequest,
+    PrivateStripeReportRequest,
 )
 from services.private_workspace import (
     complete_oauth, connect_source, disconnect_source, get_private_db, item_response, list_items,
@@ -71,6 +72,15 @@ async def explain_boss_brief(payload: PrivateWorkspaceBriefRequest,
                              private_db: AsyncSession = Depends(get_private_db)):
     from services.private_workspace_brief_service import explain
     return await explain(private_db, owner.employee_id, payload.period, payload.snapshot_id)
+
+
+@router.post('/stripe/report')
+async def stripe_report(payload: PrivateStripeReportRequest, request: Request,
+                        owner: PrivateOwner = Depends(require_private_owner),
+                        private_db: AsyncSession = Depends(get_private_db)):
+    from services.private_stripe_report_service import report
+    return await report(private_db, owner.employee_id, payload,
+                        owner_validator=lambda: revalidate_private_owner(request, owner.employee_id))
 
 
 @router.post("/items", status_code=201)

@@ -185,3 +185,15 @@ class PrivateBankLink(PrivateWorkspaceBase):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class PrivateStripeReport(PrivateWorkspaceBase):
+    """Encrypted period reports in the independent private database only."""
+    __tablename__ = 'private_stripe_reports'
+    cache_key = Column(String(64), primary_key=True)
+    owner_id = Column(String(64), nullable=False, index=True)
+    connection_id = Column(String(36), nullable=False)
+    generation = Column(Integer, nullable=False)
+    encrypted_report = Column(Text, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)

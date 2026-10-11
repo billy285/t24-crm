@@ -33,7 +33,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
   let historyIndex = 0, routeSequence = 0;
   const history = [{ pathname: '/private-workspace', search: `?${params}`, key: 'route-0', state: navigation.state || null }];
   const navigationCalls = [], scrollCalls = [];
-  let overviewHandler, bankStartHandler, bankCompleteHandler, preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler, mailCapabilitiesHandler, mailBriefHandler, briefHandler, explainHandler;
+  let overviewHandler, bankStartHandler, bankCompleteHandler, preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler, mailCapabilitiesHandler, mailBriefHandler, briefHandler, explainHandler, stripeReportHandler;
   const preferences = { sync_interval_seconds: 2700, gmail: { topics: ['finance', 'security'], watch_senders: [], watch_keywords: [], muted_senders: [] } };
   const source = { id: 'gmail', status: 'connected', capabilities: [], missing_configuration: [], last_sync: null, error: null };
   const react = {
@@ -85,6 +85,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
       if (name === '@/lib/auth-storage') return { AUTH_SESSION_INVALIDATED_EVENT: 'synthetic-auth-invalidated', getAuthSessionEpoch: () => epoch };
       if (name === '@/lib/private-workspace-api' || name === './private-workspace-api') return load('lib/private-workspace-api.ts');
       if (name === '@/lib/private-bank') return load('lib/private-bank.ts');
+      if (name === '@/lib/private-stripe-report') return load('lib/private-stripe-report.ts');
+      if (name === './PrivateStripeDashboard') return load('pages/PrivateStripeDashboard.tsx');
       if (name === './PrivateBankDashboard') return load('pages/PrivateBankDashboard.tsx');
       if (name === '@/lib/private-ads') return load('lib/private-ads.ts');
       if (name === '@/lib/private-boss-brief') return load('lib/private-boss-brief.ts');
@@ -103,6 +105,10 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
         if (url.pathname.endsWith('/bank/link/start')) return { data: bankStartHandler ? await bankStartHandler(request) : { session_id: 'synthetic-session', authorization_url: '', expires_at: null, mode: 'production' } };
         if (url.pathname.endsWith('/bank/link/complete')) return { data: bankCompleteHandler ? await bankCompleteHandler(request) : { state: 'pending', session_id: request.data.session_id, source_id: 'bofa_bank' } };
         if (url.pathname.endsWith('/access')) return { data: { allowed: true } };
+        if (url.pathname.endsWith('/stripe/report')) {
+          if (!stripeReportHandler) throw { response: { status: 503, data: { detail: '期间统计待接入' } } };
+          return { data: await stripeReportHandler(request) };
+        }
         if (url.pathname === '/api/v1/private-workspace') return { data: overviewHandler ? await overviewHandler(request) : { sources: [source, ...extraSources], items, balances: overviewBalances, last_sync: null } };
         if (url.pathname.endsWith('/brief')) return { data: briefHandler ? await briefHandler(request) : briefSnapshot(url.searchParams.get('period')) };
         if (url.pathname.endsWith('/brief/explain')) return { data: explainHandler ? await explainHandler(request) : briefSnapshot(request.data.period, { capabilities: { configured: false, code: 'not_configured' } }) };
@@ -190,6 +196,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     find: (type, label) => all().find(node => node.type === type && text(node) === label),
     button: label => all().find(node => node.type === 'button' && text(node).trim() === label),
     setOverviewHandler: handler => { overviewHandler = handler; },
+    setStripeReportHandler: handler => { stripeReportHandler = handler; },
     setBankStartHandler: handler => { bankStartHandler = handler; },
     setBankCompleteHandler: handler => { bankCompleteHandler = handler; },
     setPreferencesHandler: handler => { preferencesHandler = handler; },
@@ -205,6 +212,48 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     unmount() { for (const ownedHooks of componentHooks.values()) ownedHooks.forEach(hook => hook?.cleanup?.()); },
   };
 }
+
+const stripePeriodReport = (preset = 'month', marker = '本期经过核对的收款', extra = {}) => ({
+  state: 'ready', snapshot_id: `synthetic-stripe-${preset}`, generated_at: '2026-10-12T08:00:00Z', account_label: 'Synthetic period account', mode: 'live',
+  period: { preset, label: marker, start_date: preset === 'year' ? '2026-01-01' : '2026-10-01', end_date: '2026-10-12', timezone: 'UTC', comparison_label: '上期同等时段' },
+  coverage: { complete: true, amounts_complete: true, classifications_complete: true, subscriptions_complete: true, funds_complete: true, reasons: [] },
+  currencies: [{ currency: 'USD', gross_minor: 12345, subscription_minor: 12000, one_time_minor: 345, unclassified_minor: 0, refunds_minor: 0, net_receipts_minor: 12345, fees_minor: 100, count: 2, summary: [marker], comparison: { complete: true, gross_minor: 0, change_pct: null }, trend: [] }],
+  records: [], subscriptions: [], attention: [], balances: [], ...extra,
+});
+
+test('Stripe report period switch discards a slower previous-period response and keeps view state without extra reads', async () => {
+  const waiting = deferred(); const f = fixture([], 'stripe', [stripeSource()]);
+  f.setStripeReportHandler(request => request.data.period === 'month' ? waiting.promise : stripePeriodReport(request.data.period, '季度经过核对的结果'));
+  await f.flush(); assert.ok(f.text().includes('正在读取所选期间'));
+  f.button('本季度').props.onClick(); await f.flush(); assert.ok(f.text().includes('季度经过核对的结果'));
+  waiting.resolve(stripePeriodReport('month', '不得出现的旧月份结果')); await f.flush();
+  assert.ok(!f.text().includes('不得出现的旧月份结果'));
+  const calls = f.requests.filter(request => request.url.endsWith('/stripe/report')).length;
+  f.button('订阅').props.onClick(); await f.flush(); f.button('资金').props.onClick(); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/stripe/report')).length, calls);
+  assert.ok(f.text().includes('当前余额快照') || f.text().includes('余额')); f.unmount();
+});
+
+test('Stripe report in flight cannot repopulate another login session', async () => {
+  const waiting = deferred(); const f = fixture([], 'stripe', [stripeSource()]);
+  f.setStripeReportHandler(() => waiting.promise); await f.flush();
+  f.invalidate(); waiting.resolve(stripePeriodReport('month', '原老板的私人收款')); await f.flush();
+  assert.ok(!f.text().includes('原老板的私人收款')); assert.ok(!f.text().includes('USD 123.45')); f.unmount();
+});
+
+test('Stripe invalid custom range makes no upstream report call, and connection back retains report tab and period', async () => {
+  const f = fixture([], 'stripe', [stripeSource()]); f.setStripeReportHandler(request => stripePeriodReport(request.data.period)); await f.flush();
+  f.button('本年').props.onClick(); await f.flush(); f.button('订阅').props.onClick(); await f.flush();
+  f.button('管理接入').props.onClick(); await f.flush(); assert.equal(f.params.get('view'), 'connections');
+  await f.back(); assert.equal(f.params.get('view'), 'stripe');
+  assert.equal(f.button('本年').props['aria-pressed'], true); assert.equal(f.button('订阅').props['aria-selected'], true);
+  f.button('自定义').props.onClick(); await f.flush();
+  const input = label => f.nodes().find(node => node.type === 'input' && node.props['aria-label'] === label);
+  const count = f.requests.filter(request => request.url.endsWith('/stripe/report')).length;
+  input('收款开始日期').props.onChange({ target: { value: '2026-12-31' } }); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/stripe/report')).length, count);
+  assert.ok(f.text().includes('有效的开始')); f.unmount();
+});
 
 test('default Gmail groups collapse low priority and selecting a bucket asks the server', async () => {
   const f = fixture([mail('urgent', 'urgent'), mail('digest', 'digest'), mail('low', 'low')]);
@@ -766,7 +815,7 @@ test('Stripe authorization does not become successful income and detail separate
   assert.ok(f.text().replace(/\s/g, ' ').includes('授权金额尚未捕获，不代表实际收款。'));
   assert.ok(f.text().replace(/\s/g, ' ').includes('请求金额USD 100.00')); assert.ok(f.text().replace(/\s/g, ' ').includes('已收款金额USD 0.00')); assert.ok(f.text().replace(/\s/g, ' ').includes('已退款金额USD 0.00'));
   const evidence = f.nodes().find(node => node.type === 'details' && node.props.className === 'pw-stripe-evidence'); assert.ok(evidence); assert.equal(evidence.props.open, undefined);
-  assert.equal(f.requests.filter(request => request.method === 'POST' || request.method === 'PATCH').length, 0); f.unmount();
+  assert.equal(f.requests.filter(request => (request.method === 'POST' || request.method === 'PATCH') && !request.url.endsWith('/stripe/report')).length, 0); f.unmount();
 });
 
 test('Stripe partial refunds display captured and refunded amounts rather than treating requested amount as collected', async () => {
@@ -798,7 +847,7 @@ test('Stripe negative payout list and detail preserve source sign and require ba
   assert.ok(detailText.includes('保留 Stripe 原始金额符号，银行实际资金变化需核对流水'));
   const meta = f.nodes().find(node => node.type === 'div' && node.props.className === 'pw-detail-meta');
   assert.ok(f.textOf(meta).includes('来源预计日期：')); assert.ok(!f.textOf(meta).includes('预计到账'));
-  assert.equal(f.requests.filter(request => request.method === 'POST' || request.method === 'PATCH').length, 0);
+  assert.equal(f.requests.filter(request => (request.method === 'POST' || request.method === 'PATCH') && !request.url.endsWith('/stripe/report')).length, 0);
   f.unmount();
 });
 
@@ -817,7 +866,7 @@ test('Stripe uncaptured source refund marks show original fields with no receive
   assert.ok(detailText.includes('来源捕获字段USD 0.00')); assert.ok(detailText.includes('来源退款字段USD 100.00'));
   assert.ok(!detailText.includes('已收款金额') && !detailText.includes('已退款金额'));
   assert.ok(detailText.includes('此笔付款未捕获；来源退款字段保留原值'));
-  assert.equal(f.requests.filter(request => request.method === 'POST' || request.method === 'PATCH').length, 0);
+  assert.equal(f.requests.filter(request => (request.method === 'POST' || request.method === 'PATCH') && !request.url.endsWith('/stripe/report')).length, 0);
   f.unmount();
 });
 
@@ -1187,7 +1236,7 @@ test('forward to a Stripe detail after refresh shows current captured and refund
   const current = f.textOf(detail()).replace(/\s/g, ' ');
   assert.ok(current.includes('部分退款')); assert.ok(current.includes('已收款金额USD 80.00')); assert.ok(current.includes('已退款金额USD 25.00'));
   assert.ok(!current.includes('授权金额尚未捕获')); assert.ok(!current.includes('已收款金额USD 0.00'));
-  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+  assert.equal(f.requests.filter(request => request.method !== 'GET' && !request.url.endsWith('/stripe/report')).length, 0); f.unmount();
 });
 
 test('successful mail body or brief enrichment remains detail-only and survives back and forward without another provider request', async () => {

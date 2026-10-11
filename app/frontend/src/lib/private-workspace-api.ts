@@ -1,4 +1,5 @@
 import { client } from './api';
+import type { PrivateStripeReport, PrivateStripePeriodPreset } from './private-stripe-report';
 import type { PrivateBossBriefData, PrivateBossPeriod } from './private-boss-brief';
 
 export type PrivateSourceId = 'gmail' | 'google_ads' | 'bofa' | 'bofa_bank' | 'stripe' | 'manual';
@@ -301,6 +302,7 @@ async function request<T>(path: string, method: 'GET' | 'POST' | 'PATCH' | 'DELE
 
 export const privateWorkspaceApi = {
   access: () => request<{ allowed: boolean }>('/access', 'GET'),
+  stripeReport: (data: { period: PrivateStripePeriodPreset; start_date?: string; end_date?: string; refresh?: boolean }) => request<PrivateStripeReport>('/stripe/report', 'POST', data, { timeout: 65_000 }),
   overview: () => request<PrivateWorkspaceData>('', 'GET'),
   brief: (period: PrivateBossPeriod) => request<PrivateBossBriefData>(`/brief?period=${encodeURIComponent(period)}`, 'GET'),
   explainBrief: (period: PrivateBossPeriod, snapshotId: string) => request<PrivateBossBriefData>('/brief/explain', 'POST', { period, snapshot_id: snapshotId }, { timeout: 65_000 }),

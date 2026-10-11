@@ -25,13 +25,15 @@ import PrivateAdsDashboard, { PrivateAdsDetail } from './PrivateAdsDashboard';
 import PrivateMailContent from './PrivateMailContent';
 import PrivateMailBrief from './PrivateMailBrief';
 import PrivateBossBrief from './PrivateBossBrief';
+import PrivateStripeDashboard from './PrivateStripeDashboard';
+import { createPrivateStripeSelection, privateStripeReportDate, type PrivateStripeReport, type PrivateStripeSelection } from '@/lib/private-stripe-report';
 import PrivateBankDashboard, { PrivateBankDetail } from './PrivateBankDashboard';
 import { PRIVATE_WORKSPACE_VIEWS, privateBackTarget, privateNavigationState, type PrivateWorkspaceView, type PrivateWorkspacePanel } from '@/lib/private-workspace-navigation';
 import './private-workspace.css';
 
 type View = PrivateWorkspaceView;
 type PrivatePanelEntry = { view: View; kind: 'detail' | PrivateWorkspacePanel; item?: PrivateItem; editor?: 'new' | 'edit'; initialForm?: typeof EMPTY_FORM; snoozeAt?: string };
-type PrivatePagePosition = { view: View; scrollY: number; stripeKind: StripeKind; mailBucket: PrivateMailBucket | 'all'; manualStatus: PrivateActionStatus; briefPeriod: PrivateBossPeriod };
+type PrivatePagePosition = { view: View; scrollY: number; stripeKind: StripeKind; stripeSelection?: PrivateStripeSelection; mailBucket: PrivateMailBucket | 'all'; manualStatus: PrivateActionStatus; briefPeriod: PrivateBossPeriod };
 type StripeKind = 'payment' | 'refund' | 'dispute' | 'payout';
 const VIEWS: View[] = [...PRIVATE_WORKSPACE_VIEWS];
 const PROVIDERS: PrivateSourceId[] = ['gmail', 'google_ads', 'bofa_bank', 'stripe', 'bofa'];
@@ -186,6 +188,11 @@ export default function PrivateWorkspace() {
   const [listError, setListError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [stripeKind, setStripeKind] = useState<StripeKind>('payment');
+  const [stripeSelection, setStripeSelection] = useState<PrivateStripeSelection>(() => createPrivateStripeSelection());
+  const [stripeReport, setStripeReport] = useState<PrivateStripeReport | null>(null);
+  const [stripeReportLoading, setStripeReportLoading] = useState(false);
+  const [stripeReportError, setStripeReportError] = useState('');
+  const stripeReportRequest = useRef(0);
   const [manualStatus, setManualStatus] = useState<PrivateActionStatus>('open');
   const [mailBucket, setMailBucket] = useState<PrivateMailBucket | 'all'>('all');
   const [mailCounts, setMailCounts] = useState<PrivateMailCounts>(EMPTY_MAIL_COUNTS);
@@ -293,7 +300,7 @@ export default function PrivateWorkspace() {
     lastPrivateLocation.current = location.key;
     const position = pagePositions.current.get(location.key);
     if (position?.view === view) {
-      setStripeKind(position.stripeKind); setMailBucket(position.mailBucket);
+      setStripeKind(position.stripeKind); if (position.stripeSelection) setStripeSelection(position.stripeSelection); setMailBucket(position.mailBucket);
       setManualStatus(position.manualStatus); setBriefPeriod(position.briefPeriod);
     }
     pendingScroll.current = { key: location.key, top: position?.view === view ? position.scrollY : 0, signature: `${view}:${position?.stripeKind || stripeKind}:${position?.manualStatus || manualStatus}:${position?.mailBucket || mailBucket}` };
@@ -321,6 +328,7 @@ export default function PrivateWorkspace() {
 
 
   const deny = useCallback(() => {
+    stripeReportRequest.current++; setStripeReport(null); setStripeReportLoading(false); setStripeReportError(''); setStripeSelection(createPrivateStripeSelection());
     bankStartRequest.current++; bankStartPending.current = false;
     bankCompleteRequest.current++; bankCompletePending.current = false;
     bossBriefRequest.current++; bossExplainRequest.current++; bossExplainPending.current = false;
@@ -366,12 +374,13 @@ export default function PrivateWorkspace() {
     const briefSequence = mailBriefRequest;
     const bossSequence = bossBriefRequest;
     const bossExplainSequence = bossExplainRequest;
+    const stripeSequence = stripeReportRequest;
     lifecycle.current = true;
     void loadWorkspace();
     const invalidate = () => { if (sessionEpoch.current !== getAuthSessionEpoch()) deny(); };
     window.addEventListener(AUTH_SESSION_INVALIDATED_EVENT, invalidate);
     window.addEventListener('storage', invalidate);
-    return () => { lifecycle.current = false; workspaceSequence.current++; listSequence.current++; preferenceSequence.current++; translationSequence.current++; bodySequence.current++; capabilitiesSequence.current++; briefSequence.current++; bossSequence.current++; bossExplainSequence.current++; window.removeEventListener(AUTH_SESSION_INVALIDATED_EVENT, invalidate); window.removeEventListener('storage', invalidate); };
+    return () => { lifecycle.current = false; workspaceSequence.current++; listSequence.current++; preferenceSequence.current++; translationSequence.current++; bodySequence.current++; capabilitiesSequence.current++; briefSequence.current++; bossSequence.current++; bossExplainSequence.current++; stripeSequence.current++; window.removeEventListener(AUTH_SESSION_INVALIDATED_EVENT, invalidate); window.removeEventListener('storage', invalidate); };
   }, [loadWorkspace, deny]);
 
   useEffect(() => { setApplyFeedbackToSender(false); }, [selected?.id]);
@@ -429,6 +438,24 @@ export default function PrivateWorkspace() {
   }
 
   useEffect(() => {
+    const sequence = stripeReportRequest;
+    const request = ++sequence.current;
+    if (access !== 'allowed' || view !== 'stripe') { setStripeReportLoading(false); return; }
+    setStripeReport(null); setStripeReportError('');
+    if (stripeSelection.preset === 'custom' && (!privateStripeReportDate(stripeSelection.start_date)
+        || !privateStripeReportDate(stripeSelection.end_date) || stripeSelection.start_date > stripeSelection.end_date)) {
+      setStripeReportError('请选择有效的开始和结束日期'); setStripeReportLoading(false); return;
+    }
+    setStripeReportLoading(true);
+    void privateWorkspaceApi.stripeReport({ period: stripeSelection.preset,
+      ...(stripeSelection.preset === 'custom' ? { start_date: stripeSelection.start_date, end_date: stripeSelection.end_date } : {}), refresh: refresh > 0 })
+      .then(response => { if (isActive() && request === sequence.current) setStripeReport(response); })
+      .catch(failure => { if (isActive() && request === sequence.current) setStripeReportError(handleFailure(failure)); })
+      .finally(() => { if (isActive() && request === sequence.current) setStripeReportLoading(false); });
+    return () => { if (sequence.current === request) sequence.current++; };
+  }, [access, view, stripeSelection.preset, stripeSelection.start_date, stripeSelection.end_date, refresh, handleFailure, isActive]);
+
+  useEffect(() => {
     const sequence = listRequest;
     const request = ++sequence.current;
     listReadySignature.current = '';
@@ -443,18 +470,18 @@ export default function PrivateWorkspace() {
   }, [access, view, stripeKind, manualStatus, mailBucket, refresh, handleFailure, isActive, rememberLoadedItems]);
 
   useEffect(() => {
-    if (loading || listLoading || bossBriefLoading || !pendingScroll.current || pendingScroll.current.key !== location.key) return;
+    if (loading || listLoading || bossBriefLoading || stripeReportLoading || !pendingScroll.current || pendingScroll.current.key !== location.key) return;
     if (!['today', 'connections'].includes(view) && listReadySignature.current !== pendingScroll.current.signature) return;
     if (view === 'today' && bossLoadedPeriod.current !== briefPeriod && !bossBriefError) return;
     const target = pendingScroll.current.top; pendingScroll.current = null;
     if (typeof window.scrollTo === 'function') window.scrollTo({ top: target, behavior: 'instant' });
-  }, [location.key, view, briefPeriod, loading, listLoading, bossBriefLoading, bossBriefError]);
+  }, [location.key, view, briefPeriod, loading, listLoading, bossBriefLoading, bossBriefError, stripeReportLoading]);
 
   useEffect(() => {
-    const remember = () => pagePositions.current.set(location.key, { view, scrollY: window.scrollY || 0, stripeKind, mailBucket, manualStatus, briefPeriod });
+    const remember = () => pagePositions.current.set(location.key, { view, scrollY: window.scrollY || 0, stripeKind, stripeSelection, mailBucket, manualStatus, briefPeriod });
     window.addEventListener('scroll', remember, { passive: true });
     return () => { remember(); window.removeEventListener('scroll', remember); };
-  }, [location.key, view, stripeKind, mailBucket, manualStatus, briefPeriod]);
+  }, [location.key, view, stripeKind, stripeSelection, mailBucket, manualStatus, briefPeriod]);
 
 
   const translatePreviews = useCallback(async (items: PrivateItem[]) => {
@@ -546,7 +573,7 @@ export default function PrivateWorkspace() {
   const moreTranslationAvailable = list.some(item => item.source_id === 'gmail' && item.mail_translation?.state !== 'ready' && !translationAttemptedIds.current.has(item.id));
 
   function rememberPrivatePosition() {
-    pagePositions.current.set(location.key, { view, scrollY: window.scrollY || 0, stripeKind, mailBucket, manualStatus, briefPeriod });
+    pagePositions.current.set(location.key, { view, scrollY: window.scrollY || 0, stripeKind, stripeSelection, mailBucket, manualStatus, briefPeriod });
   }
   function privateHistoryState(panelToken?: string) {
     return { privateWorkspace: { session: sessionEpoch.current, parentKey: location.key, parentView: view, ...(panelToken ? { panelToken } : {}) } };
@@ -823,7 +850,7 @@ export default function PrivateWorkspace() {
     }
     return <>{view !== 'manual' && view !== 'stripe' && <p className="pw-list-footnote pw-coverage-note">当前列表为最近同步的局部记录。</p>}<div className="pw-list">{list.map(item => <ItemRow key={item.id} item={item} source={sourceById.get(item.source_id)} onSelect={openItem} />)}</div>{total > list.length && <p className="pw-list-footnote">当前显示最近 {list.length} 条，共 {total} 条。</p>}</>;
   }
-  function renderStripe() {
+  function renderStripeSnapshot() {
     const snapshot = privateStripeSnapshot(currentSource, adsNow);
     const resourceName = { payment: 'charges', refund: 'refunds', dispute: 'disputes', payout: 'payouts' }[stripeKind];
     const resource = currentSource?.metadata?.resources?.[resourceName];
@@ -837,6 +864,14 @@ export default function PrivateWorkspace() {
       <div className="pw-filter-row pw-stripe-tabs" aria-label="Stripe 记录类型">{(Object.keys(STRIPE_KINDS) as StripeKind[]).map(kind => <button key={kind} type="button" aria-pressed={stripeKind === kind} className="pw-filter" onClick={() => setStripeKind(kind)}>{STRIPE_KINDS[kind]}</button>)}</div>
       {renderList()}
     </div>;
+  }
+  function renderStripe() {
+    return <><PrivateStripeDashboard report={stripeReport} selection={stripeSelection} loading={stripeReportLoading}
+      error={stripeReportError} busy={Boolean(busy)} connectionLabel={currentSource ? sourceAccountLabel(currentSource) : ''}
+      connected={currentSource?.status === 'connected'} onChangeSelection={setStripeSelection}
+      onRetry={() => setRefresh(value => value + 1)} onManageConnection={() => navigate('connections')} />
+      {stripeReportError && <details className="pw-stripe-coverage"><summary>查看已有同步记录<ChevronRight aria-hidden="true" /></summary>
+        <p>以下是最近同步的局部记录，不能作为完整期间汇总。</p>{renderStripeSnapshot()}</details>}</>;
   }
   function renderToday() {
     return <PrivateBossBrief data={bossBrief} period={briefPeriod} loading={bossBriefLoading} error={bossBriefError}
