@@ -18,7 +18,7 @@ const mail = (id, bucket = 'today') => ({
 
 // Run the actual component, API and draft guard against synthetic transport and
 // controlled hook scheduling. No mailbox, browser storage or external API is used.
-function fixture(items = [mail('message')], initialView = 'gmail') {
+function fixture(items = [mail('message')], initialView = 'gmail', extraSources = []) {
   let cursor = 0, epoch = 'synthetic-owner', tree;
   const hooks = [], effects = [], requests = [], listeners = new Map(), modules = new Map();
   const params = new URLSearchParams({ view: initialView });
@@ -55,7 +55,7 @@ function fixture(items = [mail('message')], initialView = 'gmail') {
         requests.push(request);
         const url = new URL(request.url, 'https://synthetic.example');
         if (url.pathname.endsWith('/access')) return { data: { allowed: true } };
-        if (url.pathname === '/api/v1/private-workspace') return { data: { sources: [source], items, balances: [], last_sync: null } };
+        if (url.pathname === '/api/v1/private-workspace') return { data: { sources: [source, ...extraSources], items, balances: [], last_sync: null } };
         if (url.pathname.endsWith('/preferences')) {
           if (preferencesHandler) return { data: await preferencesHandler(request) };
           if (request.method === 'PATCH') Object.assign(preferences.gmail, request.data.gmail);
@@ -93,7 +93,7 @@ function fixture(items = [mail('message')], initialView = 'gmail') {
   function all(nodes = tree) { return nodes.flatMap(node => typeof node === 'object' ? [node, ...all(node.children || [])] : []); }
   async function flush() { for (let count = 0; count < 20; count++) { render(); await Promise.resolve(); } render(); }
   return {
-    requests, window, preferences, params, flush, text: () => tree.map(text).join(''), nodes: () => all(),
+    requests, window, preferences, params, flush, text: () => tree.map(text).join(''), textOf: text, nodes: () => all(),
     find: (type, label) => all().find(node => node.type === type && text(node) === label),
     button: label => all().find(node => node.type === 'button' && text(node).trim() === label),
     setPreferencesHandler: handler => { preferencesHandler = handler; },
@@ -230,4 +230,57 @@ test('a source sync remains visibly busy while waiting and does not allow duplic
   assert.ok(f.text().includes('同步完成：新增 1 条，更新 0 条'));
   assert.ok(f.button('同步'));
   f.unmount();
+});
+
+test('only connectable Ads explains the broad Google grant before its read-only adapter connects', async () => {
+  const ads = { id: 'google_ads', status: 'disconnected', capabilities: ['read_campaign_metrics'], missing_configuration: [], last_sync: null, error: null };
+  const f = fixture([], 'connections', [ads]); await f.flush();
+  const note = f.nodes().find(node => node.props.id === 'pw-google-ads-consent-note');
+  assert.ok(note); assert.ok(f.textOf(note).includes('查看、修改、创建和删除广告账号及数据'));
+  assert.ok(f.textOf(note).includes('当前工作空间仅查询广告表现'));
+  assert.equal(f.button('连接来源').props['aria-describedby'], 'pw-google-ads-consent-note');
+  const gmail = f.nodes().find(node => node.type === 'section' && node.props.className === 'pw-connection' && f.textOf(node).startsWith('Gmail'));
+  assert.ok(gmail); assert.ok(!f.textOf(gmail).includes('修改、创建和删除'));
+  assert.ok(!f.requests.some(request => request.url.endsWith('/connect')));
+  f.unmount();
+  const connected = fixture([], 'connections', [{ ...ads, status: 'connected' }]); await connected.flush();
+  assert.ok(!connected.text().includes('Google 授权包含'));
+  connected.unmount();
+});
+
+test('Ads labels the verified advertiser account and 30-day campaign coverage without claiming Google mailbox identity', async () => {
+  const ads = { id: 'google_ads', status: 'connected', capabilities: ['read_campaign_metrics'], missing_configuration: [], last_sync: null, error: null, metadata: { account_label: 'Synthetic Ads Account', sync_window: 'last_30_days' } };
+  const f = fixture([], 'google_ads', [ads]); await f.flush();
+  assert.ok(f.text().includes('广告账户：Synthetic Ads Account'));
+  assert.ok(f.text().includes('近30天广告系列（不含今天） · 局部覆盖'));
+  assert.ok(!f.text().includes('Google邮箱'));
+  f.params.set('connection', 'expired'); f.params.set('source', 'google_ads'); await f.flush();
+  assert.ok(f.text().includes('重新连接 Google Ads'));
+  assert.ok(!f.text().includes('重新连接 Gmail'));
+  f.unmount();
+});
+
+test('Ads connection and source view identify the bound advertiser without repeating a fallback ID', async () => {
+  const ads = { id: 'google_ads', status: 'connected', capabilities: ['read_campaign_metrics'], missing_configuration: [], last_sync: null, error: null, metadata: { account_label: 'Synthetic advertiser', ads_customer_id: '7539806760' } };
+  for (const view of ['connections', 'google_ads']) {
+    const f = fixture([], view, [ads]); await f.flush();
+    assert.ok(f.text().includes('广告账户：Synthetic advertiser · 753-980-6760'));
+    f.unmount();
+  }
+  for (const account_label of ['7539806760', '753-980-6760', '']) {
+    const f = fixture([], 'google_ads', [{ ...ads, metadata: { ...ads.metadata, account_label } }]); await f.flush();
+    const label = f.nodes().find(node => node.type === 'span' && node.props.className === 'pw-account-label');
+    assert.equal(f.textOf(label), '广告账户：753-980-6760');
+    f.unmount();
+  }
+});
+
+test('Ads never creates an advertiser ID from missing, malformed, or numeric metadata', async () => {
+  for (const ads_customer_id of [undefined, 'short', '753-980-6760', '7539806760-extra', 7539806760]) {
+    const ads = { id: 'google_ads', status: 'connected', capabilities: [], missing_configuration: [], last_sync: null, error: null, metadata: { account_label: 'Synthetic advertiser', ads_customer_id } };
+    const f = fixture([], 'google_ads', [ads]); await f.flush();
+    const label = f.nodes().find(node => node.type === 'span' && node.props.className === 'pw-account-label');
+    assert.equal(f.textOf(label), '广告账户：Synthetic advertiser');
+    f.unmount();
+  }
 });

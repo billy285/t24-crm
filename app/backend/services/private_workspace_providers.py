@@ -28,7 +28,7 @@ MAX_SYNC_SECONDS = 45
 GMAIL_LIMIT = 80
 BOFA_MAIL_LIMIT = 40
 STRIPE_LIMIT = 100
-ADS_ACCOUNT_QUERY = 'SELECT customer.id, customer.descriptive_name, customer.currency_code FROM customer LIMIT 1'
+ADS_ACCOUNT_QUERY = 'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.manager FROM customer LIMIT 1'
 ADS_CAMPAIGN_QUERY = ('SELECT campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros '
                       'FROM campaign WHERE segments.date DURING LAST_30_DAYS ORDER BY campaign.id LIMIT 101')
 
@@ -44,6 +44,9 @@ _ERRORS = {
     'invalid_response': '来源返回的数据无法安全读取',
     'request_not_allowed': '该来源操作不被允许',
     'sync_limit': '同步已达到安全请求上限',
+    'ads_project_not_approved': 'Google Cloud 项目尚未获准读取正式广告账户，请在 Google Ads API 概览申请 Explorer 或更高访问级别后重新连接',
+    'ads_account_changed': '广告账户配置与已授权账户不一致，请重新连接',
+    'ads_manager_account': '请选择具体广告账户，经理账户不能作为广告观察的目标账户',
 }
 
 
@@ -144,7 +147,6 @@ def _missing(source: SourceDefinition) -> list[str]:
         try: _expected_gmail_account()
         except ProviderError: result.append('PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT')
     if source.id == 'google_ads':
-        if not os.getenv('GOOGLE_ADS_DEVELOPER_TOKEN'): result.append('GOOGLE_ADS_DEVELOPER_TOKEN')
         try: _customer_id(os.getenv('PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID') or os.getenv('GOOGLE_ADS_CUSTOMER_ID') or '')
         except ProviderError: result.append('PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID')
         if os.getenv('GOOGLE_ADS_LOGIN_CUSTOMER_ID'):
@@ -240,6 +242,25 @@ class _Client:
         if self.requests > MAX_REQUESTS: raise ProviderError('sync_limit')
         try:
             async with self.client.stream(method, url, **arguments) as response:
+                if parsed.hostname == 'googleads.googleapis.com' and response.status_code in (400, 403):
+                    # Only recognize a fixed machine error; never publish Google's
+                    # message, request ID, account identifiers or response body.
+                    body = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        body.extend(chunk)
+                        if len(body) > MAX_RESPONSE_BYTES: raise ProviderError('invalid_response')
+                    try: error_data = json.loads(body)
+                    except (ValueError, UnicodeError): error_data = {}
+                    if isinstance(error_data, dict):
+                        details = (error_data.get('error') or {}).get('details', []) if isinstance(error_data.get('error'), dict) else []
+                        if isinstance(details, list):
+                            for detail in details:
+                                errors = detail.get('errors', []) if isinstance(detail, dict) else []
+                                if not isinstance(errors, list): continue
+                                for error in errors:
+                                    code = error.get('errorCode', {}) if isinstance(error, dict) else {}
+                                    if isinstance(code, dict) and code.get('authorizationError') == 'CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION':
+                                        raise ProviderError('ads_project_not_approved')
                 if response.status_code == 401: raise ProviderError('authorization_expired')
                 if response.status_code == 403: raise ProviderError('access_denied')
                 if response.status_code == 429: raise ProviderError('rate_limited')
@@ -306,6 +327,13 @@ async def complete_connect(source_id: str, code: str, *, transport: httpx.AsyncB
             account = _account_email(profile.get('emailAddress'))
             if source.id == 'gmail': _check_gmail_account(account)
             metadata['account_label'] = account
+        elif source.id == 'google_ads':
+            google = _Google(client, source, credentials)
+            customer, account_value = await _ads_account(google)
+            metadata['ads_customer_id'] = customer
+            # This is a verified advertiser name, never a Google user identity.
+            metadata['account_label'] = _text(account_value.get('descriptiveName'), 200) or customer
+            credentials = google.credentials
     return {'credentials': credentials, 'metadata': metadata}
 
 
@@ -395,16 +423,40 @@ async def _gmail(google: _Google, source: SourceDefinition, metadata: dict) -> d
              'bank_data_verification': 'unverified' if source.id == 'bofa' else None}}
 
 
-async def _ads(google: _Google, source: SourceDefinition) -> dict:
-    customer = _customer_id(os.getenv('PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID') or os.getenv('GOOGLE_ADS_CUSTOMER_ID') or '')
-    headers = {'developer-token': _opaque(os.getenv('GOOGLE_ADS_DEVELOPER_TOKEN'))}
+def _ads_target() -> str:
+    return _customer_id(os.getenv('PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID') or os.getenv('GOOGLE_ADS_CUSTOMER_ID') or '')
+
+
+def _ads_request() -> tuple[str, dict]:
+    customer = _ads_target()
+    # Since 2026-09-09 access is attached to the OAuth Cloud project; the
+    # obsolete developer-token header is neither required nor sent.
+    headers = {}
     if os.getenv('GOOGLE_ADS_LOGIN_CUSTOMER_ID'): headers['login-customer-id'] = _customer_id(os.environ['GOOGLE_ADS_LOGIN_CUSTOMER_ID'])
-    endpoint = 'https://googleads.googleapis.com/' + ADS_VERSION + '/customers/' + customer + '/googleAds:search'
+    return 'https://googleads.googleapis.com/' + ADS_VERSION + '/customers/' + customer + '/googleAds:search', headers
+
+
+async def _ads_account(google: _Google) -> tuple[str, dict]:
+    customer = _ads_target()
+    endpoint, headers = _ads_request()
     account = await google.request('POST', endpoint, headers=headers, json={'query': ADS_ACCOUNT_QUERY})
     accounts = _list(account.get('results', []))
-    if len(accounts) != 1: raise ProviderError('invalid_response')
+    if len(accounts) != 1 or not isinstance(accounts[0], dict): raise ProviderError('invalid_response')
     account_value = accounts[0].get('customer', {})
+    if not isinstance(account_value, dict): raise ProviderError('invalid_response')
     if str(account_value.get('id')) != customer: raise ProviderError('access_denied')
+    if account_value.get('manager', False) is True: raise ProviderError('ads_manager_account')
+    if account_value.get('manager', False) is not False: raise ProviderError('invalid_response')
+    _currency(account_value.get('currencyCode'))
+    return customer, account_value
+
+
+async def _ads(google: _Google, source: SourceDefinition, metadata: dict) -> dict:
+    customer = _customer_id(os.getenv('PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID') or os.getenv('GOOGLE_ADS_CUSTOMER_ID') or '')
+    # Existing connections with no confirmed target also require fresh consent.
+    if metadata.get('ads_customer_id') != customer: raise ProviderError('ads_account_changed')
+    endpoint, headers = _ads_request()
+    _, account_value = await _ads_account(google)
     currency = _currency(account_value.get('currencyCode'))
     report = await google.request('POST', endpoint, headers=headers, json={'query': ADS_CAMPAIGN_QUERY})
     rows = _list(report.get('results', []))
@@ -417,13 +469,14 @@ async def _ads(google: _Google, source: SourceDefinition) -> dict:
         cost = _integer(metrics.get('costMicros', 0))
         items.append({'external_id': customer + ':' + campaign_id + ':last_30_days', 'kind': 'campaign',
                       'title': _text(campaign.get('name') or campaign_id, 200), 'status': _text(campaign.get('status'), 80),
-                      'summary': f'近30天 · 曝光 {impressions} · 点击 {clicks} · 费用 {Decimal(cost) / Decimal(1000000):f} {currency.upper()}',
-                      'priority': 'normal', 'currency': currency, 'source_url': 'https://ads.google.com/aw/campaigns?ocid=' + customer,
+                      'summary': f'近30天（不含今天）· 曝光 {impressions} · 点击 {clicks} · 费用 {Decimal(cost) / Decimal(1000000):f} {currency.upper()}',
+                      'priority': 'normal', 'currency': currency, 'source_url': 'https://ads.google.com/aw/overview',
                       'evidence': {'customer_id': customer, 'campaign_id': campaign_id, 'cost_micros': cost,
                                    'impressions': impressions, 'clicks': clicks, 'period': 'LAST_30_DAYS', 'accounting_effect': 'none'}})
     return {'items': items, 'balances': [], 'metadata': {'partial': len(rows) > 100 or bool(report.get('nextPageToken')), 'sync_window': 'last_30_days',
              'coverage': 'bounded_campaign_records', 'record_limit': 100, 'aggregated_totals': False,
-             'account_label': _text(account_value.get('descriptiveName'), 200), 'api_version': ADS_VERSION}}
+             'account_label': _text(account_value.get('descriptiveName'), 200) or customer,
+             'ads_customer_id': customer, 'api_version': ADS_VERSION}}
 
 
 async def _stripe(client: _Client, source: SourceDefinition, credentials: dict) -> dict:
@@ -483,7 +536,7 @@ async def fetch_source(source_id: str, credentials: dict, metadata: dict, *, tra
         async with _Client(transport) as client:
             if source.id == 'stripe': return await _stripe(client, source, credentials)
             google = _Google(client, source, credentials)
-            result = await (_ads(google, source) if source.id == 'google_ads' else _gmail(google, source, metadata))
+            result = await (_ads(google, source, metadata) if source.id == 'google_ads' else _gmail(google, source, metadata))
             if google.credentials != credentials: result['credentials'] = google.credentials
             return result
     try: return await asyncio.wait_for(fetch(), timeout=MAX_SYNC_SECONDS)

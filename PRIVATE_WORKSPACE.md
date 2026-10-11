@@ -23,9 +23,8 @@
 | `PRIVATE_WORKSPACE_PUBLIC_URL` | 固定 HTTPS 站点 origin，例如 `https://t24-crm.com`，无路径、查询或片段。 |
 | `GOOGLE_WORKSPACE_CLIENT_ID` / `GOOGLE_WORKSPACE_CLIENT_SECRET` | Google Web OAuth 应用。兼容 `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`，建议使用本模块专属应用。 |
 | `PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT` | 可选的本人 Gmail 邮箱。配置后，实际 Google profile 邮箱必须精确匹配（忽略大小写）；别名或其他账号会被拒绝。历史连接没有已确认邮箱时须重新授权，不允许继续同步。 |
-| `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads 开发者令牌。 |
-| `PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID` | 本人的目标广告账户，10 位数字或带横线；兼容 `GOOGLE_ADS_CUSTOMER_ID`。 |
-| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | 经 MCC 访问时的经理账户 ID，可选。 |
+| `PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID` | 本人的单个目标广告账户，10 位数字或带横线；兼容 `GOOGLE_ADS_CUSTOMER_ID`。须选择实际投放账户，不能填经理账户。连接时核验并绑定该账户；配置改变或历史连接未绑定时须重新授权。 |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | 经 MCC 间接访问时的经理账户 ID，可选；本人直接有权访问目标账户时不设置。 |
 | `PRIVATE_WORKSPACE_STRIPE_KEY` | Stripe restricted key，`rk_live_` 或 `rk_test_`，只授予 Balance、Charges、Refunds、Disputes、Payouts 的读取权限。拒绝 `sk_` 全权限密钥；本模块也不包含任何资金写操作。 |
 
 SQLite 使用专属目录，目录权限须为 0700、文件 0600；模块会安全创建新目录，但不会修改已有共享目录的权限。生产环境须同时保护该目录中的 journal/WAL、备份及密钥。PostgreSQL 应使用只可访问该独立数据库的专用账户；数据库名称和连接目标必须与 CRM 不同。
@@ -38,7 +37,11 @@ https://t24-crm.com/api/v1/private-workspace/oauth/bofa/callback
 https://t24-crm.com/api/v1/private-workspace/oauth/google_ads/callback
 ```
 
-Gmail 和银行邮件使用 `gmail.readonly`，由本人逐次授权。Google Ads 的官方 OAuth scope 是 `adwords`，本模块只允许两条固定查询，不调用广告修改接口；部署前按 Google 要求完成所需 API 启用、测试用户或应用审核配置。授权 state 十分钟过期、来源与本人绑定且只能使用一次。部署时须使反向代理和 API 访问日志仅记录路径，尤其 OAuth 回调不得记录查询参数、请求体或授权头，避免短期授权码进入日志。
+Gmail 和银行邮件使用 `gmail.readonly`，由本人逐次授权。Google Ads 没有只读 OAuth scope：官方 `adwords` 授权包含查看、编辑、创建和删除广告账户及数据的能力。T24 的适配器只允许账户核验和广告指标两条固定 Search 查询，不调用任何修改接口；不可把“系统只读”说成“Google 只读授权”。接入广告须单独登记 Ads 回调、配置 `adwords` scope 并由本人确认授权，不改动已有 Gmail 授权。授权 state 十分钟过期、来源与本人绑定且只能使用一次。部署时须使反向代理和 API 访问日志仅记录路径，尤其 OAuth 回调不得记录查询参数、请求体或授权头，避免短期授权码进入日志。
+
+Google Ads 已于 2026-09-09 停用 developer token，访问级别改为归属 OAuth 凭据所在的 Google Cloud 项目。本模块不要求或发送旧 `GOOGLE_ADS_DEVELOPER_TOKEN`。须在该项目启用 Google Ads API，并在 [Google Ads API 概览](https://console.cloud.google.com/google/ads-apis/overview)申请 Explorer 或更高的正式账户访问级别；默认 Test 访问不能读取正式投放账户。仅配置 OAuth 或注册回调不代表已获得生产访问。若返回 `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION`，界面给出固定申请提示，原始错误、授权码和令牌不回显。参考 [访问级别](https://developers.google.com/google-ads/api/docs/api-policy/access-levels)、[令牌迁移](https://developers.google.com/google-ads/api/docs/api-policy/developer-token)及 [OAuth 访问模型](https://developers.google.com/google-ads/api/docs/oauth/access-model)。
+
+广告首次连接仅读取固定账户查询核验目标 ID、广告账户名称和币种；经理账户不能作为投放观察目标。名称表示已核验的广告账户，不表示已核验 Google 登录邮箱。当前使用受支持的 v25，固定 `LAST_30_DAYS` 指标范围为广告账户时区内此前 30 天、不含今天；单次最多显示 100 个广告系列并保留截断提示，不承诺实时监测或账户总额。
 
 配置完成后，以指定本人账号进入「接入管理」，逐个连接并同步。没有配置的来源显示待配置，不生成样例资金或伪造连接成功。
 
@@ -71,7 +74,7 @@ API 与 worker 均须把实际 CRM 数据目录只读挂载到身份连接所用
 
 ## 同步范围与运行
 
-同步是有范围的近期快照，不是完整历史账本：Gmail 取近 60 天收件箱、重要或星标邮件，单次最多 80 条，包含未被星标的近期异常通知；银行通知仍最多 40 条；广告监测为近 30 天最多 100 个广告系列；Stripe 每类记录最多 100 条。分类筛选与数量统计先于列表限制执行；界面保留覆盖范围及截断状态，列表不能用于推断完整邮箱或历史总额。Stripe 可用/待结算余额采用平台当前余额快照并按币种显示。
+同步是有范围的近期快照，不是完整历史账本：Gmail 取近 60 天收件箱、重要或星标邮件，单次最多 80 条，包含未被星标的近期异常通知；银行通知仍最多 40 条；广告观察为广告账户时区内此前 30 天（不含今天）最多 100 个广告系列；Stripe 每类记录最多 100 条。分类筛选与数量统计先于列表限制执行；界面保留覆盖范围及截断状态，列表不能用于推断完整邮箱或历史总额。Stripe 可用/待结算余额采用平台当前余额快照并按币种显示。
 
 从 `app/backend` 使用部署环境的 Python 启动独立进程：
 

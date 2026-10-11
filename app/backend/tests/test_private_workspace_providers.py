@@ -27,7 +27,6 @@ def configured(monkeypatch):
     monkeypatch.setenv('GOOGLE_WORKSPACE_CLIENT_ID', 'synthetic-client.apps.googleusercontent.com')
     monkeypatch.setenv('GOOGLE_WORKSPACE_CLIENT_SECRET', 'synthetic-client-secret')
     monkeypatch.setenv('PRIVATE_WORKSPACE_PUBLIC_URL', 'https://t24-crm.com')
-    monkeypatch.setenv('GOOGLE_ADS_DEVELOPER_TOKEN', 'synthetic-developer-token')
     monkeypatch.setenv('PRIVATE_WORKSPACE_GOOGLE_ADS_CUSTOMER_ID', '123-456-7890')
     monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_KEY', KEY)
 
@@ -334,20 +333,23 @@ async def test_bofa_filters_sender_domain_and_keeps_all_alerts_unverified(config
 
 @pytest.mark.asyncio
 async def test_google_ads_uses_only_fixed_read_search_rpc_and_keeps_original_micros(configured, monkeypatch):
+    monkeypatch.setenv('GOOGLE_ADS_DEVELOPER_TOKEN', 'obsolete-value-is-not-used')
     monkeypatch.setenv('GOOGLE_ADS_LOGIN_CUSTOMER_ID', '999-888-7777'); calls = []
     async def handler(request):
         calls.append(request); query = json.loads(request.content)['query']
         assert request.method == 'POST' and request.url.path == '/v25/customers/1234567890/googleAds:search'
-        assert request.headers['developer-token'] == 'synthetic-developer-token'
+        assert 'developer-token' not in request.headers
         assert request.headers['login-customer-id'] == '9998887777'
         if query == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json={'results': [{'customer': {'id': '1234567890', 'currencyCode': 'JPY'}}]})
         assert query == providers.ADS_CAMPAIGN_QUERY
         return httpx.Response(200, json={'results': [campaign()]})
-    batch = await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE}, {}, transport=httpx.MockTransport(handler))
+    batch = await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE}, {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
     item = batch['items'][0]
     assert len(calls) == 2 and item['evidence']['cost_micros'] == 1000501 and 'amount_minor' not in item
     assert item['status'] == 'ENABLED' and item['currency'] == 'jpy'
-    assert '1.000501 JPY' in item['summary'] and batch['metadata']['aggregated_totals'] is False
+    assert item['source_url'] == 'https://ads.google.com/aw/overview' and 'ocid' not in item['source_url']
+    assert '1.000501 JPY' in item['summary'] and '不含今天' in item['summary'] and batch['metadata']['aggregated_totals'] is False
+    assert batch['metadata']['ads_customer_id'] == '1234567890'
 
 
 @pytest.mark.asyncio
@@ -356,8 +358,81 @@ async def test_google_ads_limit_probe_marks_truncation_even_without_next_page_to
         if json.loads(request.content)['query'] == providers.ADS_ACCOUNT_QUERY:
             return httpx.Response(200, json={'results': [{'customer': {'id': '1234567890', 'currencyCode': 'USD'}}]})
         return httpx.Response(200, json={'results': [campaign(identity) for identity in range(101)]})
-    batch = await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE}, {}, transport=httpx.MockTransport(handler))
+    batch = await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE}, {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
     assert len(batch['items']) == 100 and batch['metadata']['partial'] is True
+
+
+@pytest.mark.asyncio
+async def test_google_ads_connect_without_developer_token_confirms_single_advertiser(configured):
+    assert next(row for row in providers.describe_sources() if row['id'] == 'google_ads')['missing_configuration'] == []
+    calls = []
+    async def handler(request):
+        calls.append(request)
+        if request.url.host == 'oauth2.googleapis.com':
+            assert parse_qs(request.content.decode())['redirect_uri'] == ['https://t24-crm.com/api/v1/private-workspace/oauth/google_ads/callback']
+            return httpx.Response(200, json={'access_token': 'issued-access', 'refresh_token': 'issued-refresh', 'scope': providers.ADS_SCOPE})
+        assert request.method == 'POST' and request.url.path == '/v25/customers/1234567890/googleAds:search'
+        assert json.loads(request.content)['query'] == providers.ADS_ACCOUNT_QUERY
+        assert request.headers['authorization'] == 'Bearer issued-access'
+        assert 'developer-token' not in request.headers and 'login-customer-id' not in request.headers
+        return httpx.Response(200, json={'results': [{'customer': {'id': '1234567890', 'descriptiveName': 'Verified advertiser', 'currencyCode': 'USD', 'manager': False}}]})
+    connected = await providers.complete_connect('google_ads', 'one-time-code', transport=httpx.MockTransport(handler))
+    assert len(calls) == 2 and connected['metadata']['ads_customer_id'] == '1234567890'
+    assert connected['metadata']['account_label'] == 'Verified advertiser'
+    assert connected['metadata']['scope'] == providers.ADS_SCOPE and connected['metadata']['read_only_adapter'] is True
+    assert 'gmail' not in json.dumps(connected['metadata']) and 'issued-access' not in json.dumps(connected['metadata'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('returned,code', [
+    ({'id': '9998887777', 'currencyCode': 'USD'}, 'access_denied'),
+    ({'id': '1234567890', 'currencyCode': 'USD', 'manager': True}, 'ads_manager_account'),
+    ({'id': '1234567890', 'currencyCode': 'USD', 'manager': 'false'}, 'invalid_response'),
+])
+async def test_google_ads_connect_rejects_wrong_or_manager_account(configured, returned, code):
+    calls = []
+    async def handler(request):
+        calls.append(request)
+        if request.url.host == 'oauth2.googleapis.com':
+            return httpx.Response(200, json={'access_token': 'issued-access', 'scope': providers.ADS_SCOPE})
+        return httpx.Response(200, json={'results': [{'customer': returned}]})
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.complete_connect('google_ads', 'one-time-code', transport=httpx.MockTransport(handler))
+    assert error.value.code == code and len(calls) == 2
+    assert 'issued-access' not in str(error.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('metadata', [{}, {'ads_customer_id': '9998887777'}, {'ads_customer_id': '123-456-7890'}, {'ads_customer_id': 1234567890}])
+async def test_google_ads_sync_requires_exact_bound_account_before_any_request(configured, metadata):
+    async def forbidden(request): raise AssertionError('Changed or unidentified target must not refresh or fetch any account')
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.fetch_source('google_ads', {**GOOGLE, 'expires_at': 1, 'scope': providers.ADS_SCOPE}, metadata, transport=httpx.MockTransport(forbidden))
+    assert error.value.code == 'ads_account_changed' and '重新连接' in str(error.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', [400, 403])
+async def test_ads_project_production_approval_error_is_fixed_safe_guidance(configured, status):
+    async def handler(request):
+        if request.url.host == 'oauth2.googleapis.com':
+            return httpx.Response(200, json={'access_token': 'issued-access', 'scope': providers.ADS_SCOPE})
+        return httpx.Response(status, json={'error': {'message': 'Bearer DO_NOT_EXPOSE private-account', 'details': [
+            {'errors': [{'errorCode': {'authorizationError': 'CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION'}, 'message': 'PRIVATE RAW DETAILS'}]}]}})
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.complete_connect('google_ads', 'one-time-code', transport=httpx.MockTransport(handler))
+    assert error.value.code == 'ads_project_not_approved' and 'Explorer' in str(error.value)
+    assert not error.value.retryable and 'DO_NOT_EXPOSE' not in str(error.value) and 'PRIVATE' not in str(error.value)
+
+
+@pytest.mark.asyncio
+async def test_ads_error_message_text_cannot_invent_approval_error(configured):
+    async def handler(request):
+        return httpx.Response(403, json={'error': {'message': 'CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION Bearer DO_NOT_EXPOSE', 'details': [
+            {'errors': [{'errorCode': {'authorizationError': 'USER_PERMISSION_DENIED'}}]}]}})
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE}, {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    assert error.value.code == 'access_denied' and 'DO_NOT_EXPOSE' not in str(error.value)
 
 
 @pytest.mark.asyncio

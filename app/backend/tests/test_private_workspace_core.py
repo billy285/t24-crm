@@ -269,6 +269,53 @@ async def oauth_state(client):
 
 
 @pytest.mark.asyncio
+async def test_ads_oauth_setup_failure_keeps_only_fixed_guidance_and_consumes_state(workspace):
+    async def rejected(source_id, code):
+        failure = real_providers.ProviderError("ads_project_not_approved")
+        failure.public_message = "Bearer DO_NOT_EXPOSE raw-provider-message"
+        raise failure
+    workspace.fake.complete_connect = rejected
+    started = await workspace.client.post("/api/v1/private-workspace/sources/google_ads/connect", headers=headers())
+    state = parse_qs(urlsplit(started.json()["authorization_url"]).query)["state"][0]
+    callback = await workspace.client.get("/api/v1/private-workspace/oauth/google_ads/callback", params={"state": state, "code": "DO_NOT_EXPOSE"})
+    assert callback.status_code == 303 and callback.headers["location"].endswith("connection=incomplete")
+    assert "DO_NOT_EXPOSE" not in callback.headers["location"]
+    overview = await workspace.client.get("/api/v1/private-workspace", headers=headers())
+    source = next(row for row in overview.json()["sources"] if row["id"] == "google_ads")
+    assert source["status"] == "disconnected" and "Explorer" in source["error"]
+    assert "DO_NOT_EXPOSE" not in overview.text
+    replay = await workspace.client.get("/api/v1/private-workspace/oauth/google_ads/callback", params={"state": state, "code": "new-code"})
+    assert replay.status_code == 303 and replay.headers["location"].endswith("connection=expired")
+    sessions = await service.private_session_factory()
+    async with sessions() as db:
+        connection = await service.connection_for(db, "1", "google_ads")
+        assert connection.encrypted_credentials is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source_id,code,expected", [
+    ("google_ads", "ads_account_changed", "已授权账户不一致"),
+    ("google_ads", "ads_project_not_approved", "Explorer"),
+    ("google_ads", "access_denied", "同步未成功"),
+    ("gmail", "ads_project_not_approved", "同步未成功"),
+])
+async def test_private_sync_only_exposes_allowlisted_ads_setup_errors(workspace, source_id, code, expected):
+    async def rejected(source, credentials, metadata):
+        failure = real_providers.ProviderError(code)
+        failure.public_message = "Bearer DO_NOT_EXPOSE provider-body"
+        raise failure
+    workspace.fake.fetch_source = rejected
+    started = await workspace.client.post(f"/api/v1/private-workspace/sources/{source_id}/connect", headers=headers())
+    state = parse_qs(urlsplit(started.json()["authorization_url"]).query)["state"][0]
+    await workspace.client.get(f"/api/v1/private-workspace/oauth/{source_id}/callback", params={"state": state, "code": "synthetic-code"})
+    result = await workspace.client.post(f"/api/v1/private-workspace/sources/{source_id}/sync", headers=headers())
+    assert result.status_code == 502 and expected in result.json()["detail"]
+    overview = await workspace.client.get("/api/v1/private-workspace", headers=headers())
+    assert "DO_NOT_EXPOSE" not in result.text + overview.text and overview.json()["items"] == []
+    assert all(statement.lstrip().upper().startswith("SELECT") for statement in workspace.statements)
+
+
+@pytest.mark.asyncio
 async def test_oauth_state_is_owner_bound_single_use_and_source_bound(workspace):
     state = await oauth_state(workspace.client)
     wrong_source = await workspace.client.get("/api/v1/private-workspace/oauth/bofa/callback", params={"state": state, "code": "synthetic-code"})
@@ -341,6 +388,28 @@ async def test_sync_preserves_confirmed_account_scope_and_mode(workspace):
         assert all(connection.metadata_json[key] == value for key, value in stable.items())
         assert connection.last_sync is not None
     assert all(statement.lstrip().upper().startswith('SELECT') for statement in workspace.statements)
+
+
+@pytest.mark.asyncio
+async def test_ads_sync_cannot_replace_the_verified_advertiser_binding(workspace):
+    stable = {'account_label': 'Verified advertiser', 'ads_customer_id': '1234567890',
+              'scope': real_providers.ADS_SCOPE, 'connection_mode': 'oauth', 'read_only_adapter': True}
+    sessions = await service.private_session_factory()
+    async with sessions() as db:
+        db.add(PrivateConnection(owner_id='1', source_id='google_ads', status='connected', metadata_json=stable,
+                                 encrypted_credentials=service.encrypt_credentials({'key': 'synthetic'})))
+        await db.commit()
+    async def fetched_snapshot(source_id, credentials, metadata):
+        assert metadata == stable
+        return {'items': [], 'balances': [], 'metadata': {'account_label': 'Other advertiser', 'ads_customer_id': '9998887777', 'partial': False}}
+    workspace.fake.fetch_source = fetched_snapshot
+    response = await workspace.client.post('/api/v1/private-workspace/sources/google_ads/sync', headers=headers())
+    assert response.status_code == 200 and response.json()['source']['metadata']['account_label'] == 'Verified advertiser'
+    assert response.json()['source']['metadata']['ads_customer_id'] == '1234567890'
+    async with sessions() as db:
+        connection = (await db.execute(select(PrivateConnection))).scalar_one()
+        assert all(connection.metadata_json[key] == value for key, value in stable.items())
+        assert connection.last_sync is not None
 
 
 @pytest.mark.asyncio

@@ -42,6 +42,7 @@ export interface PrivateSource {
   error: string | null;
   metadata?: {
     account_label?: string;
+    ads_customer_id?: string;
     coverage?: string;
     partial?: boolean;
     sync_window?: string;

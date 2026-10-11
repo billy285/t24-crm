@@ -70,9 +70,17 @@ function providerState(item: PrivateItem): string {
   return labels[item.status] || item.status || '来源状态待确认';
 }
 function actionLabel(item: PrivateItem): string { return bankAlert(item) && item.action_status === 'done' ? '已阅 · 待核实' : ACTION_STATUS[item.action_status] || '待处理'; }
+function sourceAccountLabel(source: PrivateSource): string {
+  const label = typeof source.metadata?.account_label === 'string' ? source.metadata.account_label.trim() : '';
+  if (source.id !== 'google_ads') return label;
+  const id = source.metadata?.ads_customer_id;
+  if (typeof id !== 'string' || !/^\d{10}$/.test(id)) return label;
+  const formatted = `${id.slice(0, 3)}-${id.slice(3, 6)}-${id.slice(6)}`;
+  return !label || label === id || label === formatted ? formatted : `${label} · ${formatted}`;
+}
 function coverageLabel(source: PrivateSource): string {
   if (source.metadata?.sync_window === 'last_60_days') return '近60天邮件 · 局部覆盖';
-  if (source.metadata?.sync_window === 'last_30_days') return '近30天记录 · 局部覆盖';
+  if (source.metadata?.sync_window === 'last_30_days') return source.id === 'google_ads' ? '近30天广告系列（不含今天） · 局部覆盖' : '近30天记录 · 局部覆盖';
   if (source.metadata?.record_limit_per_resource) return `最近每类最多 ${source.metadata.record_limit_per_resource} 条记录`;
   return source.metadata?.coverage ? '最近同步记录 · 局部覆盖' : '';
 }
@@ -353,8 +361,9 @@ export default function PrivateWorkspace() {
   const bankItems = (data?.items || []).filter(item => item.source_id === 'bofa' && item.action_status !== 'archived');
   const balances = (data?.balances || []).filter(balance => balance.source_id === 'stripe');
   const safeSelectedUrl = selected ? verifiedPrivateSourceUrl(selected.source_id, selected.source_url) : null;
+  const callbackSourceName = SOURCE_NAMES[callbackSource] || SOURCE_NAMES[view as PrivateSourceId] || '该来源';
   const callbackMessage = params.get('connection') === 'connected' && sourceById.get(callbackSource)?.status === 'connected'
-    ? '授权已完成，请查看来源与同步状态。' : params.get('connection') === 'incomplete' ? '授权未完成，请在工作接入中重试。' : params.get('connection') === 'expired' ? '这次授权链接已失效，请到工作接入重新连接 Gmail。' : '';
+    ? '授权已完成，请查看来源与同步状态。' : params.get('connection') === 'incomplete' ? '授权未完成，请在工作接入中重试。' : params.get('connection') === 'expired' ? `这次授权链接已失效，请到工作接入重新连接 ${callbackSourceName}。` : '';
   const callbackNotice = callbackMessage && access === 'allowed' ? <div className="pw-notice pw-callback-notice" role="status">{callbackMessage}{params.get('connection') === 'expired' && <button type="button" className="pw-text-button" onClick={() => navigate('connections')}>打开工作接入<ChevronRight aria-hidden="true" /></button>}</div> : null;
   const dateLabel = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
 
@@ -363,13 +372,14 @@ export default function PrivateWorkspace() {
     const actions = privateSourceActionAvailability(source);
     return <section key={source.id} className="pw-connection">
       <div className="pw-connection-heading"><span className="pw-source-icon"><Icon aria-hidden="true" /></span><div><h3>{SOURCE_NAMES[source.id]}</h3><span className={`pw-status ${source.status === 'error' ? 'pw-status-warning' : ''}`}>{SOURCE_STATUS[source.status] || '状态待确认'}</span></div></div>
-      {source.metadata?.account_label && <p className="pw-account-label">{source.metadata.account_label}</p>}
+      {sourceAccountLabel(source) && <p className="pw-account-label">{source.id === 'google_ads' ? '广告账户：' : ''}{sourceAccountLabel(source)}</p>}
       <p className="pw-sync-time">最后成功同步：{timeLabel(source.last_sync)}</p>
       {source.error && <p className="pw-source-error">{source.error}</p>}
       {source.id === 'bofa' && <p className="pw-connection-note">先接银行邮件提醒；提醒保持待核实，详细流水需另行授权。</p>}
       {actions.pendingConfiguration && <p className="pw-connection-note">来源配置尚未完成，暂时无法连接或同步。</p>}
+      {source.id === 'google_ads' && actions.canConnect && <p id="pw-google-ads-consent-note" className="pw-connection-note">Google 授权包含查看、修改、创建和删除广告账号及数据。当前工作空间仅查询广告表现。</p>}
       {(actions.canConnect || actions.canSync || actions.canDisconnect) && <div className="pw-source-actions">
-        {actions.canConnect && <button type="button" className="pw-button pw-button-primary" disabled={Boolean(busy)} onClick={() => void sourceAction(source, 'connect')}>{source.status === 'error' ? '重新连接 / 授权' : source.status === 'connecting' ? '继续授权' : '连接来源'}</button>}
+        {actions.canConnect && <button type="button" className="pw-button pw-button-primary" aria-describedby={source.id === 'google_ads' ? 'pw-google-ads-consent-note' : undefined} disabled={Boolean(busy)} onClick={() => void sourceAction(source, 'connect')}>{source.status === 'error' ? '重新连接 / 授权' : source.status === 'connecting' ? '继续授权' : '连接来源'}</button>}
         {actions.canSync && <button type="button" className="pw-button" disabled={Boolean(busy)} onClick={() => void sourceAction(source, 'sync')}><RefreshCw aria-hidden="true" />{busy === `sync-${source.id}` ? '正在同步…' : '同步'}</button>}
         {actions.canDisconnect && <button type="button" className="pw-button pw-button-quiet" disabled={Boolean(busy)} onClick={() => void sourceAction(source, 'disconnect')}>停止同步</button>}
       </div>}
@@ -377,7 +387,7 @@ export default function PrivateWorkspace() {
   }
   function sourceBanner(source?: PrivateSource) {
     if (!source) return null;
-    return <div className="pw-source-banner"><div><span className="pw-status">{SOURCE_STATUS[source.status] || '状态待确认'}</span>{source.metadata?.mode && <span>{source.metadata.mode === 'test' ? '测试模式' : '正式模式'}</span>}<span>最后成功同步：{timeLabel(source.last_sync)}</span>{source.metadata?.account_label && <span className="pw-account-label">{source.metadata.account_label}</span>}{coverageLabel(source) && <span>{coverageLabel(source)}</span>}{source.metadata?.partial && <p className="pw-source-error">还有记录未包含，当前列表不代表完整账户汇总。</p>}{source.error && <p className="pw-source-error">{source.error}</p>}</div><button type="button" className="pw-button pw-button-quiet" onClick={() => navigate('connections')}>管理接入<ChevronRight aria-hidden="true" /></button></div>;
+    return <div className="pw-source-banner"><div><span className="pw-status">{SOURCE_STATUS[source.status] || '状态待确认'}</span>{source.metadata?.mode && <span>{source.metadata.mode === 'test' ? '测试模式' : '正式模式'}</span>}<span>最后成功同步：{timeLabel(source.last_sync)}</span>{sourceAccountLabel(source) && <span className="pw-account-label">{source.id === 'google_ads' ? '广告账户：' : ''}{sourceAccountLabel(source)}</span>}{coverageLabel(source) && <span>{coverageLabel(source)}</span>}{source.metadata?.partial && <p className="pw-source-error">还有记录未包含，当前列表不代表完整账户汇总。</p>}{source.error && <p className="pw-source-error">{source.error}</p>}</div><button type="button" className="pw-button pw-button-quiet" onClick={() => navigate('connections')}>管理接入<ChevronRight aria-hidden="true" /></button></div>;
   }
   function renderList() {
     if (listLoading) return <div className="pw-load" role="status"><LoaderCircle aria-hidden="true" />正在读取当前来源…</div>;

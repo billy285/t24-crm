@@ -46,6 +46,17 @@ def providers():
     return importlib.import_module("services.private_workspace_providers")
 
 
+def _provider_setup_message(source_id, error, fallback):
+    # Expose only fixed setup guidance for this adapter. Never return provider
+    # response bodies or arbitrary exception/public_message text.
+    provider_error = importlib.import_module("services.private_workspace_providers").ProviderError
+    messages = {
+        "ads_project_not_approved": "Google Cloud 项目尚未获准读取正式广告账户，请在 Google Ads API 概览申请 Explorer 或更高访问级别后重新连接",
+        "ads_account_changed": "广告账户配置与已授权账户不一致，请重新连接",
+    }
+    return messages.get(error.code, fallback) if source_id == "google_ads" and isinstance(error, provider_error) else fallback
+
+
 def require_source(source_id: str, *, external=False) -> str:
     if source_id not in SOURCE_IDS or (external and source_id == "manual"):
         raise HTTPException(status_code=404, detail="未找到此来源")
@@ -268,7 +279,7 @@ async def connection_for(private_db, owner_id: str, source_id: str, *, create=Fa
 def source_metadata(connection):
     stored = (connection.metadata_json or {}) if connection else {}
     allowed = {"coverage", "partial", "sync_window", "record_limit", "record_limit_per_resource",
-               "resources", "mode", "bank_data_verification", "read_only_adapter", "api_version", "importance_source", "account_label"}
+               "resources", "mode", "bank_data_verification", "read_only_adapter", "api_version", "importance_source", "account_label", "ads_customer_id"}
     result = safe_json({key: value for key, value in stored.items() if key in allowed})
     # Bounded records are never presented as account-level financial totals.
     result["aggregated_totals"] = False
@@ -454,10 +465,11 @@ async def complete_oauth(private_db, business_db, source_id: str, state: str, co
     try:
         result = await asyncio.wait_for(providers().complete_connect(source_id, code), timeout=45)
         encrypted = encrypt_credentials(result["credentials"])
-    except Exception:
+    except Exception as error:
+        safe_error = _provider_setup_message(source_id, error, "授权未完成，请重新连接")
         await private_db.execute(update(PrivateConnection).where(
             PrivateConnection.id == connection_id, PrivateConnection.generation == generation,
-        ).values(status="disconnected", encrypted_credentials=None, error="授权未完成，请重新连接"))
+        ).values(status="disconnected", encrypted_credentials=None, error=safe_error))
         await private_db.commit()
         return False
     # Re-check current employee status after the external round-trip.
@@ -599,7 +611,7 @@ async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seco
             raise ValueError("invalid provider metadata")
         # Synchronization cannot replace the identity/scope established during
         # authorization, or claim a new identity from a fetched snapshot.
-        for key in ("account_label", "connection_mode", "scope"):
+        for key in ("account_label", "ads_customer_id", "connection_mode", "scope"):
             if key in metadata:
                 batch_metadata[key] = safe_json(metadata[key])
             else:
@@ -618,9 +630,9 @@ async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seco
             status="succeeded", completed_at=utcnow(), created_count=counts["created"], updated_count=counts["updated"],
         ))
         await private_db.commit()
-    except Exception:
+    except Exception as error:
         await private_db.rollback()
-        safe_error = "同步未成功，请检查来源授权后重试"
+        safe_error = _provider_setup_message(source_id, error, "同步未成功，请检查来源授权后重试")
         await private_db.execute(update(PrivateConnection).where(
             PrivateConnection.id == connection_id, PrivateConnection.generation == generation,
         ).values(sync_lease_until=None, error=safe_error))
