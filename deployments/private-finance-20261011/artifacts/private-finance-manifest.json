@@ -37,7 +37,7 @@
   "deployed": false,
   "format_version": 1,
   "frontend_version": "3e51b287082a",
-  "frozen_manifest_sha256": "f723f6cd190d6aea5398228e6e131bee8441e8b441d578b0d48d2e41574dce95",
+  "frozen_manifest_sha256": "9b556405d2dc3ddc33d27ef36c8bb0ae354867b6a377f11fe1c0d2bbf6ca33e8",
   "payload_files": {
     "backend/dependencies/private_workspace.py": "1b769c81db31e13707afe845566e8ea60d107aa672499cfd2f674d654ccb2e33",
     "backend/models/private_workspace.py": "f28e051ef04dc23e0b1e15755eb71e3881879cd203e0698f3a6e239549ca158d",
@@ -64,7 +64,7 @@
     "backend/tests/test_private_mail_relevance.py": "d3bde466bad4c937a522633b2cc9ff786e7c7b6d889b0fcea6003a30ec5ac3fd",
     "backend/tests/test_private_mail_translation.py": "b9eb508a7286c895d57042f5819c65dfee69e32b08b13dae08d6dfd0c9f37672",
     "backend/tests/test_private_mail_translation_service.py": "c23257cad134dbdb59c267f3c3e6815eb9879256e7b7c9f3b976a99229dec926",
-    "backend/tests/test_private_python310_compat.py": "97b8b53d1d70238bc5b51c82849001f407a9d55dedd4df90089bf08fa288f503",
+    "backend/tests/test_private_python310_compat.py": "115067b0320095df98639fc04af9892e91e33a9adcf2fe53ac6a63b0fa9f2203",
     "backend/tests/test_private_stripe_auth.py": "00c970f7e9d347ac6deb97621c8ab176e77631223cc901258cf9d3446aedf4c9",
     "backend/tests/test_private_stripe_connection.py": "b9d55b3f5e0604d10df9a05d2e4014d4dada2cad7db8f17ea33a3f6c905705e7",
     "backend/tests/test_private_workspace_app.py": "555d9d40c37503365830fc4e6679779ed78cb86ac15feb4cee83a52f0f1640a9",
@@ -186,7 +186,7 @@
     "frontend/dist/t2-favicon-64.png": "04ccea24198b8b3ad5b981f8152be2e1b8de17d55f421b2b1da74fef8aafba36",
     "frontend/dist/t2-marketing-logo.png": "57f3e5e0d7ce6fda1621042957e796bfec4527dba42e0e8eeaacdcbe3efaa2ec"
   },
-  "payload_sha256": "a869f46de22edecab0799b9584b3f779945b10591becf4e1f518b48493725109",
+  "payload_sha256": "8cdba6769c47a5f1c230e9150b254bb9d433090ab7672c75c9be7ceb88057ac9",
   "private_tests": [
     "app/backend/tests/conftest.py",
     "app/backend/tests/test_private_ads_health.py",
@@ -246,7 +246,7 @@
     "app/backend/tests/test_private_mail_relevance.py": "d3bde466bad4c937a522633b2cc9ff786e7c7b6d889b0fcea6003a30ec5ac3fd",
     "app/backend/tests/test_private_mail_translation.py": "b9eb508a7286c895d57042f5819c65dfee69e32b08b13dae08d6dfd0c9f37672",
     "app/backend/tests/test_private_mail_translation_service.py": "c23257cad134dbdb59c267f3c3e6815eb9879256e7b7c9f3b976a99229dec926",
-    "app/backend/tests/test_private_python310_compat.py": "97b8b53d1d70238bc5b51c82849001f407a9d55dedd4df90089bf08fa288f503",
+    "app/backend/tests/test_private_python310_compat.py": "115067b0320095df98639fc04af9892e91e33a9adcf2fe53ac6a63b0fa9f2203",
     "app/backend/tests/test_private_stripe_auth.py": "00c970f7e9d347ac6deb97621c8ab176e77631223cc901258cf9d3446aedf4c9",
     "app/backend/tests/test_private_stripe_connection.py": "b9d55b3f5e0604d10df9a05d2e4014d4dada2cad7db8f17ea33a3f6c905705e7",
     "app/backend/tests/test_private_workspace_app.py": "555d9d40c37503365830fc4e6679779ed78cb86ac15feb4cee83a52f0f1640a9",
@@ -255,6 +255,6 @@
     "app/backend/tests/test_private_workspace_providers.py": "08222523dd434e69c323afd95b2f44eb548cd7a8a6f925e44bbaf01d3479ce07",
     "app/backend/tests/test_private_workspace_worker.py": "91458bd7eb2e50f9c96da1e0cffc6fcd4ba1c5e69d87e8e66ddb485537f9c33d"
   },
-  "source_sha": "5fe45c0f16c0f3eee93502d877130c923b1befe9",
+  "source_sha": "77e32b5052cf34c90ab030a88b25911375add799",
   "stage": "PRIVATE_FINANCE_PAYLOAD_PREPARED"
 }
