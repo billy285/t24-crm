@@ -159,6 +159,25 @@ async def test_local_snapshot_stable_owner_only_no_body_or_ai_and_honest_sources
 
 
 @pytest.mark.asyncio
+async def test_uncaptured_source_refund_mark_is_only_an_event_in_owner_brief(boss):
+    async with boss.sessions() as db:
+        db.add(PrivateItem(owner_id='4', source_id='stripe', external_id='charges:ch_FICTIONUncaptured',
+            kind='payment', title='Synthetic uncaptured authorization', status='succeeded', priority='normal',
+            amount_minor=975312, currency='USD', occurred_at=boss.now, evidence={**stripe_evidence(boss.now),
+                'payment_state': 'uncaptured_refunded', 'captured': False, 'paid': True, 'refunded': True,
+                'amount_authorized_minor': 975312, 'amount_captured_minor': 0, 'amount_refunded_minor': 975312,
+                'accounting_effect': 'none'}))
+        await db.commit()
+    data = await get(boss)
+    stripe = next(source for source in data['sources'] if source['source_id'] == 'stripe')
+    assert stripe['facts'][0] == '同期已同步事件 3 条'
+    assert stripe['facts'][1] == '付款 1 条，退款 0 条，争议 1 条，提现 1 条'
+    assert '不代表全账户流水、余额、收入或利润' in stripe['summary']
+    assert '975312' not in json.dumps(data) and '9753.12' not in json.dumps(data)
+    assert boss.boss_calls == boss.calls == boss.content_calls == []
+
+
+@pytest.mark.asyncio
 async def test_last7days_uses_source_windows_and_not_combined_financial_totals(boss):
     data = await get(boss, period='last7days')
     assert data['window']['start'].startswith('2026-10-05')

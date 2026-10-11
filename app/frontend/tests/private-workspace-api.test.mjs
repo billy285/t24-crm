@@ -329,6 +329,17 @@ test('Stripe refunds preserve captured and refunded values without inventing net
   assert.equal(payout.statusLabel, 'Stripe 标记支付 · 银行待核对'); assert.equal(payout.amountLabel, '提现金额');
 });
 
+test('uncaptured source refund marks retain raw evidence without becoming collected or refunded cash', () => {
+  const item = syntheticStripeItem('payment', { payment_state: 'uncaptured_refunded', amount_refunded_minor: 10000, refunded: true });
+  const record = api.privateStripeRecord(item, syntheticStripeSource, stripeNow);
+  assert.equal(record.statusLabel, '未捕获 · 来源标记退款');
+  assert.equal(record.amountLabel, '来源请求金额'); assert.equal(record.amountMinor, 10000);
+  assert.equal(record.capturedMinor, 0); assert.equal(record.refundedMinor, 10000); assert.equal(record.hasRefund, false);
+  assert.equal(item.evidence.amount_captured_minor, 0); assert.equal(item.evidence.amount_refunded_minor, 10000);
+  assert.ok(!Object.hasOwn(record, 'income') && !Object.hasOwn(record, 'net_income'));
+  assert.equal(api.privateStripeRecord({ ...item, amount_minor: null }, syntheticStripeSource, stripeNow).amountMinor, null);
+});
+
 test('Stripe old snapshots and missing monetary evidence remain visibly unconfirmed', () => {
   const old = syntheticStripeItem('payment', { payment_state: 'captured', stripe_snapshot_id: 'older-snapshot', amount_captured_minor: undefined });
   const record = api.privateStripeRecord(old, syntheticStripeSource, stripeNow);

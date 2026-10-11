@@ -855,9 +855,17 @@ def _stripe_item(row: dict, kind: str, prefix: str, identity: dict, mode: str, s
         if any(type(value) is not bool for value in (captured, paid, refunded)) or status not in {'succeeded', 'pending', 'failed'}:
             raise ProviderError('invalid_response')
         captured_amount = _integer(row.get('amount_captured')); refunded_amount = _integer(row.get('amount_refunded'))
-        if refunded_amount > captured_amount or captured_amount > amount or captured_amount and not paid:
+        uncaptured_refunded = (status == 'succeeded' and paid and not captured and refunded
+                               and captured_amount == 0 and 0 < refunded_amount <= amount)
+        if refunded_amount > amount or captured_amount > amount or captured_amount and not paid:
             raise ProviderError('invalid_response')
-        if status == 'failed': state = 'failed'
+        if refunded_amount > captured_amount and not uncaptured_refunded:
+            raise ProviderError('invalid_response')
+        # An uncaptured authorization can be marked refunded by Stripe. Keep the
+        # original fields, without treating that mark as captured/refunded cash.
+        # https://docs.stripe.com/api/payment_intents/cancel
+        if uncaptured_refunded: state = 'uncaptured_refunded'
+        elif status == 'failed': state = 'failed'
         elif status == 'pending': state = 'pending'
         elif captured_amount and refunded_amount == captured_amount: state = 'refunded'
         elif refunded_amount: state = 'partially_refunded'

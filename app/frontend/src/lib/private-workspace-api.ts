@@ -445,10 +445,10 @@ export function formatPrivateAmount(minor: number | null | undefined, currency: 
 }
 
 
-export type PrivateStripePaymentState = 'pending' | 'failed' | 'authorized' | 'partially_captured' | 'captured' | 'partially_refunded' | 'refunded';
+export type PrivateStripePaymentState = 'pending' | 'failed' | 'authorized' | 'uncaptured_refunded' | 'partially_captured' | 'captured' | 'partially_refunded' | 'refunded';
 const STRIPE_PAYMENT_STATES: Record<PrivateStripePaymentState, string> = {
   pending: '待处理', failed: '收款失败', authorized: '已授权 · 待捕获', partially_captured: '部分收款',
-  captured: '已收款', partially_refunded: '部分退款', refunded: '已退款',
+  captured: '已收款', partially_refunded: '部分退款', refunded: '已退款', uncaptured_refunded: '未捕获 · 来源标记退款',
 };
 const STRIPE_SNAPSHOT_MAX_AGE = 24 * 60 * 60 * 1000;
 function privateStripeMinor(value: unknown): number | null {
@@ -494,7 +494,7 @@ export function privateStripeRecord(item: PrivateItem, source?: PrivateSource, n
   const raw = privateStripeMinor(item.amount_minor);
   const amountMinor = paymentState === 'authorized' ? authorized
     : paymentState && ['captured', 'partially_captured', 'partially_refunded', 'refunded'].includes(paymentState) ? captured : raw;
-  const amountLabel = paymentState === 'authorized' ? '授权金额'
+  const amountLabel = paymentState === 'uncaptured_refunded' ? '来源请求金额' : paymentState === 'authorized' ? '授权金额'
     : paymentState && ['captured', 'partially_captured', 'partially_refunded', 'refunded'].includes(paymentState) ? '已收款金额'
     : item.kind === 'payment' ? '请求金额' : item.kind === 'refund' ? '退款记录金额' : item.kind === 'dispute' ? '争议金额' : '提现金额';
   const statusLabels: Record<string, string> = {

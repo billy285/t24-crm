@@ -711,6 +711,25 @@ test('Stripe partial refunds display captured and refunded amounts rather than t
   assert.ok(f.textOf(row).replace(/\s/g, ' ').includes('部分退款')); assert.ok(f.textOf(row).replace(/\s/g, ' ').includes('USD 80.00')); assert.ok(f.textOf(row).replace(/\s/g, ' ').includes('已退款 USD 25.00')); assert.ok(!f.textOf(row).replace(/\s/g, ' ').includes('USD 100.00')); f.unmount();
 });
 
+test('Stripe uncaptured source refund marks show original fields with no received cash label', async () => {
+  const source = stripeSource(); const item = stripePayment(source);
+  item.evidence = { ...item.evidence, payment_state: 'uncaptured_refunded', amount_refunded_minor: 10000, refunded: true };
+  const f = fixture([item], 'stripe', [source]); await f.flush();
+  const row = f.nodes().find(node => node.type === 'button' && node.props.className === 'pw-stripe-row ');
+  const rowText = f.textOf(row).replace(/\s/g, ' ');
+  assert.ok(rowText.includes('未捕获 · 来源标记退款')); assert.ok(rowText.includes('来源请求金额'));
+  assert.ok(!rowText.includes('已收款') && !rowText.includes('已退款 USD'));
+  row.props.onClick(); await f.flush();
+  const detail = f.nodes().find(node => node.type === 'div' && node.props.className === 'pw-stripe-detail');
+  const detailText = f.textOf(detail).replace(/\s/g, ' ');
+  assert.ok(detailText.includes('来源请求金额USD 100.00'));
+  assert.ok(detailText.includes('来源捕获字段USD 0.00')); assert.ok(detailText.includes('来源退款字段USD 100.00'));
+  assert.ok(!detailText.includes('已收款金额') && !detailText.includes('已退款金额'));
+  assert.ok(detailText.includes('此笔付款未捕获；来源退款字段保留原值'));
+  assert.equal(f.requests.filter(request => request.method === 'POST' || request.method === 'PATCH').length, 0);
+  f.unmount();
+});
+
 test('Stripe snapshots become stale without a new sync and test mode remains explicit on every record', async () => {
   const source = stripeSource(); source.metadata.mode = 'test'; source.metadata.stripe_snapshot.mode = 'test';
   const item = stripePayment(source); item.evidence.stripe_mode = 'test';

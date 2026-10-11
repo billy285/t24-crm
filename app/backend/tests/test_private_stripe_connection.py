@@ -482,6 +482,46 @@ def test_stripe_charge_capture_and_refund_amounts_remain_authoritative(changes, 
     assert evidence['accounting_effect'] == 'none'
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['connect', 'sync'])
+@pytest.mark.parametrize('mode', ['test', 'live'])
+@pytest.mark.parametrize('prefix', ['ch_', 'py_'])
+async def test_uncaptured_charge_marked_refunded_keeps_source_fields_without_cash_inference(configured, monkeypatch, phase, mode, prefix):
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_MODE', mode)
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_KEY', KEY.replace('rk_test_', 'rk_live_') if mode == 'live' else KEY)
+    original = {'id': prefix + 'FICTIONUncaptured', 'amount': 1000, 'captured': False, 'paid': True,
+                'refunded': True, 'amount_captured': 0, 'amount_refunded': 1000, 'status': 'succeeded'}
+    transport, calls = charge_contract_transport(live=mode == 'live', changes=original)
+    result = await read_stripe_contract(phase, mode, transport)
+    assert calls == ['/v1/account', '/v1/balance', '/v1/charges', '/v1/refunds', '/v1/disputes', '/v1/payouts']
+    if phase == 'sync':
+        row = next(item for item in result['items'] if item['kind'] == 'payment')
+        assert row['amount_minor'] == original['amount'] and row['status'] == original['status']
+        evidence = row['evidence']
+        assert evidence['payment_state'] == 'uncaptured_refunded' and evidence['accounting_effect'] == 'none'
+        assert evidence['captured'] is False and evidence['paid'] is True and evidence['refunded'] is True
+        assert evidence['amount_captured_minor'] == 0 and evidence['amount_refunded_minor'] == 1000
+        assert evidence['stripe_account_id'] == STRIPE_ACCOUNT and evidence['stripe_mode'] == mode
+        assert not any(key in evidence for key in ('income', 'net_income', 'net_received', 'refund_cash_minor'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['connect', 'sync'])
+@pytest.mark.parametrize('changes', [
+    {'captured': True}, {'paid': False}, {'refunded': False}, {'status': 'pending'}, {'status': 'failed'},
+    {'amount_captured': 300}, {'amount_captured': 1001}, {'amount_refunded': 1001},
+    {'amount_captured': -1}, {'amount_refunded': -1}, {'amount_refunded': 0.5},
+    {'captured': None}, {'paid': 1}, {'refunded': 'true'},
+])
+async def test_uncaptured_refund_exception_does_not_relax_other_money_or_type_guards(configured, phase, changes):
+    transport, calls = charge_contract_transport(changes={
+        'amount': 1000, 'captured': False, 'paid': True, 'refunded': True,
+        'amount_captured': 0, 'amount_refunded': 1000, **changes})
+    with pytest.raises(providers.ProviderError) as caught:
+        await read_stripe_contract(phase, 'test', transport)
+    assert caught.value.code == 'invalid_response' and calls == ['/v1/account', '/v1/balance', '/v1/charges']
+
+
 @pytest.mark.parametrize('changes', [
     {'captured': 1}, {'paid': None}, {'refunded': 'false'}, {'amount_captured': 2},
     {'amount_refunded': 2}, {'paid': False}, {'amount_captured': -1}, {'amount_refunded': 0.1},

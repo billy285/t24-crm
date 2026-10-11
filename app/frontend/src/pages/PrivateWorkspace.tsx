@@ -116,12 +116,14 @@ function ItemEvidence({ item }: { item: PrivateItem }) {
 function StripeRecordDetails({ item, source, now }: { item: PrivateItem; source?: PrivateSource; now: number }) {
   const record = privateStripeRecord(item, source, now);
   const fields = item.kind === 'payment'
-    ? [['请求金额', record.authorizedMinor], ['已收款金额', record.capturedMinor], ['已退款金额', record.refundedMinor]] as const
+    ? record.paymentState === 'uncaptured_refunded'
+      ? [['来源请求金额', record.amountMinor], ['来源捕获字段', record.capturedMinor], ['来源退款字段', record.refundedMinor]] as const
+      : [['请求金额', record.authorizedMinor], ['已收款金额', record.capturedMinor], ['已退款金额', record.refundedMinor]] as const
     : [[record.amountLabel, record.amountMinor]] as const;
   return <div className="pw-stripe-detail">
     <section className="pw-stripe-detail-state"><span>Stripe 来源状态</span><strong>{record.statusLabel}</strong><small>{record.freshnessLabel} · {record.mode === 'test' ? '测试模式' : record.mode === 'live' ? '正式模式' : '模式待核实'}</small></section>
     <dl className="pw-stripe-amounts">{fields.map(([label, amount]) => <div key={label}><dt>{label}</dt><dd>{formatPrivateAmount(amount, item.currency, 'stripe')}</dd></div>)}</dl>
-    <p className="pw-stripe-note">{item.kind === 'payout' ? '提现是账户间转移，银行是否到账需核对实际流水。' : item.kind === 'payment' && record.paymentState === 'authorized' ? '授权金额尚未捕获，不代表实际收款。' : '来源记录用于个人查看，不写入 CRM 账目。'}</p>
+    <p className="pw-stripe-note">{item.kind === 'payout' ? '提现是账户间转移，银行是否到账需核对实际流水。' : record.paymentState === 'uncaptured_refunded' ? '此笔付款未捕获；来源退款字段保留原值，具体资金变化请在 Stripe 核对。' : item.kind === 'payment' && record.paymentState === 'authorized' ? '授权金额尚未捕获，不代表实际收款。' : '来源记录用于个人查看，不写入 CRM 账目。'}</p>
     <details className="pw-stripe-evidence"><summary>来源时间与原始依据<ChevronRight aria-hidden="true" /></summary><dl><div><dt>同步时间</dt><dd>{timeLabel(record.observedAt)}</dd></div><div><dt>来源账户</dt><dd>{typeof item.evidence.stripe_account_id === 'string' ? item.evidence.stripe_account_id : '待重新同步'}</dd></div><div><dt>来源原始状态</dt><dd>{item.status || '待核实'}</dd></div>{item.summary && <div><dt>来源说明</dt><dd>{item.summary}</dd></div>}{Object.entries(item.evidence).filter(([key]) => !['stripe_account_id', 'stripe_mode', 'stripe_snapshot_id', 'stripe_observed_at', 'payment_state', 'amount_authorized_minor', 'amount_captured_minor', 'amount_refunded_minor', 'provider_status'].includes(key)).slice(0, 8).map(([key, value]) => <div key={key}><dt>{{ provider_id: '来源记录', accounting_effect: '账目影响', funds_movement: '资金流向', captured: '已捕获', paid: '来源支付标记' }[key] || key}</dt><dd>{key === 'accounting_effect' && value === 'none' ? '独立记录' : evidenceText(value)}</dd></div>)}</dl></details>
   </div>;
 }
