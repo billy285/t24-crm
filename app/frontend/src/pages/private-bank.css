@@ -8,6 +8,7 @@
 .pw-bank-source strong { font-size: 14px; overflow-wrap: anywhere; }
 .pw-bank-source span { color: var(--pw-muted); font-size: 11px; }
 .pw-bank-source .pw-button { flex-shrink: 0; }
+.pw-bank-source .pw-button:disabled:not([aria-busy="true"]) { cursor: not-allowed; }
 .pw-bank-section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 7px 12px; margin-bottom: 12px; }
 .pw-bank-section-heading h2 { font-size: 14px; }
 .pw-bank-section-heading time { font-size: 11px; color: var(--pw-muted); }

@@ -554,10 +554,22 @@ async def test_final_ai_boundary_discards_all_bank_details_and_rejects_bank_issu
     raw = json.loads(boss_provider.payload(data, shared.model_identifier()))
     body = json.dumps(raw, ensure_ascii=False)
     assert 'PRIVATE BANK' not in body and '987654321' not in body
-    safe = {'summary': '真实银行信息仅供本人在本地核对，未纳入本次整理。', 'source_refs': ['bofa_bank'], 'issue_notes': []}
+    assert 'bofa_bank' not in raw['text']['format']['schema']['properties']['source_refs']['items']['enum']
+    safe = {'summary': '请核对来源提示与待处理要求。', 'source_refs': ['stripe'], 'issue_notes': []}
     assert boss_provider.validate(safe, data)['state'] == 'ready'
+    for refs in (['bofa_bank'], ['stripe', 'bofa_bank']):
+        with pytest.raises(shared.MailBriefError): boss_provider.validate({**safe, 'source_refs': refs}, data)
+    for summary in ('银行已安全连接，可以查看真实流水。', '银行尚未连接，请先授权。',
+                    '可以查看银行账户的交易记录。', 'Bank of America is connected.',
+                    'Plaid is authorized and synced.', 'Bank balance is available.',
+                    '已经安全连接到美国银行。', '已经同步银行数据。'):
+        with pytest.raises(shared.MailBriefError): boss_provider.validate({**safe, 'summary': summary}, data)
     safe['issue_notes'] = [{'issue_id': 'PRIVATE BANK ISSUE ID', 'explanation': '核对银行记录。'}]
     with pytest.raises(shared.MailBriefError): boss_provider.validate(safe, data)
+    # Reading a bank-related email is still within the approved mail scope; it
+    # must remain an unverified reminder without an inferred account status.
+    assert boss_provider.validate({**safe, 'summary': '邮件提醒尚未核验，请打开原邮件确认。',
+        'source_refs': ['bofa'], 'issue_notes': []}, data)['state'] == 'ready'
 
 
 @pytest.mark.asyncio

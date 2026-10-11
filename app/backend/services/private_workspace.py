@@ -524,8 +524,26 @@ async def _source_after(private_db, owner_id, source_id):
     return source_response(descriptor, await connection_for(private_db, owner_id, source_id))
 
 
-async def connect_source(private_db, owner_id: str, source_id: str):
+async def _stripe_owner_still_valid(source_id, owner_validator):
+    """A request/controlled seed supplies its own fresh, readonly validator.
+
+    Background synchronizers have no interactive session; their existing owner
+    and generation checks remain independent. Never reuse request JWT claims
+    after an external wait or treat an identity-check failure as permission.
+    """
+    if source_id != "stripe" or owner_validator is None:
+        return
+    try:
+        allowed = await owner_validator()
+    except Exception:
+        allowed = False
+    if not allowed:
+        raise HTTPException(status_code=403, detail="私人空间访问权限已失效")
+
+
+async def connect_source(private_db, owner_id: str, source_id: str, *, owner_validator=None):
     require_source(source_id, external=True)
+    await _stripe_owner_still_valid(source_id, owner_validator)
     if source_id == "bofa_bank":
         raise HTTPException(status_code=409, detail="请使用银行安全授权入口连接账户")
     descriptor = next(row for row in source_descriptors() if row["id"] == source_id)
@@ -534,6 +552,7 @@ async def connect_source(private_db, owner_id: str, source_id: str):
     state = secrets.token_urlsafe(32)
     try:
         result = await asyncio.wait_for(providers().begin_connect(source_id, state), timeout=45)
+        await _stripe_owner_still_valid(source_id, owner_validator)
         authorization_url = safe_authorization_url(result["authorization_url"]) if result.get("authorization_url") else None
         if authorization_url and dict(parse_qsl(urlsplit(authorization_url).query)).get("state") != state:
             raise HTTPException(status_code=502, detail="来源授权请求不匹配")
@@ -557,7 +576,12 @@ async def connect_source(private_db, owner_id: str, source_id: str):
     changes["metadata_json"] = safe_json(result.get("metadata") or {})
     await private_db.execute(update(PrivateConnection).where(PrivateConnection.id == connection.id).values(
         **changes).execution_options(synchronize_session=False))
-    await private_db.commit()
+    try:
+        await _stripe_owner_still_valid(source_id, owner_validator)
+        await private_db.commit()
+    except Exception:
+        await private_db.rollback()
+        raise
     return {"source": await _source_after(private_db, owner_id, source_id),
             "authorization_url": authorization_url, "requires_redirect": bool(authorization_url)}
 
@@ -704,8 +728,9 @@ async def persist_provider_batch(private_db, owner_id: str, source_id: str, batc
             "updated": sum(key in existing for key in normalized)}, balances
 
 
-async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seconds=45):
+async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seconds=45, owner_validator=None):
     require_source(source_id, external=True)
+    await _stripe_owner_still_valid(source_id, owner_validator)
     connection = await connection_for(private_db, owner_id, source_id)
     if not connection or connection.status != "connected" or not connection.encrypted_credentials:
         raise HTTPException(status_code=409, detail="请先连接此来源")
@@ -731,6 +756,7 @@ async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seco
     run_id = run.id
     try:
         batch = await asyncio.wait_for(providers().fetch_source(source_id, credentials, metadata), timeout=timeout_seconds)
+        await _stripe_owner_still_valid(source_id, owner_validator)
         # This guarded write also obtains the SQLite write lock before item upserts.
         still_current = await private_db.execute(update(PrivateConnection).where(
             PrivateConnection.id == connection_id, PrivateConnection.generation == generation,
@@ -796,10 +822,12 @@ async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seco
         await private_db.execute(update(PrivateSyncRun).where(PrivateSyncRun.id == run_id).values(
             status="succeeded", completed_at=utcnow(), created_count=counts["created"], updated_count=counts["updated"],
         ))
+        await _stripe_owner_still_valid(source_id, owner_validator)
         await private_db.commit()
     except Exception as error:
         await private_db.rollback()
-        safe_error = _provider_setup_message(source_id, error, "同步未成功，请检查来源授权后重试")
+        revoked = source_id == "stripe" and isinstance(error, HTTPException) and error.status_code == 403
+        safe_error = "私人空间访问权限已失效" if revoked else _provider_setup_message(source_id, error, "同步未成功，请检查来源授权后重试")
         await private_db.execute(update(PrivateConnection).where(
             PrivateConnection.id == connection_id, PrivateConnection.generation == generation,
         ).values(sync_lease_until=None, error=safe_error))
@@ -807,6 +835,8 @@ async def sync_source(private_db, owner_id: str, source_id: str, *, timeout_seco
             status="failed", completed_at=utcnow(), error=safe_error,
         ))
         await private_db.commit()
+        if revoked:
+            raise HTTPException(status_code=403, detail=safe_error) from None
         raise HTTPException(status_code=502, detail=safe_error) from None
     return {"source": await _source_after(private_db, owner_id, source_id), "counts": counts}
 

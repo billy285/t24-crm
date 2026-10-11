@@ -212,10 +212,15 @@ async def update_preferences(
 @router.post("/sources/{source_id}/connect")
 async def connect(
     source_id: SourceId,
+    request: Request,
     owner: PrivateOwner = Depends(require_private_owner),
     private_db: AsyncSession = Depends(get_private_db),
 ):
-    return await connect_source(private_db, owner.employee_id, source_id)
+    validator = (lambda: revalidate_private_owner(request, owner.employee_id)) if source_id == "stripe" else None
+    result = await connect_source(private_db, owner.employee_id, source_id, owner_validator=validator)
+    if source_id == "stripe" and not await revalidate_private_owner(request, owner.employee_id):
+        raise HTTPException(status_code=403, detail="私人空间访问权限已失效")
+    return result
 
 
 @router.post("/bank/link/start")
@@ -276,8 +281,12 @@ async def synchronize(
     private_db: AsyncSession = Depends(get_private_db),
     business_db: AsyncSession = Depends(get_db),
 ):
-    result = await sync_source(private_db, owner.employee_id, source_id)
-    still_allowed = (await revalidate_private_owner(request, owner.employee_id) if source_id == "bofa_bank"
+    if source_id == "stripe":
+        result = await sync_source(private_db, owner.employee_id, source_id,
+                                   owner_validator=lambda: revalidate_private_owner(request, owner.employee_id))
+    else:
+        result = await sync_source(private_db, owner.employee_id, source_id)
+    still_allowed = (await revalidate_private_owner(request, owner.employee_id) if source_id in {"bofa_bank", "stripe"}
                      else await valid_private_owner(owner.employee_id, business_db))
     if not still_allowed:
         raise HTTPException(status_code=403, detail="私人空间访问权限已失效")

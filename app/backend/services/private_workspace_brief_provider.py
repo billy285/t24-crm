@@ -14,7 +14,7 @@ import httpx
 
 from services import private_mail_brief as shared
 
-VERSION = 'private-workspace-brief-v2'
+VERSION = 'private-workspace-brief-v3'
 MAX_INPUT = 18000
 BANK_GAP = {'source_id': 'bofa_bank', 'data_state': 'unsupported',
             'summary': '真实银行金融数据未纳入 AI 整理，仅本人在本地查看。',
@@ -25,6 +25,12 @@ def _issues(snapshot):
     # The existing AI consent does not cover real bank transactions. Even an
     # otherwise valid local issue must not cross the external request boundary.
     return [issue for issue in snapshot['issues'] if issue['source_id'] != 'bofa_bank']
+
+
+def _source_refs(snapshot):
+    # The fixed bank gap carries no connection or financial evidence. It can be
+    # displayed locally, but cannot substantiate an AI conclusion or citation.
+    return [source['source_id'] for source in snapshot['sources'] if source['source_id'] != 'bofa_bank']
 
 
 def configured():
@@ -56,7 +62,7 @@ def schema(snapshot):
         'type': 'object', 'additionalProperties': False,
         'properties': {
             'summary': {'type': 'string'},
-            'source_refs': {'type': 'array', 'items': {'type': 'string', 'enum': [source['source_id'] for source in snapshot['sources']]}},
+            'source_refs': {'type': 'array', 'items': {'type': 'string', 'enum': _source_refs(snapshot)}},
             'issue_notes': {'type': 'array', 'items': {
                 'type': 'object', 'additionalProperties': False,
                 'properties': {'issue_id': {'type': 'string', 'enum': ids or ['no_issue']}, 'explanation': {'type': 'string'}},
@@ -72,6 +78,8 @@ ads, make payments or update accounting. Never treat a bank email as verified ba
 payout as income, a partial event list as account totals, or Ads delivery as profit/performance success.
 Real bank data is excluded from this request. Its fixed gap notice is not evidence of the bank's
 connection, synchronization, account activity, balances or financial situation. Do not infer them.
+Do not cite bofa_bank or describe real bank accounts, connection status, balances or transactions.
+The UI supplies the bank notice locally. Bank-related email may only be described as an unverified mail reminder.
 Do not invent a deadline, number, currency, amount, percentage, balance, revenue or financial conclusion.
 Do not repeat ANY numerical quantities in your response; the UI displays immutable system figures.
 Use number-free prose focused on what to review manually and acknowledge missing, stale or bounded data.
@@ -109,10 +117,17 @@ _UNSAFE_FACT = re.compile(r'[0-9０-９$€£¥]|[零〇一二三四五六七八
                         r'到账成功|付款成功|收款成功|已收款|已修复|已执行|已完成任务|一切正常|全部正常|没有风险|无风险|已解决|'
                         r'(?:已|已经|成功|完成).{0,6}(?:到账|到帐|入账|入帐|付款|支付|退款|收款)|'
                         r'(?:到账|到帐|入账|入帐|付款|支付|退款|收款).{0,6}(?:成功|完成|正常)')
+_BANK_STATUS_CLAIM = re.compile(
+    r'真实(?:银行|流水)|银行(?:账户|余额|流水|数据)|'
+    r'(?:银行|美国银行|\bbank\b|\bbofa\b|\bplaid\b|bank\s+of\s+america).{0,48}'
+    r'(?:连接|接入|授权|同步|余额|流水|connected|authorized|synced|transactions|balance)|'
+    r'(?:连接|接入|授权|同步|connected|authorized|synced|transactions|balance).{0,48}'
+    r'(?:银行|\bbank\b|\bbofa\b|\bplaid\b|bank\s+of\s+america)', re.I)
 
 
 def _prose(value, cap):
-    if not isinstance(value, str) or not value.strip() or len(value) > cap or _UNSAFE_FACT.search(value):
+    if (not isinstance(value, str) or not value.strip() or len(value) > cap
+            or _UNSAFE_FACT.search(value) or _BANK_STATUS_CLAIM.search(value)):
         raise shared.MailBriefError('invalid_response')
     if any(ord(character) < 32 for character in value if character not in '\n\t'):
         raise shared.MailBriefError('invalid_response')
@@ -123,7 +138,7 @@ def validate(value, snapshot):
     if not isinstance(value, dict) or set(value) != {'summary', 'source_refs', 'issue_notes'}:
         raise shared.MailBriefError('invalid_response')
     refs = value['source_refs']
-    allowed = {source['source_id'] for source in snapshot['sources']}
+    allowed = set(_source_refs(snapshot))
     if not isinstance(refs, list) or not 1 <= len(refs) <= len(allowed) or any(not isinstance(ref, str) or ref not in allowed for ref in refs):
         raise shared.MailBriefError('invalid_response')
     notes = value['issue_notes']; positions = {issue['id']: index for index, issue in enumerate(_issues(snapshot))}

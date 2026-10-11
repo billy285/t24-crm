@@ -103,7 +103,40 @@ test('bank dashboard shows visible cached balances and every sandbox amount is l
   const screen = f.render({ source, items: [item] }); assert.ok(screen.text.includes('银行测试数据')); assert.ok(screen.text.includes('Sandbox · 非真实余额与流水'));
 });
 test('bank account or snapshot failures hide amounts and preserve an explicit safe connect action', () => {
-  const f = fixture(); const screen = f.render({ source: bankSource({ status: 'not_configured', metadata: {} }) }); assert.ok(!screen.text.includes('USD')); assert.ok(!screen.text.includes('已入账0')); assert.ok(!screen.text.includes('待入账0')); assert.ok(screen.text.includes('授权并同步后查看银行数据')); screen.button('安全连接').props.onClick(); assert.deepEqual(screen.events, ['connect']);
+  const f = fixture(); const screen = f.render({ source: bankSource({ status: 'disconnected', metadata: {} }) }); assert.ok(!screen.text.includes('USD')); assert.ok(!screen.text.includes('已入账0')); assert.ok(!screen.text.includes('待入账0')); assert.ok(screen.text.includes('授权并同步后查看银行数据')); screen.button('安全连接').props.onClick(); assert.deepEqual(screen.events, ['connect']);
+});
+test('unconfigured bank setup cannot launch authorization or imply a connected account or zero balance', () => {
+  const f = fixture();
+  for (const source of [bankSource({ status: 'not_configured', metadata: {} }), ...['disconnected', 'connecting', 'error'].map(status => bankSource({ status, missing_configuration: ['PRIVATE_WORKSPACE_PLAID_ENABLED'], metadata: {} }))]) {
+    const screen = f.render({ source, items: [], total: 0 });
+    assert.ok(screen.text.includes('接入配置尚未完成'));
+    assert.ok(screen.text.includes('配置完成后，才能安全授权并读取真实账户数据。'));
+    const disabled = screen.button('待完成配置'); assert.equal(disabled.props.disabled, true);
+    disabled.props.onClick(); assert.deepEqual(screen.events, []);
+    assert.equal(screen.button('安全连接'), undefined); assert.equal(screen.button('继续授权'), undefined);
+    assert.equal(screen.button('连接 Bank of America'), undefined); assert.equal(screen.button('同步'), undefined);
+    assert.ok(!screen.text.includes('已安全连接') && !screen.text.includes('USD') && !screen.text.includes('已入账0') && !screen.text.includes('待入账0'));
+    assert.deepEqual(f.requests, []);
+  }
+});
+test('a connected bank with missing configuration keeps management available without enabling sync or claiming current access', () => {
+  const f = fixture(); const screen = f.render({ source: bankSource({ missing_configuration: ['PRIVATE_WORKSPACE_PLAID_SECRET'] }) });
+  assert.ok(screen.text.includes('接入配置尚未完成')); assert.ok(!screen.text.includes('已安全连接'));
+  assert.equal(screen.button('同步'), undefined);
+  const manage = screen.button('管理接入'); assert.equal(manage.props.disabled, false); manage.props.onClick();
+  assert.deepEqual(screen.events, ['connect']); assert.deepEqual(f.requests, []);
+  assert.ok(screen.text.includes('银行缓存余额') && screen.text.includes('USD 1,200.00'));
+});
+test('missing bank source and busy configured connection cannot dispatch source actions', () => {
+  const f = fixture(); const unknown = f.render({ source: undefined, items: [], total: 0 });
+  assert.ok(unknown.text.includes('接入状态待确认')); const disabled = unknown.button('状态待确认'); assert.equal(disabled.props.disabled, true);
+  disabled.props.onClick(); assert.deepEqual(unknown.events, []); assert.equal(unknown.button('连接 Bank of America'), undefined); assert.equal(unknown.button('同步'), undefined);
+  for (const source of [bankSource({ status: 'disconnected', metadata: {} }), bankSource({ status: 'connecting', metadata: {} }), bankSource()]) {
+    const screen = f.render({ source, busy: true });
+    const actions = screen.nodes.filter(node => node.type === 'button' && ['安全连接', '继续授权', '连接 Bank of America', '管理接入', '同步'].includes(screen.textOf(node)));
+    assert.ok(actions.length > 0); for (const action of actions) { assert.equal(action.props.disabled, true); action.props.onClick(); }
+    assert.deepEqual(screen.events, []);
+  }
 });
 test('bank ledger tabs separate pending from posted and actions need explicit clicks', () => {
   const f = fixture(); const pending = bankItem({ id: 'tx-pending', title: 'Synthetic pending transfer', status: 'pending' }); pending.evidence.pending = true; const before = f.render({ items: [bankItem(), pending], total: 2 }); assert.ok(before.text.includes('Synthetic bank transfer')); assert.ok(!before.text.includes('Synthetic pending transfer'));

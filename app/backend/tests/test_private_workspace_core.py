@@ -20,12 +20,14 @@ from models.employees import Employees
 from models.private_workspace import PrivateConnection, PrivateItem, PrivatePreferences, PrivateSyncRun, PrivateWorkspaceBase, utcnow
 from routers.private_workspace import router
 from services import emp_auth, private_workspace as service, private_workspace_providers as real_providers
+from services.employee_sessions import _credential_fingerprint
 
 STRIPE_ACCOUNT = 'acct_synthetic12345678'
 
 
 def headers(employee_id=1, role="super_admin"):
-    return {"Authorization": "Bearer " + emp_auth.create_access_token({"emp_id": employee_id, "role": role})}
+    return {"Authorization": "Bearer " + emp_auth.create_access_token(
+        {"emp_id": employee_id, "role": role, "sid": f"synthetic-session-{employee_id}"})}
 
 
 class FakeProviders:
@@ -81,6 +83,8 @@ async def workspace(monkeypatch, tmp_path):
     business_sessions = async_sessionmaker(business_engine, expire_on_commit=False)
     async with business_engine.begin() as connection:
         await connection.run_sync(lambda sync: Employees.__table__.create(sync))
+        await connection.execute(text("CREATE TABLE employee_auth_sessions (id TEXT PRIMARY KEY, employee_id INTEGER, "
+            "credential_fingerprint TEXT, created_at INTEGER, expires_at INTEGER, revoked_at INTEGER)"))
         await connection.execute(text("CREATE TABLE finance_guard (id INTEGER PRIMARY KEY, amount INTEGER NOT NULL)"))
         await connection.execute(text("INSERT INTO finance_guard VALUES (1, 123456)"))
     async with business_sessions() as db:
@@ -88,12 +92,24 @@ async def workspace(monkeypatch, tmp_path):
                              role=role, status="active")
                     for employee_id, role in [(1, "super_admin"), (2, "super_admin"), (3, "admin"), (4, "sales"), (5, "finance")]])
         await db.commit()
+        import time
+        now = int(time.time())
+        for employee_id in range(1, 6):
+            password = f"synthetic-credential-{employee_id}"
+            await db.execute(text("UPDATE employees SET password=:password WHERE id=:id"),
+                             {"password": password, "id": employee_id})
+            await db.execute(text("INSERT INTO employee_auth_sessions VALUES (:sid,:employee_id,:fingerprint,:created,:expires,NULL)"),
+                {"sid": f"synthetic-session-{employee_id}", "employee_id": employee_id,
+                 "fingerprint": _credential_fingerprint({"id": employee_id, "password": password}),
+                 "created": now, "expires": now + 3600})
+        await db.commit()
     business_statements = []
     event.listen(business_engine.sync_engine, "before_cursor_execute",
                  lambda conn, cursor, statement, parameters, context, executemany: business_statements.append(statement))
     fake = FakeProviders()
     monkeypatch.setattr(service, "providers", lambda: fake)
     app = FastAPI()
+    app.state.private_business_sessions = business_sessions
     app.include_router(router)
 
     async def business_db():
