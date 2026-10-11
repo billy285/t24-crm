@@ -14,3 +14,16 @@ Only the private Stripe report cache table and owner index may be added. Stop pr
 After publication, verify the real owner report, unauthorized/revoked sessions, account/mode, timezone, no-store and permission/partial warnings. A cache-miss report can update the connection updated_at timestamp; verify encrypted credential/account/mode/generation fields separately at that phase. Never report unavailable resources or incomplete coverage as confirmed zero.
 
 The carrier contains code, offline tests and complete static assets only; no credentials or database contents. The deployment receipt distinguishes built, candidate-verified, deployed and live-owner-verified stages.
+# Pre-activation helper repair
+
+The first server activation stopped before creating `live-upgrade` because the
+bounded reader included filesystem access time in its mutation stamp. The
+reviewed reader excludes only access time and retains file identity, ownership,
+permissions, link count, size, modification time and change time checks.
+
+`repair_upgrade_helper.py` is a one-time, hash-pinned repair for that exact
+never-activated release. It preserves the original helper and acquisition
+receipt, verifies all candidate and payload bytes, and replaces only the helper
+and its acquisition provenance under the existing release lock. A sealed
+`STRIPE_REPORT_UPGRADE_HELPER_REPAIRED` receipt is required before activation.
+An interrupted pair remains rejected; neither database is restored or removed.

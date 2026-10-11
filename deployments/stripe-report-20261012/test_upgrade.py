@@ -507,3 +507,69 @@ def test_exception_output_never_contains_raw_secrets_or_provider_errors():
     assert u.safe_error(RuntimeError('synthetic-private-key account@example.test')) == 'STRIPE_REPORT_UPGRADE_FAILED'
     assert u.safe_error(u.UpgradeError('PRIVATE_SCHEMA_CHANGED')) == 'PRIVATE_SCHEMA_CHANGED'
     assert u.safe_error(u.UpgradeError('synthetic-private-key')) == 'STRIPE_REPORT_UPGRADE_FAILED'
+
+
+def stat_copy(info, **changes):
+    names = ('st_dev', 'st_ino', 'st_uid', 'st_gid', 'st_mode', 'st_nlink', 'st_size',
+             'st_mtime_ns', 'st_ctime_ns', 'st_atime_ns')
+    return SimpleNamespace(**{name: changes.get(name, getattr(info, name)) for name in names})
+
+
+def test_protected_bounded_read_allows_only_read_driven_atime_change(tmp_path, monkeypatch):
+    path = tmp_path / 'synthetic-private-file'
+    write_new(path, b'synthetic immutable helper bytes')
+    before = path.stat()
+    after = stat_copy(before, st_atime_ns=before.st_atime_ns + 1_000_000_000)
+    observed = iter([before, after])
+    monkeypatch.setattr(u, 'protected', lambda candidate: next(observed))
+    assert u.read_protected(path) == b'synthetic immutable helper bytes'
+    assert u.file_stamp(before) == u.file_stamp(after)
+
+
+@pytest.mark.parametrize('field', ['st_dev', 'st_ino', 'st_uid', 'st_gid', 'st_mode',
+                                 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns'])
+def test_protected_read_rejects_every_stable_metadata_change(tmp_path, monkeypatch, field):
+    path = tmp_path / 'synthetic-private-file'
+    write_new(path, b'synthetic immutable bytes')
+    before = path.stat()
+    after = stat_copy(before, **{field: getattr(before, field) + 1})
+    observed = iter([before, after])
+    monkeypatch.setattr(u, 'protected', lambda candidate: next(observed))
+    with pytest.raises(u.UpgradeError, match='CHANGED_DURING_READ'):
+        u.read_protected(path)
+
+
+def test_protected_read_rejects_change_between_path_check_and_open(tmp_path, monkeypatch):
+    path = tmp_path / 'synthetic-private-file'
+    write_new(path, b'synthetic immutable bytes')
+    before = stat_copy(path.stat(), st_mtime_ns=path.stat().st_mtime_ns - 1)
+    monkeypatch.setattr(u, 'protected', lambda candidate: before)
+    with pytest.raises(u.UpgradeError, match='IDENTITY_CHANGED'):
+        u.read_protected(path)
+
+
+def test_protected_read_rejects_same_size_content_change_during_read(tmp_path, monkeypatch):
+    path = tmp_path / 'synthetic-private-file'
+    write_new(path, b'synthetic immutable bytes')
+    first = True
+    def protected(candidate):
+        nonlocal first
+        if first:
+            first = False
+            return candidate.stat()
+        original_mtime = candidate.stat().st_mtime_ns
+        candidate.write_bytes(b'synthetic MUTATED!! bytes')
+        # Restoring the old mtime cannot hide the content write's ctime change.
+        os.utime(candidate, ns=(candidate.stat().st_atime_ns, original_mtime))
+        return candidate.stat()
+    monkeypatch.setattr(u, 'protected', protected)
+    with pytest.raises(u.UpgradeError, match='CHANGED_DURING_READ'):
+        u.read_protected(path)
+
+
+def test_protected_read_keeps_size_bound_when_metadata_is_unchanged(tmp_path, monkeypatch):
+    path = tmp_path / 'synthetic-private-file'
+    write_new(path, b'synthetic immutable bytes')
+    monkeypatch.setattr(u, 'protected', lambda candidate: candidate.stat())
+    with pytest.raises(u.UpgradeError, match='SIZE_LIMIT'):
+        u.read_protected(path, maximum=2)

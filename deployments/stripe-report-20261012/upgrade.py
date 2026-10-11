@@ -76,15 +76,22 @@ def protected(path, directory=False):
     return info
 
 
+def file_stamp(info):
+    # Reading can update atime. All identity, ownership, protection, length and
+    # mutation metadata remain pinned before/opened/after the bounded read.
+    return tuple(getattr(info, name) for name in (
+        'st_dev', 'st_ino', 'st_uid', 'st_gid', 'st_mode', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns'))
+
+
 def read_protected(path, maximum=4 * 1024**2):
     before = protected(path)
     need(before.st_size <= maximum, 'PROTECTED_FILE_SIZE_LIMIT')
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(descriptor, 'rb') as stream:
         opened = os.fstat(stream.fileno())
-        need((before.st_dev, before.st_ino) == (opened.st_dev, opened.st_ino), 'PROTECTED_FILE_IDENTITY_CHANGED')
+        need(file_stamp(before) == file_stamp(opened), 'PROTECTED_FILE_IDENTITY_CHANGED')
         data = stream.read(maximum + 1)
-    need(len(data) <= maximum and protected(path) == before, 'PROTECTED_FILE_CHANGED_DURING_READ')
+    need(len(data) <= maximum and file_stamp(protected(path)) == file_stamp(before), 'PROTECTED_FILE_CHANGED_DURING_READ')
     return data
 
 
