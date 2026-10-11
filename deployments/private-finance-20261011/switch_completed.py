@@ -31,7 +31,7 @@ import live_preflight as live
 import private_schema_guard as guard
 import seed_private_stripe as seed
 
-MINIMUM_TESTS = 781
+MINIMUM_TESTS = 807
 ROLE_LABEL = 't24.private_finance.release.attempt'
 DISABLED = {
     'PRIVATE_WORKSPACE_PLAID_ENABLED': 'false', 'PRIVATE_MAIL_TRANSLATION_ENABLED': 'false',
@@ -146,7 +146,7 @@ def checked_candidate(args):
          and path.name == 'candidate.json', 'EXACT_REVIEWED_CANDIDATE_PATH_REQUIRED')
     receipt = seed.checked_candidate(fixed_json(path,args.candidate_sha256),source_sha=args.source_sha,release=release)
     need(receipt['candidate_regressions']['minimum'] >= MINIMUM_TESTS and receipt['candidate_regressions']['tests'] >= MINIMUM_TESTS,
-         'COMPLETE_SERVER_781_REGRESSIONS_REQUIRED')
+         'COMPLETE_SERVER_807_REGRESSIONS_REQUIRED')
     images = json.loads(docker(['image','inspect',receipt['image_id']]))
     base = json.loads(docker(['image','inspect',live.PRIVATE_IMAGE]))
     need(len(images) == len(base) == 1 and images[0]['Id'] == receipt['image_id'] and
@@ -163,7 +163,9 @@ def old_check(role, baseline, *, running=None):
     need(not info['State'].get('Dead') and not info['State'].get('Restarting'), 'OLD_PRIVATE_STATE_REJECTED')
     if running is not None: need(info['State']['Running'] is running, 'OLD_PRIVATE_RUNNING_STATE_DRIFT')
     if running is True:
-        need(info['State']['StartedAt'] == previous['started_at'], 'OLD_PRIVATE_START_TIME_DRIFT')
+        need(info['State']['StartedAt'] == previous['started_at'] and
+             ('restart_count' not in previous or info.get('RestartCount')==previous['restart_count']),
+             'OLD_PRIVATE_START_TIME_DRIFT')
     return info
 
 def no_writers(allowed=()):
@@ -316,6 +318,8 @@ def schema(args):
 def checked_schema_state(args, receipt):
     state = fixed_json(args.schema_state,args.schema_state_sha256)
     root = args.candidate.parent/'completed-release'
+    if state.get('resume_lineage') is not None:
+        return checked_resume_schema_state(args,receipt,state)
     need(args.schema_state == root/'schema-state.json' and state.get('phase') == 'PRIVATE_COMPLETED_SCHEMA_VERIFIED_WRITERS_STOPPED' and
          state.get('candidate_sha256') == args.candidate_sha256 and state.get('source_sha') == args.source_sha and
          state.get('candidate_image') == receipt['image_id'] and state.get('old_ids') == live.PRIVATE_IDS and
@@ -334,6 +338,87 @@ def checked_schema_state(args, receipt):
     baseline = fixed_json(Path(state['baseline']),state['baseline_sha256'])
     need(receipt['baseline_sha256'] == state['baseline_sha256'], 'SCHEMA_BASELINE_BINDING_DRIFT')
     return state,before,after,baseline
+
+def checked_resume_schema_state(args,receipt,state):
+    import resume_preflight as resumed
+    root=args.candidate.parent/'completed-release'
+    need(args.schema_state==root/'schema-state.json' and
+         state.get('phase')=='PRIVATE_COMPLETED_RESUME_VERIFIED_WRITERS_STOPPED' and
+         state.get('source_sha')==args.source_sha and state.get('candidate_sha256')==args.candidate_sha256 and
+         state.get('candidate_image')==receipt['image_id'] and state.get('old_ids')==live.PRIVATE_IDS and
+         state.get('resume_lineage')==receipt.get('resume_lineage') and
+         state.get('bank_enabled') is False and state.get('ai_enabled') is False and
+         state.get('initializer_rerun') is False and state.get('database_migration_performed') is False and
+         re.fullmatch('[a-f0-9]{32}',state.get('attempt','')),
+         'EXACT_REVIEWED_RESUME_SCHEMA_STATE_REQUIRED')
+    original,before,original_after,old_baseline,baseline=resumed.checked_lineage(receipt)
+    for key in ('schema_before','schema_manifest','schema_validation','backup'):
+        need(state.get(key)==original.get(key) and state.get(key+'_sha256')==original.get(key+'_sha256'),
+             'ORIGINAL_MIGRATION_PROOF_MUST_REMAIN_IMMUTABLE')
+    need(state.get('schema_after')==str(root/'schema-after.json') and
+         state.get('original_schema_after')==original.get('schema_after') and
+         state.get('original_schema_after_sha256')==original.get('schema_after_sha256') and
+         state.get('baseline')==receipt['resume_lineage']['new_baseline'] and
+         state.get('baseline_sha256')==receipt['baseline_sha256'] and
+         receipt['synthetic_schema']['schema_objects']==original_after['private']['schema_objects'],
+         'NEW_CANDIDATE_AND_ORIGINAL_SCHEMA_LINEAGE_REQUIRED')
+    after=fixed_json(root/'schema-after.json',state['schema_after_sha256'])
+    # This is historical proof. Current connections may now include the
+    # approved Stripe seed; the live absent-Stripe guard belongs before seed.
+    schema_and_business_unchanged(after,original_after)
+    need(set(after['private']['tables'])==candidate.TARGET_TABLES and
+         all(after['private']['tables'][name]['rows']==0 for name in candidate.TARGET_TABLES-guard.BASE_TABLES) and
+         state.get('stripe_connection_absent') is True,'HISTORICAL_FROZEN_RESUME_SCHEMA_REQUIRED')
+    need(state.get('frozen_seed_before_sha256')==guard.digest(after) and
+         isinstance(state.get('resume_stable_before'),dict) and
+         {'items','preferences','connections','other_connections','other_connection_rows_sha256','other_item_rows_sha256'}<=
+         state['resume_stable_before'].keys(),
+         'EXACT_FROZEN_RESUME_STATE_REQUIRED')
+    # The self hash is injected on reading; it is never fabricated in a file.
+    return {**state,'accepted_schema_state_sha256':args.schema_state_sha256},before,after,baseline
+
+def resume_schema(args):
+    import resume_preflight as resumed
+    receipt=checked_candidate(args)
+    original,before,original_after,old_baseline,baseline=resumed.checked_lineage(receipt)
+    need(args.baseline==Path(receipt['resume_lineage']['new_baseline']) and
+         args.baseline_sha256==receipt['baseline_sha256'],'EXACT_NEW_RESUME_BASELINE_REQUIRED')
+    runtime_guard(baseline)
+    for role in ('api','worker'): old_check(role,baseline,running=True)
+    current=guard.release_snapshot(live.PRIVATE_DB,live.BUSINESS)
+    resumed.checked_frozen_snapshot(baseline,current)
+    root=args.output_dir
+    need(root==args.candidate.parent/'completed-release' and not root.exists() and not root.is_symlink(),
+         'NEW_EXCLUSIVE_COMPLETED_RELEASE_DIRECTORY_REQUIRED')
+    root.mkdir(mode=0o700);transfer.protected_directory(root)
+    progress={'format_version':1,'phase':'PRIVATE_RESUME_FREEZE_PREPARED','source_sha':args.source_sha,
+        'candidate':str(args.candidate),'candidate_sha256':args.candidate_sha256,'candidate_image':receipt['image_id'],
+        'baseline':str(args.baseline),'baseline_sha256':args.baseline_sha256,'attempt':uuid4().hex,
+        'old_ids':live.PRIVATE_IDS,'stopped_roles':[],'bank_enabled':False,'ai_enabled':False,
+        'databases_restored':False,'public_assets_published':False,'deployed':False,
+        'resume_lineage':receipt['resume_lineage'],'initializer_rerun':False,'database_migration_performed':False,
+        'original_schema_after':original['schema_after'],'original_schema_after_sha256':original['schema_after_sha256']}
+    for key in ('schema_before','schema_manifest','schema_validation','backup'):
+        progress[key]=original[key];progress[key+'_sha256']=original[key+'_sha256']
+    journal=root/'schema-progress.json';save(journal,progress)
+    for role in ('worker','api'):
+        old_check(role,baseline,running=True)
+        progress['stop_intent']=role;save(journal,progress,replace=True)
+        docker(['stop','--time','30',live.PRIVATE_IDS[role]],timeout=45)
+        old_check(role,baseline,running=False)
+        progress['stopped_roles'].append(role);save(journal,progress,replace=True)
+    no_writers();runtime_guard(baseline)
+    frozen=guard.release_snapshot(live.PRIVATE_DB,live.BUSINESS)
+    resumed.checked_frozen_snapshot(baseline,frozen)
+    after_sha=save(root/'schema-after.json',frozen)
+    value={**progress,'phase':'PRIVATE_COMPLETED_RESUME_VERIFIED_WRITERS_STOPPED',
+        'schema_after':str(root/'schema-after.json'),'schema_after_sha256':after_sha,
+        'frozen_seed_before_sha256':guard.digest(frozen),'resume_stable_before':stable_records(live.PRIVATE_DB),
+        'runtime_env_sha256':live.ENV_SHA,'customer_tables_verified':83,'same_private_inode':True,
+        'new_tables_empty':True,'stripe_connection_absent':True,'worker_started':False,'services_switched':False}
+    saved=save(root/'schema-state.json',value)
+    print(json.dumps({'phase':value['phase'],'schema_state_sha256':saved,'initializer_rerun':False,
+        'database_migration_performed':False,'original_claim_preserved':True,'deployed':False},sort_keys=True))
 
 def role_configuration(blob, role):
     need(role in {'api','worker'} and sha(blob) == live.ENV_SHA, 'EXACT_ORIGINAL_ROLE_ENVIRONMENT_REQUIRED')
@@ -498,6 +583,11 @@ def checked_seed_scope(value,args,state):
          value.get('private_rows_changed_only_stripe_connection') is True and value.get('deployed') is False and
          re.fullmatch('[a-f0-9]{64}',value.get('after_snapshot_sha256','')) and
          re.fullmatch('[a-f0-9]{64}',value.get('before_snapshot_sha256','')), 'EXACT_PERSISTED_STRIPE_SEED_ACCEPTANCE_REQUIRED')
+    if state.get('resume_lineage') is not None:
+        import resume_seed_private_stripe as resumed
+        resumed.checked_seed_lineage(value,args,state)
+        need(value['before_snapshot_sha256']==state['frozen_seed_before_sha256'],
+             'RESUME_SEED_MUST_START_AT_EXACT_FROZEN_SNAPSHOT')
 
 def schema_and_business_unchanged(current,after):
     checked_business(current,after)
@@ -665,6 +755,22 @@ def rollback(args):
     need(state.get('source_sha') == args.source_sha and state.get('candidate_sha256') == args.candidate_sha256 and
          state.get('candidate_image') == receipt['image_id'] and state.get('old_ids') == live.PRIVATE_IDS and
          re.fullmatch('[a-f0-9]{32}',state.get('attempt','')), 'ROLLBACK_EXACT_ATTEMPT_REQUIRED')
+    if state.get('resume_lineage') is not None:
+        import resume_preflight as resumed
+        need(state['resume_lineage']==receipt.get('resume_lineage'),'ROLLBACK_EXACT_RESUME_LINEAGE_REQUIRED')
+        resumed.checked_lineage(receipt)
+        if state.get('phase')=='PRIVATE_COMPLETED_RESUME_VERIFIED_WRITERS_STOPPED':
+            bound_args=argparse.Namespace(**vars(args),schema_state=args.state,schema_state_sha256=args.state_sha256)
+            state,_,_,_=checked_schema_state(bound_args,receipt)
+        elif state.get('schema_state'):
+            bound_args=argparse.Namespace(**vars(args),schema_state=Path(state['schema_state']),
+                schema_state_sha256=state['schema_state_sha256'])
+            accepted,_,_,_=checked_schema_state(bound_args,receipt)
+            need(state.get('accepted_schema_state_sha256')==accepted['accepted_schema_state_sha256'],
+                 'ROLLBACK_RESUME_SCHEMA_SELF_HASH_BINDING_REQUIRED')
+        else:
+            need(state.get('phase')=='PRIVATE_RESUME_FREEZE_PREPARED' and not state.get('stripe_seed') and
+                 not getattr(args,'stripe_seed',None),'ROLLBACK_RESUME_PROGRESS_CANNOT_CLAIM_SEED')
     baseline = fixed_json(Path(state['baseline']),state['baseline_sha256']); runtime_guard(baseline)
     values = {role:role_configuration(transfer.read_protected(transfer.ENV),role) for role in ('api','worker')}
     # Resolve a command timeout only through this attempt's exact name and labels.
@@ -715,11 +821,22 @@ def rollback(args):
         need(state.get('schema_validation_sha256') and state.get('schema_after_sha256'),
              'ROLLBACK_POST_SEED_ACCEPTED_SCHEMA_STATE_REQUIRED')
         checked_seed_scope(approved_seed,args,seed_state)
-        migrated = fixed_json(root/'schema-after.json',seed_state['schema_after_sha256'])
+        migrated = fixed_json(Path(seed_state.get('schema_after',str(root/'schema-after.json'))),seed_state['schema_after_sha256'])
         need(approved_seed['before_snapshot_sha256'] == guard.digest(migrated), 'ROLLBACK_SEED_ORIGINAL_SNAPSHOT_DRIFT')
         if not state.get('stable_before'):
             checked_seed(approved_seed,args,seed_state,current)
-    if before_path.exists():
+    if state.get('resume_lineage') is not None:
+        import resume_preflight as resumed
+        original,before,original_after,old_baseline,resume_baseline=resumed.checked_lineage(receipt)
+        need(state.get('resume_lineage')==receipt.get('resume_lineage') and resume_baseline==baseline,
+             'ROLLBACK_RESUME_LINEAGE_MUST_REMAIN_BOUND')
+        rollback_schema_preserved(before,current,receipt,allow_private_sync=True)
+        if not approved_seed:
+            resumed.checked_frozen_snapshot(baseline,current)
+            if state.get('schema_after'):
+                need(current==fixed_json(Path(state['schema_after']),state['schema_after_sha256']),
+                     'ROLLBACK_RESUME_PRIVATE_ROWS_CHANGED_BEFORE_SEED')
+    elif before_path.exists():
         before = fixed_json(before_path,state['schema_before_sha256'])
         rollback_schema_preserved(before,current,receipt,allow_private_sync=bool(approved_seed))
     else:
@@ -758,13 +875,13 @@ def rollback(args):
 def cli(argv=None):
     parser = SafeParser(description=__doc__)
     sub = parser.add_subparsers(dest='phase',required=True)
-    for name in ('schema','activate','finish','rollback'):
+    for name in ('schema','resume-schema','activate','finish','rollback'):
         item = sub.add_parser(name)
         item.add_argument('--execute',action='store_true')
         item.add_argument('--source-sha',required=True)
         item.add_argument('--candidate',type=Path,required=True)
         item.add_argument('--candidate-sha256',required=True)
-        if name == 'schema':
+        if name in {'schema','resume-schema'}:
             item.add_argument('--baseline',type=Path,required=True)
             item.add_argument('--baseline-sha256',required=True)
             item.add_argument('--output-dir',type=Path,required=True)
@@ -781,7 +898,7 @@ def cli(argv=None):
         need(args.execute and re.fullmatch('[a-f0-9]{40}',args.source_sha), 'EXPLICIT_EXECUTION_AND_REVIEWED_SOURCE_REQUIRED')
         os.umask(0o077)
         with release_lock():
-            {'schema':schema,'activate':activate,'finish':finish,'rollback':rollback}[args.phase](args)
+            {'schema':schema,'resume-schema':resume_schema,'activate':activate,'finish':finish,'rollback':rollback}[args.phase](args)
     except BaseException as error:
         allowed = (SwitchError,seed.SeedError,transfer.TransferError,candidate.PrepareError,live.PreflightError,guard.GuardError)
         code = str(error) if isinstance(error,allowed) and re.fullmatch('[A-Z0-9_]{1,100}',str(error)) else 'PRIVATE_RELEASE_REQUIRES_OPERATOR_REVIEW'

@@ -442,5 +442,105 @@ class SwitchTests(unittest.TestCase):
         evidence = json.loads(next(completed.glob('rollback-*.json')).read_bytes())
         self.assertFalse(evidence['databases_restored']); self.assertFalse(evidence['new_stripe_features_available'])
 
+    def resume_fixture(self):
+        import resume_preflight as resumed
+        self.databases();before=switch.guard.release_snapshot(self.private,self.business)
+        original_root=self.root/'original-candidate';original_root.mkdir(mode=0o700)
+        original_completed=original_root/'completed-release';original_completed.mkdir(mode=0o700)
+        backup=original_completed/'original-private.db'
+        with sqlite3.connect(self.private) as src,sqlite3.connect(backup) as dest:src.backup(dest)
+        backup.chmod(0o600);self.migrate()
+        after=switch.guard.release_snapshot(self.private,self.business)
+        original={'schema_before':str(original_completed/'schema-before.json'),
+            'schema_after':str(original_completed/'schema-after.json'),
+            'schema_manifest':str(original_completed/'schema-manifest.json'),
+            'schema_validation':str(original_completed/'schema-validation.json'),'backup':str(backup)}
+        for name,value in (('schema_before',before),('schema_after',after),('schema_manifest',{}),('schema_validation',{})):
+            original[name+'_sha256']=switch.save(Path(original[name]),value)
+        original['backup_sha256']=switch.sha(backup.read_bytes())
+        release=self.root/'resume-candidate';release.mkdir(mode=0o700)
+        baseline={'accepted_snapshot':after,'original_stable_reference':resumed.stable_records(backup)}
+        baseline_path=release/'resume-baseline.json';baseline_hash=switch.save(baseline_path,baseline)
+        lineage={'new_baseline':str(baseline_path)}
+        receipt={'image_id':self.image,'baseline_sha256':baseline_hash,'resume_lineage':lineage,
+            'synthetic_schema':{'schema_objects':after['private']['schema_objects']}}
+        args=SimpleNamespace(candidate=release/'candidate.json',candidate_sha256='a'*64,source_sha=self.source,
+            baseline=baseline_path,baseline_sha256=baseline_hash,output_dir=release/'completed-release')
+        return resumed,original,before,after,baseline,receipt,args
+
+    def test_resume_freeze_reuses_original_migration_and_ten_table_rollback_restarts_without_restoring_db(self):
+        resumed,original,before,after,baseline,receipt,args=self.resume_fixture()
+        roles={'api':True,'worker':True};events=[]
+        def old(role,unused,*,running=None):
+            if running is not None:self.assertIs(roles[role],running)
+            return {'State':{'Running':roles[role]},'Name':'/t24-private-'+role}
+        def call(command,**unused):
+            events.append(command)
+            if command[0] in {'stop','start'}:
+                role=next(key for key,value in switch.live.PRIVATE_IDS.items() if value==command[-1])
+                roles[role]=command[0]=='start'
+            return b''
+        original_files={p:p.read_bytes() for p in (Path(original[key]) for key in
+            ('schema_before','schema_after','schema_manifest','schema_validation','backup'))}
+        with (mock.patch.object(switch,'checked_candidate',return_value=receipt),
+              mock.patch.object(resumed,'checked_lineage',return_value=(original,before,after,{},baseline)),
+              mock.patch.object(switch,'runtime_guard'),mock.patch.object(switch,'old_check',side_effect=old),
+              mock.patch.object(switch,'no_writers'),mock.patch.object(switch,'docker',side_effect=call),
+              mock.patch.object(switch,'run_initializer') as initializer,redirect_stdout(io.StringIO())):
+            switch.resume_schema(args)
+            state_path=args.output_dir/'schema-state.json';state_hash=switch.sha(state_path.read_bytes())
+            schema_args=SimpleNamespace(**vars(args),schema_state=state_path,schema_state_sha256=state_hash)
+            state,returned_before,frozen,returned_baseline=switch.checked_schema_state(schema_args,receipt)
+            self.assertEqual(returned_before,before);self.assertEqual(frozen,after)
+            self.assertEqual(state['schema_before'],original['schema_before'])
+            self.assertNotEqual(state['schema_after'],original['schema_after'])
+            self.assertFalse((args.output_dir/'schema-before.json').exists())
+            rollback_args=SimpleNamespace(candidate=args.candidate,candidate_sha256=args.candidate_sha256,
+                source_sha=args.source_sha,state=state_path,state_sha256=state_hash)
+            with (mock.patch.object(switch,'role_configuration',side_effect=lambda unused,role:self.runtime_values(role)),
+                  mock.patch.object(switch.transfer,'ENV',self.private),mock.patch.object(switch,'wait_api')):
+                switch.rollback(rollback_args)
+            initializer.assert_not_called()
+        self.assertEqual(roles,{'api':True,'worker':True})
+        self.assertEqual(switch.guard.release_snapshot(self.private,self.business),after)
+        self.assertTrue(all(command[0] in {'start','stop'} for command in events))
+        for path,data in original_files.items():self.assertEqual(path.read_bytes(),data)
+
+    def test_resume_historical_schema_acceptance_remains_valid_after_real_stripe_row_is_committed(self):
+        resumed,original,before,after,baseline,receipt,args=self.resume_fixture()
+        def old(role,unused,*,running=None):return {'State':{'Running':running},'Name':'/t24-private-'+role}
+        with (mock.patch.object(switch,'checked_candidate',return_value=receipt),
+              mock.patch.object(resumed,'checked_lineage',return_value=(original,before,after,{},baseline)),
+              mock.patch.object(switch,'runtime_guard'),mock.patch.object(switch,'old_check',side_effect=old),
+              mock.patch.object(switch,'no_writers'),mock.patch.object(switch,'docker',return_value=b''),redirect_stdout(io.StringIO())):
+            switch.resume_schema(args)
+            self.actual_stripe()
+            state_path=args.output_dir/'schema-state.json'
+            schema_args=SimpleNamespace(**vars(args),schema_state=state_path,schema_state_sha256=switch.sha(state_path.read_bytes()))
+            with mock.patch.object(resumed,'checked_frozen_snapshot',side_effect=AssertionError('live absent-Stripe guard is not historical')):
+                state,_,frozen,_=switch.checked_schema_state(schema_args,receipt)
+        self.assertEqual(frozen,after);self.assertTrue(switch.seed.connection_state(self.private)['row'])
+        self.assertEqual(state['accepted_schema_state_sha256'],schema_args.schema_state_sha256)
+
+    def test_resume_state_cannot_substitute_migration_proof_candidate_lineage_or_frozen_snapshot(self):
+        resumed,original,before,after,baseline,receipt,args=self.resume_fixture()
+        completed=args.output_dir;completed.mkdir(mode=0o700)
+        after_hash=switch.save(completed/'schema-after.json',after)
+        state={**original,'phase':'PRIVATE_COMPLETED_RESUME_VERIFIED_WRITERS_STOPPED','source_sha':self.source,
+            'candidate_sha256':args.candidate_sha256,'candidate_image':self.image,'old_ids':switch.live.PRIVATE_IDS,
+            'resume_lineage':receipt['resume_lineage'],'bank_enabled':False,'ai_enabled':False,'attempt':self.attempt,
+            'initializer_rerun':False,'database_migration_performed':False,'stripe_connection_absent':True,
+            'schema_after':str(completed/'schema-after.json'),'schema_after_sha256':after_hash,
+            'original_schema_after':original['schema_after'],'original_schema_after_sha256':original['schema_after_sha256'],
+            'baseline':str(args.baseline),'baseline_sha256':args.baseline_sha256,
+            'frozen_seed_before_sha256':switch.guard.digest(after),'resume_stable_before':switch.stable_records(self.private)}
+        schema_args=SimpleNamespace(**vars(args),schema_state=completed/'schema-state.json',schema_state_sha256='b'*64)
+        with mock.patch.object(resumed,'checked_lineage',return_value=(original,before,after,{},baseline)):
+            switch.checked_resume_schema_state(schema_args,receipt,state)
+            for changes in ({'schema_before':'/unapproved/source'}, {'resume_lineage':{}},
+                            {'frozen_seed_before_sha256':'f'*64},{'initializer_rerun':True},{'stripe_connection_absent':False}):
+                with self.subTest(changes=changes),self.assertRaises(switch.SwitchError):
+                    switch.checked_resume_schema_state(schema_args,receipt,{**state,**changes})
+
 
 if __name__ == '__main__': unittest.main()
