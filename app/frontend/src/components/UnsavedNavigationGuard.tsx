@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useBlocker } from 'react-router-dom';
-import { confirmDiscardAllChanges, hasUnsavedChanges } from '@/lib/use-unsaved-changes';
+import { confirmDiscardAllChanges, hasHardNavigationBlock, hasUnsavedChanges } from '@/lib/use-unsaved-changes';
 
 export default function UnsavedNavigationGuard() {
   const blocker = useBlocker(({ currentLocation, nextLocation }) => (
@@ -12,6 +12,7 @@ export default function UnsavedNavigationGuard() {
 
   useEffect(() => {
     if (blocker.state !== 'blocked') return;
+    if (hasHardNavigationBlock()) { blocker.reset(); return; }
     if (confirmDiscardAllChanges()) blocker.proceed();
     else blocker.reset();
   }, [blocker]);

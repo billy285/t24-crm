@@ -18,6 +18,7 @@ from core.database import get_db
 from models.employee_auth_sessions import EmployeeAuthSession
 from models.employees import Employees
 from routers.private_workspace import router
+from routers.private_personal_finance import router as personal_finance_router
 from services.emp_auth import validate_employee_auth_security_config
 from services.private_workspace import close_private_workspace_storage, private_session_factory
 from services.private_workspace_worker import create_business_reader
@@ -67,6 +68,7 @@ def create_private_workspace_app() -> FastAPI:
     # Only their DB session is replaced by the read-only identity connection.
     application.dependency_overrides[get_db] = business_identity_db
     application.include_router(router)
+    application.include_router(personal_finance_router)
 
     @application.middleware("http")
     async def no_store(request: Request, call_next):

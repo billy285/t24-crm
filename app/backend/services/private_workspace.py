@@ -25,6 +25,8 @@ from dependencies.private_workspace import configured_owner_ids, valid_private_o
 from models.private_workspace import (
     PrivateBankLink, PrivateConnection, PrivateItem, PrivatePreferences, PrivateSyncRun, PrivateWorkspaceBase, utcnow,
 )
+# Register only private-database tables before its allowlist/schema check.
+import models.private_personal_finance  # noqa: F401
 from services.private_mail_relevance import BUCKETS, BUCKET_PRIORITY, classify_mail, gmail_preferences
 
 

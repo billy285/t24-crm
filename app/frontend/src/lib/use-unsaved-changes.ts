@@ -1,12 +1,15 @@
 import { useCallback, useLayoutEffect, useRef } from 'react';
 
 const pendingForms = new Set<symbol>();
+const hardNavigationBlocks = new Set<symbol>();
 const DISCARD_MESSAGE = '有尚未保存的修改。确定要放弃修改并离开吗？\n选择“取消”可继续编辑。';
 let unloadGuardInstalled = false;
 
 export function hasUnsavedChanges(): boolean {
-  return pendingForms.size > 0;
+  return pendingForms.size > 0 || hasHardNavigationBlock();
 }
+
+export function hasHardNavigationBlock(): boolean { return hardNavigationBlocks.size > 0; }
 
 function installUnloadGuard() {
   if (unloadGuardInstalled || typeof window === 'undefined') return;
@@ -20,10 +23,28 @@ function installUnloadGuard() {
 
 /** A single prompt protects all mounted drafts when navigating between pages. */
 export function confirmDiscardAllChanges(): boolean {
+  // A financial request with an unknown result cannot be discarded as a draft.
+  if (hasHardNavigationBlock()) return false;
   if (!hasUnsavedChanges()) return true;
   if (!window.confirm(DISCARD_MESSAGE)) return false;
   pendingForms.clear();
   return true;
+}
+
+/** Memory-only transaction hold. Lock synchronously before sending a request. */
+export function useHardNavigationBlock(active: boolean) {
+  const identity = useRef(Symbol('navigation-hold'));
+  const lock = useCallback(() => {
+    installUnloadGuard();
+    hardNavigationBlocks.add(identity.current);
+  }, []);
+  const release = useCallback(() => { hardNavigationBlocks.delete(identity.current); }, []);
+  useLayoutEffect(() => {
+    if (active) lock(); else release();
+    const token = identity.current;
+    return () => { hardNavigationBlocks.delete(token); };
+  }, [active, lock, release]);
+  return { lock, release };
 }
 
 /** Protect a form without storing business or financial data in browser storage. */
@@ -46,6 +67,7 @@ export function useUnsavedChanges(dirty: boolean) {
   }, []);
 
   const confirmDiscard = useCallback(() => {
+    if (hasHardNavigationBlock()) return false;
     if (!dirtyRef.current) return true;
     if (!window.confirm(DISCARD_MESSAGE)) return false;
     markSaved();

@@ -36,7 +36,8 @@
 .pw-sidebar-brand span { display: block; margin-top: 4px; font-size: 9px; font-weight: 400; letter-spacing: .14em; color: var(--pw-sidebar-muted); }
 .pw-sidebar-owner { display: flex; align-items: center; gap: 7px; margin: 28px 13px 21px; color: var(--pw-sidebar-muted); font-size: 11px; }
 .pw-sidebar-owner svg { width: 13px; height: 13px; }
-.pw-sidebar nav { display: grid; gap: 4px; }
+.pw-sidebar nav { display: grid; gap: 4px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.pw-sidebar-brand, .pw-sidebar-owner, .pw-back-crm { flex-shrink: 0; }
 .pw-sidebar nav button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-radius: 10px; background: transparent; color: var(--pw-sidebar-text); text-align: left; }
 .pw-sidebar nav button:hover, .pw-sidebar nav button.is-active { background: var(--pw-sidebar-active); }
 .pw-nav-label { padding: 21px 14px 7px; color: var(--pw-sidebar-muted); font-size: 11px; }
@@ -130,6 +131,8 @@
 .pw-future span { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
 .pw-future p { font-size: 11px; }
 .pw-mobile-more { display: none; }
+.pw-more-life { margin-bottom: 24px; }
+.pw-more-life .pw-function-row { border-radius: 15px; }
 .pw-balance-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr)); gap: 16px; }
 .pw-balance-group { padding: 20px; border-radius: 15px; background: var(--pw-surface); }
 .pw-balance-group h2 { margin-bottom: 12px; font-size: 13px; color: var(--pw-muted); }

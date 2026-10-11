@@ -35,7 +35,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
   let historyIndex = 0, routeSequence = 0;
   const history = [{ pathname: '/private-workspace', search: `?${params}`, key: 'route-0', state: navigation.state || null }];
   const navigationCalls = [], scrollCalls = [];
-  let overviewHandler, bankStartHandler, bankCompleteHandler, preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler, mailCapabilitiesHandler, mailBriefHandler, briefHandler, explainHandler, stripeReportHandler;
+  let personalHardGuard;
+  let accessHandler, overviewHandler, bankStartHandler, bankCompleteHandler, preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler, mailCapabilitiesHandler, mailBriefHandler, briefHandler, explainHandler, stripeReportHandler;
   const preferences = { sync_interval_seconds: 2700, gmail: { topics: ['finance', 'security'], watch_senders: [], watch_keywords: [], muted_senders: [] } };
   const source = { id: 'gmail', status: 'connected', capabilities: [], missing_configuration: [], last_sync: null, error: null };
   const react = {
@@ -52,6 +53,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     // The real application's router blocker protects native POP as well as its
     // buttons. Run its shared draft guard instead of making back always succeed.
     if (nextSearch === `?${params}`) return true;
+    if (navigation.routerDraftGuard === false) return true;
     return load('lib/use-unsaved-changes.ts').confirmDiscardAllChanges();
   }
   function setSearchParams(next, options = {}) {
@@ -91,6 +93,19 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
       if (name === './PrivateStripeDashboard') return load('pages/PrivateStripeDashboard.tsx');
       if (name === './PrivateBankDashboard') return load('pages/PrivateBankDashboard.tsx');
       if (name === './PrivateFundsOverview') return load('pages/PrivateFundsOverview.tsx');
+      // The dedicated finance suite exercises that module; these tests isolate
+      // the parent access gate, navigation handlers and provider request boundary.
+      if (name === './PrivatePersonalFinance') return { default: function PrivatePersonalFinance() {
+        if (navigation.personalFinanceHardBlock) {
+          const [blocked, setBlocked] = react.useState(false);
+          const guard = load('lib/use-unsaved-changes.ts').useHardNavigationBlock(blocked);
+          personalHardGuard = { start: () => { guard.lock(); setBlocked(true); }, finish: () => { guard.release(); setBlocked(false); } };
+        }
+        if (!navigation.personalFinanceDraft) return jsx.jsx('section', { children: '独立人民币账本' });
+        const [value, setValue] = react.useState('');
+        load('lib/use-dialog-draft.ts').useDialogDraft(true, value);
+        return jsx.jsx('input', { 'aria-label': '合成个人账本草稿', value, onChange: event => setValue(event.target.value) });
+      } };
       if (name === '@/lib/private-ads') return load('lib/private-ads.ts');
       if (name === '@/lib/private-boss-brief') return load('lib/private-boss-brief.ts');
       if (name === '@/lib/private-workspace-navigation') return load('lib/private-workspace-navigation.ts');
@@ -107,7 +122,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
         const url = new URL(request.url, 'https://synthetic.example');
         if (url.pathname.endsWith('/bank/link/start')) return { data: bankStartHandler ? await bankStartHandler(request) : { session_id: 'synthetic-session', authorization_url: '', expires_at: null, mode: 'production' } };
         if (url.pathname.endsWith('/bank/link/complete')) return { data: bankCompleteHandler ? await bankCompleteHandler(request) : { state: 'pending', session_id: request.data.session_id, source_id: 'bofa_bank' } };
-        if (url.pathname.endsWith('/access')) return { data: { allowed: true } };
+        if (url.pathname.endsWith('/access')) return { data: accessHandler ? await accessHandler(request) : { allowed: true } };
         if (url.pathname.endsWith('/stripe/report')) {
           if (!stripeReportHandler) throw { response: { status: 503, data: { detail: '期间统计待接入' } } };
           return { data: await stripeReportHandler(request) };
@@ -187,6 +202,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
   return {
     requests, window, preferences, params, flush, navigationCalls, scrollCalls,
     location: () => ({ ...history[historyIndex] }), history: () => history.map(entry => ({ ...entry })),
+    pushParams: (next, options) => setSearchParams(next, options), personalHardGuard: () => personalHardGuard,
     back: async () => { const moved = navigateRoute(-1); await flush(); return moved; },
     forward: async () => { const moved = navigateRoute(1); await flush(); return moved; },
     remount: async () => {
@@ -198,6 +214,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     componentProps: name => renderedInputs.find(node => node.type.name === name)?.props,
     find: (type, label) => all().find(node => node.type === type && text(node) === label),
     button: label => all().find(node => node.type === 'button' && text(node).trim() === label),
+    setAccessHandler: handler => { accessHandler = handler; },
     setOverviewHandler: handler => { overviewHandler = handler; },
     setStripeReportHandler: handler => { stripeReportHandler = handler; },
     setBankStartHandler: handler => { bankStartHandler = handler; },
@@ -1404,4 +1421,155 @@ test('Ads detail creates a readable source-based personal draft without changing
   assert.equal(await f.back(), true); assert.equal(f.location().key, detailKey);
   assert.equal(f.params.get('item'), item.id); assert.ok(privateDetailBack(f));
   assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+});
+
+test('personal finance mounts only after owner access and never becomes an imported items source', async () => {
+  const allowed = deferred(); const f = fixture([], 'personal_finance');
+  f.setAccessHandler(() => allowed.promise); await f.flush();
+  assert.equal(f.componentProps('PrivatePersonalFinance'), undefined);
+  allowed.resolve({ allowed: true }); await f.flush();
+  assert.ok(f.componentProps('PrivatePersonalFinance'));
+  assert.equal(f.requests.filter(request => request.url.includes('/items')).length, 0);
+  const bottom = f.nodes().find(node => node.type === 'nav' && node.props['aria-label'] === '手机版工作空间');
+  const tabs = bottom.children.filter(node => node.type === 'button');
+  assert.equal(tabs.length, 5);
+  assert.equal(tabs.find(node => f.textOf(node) === '更多').props['aria-current'], 'page');
+  assert.equal(tabs.find(node => f.textOf(node) === '资金').props['aria-current'], undefined);
+  f.unmount();
+
+  const denied = fixture([], 'personal_finance'); denied.setAccessHandler(() => ({ allowed: false })); await denied.flush();
+  assert.equal(denied.componentProps('PrivatePersonalFinance'), undefined);
+  assert.ok(denied.text().includes('此空间仅对本人开放'));
+  assert.equal(denied.requests.filter(request => request.url.includes('/items')).length, 0); denied.unmount();
+});
+
+test('personal finance child back handler takes precedence and its overview falls back to the private brief', async () => {
+  const f = fixture([], 'personal_finance', [], [], { params: { pf_tab: 'ledger', pf_detail: 'record-navigation-id' }, state: { privateWorkspace: { session: 'another-owner', parentKey: 'external-crm', parentView: 'gmail' } } });
+  await f.flush(); const props = f.componentProps('PrivatePersonalFinance'); let localBack = 0;
+  props.onBackLabelChange('返回个人财务'); props.onBackHandlerChange(() => { localBack++; return true; }); await f.flush();
+  f.button('返回个人财务').props.onClick(); await f.flush();
+  assert.equal(localBack, 1); assert.equal(f.params.get('view'), 'personal_finance');
+  props.onBackLabelChange('返回经营简报'); props.onBackHandlerChange(() => false); await f.flush();
+  f.button('返回经营简报').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'today'); assert.equal(f.params.has('pf_tab'), false); assert.equal(f.params.has('pf_detail'), false);
+  assert.equal(f.navigationCalls.some(call => call.type === 'POP'), false);
+  assert.ok(f.history().every(entry => entry.pathname === '/private-workspace')); f.unmount();
+});
+
+test('More exposes separate personal books without provider setup, cross-view routes clear finance navigation and browser back returns inside private space', async () => {
+  const f = fixture([], 'connections'); await f.flush();
+  const life = f.nodes().find(node => node.type === 'section' && node.props['aria-label'] === '我的生活');
+  assert.ok(life); assert.ok(f.textOf(life).includes('人民币 · 账本、借还与计划'));
+  const entry = life.children.flatMap(node => typeof node === 'object' ? node.children || [] : []).find(node => node.type === 'button');
+  entry.props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'personal_finance'); assert.ok(f.componentProps('PrivatePersonalFinance'));
+  f.params.set('pf_tab', 'analysis'); f.params.set('pf_edit', 'entry'); await f.flush();
+  f.button('重要邮件').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'gmail'); assert.equal(f.params.has('pf_tab'), false); assert.equal(f.params.has('pf_edit'), false);
+  assert.equal(await f.back(), true); assert.equal(f.params.get('view'), 'personal_finance');
+  assert.equal(await f.back(), true); assert.equal(f.params.get('view'), 'connections');
+  assert.equal(f.requests.some(request => request.url.includes('source_id=personal_finance')), false);
+  assert.ok(!JSON.stringify(f.history()).includes('amount_minor')); f.unmount();
+});
+
+test('personal child permission loss removes private content, and its refresh token re-reads without a provider sync', async () => {
+  const f = fixture([], 'personal_finance'); await f.flush();
+  const initial = f.componentProps('PrivatePersonalFinance').refreshToken;
+  f.nodes().find(node => node.type === 'button' && node.props['aria-label'] === '重新读取个人财务').props.onClick(); await f.flush();
+  assert.ok(f.componentProps('PrivatePersonalFinance').refreshToken > initial);
+  assert.equal(f.requests.filter(request => request.url.includes('/items') || request.url.endsWith('/sync')).length, 0);
+  f.componentProps('PrivatePersonalFinance').onAccessDenied(); await f.flush();
+  assert.equal(f.componentProps('PrivatePersonalFinance'), undefined); assert.ok(f.text().includes('此空间仅对本人开放')); f.unmount();
+});
+
+test('stray personal finance navigation is removed from a non-finance direct link without erasing the current view', async () => {
+  const f = fixture([], 'gmail', [], [], { params: { pf_tab: 'analysis', pf_edit: 'entry', pf_detail: 'synthetic-record', pf_future: 'stale' } }); await f.flush();
+  assert.equal(f.params.get('view'), 'gmail'); assert.ok([...f.params.keys()].every(key => !key.startsWith('pf_')));
+  assert.equal(f.componentProps('PrivatePersonalFinance'), undefined);
+  assert.equal(f.navigationCalls[0].type, 'REPLACE'); f.unmount();
+});
+
+test('cross-view and customer-system exits preserve a cancelled personal finance draft without relying on a router blocker', async () => {
+  const f = fixture([], 'personal_finance', [], [], { routerDraftGuard: false, personalFinanceDraft: true }); await f.flush();
+  const input = () => f.nodes().find(node => node.type === 'input' && node.props['aria-label'] === '合成个人账本草稿');
+  input().props.onChange({ target: { value: '未保存的私人备注' } }); await f.flush();
+  let prompts = 0; f.window.confirm = () => { prompts++; return false; };
+  const bottom = f.nodes().find(node => node.type === 'nav' && node.props['aria-label'] === '手机版工作空间');
+  bottom.children.find(node => node.type === 'button' && f.textOf(node) === '邮件').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'personal_finance'); assert.equal(input().props.value, '未保存的私人备注'); assert.equal(prompts, 1);
+  f.button('个人事项').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'personal_finance'); assert.equal(input().props.value, '未保存的私人备注'); assert.equal(prompts, 2);
+  const exit = f.nodes().find(node => node.type === 'a' && node.props.className === 'pw-back-crm'); let prevented = false;
+  exit.props.onClick({ preventDefault: () => { prevented = true; } }); await f.flush();
+  assert.equal(prevented, true); assert.equal(input().props.value, '未保存的私人备注'); assert.equal(prompts, 3);
+  f.window.confirm = () => { prompts++; return true; };
+  f.button('重要邮件').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'gmail'); assert.equal(prompts, 4);
+  assert.equal(f.navigationCalls.filter(call => call.type === 'PUSH').length, 1);
+  assert.ok(!JSON.stringify(f.history()).includes('未保存的私人备注')); f.unmount();
+});
+
+test('a personal finance write in flight blocks every wrapper exit and refresh before any discard prompt', async () => {
+  const f = fixture([], 'personal_finance', [], [], { routerDraftGuard: false, personalFinanceDraft: true }); await f.flush();
+  const input = () => f.nodes().find(node => node.type === 'input' && node.props['aria-label'] === '合成个人账本草稿');
+  input().props.onChange({ target: { value: '正在保存的私人账目' } }); await f.flush();
+  let saving = true, backCalls = 0, prompts = 0;
+  const child = f.componentProps('PrivatePersonalFinance');
+  child.onCanLeaveChange(() => !saving); child.onBackHandlerChange(() => { backCalls++; return false; });
+  f.window.confirm = () => { prompts++; return true; };
+  f.button('重要邮件').props.onClick(); f.button('返回经营简报').props.onClick();
+  let prevented = false; f.nodes().find(node => node.type === 'a' && node.props.className === 'pw-back-crm').props.onClick({ preventDefault: () => { prevented = true; } });
+  f.nodes().find(node => node.type === 'button' && node.props['aria-label'] === '重新读取个人财务').props.onClick(); await f.flush();
+  assert.equal(prevented, true); assert.equal(f.params.get('view'), 'personal_finance');
+  assert.equal(f.componentProps('PrivatePersonalFinance').refreshToken, child.refreshToken);
+  assert.equal(backCalls, 0); assert.equal(prompts, 0); assert.equal(input().props.value, '正在保存的私人账目');
+  saving = false; f.button('重要邮件').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'gmail'); assert.equal(prompts, 1); f.unmount();
+});
+
+test('hard finance submission blocks repeated native back before rendering and cannot be discarded through a confirmation', async () => {
+  const f = fixture([], 'gmail', [], [], { personalFinanceHardBlock: true }); await f.flush();
+  f.button('个人财务').props.onClick(); await f.flush();
+  const overview = f.location().key;
+  f.pushParams({ view: 'personal_finance', pf_tab: 'overview', pf_edit: 'entry' }); await f.flush();
+  const editor = f.location().key; let prompts = 0;
+  f.window.confirm = () => { prompts++; return true; };
+  f.personalHardGuard().start();
+  // The synchronous lock protects the interval before React commits busy=true.
+  assert.equal(await f.back(), false); assert.equal(f.location().key, editor);
+  assert.equal(await f.back(), false); assert.equal(f.location().key, editor);
+  assert.equal(f.params.get('view'), 'personal_finance'); assert.equal(f.params.get('pf_edit'), 'entry'); assert.equal(prompts, 0);
+  assert.equal(f.navigationCalls.filter(call => call.type === 'POP').length, 0);
+  f.personalHardGuard().finish(); await f.flush();
+  assert.equal(await f.back(), true); assert.equal(f.location().key, overview); assert.equal(f.params.get('view'), 'personal_finance');
+  assert.equal(await f.back(), true); assert.equal(f.params.get('view'), 'gmail'); assert.equal(prompts, 0); f.unmount();
+});
+
+test('a finance hard lock also blocks direct cross-view PUSH and removes its registration only after resolution or unmount', async () => {
+  const f = fixture([], 'personal_finance', [], [], { personalFinanceHardBlock: true }); await f.flush();
+  const startKey = f.location().key; let prompts = 0;
+  f.window.confirm = () => { prompts++; return true; };
+  f.personalHardGuard().start(); await f.flush();
+  f.pushParams({ view: 'gmail' }); await f.flush();
+  assert.equal(f.params.get('view'), 'personal_finance'); assert.equal(f.location().key, startKey); assert.equal(prompts, 0);
+  f.personalHardGuard().finish(); await f.flush();
+  f.pushParams({ view: 'gmail' }); await f.flush(); assert.equal(f.params.get('view'), 'gmail');
+  f.unmount();
+});
+
+test('cancelled native back preserves the finance draft registration so a later module exit still requires confirmation', async () => {
+  const f = fixture([], 'gmail', [], [], { personalFinanceDraft: true }); await f.flush();
+  f.button('个人财务').props.onClick(); await f.flush();
+  const overview = f.location().key;
+  f.pushParams({ view: 'personal_finance', pf_tab: 'overview', pf_edit: 'entry' }); await f.flush();
+  const input = () => f.nodes().find(node => node.type === 'input' && node.props['aria-label'] === '合成个人账本草稿');
+  input().props.onChange({ target: { value: '取消返回后仍未保存的备注' } }); await f.flush();
+  let prompts = 0; f.window.confirm = () => { prompts++; return false; };
+  assert.equal(await f.back(), false); assert.equal(f.params.get('pf_edit'), 'entry');
+  assert.equal(input().props.value, '取消返回后仍未保存的备注'); assert.equal(prompts, 1);
+  f.button('重要邮件').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'personal_finance'); assert.equal(input().props.value, '取消返回后仍未保存的备注'); assert.equal(prompts, 2);
+  f.window.confirm = () => { prompts++; return true; };
+  assert.equal(await f.back(), true); assert.equal(f.location().key, overview); assert.equal(prompts, 3);
+  assert.ok(!JSON.stringify(f.history()).includes('取消返回后仍未保存的备注')); f.unmount();
 });
