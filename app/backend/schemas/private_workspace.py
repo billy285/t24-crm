@@ -181,6 +181,12 @@ class PrivateMailBriefRequest(BaseModel):
     mode: Literal["body"] = "body"
 
 
+class PrivateWorkspaceBriefRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    period: Literal['today', 'last7days'] = 'today'
+    snapshot_id: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
 class PrivateMailBriefDeadline(BaseModel):
     model_config = ConfigDict(extra="forbid")
     at: None = None

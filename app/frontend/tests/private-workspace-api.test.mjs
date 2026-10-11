@@ -31,6 +31,17 @@ function fixture(handler = () => { throw new Error('Unexpected synthetic request
 const { api } = fixture();
 const amount = (minor, currency, sourceId) => api.formatPrivateAmount(minor, currency, sourceId).replace(/\s/g, ' ');
 
+test('boss summary reads are local and explicit interpretation sends only the selected period and snapshot', async () => {
+  const f = fixture(() => ({ period: 'last7days', snapshot_id: 'synthetic-current' }));
+  await f.api.privateWorkspaceApi.brief('last7days');
+  await f.api.privateWorkspaceApi.explainBrief('last7days', 'synthetic-current');
+  assert.equal(f.requests[0].url, '/api/v1/private-workspace/brief?period=last7days');
+  assert.equal(f.requests[0].method, 'GET'); assert.equal(f.requests[0].data, undefined);
+  assert.equal(f.requests[1].url, '/api/v1/private-workspace/brief/explain'); assert.equal(f.requests[1].method, 'POST');
+  assert.equal(f.requests[1].data.period, 'last7days'); assert.equal(f.requests[1].data.snapshot_id, 'synthetic-current');
+  assert.deepEqual(Object.keys(f.requests[1].data).sort(), ['period', 'snapshot_id']); assert.equal(f.requests[1].options.timeout, 65_000);
+});
+
 // Fixed major-unit expectations from https://docs.stripe.com/currencies.
 // In particular, Stripe ISK/UGX 500 means 5, and HUF/TWD payout amounts retain /100.
 for (const [currency, minor, expected] of [

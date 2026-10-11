@@ -53,6 +53,7 @@ _ERRORS = {
     'incomplete': '邮件整理未完成，请查看原始邮件',
     'budget_not_reserved': '邮件整理费用尚未预留，请稍后重试',
     'budget_month_changed': '月份已更新，请重新整理这封邮件',
+    'snapshot_changed': '来源数据已更新，请重新查看简报',
 }
 
 
@@ -299,9 +300,9 @@ def _billing(result, model, reservation):
             'input_tokens': input_tokens, 'output_tokens': output_tokens}
 
 
-async def _request(client, plan, key, model):
+async def _request(client, plan, key, model, *, payload=None, reservation=None):
     try:
-        async with client.stream('POST', BRIEF_URL, content=_payload(plan, model), headers={
+        async with client.stream('POST', BRIEF_URL, content=_payload(plan, model) if payload is None else payload, headers={
                 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'Accept': 'application/json'}) as response:
             if response.status_code in (401, 403): raise MailBriefError('access_denied')
             if response.status_code == 429: raise MailBriefError('quota_exceeded')
@@ -338,7 +339,7 @@ async def _request(client, plan, key, model):
     if len(texts) != 1: raise MailBriefError('invalid_response')
     try: decoded = json.loads(texts[0])
     except (ValueError, UnicodeError): raise MailBriefError('invalid_response') from None
-    return decoded, _billing(result, model, preflight_reservation(plan)['reservation_micro_usd'])
+    return decoded, _billing(result, model, reservation if reservation is not None else preflight_reservation(plan)['reservation_micro_usd'])
 
 
 _NUMBERS = re.compile(r'(?<!\d)[-+]?\d+(?:[,.]\d+)*(?:\s*%)?(?!\d)')

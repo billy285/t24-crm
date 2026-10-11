@@ -150,3 +150,22 @@ class PrivateMailBriefUsage(PrivateWorkspaceBase):
     # Includes outstanding reservations and conservative settled USD cost.
     reserved_usd_micros = Column(BigInteger, nullable=False, default=0)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class PrivateWorkspaceBrief(PrivateWorkspaceBase):
+    __tablename__ = 'private_workspace_briefs'
+    cache_key = Column(String(64), primary_key=True)
+    owner_id = Column(String(64), nullable=False, index=True)
+    snapshot_id = Column(String(64), nullable=False)
+    model = Column(String(80), nullable=False)
+    state = Column(String(16), nullable=False, default='pending')
+    lease_token = Column(String(64), nullable=True)
+    lease_until = Column(DateTime(timezone=True), nullable=True)
+    encrypted_content = Column(Text, nullable=True)
+    error_code = Column(String(40), nullable=True)
+    reservation_month = Column(String(7), nullable=True)
+    reservation_micro_usd = Column(BigInteger, nullable=False, default=0)
+    reservation_price_policy = Column(String(80), nullable=True)
+    reservation_state = Column(String(16), nullable=False, default='none')
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

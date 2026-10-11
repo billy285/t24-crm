@@ -158,7 +158,7 @@ async def test_empty_state_and_physical_database_isolation(workspace):
     assert "private_items" not in Base.metadata.tables
     assert set(PrivateWorkspaceBase.metadata.tables) == {"private_connections", "private_items", "private_preferences", "private_sync_runs",
                                                         "private_mail_translations", "private_translation_usage",
-                                                        "private_mail_briefs", "private_mail_brief_usage"}
+                                                            "private_mail_briefs", "private_mail_brief_usage", "private_workspace_briefs"}
     assert stat.S_IMODE(workspace.private_path.stat().st_mode) == 0o600
     assert stat.S_IMODE(workspace.private_path.parent.stat().st_mode) == 0o700
     async with workspace.business_sessions() as db:

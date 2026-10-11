@@ -12,17 +12,19 @@ import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { AUTH_SESSION_INVALIDATED_EVENT, getAuthSessionEpoch } from '@/lib/auth-storage';
 import {
   formatPrivateAmount, privateWorkspaceApi, PrivateWorkspaceApiError, privateSourceActionAvailability,
-  PRIVATE_MAIL_BUCKET_NAMES, PRIVATE_MAIL_BUCKETS, privateMailBucket, privateMailNeedsAttention, privateMailChinese, privateMailTranslationNotice, privateMailBriefNotice,
+  PRIVATE_MAIL_BUCKET_NAMES, PRIVATE_MAIL_BUCKETS, privateMailBucket, privateMailChinese, privateMailTranslationNotice, privateMailBriefNotice,
   verifiedPrivateAuthorizationUrl, verifiedPrivateSourceUrl,
   type PrivateActionStatus, type PrivateItem, type PrivatePriority, type PrivateSource,
   type PrivateSourceId, type PrivateWorkspaceData, type UpdatePrivateItem,
   type PrivateMailBucket, type PrivateMailCounts, type PrivateMailFeedback, type PrivateMailTopic,
   type PrivateWorkspacePreferences, type PrivateMailCapabilities,
 } from '@/lib/private-workspace-api';
-import { ADS_BUCKET_NAMES, privateAdsNeedsAttention, privateAdsObservation } from '@/lib/private-ads';
+import { ADS_BUCKET_NAMES, privateAdsObservation } from '@/lib/private-ads';
+import { bossBriefNotice as bossBriefStatusNotice, type PrivateBossBriefData, type PrivateBossPeriod } from '@/lib/private-boss-brief';
 import PrivateAdsDashboard, { PrivateAdsDetail } from './PrivateAdsDashboard';
 import PrivateMailContent from './PrivateMailContent';
 import PrivateMailBrief from './PrivateMailBrief';
+import PrivateBossBrief from './PrivateBossBrief';
 import './private-workspace.css';
 
 type View = 'today' | PrivateSourceId | 'connections';
@@ -30,7 +32,7 @@ type StripeKind = 'payment' | 'refund' | 'dispute' | 'payout';
 const VIEWS: View[] = ['today', 'gmail', 'google_ads', 'bofa', 'stripe', 'manual', 'connections'];
 const PROVIDERS: PrivateSourceId[] = ['gmail', 'google_ads', 'bofa', 'stripe'];
 const SOURCE_NAMES: Record<PrivateSourceId, string> = { gmail: 'Gmail', google_ads: 'Google Ads', bofa: 'Bank of America', stripe: 'Stripe', manual: '个人事项' };
-const VIEW_NAMES: Record<View, string> = { today: '今日重点', gmail: '重要邮件', google_ads: '广告观察', bofa: '银行动态', stripe: 'Stripe 财务', manual: '个人事项', connections: '工作接入' };
+const VIEW_NAMES: Record<View, string> = { today: '经营简报', gmail: '重要邮件', google_ads: '广告观察', bofa: '银行动态', stripe: 'Stripe 财务', manual: '个人事项', connections: '工作接入' };
 const SOURCE_ICONS = { gmail: Mail, google_ads: Megaphone, bofa: Landmark, stripe: CreditCard, manual: CircleCheck };
 const SOURCE_STATUS: Record<string, string> = { not_configured: '尚待配置', disconnected: '尚未连接', connecting: '等待授权', connected: '已连接', error: '需要检查' };
 const ACTION_STATUS: Record<PrivateActionStatus, string> = { open: '待处理', done: '已处理', snoozed: '稍后处理', archived: '已归档' };
@@ -87,10 +89,6 @@ function coverageLabel(source: PrivateSource): string {
   if (source.metadata?.sync_window === 'last_30_days') return source.id === 'google_ads' ? '近30天广告系列（不含今天） · 局部覆盖' : '近30天记录 · 局部覆盖';
   if (source.metadata?.record_limit_per_resource) return `最近每类最多 ${source.metadata.record_limit_per_resource} 条记录`;
   return source.metadata?.coverage ? '最近同步记录 · 局部覆盖' : '';
-}
-function isCurrent(item: PrivateItem): boolean {
-  if (item.action_status === 'done' || item.action_status === 'archived') return false;
-  return !item.snoozed_until || new Date(item.snoozed_until).getTime() <= Date.now();
 }
 function evidenceText(value: unknown): string {
   const labels: Record<string, string> = { unverified: '待核实', email_alert: '邮件提醒' };
@@ -184,6 +182,15 @@ export default function PrivateWorkspace() {
   const [mailCapabilitiesLoading, setMailCapabilitiesLoading] = useState(true);
   const [mailCapabilitiesNotice, setMailCapabilitiesNotice] = useState('');
   const [mailBriefNotice, setMailBriefNotice] = useState<{ id: string; message: string } | null>(null);
+  const [briefPeriod, setBriefPeriod] = useState<PrivateBossPeriod>('today');
+  const [bossBrief, setBossBrief] = useState<PrivateBossBriefData | null>(null);
+  const [bossBriefLoading, setBossBriefLoading] = useState(false);
+  const [bossBriefError, setBossBriefError] = useState('');
+  const [bossBriefNotice, setBossBriefNotice] = useState('');
+  const bossBriefRequest = useRef(0);
+  const bossLoadedPeriod = useRef<PrivateBossPeriod | null>(null);
+  const bossExplainRequest = useRef(0);
+  const bossExplainPending = useRef(false);
   const capabilitiesRequest = useRef(0);
   const mailBriefRequest = useRef(0);
   const mailBriefPending = useRef(false);
@@ -206,6 +213,9 @@ export default function PrivateWorkspace() {
   const sourceById = useMemo(() => new Map((data?.sources || []).map(source => [source.id, source])), [data?.sources]);
 
   const deny = useCallback(() => {
+    bossBriefRequest.current++; bossExplainRequest.current++; bossExplainPending.current = false;
+    bossLoadedPeriod.current = null;
+    setBossBrief(null); setBossBriefLoading(false); setBossBriefError(''); setBossBriefNotice('');
     workspaceRequest.current++; listRequest.current++; preferencesRequest.current++; translationRequest.current++; bodyTranslationRequest.current++; capabilitiesRequest.current++; mailBriefRequest.current++; translationPending.current = false; bodyTranslationPending.current = false; mailBriefPending.current = false;
     setAccess('denied'); setData(null); setError(''); setList([]); setListError(''); setTotal(0); setMailCounts(EMPTY_MAIL_COUNTS); setMailBucket('all'); setSelected(null); setEditor(null); setEditingId(null); setForm(EMPTY_FORM); setFormError(''); setSnoozeItem(null); setSnoozeAt(''); setSnoozeError('');
     setPreferencesOpen(false); setPreferencesForm(EMPTY_PREFERENCE_FORM); setPreferencesError(''); setPreferencesLoading(false); setPreferencesReady(false); setApplyFeedbackToSender(false); setNotice(''); setBusy(''); setTranslationBusy(false); setTranslationUnavailable(false); setTranslationLimited(false); setTranslationNotice(''); setBodyTranslationNotice(null); translationAttemptedIds.current.clear();
@@ -243,12 +253,14 @@ export default function PrivateWorkspace() {
     const bodySequence = bodyTranslationRequest;
     const capabilitiesSequence = capabilitiesRequest;
     const briefSequence = mailBriefRequest;
+    const bossSequence = bossBriefRequest;
+    const bossExplainSequence = bossExplainRequest;
     lifecycle.current = true;
     void loadWorkspace();
     const invalidate = () => { if (sessionEpoch.current !== getAuthSessionEpoch()) deny(); };
     window.addEventListener(AUTH_SESSION_INVALIDATED_EVENT, invalidate);
     window.addEventListener('storage', invalidate);
-    return () => { lifecycle.current = false; workspaceSequence.current++; listSequence.current++; preferenceSequence.current++; translationSequence.current++; bodySequence.current++; capabilitiesSequence.current++; briefSequence.current++; window.removeEventListener(AUTH_SESSION_INVALIDATED_EVENT, invalidate); window.removeEventListener('storage', invalidate); };
+    return () => { lifecycle.current = false; workspaceSequence.current++; listSequence.current++; preferenceSequence.current++; translationSequence.current++; bodySequence.current++; capabilitiesSequence.current++; briefSequence.current++; bossSequence.current++; bossExplainSequence.current++; window.removeEventListener(AUTH_SESSION_INVALIDATED_EVENT, invalidate); window.removeEventListener('storage', invalidate); };
   }, [loadWorkspace, deny]);
 
   useEffect(() => { setApplyFeedbackToSender(false); }, [selected?.id]);
@@ -271,6 +283,39 @@ export default function PrivateWorkspace() {
   const smartMailEnabled = mailCapabilities?.smart_brief?.enabled !== false;
   const smartMailConfigured = mailCapabilities?.smart_brief?.enabled === true && mailCapabilities.smart_brief.configured === true;
   const legacyTranslationEnabled = mailCapabilities?.smart_brief?.enabled === false && mailCapabilities?.translation?.enabled === true && mailCapabilities.translation.configured === true;
+
+  useEffect(() => {
+    if (bossExplainPending.current) return;
+    const sequence = bossBriefRequest;
+    const request = ++sequence.current;
+    setBossBrief(previous => previous?.period === briefPeriod ? previous : null); setBossBriefError('');
+    if (access !== 'allowed' || view !== 'today') { setBossBriefLoading(false); return; }
+    setBossBriefLoading(bossLoadedPeriod.current !== briefPeriod);
+    void privateWorkspaceApi.brief(briefPeriod)
+      .then(response => { if (isActive() && request === sequence.current && response.period === briefPeriod) { bossLoadedPeriod.current = briefPeriod; setBossBrief(response); } })
+      .catch(failure => { if (isActive() && request === sequence.current) { setBossBrief(null); bossLoadedPeriod.current = null; setBossBriefError(handleFailure(failure)); } })
+      .finally(() => { if (isActive() && request === sequence.current) setBossBriefLoading(false); });
+    return () => { if (sequence.current === request) sequence.current++; };
+  }, [access, view, briefPeriod, refresh, adsNow, handleFailure, isActive]);
+
+  async function explainBossBrief() {
+    if (busy || bossExplainPending.current || bossBriefLoading || !bossBrief?.capabilities.configured || bossBrief.period !== briefPeriod || !isActive()) return;
+    const snapshotId = bossBrief.snapshot_id;
+    const request = ++bossExplainRequest.current;
+    bossExplainPending.current = true; setBusy('boss-brief'); setBossBriefNotice('');
+    try {
+      const response = await privateWorkspaceApi.explainBrief(briefPeriod, snapshotId);
+      if (!isActive() || request !== bossExplainRequest.current) return;
+      if (response.period !== briefPeriod || response.snapshot_id !== snapshotId) {
+        setBossBriefNotice('来源数据已更新，请查看新简报后再生成解读。'); setRefresh(value => value + 1); return;
+      }
+      setBossBrief(response);
+      if (response.ai?.state !== 'ready') setBossBriefNotice(bossBriefStatusNotice(response.ai?.code || response.capabilities.code));
+    } catch (failure) {
+      if (!isActive() || request !== bossExplainRequest.current) return;
+      setBossBriefNotice(handleFailure(failure));
+    } finally { if (isActive() && request === bossExplainRequest.current) { bossExplainPending.current = false; setBusy(''); } }
+  }
 
   useEffect(() => {
     const sequence = listRequest;
@@ -383,6 +428,19 @@ export default function PrivateWorkspace() {
     setForm(item ? { title: item.title, summary: item.summary || '', priority: item.priority, due_at: localDateInput(item.due_at) } : { ...EMPTY_FORM });
     setFormError(''); setEditor(item ? 'edit' : 'new');
   }
+  function openBriefTask(proposal: { title: string; summary: string }) {
+    if (busy || !isActive() || !draft.confirmDiscard()) return;
+    setEditingId(null); setForm({ ...EMPTY_FORM, title: proposal.title.slice(0, 240), summary: proposal.summary.slice(0, 5000) });
+    setFormError(''); setEditor('new');
+  }
+  function openBriefItem(id: string) {
+    if (busy || !isActive()) return;
+    const issue = bossBrief?.issues.find(value => value.item_id === id);
+    if (!issue) return;
+    const item = data?.items.find(value => value.id === id && value.source_id === issue.source_id);
+    if (item) setSelected(item);
+    else navigate(issue.source_id);
+  }
   async function refreshAfterWrite() { await loadWorkspace(); if (isActive()) setRefresh(value => value + 1); }
   async function saveItem(event: FormEvent) {
     event.preventDefault();
@@ -491,16 +549,6 @@ export default function PrivateWorkspace() {
     finally { if (isActive()) setBusy(''); }
   }
 
-  const prioritized = useMemo(() => (data?.items || []).filter(isCurrent).filter(item =>
-    item.source_id === 'google_ads' ? privateAdsNeedsAttention(item, sourceById.get('google_ads'), adsNow) :
-    item.source_id !== 'bofa' && privateMailNeedsAttention(item) && (item.source_id === 'manual' || item.source_id === 'gmail' || item.priority === 'high' || item.priority === 'urgent')
-  ).sort((a, b) => {
-    const ranks = { urgent: 4, high: 3, normal: 2, low: 1 };
-    return (ranks[b.priority] || 0) - (ranks[a.priority] || 0) || (a.due_at ? new Date(a.due_at).getTime() : Infinity) - (b.due_at ? new Date(b.due_at).getTime() : Infinity);
-  }), [data, sourceById, adsNow]);
-  const priorityItems = prioritized.slice(0, 3);
-  const remaining = prioritized.slice(3);
-  const bankItems = (data?.items || []).filter(item => item.source_id === 'bofa' && item.action_status !== 'archived');
   const balances = (data?.balances || []).filter(balance => balance.source_id === 'stripe');
   const safeSelectedUrl = selected ? verifiedPrivateSourceUrl(selected.source_id, selected.source_url) : null;
   const callbackSourceName = SOURCE_NAMES[callbackSource] || SOURCE_NAMES[view as PrivateSourceId] || '该来源';
@@ -550,11 +598,11 @@ export default function PrivateWorkspace() {
     return <>{view !== 'manual' && <p className="pw-list-footnote pw-coverage-note">{view === 'stripe' ? '列表为近期同步记录，金额不代表完整总额。' : '当前列表为最近同步的局部记录。'}</p>}<div className="pw-list">{list.map(item => <ItemRow key={item.id} item={item} source={sourceById.get(item.source_id)} onSelect={setSelected} />)}</div>{total > list.length && <p className="pw-list-footnote">当前显示最近 {list.length} 条，共 {total} 条。</p>}</>;
   }
   function renderToday() {
-    return <div className="pw-today-grid"><div className="pw-focus-column">
-      <section className="pw-section"><div className="pw-section-heading"><h2>先处理这件事</h2><button type="button" className="pw-text-button" onClick={() => openEditor()}><Plus aria-hidden="true" />个人事项</button></div>{priorityItems.length ? <><ItemRow item={priorityItems[0]} source={sourceById.get(priorityItems[0].source_id)} featured onSelect={setSelected} />{priorityItems.length > 1 && <div className="pw-list pw-priority-rows">{priorityItems.slice(1).map(item => <ItemRow key={item.id} item={item} source={sourceById.get(item.source_id)} onSelect={setSelected} />)}</div>}</> : <Empty title="目前没有需要处理的重点" detail="接入来源，或添加一项自己的工作。" action={<button type="button" className="pw-button" onClick={() => navigate('connections')}>查看工作接入</button>} />}</section>
-      <section className="pw-section"><div className="pw-section-heading"><h2>等我决定</h2><button type="button" className="pw-text-button" onClick={() => navigate('manual')}>查看事项<ChevronRight aria-hidden="true" /></button></div>{remaining.length ? <div className="pw-list">{remaining.slice(0, 3).map(item => <ItemRow key={item.id} item={item} source={sourceById.get(item.source_id)} onSelect={setSelected} />)}</div> : <p className="pw-quiet-empty">暂时没有其他待处理事项。</p>}</section>
-      <section className="pw-section"><div className="pw-section-heading"><h2>资金动态</h2><button type="button" className="pw-text-button" onClick={() => navigate('bofa')}>查看银行动态<ChevronRight aria-hidden="true" /></button></div>{bankItems.length ? <div className="pw-list">{bankItems.slice(0, 2).map(item => <ItemRow key={item.id} item={item} source={sourceById.get(item.source_id)} onSelect={setSelected} />)}</div> : <p className="pw-quiet-empty">尚无银行提醒。邮件提醒收到后仍需核对实际流水。</p>}<button type="button" className="pw-function-row" onClick={() => navigate('stripe')}><span className="pw-source-icon"><CreditCard aria-hidden="true" /></span><span><strong>Stripe 财务</strong><small>按币种查看余额与记录</small></span><ChevronRight aria-hidden="true" /></button></section>
-    </div><aside className="pw-source-aside"><div className="pw-section-heading"><h2>我的工作接入</h2><button type="button" className="pw-text-button" onClick={() => navigate('connections')}>管理</button></div>{PROVIDERS.map(id => { const source = sourceById.get(id); const Icon = SOURCE_ICONS[id]; return <button key={id} type="button" className="pw-source-overview" onClick={() => navigate(id)}><Icon aria-hidden="true" /><span><strong>{SOURCE_NAMES[id]}</strong><small>{source ? SOURCE_STATUS[source.status] : '状态待确认'} · {source?.last_sync ? timeLabel(source.last_sync) : '尚未同步'}</small></span>{source?.error && <CircleAlert className="pw-warning-icon" aria-label="同步需要检查" />}</button>; })}<p className="pw-aside-note">提醒显示在此工作空间内。</p></aside></div>;
+    return <PrivateBossBrief data={bossBrief} period={briefPeriod} loading={bossBriefLoading} error={bossBriefError}
+      busy={Boolean(busy)} aiConfigured={bossBrief?.capabilities.configured === true} aiBusy={busy === 'boss-brief'} aiNotice={bossBriefNotice}
+      onPeriodChange={next => { if (!busy) setBriefPeriod(next); }} onExplain={() => void explainBossBrief()}
+      onOpenSource={navigate} onOpenItem={openBriefItem} onCreateTask={openBriefTask}
+      onRefresh={() => setRefresh(value => value + 1)} />;
   }
   function renderContent() {
     if (view === 'today') return renderToday();
@@ -572,10 +620,10 @@ export default function PrivateWorkspace() {
   }
 
   return <div className="pw-app">
-    <aside className="pw-sidebar"><div className="pw-sidebar-brand">T24 OS<span>PRIVATE WORKSPACE</span></div><div className="pw-sidebar-owner"><LockKeyhole aria-hidden="true" />私人工作空间 · 仅本人</div><nav aria-label="私人工作空间"><button type="button" className={view === 'today' ? 'is-active' : ''} onClick={() => navigate('today')}><House aria-hidden="true" />今日重点</button><button type="button" className={view === 'manual' ? 'is-active' : ''} onClick={() => navigate('manual')}><CircleCheck aria-hidden="true" />个人事项</button><div className="pw-nav-label">我的工作</div>{(['gmail', 'google_ads'] as PrivateSourceId[]).map(id => { const Icon = SOURCE_ICONS[id]; return <button key={id} type="button" className={view === id ? 'is-active' : ''} onClick={() => navigate(id)}><Icon aria-hidden="true" />{VIEW_NAMES[id]}</button>; })}<div className="pw-nav-label">资金动态</div>{(['bofa', 'stripe'] as PrivateSourceId[]).map(id => { const Icon = SOURCE_ICONS[id]; return <button key={id} type="button" className={view === id ? 'is-active' : ''} onClick={() => navigate(id)}><Icon aria-hidden="true" />{VIEW_NAMES[id]}</button>; })}<button type="button" className={view === 'connections' ? 'is-active' : ''} onClick={() => navigate('connections')}><Plug aria-hidden="true" />工作接入</button></nav><Link className="pw-back-crm" to="/apps" onClick={returnToCrm}><ArrowLeft aria-hidden="true" />返回 CRM</Link></aside>
+    <aside className="pw-sidebar"><div className="pw-sidebar-brand">T24 OS<span>PRIVATE WORKSPACE</span></div><div className="pw-sidebar-owner"><LockKeyhole aria-hidden="true" />私人工作空间 · 仅本人</div><nav aria-label="私人工作空间"><button type="button" className={view === 'today' ? 'is-active' : ''} onClick={() => navigate('today')}><House aria-hidden="true" />经营简报</button><button type="button" className={view === 'manual' ? 'is-active' : ''} onClick={() => navigate('manual')}><CircleCheck aria-hidden="true" />个人事项</button><div className="pw-nav-label">我的工作</div>{(['gmail', 'google_ads'] as PrivateSourceId[]).map(id => { const Icon = SOURCE_ICONS[id]; return <button key={id} type="button" className={view === id ? 'is-active' : ''} onClick={() => navigate(id)}><Icon aria-hidden="true" />{VIEW_NAMES[id]}</button>; })}<div className="pw-nav-label">资金动态</div>{(['bofa', 'stripe'] as PrivateSourceId[]).map(id => { const Icon = SOURCE_ICONS[id]; return <button key={id} type="button" className={view === id ? 'is-active' : ''} onClick={() => navigate(id)}><Icon aria-hidden="true" />{VIEW_NAMES[id]}</button>; })}<button type="button" className={view === 'connections' ? 'is-active' : ''} onClick={() => navigate('connections')}><Plug aria-hidden="true" />工作接入</button></nav><Link className="pw-back-crm" to="/apps" onClick={returnToCrm}><ArrowLeft aria-hidden="true" />返回 CRM</Link></aside>
     <div className="pw-workarea"><header className="pw-mobile-header"><Link to="/apps" onClick={returnToCrm} aria-label="返回 CRM"><ArrowLeft aria-hidden="true" /></Link><strong>T24 OS</strong><span><LockKeyhole aria-hidden="true" />仅本人</span></header><header className="pw-page-header"><div><p className="pw-eyebrow">私人工作空间 · 仅本人</p><h1>{VIEW_NAMES[view]}</h1><p className="pw-date">{dateLabel}</p></div><button type="button" className="pw-button pw-refresh" disabled={loading || Boolean(busy)} onClick={() => void refreshAfterWrite()} aria-label="重新读取工作空间"><RefreshCw aria-hidden="true" /><span>刷新</span></button></header>
       <main className="pw-main" aria-busy={loading}>{callbackNotice}{access === 'denied' ? <Empty title="此空间仅对本人开放" detail="当前账号没有查看私人工作内容的权限。" action={<Link className="pw-button" to="/apps">返回 CRM</Link>} /> : loading || access === 'checking' ? <div className="pw-load" role="status"><LoaderCircle aria-hidden="true" />正在读取私人工作空间…</div> : access === 'error' || error ? <div className="pw-load pw-error" role="alert"><h2>暂时无法读取工作空间</h2><p>{error}</p><button type="button" className="pw-button" onClick={() => void loadWorkspace()}>重新读取</button></div> : renderContent()}{notice && <p className="pw-notice" role="status" aria-live="polite">{notice}</p>}</main>
-      {access === 'allowed' && <nav className="pw-bottom-nav" aria-label="手机版工作空间">{([{ view: 'today', label: '今日', Icon: House }, { view: 'manual', label: '事项', Icon: CircleCheck }, { view: 'gmail', label: '邮件', Icon: Mail }, { view: 'stripe', label: '资金', Icon: Landmark }, { view: 'connections', label: '更多', Icon: Ellipsis }] as const).map(entry => { const active = view === entry.view || entry.view === 'stripe' && view === 'bofa'; return <button type="button" key={entry.view} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} onClick={() => navigate(entry.view)}><entry.Icon aria-hidden="true" /><span>{entry.label}</span></button>; })}</nav>}
+      {access === 'allowed' && <nav className="pw-bottom-nav" aria-label="手机版工作空间">{([{ view: 'today', label: '简报', Icon: House }, { view: 'manual', label: '事项', Icon: CircleCheck }, { view: 'gmail', label: '邮件', Icon: Mail }, { view: 'stripe', label: '资金', Icon: Landmark }, { view: 'connections', label: '更多', Icon: Ellipsis }] as const).map(entry => { const active = view === entry.view || entry.view === 'stripe' && view === 'bofa'; return <button type="button" key={entry.view} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} onClick={() => navigate(entry.view)}><entry.Icon aria-hidden="true" /><span>{entry.label}</span></button>; })}</nav>}
     </div>
 
     <Dialog open={preferencesOpen && access === 'allowed'} onOpenChange={open => { if (!open) closePreferences(); }}><DialogContent className="pw-surface pw-dialog pw-preferences-dialog"><DialogHeader><DialogTitle>邮件关注设置</DialogTitle><DialogDescription>按标题、发件人和邮件摘要筛选，完整内容仍在 Gmail 查看。</DialogDescription></DialogHeader>{preferencesLoading ? <div className="pw-load" role="status"><LoaderCircle aria-hidden="true" />正在读取关注设置…</div> : <form className="pw-form" onSubmit={savePreferences}><fieldset disabled={Boolean(busy) || !preferencesReady}><legend>关注哪些工作</legend><div className="pw-mail-topics">{(Object.keys(MAIL_TOPICS) as PrivateMailTopic[]).map(topic => <label key={topic} className="pw-mail-topic"><input type="checkbox" checked={preferencesForm.topics.includes(topic)} onChange={event => setPreferencesForm(previous => ({ ...previous, topics: event.target.checked ? [...previous.topics, topic] : previous.topics.filter(value => value !== topic) }))} /><span>{MAIL_TOPICS[topic]}</span></label>)}</div><label>关注的发件人<textarea rows={3} placeholder="name@example.com 或 example.com，每行一个" value={preferencesForm.watch_senders} onChange={event => setPreferencesForm(previous => ({ ...previous, watch_senders: event.target.value }))} /></label><label>关注的关键词<textarea rows={2} placeholder="例如：争议、客户名、项目名，每行一个" value={preferencesForm.watch_keywords} onChange={event => setPreferencesForm(previous => ({ ...previous, watch_keywords: event.target.value }))} /></label><details className="pw-mail-muted-setting"><summary>低优先发件人（可选）<ChevronRight aria-hidden="true" /></summary><label>这些发件人的普通邮件放到低优先<textarea rows={2} placeholder="完整邮箱或域名，每行一个" value={preferencesForm.muted_senders} onChange={event => setPreferencesForm(previous => ({ ...previous, muted_senders: event.target.value }))} /></label></details></fieldset><p className="pw-preferences-note">资金或安全异常保留待核实；关注发件人不会认证其身份。</p>{preferencesError && <p className="pw-form-error" role="alert">{preferencesError}</p>}<div className="pw-form-actions"><button type="button" className="pw-button" disabled={Boolean(busy)} onClick={closePreferences}>取消</button>{!preferencesReady ? <button type="button" className="pw-button" onClick={() => void openPreferences()}>重新读取</button> : <button type="submit" className="pw-button pw-button-primary" disabled={Boolean(busy)}>{busy === 'save-preferences' ? '正在保存…' : '保存关注设置'}</button>}</div></form>}</DialogContent></Dialog>

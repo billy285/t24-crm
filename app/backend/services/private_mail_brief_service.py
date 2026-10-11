@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from sqlalchemy import and_, exists, inspect, or_, select, text, update
 
 from models.private_workspace import (
-    PrivateConnection, PrivateItem, PrivateMailBrief, PrivateMailBriefUsage, PrivateWorkspaceBase, utcnow,
+    PrivateConnection, PrivateItem, PrivateMailBrief, PrivateMailBriefUsage, PrivateWorkspaceBrief, PrivateWorkspaceBase, utcnow,
 )
 from schemas.private_workspace import PrivateMailBriefResponse
 from services import private_mail_brief as provider
@@ -185,10 +185,15 @@ async def _claim(db, context):
     return (token, None, None) if changed.rowcount else (None, _empty("pending"), None)
 
 
-async def reserve_usage(db, owner_id, count, *, reservation_micro_usd, price_policy, context=None, token=None):
+async def reserve_usage(db, owner_id, count, *, reservation_micro_usd, price_policy, context=None, token=None,
+                        receipt_model=PrivateMailBrief, live_condition=None):
     """Reserve character, request and USD limits in one conditional UPDATE."""
     character_limit, request_limit = provider.monthly_limit(), provider.monthly_request_limit()
     budget = provider.monthly_budget_micro_usd()
+    if receipt_model not in (PrivateMailBrief, PrivateWorkspaceBrief):
+        raise provider.MailBriefError('invalid_input')
+    if receipt_model is PrivateWorkspaceBrief and (context is None or live_condition is None):
+        raise provider.MailBriefError('invalid_input')
     if type(count) is not int or not 0 <= count <= provider.MAX_INPUT_CHARACTERS:
         raise provider.MailBriefError("invalid_input")
     model = provider.model_identifier()
@@ -220,20 +225,21 @@ async def reserve_usage(db, owner_id, count, *, reservation_micro_usd, price_pol
         PrivateMailBriefUsage.reserved_usd_micros + reservation_micro_usd <= budget,
     ]
     if context is not None:
-        predicates.extend([_live_context(context), exists(select(PrivateMailBrief.cache_key).where(
-            PrivateMailBrief.cache_key == context['key'], PrivateMailBrief.owner_id == owner_id,
-            PrivateMailBrief.lease_token == token, PrivateMailBrief.state == 'pending',
-            PrivateMailBrief.lease_until > now,
+        predicates.extend([live_condition if receipt_model is PrivateWorkspaceBrief else _live_context(context),
+                           exists(select(receipt_model.cache_key).where(
+            receipt_model.cache_key == context['key'], receipt_model.owner_id == owner_id,
+            receipt_model.lease_token == token, receipt_model.state == 'pending',
+            receipt_model.lease_until > now,
         ))])
     changed = await db.execute(update(PrivateMailBriefUsage).where(
         *predicates,
     ).values(characters=PrivateMailBriefUsage.characters + count, requests=PrivateMailBriefUsage.requests + 1,
              reserved_usd_micros=PrivateMailBriefUsage.reserved_usd_micros + reservation_micro_usd))
     if changed.rowcount and context is not None:
-        receipt = await db.execute(update(PrivateMailBrief).where(
-            PrivateMailBrief.cache_key == context['key'], PrivateMailBrief.owner_id == owner_id,
-            PrivateMailBrief.lease_token == token, PrivateMailBrief.state == 'pending',
-            PrivateMailBrief.lease_until > now,
+        receipt = await db.execute(update(receipt_model).where(
+            receipt_model.cache_key == context['key'], receipt_model.owner_id == owner_id,
+            receipt_model.lease_token == token, receipt_model.state == 'pending',
+            receipt_model.lease_until > now,
         ).values(reservation_month=month, reservation_micro_usd=reservation_micro_usd,
                  reservation_price_policy=price_policy, reservation_state='held'))
         if not receipt.rowcount:
@@ -342,7 +348,7 @@ def _public_error(exc):
         return "limit_reached"
     if code == "not_configured":
         return code
-    if code == 'budget_month_changed':
+    if code in {'budget_month_changed', 'snapshot_changed'}:
         return code
     return "upstream_unavailable"
 

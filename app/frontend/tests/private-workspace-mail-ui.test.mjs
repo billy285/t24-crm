@@ -15,6 +15,11 @@ const mail = (id, bucket = 'today') => ({
   amount_minor: null, currency: null, occurred_at: null, due_at: null, source_url: null, evidence: { from: 'Synthetic <sender@example.com>' }, action_status: 'open', snoozed_until: null,
   mail_relevance: { bucket, category: bucket === 'urgent' ? 'security' : 'business', reasons: ['Synthetic reason'], feedback: null, sender_address: 'sender@example.com', sender_verification: 'unverified' },
 });
+const briefSnapshot = (period = 'today', overrides = {}) => ({
+  snapshot_id: `synthetic-${period}`, period, generated_at: '2026-10-11T08:00:00Z',
+  window: { start: '2026-10-10T16:00:00Z', end: '2026-10-11T16:00:00Z', timezone: 'Asia/Shanghai' },
+  issues: [], sources: [], capabilities: { configured: false, code: 'not_configured' }, limitations: [], ai: null, ...overrides,
+});
 
 // Run the actual component, API and draft guard against synthetic transport and
 // controlled hook scheduling. No mailbox, browser storage or external API is used.
@@ -24,7 +29,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
   class SyntheticDate extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
   const hooks = [], effects = [], requests = [], listeners = new Map(), modules = new Map();
   const params = new URLSearchParams({ view: initialView });
-  let preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler, mailCapabilitiesHandler, mailBriefHandler;
+  let preferencesHandler, syncHandler, translationPreviewHandler, translationBodyHandler, mailCapabilitiesHandler, mailBriefHandler, briefHandler, explainHandler;
   const preferences = { sync_interval_seconds: 2700, gmail: { topics: ['finance', 'security'], watch_senders: [], watch_keywords: [], muted_senders: [] } };
   const source = { id: 'gmail', status: 'connected', capabilities: [], missing_configuration: [], last_sync: null, error: null };
   const react = {
@@ -51,9 +56,11 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
       if (name === '@/lib/auth-storage') return { AUTH_SESSION_INVALIDATED_EVENT: 'synthetic-auth-invalidated', getAuthSessionEpoch: () => epoch };
       if (name === '@/lib/private-workspace-api') return load('lib/private-workspace-api.ts');
       if (name === '@/lib/private-ads') return load('lib/private-ads.ts');
+      if (name === '@/lib/private-boss-brief') return load('lib/private-boss-brief.ts');
       if (name === './PrivateAdsDashboard') return load('pages/PrivateAdsDashboard.tsx');
       if (name === './PrivateMailContent') return load('pages/PrivateMailContent.tsx');
       if (name === './PrivateMailBrief') return load('pages/PrivateMailBrief.tsx');
+      if (name === './PrivateBossBrief') return load('pages/PrivateBossBrief.tsx');
       if (name === '@/lib/use-dialog-draft') return load('lib/use-dialog-draft.ts');
       if (name === './use-unsaved-changes') return load('lib/use-unsaved-changes.ts');
       if (name.startsWith('@/components/ui/')) return new Proxy({}, { get: (_, key) => key === 'Dialog' || key === 'Sheet' ? props => props.open ? props.children : null : props => jsx.jsx('div', props) });
@@ -62,6 +69,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
         const url = new URL(request.url, 'https://synthetic.example');
         if (url.pathname.endsWith('/access')) return { data: { allowed: true } };
         if (url.pathname === '/api/v1/private-workspace') return { data: { sources: [source, ...extraSources], items, balances: [], last_sync: null } };
+        if (url.pathname.endsWith('/brief')) return { data: briefHandler ? await briefHandler(request) : briefSnapshot(url.searchParams.get('period')) };
+        if (url.pathname.endsWith('/brief/explain')) return { data: explainHandler ? await explainHandler(request) : briefSnapshot(request.data.period, { capabilities: { configured: false, code: 'not_configured' } }) };
         if (url.pathname.endsWith('/mail-capabilities')) return { data: mailCapabilitiesHandler ? await mailCapabilitiesHandler(request) : { smart_brief: { enabled: false, configured: false }, translation: { enabled: true, configured: true } } };
         if (url.pathname.endsWith('/mail-brief')) return { data: mailBriefHandler ? await mailBriefHandler(request) : { configured: false, item_id: decodeURIComponent(url.pathname.split('/').at(-2)), brief: { state: 'unavailable' }, code: 'not_configured' } };
         if (url.pathname.endsWith('/preferences')) {
@@ -78,6 +87,10 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
           return { data: { item: structuredClone(item) } };
         }
         if (url.pathname.endsWith('/items')) {
+          if (request.method === 'POST') {
+            const item = { ...mail('new-personal'), ...request.data, source_id: 'manual', kind: 'task', status: 'manual', evidence: {}, mail_relevance: undefined };
+            items.push(item); return { data: { item } };
+          }
           const bucket = url.searchParams.get('mail_bucket');
           const filtered = items.filter(item => !bucket || item.mail_relevance?.bucket === bucket);
           const counts = { urgent: 0, today: 0, digest: 0, low: 0 }; items.forEach(item => { if (item.mail_relevance) counts[item.mail_relevance.bucket]++; });
@@ -112,6 +125,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     setTranslationBodyHandler: handler => { translationBodyHandler = handler; },
     setMailCapabilitiesHandler: handler => { mailCapabilitiesHandler = handler; },
     setMailBriefHandler: handler => { mailBriefHandler = handler; },
+    setBriefHandler: handler => { briefHandler = handler; },
+    setExplainHandler: handler => { explainHandler = handler; },
     advanceTime(milliseconds) { now += milliseconds; for (const callback of timers.values()) callback(); },
     invalidate() { epoch = 'synthetic-new-account'; for (const listener of listeners.get('synthetic-auth-invalidated') || []) listener(); },
     unmount() { hooks.forEach(hook => hook?.cleanup?.()); },
@@ -218,11 +233,79 @@ test('logout clears private mail and drafts and discards a delayed preference re
 });
 
 test('today priorities exclude digest and low mail', async () => {
-  const f = fixture([mail('focus', 'today'), mail('digest', 'digest'), mail('low', 'low')], 'today'); await f.flush();
+  const f = fixture([mail('focus', 'today'), mail('digest', 'digest'), mail('low', 'low')], 'today');
+  f.setBriefHandler(() => briefSnapshot('today', { issues: [{ id: 'focus-issue', source_id: 'gmail', item_id: 'focus', title: 'Synthetic focus', summary: 'Synthetic snippet', next_action: '核对来源', priority: 'high', observed_at: null }] })); await f.flush();
   assert.ok(f.text().includes('Synthetic focus'), f.text());
   assert.ok(!f.text().includes('Synthetic digest'));
   assert.ok(!f.text().includes('Synthetic low'));
   f.unmount();
+});
+
+const bossIssue = { id: 'payment-check', source_id: 'stripe', item_id: 'private-payment', title: '核对最近失败收款记录', summary: '最后记录状态，待核查', next_action: '打开 Stripe 核对原因', priority: 'high', observed_at: null };
+test('boss brief is local GET only and unavailable AI cannot invoke a provider', async () => {
+  const f = fixture([], 'today'); f.setBriefHandler(() => briefSnapshot('today', { issues: [bossIssue] })); await f.flush();
+  assert.ok(f.text().includes(bossIssue.title));
+  assert.equal(f.requests.filter(request => request.url.includes('/brief?')).length, 1);
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0);
+  assert.equal(f.button('中文解读').props.disabled, true);
+  f.button('中文解读').props.onClick(); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/brief/explain')).length, 0); f.unmount();
+});
+test('boss brief period change discards a late previous-period snapshot', async () => {
+  const f = fixture([], 'today'); const pending = deferred();
+  f.setBriefHandler(request => request.url.includes('last7days') ? briefSnapshot('last7days', { issues: [{ ...bossIssue, title: '近7天已同步事件' }] }) : pending.promise);
+  await f.flush(); f.button('近7天').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('近7天已同步事件'));
+  pending.resolve(briefSnapshot('today', { issues: [{ ...bossIssue, title: '旧期间私密内容' }] })); await f.flush();
+  assert.ok(!f.text().includes('旧期间私密内容')); assert.ok(f.text().includes('近7天已同步事件')); f.unmount();
+});
+test('boss brief rereads source freshness locally while an open page never automatically generates AI', async () => {
+  const f = fixture([], 'today'); let expired = false;
+  f.setBriefHandler(() => briefSnapshot('today', { issues: expired ? [] : [bossIssue], sources: [{ source_id: 'stripe', status: 'connected', last_sync: null, data_state: expired ? 'stale' : 'partial', summary: expired ? '来源需更新' : '已同步局部事件', facts: [] }] }));
+  await f.flush(); assert.ok(f.text().includes(bossIssue.title)); expired = true; f.advanceTime(25 * 3600000); await f.flush();
+  assert.ok(!f.text().includes(bossIssue.title)); assert.ok(f.text().includes('来源需更新'));
+  assert.equal(f.requests.filter(request => request.url.includes('/brief?')).length, 2);
+  assert.equal(f.requests.filter(request => request.method !== 'GET').length, 0); f.unmount();
+});
+test('boss brief task action prefills the personal editor and writes only after save', async () => {
+  const f = fixture([], 'today'); f.setBriefHandler(() => briefSnapshot('today', { issues: [bossIssue] })); await f.flush();
+  f.button('加入个人事项').props.onClick(); await f.flush();
+  assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+  const title = f.nodes().find(node => node.type === 'input' && node.props.maxLength === 240);
+  assert.equal(title.props.value, bossIssue.title);
+  assert.equal(f.nodes().find(node => node.type === 'input' && node.props.type === 'datetime-local').props.value, '');
+  await f.nodes().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await f.flush();
+  const writes = f.requests.filter(request => request.method === 'POST');
+  assert.equal(writes.length, 1); assert.equal(writes[0].url, '/api/v1/private-workspace/items');
+  assert.equal(writes[0].data.source_id, 'manual'); assert.equal(writes[0].data.kind, 'task');
+  assert.equal(writes[0].data.due_at, null); assert.ok(writes[0].data.summary.includes(bossIssue.next_action)); f.unmount();
+});
+test('boss brief source outside the old capped overview opens its source rather than guessing a detail', async () => {
+  const f = fixture([], 'today'); f.setBriefHandler(() => briefSnapshot('today', { issues: [bossIssue] })); await f.flush();
+  f.button('查看来源').props.onClick(); await f.flush();
+  assert.equal(f.params.get('view'), 'stripe'); assert.ok(!f.text().includes('事项详情')); f.unmount();
+});
+test('explicit boss AI double-click has one request and never replaces system facts or writes a task', async () => {
+  const f = fixture([], 'today'); const pending = deferred();
+  const snapshot = briefSnapshot('today', { issues: [bossIssue], capabilities: { configured: true } });
+  f.setBriefHandler(() => snapshot); f.setExplainHandler(() => pending.promise); await f.flush();
+  const action = f.button('中文解读').props.onClick; action(); action(); await f.flush();
+  assert.equal(f.requests.filter(request => request.url.endsWith('/brief/explain')).length, 1);
+  assert.equal(f.requests.at(-1).data.snapshot_id, snapshot.snapshot_id);
+  pending.resolve({ ...snapshot, ai: { state: 'ready', summary: '人工核对后再决定', issue_notes: [] } }); await f.flush();
+  assert.ok(f.text().includes('人工核对后再决定')); assert.ok(f.text().includes(bossIssue.title));
+  assert.equal(f.requests.filter(request => request.url.endsWith('/items') && request.method === 'POST').length, 0); f.unmount();
+});
+test('late boss snapshot and AI result are erased when owner session changes', async () => {
+  for (const stage of ['read', 'ai']) {
+    const f = fixture([], 'today'); const pending = deferred();
+    const snapshot = briefSnapshot('today', { issues: [bossIssue], capabilities: { configured: true } });
+    f.setBriefHandler(() => stage === 'read' ? pending.promise : snapshot);
+    f.setExplainHandler(() => pending.promise); await f.flush();
+    if (stage === 'ai') { f.button('中文解读').props.onClick(); await f.flush(); }
+    f.invalidate(); pending.resolve({ ...snapshot, ai: { state: 'ready', summary: '旧老板的秘密解读', issue_notes: [] } }); await f.flush();
+    assert.ok(f.text().includes('此空间仅对本人开放')); assert.ok(!f.text().includes(bossIssue.title)); assert.ok(!f.text().includes('旧老板的秘密解读')); f.unmount();
+  }
 });
 
 test('expired authorization has a visible manual retry route and does not launch OAuth', async () => {
@@ -382,7 +465,8 @@ test('body translation keeps summary distinct, retains the original while waitin
   assert.ok(f.text().includes('邮件正文仅展示已读取的部分')); assert.ok(f.text().includes('Original full body <script>literal only</script>'));
   assert.ok(!f.nodes().some(node => node.props.dangerouslySetInnerHTML));
   f.button('中文').props.onClick(); await f.flush(); assert.ok(f.text().includes('中文完整正文 · USD 263.94'));
-  f.button('今日重点').props.onClick(); await f.flush(); assert.ok(!f.text().includes('Original full body')); assert.ok(!f.text().includes('中文完整正文')); assert.ok(f.text().includes('中文 body · Stripe')); f.unmount();
+  f.setBriefHandler(() => briefSnapshot('today', { issues: [{ id: 'translated-issue', source_id: 'gmail', title: '中文 body · Stripe', summary: '', next_action: '核对原文', priority: 'high', observed_at: null }] }));
+  f.button('经营简报').props.onClick(); await f.flush(); assert.ok(!f.text().includes('Original full body')); assert.ok(!f.text().includes('中文完整正文')); assert.ok(f.text().includes('中文 body · Stripe')); f.unmount();
 });
 test('cached Chinese previews do not trigger another automatic translation and original title remains available', async () => {
   const item = mail('cached'); item.mail_translation = translated('cached'); const f = fixture([item]); await f.flush();

@@ -1,4 +1,5 @@
 import { client } from './api';
+import type { PrivateBossBriefData, PrivateBossPeriod } from './private-boss-brief';
 
 export type PrivateSourceId = 'gmail' | 'google_ads' | 'bofa' | 'stripe' | 'manual';
 export type PrivateSourceStatus = 'not_configured' | 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -246,6 +247,8 @@ async function request<T>(path: string, method: 'GET' | 'POST' | 'PATCH' | 'DELE
 export const privateWorkspaceApi = {
   access: () => request<{ allowed: boolean }>('/access', 'GET'),
   overview: () => request<PrivateWorkspaceData>('', 'GET'),
+  brief: (period: PrivateBossPeriod) => request<PrivateBossBriefData>(`/brief?period=${encodeURIComponent(period)}`, 'GET'),
+  explainBrief: (period: PrivateBossPeriod, snapshotId: string) => request<PrivateBossBriefData>('/brief/explain', 'POST', { period, snapshot_id: snapshotId }, { timeout: 65_000 }),
   preferences: () => request<PrivateWorkspacePreferences>('/preferences', 'GET'),
   updatePreferences: (data: { gmail?: Partial<PrivateGmailPreferences>; sync_interval_seconds?: number }) => request<PrivateWorkspacePreferences>('/preferences', 'PATCH', data),
   items: (filters: PrivateItemFilters = {}) => {

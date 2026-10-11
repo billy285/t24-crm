@@ -130,3 +130,7 @@ Official references:
 
 Status: owner consent recorded; code and synthetic validation prepared; no real AI call, environment
 activation, credential creation, push or production deployment has occurred.
+
+## Whole-space interpretation follow-up
+
+The 2026-10-11 owner brief implementation now reuses this same USD 5 ledger. It adds a ninth private table (`private_workspace_briefs`) and the independently disabled `PRIVATE_WORKSPACE_BRIEF_EXTERNAL_CONSENT` gate. See `../workspace-brief-20261011/README.md` for scope, source coverage and deployment prerequisites. The earlier eight-table/mail-only validation count describes the preceding mail-only commit, not the new complete candidate. No real activation or deployment is implied.

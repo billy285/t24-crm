@@ -12,6 +12,7 @@ from models.private_workspace import PrivateItem
 from schemas.private_workspace import (
     ActionStatus, MailBucket, PrivateItemCreate, PrivateItemPatch, PrivateItemResponse, PrivateMailFeedbackCreate, PrivatePreferencesPatch, SourceId,
     PrivateMailTranslationBatch, PrivateMailTranslationRequest, PrivateMailBriefRequest,
+    PrivateWorkspaceBriefRequest,
 )
 from services.private_workspace import (
     complete_oauth, connect_source, disconnect_source, get_private_db, item_response, list_items,
@@ -53,6 +54,22 @@ async def items(
 ):
     return await list_items(private_db, owner.employee_id, source_id=source_id, kind=kind,
                             action_status=action_status, limit=limit, mail_bucket=mail_bucket)
+
+
+@router.get('/brief')
+async def boss_brief(period: str = Query(default='today', pattern='^(today|last7days)$'),
+                     owner: PrivateOwner = Depends(require_private_owner),
+                     private_db: AsyncSession = Depends(get_private_db)):
+    from services.private_workspace_brief_service import snapshot
+    return await snapshot(private_db, owner.employee_id, period)
+
+
+@router.post('/brief/explain')
+async def explain_boss_brief(payload: PrivateWorkspaceBriefRequest,
+                             owner: PrivateOwner = Depends(require_private_owner),
+                             private_db: AsyncSession = Depends(get_private_db)):
+    from services.private_workspace_brief_service import explain
+    return await explain(private_db, owner.employee_id, payload.period, payload.snapshot_id)
 
 
 @router.post("/items", status_code=201)
