@@ -778,6 +778,7 @@ def _stripe_livemode(row: dict, mode: str) -> None:
 
 
 def _stripe_resource_mode(row: dict, mode: str, kind: str | None = None) -> None:
+    if kind == 'payment' and row.get('object') != 'charge': raise ProviderError('invalid_response')
     if kind == 'dispute' and row.get('object') != 'dispute': raise ProviderError('invalid_response')
     if kind == 'refund':
         if row.get('object') != 'refund': raise ProviderError('invalid_response')
@@ -789,11 +790,13 @@ def _stripe_resource_mode(row: dict, mode: str, kind: str | None = None) -> None
 
 
 def _stripe_resource_id(value: object, kind: str, prefix: str) -> str:
-    if kind == 'dispute':
+    if kind in {'payment', 'dispute'}:
         identity = _id(value)
-        # Current Dispute objects use du_; retain the existing dp_ form.
+        # Charges use ch_ or py_; current Disputes use du_, alongside dp_.
+        # https://support.stripe.com/questions/getting-started-with-stripe-through-a-third-party-platform
         # https://docs.stripe.com/api/disputes/object
-        if not re.fullmatch(r'(?:dp|du)_[A-Za-z0-9]+', identity): raise ProviderError('invalid_response')
+        pattern = r'(?:ch|py)_[A-Za-z0-9]+' if kind == 'payment' else r'(?:dp|du)_[A-Za-z0-9]+'
+        if not re.fullmatch(pattern, identity): raise ProviderError('invalid_response')
         return identity
     return _id(value, prefix)
 
@@ -874,7 +877,7 @@ def _stripe_item(row: dict, kind: str, prefix: str, identity: dict, mode: str, s
     link_id = identity_id
     if kind == 'refund':
         charge = row.get('charge'); charge = charge.get('id') if isinstance(charge, dict) else charge
-        link_id = _id(charge, 'ch_') if isinstance(charge, str) else None
+        link_id = _stripe_resource_id(charge, 'payment', 'ch_') if isinstance(charge, str) else None
     elif kind == 'payment' and isinstance(row.get('payment_intent'), str):
         link_id = _id(row['payment_intent'], 'pi_')
     resource = {'payment': 'charges', 'refund': 'refunds', 'dispute': 'disputes', 'payout': 'payouts'}[kind]

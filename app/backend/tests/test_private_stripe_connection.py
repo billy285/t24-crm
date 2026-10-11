@@ -178,6 +178,153 @@ async def test_other_stripe_resources_still_require_explicit_livemode(configured
     assert caught.value.code == 'invalid_response'
 
 
+def charge_contract_transport(*, live=False, changes=None):
+    calls = []
+
+    async def handler(request):
+        assert request.method == 'GET'
+        calls.append(request.url.path)
+        if request.url.path in {'/v1/account', '/v1/balance'}:
+            return httpx.Response(200, json=response_for(request, live=live))
+        resource = request.url.path.rsplit('/', 1)[1]
+        row = stripe_row(resource)
+        if resource != 'refunds': row['livemode'] = live
+        if resource == 'charges': row.update(changes or {})
+        return httpx.Response(200, json={'object': 'list', 'data': [row], 'has_more': False})
+
+    return httpx.MockTransport(handler), calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['connect', 'sync'])
+@pytest.mark.parametrize('mode', ['test', 'live'])
+@pytest.mark.parametrize('prefix', ['ch_', 'py_'])
+async def test_official_charge_ids_connect_and_sync_with_bound_mode(configured, monkeypatch, phase, mode, prefix):
+    live = mode == 'live'
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_MODE', mode)
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_KEY', KEY.replace('rk_test_', 'rk_live_') if live else KEY)
+    identity = prefix + 'FICTIONContract'
+    transport, calls = charge_contract_transport(live=live, changes={'id': identity})
+    result = await read_stripe_contract(phase, mode, transport)
+    assert calls == ['/v1/account', '/v1/balance', '/v1/charges', '/v1/refunds', '/v1/disputes', '/v1/payouts']
+    assert result['metadata']['stripe_account_id'] == STRIPE_ACCOUNT and result['metadata']['mode'] == mode
+    if phase == 'sync':
+        charge = next(row for row in result['items'] if row['kind'] == 'payment')
+        assert charge['external_id'] == 'charges:' + identity and charge['amount_minor'] == 1
+        assert charge['status'] == 'succeeded' and charge['evidence']['payment_state'] == 'captured'
+        assert charge['source_url'] == 'https://dashboard.stripe.com/' + ('test/' if not live else '') + 'payments/' + identity
+        assert charge['evidence']['stripe_account_id'] == STRIPE_ACCOUNT and charge['evidence']['stripe_mode'] == mode
+        assert charge['evidence']['amount_captured_minor'] == 1 and charge['evidence']['accounting_effect'] == 'none'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['connect', 'sync'])
+@pytest.mark.parametrize('changes,code', [
+    ({'object': None}, 'invalid_response'), ({'object': 'refund'}, 'invalid_response'),
+    ({'id': 're_FICTIONContract'}, 'invalid_response'), ({'id': 'pyr_FICTIONContract'}, 'invalid_response'),
+    ({'id': 'ch_'}, 'invalid_response'), ({'id': 'py_'}, 'invalid_response'),
+    ({'id': 'py_../../redirect'}, 'invalid_response'), ({'id': 'py_bad-tail'}, 'invalid_response'),
+    ({'id': False}, 'invalid_response'), ({'livemode': None}, 'invalid_response'),
+    ({'livemode': True}, 'stripe_account_changed'),
+])
+async def test_charge_contract_rejects_invalid_resource_id_and_mode(configured, phase, changes, code):
+    transport, calls = charge_contract_transport(changes=changes)
+    with pytest.raises(providers.ProviderError) as caught:
+        await read_stripe_contract(phase, 'test', transport)
+    assert caught.value.code == code and calls == ['/v1/account', '/v1/balance', '/v1/charges']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['test', 'live'])
+@pytest.mark.parametrize('prefix', ['ch_', 'py_'])
+async def test_charge_id_contract_controls_cursor_and_mixed_prefix_pages(configured, monkeypatch, mode, prefix):
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_MODE', mode)
+    cursors = []
+    other_prefix = 'py_' if prefix == 'ch_' else 'ch_'
+
+    async def handler(request):
+        assert request.method == 'GET'
+        if request.url.path in {'/v1/account', '/v1/balance'}:
+            return httpx.Response(200, json=response_for(request, live=mode == 'live'))
+        if request.url.path != '/v1/charges':
+            return httpx.Response(200, json={'object': 'list', 'data': [], 'has_more': False})
+        cursors.append(request.url.params.get('starting_after'))
+        identity = prefix + 'First' if len(cursors) == 1 else other_prefix + 'Second'
+        row = {**stripe_row('charges'), 'id': identity, 'livemode': mode == 'live'}
+        return httpx.Response(200, json={'object': 'list', 'data': [row], 'has_more': len(cursors) == 1})
+
+    result = await read_stripe_contract('sync', mode, httpx.MockTransport(handler))
+    assert cursors == [None, prefix + 'First']
+    assert [row['external_id'] for row in result['items']] == ['charges:' + prefix + 'First', 'charges:' + other_prefix + 'Second']
+    assert result['metadata']['resources']['charges'] == {'fetched': 2, 'partial': False}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['test', 'live'])
+@pytest.mark.parametrize('prefix', ['ch_', 'py_'])
+async def test_charge_duplicate_ids_across_pages_still_fail_closed(configured, monkeypatch, mode, prefix):
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_MODE', mode)
+    requests = []
+
+    async def handler(request):
+        assert request.method == 'GET'
+        requests.append(request)
+        if request.url.path in {'/v1/account', '/v1/balance'}:
+            return httpx.Response(200, json=response_for(request, live=mode == 'live'))
+        row = {**stripe_row('charges'), 'id': prefix + 'Repeated', 'livemode': mode == 'live'}
+        return httpx.Response(200, json={'object': 'list', 'data': [row], 'has_more': True})
+
+    with pytest.raises(providers.ProviderError) as caught:
+        await read_stripe_contract('sync', mode, httpx.MockTransport(handler))
+    assert caught.value.code == 'invalid_response'
+    assert [request.url.path for request in requests] == ['/v1/account', '/v1/balance', '/v1/charges', '/v1/charges']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['test', 'live'])
+@pytest.mark.parametrize('prefix', ['ch_', 'py_'])
+@pytest.mark.parametrize('expanded', [False, True])
+async def test_refund_links_accept_only_valid_charge_ids_in_both_forms(configured, monkeypatch, mode, prefix, expanded):
+    monkeypatch.setenv('PRIVATE_WORKSPACE_STRIPE_MODE', mode)
+    identity = prefix + 'FICTIONRefundCharge'
+    charge = {'id': identity, 'object': 'charge'} if expanded else identity
+    transport, calls = refund_contract_transport(live=mode == 'live', changes={'charge': charge})
+    result = await read_stripe_contract('sync', mode, transport)
+    refund = next(row for row in result['items'] if row['kind'] == 'refund')
+    assert calls == ['/v1/account', '/v1/balance', '/v1/charges', '/v1/refunds', '/v1/disputes', '/v1/payouts']
+    assert refund['source_url'] == 'https://dashboard.stripe.com/' + ('test/' if mode == 'test' else '') + 'payments/' + identity
+    assert refund['evidence']['stripe_account_id'] == STRIPE_ACCOUNT and refund['evidence']['stripe_mode'] == mode
+    assert refund['evidence']['accounting_effect'] == 'none'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['connect', 'sync'])
+@pytest.mark.parametrize('charge', ['py_', 'py_../../redirect', 'pi_FICTIONContract', {'id': 'du_FICTIONContract'}])
+async def test_refund_charge_link_rejects_invalid_or_cross_resource_ids(configured, phase, charge):
+    transport, calls = refund_contract_transport(changes={'charge': charge})
+    with pytest.raises(providers.ProviderError) as caught:
+        await read_stripe_contract(phase, 'test', transport)
+    assert caught.value.code == 'invalid_response'
+    assert calls == ['/v1/account', '/v1/balance', '/v1/charges', '/v1/refunds']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['connect', 'sync'])
+@pytest.mark.parametrize('resource', ['refunds', 'disputes', 'payouts'])
+async def test_payment_id_prefix_is_not_accepted_for_other_resources(configured, phase, resource):
+    async def handler(request):
+        if request.url.path in {'/v1/account', '/v1/balance'}:
+            return httpx.Response(200, json=response_for(request))
+        requested = request.url.path.rsplit('/', 1)[1]
+        row = stripe_row(requested)
+        if requested == resource: row['id'] = 'py_FICTIONContract'
+        return httpx.Response(200, json={'object': 'list', 'data': [row], 'has_more': False})
+
+    with pytest.raises(providers.ProviderError) as caught:
+        await read_stripe_contract(phase, 'test', httpx.MockTransport(handler))
+    assert caught.value.code == 'invalid_response'
+
+
 def dispute_contract_transport(*, live=False, changes=None):
     calls = []
 

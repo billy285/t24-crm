@@ -80,7 +80,7 @@ def stripe_row(resource):
     prefix = {'charges': 'ch_', 'refunds': 're_', 'disputes': 'du_', 'payouts': 'po_'}[resource]
     row = {'id': prefix+'synthetic1', 'amount': 1, 'currency': 'jpy', 'created': 1700000000, 'livemode': False,
            'status': 'needs_response' if resource == 'disputes' else 'succeeded' if resource != 'payouts' else 'in_transit'}
-    if resource == 'charges': row.update(captured=True, paid=True, refunded=False, amount_captured=1, amount_refunded=0)
+    if resource == 'charges': row.update(object='charge', captured=True, paid=True, refunded=False, amount_captured=1, amount_refunded=0)
     if resource == 'refunds':
         row.update(object='refund', charge='ch_synthetic1')
         row.pop('livemode')  # Refund's official object contract omits this field.
