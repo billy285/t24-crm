@@ -150,7 +150,8 @@
 .pw-surface { background: var(--pw-surface); color: var(--pw-text); }
 .pw-detail-sheet { width: min(100%, 480px); max-width: 480px !important; padding: 30px 26px; overflow-y: auto; }
 .pw-sheet-overlay { background: rgb(13 26 46 / .3); }
-.pw-detail-sheet header, .pw-detail-sheet > div:first-child { padding-right: 20px; }
+.pw-detail-sheet header, .pw-detail-sheet > div:first-child { min-width: 0; max-width: 100%; padding-right: 20px; }
+.pw-detail-sheet .t24-dialog-title { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .pw-detail-sheet h2, .pw-dialog h2 { color: var(--pw-text); font-weight: 500; }
 .pw-detail-sheet [id$="description"], .pw-dialog [id$="description"] { color: var(--pw-muted); }
 .pw-detail-body { padding-top: 24px; }
