@@ -252,3 +252,15 @@ test('ready Chinese brief takes precedence without changing original fields or f
   item.source_id = 'bofa'; assert.equal(api.privateMailChinese(item, 'title'), 'Original subject');
   assert.ok(!api.privateMailBriefNotice('RAW PROVIDER SECRET').includes('RAW PROVIDER SECRET'));
 });
+test('budget exhaustion notice shows only a validated configured USD limit and keeps cached reading available', () => {
+  const budget = { configured: true, limit_usd: '5.00', reserved_usd: '5.00', remaining_usd: '0.00', month: '2026-10' };
+  const notice = api.privateMailBriefNotice('budget_exhausted', budget);
+  assert.equal(notice, '本月 US$5.00 智能整理可用额度不足，已整理邮件和原文仍可查看');
+  assert.equal(api.privateMailBriefNotice('budget_exhausted'), '本月智能整理可用额度不足，已整理邮件和原文仍可查看');
+  assert.ok(!api.privateMailBriefNotice('budget_exhausted', { ...budget, configured: false }).includes('US$5.00'));
+  for (const limit_usd of ['<script>secret</script>', '5.00 SECRET', '-5.00', '5', 5]) {
+    const value = api.privateMailBriefNotice('budget_exhausted', { ...budget, limit_usd });
+    assert.ok(!value.includes('SECRET')); assert.ok(!value.includes('script')); assert.ok(!value.includes('US$'));
+  }
+  assert.ok(!api.privateMailBriefNotice('not_configured', budget).includes('US$'));
+});

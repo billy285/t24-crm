@@ -9,11 +9,11 @@ from services import private_mail_brief as brief
 
 
 KEY = 'private_synthetic_openai_key_123456'
-MODEL = 'synthetic-approved-model'
-ENV = ('PRIVATE_MAIL_BRIEF_ENABLED', 'PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT',
+MODEL = 'gpt-4.1-mini-2025-04-14'
+ENV = ('PRIVATE_MAIL_BRIEF_ENABLED', 'PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT', 'PRIVATE_MAIL_BRIEF_HOSTING_VERIFIED',
        'PRIVATE_MAIL_BRIEF_PROVIDER', 'PRIVATE_MAIL_BRIEF_OPENAI_API_KEY',
        'PRIVATE_MAIL_BRIEF_MODEL', 'PRIVATE_MAIL_BRIEF_MONTHLY_CHAR_LIMIT',
-       'PRIVATE_MAIL_BRIEF_MONTHLY_REQUEST_LIMIT')
+       'PRIVATE_MAIL_BRIEF_MONTHLY_REQUEST_LIMIT', 'PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD')
 
 
 @pytest.fixture(autouse=True)
@@ -24,7 +24,7 @@ def isolated_config(monkeypatch):
 @pytest.fixture
 def enabled(monkeypatch):
     for name, value in {
-        'PRIVATE_MAIL_BRIEF_ENABLED': 'true', 'PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT': 'true',
+        'PRIVATE_MAIL_BRIEF_ENABLED': 'true', 'PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT': 'true', 'PRIVATE_MAIL_BRIEF_HOSTING_VERIFIED': 'true',
         'PRIVATE_MAIL_BRIEF_PROVIDER': 'openai', 'PRIVATE_MAIL_BRIEF_OPENAI_API_KEY': KEY,
         'PRIVATE_MAIL_BRIEF_MODEL': MODEL,
     }.items(): monkeypatch.setenv(name, value)
@@ -51,8 +51,15 @@ def payload():
 
 
 def response(value=None, *, status='completed', content=None):
-    return {'status': status, 'output': [{'type': 'message', 'role': 'assistant', 'status': 'completed',
+    return {'status': status, 'model': MODEL, 'service_tier': 'default',
+        'usage': {'input_tokens': 501, 'output_tokens': 400, 'total_tokens': 901},
+        'output': [{'type': 'message', 'role': 'assistant', 'status': 'completed',
         'content': content or [{'type': 'output_text', 'text': json.dumps(value if value is not None else payload(), ensure_ascii=False)}]}]}
+
+
+async def run_brief_mail(current, *, transport=None):
+    return await brief.brief_mail(current, reserved_micro_usd=421911,
+                                 price_policy=brief.PRICE_POLICY, transport=transport)
 
 
 def test_requires_explicit_private_destination_consent_and_never_reuses_crm_config(monkeypatch):
@@ -64,20 +71,28 @@ def test_requires_explicit_private_destination_consent_and_never_reuses_crm_conf
         monkeypatch.setenv(name, value)
     assert brief.configured() is False
     monkeypatch.setenv('PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT', 'true')
+    assert brief.configured() is False
+    monkeypatch.setenv('PRIVATE_MAIL_BRIEF_HOSTING_VERIFIED', 'true')
     assert brief.configured() is True
     assert brief.monthly_limit() == 100000 and brief.monthly_request_limit() == 100
+    assert brief.monthly_budget_micro_usd() == 5_000_000
 
 
 @pytest.mark.parametrize('key,value', [
     ('PRIVATE_MAIL_BRIEF_ENABLED', 'false'), ('PRIVATE_MAIL_BRIEF_ENABLED', 'yes'),
+    ('PRIVATE_MAIL_BRIEF_HOSTING_VERIFIED', 'false'), ('PRIVATE_MAIL_BRIEF_HOSTING_VERIFIED', 'yes'),
     ('PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT', 'false'), ('PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT', 'yes'),
     ('PRIVATE_MAIL_BRIEF_PROVIDER', 'local'), ('PRIVATE_MAIL_BRIEF_PROVIDER', 'https://example.com'),
     ('PRIVATE_MAIL_BRIEF_OPENAI_API_KEY', 'short'), ('PRIVATE_MAIL_BRIEF_OPENAI_API_KEY', 'a b' * 20),
     ('PRIVATE_MAIL_BRIEF_MODEL', ''), ('PRIVATE_MAIL_BRIEF_MODEL', 'model\nsecret'),
     ('PRIVATE_MAIL_BRIEF_MODEL', 'https://example.com/model'),
+    ('PRIVATE_MAIL_BRIEF_MODEL', 'gpt-4.1-mini'), ('PRIVATE_MAIL_BRIEF_MODEL', 'gpt-6.1-sol'),
     ('PRIVATE_MAIL_BRIEF_MONTHLY_CHAR_LIMIT', '0'), ('PRIVATE_MAIL_BRIEF_MONTHLY_CHAR_LIMIT', '10000001'),
     ('PRIVATE_MAIL_BRIEF_MONTHLY_REQUEST_LIMIT', '0'), ('PRIVATE_MAIL_BRIEF_MONTHLY_REQUEST_LIMIT', '10001'),
     ('PRIVATE_MAIL_BRIEF_MONTHLY_REQUEST_LIMIT', 'unbounded'),
+    ('PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD', '0'),
+    ('PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD', '5000001'),
+    ('PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD', '5.0'),
 ])
 def test_invalid_configuration_fails_closed(enabled, monkeypatch, key, value):
     monkeypatch.setenv(key, value)
@@ -120,6 +135,7 @@ async def test_only_fixed_responses_endpoint_gets_untrusted_mail_as_data_without
         sent = json.loads(request.content)
         assert sent['model'] == MODEL and sent['store'] is False and sent['stream'] is False
         assert sent['tools'] == [] and sent['tool_choice'] == 'none'
+        assert sent['service_tier'] == 'default'
         assert sent['max_output_tokens'] == 1800
         schema = sent['text']['format']
         assert schema['type'] == 'json_schema' and schema['strict'] is True
@@ -130,13 +146,15 @@ async def test_only_fixed_responses_endpoint_gets_untrusted_mail_as_data_without
                         'partial': False, 'read_only': True}
         assert 'UNTRUSTED' in sent['instructions']
         return httpx.Response(200, json=response())
-    result = await brief.brief_mail(plan(), transport=httpx.MockTransport(handler))
+    result = await run_brief_mail(plan(), transport=httpx.MockTransport(handler))
     assert len(calls) == 1 and result['title_zh'] == '付款通知'
     assert result['read_only'] is True and result['partial'] is False
     assert result['provider'] == 'openai' and result['model'] == MODEL
     assert result['source_hash'] == plan().source_hash
     assert result['characters'] == plan().character_count and result['evidence_limited'] is False
     assert result['amount_mentions'][0]['text'] == '$700'
+    assert result['billing']['usage_verified'] is True
+    assert result['billing']['settlement_micro_usd'] == 841  # ceil(501*0.4 + 400*1.6)
     assert plan().summary not in caplog.text and KEY not in caplog.text
 
 
@@ -146,8 +164,98 @@ async def test_no_consent_no_network_even_with_private_key_and_crm_key(enabled, 
     monkeypatch.setenv('OPENAI_API_KEY', KEY)
     async def forbidden(request): raise AssertionError('No destination consent: no HTTP')
     with pytest.raises(brief.MailBriefError) as error:
-        await brief.brief_mail(plan(), transport=httpx.MockTransport(forbidden))
+        await run_brief_mail(plan(), transport=httpx.MockTransport(forbidden))
     assert error.value.code == 'not_configured'
+
+
+def test_preflight_uses_exact_snapshot_price_policy_and_hard_context_upper_bound(enabled):
+    cost = brief.preflight_reservation(plan())
+    assert cost['model'] == MODEL and cost['service_tier'] == 'default' and cost['currency'] == 'USD'
+    assert cost['price_policy'] == brief.PRICE_POLICY
+    assert cost['reservation_micro_usd'] == 421911
+    assert cost['input_token_upper_bound'] == 1047576 and cost['output_token_upper_bound'] == 1800
+    assert cost['payload_utf8_bytes'] == len(brief._payload(plan(), MODEL))
+    assert cost['local_input_token_estimate'] == cost['payload_utf8_bytes'] + 8192
+    assert cost['local_input_token_estimate'] < cost['input_token_upper_bound']
+    # Even 11 ambiguous requests retained at full reservation remain below $5;
+    # the twelfth must be blocked by the core's atomic month-total condition.
+    assert cost['reservation_micro_usd'] * 11 <= brief.monthly_budget_micro_usd()
+    assert cost['reservation_micro_usd'] * 12 > brief.monthly_budget_micro_usd()
+
+
+def test_preflight_utf8_estimate_accounts_for_multibyte_mail_and_all_schema_instructions(enabled):
+    english = brief.prepare_mail_brief('Title', 'Snippet', 'a' * 25000)
+    unicode_mail = brief.prepare_mail_brief('Title', 'Snippet', '😀' * 25000)
+    english_cost = brief.preflight_reservation(english); unicode_cost = brief.preflight_reservation(unicode_mail)
+    assert unicode_cost['payload_utf8_bytes'] - english_cost['payload_utf8_bytes'] == 75000
+    assert unicode_cost['local_input_token_estimate'] > 100000
+    # Hard reservation never incorrectly shrinks based on a byte approximation.
+    assert unicode_cost['reservation_micro_usd'] == english_cost['reservation_micro_usd'] == 421911
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('reserved,policy', [
+    (None, None), (421910, brief.PRICE_POLICY), (True, brief.PRICE_POLICY),
+    (421911.0, brief.PRICE_POLICY), (5000001, brief.PRICE_POLICY),
+    (421911, 'old-policy'), (0, brief.PRICE_POLICY),
+])
+async def test_underreserved_unreserved_or_wrong_price_policy_fails_before_http(enabled, reserved, policy):
+    async def forbidden(request): raise AssertionError('No funded reservation: no HTTP')
+    with pytest.raises(brief.MailBriefError) as error:
+        await brief.brief_mail(plan(), reserved_micro_usd=reserved, price_policy=policy,
+                               transport=httpx.MockTransport(forbidden))
+    assert error.value.code == 'budget_not_reserved'
+
+
+@pytest.mark.asyncio
+async def test_budget_cannot_be_increased_past_user_approval_or_too_small_call_funded(enabled, monkeypatch):
+    async def forbidden(request): raise AssertionError('Invalid budget: no HTTP')
+    monkeypatch.setenv('PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD', '5000001')
+    with pytest.raises(brief.MailBriefError) as error:
+        await run_brief_mail(plan(), transport=httpx.MockTransport(forbidden))
+    assert error.value.code == 'not_configured'
+    monkeypatch.setenv('PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD', '421910')
+    with pytest.raises(brief.MailBriefError) as error:
+        await run_brief_mail(plan(), transport=httpx.MockTransport(forbidden))
+    assert error.value.code == 'budget_not_reserved'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('usage', [None, {}, {'input_tokens': True, 'output_tokens': 1},
+    {'input_tokens': 501, 'output_tokens': 1801}, {'input_tokens': 1047577, 'output_tokens': 1},
+    {'input_tokens': 0, 'output_tokens': 1}, {'input_tokens': 501, 'output_tokens': 0},
+    {'input_tokens': 501, 'output_tokens': 400, 'total_tokens': 900},
+    {'input_tokens': 501, 'output_tokens': 400, 'total_tokens': True},
+])
+async def test_missing_or_invalid_usage_cannot_refund_reserved_budget(enabled, usage):
+    raw = response(); raw['usage'] = usage
+    async def handler(request): return httpx.Response(200, json=raw)
+    result = await run_brief_mail(plan(), transport=httpx.MockTransport(handler))
+    assert result['billing']['settlement_micro_usd'] is None and result['billing']['usage_verified'] is False
+    assert result['billing']['reservation_micro_usd'] == 421911
+
+
+@pytest.mark.asyncio
+async def test_settlement_rounds_up_and_never_uses_cached_input_discount(enabled):
+    raw = response(); raw['usage'] = {'input_tokens': 1, 'output_tokens': 1,
+        'input_tokens_details': {'cached_tokens': 1}, 'total_tokens': 2}
+    async def handler(request): return httpx.Response(200, json=raw)
+    result = await run_brief_mail(plan(), transport=httpx.MockTransport(handler))
+    assert result['billing']['settlement_micro_usd'] == 2  # ceil(0.4 + 1.6)
+    raw['usage'] = {'input_tokens': 2, 'output_tokens': 1, 'total_tokens': 3}
+    result = await run_brief_mail(plan(), transport=httpx.MockTransport(handler))
+    assert result['billing']['settlement_micro_usd'] == 3  # ceil(0.8 + 1.6)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('field,value', [('model', 'gpt-4.1-mini'), ('model', 'unexpected-expensive-model'),
+    ('service_tier', 'priority'), ('service_tier', 'auto'), ('service_tier', 'flex')])
+async def test_upstream_model_or_tier_mismatch_is_not_accepted_for_settlement(enabled, field, value):
+    raw = response(); raw[field] = value
+    async def handler(request): return httpx.Response(200, json=raw)
+    with pytest.raises(brief.MailBriefError) as error:
+        await run_brief_mail(plan(), transport=httpx.MockTransport(handler))
+    assert error.value.code == 'invalid_response'
 
 
 @pytest.mark.asyncio
@@ -156,7 +264,7 @@ async def test_forged_budget_hash_partial_or_empty_plan_never_sends(enabled):
     for forged in (replace(plan(), character_count=1), replace(plan(), source_hash='a' * 64),
                    replace(plan(), partial=True), brief.prepare_mail_brief('', '', None)):
         with pytest.raises(brief.MailBriefError) as error:
-            await brief.brief_mail(forged, transport=httpx.MockTransport(forbidden))
+            await run_brief_mail(forged, transport=httpx.MockTransport(forbidden))
         assert error.value.code == 'invalid_input'
 
 
@@ -247,7 +355,7 @@ async def test_prompt_injection_is_submitted_only_as_untrusted_text_to_fixed_end
         assert injection not in sent['instructions']
         assert json.loads(sent['input'][0]['content'][0]['text'])['body'] == injection
         return httpx.Response(200, json=response(value))
-    result = await brief.brief_mail(current, transport=httpx.MockTransport(handler))
+    result = await run_brief_mail(current, transport=httpx.MockTransport(handler))
     assert len(calls) == 1 and result['read_only'] is True and result['needs_action'] is None
 
 
@@ -294,7 +402,7 @@ async def test_errors_do_not_follow_redirect_retry_or_leak_mail_and_keys(enabled
         return httpx.Response(status, headers={'Location': 'https://attacker.example/' + KEY},
                               json={'error': {'message': 'PRIVATE_MAIL_TEXT ' + KEY}})
     with pytest.raises(brief.MailBriefError) as error:
-        await brief.brief_mail(plan(), transport=httpx.MockTransport(handler))
+        await run_brief_mail(plan(), transport=httpx.MockTransport(handler))
     assert error.value.code == code and len(calls) == 1
     assert KEY not in str(error.value) and 'PRIVATE_MAIL_TEXT' not in str(error.value)
     assert KEY not in caplog.text and 'PRIVATE_MAIL_TEXT' not in caplog.text
@@ -307,14 +415,14 @@ async def test_timeout_network_error_and_deadline_are_safe_no_retry(enabled, mon
         async def handler(request):
             calls.append(request); raise exception('PRIVATE_MAIL_TEXT ' + KEY, request=request)
         with pytest.raises(brief.MailBriefError) as error:
-            await brief.brief_mail(plan(), transport=httpx.MockTransport(handler))
+            await run_brief_mail(plan(), transport=httpx.MockTransport(handler))
         assert error.value.code == code and len(calls) == 1 and KEY not in str(error.value)
     async def wait_forever(request):
         import asyncio
         await asyncio.sleep(5)
     monkeypatch.setattr(brief, 'MAX_SECONDS', 0.01)
     with pytest.raises(brief.MailBriefError) as error:
-        await brief.brief_mail(plan(), transport=httpx.MockTransport(wait_forever))
+        await run_brief_mail(plan(), transport=httpx.MockTransport(wait_forever))
     assert error.value.code == 'upstream_timeout'
 
 
@@ -330,7 +438,7 @@ async def test_timeout_network_error_and_deadline_are_safe_no_retry(enabled, mon
 async def test_incomplete_refusal_toolcall_and_invalid_json_fail_closed(enabled, raw, code):
     async def handler(request): return httpx.Response(200, json=raw)
     with pytest.raises(brief.MailBriefError) as error:
-        await brief.brief_mail(plan(), transport=httpx.MockTransport(handler))
+        await run_brief_mail(plan(), transport=httpx.MockTransport(handler))
     assert error.value.code == code
 
 
@@ -338,7 +446,7 @@ async def test_incomplete_refusal_toolcall_and_invalid_json_fail_closed(enabled,
 async def test_oversized_response_is_not_buffered_or_logged(enabled):
     async def handler(request): return httpx.Response(200, content=b'x' * (brief.MAX_RESPONSE_BYTES + 1))
     with pytest.raises(brief.MailBriefError) as error:
-        await brief.brief_mail(plan(), transport=httpx.MockTransport(handler))
+        await run_brief_mail(plan(), transport=httpx.MockTransport(handler))
     assert error.value.code == 'invalid_response'
 
 
@@ -352,6 +460,9 @@ def test_cache_separates_owner_mailbox_generation_message_content_model_and_vers
         changed = args.copy(); changed[position] = value
         assert brief.brief_cache_key(*changed) != key
     monkeypatch.setattr(brief, 'BRIEF_VERSION', 'private-mail-brief-v2')
+    assert brief.brief_cache_key(*args) != key
+    monkeypatch.setattr(brief, 'BRIEF_VERSION', 'private-mail-brief-v1')
+    monkeypatch.setattr(brief, 'PRICE_POLICY', 'future-reviewed-price-policy')
     assert brief.brief_cache_key(*args) != key
 
 

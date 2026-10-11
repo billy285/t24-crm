@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
@@ -149,10 +150,59 @@ async def test_mail_capabilities_fail_closed_and_brief_payload_cannot_enable_ai(
     before = hashlib.sha256(value.business_path.read_bytes()).hexdigest()
     response = await value.client.get("/api/v1/private-workspace/mail-capabilities", headers=value.headers())
     assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
-    assert response.json()["smart_brief"] == {"enabled": True, "configured": False, "code": "not_configured"}
+    smart = response.json()["smart_brief"]
+    assert {key: smart[key] for key in ("enabled", "configured", "code")} == {"enabled": True, "configured": False, "code": "not_configured"}
+    assert response.json()["budget"] == {"configured": False, "month": storage.utcnow().strftime('%Y-%m'),
+                                         "limit_usd": "5.00", "reserved_usd": "0.00", "remaining_usd": "5.00"}
+    assert 'budget' not in smart
     invalid = await value.client.post("/api/v1/private-workspace/items/00000000-0000-0000-0000-000000000001/mail-brief",
                                      headers=value.headers(), json={"mode": "body", "enabled": True, "provider": "arbitrary"})
     assert invalid.status_code == 422 and invalid.headers["cache-control"] == "no-store"
+    assert hashlib.sha256(value.business_path.read_bytes()).hexdigest() == before
+
+
+@pytest.mark.asyncio
+async def test_budget_exhausted_route_and_safe_capabilities_dto(private_app, monkeypatch):
+    from models.private_workspace import PrivateConnection, PrivateItem, PrivateMailBriefUsage
+    from services import private_mail_brief as provider, private_workspace_providers as gmail
+    value = private_app
+    for key, content in {
+        'PRIVATE_MAIL_BRIEF_ENABLED': 'true', 'PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT': 'true',
+        'PRIVATE_MAIL_BRIEF_HOSTING_VERIFIED': 'true', 'PRIVATE_MAIL_BRIEF_PROVIDER': 'openai',
+        'PRIVATE_MAIL_BRIEF_OPENAI_API_KEY': 'synthetic-private-ai-key-for-test-only',
+        'PRIVATE_MAIL_BRIEF_MODEL': 'gpt-4.1-mini-2025-04-14',
+        'PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD': '421911',
+    }.items(): monkeypatch.setenv(key, content)
+    monkeypatch.delenv('PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT', raising=False)
+    item_id = str(uuid4())
+    sessions = await storage.private_session_factory()
+    async with sessions() as db:
+        db.add(PrivateConnection(owner_id='1', source_id='gmail', status='connected', generation=1,
+            encrypted_credentials=storage.encrypt_credentials({'access_token': 'synthetic-token'}),
+            metadata_json={'account_label': 'owner@example.com', 'read_only_adapter': True}))
+        db.add(PrivateItem(id=item_id, owner_id='1', source_id='gmail', external_id='synthetic-message',
+            kind='email', title='Synthetic subject', summary='Synthetic preview', status='read',
+            priority='normal', evidence={}))
+        db.add(PrivateMailBriefUsage(owner_id='1', month=storage.utcnow().strftime('%Y-%m'),
+                                    characters=100, requests=1, reserved_usd_micros=421911))
+        await db.commit()
+    async def fake_content(*unused, **arguments):
+        return {'title': 'Synthetic subject', 'summary': 'Synthetic preview', 'body': 'Synthetic body',
+                'has_body': True, 'truncated': False}
+    async def forbidden_ai(*unused, **arguments):
+        raise AssertionError('Budget exhaustion must prevent all AI calls')
+    monkeypatch.setattr(gmail, 'fetch_mail_content', fake_content)
+    monkeypatch.setattr(provider, 'brief_mail', forbidden_ai)
+    before = hashlib.sha256(value.business_path.read_bytes()).hexdigest()
+    response = await value.client.post(f'/api/v1/private-workspace/items/{item_id}/mail-brief',
+                                      headers=value.headers(), json={'mode': 'body'})
+    assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
+    assert response.json()['configured'] is True and response.json()['code'] == 'budget_exhausted'
+    assert response.json()['brief']['state'] == 'failed'
+    capabilities = await value.client.get('/api/v1/private-workspace/mail-capabilities', headers=value.headers())
+    assert capabilities.json()['budget'] == {'configured': True, 'month': storage.utcnow().strftime('%Y-%m'),
+        'limit_usd': '0.42', 'reserved_usd': '0.43', 'remaining_usd': '0.00'}
+    assert set(capabilities.json()['smart_brief']) == {'enabled', 'configured'}
     assert hashlib.sha256(value.business_path.read_bytes()).hexdigest() == before
 
 
@@ -223,3 +273,23 @@ async def test_private_database_cannot_alias_crm_during_startup(private_app, mon
         async with app.router.lifespan_context(app):
             pass
     assert hashlib.sha256(value.business_path.read_bytes()).hexdigest() == before
+
+
+@pytest.mark.asyncio
+async def test_private_factory_rejects_unrelated_schema_before_creating_private_tables(private_app, monkeypatch, tmp_path):
+    value = private_app
+    directory = tmp_path / 'misconfigured-private'; directory.mkdir(mode=0o700)
+    unrelated_path = directory / 'unrelated.db'
+    with sqlite3.connect(unrelated_path) as db:
+        db.execute('CREATE TABLE receipts (id INTEGER PRIMARY KEY,amount INTEGER)')
+        db.execute('INSERT INTO receipts VALUES (1,70000)')
+    before = hashlib.sha256(unrelated_path.read_bytes()).hexdigest()
+    business_before = hashlib.sha256(value.business_path.read_bytes()).hexdigest()
+    monkeypatch.setenv('PRIVATE_WORKSPACE_DATABASE_URL', f'sqlite+aiosqlite:///{unrelated_path}')
+    with pytest.raises(Exception, match='私人数据库暂不可用'):
+        await storage.private_session_factory()
+    assert hashlib.sha256(unrelated_path.read_bytes()).hexdigest() == before
+    assert hashlib.sha256(value.business_path.read_bytes()).hexdigest() == business_before
+    with sqlite3.connect(unrelated_path) as db:
+        assert db.execute('SELECT name FROM sqlite_master WHERE type="table"').fetchall() == [('receipts',)]
+        assert db.execute('SELECT amount FROM receipts').fetchone() == (70000,)

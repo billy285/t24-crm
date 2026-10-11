@@ -27,6 +27,19 @@ MAX_OUTPUT_TOKENS = 1_800
 MAX_SECONDS = 45
 DEFAULT_MONTHLY_CHARACTER_LIMIT = 100_000
 DEFAULT_MONTHLY_REQUEST_LIMIT = 100
+MAX_MONTHLY_BUDGET_MICRO_USD = 5_000_000
+PRICE_POLICY = 'openai-gpt41mini-standard-20261011-v1'
+# Verified against the official model page on 2026-10-11. Aliases and new models
+# fail closed; adding or changing a rate requires a reviewed policy revision.
+# https://developers.openai.com/api/docs/models/gpt-4.1-mini
+MODEL_PRICES = {
+    'gpt-4.1-mini-2025-04-14': {
+        'input_micro_usd_per_million': 400_000,
+        'output_micro_usd_per_million': 1_600_000,
+        'context_tokens': 1_047_576,
+    },
+}
+LOCAL_TOKEN_OVERHEAD_MARGIN = 8_192
 CATEGORIES = ('finance', 'ads', 'security', 'business', 'promotion', 'general')
 _ERRORS = {
     'not_configured': '私人邮件智能整理尚未启用或配置无效',
@@ -38,6 +51,8 @@ _ERRORS = {
     'invalid_response': '邮件整理结果暂不可用，请查看原始邮件',
     'refused': '这封邮件暂无法自动整理，请查看原始邮件',
     'incomplete': '邮件整理未完成，请查看原始邮件',
+    'budget_not_reserved': '邮件整理费用尚未预留，请稍后重试',
+    'budget_month_changed': '月份已更新，请重新整理这封邮件',
 }
 
 
@@ -63,18 +78,28 @@ def monthly_request_limit():
     return result
 
 
+def monthly_budget_micro_usd():
+    value = os.getenv('PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD', str(MAX_MONTHLY_BUDGET_MICRO_USD))
+    if not re.fullmatch(r'[0-9]{1,7}', value): raise MailBriefError('not_configured')
+    result = int(value)
+    if not 1 <= result <= MAX_MONTHLY_BUDGET_MICRO_USD: raise MailBriefError('not_configured')
+    return result
+
+
 def _configuration():
     if (os.getenv('PRIVATE_MAIL_BRIEF_ENABLED') or '').strip().lower() not in {'1', 'true'}:
         raise MailBriefError('not_configured')
     if (os.getenv('PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT') or '').strip().lower() not in {'1', 'true'}:
+        raise MailBriefError('not_configured')
+    if (os.getenv('PRIVATE_MAIL_BRIEF_HOSTING_VERIFIED') or '').strip().lower() not in {'1', 'true'}:
         raise MailBriefError('not_configured')
     if (os.getenv('PRIVATE_MAIL_BRIEF_PROVIDER') or '').strip() != 'openai':
         raise MailBriefError('not_configured')
     key = os.getenv('PRIVATE_MAIL_BRIEF_OPENAI_API_KEY') or ''
     model = os.getenv('PRIVATE_MAIL_BRIEF_MODEL') or ''
     if not re.fullmatch(r'[A-Za-z0-9_-]{20,300}', key): raise MailBriefError('not_configured')
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}', model): raise MailBriefError('not_configured')
-    monthly_limit(); monthly_request_limit()
+    if model not in MODEL_PRICES: raise MailBriefError('not_configured')
+    monthly_limit(); monthly_request_limit(); monthly_budget_micro_usd()
     return key, model
 
 
@@ -87,6 +112,16 @@ def configured():
 def model_identifier():
     """Return a nonsecret model identifier for cache/version separation."""
     return _configuration()[1]
+
+
+def _price_micro_usd(input_tokens, output_tokens, model):
+    policy = MODEL_PRICES.get(model)
+    if not policy: raise MailBriefError('not_configured')
+    # Integer arithmetic only, rounded upward per request; cached-token
+    # discounts are deliberately ignored so settlement remains conservative.
+    numerator = (input_tokens * policy['input_micro_usd_per_million']
+                 + output_tokens * policy['output_micro_usd_per_million'])
+    return (numerator + 999_999) // 1_000_000
 
 
 def _text(value, maximum, *, truncate=False):
@@ -133,7 +168,7 @@ def brief_cache_key(owner_id, mailbox, generation, message_id, source_hash, mode
             or not isinstance(source_hash, str) or not re.fullmatch(r'[a-f0-9]{64}', source_hash)
             or not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}', model)):
         raise MailBriefError('invalid_input')
-    values = [owner_id, mailbox.casefold(), generation, message_id, source_hash, model, 'zh-CN', BRIEF_VERSION]
+    values = [owner_id, mailbox.casefold(), generation, message_id, source_hash, model, 'zh-CN', BRIEF_VERSION, PRICE_POLICY]
     return hashlib.sha256(json.dumps(values, separators=(',', ':')).encode()).hexdigest()
 
 
@@ -202,10 +237,66 @@ def _payload(plan, model):
         'model': model, 'instructions': _INSTRUCTIONS,
         'input': [{'role': 'user', 'content': [{'type': 'input_text', 'text': json.dumps(source, ensure_ascii=False)}]}],
         'store': False, 'stream': False, 'tools': [], 'tool_choice': 'none',
+        'service_tier': 'default',
         'max_output_tokens': MAX_OUTPUT_TOKENS,
         'text': {'format': {'type': 'json_schema', 'name': 'private_mail_brief',
                             'strict': True, 'schema': BRIEF_SCHEMA}},
     }, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+
+
+def _checked_plan(plan):
+    if not isinstance(plan, BriefPlan): raise MailBriefError('invalid_input')
+    checked = prepare_mail_brief(plan.title, plan.summary, plan.body, body_truncated=plan.partial)
+    if checked != plan or plan.character_count > MAX_INPUT_CHARACTERS: raise MailBriefError('invalid_input')
+    if not (plan.title + plan.summary + (plan.body or '')).strip(): raise MailBriefError('invalid_input')
+    return plan
+
+
+def preflight_reservation(plan):
+    """Return a USD reservation bound without a second external mail request.
+
+    UTF-8 byte counting is a deliberately conservative local token estimate,
+    covering every serialized byte of instructions, data and JSON schema plus
+    an additional margin. That margin is not a documented universal bound for
+    provider message/schema framing. Therefore it is informational only: the
+    HARD spending reservation uses the documented entire model context limit
+    at full standard input price, plus the requested maximum output tokens.
+    Reserve this integer atomically before HTTP. Verified successful usage may
+    settle lower; uncertain failures must retain the full reservation.
+    """
+    _checked_plan(plan)
+    _, model = _configuration()
+    policy = MODEL_PRICES[model]
+    payload_bytes = len(_payload(plan, model))
+    local_tokens = payload_bytes + LOCAL_TOKEN_OVERHEAD_MARGIN
+    if local_tokens > policy['context_tokens']: raise MailBriefError('invalid_input')
+    return {
+        'model': model, 'price_policy': PRICE_POLICY, 'currency': 'USD',
+        'service_tier': 'default',
+        'reservation_micro_usd': _price_micro_usd(policy['context_tokens'], MAX_OUTPUT_TOKENS, model),
+        'input_token_upper_bound': policy['context_tokens'], 'output_token_upper_bound': MAX_OUTPUT_TOKENS,
+        'payload_utf8_bytes': payload_bytes, 'local_input_token_estimate': local_tokens,
+    }
+
+
+def _billing(result, model, reservation):
+    # The full-context reservation covers missing/ambiguous usage. Only a
+    # matching standard-tier snapshot and well-formed usage can settle lower.
+    billing = {'price_policy': PRICE_POLICY, 'reservation_micro_usd': reservation,
+               'settlement_micro_usd': None, 'usage_verified': False}
+    if result.get('model') != model or result.get('service_tier') != 'default':
+        return billing
+    usage = result.get('usage')
+    if not isinstance(usage, dict): return billing
+    input_tokens = usage.get('input_tokens'); output_tokens = usage.get('output_tokens')
+    if (type(input_tokens) is not int or not 1 <= input_tokens <= MODEL_PRICES[model]['context_tokens']
+            or type(output_tokens) is not int or not 1 <= output_tokens <= MAX_OUTPUT_TOKENS): return billing
+    if 'total_tokens' in usage and (type(usage['total_tokens']) is not int
+            or usage['total_tokens'] != input_tokens + output_tokens): return billing
+    cost = _price_micro_usd(input_tokens, output_tokens, model)
+    if cost > reservation: return billing
+    return {**billing, 'settlement_micro_usd': cost, 'usage_verified': True,
+            'input_tokens': input_tokens, 'output_tokens': output_tokens}
 
 
 async def _request(client, plan, key, model):
@@ -226,6 +317,8 @@ async def _request(client, plan, key, model):
     if not isinstance(result, dict): raise MailBriefError('invalid_response')
     if result.get('status') == 'incomplete': raise MailBriefError('incomplete')
     if result.get('status') != 'completed': raise MailBriefError('invalid_response')
+    if result.get('model') != model or result.get('service_tier') != 'default':
+        raise MailBriefError('invalid_response')
     output = result.get('output')
     if not isinstance(output, list) or not 1 <= len(output) <= 20: raise MailBriefError('invalid_response')
     texts = []
@@ -245,7 +338,7 @@ async def _request(client, plan, key, model):
     if len(texts) != 1: raise MailBriefError('invalid_response')
     try: decoded = json.loads(texts[0])
     except (ValueError, UnicodeError): raise MailBriefError('invalid_response') from None
-    return decoded
+    return decoded, _billing(result, model, preflight_reservation(plan)['reservation_micro_usd'])
 
 
 _NUMBERS = re.compile(r'(?<!\d)[-+]?\d+(?:[,.]\d+)*(?:\s*%)?(?!\d)')
@@ -373,18 +466,19 @@ def validate_brief(value, plan):
     return result
 
 
-async def brief_mail(plan, *, transport=None):
-    if not isinstance(plan, BriefPlan): raise MailBriefError('invalid_input')
-    checked = prepare_mail_brief(plan.title, plan.summary, plan.body, body_truncated=plan.partial)
-    if checked != plan or plan.character_count > MAX_INPUT_CHARACTERS: raise MailBriefError('invalid_input')
-    if not (plan.title + plan.summary + (plan.body or '')).strip(): raise MailBriefError('invalid_input')
+async def brief_mail(plan, *, reserved_micro_usd=None, price_policy=None, transport=None):
+    _checked_plan(plan)
     key, model = _configuration()
+    reservation = preflight_reservation(plan)
+    if (type(reserved_micro_usd) is not int or reserved_micro_usd < reservation['reservation_micro_usd']
+            or reserved_micro_usd > monthly_budget_micro_usd() or price_policy != PRICE_POLICY):
+        raise MailBriefError('budget_not_reserved')
     async with httpx.AsyncClient(transport=transport, timeout=httpx.Timeout(40, connect=5),
                                 follow_redirects=False, trust_env=False) as client:
-        try: raw = await asyncio.wait_for(_request(client, plan, key, model), timeout=MAX_SECONDS)
+        try: raw, billing = await asyncio.wait_for(_request(client, plan, key, model), timeout=MAX_SECONDS)
         except asyncio.TimeoutError: raise MailBriefError('upstream_timeout') from None
     result = validate_brief(raw, plan)
     return {'status': 'ready', 'provider': 'openai', 'version': BRIEF_VERSION,
             'language': 'zh-CN', 'model': model, **result, 'partial': plan.partial, 'read_only': True,
             'source_hash': plan.source_hash, 'generated_at': datetime.now(timezone.utc).isoformat(),
-            'characters': plan.character_count}
+            'characters': plan.character_count, 'billing': billing}

@@ -1,13 +1,16 @@
 """Private mail brief isolation, encrypted caching and usage gates; synthetic data only."""
 import asyncio
 from copy import deepcopy
+from datetime import datetime, timezone
+import hashlib
+import sqlite3
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from fastapi import HTTPException
-from sqlalchemy import func, select, update
+from sqlalchemy import func, inspect, select, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from models.private_workspace import (
@@ -22,21 +25,23 @@ from services.private_workspace import encrypt_credentials
 @pytest_asyncio.fixture
 async def workspace(monkeypatch, tmp_path):
     for key in (
-        'PRIVATE_MAIL_BRIEF_ENABLED', 'PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT',
+        'PRIVATE_MAIL_BRIEF_ENABLED', 'PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT', 'PRIVATE_MAIL_BRIEF_HOSTING_VERIFIED',
         'PRIVATE_MAIL_BRIEF_PROVIDER', 'PRIVATE_MAIL_BRIEF_OPENAI_API_KEY',
         'PRIVATE_MAIL_BRIEF_MODEL', 'PRIVATE_MAIL_BRIEF_MONTHLY_CHAR_LIMIT',
-        'PRIVATE_MAIL_BRIEF_MONTHLY_REQUEST_LIMIT', 'PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT',
+        'PRIVATE_MAIL_BRIEF_MONTHLY_REQUEST_LIMIT', 'PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD', 'PRIVATE_WORKSPACE_GMAIL_EXPECTED_ACCOUNT',
     ):
         monkeypatch.delenv(key, raising=False)
     for key, value in {
         'PRIVATE_WORKSPACE_ENCRYPTION_KEY': 'synthetic-encryption-key-for-private-brief-tests',
         'PRIVATE_MAIL_BRIEF_ENABLED': 'true',
         'PRIVATE_MAIL_BRIEF_EXTERNAL_CONSENT': 'true',
+        'PRIVATE_MAIL_BRIEF_HOSTING_VERIFIED': 'true',
         'PRIVATE_MAIL_BRIEF_PROVIDER': 'openai',
         'PRIVATE_MAIL_BRIEF_OPENAI_API_KEY': 'synthetic_private_brief_key_12345',
-        'PRIVATE_MAIL_BRIEF_MODEL': 'synthetic-approved-model',
+        'PRIVATE_MAIL_BRIEF_MODEL': 'gpt-4.1-mini-2025-04-14',
         'PRIVATE_MAIL_BRIEF_MONTHLY_CHAR_LIMIT': '100000',
         'PRIVATE_MAIL_BRIEF_MONTHLY_REQUEST_LIMIT': '100',
+        'PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD': '5000000',
     }.items():
         monkeypatch.setenv(key, value)
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "brief.db"}')
@@ -71,9 +76,10 @@ async def workspace(monkeypatch, tmp_path):
                 evidence={'from': 'Sender <sender@example.com>', 'accounting_effect': 'none'},
             ))
         await db.commit()
-    calls = []; content_calls = []; failures = []; hooks = []; content_hooks = []
+    calls = []; content_calls = []; failures = []; hooks = []; content_hooks = []; billings = []
 
     async def fake_brief(plan, **arguments):
+        assert arguments == {'reserved_micro_usd': 421911, 'price_policy': provider.PRICE_POLICY}
         calls.append(plan)
         if hooks:
             await hooks.pop(0)()
@@ -94,6 +100,7 @@ async def workspace(monkeypatch, tmp_path):
             'source_evidence': ['Your payout was $700.'], 'evidence_limited': plan.partial,
             'partial': plan.partial, 'read_only': True, 'source_hash': plan.source_hash,
             'generated_at': utcnow().isoformat(), 'characters': plan.character_count,
+            'billing': billings.pop(0) if billings else None,
         }
 
     async def fake_content(credentials, metadata, message_id, **arguments):
@@ -115,6 +122,7 @@ async def workspace(monkeypatch, tmp_path):
             engine=engine, sessions=sessions, ids=ids, connection_id=connection_id,
             calls=calls, content_calls=content_calls, failures=failures, hooks=hooks,
             content_hooks=content_hooks,
+            billings=billings,
         )
     finally:
         await engine.dispose()
@@ -132,6 +140,20 @@ async def usage(workspace, owner='4'):
 async def count_entries(workspace):
     async with workspace.sessions() as db:
         return await db.scalar(select(func.count()).select_from(PrivateMailBrief))
+
+
+async def money_usage(workspace, owner='4', month=None):
+    async with workspace.sessions() as db:
+        statement = select(func.coalesce(func.sum(PrivateMailBriefUsage.reserved_usd_micros), 0)).where(
+            PrivateMailBriefUsage.owner_id == owner)
+        if month is not None: statement = statement.where(PrivateMailBriefUsage.month == month)
+        return await db.scalar(statement)
+
+
+def verified_billing(*, input_tokens=501, output_tokens=400):
+    return {'price_policy': provider.PRICE_POLICY, 'reservation_micro_usd': 421911,
+            'settlement_micro_usd': provider._price_micro_usd(input_tokens, output_tokens, provider.model_identifier()),
+            'usage_verified': True, 'input_tokens': input_tokens, 'output_tokens': output_tokens}
 
 
 async def alter_connection(workspace, **changes):
@@ -251,12 +273,12 @@ async def test_character_and_request_reservations_are_atomic_and_owner_isolated(
     monkeypatch.setenv(limiting_key, limit)
     async def reserve():
         async with workspace.sessions() as db:
-            return await service.reserve_usage(db, '4', 20)
+            return await service.reserve_usage(db, '4', 20, reservation_micro_usd=421911, price_policy=provider.PRICE_POLICY)
     results = await asyncio.gather(reserve(), reserve(), reserve())
     assert results.count(True) == 1 and results.count(False) == 2
     assert await usage(workspace) == (20, 1)
     async with workspace.sessions() as db:
-        assert await service.reserve_usage(db, '5', 20) is True
+        assert await service.reserve_usage(db, '5', 20, reservation_micro_usd=421911, price_policy=provider.PRICE_POLICY) is True
     assert await usage(workspace, '5') == (20, 1)
 
 
@@ -483,3 +505,254 @@ async def test_disabled_service_does_not_return_existing_private_cache(workspace
     assert disabled['code'] == 'not_configured' and disabled['brief']['state'] == 'unavailable'
     assert not disabled['brief'].get('title_zh') and 'mail_brief' not in attached[0]
     assert len(workspace.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_usd_budget_atomic_under_concurrent_requests_and_owner_isolation(workspace):
+    async def reserve(owner='4'):
+        async with workspace.sessions() as db:
+            return await service.reserve_usage(db, owner, 20, reservation_micro_usd=421911,
+                                               price_policy=provider.PRICE_POLICY)
+    results = await asyncio.gather(*(reserve() for _ in range(16)))
+    assert results.count(True) == 11 and results.count(False) == 5
+    assert await usage(workspace) == (220, 11)
+    assert await money_usage(workspace) == 421911 * 11
+    assert await reserve('5') is True
+    assert await usage(workspace, '5') == (20, 1) and await money_usage(workspace, '5') == 421911
+
+
+@pytest.mark.asyncio
+async def test_money_cap_blocks_ai_and_cache_does_not_charge_twice(workspace, monkeypatch):
+    monkeypatch.setenv('PRIVATE_MAIL_BRIEF_MONTHLY_BUDGET_MICRO_USD', '421911')
+    async with workspace.sessions() as db:
+        ready = await service.brief_item(db, '4', workspace.ids['mail'])
+        cached = await service.brief_item(db, '4', workspace.ids['mail'])
+        blocked = await service.brief_item(db, '4', workspace.ids['second'])
+        snapshot = await service.budget_snapshot(db, '4')
+    assert ready['brief'] == cached['brief'] and ready['brief']['state'] == 'ready'
+    assert blocked['code'] == 'budget_exhausted' and len(workspace.calls) == 1
+    assert await money_usage(workspace) == 421911
+    assert snapshot == {'configured': True, 'month': service.utcnow().strftime('%Y-%m'),
+                        'limit_usd': '0.42', 'reserved_usd': '0.43', 'remaining_usd': '0.00'}
+    assert all(key not in ready['brief'] for key in ('billing', 'price_policy', 'reservation_micro_usd'))
+
+
+@pytest.mark.asyncio
+async def test_verified_success_settles_once_atomically_with_ready_cache(workspace):
+    workspace.billings.append(verified_billing())
+    finish = service._finish
+    captured = {}
+    async def capturing_finish(db, context, token, **arguments):
+        if arguments.get('result'):
+            captured.update(context=context, token=token, arguments=arguments)
+        return await finish(db, context, token, **arguments)
+    # A duplicate completion with the old lease must neither refund twice nor
+    # erase an already accepted cache result.
+    from unittest.mock import patch
+    with patch.object(service, '_finish', capturing_finish):
+        async with workspace.sessions() as db:
+            result = await service.brief_item(db, '4', workspace.ids['mail'])
+    assert result['brief']['state'] == 'ready'
+    assert await money_usage(workspace) == 841
+    async with workspace.sessions() as db:
+        entry = (await db.execute(select(PrivateMailBrief))).scalar_one()
+        assert entry.reservation_state == 'settled' and entry.reservation_micro_usd == 421911
+        assert entry.reservation_price_policy == provider.PRICE_POLICY
+        assert await finish(db, captured['context'], captured['token'], **captured['arguments']) is False
+        cached = await service.brief_item(db, '4', workspace.ids['mail'])
+    assert cached['brief'] == result['brief'] and await money_usage(workspace) == 841
+    assert len(workspace.calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('change', [
+    {'usage_verified': False}, {'settlement_micro_usd': 0}, {'settlement_micro_usd': -1},
+    {'reservation_micro_usd': 421910}, {'price_policy': 'unapproved-price-policy'},
+    {'input_tokens': 1047577}, {'output_tokens': 1801}, {'input_tokens': True},
+])
+async def test_unknown_or_forged_usage_cannot_release_reserved_usd(workspace, change):
+    billing = verified_billing(); billing.update(change)
+    workspace.billings.append(billing)
+    async with workspace.sessions() as db:
+        result = await service.brief_item(db, '4', workspace.ids['mail'])
+        entry = (await db.execute(select(PrivateMailBrief))).scalar_one()
+    assert result['brief']['state'] == 'ready' and entry.reservation_state == 'held'
+    assert await money_usage(workspace) == 421911
+
+
+@pytest.mark.asyncio
+async def test_failures_missing_usage_and_final_auth_rejection_keep_full_reservation(workspace):
+    workspace.failures.append(provider.MailBriefError('upstream_timeout'))
+    async with workspace.sessions() as db:
+        failed = await service.brief_item(db, '4', workspace.ids['mail'])
+        unknown = await service.brief_item(db, '4', workspace.ids['second'])
+    assert failed['brief']['state'] == 'failed' and unknown['brief']['state'] == 'ready'
+    assert await money_usage(workspace) == 421911 * 2
+
+
+@pytest.mark.asyncio
+async def test_success_after_connection_revocation_cannot_settle_or_return_mail(workspace):
+    workspace.billings.append(verified_billing())
+    async def revoke():
+        await alter_connection(workspace, status='disconnected', generation=3)
+    workspace.hooks.append(revoke)
+    async with workspace.sessions() as db:
+        result = await service.brief_item(db, '4', workspace.ids['mail'])
+    assert result['code'] == 'authorization_expired' and result['brief']['state'] != 'ready'
+    assert await money_usage(workspace) == 421911
+
+
+@pytest.mark.asyncio
+async def test_month_boundary_settles_original_reservation_month_and_cache_is_free(workspace, monkeypatch):
+    october = datetime(2026, 10, 31, 23, 59, 59, tzinfo=timezone.utc)
+    november = datetime(2026, 11, 1, 0, 0, 1, tzinfo=timezone.utc)
+    clock = [october]
+    monkeypatch.setattr(service, 'utcnow', lambda: clock[0])
+    workspace.billings.append(verified_billing())
+    async def next_month(): clock[0] = november
+    workspace.hooks.append(next_month)
+    async with workspace.sessions() as db:
+        result = await service.brief_item(db, '4', workspace.ids['mail'])
+        cached = await service.brief_item(db, '4', workspace.ids['mail'])
+        november_result = await service.brief_item(db, '4', workspace.ids['second'])
+    assert result['brief'] == cached['brief'] and november_result['brief']['state'] == 'ready'
+    assert await money_usage(workspace, month='2026-10') == 841
+    assert await money_usage(workspace, month='2026-11') == 421911
+    assert len(workspace.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_month_changes_after_reservation_before_send_pause_without_ai(workspace, monkeypatch):
+    october = datetime(2026, 10, 31, 23, 59, 59, tzinfo=timezone.utc)
+    november = datetime(2026, 11, 1, 0, 0, 1, tzinfo=timezone.utc)
+    clock = [october]
+    monkeypatch.setattr(service, 'utcnow', lambda: clock[0])
+    async with workspace.sessions() as db:
+        original_commit = db.commit
+        commits = 0
+        async def change_month_after_commit():
+            nonlocal commits
+            commits += 1
+            await original_commit()
+            if commits == 3:
+                clock[0] = november
+        db.commit = change_month_after_commit
+        result = await service.brief_item(db, '4', workspace.ids['mail'])
+    assert result['code'] == 'budget_month_changed' and workspace.calls == []
+    assert await money_usage(workspace, month='2026-10') == 421911
+    assert await money_usage(workspace, month='2026-11') == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('change', ['token', 'expired', 'receipt'])
+async def test_final_guard_rejects_changed_lease_or_receipt_without_ai(workspace, change):
+    async with workspace.sessions() as db:
+        original_commit = db.commit
+        commits = 0
+        async def replace_after_commit():
+            nonlocal commits
+            commits += 1
+            await original_commit()
+            if commits == 3:
+                values = {'lease_token': 'replacement-token'} if change == 'token' else (
+                    {'lease_until': service.utcnow()} if change == 'expired' else {'reservation_micro_usd': 1})
+                async with workspace.sessions() as other:
+                    await other.execute(update(PrivateMailBrief).values(**values))
+                    await other.commit()
+        db.commit = replace_after_commit
+        result = await service.brief_item(db, '4', workspace.ids['mail'])
+    assert result['code'] == 'authorization_expired' and workspace.calls == []
+    assert await money_usage(workspace) == 421911
+
+
+@pytest.mark.asyncio
+async def test_expired_lease_cannot_reserve_or_call_ai(workspace, monkeypatch):
+    original_time = service.utcnow()
+    clock = [original_time]
+    monkeypatch.setattr(service, 'utcnow', lambda: clock[0])
+    async def expire_lease():
+        from datetime import timedelta
+        clock[0] = original_time + timedelta(seconds=121)
+    workspace.content_hooks.append(expire_lease)
+    async with workspace.sessions() as db:
+        result = await service.brief_item(db, '4', workspace.ids['mail'])
+    assert result['brief']['state'] != 'ready' and workspace.calls == []
+    assert await money_usage(workspace) == 0 and await usage(workspace) == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_budget_dto_rounds_reservation_up_and_remaining_down(workspace):
+    async with workspace.sessions() as db:
+        db.add(PrivateMailBriefUsage(owner_id='4', month=service.utcnow().strftime('%Y-%m'),
+                                     characters=100, requests=1, reserved_usd_micros=841))
+        await db.commit()
+        snapshot = await service.budget_snapshot(db, '4')
+        another_owner = await service.budget_snapshot(db, '5')
+    assert snapshot['limit_usd'] == '5.00' and snapshot['reserved_usd'] == '0.01'
+    assert snapshot['remaining_usd'] == '4.99' and snapshot['configured'] is True
+    assert another_owner['reserved_usd'] == '0.00' and another_owner['remaining_usd'] == '5.00'
+
+
+@pytest.mark.asyncio
+async def test_legacy_nonzero_counts_are_not_a_fresh_free_usd_allowance(workspace):
+    async with workspace.sessions() as db:
+        db.add(PrivateMailBriefUsage(owner_id='4', month=service.utcnow().strftime('%Y-%m'),
+                                     characters=500, requests=1, reserved_usd_micros=0))
+        await db.commit()
+        snapshot = await service.budget_snapshot(db, '4')
+        allowed = await service.reserve_usage(db, '4', 20, reservation_micro_usd=421911,
+                                              price_policy=provider.PRICE_POLICY)
+    assert snapshot['reserved_usd'] == '5.00' and snapshot['remaining_usd'] == '0.00'
+    assert allowed is False and await money_usage(workspace) == 5000000
+    assert await usage(workspace) == (500, 1)
+
+
+@pytest.mark.asyncio
+async def test_private_budget_migration_preserves_legacy_rows_indexes_and_business_sentinel(tmp_path):
+    business_path = tmp_path / 'crm-sentinel.db'
+    with sqlite3.connect(business_path) as db:
+        db.execute('CREATE TABLE receipts (id INTEGER PRIMARY KEY, amount INTEGER)')
+        db.execute('INSERT INTO receipts VALUES (1,70000)')
+    fingerprint = hashlib.sha256(business_path.read_bytes()).hexdigest()
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "old-private.db"}')
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(text('CREATE TABLE private_mail_brief_usage (owner_id VARCHAR(64) NOT NULL, '
+                'month VARCHAR(7) NOT NULL, characters INTEGER NOT NULL DEFAULT 0, requests INTEGER NOT NULL DEFAULT 0, '
+                'updated_at DATETIME, PRIMARY KEY(owner_id,month))'))
+            await connection.execute(text("CREATE TABLE private_mail_briefs (cache_key VARCHAR(64) PRIMARY KEY, "
+                "owner_id VARCHAR(64), state VARCHAR(16), encrypted_content TEXT)"))
+            await connection.execute(text('CREATE INDEX legacy_brief_owner ON private_mail_briefs(owner_id)'))
+            await connection.execute(text("INSERT INTO private_mail_brief_usage VALUES ('4','2026-10',500,1,'2026-10-11')"))
+            await connection.execute(text("INSERT INTO private_mail_brief_usage VALUES ('5','2026-10',0,0,'2026-10-11')"))
+            await connection.execute(text("INSERT INTO private_mail_briefs VALUES ('synthetic-key','4','ready','synthetic-encrypted-data')"))
+            before_index = (await connection.execute(text("SELECT sql FROM sqlite_master WHERE name='legacy_brief_owner'"))).scalar_one()
+            await service.migrate_private_mail_brief_budget(connection)
+            await service.migrate_private_mail_brief_budget(connection)
+            rows = (await connection.execute(text('SELECT owner_id,characters,requests,reserved_usd_micros FROM private_mail_brief_usage ORDER BY owner_id'))).all()
+            cache = (await connection.execute(text('SELECT state,encrypted_content,reservation_month,reservation_micro_usd,reservation_price_policy,reservation_state FROM private_mail_briefs'))).one()
+            after_index = (await connection.execute(text("SELECT sql FROM sqlite_master WHERE name='legacy_brief_owner'"))).scalar_one()
+            assert rows == [('4', 500, 1, 5000000), ('5', 0, 0, 0)]
+            assert cache == ('ready', 'synthetic-encrypted-data', None, 0, None, 'none')
+            assert before_index == after_index
+            await connection.execute(text("UPDATE private_mail_brief_usage SET reserved_usd_micros=841 WHERE owner_id='4'"))
+            await service.migrate_private_mail_brief_budget(connection)
+            assert (await connection.execute(text("SELECT reserved_usd_micros FROM private_mail_brief_usage WHERE owner_id='4'"))).scalar_one() == 841
+        assert hashlib.sha256(business_path.read_bytes()).hexdigest() == fingerprint
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_budget_migration_rejects_business_or_mixed_schema_before_any_alter(tmp_path):
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "mixed.db"}')
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(text('CREATE TABLE customers (id INTEGER PRIMARY KEY)'))
+            await connection.execute(text('CREATE TABLE private_mail_brief_usage (owner_id TEXT,month TEXT,characters INTEGER,requests INTEGER)'))
+            with pytest.raises(RuntimeError, match='private_budget_schema_mismatch'):
+                await service.migrate_private_mail_brief_budget(connection)
+            columns = await connection.run_sync(lambda db: {column['name'] for column in inspect(db).get_columns('private_mail_brief_usage')})
+            assert 'reserved_usd_micros' not in columns
+    finally:
+        await engine.dispose()

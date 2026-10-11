@@ -87,6 +87,7 @@ export interface PrivateMailBrief {
 export interface PrivateMailCapabilities {
   smart_brief: { enabled: boolean; configured: boolean; code?: string };
   translation: { enabled: boolean; configured: boolean; code?: string };
+  budget?: { limit_usd: string; reserved_usd: string; remaining_usd: string; month: string; configured: boolean };
 }
 export interface PrivateMailBriefResult {
   configured: boolean;
@@ -277,11 +278,16 @@ export function privateMailChinese(item: PrivateItem, part: 'title' | 'summary')
   const value = part === 'title' ? translation?.title_zh : translation?.summary_zh;
   return item.source_id === 'gmail' && translation?.state === 'ready' && typeof value === 'string' && value.trim() ? value : item[part];
 }
-export function privateMailBriefNotice(code?: string): string {
+export function privateMailBriefNotice(code?: string, budget?: PrivateMailCapabilities['budget']): string {
+  if (code === 'budget_exhausted') {
+    const prefix = budget?.configured && typeof budget.limit_usd === 'string' && /^(?:0|[1-9]\d{0,2})\.\d{2}$/.test(budget.limit_usd) ? `本月 US$${budget.limit_usd} 智能整理可用额度不足` : '本月智能整理可用额度不足';
+    return `${prefix}，已整理邮件和原文仍可查看`;
+  }
   return ({
     not_configured: '智能整理尚待接入，当前可查看邮件原文',
     consent_required: '智能整理尚待确认接入，当前可查看邮件原文',
     limit_reached: '本月整理额度已用完，已整理的邮件仍可查看',
+    budget_month_changed: '月份已更新，请重新整理这封邮件',
     upstream_unavailable: '暂时无法整理这封邮件，可先查看原文',
     authorization_expired: 'Gmail 授权已过期，请在工作接入重新连接',
     body_unavailable: '未找到可读取正文，当前仅依据邮件摘要整理',

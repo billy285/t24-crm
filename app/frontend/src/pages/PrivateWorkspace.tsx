@@ -353,7 +353,7 @@ export default function PrivateWorkspace() {
       if (!isActive() || request !== mailBriefRequest.current || response.item_id !== item.id) return;
       if (!response.configured) {
         setMailCapabilities(previous => previous ? { ...previous, smart_brief: { ...previous.smart_brief, configured: false, code: response.code || 'not_configured' } } : previous);
-        setMailBriefNotice({ id: item.id, message: privateMailBriefNotice(response.code || 'not_configured') }); return;
+        setMailBriefNotice({ id: item.id, message: privateMailBriefNotice(response.code || 'not_configured', mailCapabilities?.budget) }); return;
       }
       if (response.brief?.state === 'ready') {
         setSelected(previous => previous?.id === item.id && previous.title === item.title && previous.summary === item.summary ? { ...previous, mail_brief: response.brief } : previous);
@@ -361,7 +361,7 @@ export default function PrivateWorkspace() {
         const apply = (current: PrivateItem) => current.id === item.id && current.title === item.title && current.summary === item.summary ? { ...current, mail_brief: preview } : current;
         setList(previous => previous.map(apply)); setData(previous => previous ? { ...previous, items: previous.items.map(apply) } : previous);
         if (response.brief.source_scope === 'preview') setMailBriefNotice({ id: item.id, message: privateMailBriefNotice('body_unavailable') });
-      } else setMailBriefNotice({ id: item.id, message: privateMailBriefNotice(response.code || response.brief?.code || (response.brief?.state === 'pending' ? 'pending' : undefined)) });
+      } else setMailBriefNotice({ id: item.id, message: privateMailBriefNotice(response.code || response.brief?.code || (response.brief?.state === 'pending' ? 'pending' : undefined), mailCapabilities?.budget) });
     } catch (failure) {
       if (!isActive() || request !== mailBriefRequest.current) return;
       if (failure instanceof PrivateWorkspaceApiError && [401, 403].includes(failure.status)) handleFailure(failure);

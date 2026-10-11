@@ -139,14 +139,17 @@ async def mail_translation_batch(
 
 
 @router.get("/mail-capabilities")
-async def mail_capabilities(owner: PrivateOwner = Depends(require_private_owner)):
+async def mail_capabilities(owner: PrivateOwner = Depends(require_private_owner),
+                            private_db: AsyncSession = Depends(get_private_db)):
     import os
     from services import private_mail_brief, private_mail_translation
+    from services.private_mail_brief_service import budget_snapshot
     preferred = (os.getenv("PRIVATE_MAIL_BRIEF_UI_ENABLED", "true").strip().lower() != "false")
     ready = private_mail_brief.configured()
     return {"smart_brief": {"enabled": preferred, "configured": ready,
                             **({"code": "not_configured"} if not ready else {})},
-            "translation": {"enabled": not preferred, "configured": private_mail_translation.configured()}}
+            "translation": {"enabled": not preferred, "configured": private_mail_translation.configured()},
+            "budget": await budget_snapshot(private_db, owner.employee_id)}
 
 
 @router.post("/items/{item_id}/mail-brief")

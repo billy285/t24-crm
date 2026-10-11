@@ -132,6 +132,9 @@ async def private_session_factory():
         engine = create_async_engine(url, poolclass=NullPool, echo=False)
         try:
             async with engine.begin() as connection:
+                from services.private_mail_brief_service import migrate_private_mail_brief_budget
+                # Refuse unrelated tables before creating or altering anything.
+                await migrate_private_mail_brief_budget(connection)
                 await connection.run_sync(PrivateWorkspaceBase.metadata.create_all)
         except Exception:
             await engine.dispose()

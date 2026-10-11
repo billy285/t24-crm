@@ -517,3 +517,21 @@ test('AI-generated HTML and bank claims remain escaped reading suggestions witho
   assert.ok(f.text().includes('立即关注')); assert.equal(item.due_at, null); assert.equal(item.amount_minor, null); assert.equal(item.mail_relevance.bucket, 'urgent');
   assert.equal(f.requests.filter(request => ['PATCH', 'DELETE'].includes(request.method)).length, 0); assert.ok(f.requests.every(request => request.url.startsWith('/api/v1/private-workspace'))); f.unmount();
 });
+test('monthly budget exhaustion stays a concise detail notice and preserves cached Chinese and original access without retrying', async () => {
+  const item = mail('budget-cached'); item.mail_brief = organized({ original_body: undefined, source_evidence: undefined });
+  const f = fixture([item]); f.setMailCapabilitiesHandler(() => ({ ...briefCapabilities(), budget: { configured: true, limit_usd: '5.00', reserved_usd: '5.00', remaining_usd: '0.00', month: '2026-10' } }));
+  f.setMailBriefHandler(() => ({ configured: true, item_id: item.id, brief: { state: 'unavailable' }, code: 'budget_exhausted' }));
+  await f.flush(); assert.ok(!f.text().includes('US$5.00')); await openMail(f); assert.ok(!f.text().includes('US$5.00'));
+  f.button('查看原文正文').props.onClick(); await f.flush(); assert.ok(f.text().includes('本月 US$5.00 智能整理可用额度不足，已整理邮件和原文仍可查看')); assert.ok(!f.text().includes('已达到本月')); assert.ok(f.text().includes('客户询问下周广告安排'));
+  f.button('原文').props.onClick(); await f.flush(); assert.ok(f.text().includes('Synthetic snippet')); assert.ok(f.text().includes('Synthetic budget-cached')); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief')).length, 1);
+  await f.flush(); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief')).length, 1); assert.equal(f.requests.filter(request => request.url.includes('/mail-translation')).length, 0);
+  assert.equal(item.due_at, null); assert.equal(item.amount_minor, null); assert.equal(f.requests.filter(request => ['PATCH', 'DELETE'].includes(request.method)).length, 0); f.unmount();
+});
+test('month change preserves the original and requires a new explicit organize click instead of automatically retrying', async () => {
+  const f = fixture(); f.setMailCapabilitiesHandler(() => briefCapabilities()); f.setMailBriefHandler(() => ({ configured: true, item_id: 'message', brief: { state: 'unavailable' }, code: 'budget_month_changed' }));
+  await f.flush(); await openMail(f); f.button('整理这封邮件').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('月份已更新，请重新整理这封邮件')); assert.ok(f.text().includes('Synthetic snippet')); assert.ok(f.text().includes('Synthetic message'));
+  f.button('原文').props.onClick(); await f.flush(); assert.ok(f.text().includes('Synthetic snippet'));
+  await f.flush(); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief')).length, 1); assert.equal(f.requests.filter(request => request.url.includes('/mail-translation')).length, 0);
+  f.button('整理这封邮件').props.onClick(); await f.flush(); assert.equal(f.requests.filter(request => request.url.endsWith('/mail-brief')).length, 2); f.unmount();
+});

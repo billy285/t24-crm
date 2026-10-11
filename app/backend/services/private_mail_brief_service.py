@@ -6,15 +6,18 @@ here. An external consent gate is checked before fetching or disclosing text.
 import asyncio
 import hashlib
 import json
+import re
 import secrets
 from datetime import timedelta
 
 from cryptography.fernet import InvalidToken
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import and_, exists, or_, select, update
+from sqlalchemy import and_, exists, inspect, or_, select, text, update
 
-from models.private_workspace import PrivateConnection, PrivateItem, PrivateMailBrief, PrivateMailBriefUsage, utcnow
+from models.private_workspace import (
+    PrivateConnection, PrivateItem, PrivateMailBrief, PrivateMailBriefUsage, PrivateWorkspaceBase, utcnow,
+)
 from schemas.private_workspace import PrivateMailBriefResponse
 from services import private_mail_brief as provider
 from services import private_workspace_providers as gmail
@@ -30,6 +33,40 @@ def _insert(db, model):
     else:
         from sqlalchemy.dialects.postgresql import insert
     return insert(model)
+
+
+async def migrate_private_mail_brief_budget(connection):
+    """Add fixed budget columns ONLY on an already-isolated private schema.
+
+    The factory verifies the private database identity before this hook. This
+    additional table inventory guard refuses a business or mixed schema. Old
+    nonzero character/request usage with no recorded USD cost is charged the
+    entire approved cap, never reset to zero or treated as a free new month.
+    """
+    def migrate(db):
+        tables = set(inspect(db).get_table_names())
+        if not tables <= set(PrivateWorkspaceBase.metadata.tables):
+            raise RuntimeError('private_budget_schema_mismatch')
+        if 'private_mail_brief_usage' in tables:
+            columns = {column['name'] for column in inspect(db).get_columns('private_mail_brief_usage')}
+            if 'reserved_usd_micros' not in columns:
+                db.execute(text('ALTER TABLE private_mail_brief_usage ADD COLUMN reserved_usd_micros BIGINT NOT NULL DEFAULT 0'))
+            db.execute(text('UPDATE private_mail_brief_usage SET reserved_usd_micros = :cap '
+                            'WHERE (characters <> 0 OR requests <> 0) '
+                            'AND (reserved_usd_micros IS NULL OR reserved_usd_micros = 0)'),
+                       {'cap': provider.MAX_MONTHLY_BUDGET_MICRO_USD})
+        if 'private_mail_briefs' in tables:
+            columns = {column['name'] for column in inspect(db).get_columns('private_mail_briefs')}
+            additions = {
+                'reservation_month': 'VARCHAR(7)',
+                'reservation_micro_usd': 'BIGINT NOT NULL DEFAULT 0',
+                'reservation_price_policy': 'VARCHAR(80)',
+                'reservation_state': "VARCHAR(16) NOT NULL DEFAULT 'none'",
+            }
+            for name, definition in additions.items():
+                if name not in columns:
+                    db.execute(text(f'ALTER TABLE private_mail_briefs ADD COLUMN {name} {definition}'))
+    await connection.run_sync(migrate)
 
 
 def _empty(state="unavailable"):
@@ -148,33 +185,153 @@ async def _claim(db, context):
     return (token, None, None) if changed.rowcount else (None, _empty("pending"), None)
 
 
-async def reserve_usage(db, owner_id, count):
-    """Atomic character AND request reservations across processes, no refund."""
+async def reserve_usage(db, owner_id, count, *, reservation_micro_usd, price_policy, context=None, token=None):
+    """Reserve character, request and USD limits in one conditional UPDATE."""
     character_limit, request_limit = provider.monthly_limit(), provider.monthly_request_limit()
+    budget = provider.monthly_budget_micro_usd()
     if type(count) is not int or not 0 <= count <= provider.MAX_INPUT_CHARACTERS:
         raise provider.MailBriefError("invalid_input")
-    month = utcnow().strftime("%Y-%m")
-    await db.execute(_insert(db, PrivateMailBriefUsage).values(owner_id=owner_id, month=month, characters=0, requests=0)
+    model = provider.model_identifier()
+    required = provider._price_micro_usd(provider.MODEL_PRICES[model]['context_tokens'], provider.MAX_OUTPUT_TOKENS, model)
+    if (type(reservation_micro_usd) is not int or reservation_micro_usd != required
+            or price_policy != provider.PRICE_POLICY):
+        raise provider.MailBriefError('budget_not_reserved')
+    if context is not None and (context['owner_id'] != owner_id or not isinstance(token, str)):
+        raise provider.MailBriefError('invalid_input')
+    now = utcnow()
+    month = now.strftime("%Y-%m")
+    if context is not None:
+        context['reservation_month'] = month
+    await db.execute(_insert(db, PrivateMailBriefUsage).values(
+        owner_id=owner_id, month=month, characters=0, requests=0, reserved_usd_micros=0)
                      .on_conflict_do_nothing(index_elements=["owner_id", "month"]))
-    changed = await db.execute(update(PrivateMailBriefUsage).where(
+    # Defense in depth for rows seeded by old code after the schema hook.
+    await db.execute(update(PrivateMailBriefUsage).where(
         PrivateMailBriefUsage.owner_id == owner_id, PrivateMailBriefUsage.month == month,
+        or_(PrivateMailBriefUsage.characters != 0, PrivateMailBriefUsage.requests != 0),
+        or_(PrivateMailBriefUsage.reserved_usd_micros == 0, PrivateMailBriefUsage.reserved_usd_micros.is_(None)),
+    ).values(reserved_usd_micros=provider.MAX_MONTHLY_BUDGET_MICRO_USD))
+    predicates = [
+        PrivateMailBriefUsage.owner_id == owner_id, PrivateMailBriefUsage.month == month,
+        PrivateMailBriefUsage.characters >= 0, PrivateMailBriefUsage.requests >= 0,
+        PrivateMailBriefUsage.reserved_usd_micros >= 0,
         PrivateMailBriefUsage.characters + count <= character_limit,
         PrivateMailBriefUsage.requests + 1 <= request_limit,
-    ).values(characters=PrivateMailBriefUsage.characters + count, requests=PrivateMailBriefUsage.requests + 1))
+        PrivateMailBriefUsage.reserved_usd_micros + reservation_micro_usd <= budget,
+    ]
+    if context is not None:
+        predicates.extend([_live_context(context), exists(select(PrivateMailBrief.cache_key).where(
+            PrivateMailBrief.cache_key == context['key'], PrivateMailBrief.owner_id == owner_id,
+            PrivateMailBrief.lease_token == token, PrivateMailBrief.state == 'pending',
+            PrivateMailBrief.lease_until > now,
+        ))])
+    changed = await db.execute(update(PrivateMailBriefUsage).where(
+        *predicates,
+    ).values(characters=PrivateMailBriefUsage.characters + count, requests=PrivateMailBriefUsage.requests + 1,
+             reserved_usd_micros=PrivateMailBriefUsage.reserved_usd_micros + reservation_micro_usd))
+    if changed.rowcount and context is not None:
+        receipt = await db.execute(update(PrivateMailBrief).where(
+            PrivateMailBrief.cache_key == context['key'], PrivateMailBrief.owner_id == owner_id,
+            PrivateMailBrief.lease_token == token, PrivateMailBrief.state == 'pending',
+            PrivateMailBrief.lease_until > now,
+        ).values(reservation_month=month, reservation_micro_usd=reservation_micro_usd,
+                 reservation_price_policy=price_policy, reservation_state='held'))
+        if not receipt.rowcount:
+            await db.rollback()
+            return False
     await db.commit()
     return bool(changed.rowcount)
 
 
-async def _finish(db, context, token, result=None, input_hash=None, code=None):
+def _settlement(entry, billing):
+    """Validate the receipt independently of provider output; return a refund."""
+    if (not isinstance(billing, dict) or billing.get('usage_verified') is not True
+            or billing.get('price_policy') != provider.PRICE_POLICY
+            or entry.reservation_state != 'held' or entry.reservation_price_policy != provider.PRICE_POLICY
+            or not isinstance(entry.reservation_month, str)
+            or re.fullmatch(r'[0-9]{4}-(?:0[1-9]|1[0-2])', entry.reservation_month) is None): return None
+    amount = entry.reservation_micro_usd
+    if (type(amount) is not int or not 1 <= amount <= provider.MAX_MONTHLY_BUDGET_MICRO_USD
+            or type(billing.get('reservation_micro_usd')) is not int
+            or billing['reservation_micro_usd'] != amount): return None
+    model = entry.model
+    policy = provider.MODEL_PRICES.get(model)
+    input_tokens = billing.get('input_tokens'); output_tokens = billing.get('output_tokens')
+    if (not policy or type(input_tokens) is not int or not 1 <= input_tokens <= policy['context_tokens']
+            or type(output_tokens) is not int or not 1 <= output_tokens <= provider.MAX_OUTPUT_TOKENS): return None
+    cost = provider._price_micro_usd(input_tokens, output_tokens, model)
+    if type(billing.get('settlement_micro_usd')) is not int or billing['settlement_micro_usd'] != cost or cost > amount:
+        return None
+    return amount - cost
+
+
+async def _finish(db, context, token, result=None, input_hash=None, code=None, billing=None):
+    refund = None; entry = None
+    if result:
+        entry = (await db.execute(select(PrivateMailBrief).where(
+            PrivateMailBrief.cache_key == context['key'], PrivateMailBrief.owner_id == context['owner_id'],
+            PrivateMailBrief.lease_token == token,
+        ).execution_options(populate_existing=True))).scalar_one_or_none()
+        if entry:
+            refund = _settlement(entry, billing)
+    values = dict(state="ready" if result else "failed", input_hash=input_hash,
+                  encrypted_content=_encrypt(result, input_hash) if result else None,
+                  error_code=code, lease_token=None,
+                  lease_until=None if result else utcnow() + timedelta(seconds=30))
+    if refund is not None:
+        values['reservation_state'] = 'settled'
     changed = await db.execute(update(PrivateMailBrief).where(
         PrivateMailBrief.cache_key == context["key"], PrivateMailBrief.owner_id == context["owner_id"],
         PrivateMailBrief.lease_token == token, _live_context(context),
-    ).values(state="ready" if result else "failed", input_hash=input_hash,
-             encrypted_content=_encrypt(result, input_hash) if result else None,
-             error_code=code, lease_token=None,
-             lease_until=None if result else utcnow() + timedelta(seconds=30)))
+    ).values(**values))
+    if changed.rowcount and refund is not None:
+        settled = await db.execute(update(PrivateMailBriefUsage).where(
+            PrivateMailBriefUsage.owner_id == context['owner_id'], PrivateMailBriefUsage.month == entry.reservation_month,
+            PrivateMailBriefUsage.reserved_usd_micros >= refund, PrivateMailBriefUsage.requests >= 1,
+        ).values(reserved_usd_micros=PrivateMailBriefUsage.reserved_usd_micros - refund))
+        if not settled.rowcount:
+            await db.rollback()
+            return False
     await db.commit()
     return bool(changed.rowcount)
+
+
+async def budget_snapshot(db, owner_id):
+    """Safe owner-only monetary DTO, never provider payloads or credentials."""
+    month = utcnow().strftime('%Y-%m')
+    try:
+        limit = provider.monthly_budget_micro_usd()
+    except provider.MailBriefError:
+        return {'configured': False, 'month': month, 'limit_usd': '0.00',
+                'reserved_usd': '0.00', 'remaining_usd': '0.00'}
+    row = (await db.execute(select(PrivateMailBriefUsage).where(
+        PrivateMailBriefUsage.owner_id == owner_id, PrivateMailBriefUsage.month == month,
+    ))).scalar_one_or_none()
+    reserved = row.reserved_usd_micros if row else 0
+    if row and reserved == 0 and (row.characters != 0 or row.requests != 0):
+        # A legacy unpriced row is not a fresh free allowance even before the
+        # next reservation/migration. This read-only DTO stays conservative.
+        reserved = provider.MAX_MONTHLY_BUDGET_MICRO_USD
+    if type(reserved) is not int or reserved < 0:
+        return {'configured': False, 'month': month, 'limit_usd': '0.00',
+                'reserved_usd': '0.00', 'remaining_usd': '0.00'}
+    def dollars(micros, *, round_up=False):
+        cents = (micros + 9999) // 10000 if round_up else micros // 10000
+        return f'{cents // 100}.{cents % 100:02d}'
+    return {'configured': provider.configured(), 'month': month,
+            'limit_usd': dollars(limit), 'reserved_usd': dollars(reserved, round_up=True),
+            'remaining_usd': dollars(max(0, limit - reserved))}
+
+
+async def _reservation_failure_code(db, owner_id, month, amount):
+    # This only explains a refusal. The conditional UPDATE is the budget gate.
+    row = (await db.execute(select(PrivateMailBriefUsage).where(
+        PrivateMailBriefUsage.owner_id == owner_id, PrivateMailBriefUsage.month == month,
+    ))).scalar_one_or_none()
+    held = row.reserved_usd_micros if row else 0
+    if type(held) is not int or held < 0 or held + amount > provider.monthly_budget_micro_usd():
+        return 'budget_exhausted'
+    return 'limit_reached'
 
 
 def _public_error(exc):
@@ -184,6 +341,8 @@ def _public_error(exc):
     if code == "quota_exceeded":
         return "limit_reached"
     if code == "not_configured":
+        return code
+    if code == 'budget_month_changed':
         return code
     return "upstream_unavailable"
 
@@ -247,18 +406,35 @@ async def brief_item(db, owner_id, item_id, *, mode="body"):
                 raise gmail.ProviderError("authorization_expired")
             if not provider.configured():
                 raise provider.MailBriefError("not_configured")
-            if not await reserve_usage(db, owner_id, plan.character_count):
-                await _finish(db, context, token, code="limit_reached")
-                return {**response, "brief": _empty("failed"), "code": "limit_reached"}
+            reservation = provider.preflight_reservation(plan)
+            if not await reserve_usage(db, owner_id, plan.character_count,
+                                       reservation_micro_usd=reservation['reservation_micro_usd'],
+                                       price_policy=reservation['price_policy'], context=context, token=token):
+                code = await _reservation_failure_code(db, owner_id, context['reservation_month'],
+                                                       reservation['reservation_micro_usd'])
+                await _finish(db, context, token, code=code)
+                return {**response, "brief": _empty("failed"), "code": code}
             # End the prior transaction BEFORE the final authorization check.
             # Do not yield for a separate commit after checking and before
             # entering the provider. In-flight HTTP cannot be recalled later.
             await db.commit()
-            if not (await db.execute(select(_live_context(context)))).scalar_one():
+            now = utcnow()
+            current_claim = exists(select(PrivateMailBrief.cache_key).where(
+                PrivateMailBrief.cache_key == context['key'], PrivateMailBrief.owner_id == owner_id,
+                PrivateMailBrief.lease_token == token, PrivateMailBrief.state == 'pending',
+                PrivateMailBrief.lease_until > now, PrivateMailBrief.reservation_state == 'held',
+                PrivateMailBrief.reservation_month == context['reservation_month'],
+                PrivateMailBrief.reservation_micro_usd == reservation['reservation_micro_usd'],
+                PrivateMailBrief.reservation_price_policy == reservation['price_policy'],
+            ))
+            if not (await db.execute(select(and_(_live_context(context), current_claim)))).scalar_one():
                 raise gmail.ProviderError("authorization_expired")
-            brief = await provider.brief_mail(plan)
+            if utcnow().strftime('%Y-%m') != context['reservation_month']:
+                raise provider.MailBriefError('budget_month_changed')
+            brief = await provider.brief_mail(plan,
+                reserved_micro_usd=reservation['reservation_micro_usd'], price_policy=reservation['price_policy'])
             result = _result(brief, plan, importance)
-            if not await _finish(db, context, token, result=result, input_hash=plan.source_hash):
+            if not await _finish(db, context, token, result=result, input_hash=plan.source_hash, billing=brief.get('billing')):
                 return {**response, "code": "authorization_expired"}
             return {**response, "brief": result}
     except (provider.MailBriefError, gmail.ProviderError, HTTPException, TimeoutError, ValidationError) as exc:
