@@ -12,7 +12,7 @@ The reviewed release uses `switch_completed.py` in separate `schema`, `activate`
 
 `resume_preflight.py` binds the original accepted four-to-ten migration and exact restored-service rollback receipts; it never silently treats a ten-table database as a fresh four-table baseline. Google monitoring may refresh its existing access token and expiry or re-encrypt identical credentials. The pinned original offline crypto adapter checks those credentials only in root memory. Refresh tokens, scopes, token type, all other credential fields, account identity and local data remain frozen. Changed Google ciphertext additionally requires a new successful audit for the same source matching its last-sync time. No credential payload is printed or persisted in evidence. Non-Google ciphertext remains exact. The authenticated 2026-10-11 21:49 readonly probe confirmed only access_token/expires_at changed for Gmail and Google Ads, with all long-term authorization fields unchanged.
 
-The completed candidate must pass at least 807 private regressions before `resume-schema` freezes the old private writers without rerunning migration. A successful six-resource Stripe readonly diagnosis is required before the single reviewed retry claim; the original failed one-use claim remains permanent. Bank and AI stay disabled.
+The completed candidate must pass at least 845 private regressions before `resume-schema` freezes the old private writers without rerunning migration. A successful six-resource Stripe readonly diagnosis is required before the single reviewed retry claim; the original failed one-use claim remains permanent. Bank and AI stay disabled.
 
 ## Scope and known baseline
 
