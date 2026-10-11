@@ -19,7 +19,9 @@ const mail = (id, bucket = 'today') => ({
 // Run the actual component, API and draft guard against synthetic transport and
 // controlled hook scheduling. No mailbox, browser storage or external API is used.
 function fixture(items = [mail('message')], initialView = 'gmail', extraSources = []) {
-  let cursor = 0, epoch = 'synthetic-owner', tree;
+  let cursor = 0, epoch = 'synthetic-owner', tree, now = Date.now();
+  const timers = new Map();
+  class SyntheticDate extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
   const hooks = [], effects = [], requests = [], listeners = new Map(), modules = new Map();
   const params = new URLSearchParams({ view: initialView });
   let preferencesHandler, syncHandler;
@@ -33,8 +35,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     useEffect(effect, dependencies) { const index = cursor++; if (!hooks[index] || !same(hooks[index].dependencies, dependencies)) { const previous = hooks[index]; hooks[index] = { dependencies, cleanup: previous?.cleanup }; effects.push(() => { hooks[index].cleanup?.(); hooks[index].cleanup = effect(); }); } },
   };
   react.useLayoutEffect = react.useEffect;
-  const window = { confirm: () => true, location: { assign: () => { throw new Error('No OAuth expected'); } }, addEventListener: (name, listener) => { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(listener); }, removeEventListener: (name, listener) => listeners.get(name)?.delete(listener) };
-  const context = vm.createContext({ URL, URLSearchParams, Intl, window, console });
+  const window = { setInterval: callback => { const id = timers.size + 1; timers.set(id, callback); return id; }, clearInterval: id => timers.delete(id), confirm: () => true, location: { assign: () => { throw new Error('No OAuth expected'); } }, addEventListener: (name, listener) => { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(listener); }, removeEventListener: (name, listener) => listeners.get(name)?.delete(listener) };
+  const context = vm.createContext({ URL, URLSearchParams, Intl, Date: SyntheticDate, window, console });
   function load(relative) {
     if (modules.has(relative)) return modules.get(relative);
     const path = resolve(root, relative);
@@ -48,6 +50,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
       if (name.endsWith('.css')) return {};
       if (name === '@/lib/auth-storage') return { AUTH_SESSION_INVALIDATED_EVENT: 'synthetic-auth-invalidated', getAuthSessionEpoch: () => epoch };
       if (name === '@/lib/private-workspace-api') return load('lib/private-workspace-api.ts');
+      if (name === '@/lib/private-ads') return load('lib/private-ads.ts');
+      if (name === './PrivateAdsDashboard') return load('pages/PrivateAdsDashboard.tsx');
       if (name === '@/lib/use-dialog-draft') return load('lib/use-dialog-draft.ts');
       if (name === './use-unsaved-changes') return load('lib/use-unsaved-changes.ts');
       if (name.startsWith('@/components/ui/')) return new Proxy({}, { get: (_, key) => key === 'Dialog' || key === 'Sheet' ? props => props.open ? props.children : null : props => jsx.jsx('div', props) });
@@ -69,8 +73,8 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
         }
         if (url.pathname.endsWith('/items')) {
           const bucket = url.searchParams.get('mail_bucket');
-          const filtered = items.filter(item => !bucket || item.mail_relevance.bucket === bucket);
-          const counts = { urgent: 0, today: 0, digest: 0, low: 0 }; items.forEach(item => counts[item.mail_relevance.bucket]++);
+          const filtered = items.filter(item => !bucket || item.mail_relevance?.bucket === bucket);
+          const counts = { urgent: 0, today: 0, digest: 0, low: 0 }; items.forEach(item => { if (item.mail_relevance) counts[item.mail_relevance.bucket]++; });
           return { data: { items: structuredClone(filtered.slice(0, Number(url.searchParams.get('limit') || 100))), total: filtered.length, mail_counts: counts } };
         }
         throw new Error(`Unexpected synthetic request ${url.pathname}`);
@@ -98,6 +102,7 @@ function fixture(items = [mail('message')], initialView = 'gmail', extraSources 
     button: label => all().find(node => node.type === 'button' && text(node).trim() === label),
     setPreferencesHandler: handler => { preferencesHandler = handler; },
     setSyncHandler: handler => { syncHandler = handler; },
+    advanceTime(milliseconds) { now += milliseconds; for (const callback of timers.values()) callback(); },
     invalidate() { epoch = 'synthetic-new-account'; for (const listener of listeners.get('synthetic-auth-invalidated') || []) listener(); },
     unmount() { hooks.forEach(hook => hook?.cleanup?.()); },
   };
@@ -248,11 +253,12 @@ test('only connectable Ads explains the broad Google grant before its read-only 
   connected.unmount();
 });
 
-test('Ads labels the verified advertiser account and 30-day campaign coverage without claiming Google mailbox identity', async () => {
+test('Ads labels the verified advertiser and explains missing health data without claiming mailbox identity', async () => {
   const ads = { id: 'google_ads', status: 'connected', capabilities: ['read_campaign_metrics'], missing_configuration: [], last_sync: null, error: null, metadata: { account_label: 'Synthetic Ads Account', sync_window: 'last_30_days' } };
   const f = fixture([], 'google_ads', [ads]); await f.flush();
   assert.ok(f.text().includes('广告账户：Synthetic Ads Account'));
-  assert.ok(f.text().includes('近30天广告系列（不含今天） · 局部覆盖'));
+  assert.ok(f.text().includes('尚无可判断的广告检查数据'));
+  assert.ok(f.text().includes('待完成检查'));
   assert.ok(!f.text().includes('Google邮箱'));
   f.params.set('connection', 'expired'); f.params.set('source', 'google_ads'); await f.flush();
   assert.ok(f.text().includes('重新连接 Google Ads'));
@@ -283,4 +289,55 @@ test('Ads never creates an advertiser ID from missing, malformed, or numeric met
     assert.equal(f.textOf(label), '广告账户：Synthetic advertiser');
     f.unmount();
   }
+});
+
+import { adsFixture } from './fixtures/private-ads.mjs';
+test('Ads opens real problems first, includes attention in top three, and separates delivery from local work status', async () => {
+  const fixtures = ['problem', 'attention', 'healthy', 'paused', 'unknown'].map((bucket, index) => adsFixture(bucket, index));
+  const f = fixture(fixtures.map(value => value.item), 'google_ads', [fixtures[0].source]); await f.flush();
+  assert.ok(f.text().includes('优先处理2 项')); assert.equal(f.nodes().filter(node => node.type === 'article').length, 2);
+  assert.equal(f.button('异常停投1').props['aria-pressed'], true);
+  assert.equal(f.nodes().filter(node => node.props.className === 'pw-ads-row').length, 1);
+  assert.ok(!f.text().includes('Google Ads · 待处理'));
+  f.button('正常投放1').props.onClick(); await f.flush(); assert.equal(f.nodes().filter(node => node.props.className === 'pw-ads-row').length, 1);
+  const search = f.nodes().find(node => node.type === 'input' && node.props['aria-label'] === '搜索已同步广告系列');
+  search.props.onChange({ target: { value: '合成广告系列 3' } }); await f.flush();
+  assert.equal(f.nodes().filter(node => node.props.className === 'pw-ads-row').length, 1); assert.ok(f.text().includes('合成广告系列 3'));
+  f.unmount();
+});
+test('without stoppage Ads gives attention the first place and never fabricates a problem group', async () => {
+  const { item, source } = adsFixture('attention'); const f = fixture([item], 'google_ads', [source]); await f.flush();
+  assert.equal(f.button('需关注1').props['aria-pressed'], true); assert.equal(f.button('异常停投0'), undefined);
+  assert.equal(f.nodes().filter(node => node.type === 'article').length, 1); f.unmount();
+});
+test('Ads stale checks are pending observation, excluded from Today, and cannot suggest everything is normal', async () => {
+  const { item, source } = adsFixture('problem', 1, { observed_at: new Date(Date.now() - 25 * 3600000).toISOString() });
+  const f = fixture([item], 'google_ads', [source]); await f.flush(); assert.ok(f.text().includes('待完成检查')); assert.ok(f.text().includes('检查数据已过期'));
+  assert.equal(f.nodes().filter(node => node.type === 'article').length, 0); f.unmount();
+  const today = fixture([item], 'today', [source]); await today.flush(); assert.ok(!today.text().includes(item.title)); today.unmount();
+});
+test('Ads details have Chinese metric hierarchy and currency but no work status mutations', async () => {
+  const { item, source } = adsFixture('healthy'); item.evidence.ads_health.tracking.state = 'unconfigured';
+  const f = fixture([item], 'google_ads', [source]); await f.flush();
+  f.nodes().find(node => node.props.className === 'pw-ads-row').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('昨日2026-10-10')); assert.ok(f.text().includes('近7日2026-10-04 至 2026-10-10'));
+  assert.ok(f.text().includes('USD 5.00')); assert.ok(f.text().includes('USD 35.00')); assert.ok(f.text().includes('未配置'));
+  assert.ok(f.text().includes('不以零转化判断效果差')); assert.ok(!f.text().includes('ads_health'));
+  assert.equal(f.button('标记已处理'), undefined); assert.equal(f.button('稍后处理'), undefined);
+  const link = f.nodes().find(node => node.type === 'a' && node.props.href === 'https://ads.google.com/aw/overview'); assert.ok(link);
+  f.unmount();
+});
+test('an open Ads screen and detail downgrade on the local freshness clock without another provider sync', async () => {
+  const { item, source } = adsFixture('healthy'); const f = fixture([item], 'google_ads', [source]); await f.flush();
+  f.nodes().find(node => node.props.className === 'pw-ads-row').props.onClick(); await f.flush();
+  assert.ok(!f.text().includes('检查数据已过期'));
+  const before = f.requests.length; f.advanceTime(25 * 3600000); await f.flush();
+  assert.ok(f.text().includes('检查数据已过期')); assert.equal(f.button('正常投放1'), undefined);
+  assert.equal(f.requests.length, before); f.unmount();
+});
+test('Ads detail shows the actual platform configuration reason and actual versus target CPA', async () => {
+  const { item, source } = adsFixture('problem'); const f = fixture([item], 'google_ads', [source]); await f.flush();
+  f.nodes().find(node => node.props.className === 'pw-ads-row').props.onClick(); await f.flush();
+  assert.ok(f.text().includes('预算配置错误')); assert.ok(f.text().includes('近7日实际 CPAUSD 3.33')); assert.ok(f.text().includes('当前目标 CPAUSD 10.00'));
+  assert.ok(!f.text().includes('BUDGET_MISCONFIGURED')); f.unmount();
 });

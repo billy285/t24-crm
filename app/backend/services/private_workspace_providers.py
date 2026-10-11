@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from email.utils import getaddresses
 import json
@@ -16,8 +16,11 @@ import re
 import time
 from types import MappingProxyType
 from urllib.parse import urlencode, urlsplit
+from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
+from services.private_ads_health import build_ads_health, metric_row
 
 GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
 ADS_SCOPE = 'https://www.googleapis.com/auth/adwords'
@@ -28,9 +31,18 @@ MAX_SYNC_SECONDS = 45
 GMAIL_LIMIT = 80
 BOFA_MAIL_LIMIT = 40
 STRIPE_LIMIT = 100
-ADS_ACCOUNT_QUERY = 'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.manager FROM customer LIMIT 1'
-ADS_CAMPAIGN_QUERY = ('SELECT campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros '
+ADS_ACCOUNT_QUERY = ('SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.manager, customer.time_zone, '
+                     'customer.conversion_tracking_setting.conversion_tracking_status FROM customer LIMIT 1')
+ADS_INVENTORY_QUERY = ('SELECT campaign.id, campaign.name, campaign.status, campaign.primary_status, campaign.primary_status_reasons, '
+                       'campaign.serving_status, campaign.advertising_channel_type, campaign.start_date_time, campaign.end_date_time, '
+                       'campaign.bidding_strategy, campaign.bidding_strategy_type, campaign.bidding_strategy_system_status, '
+                       'campaign.target_cpa.target_cpa_micros, campaign.maximize_conversions.target_cpa_micros '
+                       'FROM campaign ORDER BY campaign.status, campaign.id LIMIT 101')
+ADS_CAMPAIGN_QUERY = ('SELECT campaign.id, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions '
                       'FROM campaign WHERE segments.date DURING LAST_30_DAYS ORDER BY campaign.id LIMIT 101')
+ADS_DAILY_QUERY = ('SELECT campaign.id, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions '
+                  'FROM campaign WHERE segments.date DURING LAST_14_DAYS ORDER BY campaign.id, segments.date LIMIT 1401')
+ADS_QUERIES = (ADS_ACCOUNT_QUERY, ADS_INVENTORY_QUERY, ADS_CAMPAIGN_QUERY, ADS_DAILY_QUERY)
 
 _ERRORS = {
     'not_configured': '此来源尚未完成服务器配置',
@@ -234,8 +246,11 @@ class _Client:
                    {'/v1/charges', '/v1/refunds', '/v1/disputes', '/v1/payouts', '/v1/balance'})
         if (not allowed or parsed.scheme != 'https' or parsed.port not in (None, 443) or parsed.username or parsed.password
                 or parsed.query or parsed.fragment): raise ProviderError('request_not_allowed')
-        if parsed.hostname == 'googleads.googleapis.com' and arguments.get('json', {}).get('query') not in (ADS_ACCOUNT_QUERY, ADS_CAMPAIGN_QUERY):
-            raise ProviderError('request_not_allowed')
+        if parsed.hostname == 'googleads.googleapis.com':
+            payload = arguments.get('json', {})
+            if (not isinstance(payload, dict) or payload.get('query') not in ADS_QUERIES
+                    or set(payload) - {'query', 'pageToken'}): raise ProviderError('request_not_allowed')
+            if 'pageToken' in payload: _opaque(payload['pageToken'], 2048)
         if any(str(key).lower() in {'token', 'access_token', 'api_key', 'key', 'authorization'} for key in arguments.get('params', {})):
             raise ProviderError('request_not_allowed')
         self.requests += 1
@@ -448,7 +463,31 @@ async def _ads_account(google: _Google) -> tuple[str, dict]:
     if account_value.get('manager', False) is True: raise ProviderError('ads_manager_account')
     if account_value.get('manager', False) is not False: raise ProviderError('invalid_response')
     _currency(account_value.get('currencyCode'))
+    account_timezone = account_value.get('timeZone')
+    if not isinstance(account_timezone, str) or len(account_timezone) > 100: raise ProviderError('invalid_response')
+    try: ZoneInfo(account_timezone)
+    except (ZoneInfoNotFoundError, ValueError): raise ProviderError('invalid_response') from None
     return customer, account_value
+
+
+async def _ads_rows(google: _Google, endpoint: str, headers: dict, query: str, limit: int) -> tuple[list, bool]:
+    rows = []; page = None; seen_pages = set()
+    for _ in range(2):
+        payload = {'query': query}
+        if page: payload['pageToken'] = page
+        result = await google.request('POST', endpoint, headers=headers, json=payload)
+        values = _list(result.get('results', []))
+        if any(not isinstance(row, dict) for row in values) or len(rows) + len(values) > limit:
+            raise ProviderError('invalid_response')
+        rows.extend(values)
+        page = result.get('nextPageToken')
+        if page is None or page == '': return rows, False
+        try: page = _opaque(page, 2048)
+        except ProviderError: raise ProviderError('invalid_response') from None
+        if page in seen_pages: raise ProviderError('invalid_response')
+        seen_pages.add(page)
+        if len(rows) >= limit: break
+    return rows, True
 
 
 async def _ads(google: _Google, source: SourceDefinition, metadata: dict) -> dict:
@@ -458,25 +497,68 @@ async def _ads(google: _Google, source: SourceDefinition, metadata: dict) -> dic
     endpoint, headers = _ads_request()
     _, account_value = await _ads_account(google)
     currency = _currency(account_value.get('currencyCode'))
-    report = await google.request('POST', endpoint, headers=headers, json={'query': ADS_CAMPAIGN_QUERY})
-    rows = _list(report.get('results', []))
-    if len(rows) > 101: raise ProviderError('invalid_response')
+    account_timezone = account_value['timeZone']
+    inventory, inventory_paged = await _ads_rows(google, endpoint, headers, ADS_INVENTORY_QUERY, 101)
+    monthly, monthly_paged = await _ads_rows(google, endpoint, headers, ADS_CAMPAIGN_QUERY, 101)
+    daily, daily_paged = await _ads_rows(google, endpoint, headers, ADS_DAILY_QUERY, 1401)
+    inventory_complete = len(inventory) <= 100 and not inventory_paged
+    metrics_complete = len(monthly) <= 100 and len(daily) <= 1400 and not monthly_paged and not daily_paged
+    snapshot_id = str(uuid4()); observed_at = datetime.now(timezone.utc)
+    tracking = (account_value.get('conversionTrackingSetting') or {}).get('conversionTrackingStatus', 'UNKNOWN')
+    inventory_ids = set(); monthly_values = {}; daily_values = {}
+    for row in inventory:
+        campaign_id = str(_integer((row.get('campaign') or {}).get('id')))
+        if campaign_id in inventory_ids: raise ProviderError('invalid_response')
+        inventory_ids.add(campaign_id)
+    for row in monthly:
+        campaign_id = str(_integer((row.get('campaign') or {}).get('id')))
+        if campaign_id in monthly_values: raise ProviderError('invalid_response')
+        monthly_values[campaign_id] = metric_row(row.get('metrics') or {})
+    for row in daily:
+        campaign_id = str(_integer((row.get('campaign') or {}).get('id')))
+        day = (row.get('segments') or {}).get('date')
+        if not isinstance(day, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', day): raise ProviderError('invalid_response')
+        try: parsed_day = date.fromisoformat(day)
+        except ValueError: raise ProviderError('invalid_response') from None
+        account_today = observed_at.astimezone(ZoneInfo(account_timezone)).date()
+        if not account_today - timedelta(days=14) <= parsed_day < account_today: raise ProviderError('invalid_response')
+        values = daily_values.setdefault(campaign_id, {})
+        if day in values: raise ProviderError('invalid_response')
+        values[day] = metric_row(row.get('metrics') or {})
+    # A series created/deleted between the fixed inventory and report calls
+    # indicates a moving snapshot. Preserve observed platform faults, but do
+    # not infer missing metrics are zero or pronounce healthy delivery.
+    if inventory_complete and (set(monthly_values) | set(daily_values)) - inventory_ids:
+        metrics_complete = False
     items = []
-    for row in rows[:100]:
-        campaign = row.get('campaign') or {}; metrics = row.get('metrics') or {}
+    for row in inventory[:100]:
+        campaign = row.get('campaign') or {}
         campaign_id = str(_integer(campaign.get('id')))
-        impressions = _integer(metrics.get('impressions', 0)); clicks = _integer(metrics.get('clicks', 0))
-        cost = _integer(metrics.get('costMicros', 0))
+        try:
+            health = build_ads_health(campaign, monthly_values.get(campaign_id), daily_values.get(campaign_id, {}),
+                                      account_timezone=account_timezone, currency=currency.upper(), tracking_status=tracking,
+                                      snapshot_id=snapshot_id, observed_at=observed_at,
+                                      inventory_complete=inventory_complete, metrics_complete=metrics_complete)
+        except ValueError: raise ProviderError('invalid_response') from None
+        monthly_metric = health['metrics']['last_30_days']
+        summary = health['reason'] if not monthly_metric else (
+            f'近30天（不含今天）· 曝光 {monthly_metric["impressions"]} · 点击 {monthly_metric["clicks"]} · '
+            f'费用 {Decimal(monthly_metric["cost_micros"]) / Decimal(1000000):f} {currency.upper()}')
+        evidence = {'customer_id': customer, 'campaign_id': campaign_id, 'period': 'LAST_30_DAYS', 'accounting_effect': 'none',
+                    'ads_snapshot_id': snapshot_id, 'ads_health': health}
+        if monthly_metric: evidence.update({key: monthly_metric[key] for key in ('cost_micros', 'impressions', 'clicks', 'conversions')})
         items.append({'external_id': customer + ':' + campaign_id + ':last_30_days', 'kind': 'campaign',
                       'title': _text(campaign.get('name') or campaign_id, 200), 'status': _text(campaign.get('status'), 80),
-                      'summary': f'近30天（不含今天）· 曝光 {impressions} · 点击 {clicks} · 费用 {Decimal(cost) / Decimal(1000000):f} {currency.upper()}',
-                      'priority': 'normal', 'currency': currency, 'source_url': 'https://ads.google.com/aw/overview',
-                      'evidence': {'customer_id': customer, 'campaign_id': campaign_id, 'cost_micros': cost,
-                                   'impressions': impressions, 'clicks': clicks, 'period': 'LAST_30_DAYS', 'accounting_effect': 'none'}})
-    return {'items': items, 'balances': [], 'metadata': {'partial': len(rows) > 100 or bool(report.get('nextPageToken')), 'sync_window': 'last_30_days',
+                      'summary': summary, 'occurred_at': observed_at.isoformat(),
+                      'priority': {'problem': 'high', 'attention': 'normal', 'healthy': 'low', 'paused': 'low', 'unknown': 'low'}[health['bucket']],
+                      'currency': currency, 'source_url': 'https://ads.google.com/aw/overview', 'evidence': evidence})
+    return {'items': items, 'balances': [], 'metadata': {'partial': not inventory_complete or not metrics_complete, 'sync_window': 'last_30_days',
              'coverage': 'bounded_campaign_records', 'record_limit': 100, 'aggregated_totals': False,
              'account_label': _text(account_value.get('descriptiveName'), 200) or customer,
-             'ads_customer_id': customer, 'api_version': ADS_VERSION}}
+             'ads_customer_id': customer, 'api_version': ADS_VERSION,
+             'ads_snapshot': {'id': snapshot_id, 'observed_at': observed_at.isoformat(), 'account_timezone': account_timezone,
+                              'inventory_count': len(items), 'inventory_complete': inventory_complete,
+                              'metrics_complete': metrics_complete, 'record_limit': 100}}}
 
 
 async def _stripe(client: _Client, source: SourceDefinition, credentials: dict) -> dict:

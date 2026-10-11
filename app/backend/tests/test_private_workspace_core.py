@@ -413,6 +413,71 @@ async def test_ads_sync_cannot_replace_the_verified_advertiser_binding(workspace
 
 
 @pytest.mark.asyncio
+async def test_ads_current_snapshot_is_filtered_before_limit_and_count(workspace):
+    sessions = await service.private_session_factory()
+    now = utcnow()
+    async with sessions() as db:
+        db.add(PrivateConnection(owner_id="1", source_id="google_ads", status="connected", last_sync=now,
+            metadata_json={"ads_customer_id": "1234567890", "ads_snapshot": {"id": "current", "observed_at": now.isoformat(),
+                "inventory_count": 2, "inventory_complete": True, "metrics_complete": True}}))
+        for external, owner, snapshot, customer, action in [
+                ("old", "1", "old", "1234567890", "open"),
+                ("other-account", "1", "current", "9999999999", "open"),
+                ("other-owner", "2", "current", "1234567890", "open"),
+                ("fresh", "1", "current", "1234567890", "open"),
+                ("archived-task", "1", "current", "1234567890", "archived")]:
+            db.add(PrivateItem(owner_id=owner, source_id="google_ads", external_id=external,
+                kind="campaign", title=external, status="ENABLED", priority="high", action_status=action,
+                created_at=now + timedelta(days=1) if external == "old" else now,
+                evidence={"customer_id": customer, "ads_snapshot_id": snapshot, "ads_health": {"bucket": "problem"}}))
+        await db.commit()
+        result = await service.list_items(db, "1", source_id="google_ads", limit=1)
+        assert result["total"] == 2 and len(result["items"]) == 1
+        assert result["items"][0]["title"] in {"fresh", "archived-task"}
+        all_sources = await service.list_items(db, "1", limit=100)
+        assert {row["title"] for row in all_sources["items"]} == {"fresh", "archived-task"}
+        focus = await service.overview_items(db, "1", reference_time=now)
+        assert [row["title"] for row in focus] == ["fresh"]
+        connection = await service.connection_for(db, "1", "google_ads")
+        connection.metadata_json = {**connection.metadata_json, "ads_snapshot": {**connection.metadata_json["ads_snapshot"], "id": "empty"}}
+        await db.commit()
+        assert (await service.list_items(db, "1", source_id="google_ads"))["total"] == 0
+    assert all(statement.lstrip().upper().startswith("SELECT") for statement in workspace.statements)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["old", "future", "error", "disconnected", "incomplete", "malformed", "legacy", "not_problem"])
+async def test_ads_uncertain_snapshot_cannot_create_today_alert(workspace, change):
+    now = utcnow()
+    snapshot = {"id": "current", "observed_at": now.isoformat(), "metrics_complete": True}
+    if change == "old": snapshot["observed_at"] = (now - timedelta(hours=25)).isoformat()
+    if change == "future": snapshot["observed_at"] = (now + timedelta(hours=1)).isoformat()
+    if change == "incomplete": snapshot["metrics_complete"] = False
+    if change == "malformed": snapshot["observed_at"] = "bad-date"
+    metadata = {"ads_customer_id": "1234567890", "ads_snapshot": snapshot}
+    if change == "legacy": metadata.pop("ads_snapshot")
+    sessions = await service.private_session_factory()
+    async with sessions() as db:
+        db.add(PrivateConnection(owner_id="1", source_id="google_ads", status="disconnected" if change == "disconnected" else "connected",
+            error="sync failed" if change == "error" else None, last_sync=now, metadata_json=metadata))
+        db.add(PrivateItem(owner_id="1", source_id="google_ads", external_id="retained", title="Retained campaign",
+            kind="campaign", status="ENABLED", priority="urgent",
+            evidence={"customer_id": "1234567890", "ads_snapshot_id": "current",
+                "ads_health": {"bucket": "healthy" if change == "not_problem" else "problem"}}))
+        await db.commit()
+        assert not await service.overview_items(db, "1", reference_time=now)
+        assert (await service.list_items(db, "1", source_id="google_ads"))["total"] == 1
+
+
+def test_ads_snapshot_metadata_is_public_but_credentials_are_not():
+    snapshot = {"id": "snapshot-id", "observed_at": "2026-10-11T12:00:00+00:00", "inventory_count": 68,
+                "inventory_complete": True, "metrics_complete": True, "record_limit": 100, "account_timezone": "America/Los_Angeles"}
+    metadata = service.source_metadata(SimpleNamespace(metadata_json={"ads_snapshot": snapshot, "ads_customer_id": "1234567890",
+        "access_token": "secret", "unknown_internal": "hidden"}))
+    assert metadata["ads_snapshot"] == snapshot and "access_token" not in metadata and "unknown_internal" not in metadata
+
+
+@pytest.mark.asyncio
 async def test_sync_cannot_invent_an_authorized_account_from_snapshot(workspace):
     await workspace.client.post('/api/v1/private-workspace/sources/stripe/connect', headers=headers())
     original_fetch = workspace.fake.fetch_source

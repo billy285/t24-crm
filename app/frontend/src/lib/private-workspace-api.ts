@@ -5,6 +5,42 @@ export type PrivateSourceStatus = 'not_configured' | 'disconnected' | 'connectin
 export type PrivateActionStatus = 'open' | 'done' | 'snoozed' | 'archived';
 export type PrivatePriority = 'low' | 'normal' | 'high' | 'urgent';
 export type PrivateEvidence = Record<string, unknown>;
+export type PrivateAdsBucket = 'problem' | 'attention' | 'healthy' | 'paused' | 'unknown';
+export interface PrivateAdsSnapshot {
+  id: string;
+  observed_at: string;
+  account_timezone: string;
+  inventory_count: number;
+  inventory_complete: boolean;
+  metrics_complete: boolean;
+  record_limit: number;
+}
+export interface PrivateAdsMetric {
+  impressions: number;
+  clicks: number;
+  cost_micros: number;
+  conversions: number;
+}
+export interface PrivateAdsHealth {
+  version: 1;
+  snapshot_id: string;
+  bucket: PrivateAdsBucket;
+  reason: string;
+  impact: string;
+  next_action: string;
+  observed_at: string;
+  account_timezone: string;
+  local_date: string;
+  currency: string;
+  current: { status: string; primary_status: string; primary_status_reasons: string[]; serving_status: string; channel: string; start_date_time: string | null; end_date_time: string | null };
+  metrics: { yesterday: PrivateAdsMetric | null; last_7_days: PrivateAdsMetric | null; previous_7_days: PrivateAdsMetric | null; last_30_days: PrivateAdsMetric | null };
+  periods: Record<'yesterday' | 'last_7_days' | 'previous_7_days' | 'last_30_days', { start: string; end: string }>;
+  comparison: { clicks_change_pct: number | null; cost_change_pct: number | null; conversions_change_pct: number | null; note: string };
+  target: { cpa_micros: number | null; source: string; assessment: string };
+  tracking: { state: 'configured' | 'unconfigured' | 'unknown'; status: string; note: string };
+  coverage: { inventory_complete: boolean; metrics_complete: boolean };
+  limitations: string[];
+}
 export type PrivateMailBucket = 'urgent' | 'today' | 'digest' | 'low';
 export type PrivateMailTopic = 'finance' | 'ads' | 'security' | 'business';
 export type PrivateMailFeedback = 'important' | 'not_relevant' | null;
@@ -43,6 +79,7 @@ export interface PrivateSource {
   metadata?: {
     account_label?: string;
     ads_customer_id?: string;
+    ads_snapshot?: PrivateAdsSnapshot;
     coverage?: string;
     partial?: boolean;
     sync_window?: string;

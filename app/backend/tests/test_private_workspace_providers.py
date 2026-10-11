@@ -1,5 +1,6 @@
 """Real adapter methods with mock HTTP; no database, credentials or live requests."""
 import asyncio
+from datetime import datetime, timezone
 import json
 from urllib.parse import parse_qs
 
@@ -45,6 +46,29 @@ def message(identity='a1', sender='Sender <sender@example.com>'):
 def campaign(identity=1):
     return {'campaign': {'id': str(identity), 'name': 'Campaign', 'status': 'ENABLED'},
             'metrics': {'impressions': '10', 'clicks': '2', 'costMicros': '1000501'}}
+
+
+def ads_account(currency='USD'):
+    return {'results': [{'customer': {'id': '1234567890', 'currencyCode': currency, 'timeZone': 'America/Los_Angeles',
+                                      'conversionTrackingSetting': {'conversionTrackingStatus': 'CONVERSION_TRACKING_MANAGED_BY_SELF'}}}]}
+
+
+@pytest.fixture
+def ads_clock(monkeypatch):
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None): return datetime(2026, 10, 11, 5, 0, tzinfo=timezone.utc).astimezone(tz)
+    monkeypatch.setattr(providers, 'datetime', FrozenDateTime)
+
+
+def serving_campaign(identity=1, **changes):
+    return {'campaign': {'id': str(identity), 'name': 'Synthetic advertiser campaign', 'status': 'ENABLED',
+                        'primaryStatus': 'ELIGIBLE', 'servingStatus': 'SERVING',
+                        'startDateTime': '2026-08-01 00:00:00', 'advertisingChannelType': 'SEARCH', **changes}}
+
+
+def daily_campaign(identity=1, day='2026-10-09'):
+    return {**campaign(identity), 'segments': {'date': day}}
 
 
 def stripe_row(resource):
@@ -340,26 +364,190 @@ async def test_google_ads_uses_only_fixed_read_search_rpc_and_keeps_original_mic
         assert request.method == 'POST' and request.url.path == '/v25/customers/1234567890/googleAds:search'
         assert 'developer-token' not in request.headers
         assert request.headers['login-customer-id'] == '9998887777'
-        if query == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json={'results': [{'customer': {'id': '1234567890', 'currencyCode': 'JPY'}}]})
-        assert query == providers.ADS_CAMPAIGN_QUERY
+        if query == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json=ads_account('JPY'))
+        if query == providers.ADS_DAILY_QUERY: return httpx.Response(200, json={'results': []})
+        assert query in (providers.ADS_INVENTORY_QUERY, providers.ADS_CAMPAIGN_QUERY)
         return httpx.Response(200, json={'results': [campaign()]})
     batch = await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE}, {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
     item = batch['items'][0]
-    assert len(calls) == 2 and item['evidence']['cost_micros'] == 1000501 and 'amount_minor' not in item
+    assert len(calls) == 4 and item['evidence']['cost_micros'] == 1000501 and 'amount_minor' not in item
     assert item['status'] == 'ENABLED' and item['currency'] == 'jpy'
     assert item['source_url'] == 'https://ads.google.com/aw/overview' and 'ocid' not in item['source_url']
     assert '1.000501 JPY' in item['summary'] and '不含今天' in item['summary'] and batch['metadata']['aggregated_totals'] is False
     assert batch['metadata']['ads_customer_id'] == '1234567890'
+    assert item['external_id'] == '1234567890:1:last_30_days'
+    assert item['evidence']['ads_snapshot_id'] == batch['metadata']['ads_snapshot']['id']
+    assert item['evidence']['ads_health']['snapshot_id'] == batch['metadata']['ads_snapshot']['id']
+    assert item['evidence']['ads_health']['bucket'] == 'unknown'
 
 
 @pytest.mark.asyncio
 async def test_google_ads_limit_probe_marks_truncation_even_without_next_page_token(configured):
     async def handler(request):
-        if json.loads(request.content)['query'] == providers.ADS_ACCOUNT_QUERY:
-            return httpx.Response(200, json={'results': [{'customer': {'id': '1234567890', 'currencyCode': 'USD'}}]})
+        query = json.loads(request.content)['query']
+        if query == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json=ads_account())
+        if query == providers.ADS_DAILY_QUERY: return httpx.Response(200, json={'results': []})
         return httpx.Response(200, json={'results': [campaign(identity) for identity in range(101)]})
     batch = await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE}, {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
     assert len(batch['items']) == 100 and batch['metadata']['partial'] is True
+
+
+@pytest.mark.asyncio
+async def test_ads_current_inventory_includes_paused_without_metric_and_has_fresh_snapshot(configured, ads_clock):
+    async def handler(request):
+        query = json.loads(request.content)['query']
+        if query == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json=ads_account())
+        if query == providers.ADS_INVENTORY_QUERY:
+            return httpx.Response(200, json={'results': [serving_campaign(), serving_campaign(2, status='PAUSED')]})
+        if query == providers.ADS_DAILY_QUERY: return httpx.Response(200, json={'results': [daily_campaign()]})
+        assert query == providers.ADS_CAMPAIGN_QUERY
+        return httpx.Response(200, json={'results': [campaign()]})
+    async def fetch():
+        return await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE},
+            {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    first = await fetch(); second = await fetch()
+    assert first['metadata']['ads_snapshot']['id'] != second['metadata']['ads_snapshot']['id']
+    assert [row['external_id'] for row in first['items']] == [row['external_id'] for row in second['items']]
+    assert first['items'][0]['evidence']['ads_health']['bucket'] == 'healthy'
+    paused = first['items'][1]
+    assert paused['evidence']['ads_health']['bucket'] == 'paused'
+    assert paused['evidence']['ads_health']['metrics']['last_30_days']['cost_micros'] == 0
+    assert paused['evidence']['ads_health']['periods']['yesterday']['end'] == '2026-10-09'
+    assert all(row['evidence']['accounting_effect'] == 'none' and 'amount_minor' not in row for row in first['items'])
+
+
+@pytest.mark.asyncio
+async def test_ads_empty_inventory_is_an_explicit_new_snapshot(configured, ads_clock):
+    async def handler(request):
+        return httpx.Response(200, json=ads_account() if json.loads(request.content)['query'] == providers.ADS_ACCOUNT_QUERY else {'results': []})
+    result = await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE},
+        {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    assert result['items'] == []
+    assert result['metadata']['ads_snapshot']['id']
+    assert result['metadata']['ads_snapshot']['inventory_count'] == 0
+    assert result['metadata']['ads_snapshot']['inventory_complete'] is True
+
+
+@pytest.mark.asyncio
+async def test_ads_follows_bounded_fixed_query_page_tokens_without_account_switch(configured, ads_clock):
+    calls = []
+    async def handler(request):
+        payload = json.loads(request.content); calls.append(payload)
+        query = payload['query']
+        assert request.url.path == '/v25/customers/1234567890/googleAds:search'
+        if query == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json=ads_account())
+        if query == providers.ADS_INVENTORY_QUERY:
+            if 'pageToken' not in payload: return httpx.Response(200, json={'results': [serving_campaign()], 'nextPageToken': 'opaque_page2'})
+            assert payload['pageToken'] == 'opaque_page2'
+            return httpx.Response(200, json={'results': [serving_campaign(2, status='PAUSED')]})
+        return httpx.Response(200, json={'results': [daily_campaign()] if query == providers.ADS_DAILY_QUERY else [campaign()]})
+    result = await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE},
+        {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    assert len(calls) == 5 and len(result['items']) == 2 and result['metadata']['partial'] is False
+    assert all(set(payload) <= {'query', 'pageToken'} for payload in calls)
+
+
+@pytest.mark.asyncio
+async def test_ads_unfinished_metrics_pages_do_not_infer_zero_or_hide_platform_fault(configured, ads_clock):
+    calls = []
+    async def handler(request):
+        payload = json.loads(request.content); calls.append(payload); query = payload['query']
+        if query == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json=ads_account())
+        if query == providers.ADS_INVENTORY_QUERY:
+            return httpx.Response(200, json={'results': [serving_campaign(), serving_campaign(2, primaryStatus='MISCONFIGURED')]})
+        if query == providers.ADS_CAMPAIGN_QUERY:
+            return httpx.Response(200, json={'results': [], 'nextPageToken': 'second_page' if 'pageToken' not in payload else 'unread_third_page'})
+        return httpx.Response(200, json={'results': []})
+    result = await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE},
+        {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    assert len(calls) == 5 and result['metadata']['ads_snapshot']['metrics_complete'] is False
+    healthy, fault = (row['evidence']['ads_health'] for row in result['items'])
+    assert healthy['bucket'] == 'unknown' and fault['bucket'] == 'problem'
+    assert all(value is None for value in healthy['metrics'].values())
+    assert 'cost_micros' not in result['items'][0]['evidence']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('token', [False, 0, 5, [], {}, 'contains space', 'x' * 2049])
+async def test_ads_malformed_page_token_fails_closed_with_no_raw_response(configured, token):
+    async def handler(request):
+        if json.loads(request.content)['query'] == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json=ads_account())
+        return httpx.Response(200, json={'results': [campaign()], 'nextPageToken': token})
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE},
+            {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    assert error.value.code == 'invalid_response'
+    assert 'synthetic-access' not in str(error.value) and 'Campaign' not in str(error.value)
+
+
+@pytest.mark.asyncio
+async def test_ads_repeating_page_token_stops_after_two_pages(configured):
+    calls = []
+    async def handler(request):
+        payload = json.loads(request.content); calls.append(payload)
+        if payload['query'] == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json=ads_account())
+        return httpx.Response(200, json={'results': [], 'nextPageToken': 'same_page'})
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE},
+            {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    assert error.value.code == 'invalid_response' and len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_ads_inventory_race_marks_metrics_incomplete_instead_of_zero(configured, ads_clock):
+    async def handler(request):
+        query = json.loads(request.content)['query']
+        if query == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json=ads_account())
+        if query == providers.ADS_INVENTORY_QUERY: return httpx.Response(200, json={'results': [serving_campaign()]})
+        if query == providers.ADS_DAILY_QUERY: return httpx.Response(200, json={'results': [daily_campaign(2)]})
+        return httpx.Response(200, json={'results': [campaign(2)]})
+    result = await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE},
+        {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    assert result['metadata']['ads_snapshot']['inventory_complete'] is True
+    assert result['metadata']['ads_snapshot']['metrics_complete'] is False
+    assert result['items'][0]['evidence']['ads_health']['bucket'] == 'unknown'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('timezone_value', [None, '', 'unrecognized/timezone', False])
+async def test_ads_missing_timezone_is_not_silently_replaced_with_utc(configured, timezone_value):
+    async def handler(request):
+        account = ads_account(); account['results'][0]['customer']['timeZone'] = timezone_value
+        return httpx.Response(200, json=account)
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE},
+            {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    assert error.value.code == 'invalid_response'
+
+
+@pytest.mark.asyncio
+async def test_ads_duplicate_probe_inventory_id_is_not_a_valid_partial_snapshot(configured):
+    async def handler(request):
+        query = json.loads(request.content)['query']
+        if query == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json=ads_account())
+        if query == providers.ADS_INVENTORY_QUERY:
+            return httpx.Response(200, json={'results': [campaign(identity) for identity in range(100)] + [campaign(99)]})
+        return httpx.Response(200, json={'results': []})
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE},
+            {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    assert error.value.code == 'invalid_response'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('day', ['2026-10-10', '2026-02-30'])
+async def test_ads_invalid_daily_date_is_rejected_even_outside_partial_emitted_members(configured, ads_clock, day):
+    async def handler(request):
+        query = json.loads(request.content)['query']
+        if query == providers.ADS_ACCOUNT_QUERY: return httpx.Response(200, json=ads_account())
+        if query == providers.ADS_INVENTORY_QUERY:
+            return httpx.Response(200, json={'results': [campaign(identity) for identity in range(101)]})
+        if query == providers.ADS_DAILY_QUERY: return httpx.Response(200, json={'results': [daily_campaign(100, day)]})
+        return httpx.Response(200, json={'results': []})
+    with pytest.raises(providers.ProviderError) as error:
+        await providers.fetch_source('google_ads', {**GOOGLE, 'scope': providers.ADS_SCOPE},
+            {'ads_customer_id': '1234567890'}, transport=httpx.MockTransport(handler))
+    assert error.value.code == 'invalid_response'
 
 
 @pytest.mark.asyncio
@@ -375,7 +563,8 @@ async def test_google_ads_connect_without_developer_token_confirms_single_advert
         assert json.loads(request.content)['query'] == providers.ADS_ACCOUNT_QUERY
         assert request.headers['authorization'] == 'Bearer issued-access'
         assert 'developer-token' not in request.headers and 'login-customer-id' not in request.headers
-        return httpx.Response(200, json={'results': [{'customer': {'id': '1234567890', 'descriptiveName': 'Verified advertiser', 'currencyCode': 'USD', 'manager': False}}]})
+        account = ads_account(); account['results'][0]['customer'].update(descriptiveName='Verified advertiser', manager=False)
+        return httpx.Response(200, json=account)
     connected = await providers.complete_connect('google_ads', 'one-time-code', transport=httpx.MockTransport(handler))
     assert len(calls) == 2 and connected['metadata']['ads_customer_id'] == '1234567890'
     assert connected['metadata']['account_label'] == 'Verified advertiser'

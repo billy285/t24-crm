@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import and_, case, false, func, or_, select, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -279,7 +279,7 @@ async def connection_for(private_db, owner_id: str, source_id: str, *, create=Fa
 def source_metadata(connection):
     stored = (connection.metadata_json or {}) if connection else {}
     allowed = {"coverage", "partial", "sync_window", "record_limit", "record_limit_per_resource",
-               "resources", "mode", "bank_data_verification", "read_only_adapter", "api_version", "importance_source", "account_label", "ads_customer_id"}
+               "resources", "mode", "bank_data_verification", "read_only_adapter", "api_version", "importance_source", "account_label", "ads_customer_id", "ads_snapshot"}
     result = safe_json({key: value for key, value in stored.items() if key in allowed})
     # Bounded records are never presented as account-level financial totals.
     result["aggregated_totals"] = False
@@ -313,6 +313,35 @@ def source_descriptors():
     return [descriptors[source_id] for source_id in SOURCE_IDS if source_id in descriptors]
 
 
+async def current_ads_condition(private_db, owner_id, *, focus_time=None):
+    """Keep retained historical campaigns out of the current snapshot before SQL limits."""
+    connection = await connection_for(private_db, owner_id, "google_ads")
+    metadata = (connection.metadata_json or {}) if connection else {}
+    snapshot = metadata.get("ads_snapshot")
+    customer_id = metadata.get("ads_customer_id")
+    membership = []
+    if customer_id:
+        membership.append(PrivateItem.evidence["customer_id"].as_string() == str(customer_id))
+    if isinstance(snapshot, dict) and snapshot.get("id") and customer_id:
+        membership.append(PrivateItem.evidence["ads_snapshot_id"].as_string() == str(snapshot["id"]))
+    elif snapshot is not None or focus_time is not None:
+        # Legacy rows remain readable, but cannot generate a health alert.
+        return false()
+    if focus_time is not None:
+        try:
+            observed = _aware(snapshot.get("observed_at"))
+        except (ValueError, TypeError):
+            return false()
+        last_sync = _aware(connection.last_sync) if connection else None
+        if (not connection or connection.status != "connected" or connection.error or not observed or not last_sync
+                or snapshot.get("metrics_complete") is not True
+                or not timedelta(0) <= focus_time - observed <= timedelta(hours=24)
+                or not timedelta(0) <= focus_time - last_sync <= timedelta(hours=24)):
+            return false()
+        membership.append(PrivateItem.evidence["ads_health"]["bucket"].as_string().in_(["problem", "attention"]))
+    return and_(*membership) if membership else PrivateItem.source_id == "google_ads"
+
+
 async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, action_status=None, limit=100, mail_bucket=None):
     if mail_bucket:
         if mail_bucket not in BUCKETS or source_id not in {None, "gmail"}:
@@ -327,7 +356,11 @@ async def list_items(private_db, owner_id: str, *, source_id=None, kind=None, ac
     if action_status:
         conditions.append(PrivateItem.action_status == action_status)
     else:
-        conditions.append(PrivateItem.action_status != "archived")
+        # A local task's archive state must not hide a currently running campaign.
+        conditions.append(or_(PrivateItem.source_id == "google_ads", PrivateItem.action_status != "archived"))
+    if source_id in {None, "google_ads"}:
+        current_ads = await current_ads_condition(private_db, owner_id)
+        conditions.append(or_(PrivateItem.source_id != "google_ads", current_ads))
     if source_id == "gmail":
         stored = await stored_preferences_for(private_db, owner_id)
         rows = (await private_db.execute(select(PrivateItem).where(*conditions).order_by(
@@ -356,9 +389,11 @@ async def overview_items(private_db, owner_id: str, *, reference_time=None):
     )
     priority_order = case((PrivateItem.priority == "urgent", 0), (PrivateItem.priority == "high", 1),
                           (PrivateItem.priority == "normal", 2), else_=3)
+    current_ads = await current_ads_condition(private_db, owner_id, focus_time=now)
     # Arrival dates on ordinary payouts do not turn them into work to be done.
     work = (await private_db.execute(select(PrivateItem).where(
         PrivateItem.owner_id == owner_id, actionable, PrivateItem.source_id.notin_(["bofa", "gmail"]),
+        or_(PrivateItem.source_id != "google_ads", current_ads),
         or_(PrivateItem.source_id == "manual", PrivateItem.priority.in_(["high", "urgent"])),
     ).order_by(priority_order, case((PrivateItem.due_at.is_(None), 1), else_=0),
                PrivateItem.due_at.asc(), PrivateItem.created_at.asc(), PrivateItem.id).limit(100))).scalars().all()
