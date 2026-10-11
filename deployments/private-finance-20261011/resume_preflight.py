@@ -2,12 +2,15 @@
 """Readonly proof for an accepted ten-table schema with restored old services.
 
 This explicit path preserves the original four-table migration and rollback
-receipts. It never stops a service, decrypts credentials or writes either DB.
+receipts. It never stops a service or writes either DB. Google authorization
+is decrypted only in memory through the original offline crypto boundary;
+receipts contain credential hashes, never decrypted values.
 Only existing Gmail/Ads provider fields may have refreshed; local data, scopes,
-connection identities and encrypted credentials remain tied to the old backup.
+connection identities and long-term authorization remain tied to the backup.
 """
 import argparse
 from copy import deepcopy
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -83,11 +86,47 @@ def _rows(db, table):
     need(columns, 'RESUME_STABLE_TABLE_COLUMNS_REQUIRED')
     return [dict(zip(columns, row)) for row in db.execute('SELECT * FROM "' + table + '" ORDER BY id')]
 
+def fingerprint_google_credentials(ciphertexts):
+    """Only hashes leave this process; decrypt via the pinned offline adapter.
+
+    This uses the original protected configuration and original private image.
+    Its existing crypto adapter has no network or production mounts, logs are
+    disabled and the encryption key/ciphertext travel only over captured stdin.
+    Neither the refresh token nor the decrypted JSON enters a receipt or error.
+    """
+    if not ciphertexts: return {}
+    secret = transfer.environment_guard()
+    crypto = transfer.Crypto('docker')
+    result = {}
+    for identity, ciphertext in ciphertexts.items():
+        try:
+            need(isinstance(ciphertext, str) and 0 < len(ciphertext) <= 100000,
+                 'RESUME_GOOGLE_CREDENTIAL_FORMAT_REJECTED')
+            plaintext = crypto.fernet('open', secret, ciphertext.encode())
+            need(len(plaintext) <= 65536, 'RESUME_GOOGLE_CREDENTIAL_FORMAT_REJECTED')
+            payload = json.loads(plaintext)
+            required = {'access_token', 'expires_at', 'refresh_token', 'scope', 'token_type'}
+            need(isinstance(payload, dict) and required <= set(payload) and
+                 all(isinstance(payload[name], str) and 0 < len(payload[name]) <= 8192 and
+                     not any(ord(char) < 32 or ord(char) == 127 for char in payload[name])
+                     for name in ('access_token', 'refresh_token', 'scope', 'token_type')) and
+                 payload['token_type'] == 'Bearer' and type(payload['expires_at']) is int and
+                 payload['expires_at'] > 0, 'RESUME_GOOGLE_CREDENTIAL_FORMAT_REJECTED')
+            # Unknown fields remain frozen too. Exactly these two fields are
+            # short-lived outputs of the existing Google refresh adapter.
+            stable = {key: value for key, value in payload.items() if key not in {'access_token', 'expires_at'}}
+            result[identity] = {'payload_sha256': guard.digest(payload), 'stable_sha256': guard.digest(stable)}
+            del plaintext, payload, stable
+        except Exception:
+            raise ResumeError('RESUME_GOOGLE_CREDENTIAL_DECRYPT_OR_FORMAT_REJECTED') from None
+    return result
+
 def stable_records(path):
-    """Hashes only; ciphertext is never decrypted, printed or saved in evidence."""
+    """Hashes only; Google credentials are compared in memory, never emitted."""
     with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=15) as db:
         db.execute('PRAGMA query_only=ON'); db.execute('BEGIN')
         connections = {}; immutable_items = {}; local_items = {}; new_item_defaults = {}; runs = {}
+        google_credentials = {}; ciphertexts = {}
         for row in _rows(db, 'private_connections'):
             need(row.get('owner_id') == '4', 'RESUME_OWNER_SCOPE_DRIFT')
             metadata = json.loads(row.get('metadata_json') or '{}')
@@ -97,7 +136,13 @@ def stable_records(path):
                 selected = {name: value for name, value in selected.items() if name not in CONNECTION_VOLATILE}
                 selected['metadata_json'] = {name: value for name, value in metadata.items()
                     if name not in METADATA_VOLATILE and not (row['source_id'] == 'gmail' and name == 'fetched_messages')}
-            connections[guard.digest(row['id'])] = guard.digest(selected)
+                # Only connected, encrypted Google authorizations can refresh.
+                if row.get('status') == 'connected' and row.get('encrypted_credentials'):
+                    identity = guard.digest(row['id']); ciphertexts[identity] = row['encrypted_credentials']
+                    google_credentials[identity] = {'source_id': row['source_id'],
+                        'ciphertext_sha256': guard.digest(row['encrypted_credentials']), 'last_sync': row.get('last_sync')}
+                    selected['encrypted_credentials'] = None
+            connections[guard.digest(row['id'])] = selected
         for row in _rows(db, 'private_items'):
             need(row.get('owner_id') == '4', 'RESUME_OWNER_SCOPE_DRIFT')
             identity = guard.digest(row['id'])
@@ -110,12 +155,54 @@ def stable_records(path):
         for row in _rows(db, 'private_sync_runs'):
             need(row.get('owner_id') == '4', 'RESUME_OWNER_SCOPE_DRIFT')
             identity = guard.digest(row['id']); runs[identity] = {'hash': guard.digest(row),
-                'provider_source': row.get('source_id') in PROVIDER_SOURCES}
+                'provider_source': row.get('source_id') in PROVIDER_SOURCES,
+                'source_id': row.get('source_id'), 'status': row.get('status'),
+                'started_at': row.get('started_at'), 'completed_at': row.get('completed_at')}
+    fingerprints = fingerprint_google_credentials(ciphertexts)
+    need(set(fingerprints) == set(ciphertexts), 'RESUME_COMPLETE_GOOGLE_CREDENTIAL_FINGERPRINTS_REQUIRED')
+    for identity, fingerprint in fingerprints.items():
+        need(set(fingerprint) == {'payload_sha256', 'stable_sha256'} and
+             all(isinstance(value, str) and re.fullmatch('[a-f0-9]{64}', value) for value in fingerprint.values()),
+             'RESUME_GOOGLE_CREDENTIAL_FINGERPRINTS_REJECTED')
+        google_credentials[identity].update(fingerprint)
+        connections[identity]['encrypted_credentials'] = {'google_long_term_authorization_sha256': fingerprint['stable_sha256']}
+    connections = {identity: guard.digest(row) for identity, row in connections.items()}
     return {'connections': connections, 'local_items': local_items, 'immutable_items': immutable_items,
-        'new_item_defaults': new_item_defaults, 'preferences': prefs, 'sync_runs': runs}
+        'new_item_defaults': new_item_defaults, 'preferences': prefs, 'sync_runs': runs,
+        'google_credentials': google_credentials}
+
+def _time(value):
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+    except (AttributeError, TypeError, ValueError): return None
+
+def checked_google_refresh(reference, current):
+    before = reference['google_credentials']; after = current['google_credentials']
+    need(set(before) == set(after), 'RESUME_GOOGLE_AUTHORIZATION_IDENTITY_CHANGED')
+    new_runs = [run for identity, run in current['sync_runs'].items() if identity not in reference['sync_runs']]
+    for identity, original in before.items():
+        observed = after[identity]
+        need(observed['source_id'] == original['source_id'] and observed['stable_sha256'] == original['stable_sha256'],
+             'RESUME_ACCOUNT_SCOPE_OR_ENCRYPTED_CREDENTIAL_CHANGED')
+        if observed['ciphertext_sha256'] == original['ciphertext_sha256']:
+            need(observed['payload_sha256'] == original['payload_sha256'], 'RESUME_GOOGLE_CREDENTIAL_FINGERPRINT_DRIFT')
+            continue
+        # Both exact-plaintext re-encryption and access-token/expiry updates
+        # require a newly persisted successful sync for this exact source.
+        last_sync = _time(observed['last_sync']); previous = _time(original['last_sync'])
+        matched = False
+        for run in new_runs:
+            started, completed = _time(run['started_at']), _time(run['completed_at'])
+            if (run['source_id'] == original['source_id'] and run['status'] == 'succeeded' and started and completed and
+                    last_sync and started <= last_sync <= completed and (completed - last_sync).total_seconds() <= 5 and
+                    (previous is None or last_sync > previous)):
+                matched = True; break
+        need(matched, 'RESUME_GOOGLE_TOKEN_CHANGE_REQUIRES_SUCCESSFUL_SYNC_AUDIT')
 
 def checked_stable(reference, current):
     need(reference['connections'] == current['connections'], 'RESUME_ACCOUNT_SCOPE_OR_ENCRYPTED_CREDENTIAL_CHANGED')
+    checked_google_refresh(reference, current)
     need(reference['preferences'] == current['preferences'], 'RESUME_PERSONAL_PREFERENCES_CHANGED')
     need(all(current['local_items'].get(key) == value for key, value in reference['local_items'].items()),
          'RESUME_ORIGINAL_NOTES_ACTIONS_OR_ITEM_IDENTITY_CHANGED')

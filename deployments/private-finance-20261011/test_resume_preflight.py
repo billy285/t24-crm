@@ -1,7 +1,9 @@
 """Actual synthetic SQLite boundaries; mocked runtime, no platforms or secrets."""
 from contextlib import redirect_stdout
+import base64
 from copy import deepcopy
 from datetime import datetime, timezone
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -39,6 +41,11 @@ class ResumeTests(unittest.TestCase):
         patch.start(); self.addCleanup(patch.stop)
         patch = mock.patch.object(resume.transfer, 'read_protected', side_effect=self.read_protected)
         patch.start(); self.addCleanup(patch.stop)
+        self.google_payloads = {'synthetic-encrypted-' + source: {'access_token': 'synthetic-access-' + source,
+            'refresh_token': 'synthetic-longterm-' + source, 'expires_at': 1791723600, 'scope': 'readonly', 'token_type': 'Bearer'}
+            for source in ('gmail', 'google_ads')}
+        self.fingerprint_patch = mock.patch.object(resume, 'fingerprint_google_credentials', side_effect=self.fingerprints)
+        self.fingerprint_patch.start(); self.addCleanup(self.fingerprint_patch.stop)
         from sqlalchemy import create_engine
         from sqlalchemy.orm import Session
         from models.private_workspace import PrivateConnection, PrivateItem, PrivatePreferences, PrivateSyncRun, PrivateWorkspaceBase
@@ -124,6 +131,28 @@ class ResumeTests(unittest.TestCase):
         if len(blob) > maximum: raise resume.ResumeError('TEST_BOUNDED_FILE_REQUIRED')
         return blob
 
+    def fingerprints(self, ciphertexts):
+        result = {}
+        for identity, ciphertext in ciphertexts.items():
+            if ciphertext not in self.google_payloads:
+                raise resume.ResumeError('RESUME_GOOGLE_CREDENTIAL_DECRYPT_OR_FORMAT_REJECTED')
+            payload = self.google_payloads[ciphertext]
+            result[identity] = {'payload_sha256': resume.guard.digest(payload),
+                'stable_sha256': resume.guard.digest({key: value for key, value in payload.items()
+                    if key not in {'access_token', 'expires_at'}})}
+        return result
+
+    def refreshed_credentials(self, source='gmail', *, changes=None, audit=True, audit_source=None,
+                              status='succeeded', started='2026-10-11 13:00:00', completed='2026-10-11 13:00:02'):
+        ciphertext = 'synthetic-refreshed-' + source
+        self.google_payloads[ciphertext] = {**self.google_payloads['synthetic-encrypted-' + source], **(changes or {})}
+        with sqlite3.connect(self.private) as db:
+            db.execute("UPDATE private_connections SET encrypted_credentials=?,last_sync='2026-10-11 13:00:01' WHERE id=?",
+                (ciphertext, source))
+            if audit:
+                db.execute('INSERT INTO private_sync_runs (id,owner_id,source_id,status,started_at,completed_at,created_count,updated_count) '
+                    'VALUES (?,?,?,?,?,?,0,0)', ('run-refreshed-' + source, '4', audit_source or source, status, started, completed))
+
     def baseline(self):
         return {'format_version': 1, 'stage': resume.STAGE, 'mutation_performed': False,
             'accepted_snapshot': self.after, 'original_stable_reference': resume.stable_records(self.backup)}
@@ -150,8 +179,74 @@ class ResumeTests(unittest.TestCase):
             with self.subTest(column=column), sqlite3.connect(self.private) as db:
                 original = db.execute('SELECT ' + column + " FROM private_connections WHERE id='gmail'").fetchone()[0]
                 db.execute('UPDATE private_connections SET ' + column + "=? WHERE id='gmail'", (value,)); db.commit()
-                with self.assertRaisesRegex(resume.ResumeError, 'RESUME_ACCOUNT_SCOPE_OR_ENCRYPTED_CREDENTIAL_CHANGED'): self.frozen()
+                with self.assertRaisesRegex(resume.ResumeError, 'RESUME_ACCOUNT_SCOPE_OR_ENCRYPTED_CREDENTIAL_CHANGED|RESUME_GOOGLE_CREDENTIAL_DECRYPT_OR_FORMAT_REJECTED'): self.frozen()
                 db.execute('UPDATE private_connections SET ' + column + "=? WHERE id='gmail'", (original,))
+
+    def test_google_access_token_expiry_refresh_and_exact_plaintext_reencryption_require_successful_audit(self):
+        self.refreshed_credentials('gmail', changes={'access_token': 'synthetic-new-access', 'expires_at': 1791727200})
+        self.refreshed_credentials('google_ads')
+        before = (self.private.read_bytes(), self.business.read_bytes(), self.backup.read_bytes())
+        self.frozen()
+        self.assertEqual((self.private.read_bytes(), self.business.read_bytes(), self.backup.read_bytes()), before)
+        report = json.dumps(resume.stable_records(self.private))
+        self.assertNotIn('synthetic-longterm', report); self.assertNotIn('synthetic-new-access', report)
+        self.assertNotIn('synthetic-refreshed', report)
+
+    def test_google_refresh_token_scope_token_type_unknown_fields_and_removed_fields_are_frozen(self):
+        for changes in ({'refresh_token': 'different-longterm'}, {'scope': 'expanded-scope'}, {'token_type': 'Different'},
+                        {'unreviewed_account': 'different'}):
+            with self.subTest(changes=list(changes)):
+                self.refreshed_credentials(changes=changes)
+                with self.assertRaisesRegex(resume.ResumeError, 'RESUME_ACCOUNT_SCOPE_OR_ENCRYPTED_CREDENTIAL_CHANGED'): self.frozen()
+                with sqlite3.connect(self.private) as db: db.execute("DELETE FROM private_sync_runs WHERE id='run-refreshed-gmail'")
+        self.refreshed_credentials()
+        self.google_payloads['synthetic-refreshed-gmail'].pop('refresh_token')
+        with self.assertRaisesRegex(resume.ResumeError, 'RESUME_ACCOUNT_SCOPE_OR_ENCRYPTED_CREDENTIAL_CHANGED'): self.frozen()
+
+    def test_google_ciphertext_change_without_exact_new_successful_audit_is_rejected(self):
+        for kwargs in ({'audit': False}, {'audit_source': 'google_ads'}, {'status': 'failed'},
+                       {'started': '2026-10-11 13:00:02'}, {'completed': '2026-10-11 13:00:07'}, {'completed': None}):
+            with self.subTest(kwargs=kwargs):
+                self.refreshed_credentials(changes={'access_token': 'synthetic-refreshed-access'}, **kwargs)
+                with self.assertRaisesRegex(resume.ResumeError, 'RESUME_GOOGLE_TOKEN_CHANGE_REQUIRES_SUCCESSFUL_SYNC_AUDIT'): self.frozen()
+                with sqlite3.connect(self.private) as db: db.execute("DELETE FROM private_sync_runs WHERE id='run-refreshed-gmail'")
+
+    def test_original_sync_audit_cannot_be_repurposed_as_refresh_proof(self):
+        self.refreshed_credentials(audit=False)
+        with sqlite3.connect(self.private) as db:
+            db.execute("UPDATE private_sync_runs SET started_at='2026-10-11 13:00:00',completed_at='2026-10-11 13:00:02' WHERE id='run-old'")
+        with self.assertRaisesRegex(resume.ResumeError, 'RESUME_GOOGLE_TOKEN_CHANGE_REQUIRES_SUCCESSFUL_SYNC_AUDIT'): self.frozen()
+
+    def test_non_google_ciphertext_is_still_compared_exactly(self):
+        with sqlite3.connect(self.private) as db: db.execute("UPDATE private_connections SET encrypted_credentials='reencrypted' WHERE id='manual'")
+        with self.assertRaisesRegex(resume.ResumeError, 'RESUME_ACCOUNT_SCOPE_OR_ENCRYPTED_CREDENTIAL_CHANGED'): self.frozen()
+
+    def test_real_google_fernet_fingerprints_use_original_key_offline_adapter_and_never_return_plaintext(self):
+        from cryptography.fernet import Fernet
+        secret = 'synthetic-private-original-key-for-offline-tests'
+        cipher = Fernet(base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest()))
+        original = self.google_payloads['synthetic-encrypted-gmail']
+        refreshed = {**original, 'access_token': 'synthetic-new-short-token', 'expires_at': original['expires_at'] + 3600}
+        blobs = {name: cipher.encrypt(json.dumps(payload).encode()).decode() for name, payload in (('old', original), ('new', refreshed))}
+        crypto = mock.Mock()
+        crypto.fernet.side_effect = lambda action, actual_key, value: cipher.decrypt(value) if action == 'open' and actual_key == secret else None
+        self.fingerprint_patch.stop()
+        try:
+            output = io.StringIO()
+            with mock.patch.object(resume.transfer, 'environment_guard', return_value=secret) as environment, \
+                 mock.patch.object(resume.transfer, 'Crypto', return_value=crypto) as adapter, redirect_stdout(output):
+                fingerprints = resume.fingerprint_google_credentials(blobs)
+                environment.assert_called_once(); adapter.assert_called_once_with('docker')
+                self.assertEqual(fingerprints['old']['stable_sha256'], fingerprints['new']['stable_sha256'])
+                self.assertNotEqual(fingerprints['old']['payload_sha256'], fingerprints['new']['payload_sha256'])
+                crypto.fernet.assert_any_call('open', secret, blobs['old'].encode())
+                self.assertEqual(output.getvalue(), '')
+                report = json.dumps(fingerprints)
+                self.assertNotIn(secret, report); self.assertNotIn('synthetic-longterm', report)
+                self.assertNotIn('synthetic-new-short-token', report)
+                with self.assertRaisesRegex(resume.ResumeError, 'RESUME_GOOGLE_CREDENTIAL_DECRYPT_OR_FORMAT_REJECTED'):
+                    resume.fingerprint_google_credentials({'invalid': 'not-fernet'})
+        finally: self.fingerprint_patch.start()
 
     def test_fetched_messages_is_volatile_only_for_gmail(self):
         with sqlite3.connect(self.private) as db:
