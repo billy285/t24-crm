@@ -7,18 +7,21 @@
 .finance-donut-center strong { color: #172b4d; font-size: 28px; line-height: 36px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .finance-donut-center span { max-width: 110px; text-align: center; }
 .finance-donut-empty-ring { position: absolute; width: 176px; height: 176px; border: 29px solid #edf1f6; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); }
-.finance-donut-controls { display: flex; align-items: center; justify-content: center; gap: 6px; max-width: 100%; }
-.finance-donut-controls select { min-width: 0; width: 100%; max-width: 240px; height: 36px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0 10px; background: #fff; color: #64748b; font-size: 12px; text-overflow: ellipsis; }
-.finance-donut-controls button { flex: 0 0 36px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: #64748b; }
-.finance-donut-controls button:hover { background: #f1f5f9; }
-.finance-donut-controls :is(select, button):focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.finance-donut-mouse-hint { display: none; }
+.finance-donut-legend { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: 3px 10px; max-width: 100%; }
+.finance-donut-legend button { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; max-width: 100%; border-radius: 5px; padding: 3px 4px; color: #64748b; font-size: 12px; line-height: 18px; text-align: left; }
+.finance-donut-legend button span { min-width: 0; overflow-wrap: anywhere; }
+.finance-donut-legend button i { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; }
+.finance-donut-legend button.is-active { color: #172b4d; background: #f1f5f9; }
+.finance-donut-legend button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .finance-donut-mouse-hint { display: inline; }
+  .finance-donut-touch-hint { display: none; }
+}
 .finance-donut-detail { min-height: 42px; margin-top: 10px; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: 6px 14px; font-size: 12px; color: #475569; }
 .finance-donut-detail-name { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
 .finance-donut-detail-name i { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; }
 .finance-donut-detail-value { color: #172b4d; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
 .finance-donut-detail-value small { margin-left: 8px; color: #94a3b8; font-size: 12px; font-weight: 400; }
-@media (max-width: 767px) {
-  .finance-donut-controls select, .finance-donut-controls button { height: 44px; min-height: 44px; }
-  .finance-donut-controls button { flex-basis: 44px; }
-}
+@media (hover: none), (pointer: coarse) { .finance-donut-legend button { min-height: 44px; } }
 @media (prefers-reduced-motion: reduce) { .finance-donut-slice { transition: none; } }
