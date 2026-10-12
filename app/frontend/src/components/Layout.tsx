@@ -1,6 +1,7 @@
 import '../pages/workspace-layout.css';
 import './mobile-sales-layout.css';
 import './crm-desktop-layout.css';
+import './crm-desktop-refined-type.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';

@@ -1,0 +1,133 @@
+/* The independent mobile finance experience and private workspace never use this adapter. */
+@media (min-width: 1024px) {
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    container: finance-ledger / inline-size;
+  }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    --t24-body-size: 13px;
+    --t24-body-line: 20px;
+    --t24-aux-size: 12px;
+    --t24-aux-line: 18px;
+    border-collapse: collapse;
+    color: #24364c;
+    font-size: 13px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    white-space: normal;
+  }
+  /* The old CRM row height must not compress a responsive record or its detail panel. */
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table > tbody > tr,
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table > tfoot > tr {
+    height: auto;
+    min-height: 0;
+  }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table > thead > tr > th {
+    padding: 11px 12px;
+    background: #f8fafc;
+    color: #718096;
+    font-size: 12px;
+    font-weight: 500;
+    text-align: left;
+    border-bottom: 1px solid #e7edf5;
+  }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table > tbody > .cft-summary-row > td {
+    padding: 14px 12px;
+    vertical-align: middle;
+    border-bottom: 1px dashed #dde5ee;
+  }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-summary-row:hover > td,
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-summary-row.is-open > td { background: #fbfcfe; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table .cft-number { text-align: right; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-value {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-value .truncate,
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-value .whitespace-nowrap,
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-value [class*="line-clamp-"] {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    -webkit-line-clamp: unset;
+    max-width: 100%;
+  }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-value [class*="min-w-"] { min-width: 0; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-value > .flex { flex-wrap: wrap; gap: 4px 8px; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-value button,
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-value a {
+    height: auto;
+    min-height: 32px;
+    min-width: 32px;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+  }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-value p,
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-inline-label { font-size: 12px; line-height: 1.45; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-inline-label { color: #8490a3; margin-right: 6px; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-summary-secondary { margin-top: 4px; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-summary-primary > .cft-value { font-weight: 500; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-summary-values > div > .cft-value { display: inline; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-expand-heading { text-align: right; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-expand-cell { text-align: right; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-expand {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 32px;
+    padding: 5px 4px;
+    border-radius: 6px;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font-size: 12px;
+    white-space: normal;
+    line-height: 1.4;
+    cursor: pointer;
+  }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-expand:hover { color: #2563eb; background: #eff6ff; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-expand:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-expand svg { width: 14px; height: 14px; flex-shrink: 0; transition: transform 150ms; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-expand[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-expanded-row > td { padding: 0; border-bottom: 1px dashed #dde5ee; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-detail-panel { padding: 18px 20px 20px; background: #f8fafc; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-detail-groups { display: grid; gap: 18px; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-detail-group { min-width: 0; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-detail-group h4 { margin: 0 0 10px; color: #334155; font-size: 13px; font-weight: 600; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-detail-group dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; margin: 0; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-field { min-width: 0; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-field dt { margin-bottom: 4px; color: #8490a3; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-field dd { margin: 0; font-size: 13px; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-message-row > td { padding: 28px 16px; color: #8490a3; text-align: center; }
+  .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-footer-row > td { padding: 18px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; }
+  @container finance-ledger (max-width: 759px) {
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table > colgroup,
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table > thead { display: none; }
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table,
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table > tbody,
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table > tfoot { display: block; }
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-summary-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; padding: 16px; border-bottom: 1px dashed #dde5ee; }
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table > tbody > .cft-summary-row > td { display: block; min-width: 0; padding: 0; border: 0; text-align: left; }
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-summary-row > td:first-child { grid-column: 1 / -1; font-size: 14px; }
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-summary-row > td:not(:first-child):not(.cft-expand-cell)::before { content: attr(data-label); display: block; margin-bottom: 4px; color: #8490a3; font-size: 12px; }
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-table > tbody > .cft-summary-row > .cft-expand-cell { display: flex; align-items: center; justify-content: flex-end; }
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-expanded-row,
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-expanded-row > td,
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-message-row,
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-message-row > td,
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-footer-row,
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-footer-row > td { display: block; width: 100%; box-sizing: border-box; }
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-detail-panel { padding: 16px; }
+    .t24-system.app-shell .crm-desktop-main .compact-finance-table .cft-detail-group dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
+  }
+}

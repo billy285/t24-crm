@@ -28,6 +28,8 @@ import ExportButton from '@/components/ExportButton';
 import { exportProfitMonthlyCsv, exportProfitMonthlyXlsx } from '../lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import FinanceOwnerOverview from '@/components/FinanceOwnerOverview';
+import CompactFinanceTable from '@/components/CompactFinanceTable';
+import { FINANCE_DESKTOP_TABLES } from '@/components/finance-desktop-tables';
 import MobileFinanceDetails, { isMobileFinanceDetailTab, MobileFinanceDateFilter } from '@/components/MobileFinanceDetails';
 import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage, loadWithRetry } from '../lib/load-utils';
@@ -58,6 +60,7 @@ import { useSessionViewState } from '@/hooks/use-session-view-state';
 import { getFinanceNavigationItem, normalizeFinanceTab } from '@/lib/finance-navigation';
 import { buildReturnLink } from '@/lib/navigation-state';
 import './finance-income-refined.css';
+import './finance-desktop-refined.css';
 import './mobile-finance-editor.css';
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -3801,7 +3804,7 @@ export default function Finance() {
 
   // ─── Date Filter Component ──────────────────────────────────────
   const dateFilterBar = (
-    <Card className={`border-slate-200 ${activeFinanceTab === 'overview' ? 'finance-owner-date-filter' : ''}`}>
+    <Card className={`finance-desktop-period border-slate-200 ${activeFinanceTab === 'overview' ? 'finance-owner-date-filter' : ''}`}>
       <CardContent className="p-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <div className="flex items-center gap-1.5 text-sm text-slate-600">
@@ -4424,17 +4427,14 @@ export default function Finance() {
       {isMobile && financeIssueFilter && <div className="finance-context-bar"><span>正在查看：{financeIssueCopy[financeIssueFilter]?.label || '待处理明细'}</span><Button variant="ghost" onClick={() => { setFinanceIssueFilter(null); const params = new URLSearchParams(searchParams); params.delete('issue'); setSearchParams(params, { replace: true }); }}>清除检查条件</Button></div>}
       {isMobile ? mobileFinanceContent : <>
       {/* Header */}
-      <div className="app-page-title flex-col gap-4 sm:flex-row sm:items-center">
+      <div className="finance-desktop-heading app-page-title flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-start gap-3">
           {activeFinanceTab !== 'overview' && <div className="mt-1 hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-600 to-cyan-400 sm:block" />}
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">T24 Marketing · Finance</p>
             <h2 className="mt-1 text-2xl font-bold text-slate-900">{getFinanceNavigationItem(activeFinanceTab).label}</h2>
             <p className="mt-1 text-sm text-slate-500">{activeFinanceTab === 'overview' ? '经营结果一目了然，重要事项及时处理。' : getFinanceNavigationItem(activeFinanceTab).description}</p>
-            {activeFinanceTab !== 'overview' && <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">老板视角</span>
-              <span>收款与退款按实际资金日期归属月份</span>
-            </div>}
+            {activeFinanceTab !== 'overview' && <details className="finance-desktop-policy mt-2 text-[11px] text-slate-500"><summary>统计口径</summary><p>老板视角 · 收款与退款按实际资金日期归属月份</p></details>}
           </div>
         </div>
         {!isMobile && <div className="ml-auto flex flex-wrap gap-2">
@@ -4684,7 +4684,7 @@ export default function Finance() {
                 <p className="text-center text-slate-400 py-12">暂无客户利润数据</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <CompactFinanceTable {...FINANCE_DESKTOP_TABLES.customer_profit} legacyClassName="w-full text-sm">
                     <thead><tr className="border-b bg-slate-50 text-left text-slate-500">
                       <th className="px-3 py-2.5 font-medium">客户</th>
                       <th className="px-3 py-2.5 font-medium">实收</th>
@@ -4744,7 +4744,7 @@ export default function Finance() {
 	                        </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </CompactFinanceTable>
                 </div>
               )}
               {customerProfitRows.length > 0 && <PaginationFooter pageKey="customer_profit" data={paginatedCustomerProfitRows} />}
@@ -4759,7 +4759,7 @@ export default function Finance() {
                 <p className="text-center text-slate-400 py-12">暂无应收欠款</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <CompactFinanceTable {...FINANCE_DESKTOP_TABLES.receivables} legacyClassName="w-full text-sm">
                     <thead><tr className="border-b bg-slate-50 text-left text-slate-500">
                       <th className="px-3 py-2.5 font-medium">客户</th>
                       <th className="px-3 py-2.5 font-medium">产品</th>
@@ -4792,7 +4792,7 @@ export default function Finance() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </CompactFinanceTable>
                 </div>
               )}
               {receivableRows.length > 0 && <PaginationFooter pageKey="receivables" data={paginatedReceivableRows} />}
@@ -4803,14 +4803,12 @@ export default function Finance() {
         {/* ── Income Tab ── */}
         <TabsContent value="income">
           <Card className="border-slate-200">
-            <CardHeader className="gap-3 border-b border-slate-100 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div><CardTitle className="text-base">收款账本</CardTitle><p className="mt-1 text-xs text-slate-500">按客户、产品、日期或交易参考号查找收款</p></div>
-                {canCreatePayment && <Button onClick={openPaymentForm} className="bg-blue-600 hover:bg-blue-700"><Plus className="mr-1.5 h-4 w-4" />录入收款</Button>}
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
+            <CardHeader className="fi-ledger-header border-b border-slate-100">
+              <CardTitle className="sr-only">收款账本</CardTitle>
+              <div className="fi-ledger-search-row">
                 <div className="relative w-full max-w-lg"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><Input aria-label="搜索收款记录" placeholder="搜索客户、产品、日期、交易参考号…" value={incomeSearch} onChange={event => setIncomeSearch(event.target.value)} className="pl-9 pr-10" />{incomeSearch && <Button size="icon" variant="ghost" aria-label="清除收款搜索" className="absolute right-1 top-1 h-8 w-8" onClick={() => setIncomeSearch('')}><X className="h-4 w-4" /></Button>}</div>
                 <p role="status" className="text-xs text-slate-500">显示 {visiblePayments.length} / {filteredPayments.length} 笔 · 搜索仅筛选此账本</p>
+                {canCreatePayment && <Button onClick={openPaymentForm} className="bg-blue-600 hover:bg-blue-700"><Plus className="mr-1.5 h-4 w-4" />录入收款</Button>}
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -4820,7 +4818,7 @@ export default function Finance() {
                 <div className="py-10 text-center"><p className="text-sm text-slate-500">{incomeSearch.trim() ? '当前账目范围内没有匹配的收款' : '当前账目范围内暂无收款记录'}</p><div className="mt-3 flex justify-center gap-2">{incomeSearch && <Button size="sm" variant="outline" onClick={() => setIncomeSearch('')}>清除搜索</Button>}{dateFilterMode !== 'all' && <Button size="sm" variant="outline" onClick={() => setDateFilterMode('all')}>查看全部时间</Button>}</div></div>
               ) : (
                 <div className="fi-income-scroll max-h-[65vh] overflow-auto">
-                  <table className="fi-income-table w-full min-w-[1100px] whitespace-nowrap text-sm tabular-nums">
+                  <CompactFinanceTable {...FINANCE_DESKTOP_TABLES.income} legacyClassName="fi-income-table w-full min-w-[1100px] whitespace-nowrap text-sm tabular-nums">
                     <thead className="sticky top-0 z-20 bg-slate-50">
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
                         <th className="sticky left-0 z-30 min-w-[180px] bg-slate-50 px-3 py-2.5 font-medium">客户</th>
@@ -4899,7 +4897,7 @@ export default function Finance() {
                         </tr>
                       );})}
                     </tbody>
-                  </table>
+                  </CompactFinanceTable>
                 </div>
               )}
               {visiblePayments.length > 0 && <PaginationFooter pageKey="income" data={paginatedPayments} />}
@@ -4918,7 +4916,7 @@ export default function Finance() {
                 <p className="py-12 text-center text-sm text-slate-400">当前范围暂无退款。请在「收入管理」对应收款右侧点击退款。</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <CompactFinanceTable {...FINANCE_DESKTOP_TABLES.refunds} legacyClassName="w-full text-sm">
                     <thead><tr className="border-b bg-slate-50 text-left text-slate-500">
                       <th className="px-4 py-3 font-medium">退款日期</th><th className="px-4 py-3 font-medium">客户</th>
                       <th className="px-4 py-3 font-medium">退款金额</th><th className="px-4 py-3 font-medium">手续费退回</th>
@@ -4934,7 +4932,7 @@ export default function Finance() {
                         <td className="px-4 py-3"><Badge className={refund.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : refund.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}>{refund.status === 'completed' ? '已完成' : refund.status === 'pending' ? '处理中' : '失败'}</Badge></td>
                       </tr>
                     ))}</tbody>
-                  </table>
+                  </CompactFinanceTable>
                 </div>
               )}
             </CardContent>
@@ -4972,7 +4970,7 @@ export default function Finance() {
               {visibleSettlements.length === 0 ? (
                 <div className="px-6 py-12 text-center"><p className="text-sm text-slate-500">当前范围尚未建立投流月结。</p><p className="mt-2 text-xs text-amber-600">未月结前，投流充值不会被当作公司收入或利润。</p></div>
               ) : (
-                <div className="overflow-x-auto"><table className="w-full text-sm">
+                <div className="overflow-x-auto"><CompactFinanceTable {...FINANCE_DESKTOP_TABLES.ad_funds} legacyClassName="w-full text-sm">
                   <thead><tr className="border-b bg-slate-50 text-left text-slate-500">
                     <th className="px-4 py-3 font-medium">月份/客户</th><th className="px-4 py-3 font-medium">期初自动结转</th><th className="px-4 py-3 font-medium">本月净充值</th>
                     <th className="px-4 py-3 font-medium">广告实支</th><th className="px-4 py-3 font-medium">退客户</th><th className="px-4 py-3 font-medium">确认差价</th>
@@ -4989,7 +4987,7 @@ export default function Finance() {
                       <td className="px-4 py-3"><Button size="sm" variant="outline" onClick={() => openAdSettlement(item)}>编辑</Button></td>
                     </tr>;
                   })}</tbody>
-                </table></div>
+                </CompactFinanceTable></div>
               )}
             </CardContent>
           </Card>
@@ -5068,7 +5066,7 @@ export default function Finance() {
                 <p className="text-center text-slate-400 py-12">{expenseMonth ? `${expenseMonth} 暂无客户支出记录` : '暂无客户支出记录'}</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <CompactFinanceTable {...FINANCE_DESKTOP_TABLES.customer_expense} legacyClassName="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
                         <th className="px-3 py-2.5 font-medium">客户</th>
@@ -5122,7 +5120,7 @@ export default function Finance() {
                         );
                       })}
                     </tbody>
-                  </table>
+                  </CompactFinanceTable>
                 </div>
               )}
               {filteredExpenses.length > 0 && <PaginationFooter pageKey="customer_expense" data={paginatedExpenses} />}
@@ -5201,7 +5199,7 @@ export default function Finance() {
                 <p className="text-center text-slate-400 py-12">{companyExpenseMonth ? `${companyExpenseMonth} 暂无运营支出记录` : '暂无运营支出记录'}</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <CompactFinanceTable {...FINANCE_DESKTOP_TABLES.company_expense} legacyClassName="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
                         <th className="px-3 py-2.5 font-medium">支出类型</th>
@@ -5244,7 +5242,7 @@ export default function Finance() {
                         );
                       })}
                     </tbody>
-                  </table>
+                  </CompactFinanceTable>
                 </div>
               )}
               {filteredCompanyExpenses.length > 0 && <PaginationFooter pageKey="company_expense" data={paginatedCompanyExpenses} />}
@@ -5981,7 +5979,7 @@ export default function Finance() {
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <CompactFinanceTable {...FINANCE_DESKTOP_TABLES.monthly_detail} legacyClassName="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-slate-50 text-left text-slate-500">
                         <th className="px-3 py-2.5 font-medium">月份</th>
@@ -6049,7 +6047,7 @@ export default function Finance() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </CompactFinanceTable>
                 </div>
               )}
               {monthlyDetail.rows.length > 0 && <PaginationFooter pageKey="monthly_detail" data={paginatedMonthlyDetail} />}

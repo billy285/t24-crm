@@ -1,0 +1,108 @@
+/* CRM desktop reading scale. The private shell never renders crm-desktop-main. */
+@media (min-width: 1024px) {
+  .t24-system.app-shell .crm-desktop-main {
+    --t24-body-size: 14px;
+    --t24-body-line: 21px;
+    --t24-aux-size: 12px;
+    --t24-aux-line: 18px;
+    --t24-section-size: 16px;
+    --t24-section-line: 24px;
+    --t24-detail-size: 18px;
+    --t24-detail-line: 26px;
+    --t24-title-size: 24px;
+    --t24-title-line: 32px;
+    --t24-metric-size: 22px;
+    --t24-metric-line: 30px;
+    font-size: var(--t24-body-size);
+    line-height: var(--t24-body-line);
+  }
+
+  /* Local variables also reach page-specific rules, regardless of their load order. */
+  .t24-system.app-shell .crm-desktop-main :is(.app-page-title h1, .app-page-title h2, .app-page-heading, .sc-page-heading h1, .slr-page-heading h2, .customer-360-hero-copy h2) {
+    font-size: var(--t24-title-size);
+    line-height: var(--t24-title-line);
+  }
+
+  .t24-system.app-shell .crm-desktop-main :is(.text-base, .text-sm):not(:where(form *, [role="dialog"] *, [role="alertdialog"] *)) {
+    font-size: var(--t24-body-size);
+    line-height: var(--t24-body-line);
+  }
+
+  .t24-system.app-shell .crm-desktop-main :is(.text-xs, .app-page-kicker):not(:where(form *, [role="dialog"] *, [role="alertdialog"] *)) {
+    font-size: var(--t24-aux-size);
+    line-height: var(--t24-aux-line);
+  }
+
+  /* CompactFinanceTable owns its responsive rows; other tables share this scale. */
+  .t24-system.app-shell .crm-desktop-main table:not(:where(.cft-table, .cft-table *, form table, [role="dialog"] table, [role="alertdialog"] table)) {
+    --t24-body-size: 13px;
+    --t24-body-line: 20px;
+    --t24-table-head-height: 36px;
+    --t24-table-row-height: 44px;
+    --t24-table-cell-y: 10px;
+    --t24-table-cell-x: 12px;
+    font-size: var(--t24-body-size);
+    line-height: var(--t24-body-line);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .t24-system.app-shell .crm-desktop-main table :is(th, td):not(:where(.cft-table *, form *, [role="dialog"] *, [role="alertdialog"] *)) {
+    padding-inline: var(--t24-table-cell-x);
+  }
+
+  .t24-system.app-shell .crm-desktop-main table th:not(:where(.cft-table *, form *, [role="dialog"] *, [role="alertdialog"] *)) {
+    height: var(--t24-table-head-height);
+    font-size: var(--t24-aux-size);
+    line-height: var(--t24-aux-line);
+  }
+
+  .t24-system.app-shell .crm-desktop-main table td:not(:where(.cft-table *, form *, [role="dialog"] *, [role="alertdialog"] *)) {
+    padding-block: var(--t24-table-cell-y);
+    font-size: var(--t24-body-size);
+    line-height: var(--t24-body-line);
+  }
+
+  .t24-system.app-shell .crm-desktop-main table tbody > tr:not(:where(.cft-table *, form *, [role="dialog"] *, [role="alertdialog"] *)) {
+    height: var(--t24-table-row-height);
+  }
+
+  /* Editing controls keep their original input sizing; only page buttons tighten. */
+  .t24-system.app-shell .crm-desktop-main .t24-button:not(:where(form *, [role="dialog"] *, [role="alertdialog"] *, .t24-button-link)) {
+    min-height: 36px;
+    padding-block: 7px;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .t24-system.app-shell .crm-desktop-main .t24-button-compact:not(:where(form *, [role="dialog"] *, [role="alertdialog"] *, .t24-button-link)),
+  .t24-system.app-shell .crm-desktop-main table .t24-button:not(:where(form *, [role="dialog"] *, [role="alertdialog"] *, .t24-button-link)) {
+    min-height: 32px;
+    padding-block: 5px;
+  }
+
+  .t24-system.app-shell .crm-desktop-main .t24-button-icon:not(:where(form *, [role="dialog"] *, [role="alertdialog"] *)) {
+    min-width: 36px;
+  }
+
+  .t24-system.app-shell .crm-desktop-main table .t24-button-icon:not(:where(form *, [role="dialog"] *, [role="alertdialog"] *)) {
+    min-width: 32px;
+  }
+
+  /* Most dialogs use body portals; this also preserves any inline editing forms. */
+  .t24-system.app-shell .crm-desktop-main :is(form, [role="dialog"], [role="alertdialog"]) {
+    --t24-body-size: 15px;
+    --t24-body-line: 22px;
+    --t24-aux-size: 13px;
+    --t24-aux-line: 18px;
+    --t24-section-size: 18px;
+    --t24-section-line: 24px;
+    --t24-detail-size: 20px;
+    --t24-detail-line: 28px;
+    --t24-title-size: 28px;
+    --t24-title-line: 36px;
+    --t24-metric-size: 24px;
+    --t24-metric-line: 32px;
+    font-size: var(--t24-body-size);
+    line-height: var(--t24-body-line);
+  }
+}
