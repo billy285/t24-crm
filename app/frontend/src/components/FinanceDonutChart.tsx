@@ -26,7 +26,10 @@ export default function FinanceDonutChart({ label, data, formatValue }: Props) {
   const selected = selection?.snapshot === snapshot ? data.find(item => item.id === selection.id) : undefined;
   const total = data.reduce((sum, item) => sum + item.value, 0);
   const canDraw = Number.isFinite(total) && total > 0;
-  const percentage = selected && canDraw ? (selected.value / total * 100).toFixed(1) : '0.0';
+  const share = (value: number) => canDraw ? (value / total * 100).toFixed(1) : '0.0';
+  const percentage = selected ? share(selected.value) : '0.0';
+  // Sort a copy for the ranking; preserve the report and chart sector order.
+  const rankedData = [...data].sort((a, b) => b.value - a.value);
   const show = (id: string, interaction: Selection['interaction']) => setSelection({ id, snapshot, interaction });
   const clear = (interaction: Selection['interaction']) => setSelection(current => current?.interaction === interaction ? null : current);
   const toggleTouch = (id: string) => setSelection(current => current?.id === id && current.snapshot === snapshot && current.interaction === 'touch' ? null : { id, snapshot, interaction: 'touch' });
@@ -61,23 +64,23 @@ export default function FinanceDonutChart({ label, data, formatValue }: Props) {
       </div>
 
       <div className="finance-donut-legend" role="group" aria-label={`${label}分类`}>
-        {data.map(item => <button key={item.id} type="button"
-          className={selected?.id === item.id ? 'is-active' : ''}
-          aria-label={`查看${item.name}占比`}
+        <div className="finance-donut-ranking-head" aria-hidden="true"><span>排名 / 分类</span><span>金额</span><span>占比</span></div>
+        {rankedData.map((item, index) => <button key={item.id} type="button"
+          className={`${index < 3 ? 'is-leading' : ''} ${selected?.id === item.id ? 'is-active' : ''}`}
+          aria-label={`第${index + 1}名，${item.name}，${formatValue(item.value)}，占比${share(item.value)}%${item.count !== undefined ? `，${item.count}笔` : ''}`}
           onPointerEnter={event => { if (event.pointerType !== 'touch' && event.pointerType !== 'pen') show(item.id, 'hover'); }}
           onPointerLeave={() => clear('hover')}
           onFocus={event => { if (event.currentTarget.matches(':focus-visible')) show(item.id, 'focus'); }}
           onBlur={() => clear('focus')}
           onClick={event => { if (event.detail === 0) show(item.id, 'focus'); else if (pointerType.current === 'touch' || pointerType.current === 'pen') toggleTouch(item.id); else show(item.id, 'hover'); }}>
-          <i style={{ background: item.color }} /><span>{item.name}</span>
+          <span className="finance-donut-rank">{index + 1}</span>
+          <span className="finance-donut-category"><i style={{ background: item.color }} /><span>{item.name}{item.count !== undefined && <small>{item.count} 笔</small>}</span></span>
+          <span className="finance-donut-amount">{formatValue(item.value)}</span>
+          <span className="finance-donut-share">{share(item.value)}%</span>
         </button>)}
       </div>
-      <div className="finance-donut-detail" role="status" aria-live="polite" aria-atomic="true">
-        {selected && <>
-          <span className="finance-donut-detail-name"><i style={{ background: selected.color }} />{selected.name}</span>
-          <span className="finance-donut-detail-value">{formatValue(selected.value)}{selected.count !== undefined && <small>{selected.count} 笔</small>}</span>
-          <span className="sr-only">占比 {percentage}%</span>
-        </>}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {selected && `${selected.name}，${formatValue(selected.value)}，占比 ${percentage}%${selected.count !== undefined ? `，${selected.count} 笔` : ''}`}
       </div>
     </div>
   );
