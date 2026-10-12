@@ -1,6 +1,6 @@
-/* CRM presentation only. The private route uses a separate shell. */
+/* Laptop-size CRM presentation only. Large desktops and the private shell keep their geometry. */
 .crm-owner-accounting-note { display: none; }
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (max-width: 1599px) {
   .t24-system.app-shell {
     --crm-content-width: 1260px;
     --crm-content-gutter: clamp(28px, 2.5vw, 48px);
