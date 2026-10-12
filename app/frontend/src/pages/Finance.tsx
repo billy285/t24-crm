@@ -22,13 +22,14 @@ import {
 import { NativeSelect } from '@/components/ui/native-select';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
+  Tooltip, ResponsiveContainer, Cell, Legend
 } from 'recharts';
 import ExportButton from '@/components/ExportButton';
 import { exportProfitMonthlyCsv, exportProfitMonthlyXlsx } from '../lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import FinanceOwnerOverview from '@/components/FinanceOwnerOverview';
 import CompactFinanceTable from '@/components/CompactFinanceTable';
+import FinanceDonutChart from '@/components/FinanceDonutChart';
 import { FINANCE_DESKTOP_TABLES } from '@/components/finance-desktop-tables';
 import MobileFinanceDetails, { isMobileFinanceDetailTab, MobileFinanceDateFilter } from '@/components/MobileFinanceDetails';
 import PageLoadState from '@/components/PageLoadState';
@@ -5555,18 +5556,9 @@ export default function Finance() {
                 {incomeByTypeData.length === 0 ? (
                   <p className="text-center text-slate-400 py-12">暂无数据</p>
                 ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie data={incomeByTypeData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}>
-                        {incomeByTypeData.map((d) => (
-                          <Cell key={d.type} fill={INCOME_TYPE_COLORS[d.type] || PIE_COLORS[0]} />
-                        ))}
-                      </Pie>
-                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }} formatter={(value: number) => [fmt(value), '收入']} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <FinanceDonutChart label="净收款结构"
+                    data={incomeByTypeData.map(d => ({ id: d.type, name: d.name, value: d.value, color: INCOME_TYPE_COLORS[d.type] || PIE_COLORS[0] }))}
+                    formatValue={fmt} />
                 )}
               </CardContent>
             </Card>
@@ -5581,19 +5573,9 @@ export default function Finance() {
                 {productRevenueData.length === 0 ? (
                   <p className="text-center text-slate-400 py-12">暂无数据</p>
                 ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie data={productRevenueData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}>
-                        {productRevenueData.map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }} formatter={(value: number) => [fmt(value), '收入']} />
-                      <Legend verticalAlign="bottom" height={36} formatter={(value) => <span className="text-xs text-slate-600">{value}</span>} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <FinanceDonutChart label="单一产品净收款占比"
+                    data={productRevenueData.map((d, index) => ({ id: d.name, name: d.name, value: d.value, color: PIE_COLORS[index % PIE_COLORS.length] }))}
+                    formatValue={fmt} />
                 )}
               </CardContent>
             </Card>
@@ -5637,43 +5619,9 @@ export default function Finance() {
                 {payMethodData.length === 0 ? (
                   <p className="text-center text-slate-400 py-12">暂无数据</p>
                 ) : (
-                  <>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <PieChart>
-                        <Pie data={payMethodData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2} dataKey="amount"
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}>
-                          {payMethodData.map((d) => (
-                            <Cell key={`pm-${d.method}`} fill={PAY_METHOD_COLORS[d.method] || '#94a3b8'} />
-                          ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }}
-                          formatter={(value: number, _name: string, props: any) => {
-                            const entry = props.payload;
-                            return [`${fmt(value)}（${entry.count}笔）`, entry.name];
-                          }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="mt-2 space-y-1.5">
-                      {payMethodData.map(d => {
-                        const totalAmount = payMethodData.reduce((s, x) => s + x.amount, 0);
-                        const pct = totalAmount > 0 ? ((d.amount / totalAmount) * 100).toFixed(1) : '0';
-                        return (
-                          <div key={d.method} className="flex items-center justify-between text-xs px-1">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: PAY_METHOD_COLORS[d.method] || '#94a3b8' }} />
-                              <span className="text-slate-600">{d.name}</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-slate-500">{d.count}笔</span>
-                              <span className="font-medium text-slate-700 w-20 text-right">{fmt(d.amount)}</span>
-                              <span className="text-slate-400 w-12 text-right">{pct}%</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
+                  <FinanceDonutChart label="收款渠道分布"
+                    data={payMethodData.map(d => ({ id: d.method, name: d.name, value: d.amount, count: d.count, color: PAY_METHOD_COLORS[d.method] || '#94a3b8' }))}
+                    formatValue={fmt} />
                 )}
               </CardContent>
             </Card>
@@ -5745,48 +5693,9 @@ export default function Finance() {
                               暂无{isUsd ? '美元' : '人民币'}运营支出
                             </div>
                           ) : (
-                            <>
-                              <ResponsiveContainer width="100%" height={220}>
-                                <PieChart>
-                                  <Pie
-                                    data={currencyItems.map(d => ({ name: d.name, value: d.amount, type: d.type, currency: d.currency }))}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={48}
-                                    outerRadius={76}
-                                    paddingAngle={2}
-                                    dataKey="value"
-                                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                                    labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
-                                  >
-                                    {currencyItems.map(d => (
-                                      <Cell key={`${currency}:${d.type}`} fill={pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS)} />
-                                    ))}
-                                  </Pie>
-                                  <Tooltip
-                                    contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }}
-                                    formatter={(value: number) => [formatMoney(value, currency), '支出']}
-                                  />
-                                </PieChart>
-                              </ResponsiveContainer>
-                              <div className="space-y-2">
-                                {currencyItems.map(d => {
-                                  const pct = currencyTotal > 0 ? ((d.amount / currencyTotal) * 100).toFixed(1) : '0';
-                                  return (
-                                    <div key={`${currency}:${d.type}`} className="flex items-center justify-between gap-3 rounded-lg bg-white/80 p-2">
-                                      <div className="flex min-w-0 items-center gap-2">
-                                        <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS) }} />
-                                        <span className="truncate text-sm text-slate-700">{d.name}</span>
-                                      </div>
-                                      <div className="flex shrink-0 items-center gap-3">
-                                        <span className="text-sm font-medium text-slate-800">{formatMoney(d.amount, currency)}</span>
-                                        <span className="w-12 text-right text-xs text-slate-500">{pct}%</span>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </>
+                            <FinanceDonutChart label={isUsd ? '美元运营支出' : '人民币运营支出'}
+                              data={currencyItems.map(d => ({ id: `${currency}:${d.type}`, name: d.name, value: d.amount, color: pickColorByKey(d.type, PIE_COLORS, COMPANY_EXPENSE_COLORS) }))}
+                              formatValue={value => formatMoney(value, currency)} />
                           )}
                         </div>
                       );
