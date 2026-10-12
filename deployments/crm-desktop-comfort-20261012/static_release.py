@@ -181,10 +181,23 @@ def checked_preflight(value, personal):
 
 
 def stable_database(value):
+    # release_snapshot includes scalar receipt metadata alongside the two DBs.
+    # Only named database sections participate in the runtime/DDL comparison.
+    need(isinstance(value, dict) and all(isinstance(value.get(name), dict) for name in ("business", "private")),
+         "BUSINESS_AND_PRIVATE_DATABASE_SNAPSHOTS_REQUIRED")
+    for name in ("business", "private"):
+        row = value[name]
+        need(isinstance(row.get("identity"), dict) and bool(row["identity"])
+             and isinstance(row.get("schema_objects"), dict) and bool(row["schema_objects"])
+             and isinstance(row.get("schema_sha256"), str) and HASH.fullmatch(row["schema_sha256"])
+             and isinstance(row.get("tables"), dict) and bool(row["tables"])
+             and all(isinstance(entry, dict) and isinstance(entry.get("columns_sha256"), str)
+                 and HASH.fullmatch(entry["columns_sha256"]) for entry in row["tables"].values()),
+             "VALID_DATABASE_IDENTITY_AND_DDL_PROOF_REQUIRED")
     return {name: {"identity": row["identity"], "schema_objects": row["schema_objects"],
         "schema_sha256": row["schema_sha256"], "table_columns": {
             table: entry["columns_sha256"] for table, entry in row["tables"].items()}}
-        for name, row in value.items()}
+        for name in ("business", "private") for row in (value[name],)}
 
 
 def database_stats(base):
@@ -275,7 +288,8 @@ def release_lock(base):
 
 
 def public_root(release, manifest):
-    need(release == Path("/opt/t24-crm/releases") / ("crm-desktop-comfort-" + manifest["source_sha"][:12] + "-20261012"),
+    name = "crm-desktop-comfort-" + manifest["source_sha"][:12] + "-20261012"
+    need(release in {Path("/opt/t24-crm/releases") / name, Path("/opt/t24-crm/releases") / (name + "-retry2")},
          "EXACT_NEW_RELEASE_PATH_REQUIRED")
     return Path("/var/www/t24-crm-public") / release.name
 

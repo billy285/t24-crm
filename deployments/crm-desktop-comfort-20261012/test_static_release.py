@@ -4,7 +4,9 @@ from contextlib import contextmanager
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
+import sqlite3
 import tarfile
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -110,6 +112,81 @@ def test_normal_business_rows_and_file_timestamps_may_change():
     assert r.stable_boundary(before) == r.stable_boundary(after)
     after["database_stats"]["private"]["inode"] += 1
     assert r.stable_boundary(before) != r.stable_boundary(after)
+
+
+def test_database_receipt_metadata_is_not_a_database_section():
+    dbs = {"private": database(), "business": database()}
+    receipt = {"format_version": 1, "stage": "STRIPE_REPORT_READONLY_SCHEMA_SNAPSHOT",
+        "mutation_performed": False, "owner_id": "4", **copy.deepcopy(dbs)}
+    assert r.stable_database(receipt) == r.stable_database(dbs)
+
+
+@pytest.mark.parametrize("section,field,value", [
+    ("private", "identity", None), ("business", "schema_objects", []),
+    ("private", "schema_sha256", 1), ("business", "tables", {}),
+])
+def test_database_section_shape_errors_have_safe_guard_codes(section, field, value):
+    receipt = {"private": database(), "business": database()}
+    receipt[section][field] = value
+    with pytest.raises(r.StaticError, match="VALID_DATABASE_IDENTITY_AND_DDL_PROOF_REQUIRED"):
+        r.stable_database(receipt)
+
+
+def test_actual_retained_snapshot_adapter_preserves_both_databases_and_accepts_metadata(tmp_path, monkeypatch):
+    """Invoke the real retained reader on synthetic files, not a mirrored shape."""
+    path = Path(__file__).resolve().parents[1] / "stripe-report-20261012/prepare_candidate.py"
+    assert r.sha(path.read_bytes()) == "989dc1de81a0b3a39ad978c395bdfd7a3c31725a3e2ebee57a5713cfc8faa613"
+    spec = importlib.util.spec_from_file_location("actual_retained_crm_snapshot", path)
+    prep = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(prep)
+    private_parent = tmp_path / "private"
+    private_parent.mkdir(mode=0o700)
+    private = private_parent / "workspace.db"
+    business = tmp_path / "business.db"
+    for file, sql in ((private, "CREATE TABLE private_items(id INTEGER PRIMARY KEY,owner_id TEXT NOT NULL)"),
+                      (business, "CREATE TABLE merchants(id INTEGER PRIMARY KEY)")):
+        with sqlite3.connect(file) as db:
+            db.execute(sql)
+        file.chmod(0o600)
+    snapshot = prep.release_snapshot(private.resolve(), business.resolve())
+    assert snapshot["stage"] == "STRIPE_REPORT_READONLY_SCHEMA_SNAPSHOT" and snapshot["owner_id"] == "4"
+    assert snapshot["mutation_performed"] is False
+    current = {name: r.sha(file.read_bytes()) for name, file in (("business", business), ("private", private))}
+    base = SimpleNamespace(PRIVATE_DB=private.resolve(), BUSINESS=business.resolve(),
+        NGINX=tmp_path / "nginx.conf", ENV=tmp_path / "runtime.env", crm_check=lambda: {"id": "same-live-crm"})
+    base.ENV.write_bytes(b"synthetic-only-not-a-credential")
+    personal = SimpleNamespace(old_roles=Mock())
+    pins = {"roles": {"crm": base.crm_check(), "api": {"id": "same-api"}, "worker": {"id": "same-worker"}},
+        "environment_sha256": r.sha(base.ENV.read_bytes()), "databases": snapshot,
+        "private_database": str(base.PRIVATE_DB), "business_database": str(base.BUSINESS),
+        "nginx_path": str(base.NGINX), "runtime_env_path": str(base.ENV)}
+    monkeypatch.setattr(r, "read", lambda path, maximum=0: path.read_bytes())
+    # The local test process may be unprivileged. File identity observations
+    # remain real; production root ownership checking is covered separately.
+    monkeypatch.setattr(r, "database_stats", lambda base: {name: {
+        "device": file.stat().st_dev, "inode": file.stat().st_ino, "mode": 0o600, "uid": os.geteuid(), "gid": os.getegid(),
+        "size": file.stat().st_size, "mtime_ns": file.stat().st_mtime_ns, "ctime_ns": file.stat().st_ctime_ns}
+        for name, file in (("business", base.BUSINESS), ("private", base.PRIVATE_DB))})
+    proof = r.boundary(personal, object(), base, prep, object(), pins)
+    assert set(proof["databases"]) == {"business", "private"}
+    assert proof["databases"] == r.stable_database(snapshot)
+    assert current == {name: r.sha(file.read_bytes()) for name, file in (("business", business), ("private", private))}
+    personal.old_roles.assert_called_once()
+
+
+@pytest.mark.parametrize("suffix", ["", "-retry2"])
+def test_new_public_root_explicit_first_or_retry2_release(suffix):
+    value = manifest()
+    name = "crm-desktop-comfort-" + value["source_sha"][:12] + "-20261012" + suffix
+    assert r.public_root(Path("/opt/t24-crm/releases") / name, value) == Path("/var/www/t24-crm-public") / name
+
+
+@pytest.mark.parametrize("suffix", ["-retry3", "-other", "/retry2"])
+def test_other_release_suffixes_are_rejected(suffix):
+    value = manifest()
+    name = "crm-desktop-comfort-" + value["source_sha"][:12] + "-20261012" + suffix
+    with pytest.raises(r.StaticError, match="EXACT_NEW_RELEASE_PATH_REQUIRED"):
+        r.public_root(Path("/opt/t24-crm/releases") / name, value)
 
 
 def archive(members):
