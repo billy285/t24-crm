@@ -1,5 +1,6 @@
 import type { CompactFinanceColumn, CompactFinanceDetailGroup } from './CompactFinanceTable';
 
+// Summary columns each show one source value; the drawer retains every original field and action.
 // Column positions and headers refer to the existing full ledger; no values are recalculated.
 export const FINANCE_DESKTOP_TABLES = {
   "customer_profit": {
@@ -10,46 +11,58 @@ export const FINANCE_DESKTOP_TABLES = {
         "indexes": [
           0
         ],
-        "width": 26
+        "width": 26,
+        "summaryMode": "first"
       },
       {
         "label": "实收",
         "indexes": [
           1
         ],
-        "width": 12,
+        "width": 13,
         "align": "right"
       },
       {
-        "label": "成本 / 费用",
+        "label": "客户成本",
         "indexes": [
-          5,
-          4
+          5
         ],
-        "width": 16
+        "width": 13,
+        "align": "right",
+        "summaryMode": "first",
+        "priority": 2
       },
       {
-        "label": "利润 / 利润率",
+        "label": "利润",
         "indexes": [
-          6,
-          8
+          6
         ],
-        "width": 16
+        "width": 13,
+        "align": "right"
       },
       {
-        "label": "预警 / 欠款",
+        "label": "欠款",
         "indexes": [
-          7,
           9
         ],
-        "width": 14
+        "width": 13,
+        "align": "right"
       },
       {
-        "label": "操作",
+        "label": "利润率",
         "indexes": [
-          10
+          8
         ],
-        "width": 16
+        "width": 10,
+        "align": "right",
+        "priority": 3
+      },
+      {
+        "label": "预警",
+        "indexes": [
+          7
+        ],
+        "width": 12
       }
     ],
     "detailGroups": [
@@ -100,49 +113,66 @@ export const FINANCE_DESKTOP_TABLES = {
     "label": "应收欠款",
     "columns": [
       {
-        "label": "客户 / 产品",
+        "label": "客户",
         "indexes": [
-          0,
-          1
+          0
         ],
-        "width": 28
+        "width": 22
       },
       {
-        "label": "应收 / 实收",
+        "label": "产品",
         "indexes": [
-          2,
+          1
+        ],
+        "width": 15,
+        "priority": 2
+      },
+      {
+        "label": "应收",
+        "indexes": [
+          2
+        ],
+        "width": 11,
+        "align": "right"
+      },
+      {
+        "label": "实收",
+        "indexes": [
           3
         ],
-        "width": 16
+        "width": 11,
+        "align": "right"
       },
       {
         "label": "欠款",
         "indexes": [
           4
         ],
-        "width": 16,
+        "width": 12,
         "align": "right"
       },
       {
-        "label": "逾期",
+        "label": "欠款天数",
         "indexes": [
           5
         ],
-        "width": 12
+        "width": 9
       },
       {
-        "label": "负责人 / 跟进",
+        "label": "负责人",
         "indexes": [
           6
         ],
-        "width": 18
+        "width": 9,
+        "summaryMode": "first",
+        "priority": 3
       },
       {
         "label": "日期",
         "indexes": [
           7
         ],
-        "width": 14
+        "width": 11
       }
     ],
     "detailGroups": [
@@ -185,46 +215,55 @@ export const FINANCE_DESKTOP_TABLES = {
         "indexes": [
           0
         ],
-        "width": 25
+        "width": 24
       },
       {
         "label": "收入项目",
         "indexes": [
-          2,
-          1
+          2
         ],
-        "width": 22
+        "width": 19,
+        "priority": 2
       },
       {
-        "label": "应收",
+        "label": "实收",
         "indexes": [
-          3
+          4
         ],
         "width": 11,
+        "align": "right",
+        "summaryMode": "first"
+      },
+      {
+        "label": "欠款",
+        "indexes": [
+          9
+        ],
+        "width": 10,
         "align": "right"
       },
       {
-        "label": "实收 / 欠款",
+        "label": "净入账",
         "indexes": [
-          4,
-          9
+          8
         ],
-        "width": 15
+        "width": 12,
+        "align": "right"
       },
       {
-        "label": "日期 / 方式",
+        "label": "收款日期",
         "indexes": [
-          12,
+          12
+        ],
+        "width": 14
+      },
+      {
+        "label": "方式",
+        "indexes": [
           11
         ],
-        "width": 16
-      },
-      {
-        "label": "操作",
-        "indexes": [
-          14
-        ],
-        "width": 13
+        "width": 10,
+        "priority": 3
       }
     ],
     "detailGroups": [
@@ -287,7 +326,7 @@ export const FINANCE_DESKTOP_TABLES = {
         "indexes": [
           1
         ],
-        "width": 32
+        "width": 30
       },
       {
         "label": "退款日期",
@@ -305,11 +344,20 @@ export const FINANCE_DESKTOP_TABLES = {
         "align": "right"
       },
       {
+        "label": "手续费退回",
+        "indexes": [
+          3
+        ],
+        "width": 18,
+        "align": "right",
+        "priority": 2
+      },
+      {
         "label": "状态",
         "indexes": [
           6
         ],
-        "width": 18
+        "width": 14
       }
     ],
     "detailGroups": [
@@ -346,11 +394,20 @@ export const FINANCE_DESKTOP_TABLES = {
     "label": "投流月结",
     "columns": [
       {
-        "label": "月份 / 客户",
+        "label": "客户",
         "indexes": [
           0
         ],
-        "width": 26
+        "width": 26,
+        "summaryMode": "last"
+      },
+      {
+        "label": "月份",
+        "indexes": [
+          0
+        ],
+        "width": 12,
+        "summaryMode": "first"
       },
       {
         "label": "净充值",
@@ -365,31 +422,33 @@ export const FINANCE_DESKTOP_TABLES = {
         "indexes": [
           3
         ],
-        "width": 14,
-        "align": "right"
+        "width": 12,
+        "align": "right",
+        "priority": 2
       },
       {
         "label": "确认差价",
         "indexes": [
           5
         ],
+        "width": 12,
+        "align": "right",
+        "priority": 3
+      },
+      {
+        "label": "结余",
+        "indexes": [
+          6
+        ],
         "width": 14,
         "align": "right"
       },
       {
-        "label": "结余 / 状态",
+        "label": "状态",
         "indexes": [
-          6,
           7
         ],
-        "width": 18
-      },
-      {
-        "label": "操作",
-        "indexes": [
-          8
-        ],
-        "width": 14
+        "width": 10
       }
     ],
     "detailGroups": [
@@ -435,36 +494,38 @@ export const FINANCE_DESKTOP_TABLES = {
         "indexes": [
           0
         ],
-        "width": 28
+        "width": 30
       },
       {
         "label": "费用类型",
         "indexes": [
           1
         ],
-        "width": 20
+        "width": 24,
+        "priority": 2
       },
       {
-        "label": "金额 / 币种",
+        "label": "金额",
         "indexes": [
-          2,
+          2
+        ],
+        "width": 18,
+        "align": "right"
+      },
+      {
+        "label": "币种",
+        "indexes": [
           3
         ],
-        "width": 20
+        "width": 10,
+        "priority": 3
       },
       {
         "label": "月份",
         "indexes": [
           4
         ],
-        "width": 16
-      },
-      {
-        "label": "操作",
-        "indexes": [
-          6
-        ],
-        "width": 16
+        "width": 18
       }
     ],
     "detailGroups": [
@@ -506,30 +567,38 @@ export const FINANCE_DESKTOP_TABLES = {
         "indexes": [
           0
         ],
-        "width": 28
+        "width": 34
       },
       {
-        "label": "金额 / 币种",
+        "label": "金额",
         "indexes": [
-          1,
+          1
+        ],
+        "width": 20,
+        "align": "right"
+      },
+      {
+        "label": "币种",
+        "indexes": [
           2
         ],
-        "width": 22
+        "width": 10,
+        "priority": 3
       },
       {
-        "label": "月份 / 日期",
+        "label": "月份",
         "indexes": [
-          3,
+          3
+        ],
+        "width": 16,
+        "priority": 2
+      },
+      {
+        "label": "支出日期",
+        "indexes": [
           4
         ],
-        "width": 24
-      },
-      {
-        "label": "操作",
-        "indexes": [
-          6
-        ],
-        "width": 16
+        "width": 20
       }
     ],
     "detailGroups": [
@@ -567,19 +636,18 @@ export const FINANCE_DESKTOP_TABLES = {
     "label": "按月明细",
     "columns": [
       {
-        "label": "月份 / 关账",
+        "label": "月份",
         "indexes": [
-          0,
-          1
+          0
         ],
-        "width": 27
+        "width": 24
       },
       {
         "label": "净收款",
         "indexes": [
           4
         ],
-        "width": 17,
+        "width": 19,
         "align": "right"
       },
       {
@@ -587,15 +655,16 @@ export const FINANCE_DESKTOP_TABLES = {
         "indexes": [
           5
         ],
-        "width": 17,
-        "align": "right"
+        "width": 19,
+        "align": "right",
+        "priority": 2
       },
       {
         "label": "总成本",
         "indexes": [
           18
         ],
-        "width": 17,
+        "width": 19,
         "align": "right"
       },
       {
@@ -603,7 +672,7 @@ export const FINANCE_DESKTOP_TABLES = {
         "indexes": [
           19
         ],
-        "width": 20,
+        "width": 19,
         "align": "right"
       }
     ],

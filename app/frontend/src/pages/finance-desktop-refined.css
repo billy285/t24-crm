@@ -1,22 +1,128 @@
-/* Presentation only: the private shell and mobile financial records are independent. */
+/* Compact desktop ledger chrome. Private pages, mobile records and dialogs keep their own styles. */
 @media (min-width: 1024px) {
-  .t24-system.app-shell .crm-desktop-main .calm-finance-page.space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: 12px; }
-  .t24-system.app-shell .crm-desktop-main .calm-finance-page .finance-desktop-heading { margin-bottom: 12px; padding-bottom: 0 !important; gap: 16px; }
-  .t24-system.app-shell .crm-desktop-main .finance-desktop-heading > div:first-child > div:last-child > p:first-child { display: none; }
-  .t24-system.app-shell .crm-desktop-main .finance-desktop-heading h2 { margin-top: 0; }
-  .t24-system.app-shell .crm-desktop-main .finance-desktop-policy { margin-top: 4px; font-size: 12px; }
-  .t24-system.app-shell .crm-desktop-main .finance-desktop-policy summary { width: fit-content; cursor: pointer; color: #8390a3; }
-  .t24-system.app-shell .crm-desktop-main .finance-desktop-policy p { margin-top: 6px; max-width: 560px; }
-  .t24-system.app-shell .crm-desktop-main .finance-desktop-period > div { padding: 10px 14px; }
-  .t24-system.app-shell .crm-desktop-main .finance-desktop-period [role="status"] { margin-top: 6px; font-size: 12px; }
-  .t24-system.app-shell .crm-desktop-main .t24-finance-snapshot > div:first-child { align-items: center; }
-  .t24-system.app-shell .crm-desktop-main .t24-finance-snapshot > div:first-child > div:first-child > p { display: none; }
-  .t24-system.app-shell .crm-desktop-main .finance-tab-navigation { padding: 4px 6px; box-shadow: none; }
+  .t24-system.app-shell .crm-desktop-main .calm-finance-page.space-y-5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 8px;
+  }
+
+  .t24-system.app-shell .crm-desktop-main .calm-finance-page .finance-desktop-heading {
+    flex-wrap: wrap;
+    align-items: center;
+    min-height: 32px;
+    margin-bottom: 0;
+    padding-bottom: 0 !important;
+    gap: 8px 16px;
+  }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-title-group { gap: 12px; }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-heading h2 {
+    margin: 0;
+    font-size: 24px;
+    line-height: 32px;
+    font-weight: 600;
+  }
+
+  /* Native disclosures keep the explanatory text available without pushing the ledger down. */
+  .t24-system.app-shell .crm-desktop-main :is(.finance-desktop-policy, .finance-desktop-explainer) {
+    position: relative;
+    flex-shrink: 0;
+    margin: 0;
+    font-size: 12px;
+    line-height: 18px;
+  }
+  .t24-system.app-shell .crm-desktop-main :is(.finance-desktop-policy, .finance-desktop-explainer) > summary {
+    width: fit-content;
+    padding: 4px 0;
+    color: #64748b;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .t24-system.app-shell .crm-desktop-main :is(.finance-desktop-policy, .finance-desktop-explainer) > summary:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-explainer-content {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 290px;
+    max-width: calc(100vw - 64px);
+    padding: 10px 12px;
+    border: 1px solid #dfe5ee;
+    border-radius: 6px;
+    background: #fff;
+    box-shadow: 0 6px 18px #0f172a12;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 18px;
+  }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-explainer-content p { margin: 0; font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-explainer-content p + p { margin-top: 6px; }
+
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-period {
+    border-radius: 6px;
+    border-color: #e2e8f0;
+    box-shadow: none;
+  }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-period > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 16px;
+    padding: 6px 10px;
+  }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-period > div > div:first-child { flex-wrap: wrap; gap: 6px 10px; }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-period > div > div:first-child > div:last-child { gap: 6px; }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-period-status { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-period [role="status"] { margin: 0; font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-period-status .finance-desktop-explainer-content { left: auto; right: 0; }
+
+  .t24-system.app-shell .crm-desktop-main .t24-finance-snapshot > div:first-child { align-items: center; gap: 4px 12px; }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-snapshot-title { display: flex; align-items: center; gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-snapshot-title h3 { font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .t24-finance-snapshot > div:first-child > div:last-child { gap: 6px; }
+  .t24-system.app-shell .crm-desktop-main .t24-finance-snapshot > div:first-child > div:last-child > span { border-radius: 4px; padding: 3px 7px; }
+  .t24-system.app-shell .crm-desktop-main #finance-snapshot-cards { gap: 8px; margin-top: 8px; }
+  .t24-system.app-shell .crm-desktop-main #finance-snapshot-cards > div { border-radius: 6px; box-shadow: none; }
+  .t24-system.app-shell .crm-desktop-main #finance-snapshot-cards > div > div { padding: 10px 12px; }
+
+  .t24-system.app-shell .crm-desktop-main .finance-tab-navigation {
+    padding: 0 0 4px;
+    border-radius: 0;
+    box-shadow: none;
+  }
   .t24-system.app-shell .crm-desktop-main .finance-tab-navigation > div { gap: 8px; }
-  .t24-system.app-shell .crm-desktop-main .fi-ledger-header { padding: 12px 16px; }
-  .t24-system.app-shell .crm-desktop-main .fi-ledger-search-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-width: 0; }
-  .t24-system.app-shell .crm-desktop-main .fi-ledger-search-row > div { flex: 1 1 280px; max-width: 480px; }
-  .t24-system.app-shell .crm-desktop-main .fi-ledger-search-row > p { flex: 0 1 auto; }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-nav-explainer { order: 2; }
+  .t24-system.app-shell .crm-desktop-main .finance-desktop-nav-explainer .finance-desktop-explainer-content { left: auto; right: 0; }
+  .t24-system.app-shell .crm-desktop-main .finance-tab-navigation > div > div:last-child { flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .finance-tab-navigation [role="tablist"] { min-height: 32px; gap: 4px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+  .t24-system.app-shell .crm-desktop-main .finance-tab-navigation [role="tab"] { min-height: 32px; padding: 5px 8px; font-size: 13px; line-height: 20px; border-radius: 4px; }
+  .t24-system.app-shell .crm-desktop-main .finance-tab-navigation select { height: 32px; min-height: 32px; min-width: 150px; padding-inline: 8px; border-radius: 6px; font-size: 13px; }
+  .t24-system.app-shell .crm-desktop-main .calm-finance-page [role="tabpanel"] { margin-top: 8px; }
+
+  .t24-system.app-shell .crm-desktop-main .calm-finance-page [role="tabpanel"] > div:has(> .fi-ledger-header) { border-radius: 8px; box-shadow: none; }
+  .t24-system.app-shell .crm-desktop-main .fi-ledger-header { padding: 8px 10px; }
+  .t24-system.app-shell .crm-desktop-main .fi-ledger-header > :not([hidden]) ~ :not([hidden]) { margin-top: 0; }
+  .t24-system.app-shell .crm-desktop-main .fi-ledger-search-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+  .t24-system.app-shell .crm-desktop-main .fi-ledger-search-row > div { flex: 1 1 240px; max-width: 420px; }
+  .t24-system.app-shell .crm-desktop-main .fi-ledger-search-row > p { flex: 0 1 auto; font-size: 12px; line-height: 18px; }
   .t24-system.app-shell .crm-desktop-main .fi-ledger-search-row > button { margin-left: auto; flex-shrink: 0; }
+  .t24-system.app-shell .crm-desktop-main .fi-ledger-search-row > div > svg { top: 9px; }
+  .t24-system.app-shell .crm-desktop-main .fi-ledger-search-row > div > button { top: 3px; right: 3px; height: 28px; min-height: 28px; min-width: 28px; width: 28px; padding: 0; }
+  .t24-system.app-shell .crm-desktop-main :is(.finance-desktop-heading, .finance-desktop-period, .t24-finance-snapshot > div:first-child, .fi-ledger-search-row) .t24-button:not(.t24-button-icon) {
+    min-height: 32px;
+    padding-block: 5px;
+    border-radius: 6px;
+    box-shadow: none;
+    font-size: 13px;
+    line-height: 20px;
+  }
+  .t24-system.app-shell .crm-desktop-main :is(.finance-desktop-period, .fi-ledger-search-row) input {
+    height: 34px;
+    min-height: 34px;
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 20px;
+  }
   .t24-system.app-shell .crm-desktop-main .fi-income-scroll:has(.compact-finance-table) { max-height: none; overflow: visible; }
 }

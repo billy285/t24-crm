@@ -3838,10 +3838,10 @@ export default function Finance() {
             )}
           </div>
         </div>
-        <p className="mt-2 text-xs text-slate-500" role="status">
-          {activeDateRange ? `当前账目：${activeDateRange.start || '不限开始日期'} 至 ${activeDateRange.end || '不限结束日期'}` : '当前账目：全部时间'}
-          {activeFinanceTab === 'subscriptions' ? ' · 下方续费按当前状态分组，不受账目时间限制' : ' · 查看客户后返回，保留当前筛选与页码'}
-        </p>
+        <div className="finance-desktop-period-status text-xs text-slate-500">
+          <p role="status">{activeDateRange ? `当前账目：${activeDateRange.start || '不限开始日期'} 至 ${activeDateRange.end || '不限结束日期'}` : '当前账目：全部时间'}</p>
+          <details className="finance-desktop-explainer"><summary>筛选说明</summary><div className="finance-desktop-explainer-content"><p>{activeFinanceTab === 'subscriptions' ? '下方续费按当前状态分组，不受账目时间限制' : '查看客户后返回，保留当前筛选与页码'}</p></div></details>
+        </div>
       </CardContent>
     </Card>
   );
@@ -4428,14 +4428,16 @@ export default function Finance() {
       {isMobile ? mobileFinanceContent : <>
       {/* Header */}
       <div className="finance-desktop-heading app-page-title flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="flex min-w-0 items-start gap-3">
-          {activeFinanceTab !== 'overview' && <div className="mt-1 hidden h-12 w-1 shrink-0 rounded-full bg-gradient-to-b from-blue-600 to-cyan-400 sm:block" />}
-          <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">T24 Marketing · Finance</p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">{getFinanceNavigationItem(activeFinanceTab).label}</h2>
-            <p className="mt-1 text-sm text-slate-500">{activeFinanceTab === 'overview' ? '经营结果一目了然，重要事项及时处理。' : getFinanceNavigationItem(activeFinanceTab).description}</p>
-            {activeFinanceTab !== 'overview' && <details className="finance-desktop-policy mt-2 text-[11px] text-slate-500"><summary>统计口径</summary><p>老板视角 · 收款与退款按实际资金日期归属月份</p></details>}
-          </div>
+        <div className="finance-desktop-title-group flex min-w-0 items-center gap-3">
+          <h2 className="text-2xl font-bold text-slate-900">{getFinanceNavigationItem(activeFinanceTab).label}</h2>
+          <details className="finance-desktop-policy text-xs text-slate-500">
+            <summary>说明与口径</summary>
+            <div className="finance-desktop-explainer-content">
+              <p className="text-xs font-medium text-slate-500">T24 Marketing · Finance</p>
+              <p>{activeFinanceTab === 'overview' ? '经营结果一目了然，重要事项及时处理。' : getFinanceNavigationItem(activeFinanceTab).description}</p>
+              {activeFinanceTab !== 'overview' && <p>老板视角 · 收款与退款按实际资金日期归属月份</p>}
+            </div>
+          </details>
         </div>
         {!isMobile && <div className="ml-auto flex flex-wrap gap-2">
           <Button size="sm" variant="outline" className="whitespace-nowrap shadow-sm" onClick={() => doExport('csv')} disabled={exporting}>导出 CSV</Button>
@@ -4465,9 +4467,9 @@ export default function Finance() {
       {/* Compact snapshot remains available in the detailed ledgers. */}
       {activeFinanceTab !== 'overview' && <section aria-labelledby="finance-snapshot-title" className="t24-finance-snapshot space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
+          <div className="finance-desktop-snapshot-title">
             <h3 id="finance-snapshot-title" className="text-sm font-semibold text-slate-900">经营快照</h3>
-            <p className="mt-0.5 text-xs text-slate-500">先判断利润与现金风险，再进入明细处理。</p>
+            <details className="finance-desktop-explainer text-xs text-slate-500"><summary>说明</summary><div className="finance-desktop-explainer-content"><p>先判断利润与现金风险，再进入明细处理。</p></div></details>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <Button variant="ghost" size="sm" aria-expanded={snapshotExpanded} aria-controls="finance-snapshot-cards" onClick={() => setSnapshotExpanded(value => !value)}>{snapshotExpanded ? '收起经营快照' : '展开经营快照'}<ChevronDown className={`ml-1 h-4 w-4 ${snapshotExpanded ? 'rotate-180' : ''}`} /></Button>
@@ -4560,10 +4562,7 @@ export default function Finance() {
       <Tabs value={activeFinanceTab} onValueChange={handleFinanceTabChange} className="w-full">
         <div className="finance-tab-navigation hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm md:block">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <p className="px-1 text-xs font-semibold text-slate-700">常用财务流程</p>
-              <p className="px-1 text-[11px] text-slate-400">先看总览，再处理收款、续费和月结；低频账本统一收进“更多财务明细”。</p>
-            </div>
+            <details className="finance-desktop-explainer finance-desktop-nav-explainer text-xs text-slate-500"><summary>流程说明</summary><div className="finance-desktop-explainer-content"><p className="font-semibold">常用财务流程</p><p>先看总览，再处理收款、续费和月结；低频账本统一收进“更多财务明细”。</p></div></details>
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
               <TabsList className="h-auto min-w-0 flex-nowrap justify-start gap-1 overflow-x-auto bg-slate-100 p-1">
                 <TabsTrigger value="overview" className="shrink-0 text-xs sm:text-sm"><Wallet className="mr-1 hidden h-3.5 w-3.5 sm:inline" />老板总览</TabsTrigger>

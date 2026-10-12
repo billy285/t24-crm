@@ -1,5 +1,8 @@
-import { Children, Fragment, isValidElement, useId, useState, useSyncExternalStore, type CSSProperties, type ReactElement, type ReactNode } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactElement, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { ChevronRight, X } from 'lucide-react';
+import { Sheet, SheetClose, SheetDescription, SheetOverlay, SheetPortal, SheetTitle } from '@/components/ui/sheet';
 import './compact-finance-table.css';
 
 export interface CompactFinanceColumn {
@@ -9,6 +12,10 @@ export interface CompactFinanceColumn {
   /** Relative width, normalized across all summary columns. */
   width?: number;
   align?: 'left' | 'right';
+  /** Select one existing text/paragraph/button branch; never format or recalculate its value. */
+  summaryMode?: 'first' | 'last';
+  /** Lower-priority columns move to the drawer as the desktop ledger narrows. */
+  priority?: 1 | 2 | 3;
 }
 
 export interface CompactFinanceDetailGroup {
@@ -26,7 +33,7 @@ interface CompactFinanceTableProps {
   legacyClassName?: string;
   label?: string;
   detailGroups?: readonly CompactFinanceDetailGroup[];
-  /** These complete, untruncated fields stay in the summary; their buttons appear once. */
+  /** Complete action fields appear once, in the drawer, including mixed status/action cells. */
   actionIndexes?: readonly number[];
 }
 
@@ -36,6 +43,7 @@ interface TableElementProps {
   style?: CSSProperties;
   colSpan?: number;
   rowSpan?: number;
+  onClick?: (event: MouseEvent<HTMLElement>) => void;
 }
 
 export interface CompactFinanceCell {
@@ -130,8 +138,20 @@ function subscribeDesktop(onChange: () => void) {
 const desktopSnapshot = () => typeof window !== 'undefined' && window.matchMedia(desktopQuery).matches;
 const serverSnapshot = () => false;
 
-function Value({ cell }: { cell?: CompactFinanceCell }) {
-  return <div className={`cft-value ${cell?.className || ''}`} style={cell?.style}>{cell?.node ?? '—'}</div>;
+/** Keep the selected original branch, including its props and click handler. */
+export function selectCompactFinanceSummary(node: ReactNode, mode?: CompactFinanceColumn['summaryMode']): ReactNode {
+  if (!mode) return node;
+  const parts = Children.toArray(node).filter(child => typeof child !== 'string' || child.trim());
+  // Adjacent strings/numbers belong to the same value (for example, a number and its unit).
+  if (!parts.some(child => isValidElement(child))) return node;
+  const selected = mode === 'last' ? parts[parts.length - 1] : parts[0];
+  if (!isValidElement<TableElementProps>(selected) || selected.props.children === undefined) return selected;
+  if (selected.type === 'p' || selected.type === 'button' || selected.type === 'a' || selected.props.onClick) return selected;
+  return cloneElement(selected, {}, selectCompactFinanceSummary(selected.props.children, mode));
+}
+
+function Value({ cell, children }: { cell?: CompactFinanceCell; children?: ReactNode }) {
+  return <div className={`cft-value ${cell?.className || ''}`} style={cell?.style}>{children !== undefined ? children : cell?.node ?? '—'}</div>;
 }
 
 function detailSections(headers: string[], groups: readonly CompactFinanceDetailGroup[] | undefined, actions: Set<number>) {
@@ -146,77 +166,223 @@ function detailSections(headers: string[], groups: readonly CompactFinanceDetail
   })).filter(group => group.indexes.length);
   const remaining = headers.map((_, index) => index).filter(index => !used.has(index) && !actions.has(index));
   if (remaining.length) sections.push({ label: sections.length ? '其他明细' : '完整明细', indexes: remaining });
+  const actionFields = [...actions].filter(index => index >= 0 && index < headers.length);
+  if (actionFields.length) sections.push({ label: '操作', indexes: actionFields });
   return sections;
 }
 
-function ExpandedFields({ headers, row, groups, actions }: { headers: string[]; row: CompactFinanceRow; groups?: readonly CompactFinanceDetailGroup[]; actions: Set<number> }) {
+/** End the modal before an original handler opens its own dialog or changes the record. */
+function withActionHandoff(node: ReactNode, beforeAction: () => void): ReactNode {
+  return Children.map(node, child => {
+    if (!isValidElement<TableElementProps>(child)) return child;
+    const props: Partial<TableElementProps> = {};
+    if (child.props.children !== undefined) props.children = withActionHandoff(child.props.children, beforeAction);
+    if (child.props.onClick || child.type === 'a') {
+      props.onClick = event => {
+        beforeAction();
+        child.props.onClick?.(event);
+      };
+    }
+    return cloneElement(child, props);
+  });
+}
+
+/** Follow only the dialog opened by this action, then return to its persistent ledger trigger. */
+function startActionFocusHandoff(trigger: HTMLButtonElement | null): () => void {
+  const selector = '[role="dialog"], [role="alertdialog"]';
+  const existingDialogs = new Set(document.querySelectorAll(selector));
+  let actionDialog: HTMLElement | null = null;
+  let focusTimer: ReturnType<typeof setTimeout> | undefined;
+  let expiryTimer: ReturnType<typeof setTimeout>;
+  let stopped = false;
+  const restore = () => {
+    const active = document.activeElement;
+    if (trigger?.isConnected && (!active || active === document.body || !active.isConnected || actionDialog?.contains(active))) trigger.focus({ preventScroll: true });
+  };
+  const stop = () => {
+    stopped = true;
+    observer.disconnect();
+    clearTimeout(focusTimer);
+    clearTimeout(expiryTimer);
+  };
+  const focusField = () => {
+    if (stopped || !actionDialog?.isConnected) return;
+    const active = document.activeElement;
+    // The original dialog may already have focused a field, or the user may have clicked one.
+    if (active && active !== document.body && active !== document.documentElement && active !== trigger && active.isConnected) return;
+    const available = (element: HTMLElement) => element.getClientRects().length > 0 && element.getAttribute('aria-disabled') !== 'true' && !element.closest('[inert], [aria-hidden="true"]');
+    const fields = Array.from(actionDialog.querySelectorAll<HTMLElement>('input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])'));
+    const controls = Array.from(actionDialog.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex="0"]'));
+    (fields.find(available) || controls.find(available) || actionDialog).focus({ preventScroll: true });
+  };
+  const inspect = () => {
+    if (stopped) return;
+    if (!actionDialog) {
+      actionDialog = Array.from(document.querySelectorAll<HTMLElement>(selector)).find(dialog => !existingDialogs.has(dialog) && !dialog.classList.contains('cft-drawer')) || null;
+      if (actionDialog) {
+        clearTimeout(expiryTimer);
+        // A bounded listener is also cleared on a new record, route change or unmount.
+        expiryTimer = setTimeout(stop, 5 * 60 * 1000);
+        focusTimer = setTimeout(focusField, 0);
+      }
+    } else if (!actionDialog.isConnected) {
+      const nextDialog = Array.from(document.querySelectorAll<HTMLElement>(selector)).find(dialog => !existingDialogs.has(dialog) && !dialog.classList.contains('cft-drawer'));
+      if (nextDialog) {
+        actionDialog = nextDialog;
+        focusTimer = setTimeout(focusField, 0);
+      } else {
+        restore();
+        stop();
+      }
+    }
+  };
+  const observer = new MutationObserver(inspect);
+  observer.observe(document.body, { childList: true, subtree: true });
+  expiryTimer = setTimeout(() => { if (!actionDialog) restore(); stop(); }, 1000);
+  focusTimer = setTimeout(inspect, 0);
+  return stop;
+}
+
+function ExpandedFields({ headers, row, groups, actions, beforeAction }: {
+  headers: string[]; row: CompactFinanceRow; groups?: readonly CompactFinanceDetailGroup[];
+  actions: Set<number>; beforeAction?: () => void;
+}) {
   return <div className="cft-detail-groups">
     {detailSections(headers, groups, actions).map((group, groupIndex) => <section className="cft-detail-group" key={`${group.label}-${groupIndex}`}>
       <h4>{group.label}</h4>
-      <dl>{group.indexes.map(index => <div className="cft-field" key={index}>
-        <dt>{headers[index]}</dt><dd><Value cell={row.cells[index]} /></dd>
+      <dl>{group.indexes.map(index => <div className={`cft-field${actions.has(index) ? ' cft-action-field' : ''}`} key={index}>
+        <dt>{headers[index]}</dt><dd><Value cell={row.cells[index]}>{beforeAction ? withActionHandoff(row.cells[index]?.node, beforeAction) : row.cells[index]?.node}</Value></dd>
       </div>)}</dl>
     </section>)}
   </div>;
 }
 
-function CompactRow({ row, headers, columns, detailGroups, actions, tableId }: {
-  row: CompactFinanceRow; headers: string[]; columns: readonly CompactFinanceColumn[];
-  detailGroups?: readonly CompactFinanceDetailGroup[]; actions: Set<number>; tableId: string;
+interface LedgerSelection { tableId: string; rowKey: string }
+// A page may contain several ledgers. Only one of their records owns the drawer.
+let ledgerSelection: LedgerSelection | null = null;
+const selectionListeners = new Set<() => void>();
+function selectLedgerRecord(selection: LedgerSelection | null) {
+  ledgerSelection = selection;
+  selectionListeners.forEach(listener => listener());
+}
+function subscribeSelection(listener: () => void) {
+  selectionListeners.add(listener);
+  return () => { selectionListeners.delete(listener); };
+}
+const selectionSnapshot = () => ledgerSelection;
+const serverSelectionSnapshot = () => null;
+function rowKey(row: CompactFinanceRow) {
+  return row.keyed ? row.key : `${row.key}-${row.cells.map(cell => textContent(cell.node)).join('|')}`;
+}
+
+function recordTitle(row: CompactFinanceRow, columns: readonly CompactFinanceColumn[]) {
+  const identityColumn = columns[0];
+  const identityCell = row.cells[identityColumn?.indexes[0] ?? 0];
+  return textContent(selectCompactFinanceSummary(identityCell?.node, identityColumn?.summaryMode || 'first')).trim() || '此记录';
+}
+
+function CompactRow({ row, columns, open, detailId, onOpen }: {
+  row: CompactFinanceRow; columns: readonly CompactFinanceColumn[]; open: boolean;
+  detailId: string; onOpen: (row: CompactFinanceRow, button: HTMLButtonElement) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const localId = useId();
-  const detailId = `${tableId}-${localId}-details`;
-  const recordLabel = textContent(row.cells[0]?.node).trim() || '此记录';
+  const recordLabel = recordTitle(row, columns);
   if (row.fullWidth) return <tr className="cft-message-row"><td colSpan={columns.length + 1}>
     {row.cells.map((cell, index) => <Value cell={cell} key={index} />)}
   </td></tr>;
-  return <>
-    <tr className={`cft-summary-row${open ? ' is-open' : ''}`}>
-      {columns.map((column, columnIndex) => <td key={columnIndex} data-label={column.label} className={column.align === 'right' ? 'cft-number' : undefined}>
-        <div className="cft-summary-values">{column.indexes.map((index, position) => <div key={index} className={position ? 'cft-summary-secondary' : 'cft-summary-primary'}>
-          {column.indexes.length > 1 && <span className="cft-inline-label">{headers[index]}</span>}
-          <Value cell={row.cells[index]} />
-        </div>)}</div>
-      </td>)}
-      <td className="cft-expand-cell" data-label="明细"><button type="button" className="cft-expand" aria-label={`${open ? '收起' : '展开'}${recordLabel}明细`} aria-expanded={open} aria-controls={detailId} onClick={() => setOpen(value => !value)}>
-        {open ? '收起明细' : '展开明细'}<ChevronDown aria-hidden="true" />
-      </button></td>
-    </tr>
-    {open && <tr className="cft-expanded-row"><td colSpan={columns.length + 1}>
-      <div id={detailId} className="cft-detail-panel" role="region" aria-label={`${recordLabel}完整财务明细`}>
-        <ExpandedFields headers={headers} row={row} groups={detailGroups} actions={actions} />
-      </div>
-    </td></tr>}
-  </>;
+  return <tr className={`cft-summary-row${open ? ' is-open' : ''}`}>
+    {columns.map((column, columnIndex) => <td key={columnIndex} className={column.align === 'right' ? 'cft-number' : 'cft-text'}>
+      <div className="cft-summary-values">{column.indexes.map(index => <Value key={index} cell={row.cells[index]}>
+        {selectCompactFinanceSummary(row.cells[index]?.node, column.summaryMode)}
+      </Value>)}</div>
+    </td>)}
+    <td className="cft-expand-cell"><button type="button" className="cft-expand" aria-label={`查看${recordLabel}明细`} aria-expanded={open} aria-haspopup="dialog" aria-controls={open ? detailId : undefined} onClick={event => onOpen(row, event.currentTarget)}>
+      <ChevronRight aria-hidden="true" />
+    </button></td>
+  </tr>;
 }
 
 /** A presentation adapter over the existing table. No monetary or business logic belongs here. */
 export default function CompactFinanceTable({ children, columns, expectedHeaders, className = '', legacyClassName = 'w-full text-sm', label = '财务记录', detailGroups, actionIndexes }: CompactFinanceTableProps) {
   const isDesktop = useSyncExternalStore(subscribeDesktop, desktopSnapshot, serverSnapshot);
+  const selection = useSyncExternalStore(subscribeSelection, selectionSnapshot, serverSelectionSnapshot);
   const tableId = useId();
+  const detailId = `${tableId}-details`;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const actionHandoff = useRef(false);
+  const stopActionFocusHandoff = useRef<(() => void) | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   const table = extractCompactFinanceTable(children);
   const actions = new Set(actionIndexes || table.headers.flatMap((header, index) => header === '操作' ? [index] : []));
-  const configuredIndexes = new Set(columns.flatMap(column => [...column.indexes]));
-  // Every original action remains reachable even if a caller omits its summary column.
-  const missingActions = [...actions].filter(index => !configuredIndexes.has(index));
-  const visibleColumns = missingActions.length ? [...columns, { label: '操作', indexes: missingActions, width: 14 } as CompactFinanceColumn] : columns;
-  const validColumns = visibleColumns.length > 0 && visibleColumns.every(column => column.indexes.length && column.indexes.every(index => Number.isInteger(index) && index >= 0 && index < table.headers.length));
+  const validColumns = columns.length > 0 && columns.every(column => column.indexes.length && column.indexes.every(index => Number.isInteger(index) && index >= 0 && index < table.headers.length));
   const headersMatch = !expectedHeaders || (expectedHeaders.length === table.headers.length && expectedHeaders.every((header, index) => header === table.headers[index]));
+  const compact = isDesktop && table.supported && validColumns && headersMatch;
+  const selectedRow = selection?.tableId === tableId ? table.rows.find(row => !row.fullWidth && rowKey(row) === selection.rowKey) : undefined;
+
+  useEffect(() => {
+    if (!compact || !containerRef.current) return;
+    const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width));
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [compact]);
+  useEffect(() => {
+    if (!compact || (selection && selection.tableId !== tableId) || (triggerRef.current && !triggerRef.current.isConnected)) stopActionFocusHandoff.current?.();
+    if (selection?.tableId === tableId && (!compact || !selectedRow)) selectLedgerRecord(null);
+  }, [compact, selectedRow, selection, tableId]);
+  useEffect(() => () => {
+    stopActionFocusHandoff.current?.();
+    if (ledgerSelection?.tableId === tableId) selectLedgerRecord(null);
+  }, [tableId]);
+
+  if (!compact) return <table className={legacyClassName}>{children}</table>;
+  const priorityLimit = containerWidth > 0 && containerWidth < 660 ? 1 : containerWidth > 0 && containerWidth < 900 ? 2 : 3;
+  const summaryColumns = columns.map(column => ({ ...column, indexes: column.indexes.filter(index => !actions.has(index)) })).filter(column => column.indexes.length);
+  const visibleColumns = summaryColumns.filter(column => (column.priority || 1) <= priorityLimit);
+  const totalWidth = visibleColumns.reduce((total, column) => total + Math.max(column.width || 16, 1), 0);
   const caption = elements(children).find(section => section.type === 'caption');
-  if (!isDesktop || !table.supported || !validColumns || !headersMatch) return <table className={legacyClassName}>{children}</table>;
-  const totalWidth = visibleColumns.reduce((total, column) => total + Math.max(column.width || 16, 1), 0) + 12;
-  return <div className={`compact-finance-table ${className}`}>
-    <table className="cft-table" aria-label={label}>
-      {caption}
-      <colgroup>{visibleColumns.map((column, index) => <col key={index} style={{ width: `${Math.max(column.width || 16, 1) / totalWidth * 100}%` }} />)}
-        <col style={{ width: `${12 / totalWidth * 100}%` }} />
-      </colgroup>
-      <thead><tr>{visibleColumns.map((column, index) => <th key={index} scope="col" className={column.align === 'right' ? 'cft-number' : undefined}>{column.label}</th>)}<th scope="col" className="cft-expand-heading">明细</th></tr></thead>
-      <tbody>{table.rows.map(row => <CompactRow key={row.keyed ? row.key : `${row.key}-${row.cells.map(cell => textContent(cell.node)).join('|')}`} row={row} headers={table.headers} columns={visibleColumns} detailGroups={detailGroups} actions={actions} tableId={tableId} />)}</tbody>
-      {table.footerRows.length > 0 && <tfoot>{table.footerRows.map(row => <tr key={row.key} className="cft-footer-row"><td colSpan={visibleColumns.length + 1}>
-        {row.fullWidth ? row.cells.map((cell, index) => <Value cell={cell} key={index} />) : <ExpandedFields headers={table.headers} row={row} groups={detailGroups} actions={new Set()} />}
-      </td></tr>)}</tfoot>}
-    </table>
+  const recordLabel = selectedRow ? recordTitle(selectedRow, summaryColumns) : '';
+  const closeDrawer = () => {
+    if (!actionHandoff.current) stopActionFocusHandoff.current?.();
+    if (ledgerSelection?.tableId === tableId) selectLedgerRecord(null);
+  };
+  const beforeAction = () => {
+    actionHandoff.current = true;
+    // Unmount the old focus trap and overlay before the original action executes.
+    stopActionFocusHandoff.current?.();
+    flushSync(closeDrawer);
+    stopActionFocusHandoff.current = startActionFocusHandoff(triggerRef.current);
+  };
+  return <div ref={containerRef} className={`compact-finance-table ${className}`}>
+    <div className="cft-scroll">
+      <table className="cft-table" aria-label={label}>
+        {caption}
+        <colgroup>{visibleColumns.map((column, index) => <col key={index} style={{ width: `${Math.max(column.width || 16, 1) / totalWidth * 94}%` }} />)}<col className="cft-detail-column" /></colgroup>
+        <thead><tr>{visibleColumns.map((column, index) => <th key={index} scope="col" className={column.align === 'right' ? 'cft-number' : undefined}>{column.label}</th>)}<th scope="col" className="cft-expand-heading">明细</th></tr></thead>
+        <tbody>{table.rows.map(row => <CompactRow key={rowKey(row)} row={row} columns={visibleColumns} open={selectedRow === row} detailId={detailId} onOpen={(record, button) => {
+          stopActionFocusHandoff.current?.();
+          triggerRef.current = button;
+          actionHandoff.current = false;
+          selectLedgerRecord({ tableId, rowKey: rowKey(record) });
+        }} />)}</tbody>
+        {table.footerRows.length > 0 && <tfoot>{table.footerRows.map(row => <tr key={row.key} className="cft-footer-row"><td colSpan={visibleColumns.length + 1}>
+          {row.fullWidth ? row.cells.map((cell, index) => <Value cell={cell} key={index} />) : <ExpandedFields headers={table.headers} row={row} groups={detailGroups} actions={new Set()} />}
+        </td></tr>)}</tfoot>}
+      </table>
+    </div>
+    <Sheet open={Boolean(selectedRow)} onOpenChange={open => { if (!open) closeDrawer(); }}>
+      {selectedRow && <SheetPortal>
+        <SheetOverlay className="cft-drawer-overlay" />
+        <DialogPrimitive.Content id={detailId} className="t24-ui-surface cft-drawer" onCloseAutoFocus={event => {
+          event.preventDefault();
+          if (!actionHandoff.current && !ledgerSelection) triggerRef.current?.focus();
+        }}>
+          <header className="cft-drawer-header">
+            <div><SheetTitle>{recordLabel}</SheetTitle><SheetDescription>{label} · 完整明细</SheetDescription></div>
+            <SheetClose asChild><button type="button" className="cft-drawer-close" aria-label="关闭明细"><X aria-hidden="true" /></button></SheetClose>
+          </header>
+          <div className="cft-drawer-body"><ExpandedFields headers={table.headers} row={selectedRow} groups={detailGroups} actions={actions} beforeAction={beforeAction} /></div>
+        </DialogPrimitive.Content>
+      </SheetPortal>}
+    </Sheet>
   </div>;
 }
