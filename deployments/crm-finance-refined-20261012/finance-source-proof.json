@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "stage": "CRM_FINANCE_REFINED_PRESENTATION_SOURCE_PROOF",
+  "baseline_source_sha": "0bc1dd5bba38ecd518dc3546bcacb02f91881807",
+  "source_sha": "b029ef6be2dfeb5ce3ea2a523378ab76ba92c0ad",
+  "finance_file_before_sha256": "d6d2b3f1d5ee71ac389d7b4579e441da6542930a7c46af9505fd1830193dcdc1",
+  "finance_file_after_sha256": "e6bcebcb6adb26fcd64995244916f503b2b5d16b3133065c92fbe340ac0c6d2b",
+  "financial_calculations_unchanged": true,
+  "event_handlers_unchanged": true,
+  "table_cells_unchanged": true,
+  "calculation_prefix_sha256": "a6a64c9ec4fcda346ca89de8758a470a3d3e6eebc99bf9e14a557b55c5627157",
+  "event_handler_count": 241,
+  "ledger_body_sha256": {
+    "customer_profit": "48c2e908f9c279223aaa28da635ffe0cba1472ad8695151eed2f6a233fa0cddf",
+    "receivables": "1ed9cfbeb50703dc5d3f09453287fc8086aac218bf37375e8f73a39d37a9eeed",
+    "income": "d67144eb206fc98d3630d7831248ab22d28b4ad3c1bf96f41b9b1d51f6d2512a",
+    "refunds": "4c2ef74e6ad769d33e22c4fcea005cea3255767806e4538e02ec49540b6aacdc",
+    "ad_funds": "6bd29fb88f98c29ea29402ead569b75d5badbe2b847350a21f6eee607c916b54",
+    "customer_expense": "fdc8fba879a176dda8ecebb7f7030037f78e0547e3efbe9c7a0c19cd083a3684",
+    "company_expense": "2a7ea8656477899a11b5cc05c79d7cf324df2c65516dcb82d8c430148e96d60b",
+    "monthly_detail": "74c06a19e939cd96affb3b6597daa96a66cb663758e85e04d9619264342107b1"
+  },
+  "dialogs_unchanged": true,
+  "mobile_render_unchanged": true
+}
