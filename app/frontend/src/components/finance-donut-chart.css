@@ -2,6 +2,7 @@
 .finance-donut-visual { position: relative; width: 100%; height: 236px; }
 .finance-donut-slice { cursor: pointer; transition: opacity 160ms ease; }
 .finance-donut-slice:hover { filter: brightness(1.04); }
+.finance-donut-slice:focus { outline: none; }
 .finance-donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; pointer-events: none; color: #94a3b8; font-size: 12px; }
 .finance-donut-center strong { color: #172b4d; font-size: 28px; line-height: 36px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .finance-donut-center span { max-width: 110px; text-align: center; }
