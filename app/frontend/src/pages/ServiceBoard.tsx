@@ -1,3 +1,5 @@
+import CompactFinanceTable from '@/components/CompactFinanceTable';
+import './crm-customer-delivery-compact.css';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { getSafeInternalPath, getReturnLabel } from '@/lib/navigation-state';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
@@ -3057,7 +3059,16 @@ export default function ServiceBoard() {
       {/* LIST VIEW */}
       {viewMode === 'list' && <section className="dc-progress-list">
         {filtered.length === 0 ? <DeliveryEmpty title="没有匹配的交付记录" description="可以调整客户名称或筛选条件，查看其他服务进展。">{canCreate && <Button variant="outline" onClick={openCreateProgress}><Plus size={15} />新增服务记录</Button>}</DeliveryEmpty> : <>
-          {!isMobile && <div className="hidden md:block dc-table-scroll"><table className="dc-progress-table"><thead><tr><th>客户 / 服务</th><th>阶段与进度</th><th>负责团队</th><th>最近进展</th><th>操作</th></tr></thead><tbody>{paginatedProgresses.items.map(sp => {
+          {!isMobile && <div className="hidden md:block dc-table-scroll"><CompactFinanceTable label="客户交付进展" legacyClassName="dc-progress-table" className="crm-delivery-ledger"
+            expectedHeaders={['客户 / 服务', '阶段与进度', '负责团队', '最近进展', '操作']}
+            columns={[
+              { label: '客户 / 服务', indexes: [0], width: 34, summaryMode: 'first' },
+              { label: '当前阶段', indexes: [1], width: 23, summaryMode: 'first' },
+              { label: '负责团队', indexes: [2], width: 20, priority: 2 },
+              { label: '交付状态', indexes: [3], width: 23, summaryMode: 'first' },
+            ]}
+            detailGroups={[{ label: '客户与服务', indexes: [0, 2] }, { label: '交付进展', indexes: [1, 3] }]}
+            actionIndexes={[4]}><thead><tr><th>客户 / 服务</th><th>阶段与进度</th><th>负责团队</th><th>最近进展</th><th>操作</th></tr></thead><tbody>{paginatedProgresses.items.map(sp => {
             const ts = getTaskStats(sp.id); const nextStage = getNextStage(sp.service_type, sp.service_stage); const issue = hasIssue(sp); const onboarding = getOnboardingProgress(sp, allTasks);
             return <tr key={sp.id}>
               <td><button type="button" className="dc-customer-name" onClick={() => openDetail(sp)}>{sp.customer_name}</button><p>{serviceTypeLabels[sp.service_type] || sp.service_type} · {sp.package_name || '未填写套餐'}</p><small>{[sp.city, sp.state].filter(Boolean).join(', ') || '未填写地区'}</small></td>
@@ -3066,7 +3077,7 @@ export default function ServiceBoard() {
               <td>{issue ? <span className="dc-status dc-status-rose">{issueStatusLabels[sp.issue_status] || '有问题卡点'}</span> : <span className={`dc-status ${sp.service_stage === 'ended' ? 'dc-status-green' : isOverdue(sp) ? 'dc-status-rose' : 'dc-status-blue'}`}>{sp.service_stage === 'ended' ? '服务已结束' : isOverdue(sp) ? '交付已逾期' : isExpiringSoon(sp) ? '即将到期' : '按阶段推进'}</span>}<p className="dc-summary-text" title={issue ? sp.issue_description : sp.last_work_summary}>{issue ? sp.issue_description || '待补充问题说明' : onboarding.nextStep && !onboarding.isComplete ? `下一步：${onboarding.nextStep.label}` : sp.last_work_summary || '暂无工作摘要'}</p><small>更新于 {sp.last_update_time?.slice(0, 10) || '尚未更新'}</small></td>
               <td><div className="dc-row-actions"><Button size="sm" variant="outline" onClick={() => openDetail(sp)}>查看详情</Button>{canEdit && <><Button size="sm" variant="ghost" onClick={() => openQuickUpdate(sp)}>更新摘要</Button><Button size="sm" variant="ghost" aria-label={`编辑服务进度：${sp.customer_name}`} onClick={() => openEditProgress(sp)}><Edit size={14} /></Button>{nextStage && <Button size="sm" variant="ghost" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</>}{canEdit && canDelete && <Button size="sm" variant="ghost" aria-label={`删除服务进度：${sp.customer_name}`} onClick={() => setDeleteTarget({ type: 'progress', item: sp })}><Trash2 size={14} /></Button>}</div></td>
             </tr>;
-          })}</tbody></table></div>}
+          })}</tbody></CompactFinanceTable></div>}
           {isMobile && <div className="dc-mobile-progress md:hidden">{paginatedProgresses.items.map(sp => <ProgressCard key={sp.id} sp={sp} />)}</div>}
         </>}
         <ProgressPaginationFooter />

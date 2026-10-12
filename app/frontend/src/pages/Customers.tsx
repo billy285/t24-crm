@@ -1,3 +1,4 @@
+import './crm-customer-delivery-compact.css';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { useRetainedView } from '@/lib/use-retained-view';
 import { useListScroll } from '@/lib/use-list-scroll';
@@ -3487,33 +3488,33 @@ export default function Customers() {
               </div>
             ))}
           </div>
-          <div className="hidden max-h-[calc(100vh-280px)] overflow-auto md:block"><table className="w-full text-sm"><thead className="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_rgb(226,232,240)]"><tr className="text-left text-slate-500">
-            {isAdmin && <th className="w-12 px-4 py-3"><input type="checkbox" aria-label="选择本页客户" checked={paginatedCustomers.items.length > 0 && paginatedCustomers.items.every(customer => selectedCustomerIds.includes(customer.id))} onChange={event => setSelectedCustomerIds(current => event.target.checked ? Array.from(new Set([...current, ...paginatedCustomers.items.map(customer => customer.id)])) : current.filter(id => !paginatedCustomers.items.some(customer => customer.id === id)))} /></th>}
-            {visibleCols.includes('customer_code') && <th className="px-4 py-3 font-medium">编号</th>}
-            {visibleCols.includes('business_name') && <th className="px-4 py-3 font-medium">商家名称</th>}
-            {visibleCols.includes('contact_name') && <th className="px-4 py-3 font-medium">联系人</th>}
-            {visibleCols.includes('phone') && <th className="px-4 py-3 font-medium">电话</th>}
-            {visibleCols.includes('state') && <th className="px-4 py-3 font-medium hidden md:table-cell">州/省</th>}
-            {visibleCols.includes('country') && <th className="px-4 py-3 font-medium hidden md:table-cell">国家</th>}
-            {visibleCols.includes('industry') && <th className="px-4 py-3 font-medium hidden md:table-cell">行业</th>}
-            {visibleCols.includes('city') && <th className="px-4 py-3 font-medium hidden md:table-cell">城市</th>}
-            {visibleCols.includes('status') && <th className="px-4 py-3 font-medium">状态</th>}
-            {visibleCols.includes('level') && <th className="px-4 py-3 font-medium hidden lg:table-cell">等级</th>}
-            {visibleCols.includes('sales_person') && <th className="px-4 py-3 font-medium hidden lg:table-cell">负责人</th>}
-            {visibleCols.includes('email') && <th className="px-4 py-3 font-medium hidden lg:table-cell">邮箱</th>}
-            {visibleCols.includes('wechat') && <th className="px-4 py-3 font-medium hidden lg:table-cell">微信</th>}
-            {visibleCols.includes('source') && <th className="px-4 py-3 font-medium hidden lg:table-cell">来源</th>}
-            <th className="w-28 px-4 py-3 text-right font-medium">操作</th>
+          <div className="crm-customer-ledger-scroll hidden max-h-[calc(100vh-280px)] overflow-auto md:block"><table className="crm-customer-ledger w-full text-sm"><thead className="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_rgb(226,232,240)]"><tr className="text-left text-slate-500">
+            {isAdmin && <th data-customer-column="selection" className="w-12 px-4 py-3"><input type="checkbox" aria-label="选择本页客户" checked={paginatedCustomers.items.length > 0 && paginatedCustomers.items.every(customer => selectedCustomerIds.includes(customer.id))} onChange={event => setSelectedCustomerIds(current => event.target.checked ? Array.from(new Set([...current, ...paginatedCustomers.items.map(customer => customer.id)])) : current.filter(id => !paginatedCustomers.items.some(customer => customer.id === id)))} /></th>}
+            {visibleCols.includes('customer_code') && <th data-customer-column="customer_code" className="px-4 py-3 font-medium">编号</th>}
+            {visibleCols.includes('business_name') && <th data-customer-column="business_name" className="px-4 py-3 font-medium">商家名称</th>}
+            {visibleCols.includes('contact_name') && <th data-customer-column="contact_name" className="px-4 py-3 font-medium">联系人</th>}
+            {visibleCols.includes('phone') && <th data-customer-column="phone" className="px-4 py-3 font-medium">电话</th>}
+            {visibleCols.includes('state') && <th data-customer-column="state" className="px-4 py-3 font-medium hidden md:table-cell">州/省</th>}
+            {visibleCols.includes('country') && <th data-customer-column="country" className="px-4 py-3 font-medium hidden md:table-cell">国家</th>}
+            {visibleCols.includes('industry') && <th data-customer-column="industry" className="px-4 py-3 font-medium hidden md:table-cell">行业</th>}
+            {visibleCols.includes('city') && <th data-customer-column="city" className="px-4 py-3 font-medium hidden md:table-cell">城市</th>}
+            {visibleCols.includes('status') && <th data-customer-column="status" className="px-4 py-3 font-medium">状态</th>}
+            {visibleCols.includes('level') && <th data-customer-column="level" className="px-4 py-3 font-medium hidden lg:table-cell">等级</th>}
+            {visibleCols.includes('sales_person') && <th data-customer-column="sales_person" className="px-4 py-3 font-medium hidden lg:table-cell">负责人</th>}
+            {visibleCols.includes('email') && <th data-customer-column="email" className="px-4 py-3 font-medium hidden lg:table-cell">邮箱</th>}
+            {visibleCols.includes('wechat') && <th data-customer-column="wechat" className="px-4 py-3 font-medium hidden lg:table-cell">微信</th>}
+            {visibleCols.includes('source') && <th data-customer-column="source" className="px-4 py-3 font-medium hidden lg:table-cell">来源</th>}
+            <th data-customer-column="actions" className="w-28 px-4 py-3 text-right font-medium">操作</th>
           </tr></thead>
           <tbody>{paginatedCustomers.items.map(c => (
             <tr key={c.id} className={`border-b border-slate-100 cursor-pointer transition-colors hover:bg-blue-50/60 ${previewCustomer?.id === c.id ? 'bg-blue-50/50' : ''}`}>
-              {isAdmin && <td className="px-4 py-3" onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={`选择客户 ${c.business_name}`} checked={selectedCustomerIds.includes(c.id)} onChange={event => setSelectedCustomerIds(current => event.target.checked ? [...current, c.id] : current.filter(id => id !== c.id))} /></td>}
-              {visibleCols.includes('customer_code') && <td className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
-              {visibleCols.includes('business_name') && <td className="px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(c)}>{c.business_name}</td>}
-              {visibleCols.includes('contact_name') && <td className="px-4 py-3" onClick={() => openDetail(c)}>{c.contact_name}</td>}
-              {visibleCols.includes('phone') && <td className="px-4 py-3 text-slate-500" onClick={() => openDetail(c)}>{formatPhoneNumber(c.phone, c.country)}</td>}
-              {visibleCols.includes('state') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.state || '-'}</td>}
-              {visibleCols.includes('country') && <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.country || '-'}</td>}
+              {isAdmin && <td data-customer-column="selection" className="px-4 py-3" onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={`选择客户 ${c.business_name}`} checked={selectedCustomerIds.includes(c.id)} onChange={event => setSelectedCustomerIds(current => event.target.checked ? [...current, c.id] : current.filter(id => id !== c.id))} /></td>}
+              {visibleCols.includes('customer_code') && <td data-customer-column="customer_code" className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
+              {visibleCols.includes('business_name') && <td data-customer-column="business_name" className="px-4 py-3 font-medium text-blue-600" title={c.business_name} onClick={() => openDetail(c)}>{c.business_name}</td>}
+              {visibleCols.includes('contact_name') && <td data-customer-column="contact_name" className="px-4 py-3" onClick={() => openDetail(c)}>{c.contact_name}</td>}
+              {visibleCols.includes('phone') && <td data-customer-column="phone" className="px-4 py-3 text-slate-500" onClick={() => openDetail(c)}>{formatPhoneNumber(c.phone, c.country)}</td>}
+              {visibleCols.includes('state') && <td data-customer-column="state" className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.state || '-'}</td>}
+              {visibleCols.includes('country') && <td data-customer-column="country" className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.country || '-'}</td>}
               {visibleCols.includes('industry') && (
                 <td className="px-4 py-3 hidden md:table-cell" onClick={() => !(hasPermission('customer_edit') && inlineEditMode) && openDetail(c)}>
                   {hasPermission('customer_edit') && inlineEditMode ? (
@@ -3643,11 +3644,11 @@ export default function Customers() {
                   )}
                 </td>
               )}
-              {visibleCols.includes('sales_person') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.sales_person || '-'}</td>}
-              {visibleCols.includes('email') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.email || '-'}</td>}
-              {visibleCols.includes('wechat') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.wechat || '-'}</td>}
-              {visibleCols.includes('source') && <td className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{sourceLabels[c.source] || c.source}</td>}
-              <td className="px-4 py-3">
+              {visibleCols.includes('sales_person') && <td data-customer-column="sales_person" className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.sales_person || '-'}</td>}
+              {visibleCols.includes('email') && <td data-customer-column="email" className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.email || '-'}</td>}
+              {visibleCols.includes('wechat') && <td data-customer-column="wechat" className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{c.wechat || '-'}</td>}
+              {visibleCols.includes('source') && <td data-customer-column="source" className="px-4 py-3 text-slate-500 hidden lg:table-cell" onClick={() => openDetail(c)}>{sourceLabels[c.source] || c.source}</td>}
+              <td data-customer-column="actions" className="px-4 py-3">
                 <div className="flex items-center justify-end gap-1">
                   <Button size="sm" variant="ghost" className="h-8 px-2 text-xs text-blue-600" aria-label={`快捷查看 ${c.business_name}`} onClick={event => {
                     const frameWidth = event.currentTarget.closest<HTMLElement>('.crm-content-frame')?.getBoundingClientRect().width ?? window.innerWidth;

@@ -43,6 +43,8 @@ import { invokeWithAuth } from '@/lib/tokenStore';
 import './deal-editor-refined.css';
 import { businessDateKey } from '@/lib/business-date';
 import './delivery-workspace.css';
+import './crm-sales-compact.css';
+import CompactFinanceTable from '@/components/CompactFinanceTable';
 
 function parseMultiValue(value?: string | null) {
   return (value || '').split(',').map(item => item.trim()).filter(Boolean);
@@ -1337,7 +1339,7 @@ export default function Deals() {
   }
 
   return (
-    <div className="t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-deals-page">
+    <div className="t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-deals-page crm-sales-compact">
       <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <p className="app-page-kicker">T24 Marketing · Deals</p>
@@ -1591,7 +1593,17 @@ export default function Deals() {
               })}
             </div>}
             {!isMobile && <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <CompactFinanceTable label="成交记录" legacyClassName="w-full text-sm" expectedHeaders={['客户', '套餐归类', '业务类型', '金额', '周期', '成交日', '付款', '交接', '操作']} columns={[
+                { label: '客户', indexes: [0], width: 28 },
+                { label: '套餐', indexes: [1], width: 20, summaryMode: 'first', priority: 2 },
+                { label: '金额', indexes: [3], width: 12, align: 'right' },
+                { label: '成交日', indexes: [5], width: 13, priority: 2 },
+                { label: '付款', indexes: [6], width: 10 },
+                { label: '交接', indexes: [7], width: 11 },
+              ]} detailGroups={[
+                { label: '客户与成交', indexes: [0, 1, 2, 3, 4, 5] },
+                { label: '付款与交接', indexes: [6, 7] },
+              ]}>
                 <thead>
                   <tr className="border-b bg-slate-50 text-left text-slate-500">
                     <th className="px-4 py-3 font-medium">客户</th>
@@ -1643,7 +1655,7 @@ export default function Deals() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </CompactFinanceTable>
             </div>}
             </>
           )}

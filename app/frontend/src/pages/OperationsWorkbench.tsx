@@ -1,3 +1,4 @@
+import './crm-customer-delivery-compact.css';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { buildReturnLink } from '@/lib/navigation-state';
 import { Input } from '@/components/ui/input';

@@ -12,6 +12,7 @@ import { SalesTeamToday } from '@/components/SalesTeamPerformance';
 import '@/components/sales-center.css';
 import './sales-workspace.css';
 import './sales-workbench-refined.css';
+import './crm-sales-compact.css';
 import SalesKnowledgeAssistant from '@/components/SalesKnowledgeAssistant';
 import CustomerPhoneDial from '@/components/CustomerPhoneDial';
 import MobileSalesQueue from '@/components/MobileSalesQueue';
@@ -634,7 +635,7 @@ function SalesWorkspace() {
   const workbenchMenu = <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多工作台功能"><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu">{!teamView && <DropdownMenuItem disabled={preparing || saving || date !== today() || Boolean(loadError) || (canManage && !selectedSalesId)} onSelect={() => void prepareWorkbench()}>生成今日任务</DropdownMenuItem>}<DropdownMenuItem onSelect={() => window.location.assign('/sales-leads?view=intelligence')}>经营中心</DropdownMenuItem>{!teamView && <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>拨号与任务设置</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>;
   const currentSalesName = canManage ? teamView ? '全部销售' : assignees.find(item => String(item.id) === selectedSalesId)?.name || '选择销售' : employee?.name || '当前销售';
 
-  return <div className="sales-center-ui sc-workbench calm-sales-page calm-sales-workbench sw-refined app-page" data-testid={isMobile ? 'sales-workbench-mobile' : 'sales-workbench-desktop'}>
+  return <div className="sales-center-ui sc-workbench calm-sales-page calm-sales-workbench sw-refined app-page crm-sales-compact" data-testid={isMobile ? 'sales-workbench-mobile' : 'sales-workbench-desktop'}>
     <div className="sw-workspace-heading">
     <header className="sc-page-heading">
       <div>{safeReturn && <Button variant="ghost" size="sm" onClick={() => window.location.assign(safeReturn)}>返回联系进展</Button>}<h1>{teamView ? date === today() ? '团队今日任务' : '团队任务' : date === today() ? '今日拨打' : '拨打记录'}</h1></div>

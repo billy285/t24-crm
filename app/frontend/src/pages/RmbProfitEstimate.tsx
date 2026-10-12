@@ -1,3 +1,5 @@
+import CompactFinanceTable from '@/components/CompactFinanceTable';
+import './crm-org-compact.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
@@ -76,6 +78,21 @@ const compactCny = (value: number) => {
   if (absolute >= 10000) return `${value < 0 ? '-' : ''}¥${(absolute / 10000).toFixed(1)}万`;
   return `${value < 0 ? '-' : ''}¥${Math.round(absolute).toLocaleString('zh-CN')}`;
 };
+
+// Desktop summary contracts retain every original field in the full detail drawer.
+const rmbProfitPeriods = {
+  label: "人民币利润期间明细",
+  columns: [
+    {"label": "期间", "indexes": [0], "width": 1.2},
+    {"label": "美元经营结余", "indexes": [1], "width": 1.5, "align": "right", "priority": 2},
+    {"label": "折合人民币", "indexes": [3], "width": 1.5, "align": "right", "priority": 2},
+    {"label": "人民币实际支出", "indexes": [5], "width": 1.5, "align": "right"},
+    {"label": "预估人民币净利润", "indexes": [6], "width": 1.6, "align": "right"},
+    {"label": "结果", "indexes": [7], "width": 0.8}
+  ],
+  expectedHeaders: ["期间", "美元经营结余", "月均汇率", "折合人民币", "人民币收入", "人民币实际支出", "预估人民币净利润", "结果"],
+  actionIndexes: [],
+} as const;
 
 export default function RmbProfitEstimate() {
   const today = useMemo(() => new Date(), []);
@@ -170,7 +187,7 @@ export default function RmbProfitEstimate() {
     : 0;
 
   return (
-    <div className="t24-command-page calm-report-page app-page space-y-5">
+    <div className="crm-org-compact t24-command-page calm-report-page app-page space-y-5">
       <div className="app-page-title flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">T24 Marketing · RMB Profit Estimate</p>
@@ -244,7 +261,7 @@ export default function RmbProfitEstimate() {
             <CardHeader className="pb-3"><CardTitle className="text-base">{viewMode === 'month' ? '每月计算明细' : viewMode === 'quarter' ? '季度汇总' : '年度汇总'}</CardTitle></CardHeader>
             <CardContent className="p-0">
               <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[980px] text-sm">
+                <CompactFinanceTable {...rmbProfitPeriods} legacyClassName="w-full min-w-[980px] text-sm">
                   <thead><tr className="border-y bg-slate-50 text-left text-xs text-slate-500"><th className="px-4 py-3">期间</th><th className="px-4 py-3">美元经营结余</th><th className="px-4 py-3">月均汇率</th><th className="px-4 py-3">折合人民币</th><th className="px-4 py-3">人民币收入</th><th className="px-4 py-3">人民币实际支出</th><th className="px-4 py-3">预估人民币净利润</th><th className="px-4 py-3">结果</th></tr></thead>
                   <tbody>{tableRows.map((item: any) => {
                     const monthly = viewMode === 'month';
@@ -261,7 +278,7 @@ export default function RmbProfitEstimate() {
                       <td className="px-4 py-3"><Badge className={profit > 0 ? 'bg-emerald-100 text-emerald-700' : profit < 0 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}>{profit > 0 ? '盈利' : profit < 0 ? '亏损' : '持平'}</Badge>{!monthly && <p className="mt-1 text-xs text-slate-400">盈利 {item.profitable_months} 月 · 亏损 {item.loss_months} 月 · 持平 {item.break_even_months} 月</p>}</td>
                     </tr>;
                   })}</tbody>
-                </table>
+                </CompactFinanceTable>
               </div>
               <div className="space-y-3 p-3 md:hidden">
                 {tableRows.map((item: any) => {

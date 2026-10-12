@@ -1,3 +1,4 @@
+import './crm-org-compact.css';
 import EmployeeHandoffDialog, { readAllHandoffRows } from '@/components/EmployeeHandoffDialog';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import './admin-workspace.css';
@@ -449,7 +450,7 @@ export default function Employees() {
   if (selectedEmp) {
     const e = selectedEmp;
     return (
-      <div className="t24-detail-page calm-admin-page calm-employee-detail app-page space-y-4">
+      <div className="crm-org-compact t24-detail-page calm-admin-page calm-employee-detail app-page space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           <Button variant="ghost" size="sm" onClick={() => { detailSequence.current++; setSelectedEmp(null); }}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
           <h2 className="text-lg font-semibold">{e.name}</h2>
@@ -583,7 +584,7 @@ export default function Employees() {
 
   // ========== LIST VIEW ==========
   return (
-    <div className="t24-directory-page t24-employee-directory calm-admin-page calm-employees-page app-page space-y-5">
+    <div className="crm-org-compact t24-directory-page t24-employee-directory calm-admin-page calm-employees-page app-page space-y-5">
       <div className="app-page-title flex items-start justify-between">
         <div>
           <p className="app-page-kicker">T24 Marketing · Team</p>

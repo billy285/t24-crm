@@ -1,0 +1,53 @@
+/* Shared desktop density. PrivateWorkspace returns before this shell is rendered.
+   The accepted finance ledger keeps its own geometry; touch layouts are unchanged. */
+@media (min-width: 1024px) {
+  .t24-system.app-shell .crm-desktop-main:where([data-crm-page]:not([data-crm-page="/finance"])):not(.app-main-launcher) {
+    --t24-body-size: 13px;
+    --t24-body-line: 20px;
+    --t24-aux-size: 12px;
+    --t24-aux-line: 18px;
+    --t24-title-size: 22px;
+    --t24-title-line: 30px;
+    --t24-section-size: 15px;
+    --t24-section-line: 22px;
+    --t24-metric-size: 22px;
+    --t24-metric-line: 28px;
+    --t24-control-height: 34px;
+    padding: 20px clamp(20px, 2.5vw, 36px) 28px;
+  }
+  .t24-system.app-shell .crm-desktop-main:where([data-crm-page]:not([data-crm-page="/finance"])) .crm-content-frame {
+    max-width: 1500px;
+    width: 100%;
+    min-width: 0;
+    margin-inline: auto;
+    container: crm-workarea / inline-size;
+  }
+  .t24-system.app-shell .crm-desktop-main:where([data-crm-page]:not([data-crm-page="/finance"])) .crm-content-frame .app-page {
+    width: 100%; min-width: 0; max-width: 100%;
+  }
+  .t24-system.app-shell .crm-desktop-main:where([data-crm-page]:not([data-crm-page="/finance"])) .crm-content-frame .app-page-title {
+    margin-bottom: 12px;
+    padding-bottom: 0 !important;
+    gap: 12px;
+  }
+  .t24-system.app-shell .crm-desktop-main:where([data-crm-page]:not([data-crm-page="/finance"])) .crm-content-frame .app-page:is(.space-y-4, .space-y-5, .space-y-6) > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 14px;
+  }
+  .t24-system.app-shell .crm-desktop-main:where([data-crm-page]:not([data-crm-page="/finance"])) :is(.app-toolbar, .app-metric, .app-card) {
+    border-radius: 8px;
+    box-shadow: none;
+  }
+  .t24-system.app-shell .crm-desktop-main:where([data-crm-page]:not([data-crm-page="/finance"])) .app-page-title :is(.app-page-kicker, p[class*="uppercase"]) {
+    display: none;
+  }
+  .t24-system.app-shell .crm-desktop-main:where([data-crm-page]:not([data-crm-page="/finance"])) .app-page-title :is(h1, h2) {
+    margin-top: 0;
+  }
+  .t24-system.app-shell .crm-desktop-main:where([data-crm-page]:not([data-crm-page="/finance"])) .t24-button:not(:where(form *, [role="dialog"] *, [role="alertdialog"] *, .t24-button-link)) {
+    min-height: 34px;
+    padding-block: 6px;
+  }
+  .t24-system.app-shell .crm-desktop-main:where([data-crm-page]:not([data-crm-page="/finance"])) :is(form, [role="dialog"], [role="alertdialog"]) {
+    --t24-control-height: 44px;
+  }
+}

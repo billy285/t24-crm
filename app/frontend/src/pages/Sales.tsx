@@ -15,6 +15,8 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Combobox } from '@/components/ui/combobox';
 import ExportButton from '@/components/ExportButton';
 import './delivery-workspace.css';
+import './crm-sales-compact.css';
+import CompactFinanceTable, { type CompactFinanceColumn } from '@/components/CompactFinanceTable';
 import { useIsMobile } from '@/hooks/use-mobile';
 import PageLoadState from '@/components/PageLoadState';
 import { classifyPackageDisplay, useBusinessDicts } from '../lib/dict-config';
@@ -143,6 +145,24 @@ export default function Sales() {
   const [page, setPage] = useRetainedView('Sales:page', 1);
   const [pageSize, setPageSize] = useRetainedView('Sales:pageSize', 20);
   const [showAllColumns, setShowAllColumns] = useState(false);
+  const [compactDesktop, setCompactDesktop] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1024px)');
+    const update = () => setCompactDesktop(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  // The compact drawer receives all permitted source fields; tablet keeps its original column toggle.
+  const showSourceDetails = compactDesktop || showAllColumns;
+  const ledgerHeaders = ['商家名称', '联系人', ...(showSourceDetails ? ['州/国家', '成交套餐'] : []), '当前服务', ...(showSourceDetails ? ['最近成交'] : []), '服务状态', ...(canViewFinance && showSourceDetails ? ['最近收款'] : []), ...(canViewFinance ? ['尾款'] : []), '负责销售', '操作'];
+  const ledgerColumns: CompactFinanceColumn[] = [
+    { label: '商家', indexes: [ledgerHeaders.indexOf('商家名称')], width: 28, summaryMode: 'first' },
+    { label: '当前服务', indexes: [ledgerHeaders.indexOf('当前服务')], width: 22, summaryMode: 'first' },
+    { label: '服务状态', indexes: [ledgerHeaders.indexOf('服务状态')], width: 14, summaryMode: 'first' },
+    ...(canViewFinance ? [{ label: '尾款', indexes: [ledgerHeaders.indexOf('尾款')], width: 12, align: 'right' as const }] : []),
+    { label: '负责人', indexes: [ledgerHeaders.indexOf('负责销售')], width: 12 },
+  ];
 
   useEffect(() => { loadData(); }, []);
 
@@ -429,7 +449,7 @@ export default function Sales() {
   }
 
   return (
-    <div className="t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-active-customers">
+    <div className="t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-active-customers crm-sales-compact">
       <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <p className="app-page-kicker">T24 Marketing · Active Customers</p>
@@ -534,7 +554,7 @@ export default function Sales() {
         <CardContent className="p-0">
           <div className="calm-record-list-heading">
             <div><h3>成交客户</h3><p>{filtered.length} 位 · 查看服务、到期时间与下一步</p></div>
-            <Button type="button" variant="outline" size="sm" className="hidden md:inline-flex" aria-pressed={showAllColumns} onClick={() => setShowAllColumns(value => !value)}>{showAllColumns ? '简洁视图' : '展开全部列'}</Button>
+            <Button type="button" variant="outline" size="sm" className="hidden md:inline-flex crm-sales-all-fields" aria-pressed={showAllColumns} onClick={() => setShowAllColumns(value => !value)}>{showAllColumns ? '简洁视图' : '展开全部列'}</Button>
           </div>
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -575,17 +595,21 @@ export default function Sales() {
               ))}
             </div>}
             {!isMobile && <div className="hidden overflow-x-auto md:block">
-              <table className={`calm-record-table w-full text-sm ${showAllColumns ? 'calm-table-full' : ''}`}>
+              <CompactFinanceTable label="成交客户" columns={ledgerColumns} expectedHeaders={ledgerHeaders} legacyClassName={`calm-record-table w-full text-sm ${showAllColumns ? 'calm-table-full' : ''}`} detailGroups={[
+                { label: '客户与负责人', indexes: ['商家名称', '联系人', '州/国家', '负责销售'].map(label => ledgerHeaders.indexOf(label)) },
+                { label: '服务与到期', indexes: ['成交套餐', '当前服务', '服务状态'].map(label => ledgerHeaders.indexOf(label)) },
+                { label: '成交与收款', indexes: ['最近成交', '最近收款', '尾款'].map(label => ledgerHeaders.indexOf(label)) },
+              ]}>
                 <thead>
                   <tr className="border-b bg-slate-50 text-left text-slate-500">
                     <th className="px-4 py-3 font-medium">商家名称</th>
                     <th className="px-4 py-3 font-medium">联系人</th>
-                    {showAllColumns && <th className="px-4 py-3 font-medium">州/国家</th>}
-                    {showAllColumns && <th className="px-4 py-3 font-medium">成交套餐</th>}
+                    {showSourceDetails && <th className="px-4 py-3 font-medium">州/国家</th>}
+                    {showSourceDetails && <th className="px-4 py-3 font-medium">成交套餐</th>}
                     <th className="px-4 py-3 font-medium">当前服务</th>
-                    {showAllColumns && <th className="px-4 py-3 font-medium">最近成交</th>}
+                    {showSourceDetails && <th className="px-4 py-3 font-medium">最近成交</th>}
                     <th className="px-4 py-3 font-medium">服务状态</th>
-                    {canViewFinance && showAllColumns && <th className="px-4 py-3 font-medium">最近收款</th>}
+                    {canViewFinance && showSourceDetails && <th className="px-4 py-3 font-medium">最近收款</th>}
                     {canViewFinance && <th className="px-4 py-3 font-medium">尾款</th>}
                     <th className="px-4 py-3 font-medium">负责销售</th>
                     <th className="px-4 py-3 font-medium text-right">操作</th>
@@ -607,11 +631,11 @@ export default function Sales() {
                         <div>{row.contact_name || '-'}</div>
                         <div className="text-xs text-slate-400 mt-1">{row.phone ? formatPhoneNumber(row.phone, row.country) : '-'}</div>
                       </td>
-                      {showAllColumns && <td className="px-4 py-3 text-slate-600">
+                      {showSourceDetails && <td className="px-4 py-3 text-slate-600">
                         <div>{row.state || '-'}</div>
                         <div className="text-xs text-slate-400 mt-1">{row.country_label}</div>
                       </td>}
-                      {showAllColumns && <td className="px-4 py-3 text-slate-600">
+                      {showSourceDetails && <td className="px-4 py-3 text-slate-600">
                         <div className="font-medium text-slate-700">{row.selected_package_name}</div>
                         {row.selected_package_historical_name && <div className="mt-1 text-xs text-slate-400">历史：{row.selected_package_historical_name}</div>}
                         <div className="text-xs text-slate-400 mt-1">{row.selected_package_source || '-'}</div>
@@ -625,7 +649,7 @@ export default function Sales() {
                         </div>
                         {row.active_service_count > 1 && <div className="mt-1 text-xs font-medium text-violet-600">共 {row.active_service_count} 个当前套餐</div>}
                       </td>
-                      {showAllColumns && <td className="px-4 py-3 text-slate-600">
+                      {showSourceDetails && <td className="px-4 py-3 text-slate-600">
                         <div className="font-medium text-slate-700">{row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-'}</div>
                         <div className="text-xs text-slate-400 mt-1">{row.latest_deal_date?.slice(0, 10) || '-'}</div>
                       </td>}
@@ -662,7 +686,7 @@ export default function Sales() {
                           下次付款: {row.next_payment_date?.slice(0, 10) || '-'}
                         </div>
                       </td>
-                      {canViewFinance && showAllColumns && (
+                      {canViewFinance && showSourceDetails && (
                         <td className="px-4 py-3 text-slate-600">
                           <div className="font-medium text-slate-700">{row.latest_payment_amount ? fmt(row.latest_payment_amount) : '-'}</div>
                           <div className="text-xs text-slate-400 mt-1">{row.latest_payment_date?.slice(0, 10) || '-'}</div>
@@ -686,7 +710,7 @@ export default function Sales() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </CompactFinanceTable>
             </div>}
             </>
           )}

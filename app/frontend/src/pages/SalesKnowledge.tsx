@@ -6,6 +6,7 @@ import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import '@/components/sales-center.css';
 import './sales-workspace.css';
 import './sales-knowledge-refined.css';
+import './crm-sales-compact.css';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -322,7 +323,7 @@ export default function SalesKnowledge() {
   );
 
   return (
-    <div className="knowledge-v4-page knowledge-refined-page sales-center-ui calm-sales-page calm-sales-knowledge app-page">
+    <div className="knowledge-v4-page knowledge-refined-page sales-center-ui calm-sales-page calm-sales-knowledge app-page crm-sales-compact">
       <header className="knowledge-v4-header sc-section-heading app-page-title">
         <div>
           <h2 className="app-page-heading">销售知识库</h2>

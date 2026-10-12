@@ -1,0 +1,84 @@
+/* Scoped to the desktop CRM. Mobile and the independent private workspace retain their geometry. */
+@media (min-width: 1024px) {
+  .t24-system .crm-desktop-main .crm-org-compact {
+    min-width: 0; font-size: 13px; line-height: 1.5;
+    --t24-body-size: 13px; --t24-body-line: 20px;
+    --t24-aux-size: 12px; --t24-aux-line: 18px;
+    --t24-detail-size: 18px; --t24-detail-line: 26px;
+    --t24-title-size: 22px; --t24-title-line: 30px;
+    --t24-metric-size: 22px; --t24-metric-line: 28px;
+    --t24-control-height: 34px; --t24-table-cell-y: 8px;
+  }
+  .t24-system .crm-desktop-main .crm-org-compact > :not([hidden]) ~ :not([hidden]),
+  .t24-system .crm-desktop-main .crm-org-compact :is(.space-y-5, .space-y-4) > :not([hidden]) ~ :not([hidden]) { margin-top: 12px; margin-bottom: 0; }
+  .t24-system .crm-desktop-main .crm-org-compact .app-page-title { min-height: 0; padding: 0 0 10px; gap: 12px; }
+  .t24-system .crm-desktop-main .crm-org-compact .app-page-title :is(h1, h2) { font-size: 22px; line-height: 30px; margin-top: 0; }
+  .t24-system .crm-desktop-main .crm-org-compact .app-page-title p { font-size: 12px; line-height: 18px; margin-top: 2px; }
+  .t24-system .crm-desktop-main .crm-org-compact .app-page-title :is(.app-page-kicker, [class*='uppercase']) { font-size: 10px; line-height: 16px; letter-spacing: .08em; }
+  .t24-system .crm-desktop-main .crm-org-compact .bg-card { min-width: 0; border-radius: 8px; box-shadow: none; }
+  .t24-system .crm-desktop-main .crm-org-compact .bg-card > :is(.p-6, .p-5, .p-4) { padding: 12px 14px; }
+  .t24-system .crm-desktop-main .crm-org-compact .bg-card > .pt-0 { padding-top: 0; }
+  .t24-system .crm-desktop-main .crm-org-compact .bg-card > .p-0 { padding: 0; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-section-title { font-size: 14px; line-height: 20px; }
+  .t24-system .crm-desktop-main .crm-org-compact :is(.text-sm, .t24-body) { font-size: 13px; line-height: 20px; }
+  .t24-system .crm-desktop-main .crm-org-compact .text-xs { font-size: 12px; line-height: 18px; }
+  .t24-system .crm-desktop-main .crm-org-compact .text-2xl { font-size: 22px; line-height: 28px; }
+  .t24-system .crm-desktop-main .crm-org-compact :is(.gap-4, .gap-5, .gap-6) { gap: 12px; }
+  .t24-system .crm-desktop-main .crm-org-compact :is(input:not([type='checkbox']):not([type='radio']), select, [role='combobox']) { min-height: 34px; height: 34px; border-radius: 6px; font-size: 13px; line-height: 20px; }
+  .t24-system .crm-desktop-main .crm-org-compact button:not([role='switch']):not([role='checkbox']):not(.cft-expand) { min-height: 32px; height: auto; font-size: 13px; line-height: 20px; padding-top: 5px; padding-bottom: 5px; }
+  .t24-system .crm-desktop-main .crm-org-compact :is(button, input, select, summary):focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+  .t24-system .crm-desktop-main .crm-org-compact table:not(.cft-table) { width: 100%; font-size: 13px; line-height: 20px; }
+  .t24-system .crm-desktop-main .crm-org-compact table:not(.cft-table) th { height: 36px; padding: 7px 10px; font-size: 12px; font-weight: 500; color: #64748b; background: #f5f7fa; white-space: nowrap; }
+  .t24-system .crm-desktop-main .crm-org-compact table:not(.cft-table) td { height: 44px; padding: 6px 10px; border-bottom: 1px solid #e8edf3; vertical-align: middle; }
+  .t24-system .crm-desktop-main .crm-org-compact table:not(.cft-table) tbody tr:hover { background: #f8fafc; }
+  .t24-system .crm-desktop-main .crm-org-compact :is(.calm-admin-disclosure, .calm-permission-group) { border-radius: 8px; }
+  .t24-system .crm-desktop-main .crm-org-compact :is(.calm-admin-disclosure, .calm-permission-group) > summary { min-height: 40px; padding: 9px 12px; font-size: 13px; line-height: 20px; }
+
+  /* Keep the directory's direct profile links and original action menu. */
+  .t24-system .crm-desktop-main .crm-org-compact .calm-employee-summary { gap: 28px; padding: 10px 0; }
+  .t24-system .crm-desktop-main .crm-org-compact .calm-employee-summary > .bg-card > div { padding: 0; gap: 8px; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-toolbar > div { padding: 0; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results { border-radius: 8px; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results table { table-layout: fixed; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results :is(th, td) { white-space: normal; overflow-wrap: anywhere; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results :is(th, td):nth-child(1) { width: 8%; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results :is(th, td):nth-child(2) { width: 15%; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results :is(th, td):nth-child(3) { width: 14%; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results :is(th, td):nth-child(4) { width: 10%; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results :is(th, td):nth-child(5) { width: 17%; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results :is(th, td):nth-child(6) { width: 19%; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results :is(th, td):nth-child(7) { width: 10%; }
+  .t24-system .crm-desktop-main .crm-org-compact .t24-directory-results :is(th, td):nth-child(8) { width: 7%; }
+
+  /* Narrow settings rail and separated, compact option rows. */
+  .t24-system .crm-desktop-main .crm-org-compact .calm-settings-tabs { grid-template-columns: 170px minmax(0, 1fr); gap: 14px; }
+  .t24-system .crm-desktop-main .crm-org-compact .calm-settings-navigation { gap: 16px; padding: 10px 8px; border-radius: 8px; }
+  .t24-system .crm-desktop-main .crm-org-compact .calm-settings-group [role='tab'] { min-height: 32px; padding: 6px 9px; font-size: 13px; }
+  .t24-system .crm-desktop-main .crm-org-compact .calm-settings-group > p { padding: 0 9px; margin-bottom: 2px; }
+  .t24-system .crm-desktop-main .crm-org-compact .calm-permission-role { gap: 12px; padding: 10px 12px; border-radius: 8px; }
+  .t24-system .crm-desktop-main .crm-org-compact .calm-admin-tab-navigation { gap: 20px; }
+  .t24-system .crm-desktop-main .crm-org-compact .calm-admin-tab-navigation [role='tab'] { padding: 8px 2px; }
+  .t24-system .crm-desktop-main .crm-org-compact :is(.calm-page-permissions, .calm-button-permissions) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .t24-system .crm-desktop-main .crm-org-compact .calm-page-permissions > div { min-height: 44px; padding: 8px 12px; border-radius: 6px; }
+  .t24-system .crm-desktop-main .crm-org-compact .calm-permission-savebar { padding: 8px 12px; border-radius: 8px; }
+  .t24-system .crm-desktop-main .crm-org-compact.calm-system-settings [role='tabpanel'] :is(.p-4, .p-3) { padding: 10px 12px; }
+
+  /* A restrained priority strip leads directly into channel records. */
+  .t24-system .crm-desktop-main .crm-org-compact.commission-page { max-width: none; margin-inline: 0; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-heading { margin-bottom: 14px; gap: 12px; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-heading h1 { font-size: 22px; line-height: 30px; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-priority { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 16px; margin-bottom: 16px; padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-priority > :is(h2, p) { grid-column: 1; margin-top: 0; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-priority h2 { font-size: 15px; line-height: 22px; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-priority button { grid-column: 2; grid-row: 1 / 4; margin: 0; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-record-heading { margin-bottom: 8px; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-record-heading h2 { font-size: 15px; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-toolbar { padding: 8px 0; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-filters { gap: 8px; margin-bottom: 12px; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-accounting { padding-top: 12px; margin-top: 12px; }
+  .t24-system .crm-desktop-main .crm-org-compact .commission-empty { padding: 28px 16px; }
+  .t24-system .crm-desktop-main .crm-org-compact :is(.portal-overview, .rmb-query-panel, .rmb-calculation-details) > summary { padding: 10px 12px; font-size: 13px; line-height: 20px; }
+  .t24-system .crm-desktop-main .crm-org-compact .payroll-list-heading { margin-bottom: 10px; gap: 12px; }
+  .t24-system .crm-desktop-main .crm-org-compact .payroll-view-tabs { padding: 3px; border-radius: 7px; }
+  .t24-system .crm-desktop-main .crm-org-compact .deduction-default-form { max-width: 460px; }
+}

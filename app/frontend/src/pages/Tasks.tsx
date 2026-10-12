@@ -1,3 +1,4 @@
+import './crm-customer-delivery-compact.css';
 import { useListScroll } from '@/lib/use-list-scroll';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { DeliveryEmpty } from '@/components/DeliveryUI';

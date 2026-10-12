@@ -1,0 +1,181 @@
+/* Desktop CRM only: compact working rows; private space and touch layouts are outside this scope. */
+@media (min-width: 1024px) {
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact {
+    --t24-body-size: 13px;
+    --t24-body-line: 20px;
+    --t24-aux-size: 12px;
+    --t24-aux-line: 18px;
+    --t24-input-size: 13px;
+    --t24-input-line: 20px;
+    --t24-control-height: 32px;
+    --t24-control-compact: 28px;
+    --t24-table-cell-y: 6px;
+    --t24-table-cell-x: 10px;
+    min-width: 0;
+    max-width: none;
+    gap: 10px;
+    font-size: 13px;
+    line-height: 20px;
+  }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact.space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: 10px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.app-page-title, .sc-page-heading, .slr-page-heading, .mp-page-heading, .knowledge-v4-header) { min-height: 32px; gap: 8px 12px; padding: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.app-page-title h2, .sc-page-heading h1, .slr-page-heading h2, .mp-page-heading h2, .knowledge-v4-header h2) { margin: 0; font-size: 24px; line-height: 32px; font-weight: 600; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(input:not([type='checkbox']):not([type='radio']), select) { height: 32px; min-height: 32px; border-radius: 6px; font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact button { min-height: 28px; font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.app-page-title, .sc-page-heading, .mp-page-heading, .slr-page-heading, .sk-heading-actions) button { height: 32px; min-height: 32px; padding: 5px 10px; border-radius: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.merchant-results-card, .sl-lead-table, .knowledge-v4-list, .knowledge-v4-detail) { border-radius: 8px; box-shadow: none; }
+
+  /* Merchant pool: two quiet text lines and a full, unbroken phone number. */
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.mp-list-tools, .mp-workspace) { gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-work-views { gap: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-work-views > button { min-height: 32px; padding: 5px 0; font-size: 13px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-search-toolbar { gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-expanded-filters { padding: 10px; gap: 10px; border-radius: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table { width: 100%; min-width: 0; table-layout: fixed; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table th { height: 34px; padding: 6px 10px; background: #f8fafc; font-size: 12px; line-height: 18px; font-weight: 400; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table td { height: 52px; padding: 6px 10px; border-top: 1px solid #e7edf5; font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table :is(.mp-merchant-name, .mp-merchant-meta) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table .mp-merchant-name { min-height: 0; font-size: 13px; line-height: 20px; font-weight: 500; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-merchant-meta { margin-top: 0; font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table .mp-select-column { width: 32px; padding-left: 10px; padding-right: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table .mp-phone-column { width: 165px; white-space: nowrap; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table .mp-region-column { width: 136px; font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table .mp-state-column { width: 88px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table .mp-action-column { width: 100px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-row-actions > button { height: 28px; min-height: 28px; padding: 3px 6px; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-list-pagination { min-height: 44px; padding: 6px 10px; gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-selection-bar { padding: 10px 12px; border-radius: 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-selection-main { gap: 8px 16px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-review-panel { padding: 14px; border-radius: 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-review-identity { padding-bottom: 10px; gap: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-review-identity h3 { font-size: 17px; line-height: 24px; }
+
+  /* Follow-up list: contact and next action stay in the scan line; dossier keeps full merchant metadata. */
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-view-nav { gap: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-view-nav button { min-height: 32px; padding: 5px 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.slr-overview > summary, .sl-recovery > summary) { min-height: 28px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-table-toolbar { padding: 8px 10px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-list-tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .8fr); gap: 4px 16px; align-items: center; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-due-views { grid-column: 1; gap: 4px; margin: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-due-views button { min-height: 28px; padding: 3px 7px; border-radius: 5px; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-quick-filters { grid-column: 1; grid-row: 2; gap: 16px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-quick-filters > button { min-height: 28px; padding: 3px 0; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-search-row { grid-column: 2; grid-row: 1 / 3; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-search-row > button { height: 32px; min-height: 32px; padding: 5px 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-active-filters { margin-top: 4px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-active-filters button { min-height: 24px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-data-table { width: 100%; min-width: 0; table-layout: fixed; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-data-table th { height: 34px; padding: 6px 10px; font-size: 12px; line-height: 18px; font-weight: 400; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.sl-data-table, .sl-compact .sl-data-table) td { height: 52px; padding: 6px 10px; vertical-align: middle; border-bottom: 1px solid #e7edf5; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-data-table :is(th, td).sl-select-cell { width: 30px; padding-left: 10px; padding-right: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-data-table th.slr-merchant-column { width: 35%; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-data-table th.slr-contact-column { width: 26%; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-data-table th.slr-next-column { width: 23%; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-data-table .sl-actions-cell { width: 116px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-compact-identity { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px; min-width: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-compact-identity .sl-business-name { grid-column: 1; grid-row: 1; display: block; min-height: 0; max-width: 100%; margin: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-compact-identity .slr-merchant-context { grid-column: 2; grid-row: 2; margin: 0; font-size: 11px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-merchant-context > summary { display: flex; justify-content: flex-end; align-items: center; gap: 2px; min-height: 18px; color: #6c7c91; font-size: 11px; line-height: 18px; cursor: pointer; list-style: none; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-merchant-context > summary::-webkit-details-marker { display: none; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-merchant-context[open] { grid-column: 1 / -1; grid-row: 3; margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e7edf5; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-merchant-context[open] > summary { justify-content: flex-start; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-merchant-context[open] > summary svg { transform: rotate(180deg); }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-merchant-context .sl-identity-meta { display: flex; flex-wrap: wrap; margin-top: 4px; font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-merchant-context .sl-identity-meta > span { display: inline; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-compact-identity .sl-identity-phone { grid-column: 1; grid-row: 2; min-width: 0; gap: 4px; margin: 0; overflow: visible; font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-compact-identity .slr-identity-flags { grid-column: 2; grid-row: 1; justify-content: flex-end; gap: 2px; margin: 0; font-size: 11px; line-height: 16px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-identity-flags > :first-child { padding: 1px 5px; font-size: 11px; line-height: 16px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-note { -webkit-line-clamp: 1; font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-contact-details { margin-top: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .slr-contact-details > summary { min-height: 18px; font-size: 11px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-next-step { gap: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-next-step > :is(strong, span) { font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-next-step > small { font-size: 11px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-row-actions { gap: 2px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-row-actions button { min-height: 28px; padding: 3px 5px; font-size: 12px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-lead-table > div > .border-t { padding: 6px 10px; }
+
+  /* Dialling is a working canvas, not a spreadsheet: keep writing room and one clear next action. */
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-workspace-heading { gap: 6px; padding: 0 0 8px; background: #f8faff; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-progress-row { min-height: 22px; gap: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-call-layout { grid-template-columns: clamp(210px, 26%, 280px) minmax(0, 1fr); gap: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-queue { display: block; border-radius: 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-mobile-queue { display: none; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-queue-head { padding: 10px 10px 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-queue-filters { margin-top: 6px; gap: 2px; border-radius: 6px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-queue-filters button { min-height: 26px; padding: 3px 4px; border-radius: 4px; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-queue-search { margin-block: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-queue-list { max-height: max(240px, calc(100dvh - 300px)); padding: 3px 5px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-queue-item { min-height: 52px; padding: 6px 7px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-queue-copy strong { font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-queue-copy small { margin-top: 0; font-size: 11px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-queue-footer { padding: 7px 12px; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-current { border-radius: 8px; box-shadow: none; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-customer { padding: 12px 16px 0; border-radius: 8px 8px 0 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-customer-heading h2 { margin: 3px 0 0; font-size: 20px; line-height: 28px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-customer-context { gap: 6px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-customer-heading .sw-followup-plan { margin-top: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-dial-row { gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-phone strong { font-size: 21px; line-height: 28px; white-space: nowrap; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-dial-actions { gap: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-dial-actions button { height: 32px; min-height: 32px; padding: 5px 10px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-last-contact { padding: 6px 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-record-fields { padding: 10px 16px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-note-heading { margin-bottom: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-notes { height: clamp(112px, 18dvh, 180px); min-height: 112px; padding: 10px; font-size: 14px; line-height: 22px; border-radius: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-result-heading { margin: 8px 0 6px; padding-top: 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-outcomes { gap: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-outcomes button { min-height: 32px; padding: 5px 8px; border-radius: 6px; font-size: 13px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-followup { margin-top: 8px; gap: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-record-footer { position: static; margin: 0 16px; padding: 9px 0; gap: 8px; box-shadow: none; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sc-record-footer > button { height: 32px; min-height: 32px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-today { gap: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-summary { padding: 12px 0; border-radius: 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-summary > div { padding-inline: 16px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-summary strong { margin-top: 3px; font-size: 22px; line-height: 28px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-panel { padding: 12px; border-radius: 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-panel > h2 { margin-bottom: 10px; font-size: 15px; line-height: 22px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-actions { gap: 10px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-actions > div { padding: 10px; gap: 8px; border-radius: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-actions > div > div > strong { margin-top: 2px; font-size: 20px; line-height: 26px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-progress :is(th, td) { padding: 6px 10px; font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-progress td { height: 44px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-avatar { width: 28px; height: 28px; flex-basis: 28px; font-size: 12px; }
+
+  /* Knowledge: compact navigation and results, readable article body. */
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-search input { height: 34px; min-height: 34px; padding: 6px 38px; border-radius: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-search > svg { top: 9px; left: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sk-clear-search { top: 2px; right: 2px; width: 30px; height: 30px; min-height: 30px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-categories nav { flex-wrap: wrap; gap: 4px; overflow: visible; padding: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-categories nav button { min-height: 28px; padding: 4px 10px; border-radius: 5px; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-workspace { grid-template-columns: minmax(230px, .34fr) minmax(0, .66fr); gap: 12px; height: min(760px, max(380px, calc(100dvh - 230px))); }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-panel-title { min-height: 34px; padding: 7px 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-list-scroll { min-height: 0; max-height: none; padding: 4px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-list-item { min-height: 54px; padding: 7px 28px 7px 10px; border-bottom: 1px solid #edf1f6; border-radius: 5px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-list-item + .knowledge-v4-list-item { margin-top: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-list-item strong { margin-bottom: 2px; font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-list-meta > span { font-size: 11px; line-height: 16px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sk-result-arrow { top: 19px; right: 9px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sk-list-footer { padding: 5px 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-detail { min-height: 0; padding: 16px 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-detail-content { gap: 16px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-detail-head h2 { font-size: 19px; line-height: 27px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-answer { font-size: 14px; line-height: 23px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.sk-open-questions, .sk-usage-guidance) { padding: 8px 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.sk-open-questions, .sk-usage-guidance) > summary { min-height: 28px; }
+
+  /* Closed customers and deals use the same verified full-detail adapter as financial ledgers. */
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .calm-record-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-bottom: 8px; gap: 0; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact.calm-deals-page .calm-record-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .calm-record-metrics > .bg-card > div { padding: 4px 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .calm-record-metrics p.text-2xl { margin-top: 2px; font-size: 22px; line-height: 28px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .calm-record-metrics p.text-xs { font-size: 11px; line-height: 16px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .calm-filter-details { padding-top: 4px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .calm-filter-details > summary { min-height: 28px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .calm-record-list-heading { padding: 7px 10px; gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .calm-record-list-heading > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .calm-record-list-heading h3 { font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .calm-record-list-heading p { margin: 0; font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .crm-sales-all-fields { display: none; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact.calm-active-customers .cft-summary-values .cft-value button > div + div { display: none; }
+}

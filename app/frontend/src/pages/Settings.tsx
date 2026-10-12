@@ -1,3 +1,4 @@
+import './crm-org-compact.css';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import './admin-workspace.css';
 import { useState, useEffect, useRef } from 'react';
@@ -451,7 +452,7 @@ export default function Settings() {
 
   return (
     <>
-      <div className="t24-settings-page calm-admin-page calm-system-settings app-page hidden space-y-5 md:block">
+      <div className="crm-org-compact t24-settings-page calm-admin-page calm-system-settings app-page hidden space-y-5 md:block">
       <div className="app-page-title"><div><p className="app-page-kicker">T24 Marketing · System</p><h2 className="app-page-heading flex items-center gap-2"><SettingsIcon className="h-5 w-5 text-blue-600" />系统设置</h2><p className="app-page-description">配置公司资料、业务规则、产品套餐、提醒、安全与导出规则。</p></div><Button asChild variant="outline"><a href="/settings/deduction">月度扣点比例设置</a></Button></div>
 
       {settingsLoadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>当前显示缓存配置，重新读取成功后才能保存。</span><Button variant="outline" onClick={() => setSettingsReload(value => value + 1)}>重新读取</Button></div>}

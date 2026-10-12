@@ -1,3 +1,4 @@
+import './crm-org-compact.css';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import './admin-workspace.css';
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -174,7 +175,7 @@ export default function Permissions() {
 
   return (
     <>
-      <div className="t24-settings-page calm-admin-page calm-permissions-page app-page space-y-5">
+      <div className="crm-org-compact t24-settings-page calm-admin-page calm-permissions-page app-page space-y-5">
       <div className="app-page-title"><div>
         <p className="app-page-kicker">T24 Marketing · Access Control</p>
         <h2 className="app-page-heading flex items-center gap-2">

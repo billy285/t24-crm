@@ -1,3 +1,5 @@
+import CompactFinanceTable from '@/components/CompactFinanceTable';
+import './crm-org-compact.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, BadgeDollarSign, BriefcaseBusiness, Handshake, RefreshCw, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +59,33 @@ const money = (value: number, currency: string) => `${currency} ${Number(value |
 const percent = (value: number) => `${Number((Number(value || 0) * 100).toFixed(6))}%`;
 const formatDate = (value?: string | null) => value ? new Date(value).toLocaleDateString('zh-CN', { timeZone: 'UTC' }) : '-';
 
+// Desktop summary contracts retain every original field in the full detail drawer.
+const partnerCustomers = {
+  label: "客户合作状态",
+  columns: [
+    {"label": "客户", "indexes": [0], "width": 2, "summaryMode": "first"},
+    {"label": "合作项目", "indexes": [1], "width": 1.8, "summaryMode": "first", "priority": 2},
+    {"label": "合作状态", "indexes": [2], "width": 1},
+    {"label": "续费状态", "indexes": [3], "width": 1.1},
+    {"label": "关键日期", "indexes": [4], "width": 1.5, "summaryMode": "first", "priority": 2}
+  ],
+  expectedHeaders: ["客户", "合作项目", "合作状态", "续费状态", "续费关键日期", "分润影响", "归属"],
+  actionIndexes: [],
+} as const;
+
+const partnerEntries = {
+  label: "我的分润明细",
+  columns: [
+    {"label": "月份 / 客户", "indexes": [0], "width": 2.5, "summaryMode": "first"},
+    {"label": "类型", "indexes": [1], "width": 1, "priority": 2},
+    {"label": "计佣金额", "indexes": [2], "width": 1.2, "align": "right", "priority": 2},
+    {"label": "我的佣金", "indexes": [4], "width": 1.2, "align": "right"},
+    {"label": "状态", "indexes": [5], "width": 1.1}
+  ],
+  expectedHeaders: ["月份 / 客户", "类型", "计佣金额", "合同 × 活跃", "我的佣金", "状态", "发放凭证"],
+  actionIndexes: [],
+} as const;
+
 export default function PartnerPortal() {
   const isMobile = useIsMobile();
   const [data, setData] = useState<PortalData | null>(null);
@@ -114,7 +143,7 @@ export default function PartnerPortal() {
   if (!data) return null;
 
   return (
-    <div className="partner-portal-page t24-command-page calm-report-page app-page space-y-5">
+    <div className="crm-org-compact partner-portal-page t24-command-page calm-report-page app-page space-y-5">
       <div className="app-page-title flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Partner</p>
@@ -184,10 +213,10 @@ export default function PartnerPortal() {
           </div>
         </CardContent>
         {!isMobile && <CardContent className="overflow-x-auto p-0">
-          <table className="w-full min-w-[1180px] text-sm">
+          <CompactFinanceTable {...partnerCustomers} legacyClassName="w-full min-w-[1180px] text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">客户</th><th>合作项目</th><th>合作状态</th><th>续费状态</th><th>续费关键日期</th><th>分润影响</th><th className="px-4">归属</th></tr></thead>
             <tbody>{(isMobile ? visibleCustomers.slice(0, visibleLimit) : visibleCustomers).map(row => <tr key={row.row_key} className="border-t align-top"><td className="px-4 py-3"><p className="font-medium">{row.customer_name}</p><p className="text-xs text-slate-400">{row.customer_code || '-'}</p></td><td className="py-3"><p>{row.engagement_name || row.product_name || '客户全部项目'}</p><p className="mt-1 text-xs text-slate-400">{[row.business_line_name, row.product_name].filter(Boolean).join(' · ') || '项目资料待补充'}</p></td><td className="py-3"><Badge className={cooperationStatusClasses[row.cooperation_status] || cooperationStatusClasses.unknown}>{cooperationStatusLabels[row.cooperation_status] || row.cooperation_status}</Badge></td><td className="py-3"><Badge className={renewalStatusClasses[row.renewal_status] || renewalStatusClasses.not_configured}>{renewalStatusLabels[row.renewal_status] || row.renewal_status}</Badge></td><td className="py-3 text-xs"><p>下次到期：{formatDate(row.next_due_at)}</p><p className="mt-1 text-slate-400">最近实收：{formatDate(row.last_receipt_at)}</p></td><td className="max-w-[220px] py-3 text-xs text-slate-600">{row.commission_impact}</td><td className="px-4 py-3"><Badge className={row.is_active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}>{row.is_active ? '当前归属' : '历史归属'}</Badge><p className="mt-1 text-xs text-slate-400">{row.effective_from}{row.effective_to ? ` 至 ${row.effective_to}` : ' 起'}</p></td></tr>)}{visibleCustomers.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-slate-400">目前没有归属到您的客户</td></tr>}</tbody>
-          </table>
+          </CompactFinanceTable>
         </CardContent>}
       </Card>
 
@@ -220,7 +249,7 @@ export default function PartnerPortal() {
 
       {!isMobile && <div>
 
-      <Card><CardHeader><CardTitle className="text-base">我的分润明细</CardTitle></CardHeader><CardContent className="overflow-x-auto p-0"><table className="w-full min-w-[980px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">月份 / 客户</th><th>类型</th><th>计佣金额</th><th>合同 × 活跃</th><th>我的佣金</th><th>状态</th><th className="px-4">发放凭证</th></tr></thead><tbody>{(isMobile ? visibleEntries.slice(0, visibleLimit) : visibleEntries).map(row => <tr key={row.id} className="border-t"><td className="px-4 py-3"><p className="font-medium">{row.service_month} · {row.customer_name}</p><p className="text-xs text-slate-400">{row.engagement_name || '全部项目'}</p></td><td>{entryTypeLabels[row.entry_type] || row.entry_type}</td><td>{money(row.eligible_service_amount, row.currency)}</td><td>{percent(row.contract_rate)} × {percent(row.activity_multiplier)}<p className="text-xs text-slate-400">{row.inactivity_months} 个月无新客</p></td><td className={row.commission_amount < 0 ? 'font-semibold text-rose-600' : 'font-semibold text-blue-700'}>{money(row.commission_amount, row.currency)}</td><td><Badge className={entryStatusClasses[row.status] || 'bg-slate-100 text-slate-700'}>{entryStatusLabels[row.status] || row.status}</Badge></td><td className="px-4 text-xs text-slate-500">{row.payout_reference || '-'}</td></tr>)}{visibleEntries.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-slate-400">目前没有分润记录</td></tr>}</tbody></table></CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-base">我的分润明细</CardTitle></CardHeader><CardContent className="overflow-x-auto p-0"><CompactFinanceTable {...partnerEntries} legacyClassName="w-full min-w-[980px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">月份 / 客户</th><th>类型</th><th>计佣金额</th><th>合同 × 活跃</th><th>我的佣金</th><th>状态</th><th className="px-4">发放凭证</th></tr></thead><tbody>{(isMobile ? visibleEntries.slice(0, visibleLimit) : visibleEntries).map(row => <tr key={row.id} className="border-t"><td className="px-4 py-3"><p className="font-medium">{row.service_month} · {row.customer_name}</p><p className="text-xs text-slate-400">{row.engagement_name || '全部项目'}</p></td><td>{entryTypeLabels[row.entry_type] || row.entry_type}</td><td>{money(row.eligible_service_amount, row.currency)}</td><td>{percent(row.contract_rate)} × {percent(row.activity_multiplier)}<p className="text-xs text-slate-400">{row.inactivity_months} 个月无新客</p></td><td className={row.commission_amount < 0 ? 'font-semibold text-rose-600' : 'font-semibold text-blue-700'}>{money(row.commission_amount, row.currency)}</td><td><Badge className={entryStatusClasses[row.status] || 'bg-slate-100 text-slate-700'}>{entryStatusLabels[row.status] || row.status}</Badge></td><td className="px-4 text-xs text-slate-500">{row.payout_reference || '-'}</td></tr>)}{visibleEntries.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-slate-400">目前没有分润记录</td></tr>}</tbody></CompactFinanceTable></CardContent></Card>
 
       <details className="calm-secondary-panel"><summary>协议版本与计算比例</summary><Card><CardHeader><CardTitle className="text-base">我的协议版本</CardTitle></CardHeader><CardContent className="space-y-3">{(isMobile ? visibleAgreements.slice(0, visibleLimit) : visibleAgreements).map(row => <div key={row.id} className="rounded-xl border border-slate-200 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium">V{row.version} · {row.business_line_name} · {row.product_name}</p><p className="mt-1 text-xs text-slate-400">{row.effective_from}{row.effective_to ? ` 至 ${row.effective_to}` : ' 起生效'}</p></div><Badge variant="outline">{row.status === 'active' ? '生效中' : '历史版本'}</Badge></div><div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4"><div><p className="text-xs text-slate-400">首单比例</p><p className="mt-1 font-semibold">{percent(row.first_order_rate)}</p></div><div><p className="text-xs text-slate-400">续费比例</p><p className="mt-1 font-semibold">{percent(row.renewal_rate)}</p></div><div><p className="text-xs text-slate-400">退款观察期</p><p className="mt-1 font-semibold">{row.refund_guard_days} 天</p></div><div><p className="text-xs text-slate-400">6个月无新客</p><p className="mt-1 font-semibold">保留 {percent(Number(row.activity_decay?.['6'] || 0))}</p></div></div></div>)}{visibleAgreements.length === 0 && <p className="py-8 text-center text-sm text-slate-400">尚未配置分润协议，请联系管理员</p>}</CardContent></Card></details>
       </div>}

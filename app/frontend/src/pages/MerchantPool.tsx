@@ -7,6 +7,7 @@ import '@/components/sales-center.css';
 import './sales-workspace.css';
 import './merchant-pool.css';
 import './merchant-pool-refined.css';
+import './crm-sales-compact.css';
 import MerchantImportDialog, { type MerchantImportReceipt } from '@/components/MerchantImportDialog';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import { formatPhoneNumber } from '@/lib/phone-format';
@@ -500,7 +501,7 @@ export default function MerchantPool() {
       );
 
   return (
-    <div className="merchant-pool-page sales-center-ui sc-directory calm-sales-page calm-merchant-page merchant-review-page merchant-pool-refined-page app-page">
+    <div className="merchant-pool-page sales-center-ui sc-directory calm-sales-page calm-merchant-page merchant-review-page merchant-pool-refined-page app-page crm-sales-compact">
       <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} />
       <header className="sc-section-heading mp-page-heading">
         <h2>商家池</h2>
@@ -544,7 +545,7 @@ export default function MerchantPool() {
           </div> : <div data-testid="merchant-pool-desktop-table"><table className="mp-queue-table"><caption className="sr-only">{viewTitle}</caption><thead><tr>{canManagePool && <th className="mp-select-column"><label><input aria-label="选择本页可操作商家" type="checkbox" disabled={listError || loading} checked={items.filter(item => !['converted','archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted','archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></label></th>}<th aria-label="商家与地区">商家</th><th className="mp-phone-column">电话</th><th className="mp-region-column">地区</th>{showStatusColumn && <th className="mp-state-column" aria-label="当前状态">状态</th>}<th className="mp-action-column">操作</th></tr></thead><tbody>
             {loading ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr> : items.length === 0 ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-400">暂无符合条件的商家</td></tr> : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) || reviewing?.id === merchant.id ? 'is-selected' : ''}>
               {canManagePool && <td className="mp-select-column"><label><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={listError || loading || ['converted','archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></label></td>}
-              <td><div className="mp-merchant-identity"><button type="button" className="mp-merchant-name" aria-label={`查看资料：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.business_name}</button><p className="mp-merchant-meta">{merchant.industry && <span>{merchant.industry}</span>}<span className="mp-inline-region">{merchant.industry && ' · '}{formatRegion(merchant)}</span></p><p className="mp-inline-phone">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : '无电话'}</p></div></td>
+              <td><div className="mp-merchant-identity"><button type="button" className="mp-merchant-name" title={merchant.business_name} aria-label={`查看资料：${merchant.business_name}`} onClick={() => setReviewing(merchant)}>{merchant.business_name}</button><p className="mp-merchant-meta">{merchant.industry && <span>{merchant.industry}</span>}<span className="mp-inline-region">{merchant.industry && ' · '}{formatRegion(merchant)}</span></p><p className="mp-inline-phone">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : '无电话'}</p></div></td>
               <td className="mp-phone-column">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : <span className="text-rose-600">无电话</span>}</td>
               <td className="mp-region-column">{formatRegion(merchant)}</td>
               {showStatusColumn && <td className="mp-state-column">{merchant.pool_status !== 'pending' && <Badge className={`mp-pool-status ${statusClasses[merchant.pool_status] || 'bg-slate-100 text-slate-700'}`}>{statusLabels[merchant.pool_status] || merchant.pool_status}</Badge>}</td>}

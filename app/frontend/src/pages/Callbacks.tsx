@@ -1,3 +1,4 @@
+import './crm-customer-delivery-compact.css';
 import { useListScroll } from '@/lib/use-list-scroll';
 import { useRetainedView } from '@/lib/use-retained-view';
 import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';

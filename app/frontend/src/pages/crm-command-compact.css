@@ -1,0 +1,31 @@
+/* Owner CRM and business planning, independent of the owner's private shell. */
+@media (min-width: 1024px) {
+  .t24-system.app-shell .crm-desktop-main :is(.calm-admin-dashboard, .calm-roadmap-page, .calm-decisions-page) :is(.p-6, .p-5):not(:where(form *, [role="dialog"] *, [role="alertdialog"] *)) { padding: 16px; }
+  .t24-system.app-shell .crm-desktop-main :is(.calm-admin-dashboard, .calm-roadmap-page, .calm-decisions-page) .pt-0:not(:where(form *, [role="dialog"] *)) { padding-top: 0; }
+  .t24-system.app-shell .crm-desktop-main :is(.calm-admin-dashboard, .calm-roadmap-page, .calm-decisions-page) :is(.gap-6, .gap-5, .gap-4) { gap: 14px; }
+  .t24-system.app-shell .crm-desktop-main :is(.calm-admin-dashboard, .calm-roadmap-page, .calm-decisions-page) .calm-admin-disclosure > summary { padding: 10px 14px; min-height: 40px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .crm-owner-hero-content { padding: 16px 18px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .crm-owner-accounting-note { display: block; font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .crm-owner-accounting-plain { display: none; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .t24-owner-layout > :not([hidden]) ~ :not([hidden]) { margin-top: 14px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .t24-owner-layout > .owner-desktop-hero { margin-top: 0; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .calm-owner-priority { margin-top: 12px; min-height: 44px; padding: 9px 12px; border-radius: 8px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .calm-owner-priority small { display: inline; font-size: 12px; margin-right: 12px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .calm-owner-priority strong { display: inline; font-size: 14px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .calm-owner-metrics { margin-top: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .t24-command-metric { min-height: 92px; padding: 12px 10px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .t24-command-metric > p { overflow-wrap: anywhere; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .t24-command-metric > p:nth-of-type(2) { font-size: 22px; line-height: 28px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .calm-owner-shortcuts { padding-top: 10px; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .calm-owner-shortcuts button { padding: 7px 10px; min-height: 34px; border-radius: 6px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .crm-owner-work-panels { gap: 14px; grid-template-columns: minmax(0, 1.3fr) minmax(300px, .8fr); }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .crm-owner-decisions { gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main :is(.calm-roadmap-page, .calm-decisions-page) :is(.calm-roadmap-focus, .calm-roadmap-goal, .calm-analysis-section) { border-radius: 8px; }
+  .t24-system.app-shell .crm-desktop-main .calm-analysis-jumps { gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .calm-analysis-jumps a { padding: 7px 12px; }
+  .t24-system.app-shell .crm-desktop-main .calm-decisions-page [role="tablist"] { flex-wrap: wrap; height: auto; }
+  @container crm-workarea (max-width: 900px) {
+    .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .crm-owner-work-panels { grid-template-columns: minmax(0, 1fr); }
+    .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard .calm-owner-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+}
