@@ -1,0 +1,95 @@
+/* CRM presentation only. The private route uses a separate shell. */
+.crm-owner-accounting-note { display: none; }
+@media (min-width: 1024px) {
+  .t24-system.app-shell {
+    --crm-content-width: 1260px;
+    --crm-content-gutter: clamp(28px, 2.5vw, 48px);
+  }
+  .t24-system.app-shell .crm-desktop-main {
+    padding: 32px var(--crm-content-gutter) 48px;
+  }
+  .t24-system.app-shell .crm-content-frame {
+    width: 100%;
+    max-width: var(--crm-content-width);
+    margin-inline: auto;
+    min-width: 0;
+    container: crm-workarea / inline-size;
+  }
+  .t24-system.app-shell .crm-content-frame .app-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .t24-system.app-shell .app-topbar {
+    padding-inline: max(var(--crm-content-gutter), calc((100% - var(--crm-content-width)) / 2));
+  }
+  .t24-system.app-shell .crm-content-frame .app-page-title {
+    margin-bottom: 28px;
+    padding-bottom: 8px !important;
+  }
+  .t24-system.app-shell .crm-content-frame .app-page.space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 28px;
+  }
+  .t24-system.app-shell .crm-content-frame .t24-owner-layout > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 28px;
+  }
+  .t24-system.app-shell .crm-content-frame .t24-owner-layout > .owner-desktop-hero:not([hidden]) { margin-top: 0; }
+  .t24-system.app-shell .crm-content-frame .crm-owner-hero-content { padding: 28px; }
+  .t24-system.app-shell .crm-content-frame .crm-owner-accounting-note {
+    display: block;
+    max-width: 720px;
+    color: #64748b;
+    font-size: var(--t24-aux-size);
+  }
+  .t24-system.app-shell .crm-content-frame .crm-owner-accounting-plain { display: none; }
+  .crm-owner-accounting-note summary { cursor: pointer; width: fit-content; }
+  .t24-system.app-shell .crm-content-frame .calm-owner-metrics { margin-top: 24px; }
+  .t24-system.app-shell .crm-content-frame .t24-command-metric {
+    padding: 20px 16px;
+    min-height: 124px;
+  }
+  .t24-system.app-shell .crm-content-frame .calm-owner-shortcuts { gap: 12px; padding-top: 20px; }
+  .t24-system.app-shell .crm-content-frame .crm-owner-work-panels { gap: 24px; align-items: start; }
+  .t24-system.app-shell .crm-content-frame .crm-owner-decisions { gap: 12px; }
+  .t24-system.app-shell .crm-content-frame .calm-customer-page .customer-360-workspace,
+  .t24-system.app-shell .crm-content-frame .calm-execution-workspace { display: block; }
+  .t24-system.app-shell .crm-content-frame .calm-customer-preview,
+  .t24-system.app-shell .crm-content-frame .calm-current-action { display: none; }
+  .t24-system.app-shell .crm-content-frame .calm-owner-metrics,
+  .t24-system.app-shell .crm-content-frame .finance-owner-overview .fo-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .t24-system.app-shell .crm-content-frame .calm-owner-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .t24-system.app-shell .crm-content-frame .crm-owner-work-panels,
+  .t24-system.app-shell .crm-content-frame .finance-owner-overview .fo-main-grid { grid-template-columns: minmax(0, 1fr); }
+
+  @container crm-workarea (min-width: 1100px) {
+    .t24-system.app-shell .crm-content-frame .calm-customer-page .customer-360-workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 290px;
+      gap: 24px;
+    }
+    .t24-system.app-shell .crm-content-frame .calm-execution-workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 24px;
+    }
+    .t24-system.app-shell .crm-content-frame .calm-customer-preview,
+    .t24-system.app-shell .crm-content-frame .calm-current-action { display: block; }
+  }
+  @container crm-workarea (min-width: 1050px) {
+    .t24-system.app-shell .crm-content-frame .calm-owner-metrics,
+    .t24-system.app-shell .crm-content-frame .finance-owner-overview .fo-metrics,
+    .t24-system.app-shell .crm-content-frame .calm-owner-shortcuts {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  @container crm-workarea (min-width: 1160px) {
+    .t24-system.app-shell .crm-content-frame .crm-owner-work-panels { grid-template-columns: minmax(0, 1.3fr) minmax(0, .7fr); }
+  }
+  @container crm-workarea (min-width: 960px) {
+    .t24-system.app-shell .crm-content-frame .finance-owner-overview .fo-main-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  }
+  @container crm-workarea (max-width: 720px) {
+    .t24-system.app-shell .crm-content-frame .crm-owner-decisions { grid-template-columns: minmax(0, 1fr); }
+    .t24-system.app-shell .crm-content-frame .crm-owner-decisions > .col-span-2 { grid-column: 1 / -1; }
+  }
+}

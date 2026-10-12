@@ -1,5 +1,6 @@
 import '../pages/workspace-layout.css';
 import './mobile-sales-layout.css';
+import './crm-desktop-layout.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
@@ -424,13 +425,13 @@ export default function Layout({ children }: LayoutProps) {
         </header>
 
         {/* Page content */}
-        <main ref={mainScrollRef} className={`${isMorePage ? 'app-main-more ' : ''}app-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isNavigationPage ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>
+        <main ref={mainScrollRef} className={`${isMorePage ? 'app-main-more ' : ''}app-main crm-desktop-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isNavigationPage ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>
           {hasPageAccess ? (
             isMorePage
               ? <MobileMorePage onOpenProfile={() => setMobileProfileOpen(true)} />
               : isAppLauncher
               ? <MobileAppLauncher key={`${employee?.id || 'unknown'}:${role}`} onOpenProfile={() => setMobileProfileOpen(true)} />
-              : <div key={currentPath} className="mobile-route-stage">{children}</div>
+              : <div key={currentPath} className="mobile-route-stage crm-content-frame">{children}</div>
           ) : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">

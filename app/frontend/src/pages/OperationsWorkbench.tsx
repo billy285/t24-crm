@@ -422,7 +422,11 @@ export default function OperationsWorkbench() {
                     <div className="dc-action-main"><span className="dc-kind"><ActionIcon size={13} />{actionTypeLabel}</span><h4>{mobileActionTitle}</h4><button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId}>{action.customerName}{action.customerId && <ArrowRight size={12} />}</button></div>
                     <div className="dc-action-owner"><small>负责人</small><span className={missingOwner ? 'dc-warning-text' : ''}>{ownerLabel}</span></div>
                     <div className="dc-action-due"><span className={`dc-status dc-status-${action.urgency === 'overdue' ? 'rose' : action.urgency === 'waiting' ? 'amber' : 'blue'}`}>{action.urgency === 'overdue' && overdueDays > 0 ? `逾期 ${overdueDays} 天` : style.label}</span><small>{action.date || '未设置截止时间'}</small></div>
-                    <div className="dc-row-actions"><Button size="sm" variant="outline" aria-label={`查看事项 ${mobileActionTitle}`} onClick={() => window.matchMedia('(min-width: 1100px)').matches ? setSelectedActionId(action.id) : openAction(action)}>查看事项</Button></div>
+                    <div className="dc-row-actions"><Button size="sm" variant="outline" aria-label={`查看事项 ${mobileActionTitle}`} onClick={event => {
+                      const frameWidth = event.currentTarget.closest<HTMLElement>('.crm-content-frame')?.getBoundingClientRect().width ?? window.innerWidth;
+                      if (window.matchMedia('(min-width: 1024px)').matches && frameWidth >= 1100) setSelectedActionId(action.id);
+                      else openAction(action);
+                    }}>查看事项</Button></div>
                   </div>}
                 </CardContent>
               </Card>

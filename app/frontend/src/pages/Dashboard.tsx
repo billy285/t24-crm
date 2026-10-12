@@ -671,12 +671,13 @@ export default function Dashboard() {
       <section className="t24-owner-layout space-y-4">
         <MobileOwnerDashboard cockpit={ownerCockpit} />
         <Card className="owner-desktop-hero t24-command-hero overflow-hidden border border-slate-800 bg-[#0f1b34] text-white shadow-[0_16px_42px_-30px_rgba(15,23,42,0.9)]">
-          <CardContent className="p-5">
+          <CardContent className="crm-owner-hero-content p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
                 <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-300"><Gauge className="h-4 w-4" />T24 Owner Command Center</div>
                 <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.02em]">今日经营</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">{ownerCockpit.finance.currency_policy}</p>
+                <p className="crm-owner-accounting-plain mt-2 max-w-3xl text-sm leading-6 text-slate-300">{ownerCockpit.finance.currency_policy}</p>
+                <details className="crm-owner-accounting-note mt-2 text-sm leading-6 text-slate-300"><summary>统计口径</summary><p className="mt-2 max-w-3xl">{ownerCockpit.finance.currency_policy}</p></details>
               </div>
               <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${ownerCockpit.decision_state === 'healthy' ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-300/30 bg-amber-300/10'}`}>
                 {ownerCockpit.decision_state === 'healthy' ? <CheckCircle2 className="h-5 w-5 text-emerald-300" /> : <ShieldAlert className="h-5 w-5 text-amber-300" />}
@@ -703,11 +704,11 @@ export default function Dashboard() {
 
         <button type="button" className="owner-mobile-detail-toggle" aria-expanded={showOwnerOperationalDetails} aria-controls="owner-operational-details owner-additional-details" onClick={() => setShowOwnerOperationalDetails(value => !value)}><span>{showOwnerOperationalDetails ? '收起业务与团队明细' : '业务与团队明细'}</span><ChevronDown aria-hidden="true" /></button>
         <div id="owner-operational-details" className={`owner-mobile-operational-details space-y-4${showOwnerOperationalDetails ? ' is-expanded' : ''}`}>
-        <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+        <div className="crm-owner-work-panels grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
           <Card className="border-slate-200">
             <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-4 w-4 text-rose-500" />老板今天需要推动</CardTitle><p className="mt-1 text-xs text-slate-500">按影响程度排序，点击直接进入处理页面。</p></div><Button size="sm" variant="outline" onClick={() => navigate('/tasks?source=system')}>查看系统任务</Button></div></CardHeader>
             <CardContent>
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="crm-owner-decisions grid gap-2 md:grid-cols-2">
                 {ownerCockpit.decisions.map(item => <button key={item.key} type="button" onClick={() => navigate(item.link)} className={`rounded-xl border p-3 text-left transition hover:shadow-sm ${decisionTone[item.level]}`}><div className="flex items-start justify-between gap-3"><div><span className="text-[10px] font-semibold uppercase tracking-wide opacity-70">{decisionLabel[item.level]}</span><p className="mt-1 text-sm font-semibold">{item.title}</p></div><span className="rounded-full bg-white px-2.5 py-1 text-sm font-bold shadow-sm">{item.count}</span></div><p className="mt-2 text-xs leading-5 opacity-80">{item.description}</p></button>)}
                 {ownerCockpit.decisions.length === 0 && <div className="col-span-2 rounded-xl bg-emerald-50 p-8 text-center text-sm text-emerald-700"><CheckCircle2 className="mx-auto mb-2 h-7 w-7" />当前没有需要老板推动的异常事项</div>}
               </div>
