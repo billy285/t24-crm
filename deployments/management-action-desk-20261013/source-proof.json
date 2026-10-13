@@ -1,0 +1,296 @@
+{
+  "format_version": 1,
+  "stage": "MANAGEMENT_ACTION_DESK_PRESENTATION_SOURCE_PROOF",
+  "source_mode": "committed",
+  "baseline_source_sha": "a4ef1fbcf7d68b5a71e6afc01d4d89c16b68a61b",
+  "baseline_carrier_sha": "3d61155f11dea2d1466d75c06b09a621a9be947d",
+  "source_sha": "622055f8e054f3a08dcb555f53707b9665d24627",
+  "generated_at": "2026-10-13T13:43:05.982Z",
+  "management_file_before_sha256": "75d94c9647587c18cd68da26eab9765f70a6b40814ad03c22986cff5e23993f7",
+  "management_file_after_sha256": "0f020e033fbb6abfb62a95fffab6a795c83dc5a27039997bc869bcff472a7cc7",
+  "component_file_sha256": "1a37a659b54ee351eedc6ce18a2d584976d7a941084075c3e0806d76cb0197b5",
+  "styles_file_sha256": "e51d1660edb016473dfb27e434851ecba984511dc3f2f17746d258b72c7c98a6",
+  "financial_calculations_unchanged": true,
+  "close_conditions_unchanged": true,
+  "private_workspace_source_unchanged": true,
+  "data_reads_unchanged": true,
+  "mutation_handlers_unchanged": true,
+  "management_presentation_only": true,
+  "evidence": {
+    "method": "AST equality for named financial calculations, original API invocation trees and write handlers; complete advanced financial UI and closing dialog subtrees unchanged; byte equality of every other tracked app file. UI additions require separate review and browser QA.",
+    "scope": "Source preservation proof only; no claim of live deployment or browser completion.",
+    "changed_application_files": [
+      "app/frontend/src/components/ManagementActionDesk.tsx",
+      "app/frontend/src/pages/ManagementDecisions.tsx",
+      "app/frontend/src/pages/management-action-desk.css"
+    ],
+    "preserved_functions": {
+      "authOptions": {
+        "before_ast_sha256": "573d223cb74039bab6f314e14382fb3b358f04a0798b35edbf49864ab8e47707",
+        "after_ast_sha256": "573d223cb74039bab6f314e14382fb3b358f04a0798b35edbf49864ab8e47707",
+        "normalization": "None"
+      },
+      "errorMessage": {
+        "before_ast_sha256": "f28a9a7c44fc99064a7f571df884d200ae441a5a212eafc3067db601623de2f1",
+        "after_ast_sha256": "f28a9a7c44fc99064a7f571df884d200ae441a5a212eafc3067db601623de2f1",
+        "normalization": "None"
+      },
+      "dateValue": {
+        "before_ast_sha256": "729b36fbc6034225609ffd3056df9f1bb13d2e03b15699c93ed7871526af742e",
+        "after_ast_sha256": "729b36fbc6034225609ffd3056df9f1bb13d2e03b15699c93ed7871526af742e",
+        "normalization": "None"
+      },
+      "money": {
+        "before_ast_sha256": "afb439f9398e49b4e31aded844dff2a73328bcdd2f62babf9ee14bc453e50c6a",
+        "after_ast_sha256": "afb439f9398e49b4e31aded844dff2a73328bcdd2f62babf9ee14bc453e50c6a",
+        "normalization": "None"
+      },
+      "localDateString": {
+        "before_ast_sha256": "f5ca06c1ca455c805477e9ebdbcaca36e193b1cfb84fd12f23d06849a0681a8a",
+        "after_ast_sha256": "f5ca06c1ca455c805477e9ebdbcaca36e193b1cfb84fd12f23d06849a0681a8a",
+        "normalization": "None"
+      },
+      "profitRangeForPreset": {
+        "before_ast_sha256": "d012aedebd03e8e1829521d447c93647e3f58f23de8500a439d8588b582f4e15",
+        "after_ast_sha256": "d012aedebd03e8e1829521d447c93647e3f58f23de8500a439d8588b582f4e15",
+        "normalization": "None"
+      },
+      "suggestionToForm": {
+        "before_ast_sha256": "5c61d9e2e58d89b8a722e1d918e49371cbe44612a5a0d8f721c3a54277d10a94",
+        "after_ast_sha256": "5c61d9e2e58d89b8a722e1d918e49371cbe44612a5a0d8f721c3a54277d10a94",
+        "normalization": "None"
+      },
+      "projectToForm": {
+        "before_ast_sha256": "ae5b839609f1023254b096475a57430d9da9ded1d6ad9e416265c2f2d481069f",
+        "after_ast_sha256": "ae5b839609f1023254b096475a57430d9da9ded1d6ad9e416265c2f2d481069f",
+        "normalization": "None"
+      },
+      "loadData": {
+        "before_ast_sha256": "ae87bd1c8b0c6e62c5fb04b7a8ed5884d71b058211e3303763c1b681491bf73b",
+        "after_ast_sha256": "ae87bd1c8b0c6e62c5fb04b7a8ed5884d71b058211e3303763c1b681491bf73b",
+        "normalization": "Ignore only display timestamp setters; setGrowthLoadedAt may be guarded by growthResponse.data"
+      },
+      "loadGrowth": {
+        "before_ast_sha256": "f68875aa9998fc39fd3f7939c6d5d27ee986fc4b2096659251b006332dc51b99",
+        "after_ast_sha256": "f68875aa9998fc39fd3f7939c6d5d27ee986fc4b2096659251b006332dc51b99",
+        "normalization": "Ignore only display timestamp setters; setGrowthLoadedAt may be guarded by growthResponse.data"
+      },
+      "saveExchangeRate": {
+        "before_ast_sha256": "72c20c333ca6f90946cb20a099781a9e672c08eed9316fc3b7dad6a922a9f56a",
+        "after_ast_sha256": "72c20c333ca6f90946cb20a099781a9e672c08eed9316fc3b7dad6a922a9f56a",
+        "normalization": "None"
+      },
+      "changeProfitPreset": {
+        "before_ast_sha256": "65acffdbcb089bc48aa80f211df659c7a79ed88214b158abc3345b49318ab497",
+        "after_ast_sha256": "65acffdbcb089bc48aa80f211df659c7a79ed88214b158abc3345b49318ab497",
+        "normalization": "None"
+      },
+      "updateProfitClose": {
+        "before_ast_sha256": "fe5020bcd8ef4d9edec2a17a46f20a1b53239b508dbb1de36598b60e0a959a7d",
+        "after_ast_sha256": "fe5020bcd8ef4d9edec2a17a46f20a1b53239b508dbb1de36598b60e0a959a7d",
+        "normalization": "None"
+      },
+      "runAutomationScan": {
+        "before_ast_sha256": "82bac1d352440e667b5bee0b7e430078b419a06cf5896badf352f6f674cbc170",
+        "after_ast_sha256": "82bac1d352440e667b5bee0b7e430078b419a06cf5896badf352f6f674cbc170",
+        "normalization": "None"
+      },
+      "createQualityTask": {
+        "before_ast_sha256": "dd81fe968e80fce5d529f75f0d4ded624428d6c1e554d2a88929b6ab75437c9e",
+        "after_ast_sha256": "dd81fe968e80fce5d529f75f0d4ded624428d6c1e554d2a88929b6ab75437c9e",
+        "normalization": "None"
+      },
+      "createVisibleQualityTasks": {
+        "before_ast_sha256": "73bab54c085f955e66bbc5ae21496bc564a007c5eb700a7645067db34a0bf38f",
+        "after_ast_sha256": "73bab54c085f955e66bbc5ae21496bc564a007c5eb700a7645067db34a0bf38f",
+        "normalization": "None"
+      },
+      "openReview": {
+        "before_ast_sha256": "1efb2dd47064e3fbf0d1d195e9d35d8255f4992b59b376d6b8c32e116679c820",
+        "after_ast_sha256": "1efb2dd47064e3fbf0d1d195e9d35d8255f4992b59b376d6b8c32e116679c820",
+        "normalization": "None"
+      },
+      "updateProjectForm": {
+        "before_ast_sha256": "0d85b647e87e85267346af823430f179c4c08287b760d97dbc9874b64ce7de1e",
+        "after_ast_sha256": "0d85b647e87e85267346af823430f179c4c08287b760d97dbc9874b64ce7de1e",
+        "normalization": "None"
+      },
+      "saveReview": {
+        "before_ast_sha256": "131557876b3a62a5813bd2851a1030708130860beb2033cdfb03443bb9834238",
+        "after_ast_sha256": "131557876b3a62a5813bd2851a1030708130860beb2033cdfb03443bb9834238",
+        "normalization": "None"
+      },
+      "openStatus": {
+        "before_ast_sha256": "137fe842afa16faace54d55338377e28ab2be9e60f01730154e7f0c4ea6e7797",
+        "after_ast_sha256": "137fe842afa16faace54d55338377e28ab2be9e60f01730154e7f0c4ea6e7797",
+        "normalization": "None"
+      },
+      "saveStatus": {
+        "before_ast_sha256": "c60fdddb860865db11a23586fde2cc01acf1ca160a0a1f94b9f59526dfb036be",
+        "after_ast_sha256": "c60fdddb860865db11a23586fde2cc01acf1ca160a0a1f94b9f59526dfb036be",
+        "normalization": "None"
+      },
+      "visibleItems": {
+        "before_ast_sha256": "df9dbe523ff076c32b392707b40e547d8b1f0ea1bc4c849c47b4aaf1fa67027f",
+        "after_ast_sha256": "df9dbe523ff076c32b392707b40e547d8b1f0ea1bc4c849c47b4aaf1fa67027f",
+        "normalization": "None"
+      },
+      "industries": {
+        "before_ast_sha256": "84a94664e4a3272831b96799f5d54186aa7548614ec5ba7b54ded96b4a49afc6",
+        "after_ast_sha256": "84a94664e4a3272831b96799f5d54186aa7548614ec5ba7b54ded96b4a49afc6",
+        "normalization": "None"
+      },
+      "visibleProjects": {
+        "before_ast_sha256": "bcaa79e1fa3c63b8f2624589f320db51800132b2b9b15a4e86780f84c4a979c6",
+        "after_ast_sha256": "bcaa79e1fa3c63b8f2624589f320db51800132b2b9b15a4e86780f84c4a979c6",
+        "normalization": "None"
+      },
+      "projectPageCount": {
+        "before_ast_sha256": "dfa3ea0abdc8735945665f6f248ea064209f9665dc6e54c0d045b9ae1955a917",
+        "after_ast_sha256": "dfa3ea0abdc8735945665f6f248ea064209f9665dc6e54c0d045b9ae1955a917",
+        "normalization": "None"
+      },
+      "safeProjectPage": {
+        "before_ast_sha256": "cfd1c09bdb3ffd03163e205932f2913d38358dc449eac7697a91223759d96d24",
+        "after_ast_sha256": "cfd1c09bdb3ffd03163e205932f2913d38358dc449eac7697a91223759d96d24",
+        "normalization": "None"
+      },
+      "paginatedProjects": {
+        "before_ast_sha256": "19f844900004a20fdacc7732ec80e3ac47e6370d04f5dbf072cfde14e2cd6f6b",
+        "after_ast_sha256": "19f844900004a20fdacc7732ec80e3ac47e6370d04f5dbf072cfde14e2cd6f6b",
+        "normalization": "None"
+      },
+      "visibleQualityIssues": {
+        "before_ast_sha256": "57c813e351f210ff7769be0ab43e960fd2b1b001a39b48f04fecf17011a27775",
+        "after_ast_sha256": "57c813e351f210ff7769be0ab43e960fd2b1b001a39b48f04fecf17011a27775",
+        "normalization": "None"
+      },
+      "activeQualityCount": {
+        "before_ast_sha256": "9cf930e8059d7a01e3a8de65bc937bde133cb5a4c0d34185c4b213e370548d7b",
+        "after_ast_sha256": "9cf930e8059d7a01e3a8de65bc937bde133cb5a4c0d34185c4b213e370548d7b",
+        "normalization": "None"
+      },
+      "visibleIssuesWithoutTask": {
+        "before_ast_sha256": "2d95d42227984a6b1dcfddb4374a0aa2cc9c156f35af99e55f8d422235caa147",
+        "after_ast_sha256": "2d95d42227984a6b1dcfddb4374a0aa2cc9c156f35af99e55f8d422235caa147",
+        "normalization": "None"
+      },
+      "summary": {
+        "before_ast_sha256": "f5db19afa56b19d2d1d9e81cb4bd3b0ec5d07eb49352622ef73948a1e978f3b5",
+        "after_ast_sha256": "f5db19afa56b19d2d1d9e81cb4bd3b0ec5d07eb49352622ef73948a1e978f3b5",
+        "normalization": "None"
+      },
+      "pendingCount": {
+        "before_ast_sha256": "13f8165b73dc9e4834312183221216ac1855feb3bb8225feb798aad495dc4b84",
+        "after_ast_sha256": "13f8165b73dc9e4834312183221216ac1855feb3bb8225feb798aad495dc4b84",
+        "normalization": "None"
+      },
+      "followUpCount": {
+        "before_ast_sha256": "b532dcd533b96ad8e1421c414b89db30402a2da2cc94657562740755cf254166",
+        "after_ast_sha256": "b532dcd533b96ad8e1421c414b89db30402a2da2cc94657562740755cf254166",
+        "normalization": "None"
+      },
+      "warningTotal": {
+        "before_ast_sha256": "30d43ebfc30366df44340598bbd77ef689a84bd5eeea8aac952e1fb63a903370",
+        "after_ast_sha256": "30d43ebfc30366df44340598bbd77ef689a84bd5eeea8aac952e1fb63a903370",
+        "normalization": "None"
+      },
+      "economicsTotals": {
+        "before_ast_sha256": "aa6b102ace251d3823b2429d53a7589795f70d1320a161c266970910877e8ddb",
+        "after_ast_sha256": "aa6b102ace251d3823b2429d53a7589795f70d1320a161c266970910877e8ddb",
+        "normalization": "None"
+      },
+      "riskyHealth": {
+        "before_ast_sha256": "016b7c499f91793b02d25f8ea57466664f75b976166f00d75ca8c97aad4d9076",
+        "after_ast_sha256": "016b7c499f91793b02d25f8ea57466664f75b976166f00d75ca8c97aad4d9076",
+        "normalization": "None"
+      },
+      "salesCapacitySummary": {
+        "before_ast_sha256": "e44a8db1190bcc0386e48dd04c151df4e22c5e5a15adc423d8bfa9f4a7381c8c",
+        "after_ast_sha256": "e44a8db1190bcc0386e48dd04c151df4e22c5e5a15adc423d8bfa9f4a7381c8c",
+        "normalization": "None"
+      },
+      "profitCenter": {
+        "before_ast_sha256": "530472e4d31b8a61a6405622a5a55c146e0c0f76cab0d9d3becc45a80b579ed6",
+        "after_ast_sha256": "530472e4d31b8a61a6405622a5a55c146e0c0f76cab0d9d3becc45a80b579ed6",
+        "normalization": "None"
+      },
+      "profitSummary": {
+        "before_ast_sha256": "014effc3dff8757d0b1f1194837ab8e9cdb9fb6f82b5ace7e60e8f224b60b024",
+        "after_ast_sha256": "014effc3dff8757d0b1f1194837ab8e9cdb9fb6f82b5ace7e60e8f224b60b024",
+        "normalization": "None"
+      },
+      "currentMonth": {
+        "before_ast_sha256": "df35a84c05fe78e1fd65d87cab84afd32dc285ffe53b25a59dcb01edbc500255",
+        "after_ast_sha256": "df35a84c05fe78e1fd65d87cab84afd32dc285ffe53b25a59dcb01edbc500255",
+        "normalization": "None"
+      },
+      "lineLabels": {
+        "before_ast_sha256": "f7131a3db6565f268060cfc591ef1cbb911a7c1a829e9014104c87fcc2d9d4c4",
+        "after_ast_sha256": "f7131a3db6565f268060cfc591ef1cbb911a7c1a829e9014104c87fcc2d9d4c4",
+        "normalization": "None"
+      },
+      "lineProducts": {
+        "before_ast_sha256": "269f02edd77da12433a3caeff3b407d2385a897d17df9f2535bae0cdf87e9dd9",
+        "after_ast_sha256": "269f02edd77da12433a3caeff3b407d2385a897d17df9f2535bae0cdf87e9dd9",
+        "normalization": "None"
+      },
+      "projectStatusLabels": {
+        "before_ast_sha256": "400536fb38d070d1365bc90f151314b4765ede4be97221e6d61185d85f7698b5",
+        "after_ast_sha256": "400536fb38d070d1365bc90f151314b4765ede4be97221e6d61185d85f7698b5",
+        "normalization": "None"
+      },
+      "projectStatusClasses": {
+        "before_ast_sha256": "4ebc08bc8dcadb60b2b6d5d57b7760a373ebb218bf39b967c0cb330c9fd9dd6c",
+        "after_ast_sha256": "4ebc08bc8dcadb60b2b6d5d57b7760a373ebb218bf39b967c0cb330c9fd9dd6c",
+        "normalization": "None"
+      },
+      "reviewLabels": {
+        "before_ast_sha256": "f5b9f2d418b3de24a2d2e00f088eec8ca2573e2c1b3b54d7bac523b1a000419d",
+        "after_ast_sha256": "f5b9f2d418b3de24a2d2e00f088eec8ca2573e2c1b3b54d7bac523b1a000419d",
+        "normalization": "None"
+      },
+      "collectionLabels": {
+        "before_ast_sha256": "21c0c61e1e63b7f4932c88a1b8b2f2e9d1b9fdc3ecfffec7dd7ea0d290862175",
+        "after_ast_sha256": "21c0c61e1e63b7f4932c88a1b8b2f2e9d1b9fdc3ecfffec7dd7ea0d290862175",
+        "normalization": "None"
+      },
+      "qualityCategoryLabels": {
+        "before_ast_sha256": "70b81aec07a1111f0cab60d9321e88468c73d7a522a3324c9b1dde95e91a5a5d",
+        "after_ast_sha256": "70b81aec07a1111f0cab60d9321e88468c73d7a522a3324c9b1dde95e91a5a5d",
+        "normalization": "None"
+      },
+      "healthLabels": {
+        "before_ast_sha256": "ae8340f8d59d1094122095b70adbdc21bf2699161fec8bc2d20f2ce7028eaa7a",
+        "after_ast_sha256": "ae8340f8d59d1094122095b70adbdc21bf2699161fec8bc2d20f2ce7028eaa7a",
+        "normalization": "None"
+      },
+      "healthClasses": {
+        "before_ast_sha256": "7145d79f15fe9edb3bed3ded28d053b043072a920e648706e184b16492c98c09",
+        "after_ast_sha256": "7145d79f15fe9edb3bed3ded28d053b043072a920e648706e184b16492c98c09",
+        "normalization": "None"
+      }
+    },
+    "preserved_api_call_count": 11,
+    "preserved_api_calls_sha256": "174908a7c8fa4c60831abfa429889eed8cd0e20548471ca456106e164401056b",
+    "preserved_mutation_handlers_sha256": "686d9950193c5fd0fd07e84d6034781dff732b8ae17735b92839904b64233f51",
+    "preserved_management_calculations_sha256": "53357ca9eb07e59d682dc6bfb2dcf51bb8febdd4a8da979330662fff7acbfef8",
+    "preserved_finance_region_sha256": "dc4c954fa33cd3546d30ca6c0aca15d34f51013a30c28bf8f85965d651e0ec92",
+    "preserved_financial_tables": {
+      "formalProfit": "38ed286b44e6789b1500cc7b4bf129bf03c25ea29f29a0d1ac597d623b8a441f",
+      "unitEconomics": "670a06ade1ede51cfb50e89257a905987b2f74fdbfaa678f6b1226aaa6652cca"
+    },
+    "preserved_reopen_dialog_sha256": "aa788faafc4ac19bdda34560f21e957bde9d7b188b8dd1e920ea77fd381564a5",
+    "preserved_finance_ancestor_gates": [
+      "!isMobile",
+      "growth",
+      "section === 'insights'"
+    ],
+    "protected_application_file_count": 752,
+    "protected_application_inventory_sha256": "5adb6544b494281a997969a59b9c270773e1efd5825aeb97b96301a587b48b3f",
+    "private_file_count": 80,
+    "private_source_inventory_sha256": "c15793145e7455eb362d524f9b2bfeeb151e00d2bbe20856a07024285bf53db3",
+    "styles_scoped_rule_count": 108,
+    "verifier_sha256": "2035837a6ba55c0ff1e71d8bdd8602a1d6f865041996aa189a6fe88fdcee5ca2"
+  }
+}
