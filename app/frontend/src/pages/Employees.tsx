@@ -3,6 +3,7 @@ import EmployeeHandoffDialog, { readAllHandoffRows } from '@/components/Employee
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import './admin-workspace.css';
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '../lib/tokenStore';
 import { useRole, roleLabels, empStatusLabels, empStatusColors, departmentLabels, positionLabels } from '../lib/role-context';
@@ -54,10 +55,11 @@ const emptyForm = {
   name: '', role: 'sales', phone: '', email: '', status: 'active',
   department: 'sales', position: 'specialist', employee_code: '', notes: '',
   login_username: '', hire_date: '', supervisor: '',
-  initial_password: '',
+  initial_password: '', existing_partner_id: '',
 };
 
 export default function Employees() {
+  const [searchParams] = useSearchParams();
   const { isAdmin, employee: currentEmp, hasPermission } = useRole();
   const isMobile = useIsMobile();
   const { statuses: statusLabels, taskStatuses: taskStatusLabels } = useBusinessDicts();
@@ -70,6 +72,10 @@ export default function Employees() {
   const [filterDept, setFilterDept] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [unboundPartners, setUnboundPartners] = useState<Array<{ id: number; partner_code: string; name: string; partner_type: string; contact_email?: string }>>([]);
+  const [partnerOptionsError, setPartnerOptionsError] = useState(false);
+  const partnerAccountRequest = searchParams.get('create_partner_account');
+  const handledPartnerRequest = useRef<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -105,6 +111,24 @@ export default function Employees() {
   const failureDetail = (error: any) => error?.data?.detail || error?.response?.data?.detail || error?.message || '操作失败';
 
   useEffect(() => { loadEmployees(); }, []);
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    void invokeWithAuth({ url: '/api/v1/commissions/unbound-partners', method: 'GET' }).then(response => {
+      if (cancelled) return;
+      const items = response.data?.items || [];
+      setUnboundPartners(items); setPartnerOptionsError(false);
+      if (partnerAccountRequest && handledPartnerRequest.current !== partnerAccountRequest) {
+        handledPartnerRequest.current = partnerAccountRequest;
+        const target = /^\d+$/.test(partnerAccountRequest) ? items.find(item => item.id === Number(partnerAccountRequest)) : null;
+        if (!target) { toast.error('此渠道不存在、已绑定账号或已停止合作，请返回渠道页面重新核对。'); return; }
+        setPendingCreatedId(null); setPasswordSetupError(''); setEditingId(null);
+        setForm({ ...emptyForm, role: 'sales_partner', name: target.name, email: target.contact_email || '', existing_partner_id: String(target.id) });
+        setShowForm(true);
+      }
+    }).catch(() => { if (!cancelled) setPartnerOptionsError(true); });
+    return () => { cancelled = true; };
+  }, [isAdmin, partnerAccountRequest]);
 
   const loadEmployees = async () => {
     try {
@@ -149,13 +173,14 @@ export default function Employees() {
       status: e.status || 'active', department: e.department || 'sales', position: e.position || 'specialist',
       employee_code: e.employee_code || '', notes: e.notes || '',
       login_username: e.login_username || '', hire_date: e.hire_date || '', supervisor: e.supervisor || '',
-      initial_password: '',
+      initial_password: '', existing_partner_id: '',
     });
     setEditingId(e.id); setShowForm(true);
   };
 
   const handleSave = async () => {
     if (employeeSaveLock.current) return;
+    if (!pendingCreatedId && !editingId && form.existing_partner_id && (form.role !== 'sales_partner' || partnerOptionsError || !unboundPartners.some(item => item.id === Number(form.existing_partner_id)))) { toast.error('渠道绑定信息不可用，请重新核对后创建。'); return; }
     if (!form.name || !form.role) { toast.error('请填写姓名和角色'); return; }
     const originalEmployee = employees.find(employee => employee.id === editingId);
     if (form.phone.trim() && form.phone !== originalEmployee?.phone) {
@@ -204,7 +229,7 @@ export default function Employees() {
         logOperation({ actionType: 'other', actionDetail: `编辑员工: ${form.name}`, operatorName: op });
       } else {
         if (!createdId) {
-          const created = await client.entities.employees.create({ data: { ...payload, created_at: now } });
+          const created = await client.entities.employees.create({ data: { ...payload, created_at: now, ...(form.role === 'sales_partner' && form.existing_partner_id ? { existing_partner_id: Number(form.existing_partner_id) } : {}) } });
           createdId = Number(created?.data?.id) || null;
           if (!createdId) throw new Error('员工创建结果未返回，请刷新目录核实后再操作');
           setPendingCreatedId(createdId); employeeDraft.markSaved();
@@ -213,7 +238,7 @@ export default function Employees() {
           await invokeWithAuth({ url: '/api/v1/emp-auth/set-password', method: 'POST', data: { employee_id: createdId, new_password: form.initial_password } });
           toast.success('员工已添加并设置初始密码');
         } else toast.success('员工已添加，请为该员工设置登录密码');
-        if (form.role === 'sales_partner') toast.success('销售合伙人账号及分润档案已同时建立');
+        if (form.role === 'sales_partner') toast.success(form.existing_partner_id ? '账号已绑定所选渠道，原有协议与客户归属保持不变' : '销售合伙人账号及分润档案已同时建立');
         logOperation({ actionType: 'other', actionDetail: `新增员工: ${form.name}`, operatorName: op });
       }
       employeeDraft.markSaved(); setShowForm(false); setPendingCreatedId(null); setPasswordSetupError(''); loadEmployees();
@@ -415,6 +440,7 @@ export default function Employees() {
         description={`确定要删除员工「${deleteTarget?.name}」吗？此操作不可恢复。客户、待办、交付任务、服务进度和在办项目需全部交接。`}
         onConfirm={handleDelete} loading={deleting} confirmLabel="确认删除员工" loadingLabel="删除中..." />
 
+      {partnerAccountRequest && <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 text-sm"><Link className="text-blue-700" to="/commissions">← 返回渠道与分润</Link>{partnerOptionsError && <p className="mt-2 text-amber-700">渠道资料读取失败，未创建账号。请刷新后重试。</p>}</div>}
       {/* Add/Edit Dialog */}
       <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && employeeDraft.confirmDiscard())) setShowForm(open); }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
@@ -423,7 +449,8 @@ export default function Employees() {
           {!pendingCreatedId && <fieldset disabled={saving} className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div><Label>工号</Label><Input value={form.employee_code} onChange={e => setForm({ ...form, employee_code: e.target.value })} placeholder="如 EMP001" className="font-mono" /></div>
             <div><Label>姓名 *</Label><Input disabled={Boolean(pendingCreatedId)} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-            <div><Label>角色 *</Label><NativeSelect value={form.role} onChange={v => setForm({ ...form, role: v })} options={allRoleOptions} /></div>
+            <div><Label>角色 *</Label><NativeSelect value={form.role} onChange={v => setForm({ ...form, role: v, existing_partner_id: v === 'sales_partner' ? form.existing_partner_id : '' })} options={allRoleOptions} /></div>
+            {!editingId && form.role === 'sales_partner' && <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3"><Label>渠道档案</Label><NativeSelect aria-label="新账号绑定渠道" value={form.existing_partner_id} onChange={value => setForm({ ...form, existing_partner_id: value })} options={[{ value: '', label: '新渠道：同时建立新的合作档案' }, ...unboundPartners.map(partner => ({ value: String(partner.id), label: `${partner.name} · ${partner.partner_code}` }))]} /><p className="mt-2 text-xs text-slate-600">{form.existing_partner_id ? '本次仅创建登录账号并绑定所选渠道，保留原有协议、客户归属和佣金。该账号只能查看此渠道的数据。' : '若代理档案已存在，请明确选择该档案，避免重复建立渠道。'}</p>{partnerOptionsError && <p role="alert" className="mt-2 text-xs text-amber-700">已有渠道列表未读取成功，请刷新后再绑定。</p>}</div>}
             <div><Label>部门</Label><NativeSelect value={form.department} onChange={v => setForm({ ...form, department: v })} options={Object.entries(departmentLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
             <div><Label>岗位</Label><NativeSelect value={form.position} onChange={v => setForm({ ...form, position: v })} options={Object.entries(positionLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
             <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(empStatusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>

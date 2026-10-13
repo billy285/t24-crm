@@ -58,7 +58,7 @@ def _payment(customer_id: int, payment_id: int, when: datetime, amount: float = 
 
 
 @pytest.mark.asyncio
-async def test_commission_scan_is_idempotent_excludes_ads_applies_decay_and_refund_reversal():
+async def test_commission_scan_is_idempotent_excludes_ads_uses_fixed_renewal_and_refund_reversal():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     await _create_tables(engine)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -69,12 +69,13 @@ async def test_commission_scan_is_idempotent_excludes_ads_applies_decay_and_refu
             Customers(id=2, customer_code="C002", business_name="Second", contact_name="Owner", phone="2"),
             SalesPartner(id=1, partner_code="P001", name="Partner", partner_type="partner", status="active", joined_at=date(2026, 1, 1)),
             CommissionAgreement(
+                calculation_version="service_month_v2", renewal_policy="fixed",
                 id=1, partner_id=1, version=1, first_order_rate=.5, renewal_rate=.2,
                 activity_decay_json=json.dumps({0: 1, 1: .8, 2: .6, 3: .4, 4: .25, 5: .1, 6: 0}),
                 refund_guard_days=30, effective_from=date(2026, 1, 1), status="active",
             ),
-            CustomerCommissionAttribution(id=1, customer_id=1, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
-            CustomerCommissionAttribution(id=2, customer_id=2, partner_id=1, attribution_role="primary", effective_from=date(2026, 3, 1), is_active=True),
+            CustomerCommissionAttribution(commission_mode="first_month_then_renewal", commission_start_date=date(2026, 1, 1), first_service_start=date(2026, 1, 1), id=1, customer_id=1, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
+            CustomerCommissionAttribution(commission_mode="first_month_then_renewal", commission_start_date=date(2026, 1, 1), first_service_start=date(2026, 3, 1), id=2, customer_id=2, partner_id=1, attribution_role="primary", effective_from=date(2026, 3, 1), is_active=True),
             _payment(1, 1, datetime(2026, 1, 5, tzinfo=timezone.utc), business_line_id=1),
             _payment(1, 2, datetime(2026, 2, 5, tzinfo=timezone.utc), business_line_id=1),
             _payment(1, 6, datetime(2026, 2, 6, tzinfo=timezone.utc), business_line_id=2),
@@ -95,12 +96,12 @@ async def test_commission_scan_is_idempotent_excludes_ads_applies_decay_and_refu
         assert entries[0].entry_type == "first_order"
         assert entries[0].commission_amount == 500
         assert entries[1].entry_type == "renewal"
-        assert entries[1].inactivity_months == 1
-        assert entries[1].activity_multiplier == .8
-        assert entries[1].commission_amount == 160
-        assert next(row for row in entries if row.payment_id == 6).entry_type == "first_order"
+        assert entries[1].inactivity_months == 0
+        assert entries[1].activity_multiplier == 1
+        assert entries[1].commission_amount == 200
+        assert next(row for row in entries if row.payment_id == 6).entry_type == "renewal"
         reversal = next(row for row in entries if row.entry_type == "refund_reversal")
-        assert reversal.commission_amount == -16
+        assert reversal.commission_amount == -20
         assert next(row for row in entries if row.payment_id == 3).entry_type == "first_order"
         march_renewal = next(row for row in entries if row.payment_id == 4)
         assert march_renewal.entry_type == "renewal"
@@ -121,8 +122,8 @@ async def test_confirmed_snapshot_is_locked_and_partner_stop_blocks_future_recei
         partner = SalesPartner(id=1, partner_code="P001", name="Partner", partner_type="partner", status="active", joined_at=date(2026, 1, 1))
         db.add_all([
             Customers(id=1, business_name="First", contact_name="Owner", phone="1"), partner,
-            CommissionAgreement(id=1, partner_id=1, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1, 6: 0}), refund_guard_days=30, effective_from=date(2026, 1, 1), status="active"),
-            CustomerCommissionAttribution(id=1, customer_id=1, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
+            CommissionAgreement(calculation_version="service_month_v2", renewal_policy="fixed", id=1, partner_id=1, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1, 6: 0}), refund_guard_days=30, effective_from=date(2026, 1, 1), status="active"),
+            CustomerCommissionAttribution(commission_mode="first_month_then_renewal", commission_start_date=date(2026, 1, 1), first_service_start=date(2026, 1, 1), id=1, customer_id=1, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
             _payment(1, 1, datetime(2026, 1, 5, tzinfo=timezone.utc)),
         ])
         await db.commit()
@@ -181,8 +182,8 @@ async def test_locked_month_blocks_commission_entering_profit_but_allows_non_pro
         db.add_all([
             Customers(id=1, business_name="First", contact_name="Owner", phone="1"),
             SalesPartner(id=1, partner_code="P001", name="Partner", partner_type="partner", status="active", joined_at=date(2026, 1, 1)),
-            CommissionAgreement(id=1, partner_id=1, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1}), refund_guard_days=0, effective_from=date(2026, 1, 1), status="active"),
-            CustomerCommissionAttribution(id=1, customer_id=1, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
+            CommissionAgreement(calculation_version="service_month_v2", renewal_policy="fixed", id=1, partner_id=1, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1}), refund_guard_days=0, effective_from=date(2026, 1, 1), status="active"),
+            CustomerCommissionAttribution(commission_mode="first_month_then_renewal", commission_start_date=date(2026, 1, 1), first_service_start=date(2026, 1, 1), id=1, customer_id=1, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
             _payment(1, 1, datetime(2026, 1, 5, tzinfo=timezone.utc)),
             MonthlyProfitClose(
                 year_month="2026-01", status="locked", snapshot_json="{}",
@@ -265,7 +266,7 @@ async def test_commission_data_quality_finds_unassigned_receipts_and_missing_agr
             Customers(id=1, business_name="No Owner", contact_name="Owner", phone="1"),
             Customers(id=2, business_name="No Agreement", contact_name="Owner", phone="2"),
             SalesPartner(id=1, partner_code="P001", name="Partner", partner_type="partner", status="active", joined_at=date(2026, 1, 1)),
-            CustomerCommissionAttribution(id=1, customer_id=2, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
+            CustomerCommissionAttribution(commission_mode="first_month_then_renewal", commission_start_date=date(2026, 1, 1), first_service_start=date(2026, 1, 1), id=1, customer_id=2, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
             _payment(1, 1, datetime(2026, 2, 1, tzinfo=timezone.utc)),
             _payment(2, 2, datetime(2026, 2, 1, tzinfo=timezone.utc)),
         ])
@@ -294,7 +295,7 @@ async def test_bulk_attribution_preview_and_apply_are_safe_and_idempotent():
             Customers(id=2, customer_code="C002", business_name="Direct Customer", contact_name="Owner", phone="2"),
             Customers(id=3, customer_code="C003", business_name="Later Owner", contact_name="Owner", phone="3", sales_employee_id=7),
             SalesPartner(id=1, partner_code="EMP-007", name="Internal Sales", partner_type="employee", employee_id=7, status="active", joined_at=date(2026, 1, 1)),
-            CustomerCommissionAttribution(id=1, customer_id=3, partner_id=1, attribution_role="primary", effective_from=date(2026, 5, 1), is_active=True),
+            CustomerCommissionAttribution(commission_mode="first_month_then_renewal", commission_start_date=date(2026, 1, 1), first_service_start=date(2026, 1, 1), id=1, customer_id=3, partner_id=1, attribution_role="primary", effective_from=date(2026, 5, 1), is_active=True),
             _payment(1, 1, datetime(2026, 1, 5, tzinfo=timezone.utc)),
             _payment(2, 2, datetime(2026, 2, 5, tzinfo=timezone.utc)),
             _payment(3, 3, datetime(2026, 3, 5, tzinfo=timezone.utc)),
@@ -364,10 +365,10 @@ async def test_sales_partner_dashboard_is_scoped_to_linked_partner_and_hides_gro
             Customers(id=2, customer_code="C002", business_name="Hidden Customer", contact_name="Owner", phone="2"),
             SalesPartner(id=1, partner_code="P001", name="Visible Partner", partner_type="partner", employee_id=7, status="active", joined_at=date(2026, 1, 1)),
             SalesPartner(id=2, partner_code="P002", name="Other Partner", partner_type="partner", status="active", joined_at=date(2026, 1, 1)),
-            CommissionAgreement(id=1, partner_id=1, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1, 6: 0}), refund_guard_days=30, effective_from=date(2026, 1, 1), status="active"),
-            CommissionAgreement(id=2, partner_id=2, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1, 6: 0}), refund_guard_days=30, effective_from=date(2026, 1, 1), status="active"),
-            CustomerCommissionAttribution(id=1, customer_id=1, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
-            CustomerCommissionAttribution(id=2, customer_id=2, partner_id=2, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
+            CommissionAgreement(calculation_version="service_month_v2", renewal_policy="fixed", id=1, partner_id=1, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1, 6: 0}), refund_guard_days=30, effective_from=date(2026, 1, 1), status="active"),
+            CommissionAgreement(calculation_version="service_month_v2", renewal_policy="fixed", id=2, partner_id=2, version=1, first_order_rate=.5, renewal_rate=.2, activity_decay_json=json.dumps({0: 1, 6: 0}), refund_guard_days=30, effective_from=date(2026, 1, 1), status="active"),
+            CustomerCommissionAttribution(commission_mode="first_month_then_renewal", commission_start_date=date(2026, 1, 1), first_service_start=date(2026, 1, 1), id=1, customer_id=1, partner_id=1, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
+            CustomerCommissionAttribution(commission_mode="first_month_then_renewal", commission_start_date=date(2026, 1, 1), first_service_start=date(2026, 1, 1), id=2, customer_id=2, partner_id=2, attribution_role="primary", effective_from=date(2026, 1, 1), is_active=True),
             _payment(1, 1, datetime(2026, 1, 5, tzinfo=timezone.utc)),
             _payment(2, 2, datetime(2026, 1, 5, tzinfo=timezone.utc)),
             CommissionEntry(id=1, partner_id=1, agreement_id=1, attribution_id=1, customer_id=1, payment_id=1, entry_type="first_order", status="paid", service_month="2026-01", occurred_at=datetime(2026, 1, 5, tzinfo=timezone.utc), currency="USD", gross_receipt_amount=3000, eligible_service_amount=1000, contract_rate=.5, inactivity_months=0, activity_multiplier=1, commission_amount=500, snapshot_json="{}", idempotency_key="visible"),

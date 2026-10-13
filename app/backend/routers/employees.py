@@ -6,7 +6,8 @@ from zoneinfo import ZoneInfo
 from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -433,6 +434,7 @@ class EmployeesData(BaseModel):
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    existing_partner_id: Optional[int] = Field(None, gt=0)
 
 
 class EmployeesUpdateData(BaseModel):
@@ -678,6 +680,22 @@ async def create_employees(
     try:
         await _lock_employee_identity_mutation(db)
         payload = data.model_dump()
+        existing_partner_id = payload.pop("existing_partner_id", None)
+        linked_partner = None
+        if existing_partner_id is not None:
+            if payload.get("role") != "sales_partner":
+                raise HTTPException(status_code=400, detail="只有销售合伙人账号可以绑定已有渠道")
+            if payload.get("status") not in {None, "active", "probation"}:
+                raise HTTPException(status_code=409, detail="新绑定账号必须为在职或试用状态")
+            linked_partner = await db.scalar(select(SalesPartner).where(
+                SalesPartner.id == existing_partner_id,
+            ).with_for_update())
+            if not linked_partner or linked_partner.partner_type not in EXTERNAL_PARTNER_TYPES:
+                raise HTTPException(status_code=404, detail="指定的外部渠道不存在，请重新选择")
+            if linked_partner.employee_id is not None:
+                raise HTTPException(status_code=409, detail="指定渠道已关联登录账号，不能重复创建")
+            if linked_partner.status not in {"active", "suspended"}:
+                raise HTTPException(status_code=409, detail="已终止或结清的渠道不能新增账号")
         payload["email"] = normalize_employee_email(payload.get("email"))
         await _validate_employee_emails(db, [payload["email"]])
         _validate_employee_phone(payload)
@@ -695,7 +713,12 @@ async def create_employees(
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create employees")
         if is_sales_partner:
-            await _ensure_sales_partner_profile(db, result, _admin)
+            if linked_partner is not None:
+                linked_partner.employee_id = result.id
+                note = f"{datetime.now(BUSINESS_TIMEZONE).isoformat()} 创建并绑定登录账号 {result.id}；操作人 {_admin.name or _admin.email}"
+                linked_partner.notes = "\n".join(filter(None, [linked_partner.notes, note]))
+            else:
+                await _ensure_sales_partner_profile(db, result, _admin)
             await db.commit()
             await db.refresh(result)
         
@@ -704,6 +727,9 @@ async def create_employees(
     except HTTPException:
         await db.rollback()
         raise
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="登录邮箱或渠道绑定已存在，请刷新后核对") from e
     except ValueError as e:
         await db.rollback()
         logger.error(f"Validation error creating employees: {str(e)}")
@@ -733,7 +759,9 @@ async def create_employeess_batch(
                 status_code=400,
                 detail="销售合伙人账号请使用单个新增，以确保登录账号与分润档案同步建立",
             )
-        payloads = [item.model_dump() for item in request.items]
+        if any(item.existing_partner_id is not None for item in request.items):
+            raise HTTPException(status_code=400, detail="渠道登录绑定请使用单个新增销售合伙人账号")
+        payloads = [item.model_dump(exclude={"existing_partner_id"}) for item in request.items]
         for payload in payloads:
             payload["email"] = normalize_employee_email(payload.get("email"))
             _validate_employee_phone(payload)

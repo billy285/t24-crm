@@ -51,7 +51,7 @@ def _matching_payments(payments: list[Any], engagement: Any | None, subscription
             named = [row for row in service_payments if not getattr(row, "engagement_id", None) and _normalized(getattr(row, "product_name", None)) == package_name]
             if named:
                 return named
-        return service_payments if customer_engagement_count == 1 else []
+        return [row for row in service_payments if not getattr(row, "engagement_id", None)] if customer_engagement_count == 1 else []
 
     if subscription is not None:
         package_name = _normalized(getattr(subscription, "package_name", None))
@@ -75,7 +75,7 @@ def _matching_subscriptions(subscriptions: list[Any], engagement: Any | None, cu
     ]
     if named:
         return named
-    return subscriptions if customer_engagement_count == 1 else []
+    return [row for row in subscriptions if not getattr(row, "engagement_id", None)] if customer_engagement_count == 1 else []
 
 
 def _cooperation_status(engagement: Any | None, subscription: Any | None) -> str:
@@ -142,9 +142,7 @@ def _renewal_status(
     return "active", due_at, last_receipt_at
 
 
-def _commission_impact(attribution: Any, cooperation_status: str, renewal_status: str) -> str:
-    if not bool(getattr(attribution, "is_active", False)):
-        return "历史归属，仅保留历史分润"
+def _commission_impact(cooperation_status: str, renewal_status: str) -> str:
     if cooperation_status in STOPPED_COOPERATION_STATUSES or renewal_status in {"stopped", "lost", "upgraded"}:
         return "停止后不再新增续费分润"
     if renewal_status == "not_configured":
@@ -168,12 +166,14 @@ def build_partner_customer_status_rows(
     product_map: dict[int, str] | None = None,
     as_of: date | None = None,
     warning_days: int = 7,
+    scope_attributions: list[Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build partner-safe status rows without returning payment amounts or internal notes."""
     as_of = as_of or datetime.now(timezone.utc).date()
     business_line_map = business_line_map or {}
     business_line_recurring_map = business_line_recurring_map or {}
     product_map = product_map or {}
+    scope_attributions = attributions if scope_attributions is None else scope_attributions
     engagements_by_customer: dict[int, list[Any]] = defaultdict(list)
     subscriptions_by_customer: dict[int, list[Any]] = defaultdict(list)
     payments_by_customer: dict[int, list[Any]] = defaultdict(list)
@@ -185,25 +185,55 @@ def build_partner_customer_status_rows(
         payments_by_customer[row.customer_id].append(row)
 
     output: list[dict[str, Any]] = []
+    def currently_effective(row: Any) -> bool:
+        # A future handover closes the old row immediately in storage, but its
+        # dated ownership remains valid through effective_to (inclusive).
+        return bool((row.is_active or row.effective_to is not None)
+                    and row.effective_from <= as_of
+                    and (row.effective_to is None or row.effective_to >= as_of))
+
     for attribution in attributions:
         customer = customer_map.get(attribution.customer_id)
         customer_engagements = engagements_by_customer.get(attribution.customer_id, [])
         engagement_map = {row.id: row for row in customer_engagements}
+        active_now = currently_effective(attribution)
+        current_scopes = [row for row in scope_attributions if (
+            row.customer_id == attribution.customer_id and currently_effective(row)
+        )]
+
+        def owns_project(project: Any) -> bool:
+            candidates = [row for row in current_scopes if row.engagement_id in (None, project.id)]
+            if not candidates:
+                return False
+            # Same project override precedence as the financial attribution resolver.
+            owner = max(candidates, key=lambda row: (row.engagement_id is not None, row.effective_from, row.id))
+            return owner.id == attribution.id
+
         selected_engagements: list[Any | None]
-        if attribution.engagement_id:
-            selected_engagements = [engagement_map.get(attribution.engagement_id)]
-        elif attribution.is_active and customer_engagements:
-            selected_engagements = sorted(customer_engagements, key=lambda row: (row.id or 0))
+        if not active_now:
+            # Historical attribution must not reveal today's replacement projects,
+            # package labels, payment dates or subscription state.
+            selected_engagements = [None]
+        elif attribution.engagement_id:
+            project = engagement_map.get(attribution.engagement_id)
+            if project is not None and not owns_project(project):
+                continue
+            selected_engagements = [project]
+        elif customer_engagements:
+            selected_engagements = sorted((row for row in customer_engagements if owns_project(row)), key=lambda row: (row.id or 0))
+            if not selected_engagements:
+                continue
         else:
             selected_engagements = [None]
 
         for position, engagement in enumerate(selected_engagements):
             missing_explicit_engagement = bool(attribution.engagement_id and engagement is None)
-            project_subscriptions = [] if missing_explicit_engagement else _matching_subscriptions(
+            hide_current = not active_now or missing_explicit_engagement
+            project_subscriptions = [] if hide_current else _matching_subscriptions(
                 subscriptions_by_customer.get(attribution.customer_id, []), engagement, len(customer_engagements),
             )
             subscription = _latest(project_subscriptions, "end_date", "next_payment_date", "updated_at", "created_at")
-            project_payments = [] if missing_explicit_engagement else _matching_payments(
+            project_payments = [] if hide_current else _matching_payments(
                 payments_by_customer.get(attribution.customer_id, []), engagement, subscription, len(customer_engagements),
             )
             cooperation_status = _cooperation_status(engagement, subscription)
@@ -219,7 +249,7 @@ def build_partner_customer_status_rows(
                 warning_days=warning_days,
                 renewal_applicable=renewal_applicable,
             )
-            if not attribution.is_active:
+            if not active_now:
                 cooperation_status = "historical"
                 renewal_status = "historical"
                 next_due_at = None
@@ -234,7 +264,7 @@ def build_partner_customer_status_rows(
                 "customer_id": attribution.customer_id,
                 "customer_code": getattr(customer, "customer_code", None),
                 "customer_name": getattr(customer, "business_name", None) or f"客户 #{attribution.customer_id}",
-                "engagement_id": getattr(engagement, "id", None) or attribution.engagement_id,
+                "engagement_id": getattr(engagement, "id", None) if active_now else None,
                 "engagement_name": engagement_name,
                 "business_line_name": business_line_map.get(getattr(engagement, "business_line_id", None)),
                 "product_name": product_map.get(getattr(engagement, "product_id", None)),
@@ -242,10 +272,12 @@ def build_partner_customer_status_rows(
                 "renewal_status": renewal_status,
                 "next_due_at": next_due_at,
                 "last_receipt_at": last_receipt_at,
-                "commission_impact": _commission_impact(attribution, cooperation_status, renewal_status),
+                "commission_impact": _commission_impact(cooperation_status, renewal_status) if active_now else (
+                    "归属尚未生效" if attribution.effective_from > as_of else "历史归属，仅保留历史分润"
+                ),
                 "effective_from": attribution.effective_from,
                 "effective_to": attribution.effective_to,
-                "is_active": attribution.is_active,
+                "is_active": active_now,
             })
     return output
 

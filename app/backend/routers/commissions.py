@@ -4,12 +4,13 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_current_user, get_finance_user, normalize_system_role
+from dependencies.auth import get_admin_user, get_current_user, get_finance_user, normalize_system_role
 from models.commissions import (
     CommissionAgreement,
     CommissionEntry,
@@ -29,9 +30,13 @@ from services.commissions import (
     assign_customer_commission_owner,
     commission_data_quality,
     preview_bulk_customer_attributions,
+    preview_customer_commission_owner,
+    preview_payment_commission,
     scan_commissions,
     transfer_partner_attributions_to_direct,
     utcnow,
+    validate_commission_entry_confirmation,
+    validate_commission_entry_reversal,
 )
 from services.partner_portal import build_partner_customer_status_rows, partner_status_summary
 from services.finance_period_lock import ensure_profit_months_open
@@ -75,6 +80,63 @@ def _agreement_payload(row: CommissionAgreement) -> dict:
         "activity_decay": decay, "refund_guard_days": row.refund_guard_days,
         "effective_from": row.effective_from, "effective_to": row.effective_to,
         "status": row.status, "notes": row.notes, "created_at": row.created_at,
+        "calculation_version": row.calculation_version,
+        "renewal_policy": row.renewal_policy,
+    }
+
+
+def _portal_partner_payload(row: SalesPartner) -> dict:
+    """A partner-visible whitelist, separate from internal management remarks."""
+    return {key: getattr(row, key) for key in (
+        "id", "partner_code", "name", "partner_type", "status", "joined_at", "stopped_at",
+    )}
+
+
+def _portal_agreement_payload(row: CommissionAgreement) -> dict:
+    payload = _agreement_payload(row)
+    return {key: value for key, value in payload.items() if key != "notes"}
+
+
+def _entry_period_payload(row: CommissionEntry) -> dict:
+    try:
+        snapshot = json.loads(row.snapshot_json or "{}")
+    except (TypeError, json.JSONDecodeError):
+        snapshot = {}
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+    return {
+        "calculation_version": snapshot.get("calculation_version", "legacy_v1"),
+        **{key: snapshot.get(key) for key in (
+            "service_period_start", "service_period_end", "first_service_start", "commission_mode", "allocation_basis",
+        )},
+    }
+
+
+async def _validate_partner_login(db: AsyncSession, employee_id: int, *, partner_id: int | None = None) -> Employees:
+    # Serialize every bind/create for the same employee, including concurrent requests.
+    employee = await db.scalar(select(Employees).where(Employees.id == employee_id).with_for_update()
+                               .execution_options(populate_existing=True))
+    if not employee:
+        raise HTTPException(status_code=404, detail="关联登录账号不存在")
+    if normalize_system_role(employee.role) != "sales_partner":
+        raise HTTPException(status_code=409, detail="外部渠道必须关联“销售合伙人”角色的登录账号")
+    if employee.status not in {"active", "probation"}:
+        raise HTTPException(status_code=409, detail="只能绑定正常使用中的销售合伙人账号")
+    linked = select(SalesPartner.id).where(
+        SalesPartner.employee_id == employee_id,
+        SalesPartner.partner_type.in_(("agency", "partner")),
+    )
+    if partner_id is not None:
+        linked = linked.where(SalesPartner.id != partner_id)
+    if await db.scalar(linked.limit(1)):
+        raise HTTPException(status_code=409, detail="该登录账号已经关联其他渠道档案，请核对原档案，不可重复绑定")
+    return employee
+
+
+def _login_payload(employee: Employees | None) -> dict | None:
+    return None if employee is None else {
+        "id": employee.id, "name": employee.name, "email": employee.email,
+        "status": employee.status, "employee_code": employee.employee_code,
     }
 
 
@@ -153,12 +215,14 @@ class PartnerInput(BaseModel):
 
 
 class AgreementInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     partner_id: int = Field(gt=0)
     business_line_id: Optional[int] = Field(None, gt=0)
     product_id: Optional[int] = Field(None, gt=0)
     first_order_rate: float = Field(ge=0, le=1)
     renewal_rate: float = Field(ge=0, le=1)
-    activity_decay: dict[int, float] = Field(default_factory=lambda: DEFAULT_DECAY.copy())
+    renewal_policy: Literal["fixed"] = "fixed"
+    activity_decay: dict[int, float] = Field(default_factory=lambda: {0: 1.0, 6: 1.0})
     refund_guard_days: int = Field(default=30, ge=0, le=180)
     effective_from: date
     notes: Optional[str] = Field(None, max_length=4000)
@@ -174,15 +238,38 @@ class AgreementInput(BaseModel):
         ordered = [normalized[key] for key in sorted(normalized)]
         if any(ordered[index] < ordered[index + 1] for index in range(len(ordered) - 1)):
             raise ValueError("停滞时间越长，续费倍率不能升高")
+        if any(rate != 1.0 for rate in normalized.values()):
+            raise ValueError("新协议使用固定续费比例，活跃倍率必须为100%")
         return normalized
 
 
 class AttributionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     customer_id: int = Field(gt=0)
     partner_id: int = Field(gt=0)
     engagement_id: Optional[int] = Field(None, gt=0)
     effective_from: date
     source_note: Optional[str] = Field(None, max_length=4000)
+    commission_mode: Literal["first_month_then_renewal", "renewal_only", "none"] = "first_month_then_renewal"
+    commission_start_date: date
+    first_service_start: Optional[date] = None
+    history_basis: Optional[str] = Field(None, max_length=4000)
+
+    @model_validator(mode="after")
+    def validate_commission_period(self):
+        self.history_basis = (self.history_basis or "").strip() or None
+        if self.commission_start_date < self.effective_from:
+            raise ValueError("计佣开始日期不能早于归属生效日期")
+        if self.commission_mode == "first_month_then_renewal" and self.first_service_start is None:
+            raise ValueError("请填写首次服务开始日期，明确首月与续费边界")
+        if self.commission_mode == "renewal_only" and not self.history_basis:
+            raise ValueError("仅续费模式必须填写历史首月已完成的依据")
+        return self
+
+
+class PartnerLoginInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    employee_id: int = Field(gt=0)
 
 
 class BulkAttributionApplyInput(BaseModel):
@@ -212,6 +299,9 @@ async def dashboard(
         entry_query = entry_query.where(CommissionEntry.service_month == month)
     entries = (await db.scalars(entry_query.order_by(CommissionEntry.occurred_at.desc(), CommissionEntry.id.desc()))).all()
     partners = (await db.scalars(select(SalesPartner).order_by(SalesPartner.id.desc()))).all()
+    employee_ids = {row.employee_id for row in partners if row.employee_id}
+    linked_employees = (await db.scalars(select(Employees).where(Employees.id.in_(employee_ids)))).all() if employee_ids else []
+    employee_map = {row.id: row for row in linked_employees}
     agreements = (await db.scalars(select(CommissionAgreement).order_by(CommissionAgreement.partner_id, CommissionAgreement.version.desc()))).all()
     attributions = (await db.scalars(select(CustomerCommissionAttribution).order_by(CustomerCommissionAttribution.id.desc()))).all()
     customer_ids = {row.customer_id for row in attributions} | {row.customer_id for row in entries}
@@ -236,7 +326,7 @@ async def dashboard(
             "quality": {key: value for key, value in quality.items() if key != "issues"},
         },
         "quality_issues": quality["issues"],
-        "partners": [_partner_payload(row) for row in partners],
+        "partners": [{**_partner_payload(row), "login_account": _login_payload(employee_map.get(row.employee_id))} for row in partners],
         "agreements": [_agreement_payload(row) for row in agreements],
         "attributions": [{
             "id": row.id, "customer_id": row.customer_id, "customer_name": customer_map.get(row.customer_id),
@@ -244,6 +334,8 @@ async def dashboard(
             "partner_name": partner_map.get(row.partner_id), "attribution_role": row.attribution_role,
             "effective_from": row.effective_from, "effective_to": row.effective_to,
             "is_active": row.is_active, "source_note": row.source_note,
+            "commission_mode": row.commission_mode, "commission_start_date": row.commission_start_date,
+            "first_service_start": row.first_service_start, "history_basis": row.history_basis,
         } for row in attributions],
         "entries": [{
             "id": row.id, "partner_id": row.partner_id, "partner_name": partner_map.get(row.partner_id),
@@ -256,6 +348,7 @@ async def dashboard(
             "activity_multiplier": row.activity_multiplier, "commission_amount": row.commission_amount,
             "confirmed_at": row.confirmed_at, "payable_at": row.payable_at,
             "paid_at": row.paid_at, "payout_reference": row.payout_reference,
+            **_entry_period_payload(row),
         } for row in entries],
     }
 
@@ -299,6 +392,10 @@ async def my_partner_dashboard(
     ).order_by(CommissionEntry.occurred_at.desc(), CommissionEntry.id.desc()))).all()
 
     customer_ids = {row.customer_id for row in attributions} | {row.customer_id for row in entries}
+    scope_attributions = (await db.scalars(select(CustomerCommissionAttribution).where(
+        CustomerCommissionAttribution.customer_id.in_(customer_ids),
+        CustomerCommissionAttribution.attribution_role == "primary",
+    ))).all() if customer_ids else []
     customers = (await db.scalars(select(Customers).where(Customers.id.in_(customer_ids)))).all() if customer_ids else []
     engagements = (await db.scalars(select(CustomerEngagement).where(CustomerEngagement.customer_id.in_(customer_ids)))).all() if customer_ids else []
     subscriptions = (await db.scalars(select(Subscriptions).where(Subscriptions.customer_id.in_(customer_ids)))).all() if customer_ids else []
@@ -311,7 +408,6 @@ async def my_partner_dashboard(
     lines = (await db.scalars(select(BusinessLine).where(BusinessLine.id.in_(line_ids)))).all() if line_ids else []
     products = (await db.scalars(select(ProductCatalog).where(ProductCatalog.id.in_(product_ids)))).all() if product_ids else []
     customer_map = {row.id: row for row in customers}
-    engagement_map = {row.id: row for row in engagements}
     line_map = {row.id: row.name for row in lines}
     line_recurring_map = {row.id: row.is_recurring for row in lines}
     product_map = {row.id: row.name for row in products}
@@ -333,6 +429,7 @@ async def my_partner_dashboard(
         business_line_map=line_map,
         business_line_recurring_map=line_recurring_map,
         product_map=product_map,
+        scope_attributions=list(scope_attributions),
     )
     status_summary = partner_status_summary(customer_status_rows)
 
@@ -344,16 +441,16 @@ async def my_partner_dashboard(
             "name": row.name,
             "status": row.status,
         } for row in available_partners],
-        "partner": _partner_payload(partner),
+        "partner": _portal_partner_payload(partner),
         "summary": {
-            "active_customer_count": len({row.customer_id for row in attributions if row.is_active}),
+            "active_customer_count": len({row["customer_id"] for row in customer_status_rows if row["is_active"]}),
             "ledger_count": len(entries),
             "currencies": currencies,
             **status_summary,
             "status_updated_at": utcnow(),
         },
         "agreements": [{
-            **_agreement_payload(row),
+            **_portal_agreement_payload(row),
             "business_line_name": line_map.get(row.business_line_id) if row.business_line_id else "全部业务线",
             "product_name": product_map.get(row.product_id) if row.product_id else "全部产品",
         } for row in agreements],
@@ -362,7 +459,7 @@ async def my_partner_dashboard(
             "id": row.id,
             "customer_id": row.customer_id,
             "customer_name": customer_map.get(row.customer_id).business_name if customer_map.get(row.customer_id) else f"客户 #{row.customer_id}",
-            "engagement_name": engagement_map.get(row.engagement_id).package_name if row.engagement_id and engagement_map.get(row.engagement_id) else None,
+            "engagement_name": next((item["engagement_name"] for item in customer_status_rows if item["engagement_id"] == row.engagement_id and item["is_active"]), None) if row.engagement_id else None,
             "entry_type": row.entry_type,
             "status": row.status,
             "service_month": row.service_month,
@@ -375,6 +472,7 @@ async def my_partner_dashboard(
             "commission_amount": row.commission_amount,
             "paid_at": row.paid_at,
             "payout_reference": row.payout_reference,
+            **_entry_period_payload(row),
         } for row in entries],
     }
 
@@ -410,22 +508,80 @@ async def create_partner(
     if await db.scalar(select(SalesPartner.id).where(SalesPartner.partner_code == payload.partner_code)):
         raise HTTPException(status_code=409, detail="渠道编号已存在")
     if payload.employee_id:
-        employee = await db.get(Employees, payload.employee_id)
-        if not employee:
-            raise HTTPException(status_code=404, detail="关联登录账号不存在")
-        duplicate_link = await db.scalar(select(SalesPartner.id).where(
-            SalesPartner.employee_id == payload.employee_id,
-            SalesPartner.partner_type.in_(("agency", "partner")),
-        ))
-        if duplicate_link:
-            raise HTTPException(status_code=409, detail="该登录账号已经关联其他销售合伙人档案")
-        if payload.partner_type in {"agency", "partner"} and employee.role != "sales_partner":
-            raise HTTPException(status_code=409, detail="外部渠道必须关联“销售合伙人”角色的登录账号")
+        if payload.partner_type in {"agency", "partner"}:
+            await _validate_partner_login(db, payload.employee_id)
+        elif not await db.get(Employees, payload.employee_id):
+            raise HTTPException(status_code=404, detail="关联员工不存在")
     row = SalesPartner(**payload.model_dump(), status="active", created_by_id=str(user.id), created_by_name=actor_name(user))
     db.add(row)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="渠道编号或登录绑定已存在，请刷新后核对") from exc
     await db.refresh(row)
     return _partner_payload(row)
+
+
+@router.get("/partner-login-options")
+async def partner_login_options(
+    _user: UserResponse = Depends(get_finance_user),
+    db: AsyncSession = Depends(get_db),
+):
+    linked_ids = select(SalesPartner.employee_id).where(
+        SalesPartner.employee_id.is_not(None),
+        SalesPartner.partner_type.in_(("agency", "partner")),
+    )
+    employees = (await db.scalars(select(Employees).where(
+        Employees.role == "sales_partner", Employees.status.in_(("active", "probation")),
+        Employees.id.not_in(linked_ids),
+    ).order_by(Employees.name, Employees.id))).all()
+    return {"items": [_login_payload(row) for row in employees]}
+
+
+@router.get("/unbound-partners")
+async def unbound_partners(
+    _user: UserResponse = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = (await db.scalars(select(SalesPartner).where(
+        SalesPartner.partner_type.in_(("agency", "partner")),
+        SalesPartner.employee_id.is_(None), SalesPartner.status.in_(("active", "suspended")),
+    ).order_by(SalesPartner.name, SalesPartner.id))).all()
+    return {"items": [{"id": row.id, "partner_code": row.partner_code, "name": row.name,
+                       "partner_type": row.partner_type, "contact_email": row.contact_email} for row in rows]}
+
+
+@router.post("/partners/{partner_id}/login-account")
+async def bind_partner_login(
+    partner_id: int,
+    payload: PartnerLoginInput,
+    user: UserResponse = Depends(get_finance_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Same lock order as creation: employee first, then its target partner.
+    employee = await _validate_partner_login(db, payload.employee_id, partner_id=partner_id)
+    partner = await db.scalar(select(SalesPartner).where(SalesPartner.id == partner_id).with_for_update()
+                              .execution_options(populate_existing=True))
+    if not partner:
+        raise HTTPException(status_code=404, detail="渠道不存在")
+    if partner.partner_type not in {"agency", "partner"}:
+        raise HTTPException(status_code=409, detail="只有外部代理或合伙人可以绑定渠道登录账号")
+    if partner.status in {"terminated", "settled"}:
+        raise HTTPException(status_code=409, detail="已终止或结清的渠道不能新增登录绑定")
+    if partner.employee_id not in {None, employee.id}:
+        raise HTTPException(status_code=409, detail="该渠道已绑定另一账号，不能直接替换登录归属")
+    if partner.employee_id is None:
+        partner.employee_id = employee.id
+        note = f"{utcnow().isoformat()} 登录账号绑定 {employee.id}；操作人 {actor_name(user)}"
+        partner.notes = "\n".join(filter(None, [partner.notes, note]))
+        try:
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail="登录账号已被其他渠道绑定，请刷新后核对") from exc
+        await db.refresh(partner)
+    return {**_partner_payload(partner), "login_account": _login_payload(employee)}
 
 
 @router.post("/partners/{partner_id}/status")
@@ -495,6 +651,7 @@ async def create_agreement(
         activity_decay_json=json.dumps(payload.activity_decay, sort_keys=True),
         refund_guard_days=payload.refund_guard_days, effective_from=payload.effective_from,
         status="active", notes=payload.notes, created_by_id=str(user.id), created_by_name=actor_name(user),
+        calculation_version="service_month_v2", renewal_policy="fixed",
     )
     db.add(row)
     await db.commit()
@@ -565,6 +722,44 @@ async def create_attribution(
     return {"id": row.id, "customer_id": row.customer_id, "partner_id": row.partner_id, "effective_from": row.effective_from}
 
 
+@router.post("/attributions/preview")
+async def attribution_preview(
+    payload: AttributionInput,
+    _user: UserResponse = Depends(get_finance_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Read-only impact preview; saving reruns the same service guard."""
+    customer = await db.get(Customers, payload.customer_id)
+    partner = await db.get(SalesPartner, payload.partner_id)
+    if not customer or not partner:
+        raise HTTPException(status_code=404, detail="客户或渠道不存在")
+    if partner.status != "active":
+        raise HTTPException(status_code=409, detail="只能归属给正常合作中的渠道")
+    if payload.engagement_id:
+        engagement = await db.get(CustomerEngagement, payload.engagement_id)
+        if not engagement or engagement.customer_id != payload.customer_id:
+            raise HTTPException(status_code=400, detail="项目不属于所选客户")
+    try:
+        return await preview_customer_commission_owner(db, **payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/payments/{payment_id}/preview")
+async def payment_commission_preview(
+    payment_id: int,
+    _user: UserResponse = Depends(get_finance_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payment = await db.get(Payments, payment_id)
+    if not payment:
+        raise HTTPException(status_code=404, detail="收款记录不存在")
+    try:
+        return {**await preview_payment_commission(db, payment), "currency": (payment.currency or "USD").upper()}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/scan")
 async def run_scan(
     _user: UserResponse = Depends(get_finance_user),
@@ -580,11 +775,29 @@ async def transition_entry(
     user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
-    entry = await db.get(CommissionEntry, entry_id)
+    reference = await db.get(CommissionEntry, entry_id)
+    if not reference:
+        raise HTTPException(status_code=404, detail="佣金记录不存在")
+    # Match ownership changes and scanner lock order: customer -> payment -> entry.
+    # A classification change cannot pass its preview concurrently with confirmation.
+    await db.scalar(select(Customers).where(Customers.id == reference.customer_id).with_for_update())
+    await db.scalar(select(Payments).where(Payments.id == reference.payment_id).with_for_update())
+    entry = await db.scalar(select(CommissionEntry).where(CommissionEntry.id == entry_id)
+                            .with_for_update().execution_options(populate_existing=True))
     if not entry:
         raise HTTPException(status_code=404, detail="佣金记录不存在")
     if payload.to_status not in ENTRY_TRANSITIONS.get(entry.status, set()):
         raise HTTPException(status_code=409, detail=f"不允许从 {entry.status} 变更为 {payload.to_status}")
+    if payload.to_status == "confirmed":
+        try:
+            await validate_commission_entry_confirmation(db, entry)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if payload.to_status == "reversed":
+        try:
+            await validate_commission_entry_reversal(db, entry)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     changes_profit_inclusion = (
         (entry.status in PROFIT_COMMISSION_STATUSES)
         != (payload.to_status in PROFIT_COMMISSION_STATUSES)

@@ -7,6 +7,8 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Index,
+    text,
     String,
     Text,
     UniqueConstraint,
@@ -16,7 +18,13 @@ from sqlalchemy import (
 
 class SalesPartner(Base):
     __tablename__ = "sales_partners"
-    __table_args__ = (UniqueConstraint("partner_code", name="uq_sales_partners_code"), {"extend_existing": True})
+    __table_args__ = (
+        UniqueConstraint("partner_code", name="uq_sales_partners_code"),
+        Index("uq_external_partner_employee", "employee_id", unique=True,
+              sqlite_where=text("employee_id IS NOT NULL AND partner_type IN ('agency', 'partner')"),
+              postgresql_where=text("employee_id IS NOT NULL AND partner_type IN ('agency', 'partner')")),
+        {"extend_existing": True},
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     partner_code = Column(String(48), nullable=False, index=True)
@@ -48,6 +56,8 @@ class CommissionAgreement(Base):
     version = Column(Integer, nullable=False)
     business_line_id = Column(Integer, ForeignKey("business_lines.id", ondelete="RESTRICT"), nullable=True, index=True)
     product_id = Column(Integer, ForeignKey("product_catalog.id", ondelete="RESTRICT"), nullable=True, index=True)
+    calculation_version = Column(String(32), nullable=False, default="legacy_v1", server_default="legacy_v1")
+    renewal_policy = Column(String(24), nullable=False, default="activity_decay", server_default="activity_decay")
     first_order_rate = Column(Float, nullable=False)
     renewal_rate = Column(Float, nullable=False)
     activity_decay_json = Column(Text, nullable=False)
@@ -70,6 +80,10 @@ class CustomerCommissionAttribution(Base):
     engagement_id = Column(Integer, ForeignKey("customer_engagements.id", ondelete="SET NULL"), nullable=True, index=True)
     partner_id = Column(Integer, ForeignKey("sales_partners.id", ondelete="RESTRICT"), nullable=False, index=True)
     attribution_role = Column(String(24), nullable=False, default="primary", index=True)
+    commission_mode = Column(String(32), nullable=False, default="legacy", server_default="legacy")
+    commission_start_date = Column(Date, nullable=True)
+    first_service_start = Column(Date, nullable=True)
+    history_basis = Column(Text, nullable=True)
     effective_from = Column(Date, nullable=False, index=True)
     effective_to = Column(Date, nullable=True, index=True)
     is_active = Column(Boolean, nullable=False, default=True, index=True)

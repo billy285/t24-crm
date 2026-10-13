@@ -1,14 +1,16 @@
+import calendar
 import hashlib
 import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import and_, inspect, or_, select
+from sqlalchemy import and_, func, inspect, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.commissions import (
     CommissionAgreement,
     CommissionEntry,
+    CommissionStatusEvent,
     CustomerCommissionAttribution,
     SalesPartner,
 )
@@ -65,49 +67,129 @@ async def ensure_company_direct_partner(
     return partner
 
 
+def _next_service_month(start: date) -> date:
+    year, month = (start.year + 1, 1) if start.month == 12 else (start.year, start.month + 1)
+    return date(year, month, min(start.day, calendar.monthrange(year, month)[1]))
+
+
+def _validate_attribution_rule(commission_mode, commission_start_date, first_service_start, history_basis):
+    if commission_mode not in {"legacy", "first_month_then_renewal", "renewal_only", "none"}:
+        raise ValueError("无效的计佣模式")
+    if commission_mode == "legacy":
+        return
+    if not commission_start_date:
+        raise ValueError("请明确计佣起始日期")
+    if commission_mode == "first_month_then_renewal" and not first_service_start:
+        raise ValueError("请明确首服务月起始日期")
+    if commission_mode == "renewal_only":
+        if not (history_basis or "").strip():
+            raise ValueError("历史客户仅续费必须填写首期已结清依据")
+
+
+async def preview_customer_commission_owner(
+    db: AsyncSession, *, customer_id: int, partner_id: int, effective_from: date,
+    engagement_id: int | None = None, commission_mode: str = "legacy",
+    commission_start_date: date | None = None, first_service_start: date | None = None,
+    history_basis: str | None = None, source_note: str | None = None,
+) -> dict:
+    """Read-only impact preview; existing financial entries are never adjusted here."""
+    _validate_attribution_rule(commission_mode, commission_start_date, first_service_start, history_basis)
+    links = list((await db.scalars(select(CustomerCommissionAttribution).where(
+        CustomerCommissionAttribution.customer_id == customer_id,
+        CustomerCommissionAttribution.engagement_id.is_(None) if engagement_id is None else CustomerCommissionAttribution.engagement_id == engagement_id,
+        CustomerCommissionAttribution.is_active.is_(True),
+        CustomerCommissionAttribution.attribution_role == "primary",
+    ))).all())
+    unchanged = any(
+        link.partner_id == partner_id and link.effective_from == effective_from
+        and (link.commission_mode or "legacy") == commission_mode
+        and link.commission_start_date == commission_start_date
+        and link.first_service_start == first_service_start
+        and (link.history_basis or "").strip() == (history_basis or "").strip()
+        for link in links
+    )
+    entries = list((await db.scalars(select(CommissionEntry).where(
+        CommissionEntry.customer_id == customer_id,
+        CommissionEntry.refund_id.is_(None),
+        CommissionEntry.status.in_(("pending_confirmation", "estimated", "confirmed", "payable", "paid")),
+    ))).all())
+    affected = [row for row in entries if _as_date(row.occurred_at) >= effective_from and (
+        engagement_id is None or row.engagement_id in (None, engagement_id)
+    )] if not unchanged else []
+    conflicts = [dict(entry_id=row.id, payment_id=row.payment_id, status=row.status, partner_id=row.partner_id)
+                 for row in affected if row.status in {"confirmed", "payable", "paid"}]
+    return {
+        "blocked": bool(conflicts), "conflicts": conflicts,
+        "affected_pending_count": sum(row.status in {"pending_confirmation", "estimated"} for row in affected),
+        "legacy_count": sum((row.commission_mode or "legacy") == "legacy" for row in links),
+        "message": "影响已确认佣金，请使用调整单或选择之后的生效日期" if conflicts else "保存将版本化归属；受影响的待确认条目会保留作废记录后重新生成",
+    }
+
+
 async def assign_customer_commission_owner(
-    db: AsyncSession,
-    *,
-    customer_id: int,
-    partner_id: int,
-    effective_from: date,
-    engagement_id: int | None = None,
-    source_note: str | None = None,
-    actor_id: str | None = None,
-    actor_name: str | None = None,
+    db: AsyncSession, *, customer_id: int, partner_id: int, effective_from: date,
+    engagement_id: int | None = None, source_note: str | None = None,
+    actor_id: str | None = None, actor_name: str | None = None,
+    commission_mode: str = "legacy", commission_start_date: date | None = None,
+    first_service_start: date | None = None, history_basis: str | None = None,
 ) -> CustomerCommissionAttribution:
-    """Create a single effective-dated primary owner while preserving history."""
+    """Version the owner/rule; refuse changes to already recognized commission."""
     partner = await db.get(SalesPartner, partner_id)
     if not partner or partner.status != "active":
         raise ValueError("只能归属给正常合作中的渠道")
-
-    current = (await db.scalars(select(CustomerCommissionAttribution).where(
+    await db.scalar(select(Customers).where(Customers.id == customer_id).with_for_update())
+    preview = await preview_customer_commission_owner(
+        db, customer_id=customer_id, partner_id=partner_id, effective_from=effective_from,
+        engagement_id=engagement_id, commission_mode=commission_mode,
+        commission_start_date=commission_start_date, first_service_start=first_service_start,
+        history_basis=history_basis, source_note=source_note,
+    )
+    if preview["blocked"]:
+        raise ValueError(preview["message"])
+    current = list((await db.scalars(select(CustomerCommissionAttribution).where(
         CustomerCommissionAttribution.customer_id == customer_id,
-        CustomerCommissionAttribution.engagement_id.is_(engagement_id)
-        if engagement_id is None else CustomerCommissionAttribution.engagement_id == engagement_id,
+        CustomerCommissionAttribution.engagement_id.is_(None) if engagement_id is None else CustomerCommissionAttribution.engagement_id == engagement_id,
         CustomerCommissionAttribution.attribution_role == "primary",
         CustomerCommissionAttribution.is_active.is_(True),
-    ))).all()
+    ).with_for_update().execution_options(populate_existing=True))).all())
     for link in current:
-        if link.partner_id == partner_id:
-            if source_note and not link.source_note:
-                link.source_note = source_note
+        if (link.partner_id == partner_id and link.effective_from == effective_from
+                and (link.commission_mode or "legacy") == commission_mode
+                and link.commission_start_date == commission_start_date
+                and link.first_service_start == first_service_start
+                and (link.history_basis or "").strip() == (history_basis or "").strip()):
             return link
-        if link.effective_from >= effective_from:
-            raise ValueError("当前归属的生效日期不早于新归属，请先核对日期")
+        if link.effective_from > effective_from:
+            raise ValueError("新归属生效日期不能早于现有归属；请先核对日期")
         link.effective_to = effective_from - timedelta(days=1)
         link.is_active = False
-
+    # Cancel only unrecognized candidates. Keep immutable entries/events as proof.
+    pending = list((await db.scalars(select(CommissionEntry).where(
+        CommissionEntry.customer_id == customer_id,
+        CommissionEntry.refund_id.is_(None),
+        CommissionEntry.status.in_(("pending_confirmation", "estimated")),
+    ).with_for_update().execution_options(populate_existing=True))).all())
+    for entry in pending:
+        if _as_date(entry.occurred_at) >= effective_from and (engagement_id is None or entry.engagement_id in (None, engagement_id)):
+            previous = entry.status
+            entry.status = "reversed"
+            db.add(CommissionStatusEvent(commission_entry_id=entry.id, from_status=previous, to_status="reversed",
+                reason="归属或计佣规则版本变更，旧待确认候选作废", actor_id=actor_id, actor_name=actor_name))
+            # Any unrecognized refund candidate also belongs to the superseded rule.
+            reversals = (await db.scalars(select(CommissionEntry).where(
+                CommissionEntry.original_entry_id == entry.id,
+                CommissionEntry.status.in_(("pending_confirmation", "estimated")),
+            ))).all()
+            for reversal in reversals:
+                reversal.status = "reversed"
+                db.add(CommissionStatusEvent(commission_entry_id=reversal.id, from_status="pending_confirmation", to_status="reversed",
+                    reason="原待确认佣金已因归属变更作废", actor_id=actor_id, actor_name=actor_name))
     row = CustomerCommissionAttribution(
-        customer_id=customer_id,
-        engagement_id=engagement_id,
-        partner_id=partner_id,
-        attribution_role="primary",
-        effective_from=effective_from,
-        is_active=True,
-        source_note=source_note,
-        created_by_id=actor_id,
-        created_by_name=actor_name,
+        customer_id=customer_id, engagement_id=engagement_id, partner_id=partner_id,
+        attribution_role="primary", effective_from=effective_from, is_active=True,
+        source_note=source_note, created_by_id=actor_id, created_by_name=actor_name,
+        commission_mode=commission_mode, commission_start_date=commission_start_date,
+        first_service_start=first_service_start, history_basis=(history_basis or "").strip() or None,
     )
     db.add(row)
     await db.flush()
@@ -240,7 +322,7 @@ async def _attributions_for_payment(db: AsyncSession, payment: Payments) -> list
             CustomerCommissionAttribution.engagement_id == payment.engagement_id,
             CustomerCommissionAttribution.engagement_id.is_(None),
         )).order_by(
-            CustomerCommissionAttribution.engagement_id.desc(),
+            CustomerCommissionAttribution.engagement_id.desc().nullslast(),
             CustomerCommissionAttribution.effective_from.desc(),
             CustomerCommissionAttribution.id.desc(),
         )
@@ -271,8 +353,8 @@ async def _agreement_for(
         or_(CommissionAgreement.business_line_id.is_(None), CommissionAgreement.business_line_id == (payment.business_line_id or getattr(engagement, "business_line_id", None))),
         or_(CommissionAgreement.product_id.is_(None), CommissionAgreement.product_id == (payment.product_id or getattr(engagement, "product_id", None))),
     ).order_by(
-        CommissionAgreement.product_id.desc(),
-        CommissionAgreement.business_line_id.desc(),
+        CommissionAgreement.product_id.desc().nullslast(),
+        CommissionAgreement.business_line_id.desc().nullslast(),
         CommissionAgreement.version.desc(),
     )
     return await db.scalar(statement.limit(1))
@@ -283,7 +365,7 @@ async def _is_first_service_payment(db: AsyncSession, payment: Payments) -> bool
     statement = select(Payments).where(
             Payments.customer_id == payment.customer_id,
             Payments.id != payment.id,
-            or_(Payments.payment_date < occurred, and_(Payments.payment_date == occurred, Payments.id < payment.id)),
+            or_(func.coalesce(Payments.payment_date, Payments.created_at) < occurred, and_(func.coalesce(Payments.payment_date, Payments.created_at) == occurred, Payments.id < payment.id)),
         )
     # A customer's first paid project in another business line counts as a new
     # acquisition; plan changes within the same line remain renewals/upgrades.
@@ -346,86 +428,235 @@ async def _inactivity_months(db: AsyncSession, partner_id: int, occurred_at: dat
     return _month_gap(latest, occurred_at) if latest else 0
 
 
-async def sync_payment_commission(db: AsyncSession, payment: Payments) -> Optional[CommissionEntry]:
-    service_amount = eligible_service_amount(payment)
-    if service_amount <= 0 or not (payment.payment_date or payment.created_at):
-        return None
+def _entry_snapshot(entry: CommissionEntry) -> dict:
+    try:
+        return json.loads(entry.snapshot_json or "{}")
+    except (ValueError, TypeError):
+        return {}
 
-    occurred_at = payment.payment_date or payment.created_at
-    await _resolve_payment_scope(db, payment)
+
+def _service_segments(payment: Payments, attribution: CustomerCommissionAttribution, agreement: CommissionAgreement) -> tuple[list[dict], list[str]]:
+    """Commission periods are separate from the cash-accounting service_month column."""
+    mode = attribution.commission_mode or "legacy"
+    if mode == "none":
+        return [], []
+    if mode == "legacy":
+        return [], ["历史归属尚未确认计佣模式、首服务月和计佣起始日期"]
+    try:
+        _validate_attribution_rule(mode, attribution.commission_start_date, attribution.first_service_start, attribution.history_basis)
+    except ValueError as exc:
+        return [], [str(exc)]
+    if agreement.calculation_version != "service_month_v2" or agreement.renewal_policy != "fixed":
+        return [], ["当前适用协议仍是历史规则，请明确新固定续费协议的生效日期"]
+    if not payment.payment_date:
+        return [], ["收款缺少实际到账日期，不能确定计佣入账月"]
+    first_start = attribution.first_service_start
+    first_end = _next_service_month(first_start) if mode == "first_month_then_renewal" else None
+    origin = attribution.commission_start_date
+    amount = eligible_service_amount(payment)
+    coverage_start = _as_date(payment.coverage_start) if payment.coverage_start else None
+    coverage_end = _as_date(payment.coverage_end) if payment.coverage_end else None
+    cycle = (payment.billing_cycle or "").strip().lower()
+    if bool(coverage_start) != bool(coverage_end) or (coverage_start and coverage_end <= coverage_start):
+        return [], ["服务覆盖日期不完整或结束日期不晚于开始日期，请核对"]
+    if not coverage_start:
+        # Never allocate annual/quarterly/multi-month receipts entirely to month one.
+        if cycle not in {"", "monthly", "month", "月", "月付", "每月", "按月", "once", "one_time", "one-time", "一次性"}:
+            return [], ["季付、年付或不明确周期的收款需要填写完整服务覆盖日期后计佣"]
+        day = _as_date(payment.payment_date)
+        if day < origin:
+            return [], []
+        if first_end and day < first_start:
+            return [], ["收款日期早于确认的首服务月起点，请核对服务周期"]
+        entry_type = "renewal" if mode == "renewal_only" or day >= first_end else "first_order"
+        return [dict(entry_type=entry_type, service_period_start=day.isoformat(), service_period_end=None,
+            allocated_service_amount=amount, allocation_basis="receipt_date_fallback", allocated_days=None,
+            coverage_start=None, coverage_end=None, excluded_service_amount=0.0)], []
+    if first_end and coverage_start < first_start:
+        return [], ["服务覆盖开始日期早于确认的首次服务日期，请核对历史起点"]
+    boundaries = sorted({coverage_start, coverage_end, *[day for day in (origin, first_end) if day and coverage_start < day < coverage_end]})
+    total_days = (coverage_end - coverage_start).days
+    allocated = 0.0
+    parts = []
+    for index, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
+        part_amount = money(amount - allocated) if index == len(boundaries) - 2 else money(amount * (end - start).days / total_days)
+        allocated = money(allocated + part_amount)
+        parts.append((start, end, part_amount))
+    excluded = money(sum(value for start, end, value in parts if start < origin))
+    segments = []
+    for start, end, value in parts:
+        if start < origin or value <= 0:
+            continue
+        segments.append(dict(entry_type="renewal" if mode == "renewal_only" or start >= first_end else "first_order",
+            service_period_start=start.isoformat(), service_period_end=end.isoformat(), allocated_service_amount=value,
+            allocated_days=(end-start).days, allocation_basis="coverage_days", coverage_start=coverage_start.isoformat(),
+            coverage_end=coverage_end.isoformat(), excluded_service_amount=excluded))
+    return segments, []
+
+
+async def preview_payment_commission(db: AsyncSession, payment: Payments) -> dict:
+    """No writes: previews use resolved IDs already on the payment, never mutate scope."""
+    result = {"payment_id": payment.id, "segments": [], "issues": [], "eligible_service_amount": eligible_service_amount(payment)}
+    if result["eligible_service_amount"] <= 0:
+        return result
     attributions = await _attributions_for_payment(db, payment)
     if not attributions:
-        return None
+        result["issues"] = ["未找到付款日期对应的客户或项目归属"]
+        return result
     attribution = attributions[0]
     partner = await db.get(SalesPartner, attribution.partner_id)
-    if not partner:
-        return None
-    if partner.partner_type == "direct":
-        return None
-    if partner.stopped_at and _as_date(occurred_at) > partner.stopped_at:
-        return None
-
-    agreement = await _agreement_for(db, attribution, payment, occurred_at)
+    if not partner or partner.partner_type == "direct" or attribution.commission_mode == "none":
+        return result
+    agreement = await _agreement_for(db, attribution, payment, payment.payment_date or payment.created_at or utcnow())
     if not agreement:
+        result["issues"] = ["付款日期未匹配到适用的渠道协议"]
+        return result
+    segments, issues = _service_segments(payment, attribution, agreement)
+    result.update(partner_id=attribution.partner_id, attribution_id=attribution.id, agreement_id=agreement.id,
+                  commission_mode=attribution.commission_mode, first_service_start=attribution.first_service_start,
+                  commission_start_date=attribution.commission_start_date, segments=segments, issues=issues)
+    for segment in segments:
+        segment["contract_rate"] = agreement.first_order_rate if segment["entry_type"] == "first_order" else agreement.renewal_rate
+        segment["activity_multiplier"] = 1.0
+        segment["commission_amount"] = money(segment["allocated_service_amount"] * segment["contract_rate"])
+    return result
+
+
+async def validate_commission_entry_confirmation(db: AsyncSession, entry: CommissionEntry) -> None:
+    """Reject duplicates/stale candidates without rewriting locked financial history."""
+    await db.scalar(select(Customers).where(Customers.id == entry.customer_id).with_for_update())
+    payment = await db.scalar(select(Payments).where(Payments.id == entry.payment_id).with_for_update().execution_options(populate_existing=True))
+    if not payment:
+        raise ValueError("原收款不存在，不能确认佣金")
+    originals = list((await db.scalars(select(CommissionEntry).where(
+        CommissionEntry.payment_id == entry.payment_id, CommissionEntry.refund_id.is_(None),
+        CommissionEntry.status.in_(("confirmed", "payable", "paid")),
+    ).with_for_update().execution_options(populate_existing=True))).all())
+    if entry.entry_type == "refund_reversal":
+        original = await db.get(CommissionEntry, entry.original_entry_id)
+        if not original or original.status not in {"confirmed", "payable", "paid"}:
+            raise ValueError("原佣金尚未确认或已作废，退款冲回不能单独确认")
+        refund = await db.get(FinanceRefund, entry.refund_id)
+        if not refund or refund.status != "completed":
+            raise ValueError("原退款不是已完成状态")
+        reversals = (await db.scalars(select(CommissionEntry).where(
+            CommissionEntry.original_entry_id == original.id,
+            CommissionEntry.status.in_(("confirmed", "payable", "paid")),
+            CommissionEntry.id != entry.id,
+        ))).all()
+        if abs(money(sum(row.commission_amount for row in reversals) + entry.commission_amount)) > abs(original.commission_amount) + .001:
+            raise ValueError("累计退款冲回超过原已确认佣金，请核对")
+        return
+    attributions = await _attributions_for_payment(db, payment)
+    if not attributions or attributions[0].id != entry.attribution_id or attributions[0].partner_id != entry.partner_id:
+        raise ValueError("客户归属已变化，不能确认旧渠道佣金；请重新扫描核对")
+    for other in originals:
+        if other.id == entry.id:
+            continue
+        if other.partner_id != entry.partner_id or other.attribution_id != entry.attribution_id:
+            raise ValueError("同一收款已有其他渠道的已确认佣金，请先使用调整流程处理")
+        left, right = _entry_snapshot(entry), _entry_snapshot(other)
+        if left.get("calculation_version") != "service_month_v2" or right.get("calculation_version") != "service_month_v2":
+            raise ValueError("同一收款已有已确认佣金，不能重复确认")
+        a, b = left.get("service_period_start"), left.get("service_period_end")
+        c, d = right.get("service_period_start"), right.get("service_period_end")
+        if not (a and b and c and d and (b <= c or d <= a)):
+            raise ValueError("同一收款服务区间已有已确认佣金，不能重复确认")
+    snapshot = _entry_snapshot(entry)
+    if snapshot.get("calculation_version") != "service_month_v2":
+        raise ValueError("历史待确认佣金需先核对计佣规则并重新扫描，不能直接按旧首单规则确认")
+    if snapshot.get("calculation_version") == "service_month_v2":
+        preview = await preview_payment_commission(db, payment)
+        matched = next((segment for segment in preview["segments"] if segment["service_period_start"] == snapshot.get("service_period_start")
+                       and segment["service_period_end"] == snapshot.get("service_period_end") and segment["entry_type"] == entry.entry_type), None)
+        if (preview["issues"] or preview.get("agreement_id") != entry.agreement_id or not matched
+                or money(matched["commission_amount"]) != money(entry.commission_amount)
+                or money(matched["allocated_service_amount"]) != money(entry.eligible_service_amount)):
+            raise ValueError("计佣依据已变化，请重新扫描并核对金额后确认")
+
+
+async def validate_commission_entry_reversal(db: AsyncSession, entry: CommissionEntry) -> None:
+    await db.scalar(select(Customers).where(Customers.id == entry.customer_id).with_for_update())
+    await db.scalar(select(Payments).where(Payments.id == entry.payment_id).with_for_update().execution_options(populate_existing=True))
+    if entry.refund_id is not None:
+        return
+    recognized_refund = await db.scalar(select(CommissionEntry.id).where(
+        CommissionEntry.original_entry_id == entry.id,
+        CommissionEntry.status.in_(("confirmed", "payable", "paid")),
+    ).limit(1))
+    if recognized_refund:
+        raise ValueError("原佣金已有已确认退款冲回，不能单独作废；请使用调整流程核对")
+
+
+async def sync_payment_commission(db: AsyncSession, payment: Payments) -> Optional[CommissionEntry]:
+    await db.scalar(select(Customers).where(Customers.id == payment.customer_id).with_for_update())
+    payment = await db.scalar(select(Payments).where(Payments.id == payment.id).with_for_update().execution_options(populate_existing=True))
+    service_amount = eligible_service_amount(payment)
+    if service_amount <= 0:
         return None
-
-    key = f"payment:{payment.id}:partner:{partner.id}"
-    existing = await db.scalar(select(CommissionEntry).where(CommissionEntry.idempotency_key == key))
-    if existing and existing.status in LOCKED_STATUSES:
-        return existing
-
-    first_order = await _is_first_service_payment(db, payment)
-    entry_type = "first_order" if first_order else "renewal"
-    inactivity_months = 0 if first_order else await _inactivity_months(db, partner.id, occurred_at)
-    multiplier = 1.0 if first_order else _decay_multiplier(agreement, inactivity_months)
-    rate = agreement.first_order_rate if first_order else agreement.renewal_rate
-    amount = money(service_amount * rate * multiplier)
-    snapshot = {
-        "agreement_version": agreement.version,
-        "partner_status": partner.status,
-        "calculation": "eligible_service_amount * contract_rate * activity_multiplier",
-        "ad_recharge_excluded": True,
-        "first_order": first_order,
-        "decay_schedule": _decay_map(agreement.activity_decay_json),
-        "refund_guard_days": agreement.refund_guard_days,
-    }
-    values = dict(
-        partner_id=partner.id,
-        agreement_id=agreement.id,
-        attribution_id=attribution.id,
-        customer_id=payment.customer_id,
-        engagement_id=payment.engagement_id or attribution.engagement_id,
-        payment_id=payment.id,
-        refund_id=None,
-        original_entry_id=None,
-        entry_type=entry_type,
-        status="pending_confirmation",
-        service_month=occurred_at.strftime("%Y-%m"),
-        occurred_at=occurred_at,
-        currency=(payment.currency or "USD").upper(),
-        gross_receipt_amount=money(payment.amount_paid),
-        eligible_service_amount=service_amount,
-        contract_rate=rate,
-        inactivity_months=inactivity_months,
-        activity_multiplier=multiplier,
-        commission_amount=amount,
-        snapshot_json=json.dumps(snapshot, ensure_ascii=False, sort_keys=True),
-        idempotency_key=key,
-    )
-    if existing:
-        for name, value in values.items():
-            setattr(existing, name, value)
-        return existing
-    entry = CommissionEntry(**values)
-    db.add(entry)
+    await _resolve_payment_scope(db, payment)
+    existing = list((await db.scalars(select(CommissionEntry).where(
+        CommissionEntry.payment_id == payment.id, CommissionEntry.refund_id.is_(None),
+    ).with_for_update().execution_options(populate_existing=True))).all())
+    # Preserve every previously recognized or explicitly voided historical snapshot.
+    locked = [row for row in existing if row.status in {"confirmed", "payable", "paid"}]
+    if locked:
+        return locked[0]
+    preview = await preview_payment_commission(db, payment)
+    if preview["issues"] or not preview["segments"]:
+        return None
+    attribution = await db.get(CustomerCommissionAttribution, preview["attribution_id"])
+    partner = await db.get(SalesPartner, preview["partner_id"])
+    agreement = await db.get(CommissionAgreement, preview["agreement_id"])
+    if partner.stopped_at and _as_date(payment.payment_date) > partner.stopped_at:
+        return None
+    occurred_at = payment.payment_date
+    output = []
+    current_keys = set()
+    for segment in preview["segments"]:
+        key = f"payment:{payment.id}:attribution:{attribution.id}:agreement:{agreement.id}:period:{segment['service_period_start']}:{segment['entry_type']}"
+        current_keys.add(key)
+        row = next((entry for entry in existing if entry.idempotency_key == key), None)
+        if row and row.status in LOCKED_STATUSES:
+            continue
+        snapshot = dict(segment, calculation_version="service_month_v2", renewal_policy="fixed",
+            commission_mode=attribution.commission_mode, first_service_start=attribution.first_service_start.isoformat() if attribution.first_service_start else None,
+            first_service_end=_next_service_month(attribution.first_service_start).isoformat() if attribution.first_service_start else None,
+            commission_start_date=attribution.commission_start_date.isoformat(), history_basis=attribution.history_basis,
+            agreement_version=agreement.version, partner_status=partner.status, ad_recharge_excluded=True,
+            original_eligible_service_amount=service_amount, refund_guard_days=agreement.refund_guard_days,
+            calculation="allocated_service_amount * contract_rate; fixed renewal multiplier 1",
+            accounting_month_basis="payment_date")
+        values = dict(partner_id=partner.id, agreement_id=agreement.id, attribution_id=attribution.id,
+            customer_id=payment.customer_id, engagement_id=payment.engagement_id or attribution.engagement_id,
+            payment_id=payment.id, refund_id=None, original_entry_id=None, entry_type=segment["entry_type"],
+            status="pending_confirmation", service_month=occurred_at.strftime("%Y-%m"), occurred_at=occurred_at,
+            currency=(payment.currency or "USD").upper(), gross_receipt_amount=money(payment.amount_paid),
+            eligible_service_amount=segment["allocated_service_amount"], contract_rate=segment["contract_rate"],
+            inactivity_months=0, activity_multiplier=1.0, commission_amount=segment["commission_amount"],
+            snapshot_json=json.dumps(snapshot, ensure_ascii=False, sort_keys=True), idempotency_key=key)
+        if row:
+            for name, value in values.items():
+                setattr(row, name, value)
+        else:
+            row = CommissionEntry(**values)
+            db.add(row)
+        output.append(row)
+    for old in existing:
+        if old.status in {"pending_confirmation", "estimated"} and old.idempotency_key not in current_keys:
+            previous = old.status
+            old.status = "reversed"
+            db.add(CommissionStatusEvent(commission_entry_id=old.id, from_status=previous, to_status="reversed",
+                reason="新归属或协议候选替代未确认条目，原记录保留"))
     await db.flush()
-    return entry
+    return output[0] if output else None
 
 
 async def sync_refund_commission(db: AsyncSession, refund: FinanceRefund) -> list[CommissionEntry]:
     if refund.status != "completed":
         return []
-    payment = await db.get(Payments, refund.payment_id)
+    await db.scalar(select(Customers).where(Customers.id == refund.customer_id).with_for_update())
+    payment = await db.scalar(select(Payments).where(Payments.id == refund.payment_id).with_for_update().execution_options(populate_existing=True))
     if not payment or money(payment.amount_paid) <= 0:
         return []
     originals = (await db.scalars(
@@ -433,26 +664,67 @@ async def sync_refund_commission(db: AsyncSession, refund: FinanceRefund) -> lis
             CommissionEntry.payment_id == payment.id,
             CommissionEntry.refund_id.is_(None),
             CommissionEntry.entry_type.in_(("first_order", "renewal")),
+            CommissionEntry.status != "reversed",
         )
     )).all()
     results: list[CommissionEntry] = []
-    ratio = min(max(money(refund.refund_amount) / money(payment.amount_paid), 0), 1)
+    # Voided originals cannot create a standalone negative expense.
+    stale = (await db.scalars(select(CommissionEntry).where(
+        CommissionEntry.payment_id == payment.id, CommissionEntry.refund_id == refund.id,
+        CommissionEntry.status.in_(("pending_confirmation", "estimated")),
+    ))).all()
+    original_ids = {row.id for row in originals}
+    for row in stale:
+        if row.original_entry_id not in original_ids:
+            row.status = "reversed"
+            db.add(CommissionStatusEvent(commission_entry_id=row.id, from_status="pending_confirmation", to_status="reversed",
+                reason="原佣金已作废，取消未确认退款冲回"))
     for original in originals:
+        receipt = money(original.gross_receipt_amount)
+        if receipt <= 0:
+            continue
+        ratio = min(max(money(refund.refund_amount) / receipt, 0), 1)
         key = f"refund:{refund.id}:commission:{original.id}"
         existing = await db.scalar(select(CommissionEntry).where(CommissionEntry.idempotency_key == key))
-        if existing:
+        if existing and existing.status in LOCKED_STATUSES:
             results.append(existing)
             continue
-        amount = -money(original.commission_amount * ratio)
+        # Allocate the rounding remainder cumulatively, so two partial refunds
+        # can never reverse one cent more/less than a complete original refund.
+        completed_refunds = list((await db.scalars(select(FinanceRefund).where(
+            FinanceRefund.payment_id == payment.id, FinanceRefund.status == "completed",
+        ).order_by(FinanceRefund.refund_date, FinanceRefund.id))).all())
+        previous_refunded = 0.0
+        for earlier in completed_refunds:
+            if earlier.id == refund.id:
+                break
+            previous_refunded += money(earlier.refund_amount)
+        cumulative = min(max((previous_refunded + money(refund.refund_amount)) / receipt, 0), 1)
+        previous_ratio = min(max(previous_refunded / receipt, 0), 1)
+        reversal_magnitude = money(original.commission_amount * cumulative) - money(original.commission_amount * previous_ratio)
+        other_locked = (await db.scalars(select(CommissionEntry).where(
+            CommissionEntry.original_entry_id == original.id,
+            CommissionEntry.refund_id != refund.id,
+            CommissionEntry.status.in_(("confirmed", "payable", "paid")),
+        ))).all()
+        remaining = max(money(original.commission_amount + sum(row.commission_amount for row in other_locked)), 0)
+        amount = -money(min(max(reversal_magnitude, 0), remaining))
+        origin_snapshot = _entry_snapshot(original)
         snapshot = {
+            **{field: origin_snapshot[field] for field in (
+                "calculation_version", "renewal_policy", "commission_mode", "first_service_start", "first_service_end",
+                "service_period_start", "service_period_end", "coverage_start", "coverage_end", "allocation_basis",
+            ) if field in origin_snapshot},
             "original_entry_id": original.id,
             "original_commission_amount": original.commission_amount,
             "refund_amount": money(refund.refund_amount),
-            "original_receipt_amount": money(payment.amount_paid),
+            "original_receipt_amount": receipt,
             "reversal_ratio": ratio,
-            "calculation": "original_commission_amount * refund_ratio * -1",
+            "calculation": "cumulative proportional refund difference with cent remainder and locked reversal cap",
+            "cumulative_refund_ratio": cumulative,
+            "previous_refund_ratio": previous_ratio,
         }
-        reversal = CommissionEntry(
+        reversal_values = dict(
             partner_id=original.partner_id,
             agreement_id=original.agreement_id,
             attribution_id=original.attribution_id,
@@ -475,7 +747,13 @@ async def sync_refund_commission(db: AsyncSession, refund: FinanceRefund) -> lis
             snapshot_json=json.dumps(snapshot, ensure_ascii=False, sort_keys=True),
             idempotency_key=key,
         )
-        db.add(reversal)
+        if existing:
+            reversal = existing
+            for field, value in reversal_values.items():
+                setattr(reversal, field, value)
+        else:
+            reversal = CommissionEntry(**reversal_values)
+            db.add(reversal)
         await db.flush()
         results.append(reversal)
     return results
@@ -540,6 +818,20 @@ async def commission_data_quality(db: AsyncSession) -> dict:
             continue
         key = ("payment", payment.id)
         examined_keys.add(key)
+        scoped_links = await _attributions_for_payment(db, payment)
+        scoped_partner = partner_map.get(scoped_links[0].partner_id) if scoped_links else None
+        if scoped_links and scoped_links[0].commission_mode == "none":
+            covered_keys.add(key)
+            continue
+        if scoped_links and scoped_partner and scoped_partner.partner_type != "direct":
+            preview = await preview_payment_commission(db, payment)
+            if preview["issues"] and preview.get("agreement_id"):
+                issues.append({"key": f"payment:{payment.id}:commission_rule", "type": "commission_rule_review",
+                    "severity": "high", "customer_id": payment.customer_id,
+                    "customer_name": customer_names.get(payment.customer_id) or payment.customer_name,
+                    "payment_id": payment.id, "partner_id": scoped_partner.id, "partner_name": scoped_partner.name,
+                    "title": "计佣规则或服务周期待核对", "description": "；".join(preview["issues"])})
+                continue
         if payment.id in accounted_payment_ids:
             covered_keys.add(key)
             continue
@@ -595,7 +887,7 @@ async def commission_data_quality(db: AsyncSession) -> dict:
             CustomerCommissionAttribution.is_active.is_(True),
             CustomerCommissionAttribution.effective_from <= today,
         ).order_by(
-            CustomerCommissionAttribution.engagement_id.desc(),
+            CustomerCommissionAttribution.engagement_id.desc().nullslast(),
             CustomerCommissionAttribution.effective_from.desc(),
         ).limit(1))
         if attribution:
