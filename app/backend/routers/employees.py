@@ -12,7 +12,7 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_admin_user, get_current_user
+from dependencies.auth import get_admin_user, get_current_user, get_owner_user
 from models.commissions import SalesPartner
 from models.customers import Customers
 from models.employees import Employees
@@ -376,7 +376,7 @@ async def handoff_employee_projects(
     source_id: int,
     data: ProjectOwnershipHandoff,
     request: Request,
-    admin: UserResponse = Depends(get_admin_user),
+    admin: UserResponse = Depends(get_owner_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Transfer only active project ownership; never edit a financial linkage."""
@@ -670,7 +670,7 @@ async def get_employees(
 @router.post("", response_model=EmployeesResponse, status_code=201)
 async def create_employees(
     data: EmployeesData,
-    _admin: UserResponse = Depends(get_admin_user),
+    _admin: UserResponse = Depends(get_owner_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new employees"""
@@ -743,7 +743,7 @@ async def create_employees(
 @router.post("/batch", response_model=List[EmployeesResponse], status_code=201)
 async def create_employeess_batch(
     request: EmployeesBatchCreateRequest,
-    _admin: UserResponse = Depends(get_admin_user),
+    _admin: UserResponse = Depends(get_owner_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple employeess in a single request"""
@@ -797,7 +797,7 @@ async def create_employeess_batch(
 @router.put("/batch", response_model=List[EmployeesResponse])
 async def update_employeess_batch(
     request: EmployeesBatchUpdateRequest,
-    _admin: UserResponse = Depends(get_admin_user),
+    _admin: UserResponse = Depends(get_owner_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple employeess in a single request"""
@@ -845,7 +845,7 @@ async def update_employeess_batch(
 async def update_employees(
     id: int,
     data: EmployeesUpdateData,
-    _admin: UserResponse = Depends(get_admin_user),
+    _admin: UserResponse = Depends(get_owner_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing employees"""
@@ -890,7 +890,7 @@ async def update_employees(
 @router.delete("/batch")
 async def delete_employeess_batch(
     request: EmployeesBatchDeleteRequest,
-    _admin: UserResponse = Depends(get_admin_user),
+    _admin: UserResponse = Depends(get_owner_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple employeess by their IDs"""
@@ -961,7 +961,7 @@ async def delete_employeess_batch(
 @router.delete("/{id}")
 async def delete_employees(
     id: int,
-    _admin: UserResponse = Depends(get_admin_user),
+    _admin: UserResponse = Depends(get_owner_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single employees by ID"""

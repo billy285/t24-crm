@@ -56,7 +56,7 @@ function fixture(page, handler, mobile = false, routeParams = {}) {
       if (name === '@/lib/use-unsaved-changes') return { useUnsavedChanges: () => ({ confirmDiscard: () => true }) };
       if (name === '@/lib/load-utils') return { getLoadErrorMessage: error => error.message };
       if (name === 'react-router-dom') return { useNavigate: () => () => {}, useSearchParams: () => [new URLSearchParams(routeParams)], Link: 'Link' };
-      if (name.endsWith('lib/role-context')) return { useRole: () => ({ isAdmin: true, employee: {id:1,name:'合成管理员'}, hasPermission: () => true }), roleLabels:{sales_partner:'销售合伙人'},empStatusLabels:{active:'在职'},empStatusColors:{},departmentLabels:{sales:'销售'},positionLabels:{specialist:'专员'} };
+      if (name.endsWith('lib/role-context')) return { useRole: () => ({ isAdmin: true, systemRole: 'super_admin', employee: {id:1,name:'合成管理员'}, hasPermission: () => true }), roleLabels:{sales_partner:'销售合伙人'},empStatusLabels:{active:'在职'},empStatusColors:{},departmentLabels:{sales:'销售'},positionLabels:{specialist:'专员'} };
       if (name.endsWith('lib/permissions')) return {systemRoleLabels:{sales_partner:'销售合伙人',sales:'销售'}};
       if (name.endsWith('lib/dict-config')) return {useBusinessDicts: () => ({statuses:{},taskStatuses:{}})};
       if (name.endsWith('lib/use-dialog-draft')) return {useDialogDraft: () => ({confirmDiscard:()=>true,markSaved:()=>{}})};

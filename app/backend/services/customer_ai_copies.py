@@ -6,6 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customer_ai_copies import Customer_ai_copies
 
+from services.customer_scope import apply_customer_scope, ensure_customer_access
+
+from services.customer_record_audit import record_customer_change
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,8 +33,9 @@ class Customer_ai_copiesService:
             logger.error("Error creating customer_ai_copies: %s", e)
             raise
 
-    async def get_by_id(self, obj_id: int) -> Optional[Customer_ai_copies]:
-        result = await self.db.execute(select(Customer_ai_copies).where(Customer_ai_copies.id == obj_id))
+    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None) -> Optional[Customer_ai_copies]:
+        query = apply_customer_scope(select(Customer_ai_copies).where(Customer_ai_copies.id == obj_id), Customer_ai_copies, scope_user)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def get_list(
@@ -40,9 +45,12 @@ class Customer_ai_copiesService:
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
         search: Optional[str] = None,
+        scope_user: Optional[Any] = None,
     ) -> Dict[str, Any]:
         query = select(Customer_ai_copies)
         count_query = select(func.count(Customer_ai_copies.id))
+        query = apply_customer_scope(query, Customer_ai_copies, scope_user)
+        count_query = apply_customer_scope(count_query, Customer_ai_copies, scope_user)
 
         if query_dict:
             for field, value in query_dict.items():
@@ -77,11 +85,14 @@ class Customer_ai_copiesService:
         result = await self.db.execute(query.offset(skip).limit(limit))
         return {"items": result.scalars().all(), "total": total, "skip": skip, "limit": limit}
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any]) -> Optional[Customer_ai_copies]:
+    async def update(self, obj_id: int, update_data: Dict[str, Any], scope_user: Optional[Any] = None) -> Optional[Customer_ai_copies]:
         try:
-            obj = await self.get_by_id(obj_id)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 return None
+            if scope_user is not None:
+                await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="materials")
+            record_customer_change(self.db, scope_user, obj, "materials", changes=update_data)
             for key, value in update_data.items():
                 if hasattr(obj, key) and key != "user_id":
                     setattr(obj, key, value)
@@ -93,11 +104,14 @@ class Customer_ai_copiesService:
             logger.error("Error updating customer_ai_copies %s: %s", obj_id, e)
             raise
 
-    async def delete(self, obj_id: int) -> bool:
+    async def delete(self, obj_id: int, scope_user: Optional[Any] = None) -> bool:
         try:
-            obj = await self.get_by_id(obj_id)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 return False
+            if scope_user is not None:
+                await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="materials", action="delete")
+            record_customer_change(self.db, scope_user, obj, "materials", deleted=True)
             await self.db.delete(obj)
             await self.db.commit()
             return True

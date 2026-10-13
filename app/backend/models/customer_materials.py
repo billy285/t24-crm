@@ -11,6 +11,7 @@ class Customer_materials(Base):
     customer_id = Column(Integer, nullable=False)
     title = Column(String, nullable=False)
     material_type = Column(String, nullable=False)
+    visibility = Column(String(20), nullable=False, default="team", server_default="team")
     platform = Column(String, nullable=True)
     source_type = Column(String, nullable=True)
     file_name = Column(String, nullable=True)

@@ -18,7 +18,7 @@ from services.customer_lifecycle import (
 )
 
 
-router = APIRouter(prefix="/api/v1/customer-lifecycle", tags=["customer-lifecycle"])
+router = APIRouter(prefix="/api/v1/customer-lifecycle", tags=["customer-lifecycle"], dependencies=[Depends(get_finance_user)])
 
 
 def date_at_start(value: date) -> datetime:

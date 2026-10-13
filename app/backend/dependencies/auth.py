@@ -154,8 +154,18 @@ async def get_admin_user(current_user: UserResponse = Depends(get_current_user))
     return current_user
 
 
+async def get_owner_user(current_user: UserResponse = Depends(get_current_user)) -> UserResponse:
+    if normalize_system_role(current_user.role) != "super_admin":
+        raise HTTPException(status_code=403, detail="仅老板可以操作")
+    return current_user
+
+
 async def get_finance_user(current_user: UserResponse = Depends(get_current_user)) -> UserResponse:
-    """Dependency to ensure current user can access raw finance records."""
-    if current_user.role not in FINANCE_ROLES:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Finance access required")
+    """Company-wide ledgers are owner-only; customer grants use scoped reads.
+
+    A job title or permission to edit a customer must never grant access to
+    company-wide finance, exports, deduction rates, or other customers' funds.
+    """
+    if normalize_system_role(current_user.role) != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="公司财务仅老板可访问；已授权的客户财务请从客户详情查看")
     return current_user

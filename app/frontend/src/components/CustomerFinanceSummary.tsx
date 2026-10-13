@@ -1,0 +1,11 @@
+import type { CustomerFinanceAccess } from '@/lib/customer-permissions';
+import { customerFinanceLabels } from '@/lib/customer-permissions';
+
+type Props = { level: CustomerFinanceAccess; status: {payment_count:number;last_payment_date:string|null;has_outstanding:boolean}|null; payments: any[]; refunds: any[] };
+const money = (amount: unknown, currency: string) => new Intl.NumberFormat('zh-CN', {style:'currency',currency:currency || 'USD'}).format(Number(amount || 0));
+/** A deliberately narrow receipt renderer. It never reads profit, fee or cost fields. */
+export default function CustomerFinanceSummary({level,status,payments,refunds}: Props) {
+  if (level === 'none') return null;
+  const showAmounts = level === 'receipts' || level === 'profit';
+  return <section className="p-4" aria-label="客户授权财务概览"><h3 className="text-sm font-semibold">{customerFinanceLabels[level]}</h3><p className="mt-2 text-xs text-slate-500">{status?.payment_count ?? 0} 笔记录 · 最近收款 {status?.last_payment_date?.slice(0,10) || '暂无'} · {status?.has_outstanding ? '有待收款' : '暂无待收款'}</p>{showAmounts && <><div className="mt-3 divide-y divide-dashed divide-slate-200">{payments.map(payment => <div key={payment.id} className="grid grid-cols-[1fr_auto] gap-2 py-3 text-sm"><div><p>{payment.product_name || '收款'}</p><p className="text-xs text-slate-500">{payment.payment_date?.slice(0,10) || '日期待核对'} · {payment.currency || 'USD'}</p></div><div className="text-right"><p className="font-medium">实收 {money(payment.amount_paid,payment.currency)}</p><p className="text-xs text-slate-500">待收 {money(payment.outstanding_amount,payment.currency)}</p></div></div>)}</div>{refunds.length > 0 && <div className="mt-3 border-t border-slate-200 pt-3"><h4 className="text-xs font-medium">退款记录</h4>{refunds.map(refund => <div key={refund.id} className="flex justify-between gap-3 border-b border-dashed py-2 text-sm"><span className="text-slate-500">{refund.refund_date?.slice(0,10) || '日期待核对'} · {['refunded','completed'].includes(refund.status) ? '已退款' : refund.status === 'voided' ? '已作废' : '待确认'}</span><span>{money(refund.refund_amount,refund.currency)}</span></div>)}</div>}</>}<p className="mt-3 text-xs text-slate-500">{showAmounts ? '仅查看已授权的收款与退款；手续费、成本、利润与记账操作未开放。' : '仅显示收款状态；金额与记账操作未开放。'}</p></section>;
+}

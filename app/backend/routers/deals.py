@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_current_user, get_finance_user
+from services.customer_permissions import get_customer_permissions
 from schemas.auth import UserResponse
 from services.deals import DealsService
 from services.deal_payment_sync import sync_payment_from_deal, unlink_synced_payment_for_deal
@@ -163,14 +164,21 @@ class DealFinalizeResponse(BaseModel):
     steps: dict[str, DealFinalizeStep]
 
 
-FINANCE_DETAIL_ROLES = {"admin", "super_admin", "finance"}
+def _check_visible_query(user, query, sort):
+    # Filtering/counting/sorting a concealed value would disclose it even if
+    # the response DTO removed the value. Use customer-specific finance view.
+    hidden = {'source_payment_id', 'is_paid', 'notes', 'deal_amount'}
+    if user.role != "super_admin" and (set(query or {}) & hidden or (sort or "").lstrip("-") in hidden):
+        raise HTTPException(status_code=403, detail="请在已授权客户的财务明细中查看金额；此列表不支持按隐藏字段筛选")
 
 
-def _deal_for_user(item, user: UserResponse) -> DealsResponse:
+async def _deal_for_user(item, user: UserResponse, db: AsyncSession) -> DealsResponse:
     response = DealsResponse.model_validate(item)
-    if str(user.role or "").lower() in FINANCE_DETAIL_ROLES:
+    permissions = await get_customer_permissions(db, user, item.customer_id)
+    if permissions.get("finance_access") in {"receipts", "profit"}:
         return response
     return response.model_copy(update={
+        "notes": None,
         "source_payment_id": None,
         "deal_amount": None,
         "is_paid": None,
@@ -211,6 +219,7 @@ async def query_dealss(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid query JSON format")
         
+        _check_visible_query(current_user, query_dict, sort)
         result = await service.get_list(
             skip=skip, 
             limit=limit,
@@ -218,7 +227,7 @@ async def query_dealss(
             sort=sort,
             scope_user=current_user,
         )
-        result["items"] = [_deal_for_user(item, current_user) for item in result["items"]]
+        result["items"] = [await _deal_for_user(item, current_user, db) for item in result["items"]]
         logger.debug(f"Found {result['total']} dealss")
         return result
     except HTTPException:
@@ -251,6 +260,7 @@ async def query_dealss_all(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid query JSON format")
 
+        _check_visible_query(current_user, query_dict, sort)
         result = await service.get_list(
             skip=skip,
             limit=limit,
@@ -258,7 +268,7 @@ async def query_dealss_all(
             sort=sort,
             scope_user=current_user,
         )
-        result["items"] = [_deal_for_user(item, current_user) for item in result["items"]]
+        result["items"] = [await _deal_for_user(item, current_user, db) for item in result["items"]]
         logger.debug(f"Found {result['total']} dealss")
         return result
     except HTTPException:
@@ -285,7 +295,7 @@ async def get_deals(
             logger.warning(f"Deals with id {id} not found")
             raise HTTPException(status_code=404, detail="Deals not found")
         
-        return _deal_for_user(result, current_user)
+        return await _deal_for_user(result, current_user, db)
     except HTTPException:
         raise
     except Exception as e:

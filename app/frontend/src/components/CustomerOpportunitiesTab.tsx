@@ -1,3 +1,4 @@
+import { useCustomerPermissions } from '@/lib/use-customer-permissions';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { formatBusinessDateTimeInput, parseBusinessDateTimeInput } from '@/lib/business-date';
@@ -32,6 +33,11 @@ function toLocalDate(value?: string | null) { return formatBusinessDateTimeInput
 
 export default function CustomerOpportunitiesTab({ customer }: { customer: any }) {
   const { employee } = useRole();
+  const permission = useCustomerPermissions(Number(customer?.id || 0), customer?.effective_permissions);
+  const canRead = permission.modules.followups.read;
+  const canEdit = permission.modules.followups.write;
+  const canViewAmounts = ['receipts','profit'].includes(permission.finance_access);
+  const canConvert = permission.can_manage_access;
   const navigate = useNavigate();
   const location = useLocation();
   const conversionBusy = useRef(new Set<number>());
@@ -48,6 +54,7 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
   const editorDraft = useDialogDraft(editorOpen, form);
   const followDraft = useDialogDraft(Boolean(followTarget), followForm);
   const load = async () => {
+    if (!canRead) {setLoading(false);return;}
     setLoading(true);
     try {
       const [oppRes, catalogRes] = await Promise.all([
@@ -59,7 +66,7 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
     } catch (error: any) { toast.error(error?.data?.detail || '加载商机失败'); }
     finally { setLoading(false); }
   };
-  useEffect(() => { void load(); }, [customer.id]);
+  useEffect(() => { setOpportunities([]); void load(); }, [customer.id, canRead]);
 
   const products = useMemo(() => catalog.products.filter((item: any) => String(item.business_line_id) === form.business_line_id), [catalog.products, form.business_line_id]);
   const plans = useMemo(() => catalog.plans.filter((item: any) => String(item.product_id) === form.product_id && item.is_active), [catalog.plans, form.product_id]);
@@ -68,6 +75,7 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
   const weightedPipeline = opportunities.filter(item => item.status === 'open').reduce((sum, item) => sum + Number(item.weighted_amount || 0), 0);
 
   const openEditor = (opportunity?: any) => {
+    if (!canEdit) return;
     if (opportunity) setForm({
       id: opportunity.id, business_line_id: String(opportunity.business_line?.id || ''), product_id: String(opportunity.product?.id || ''),
       product_plan_id: String(opportunity.plan?.id || ''), title: opportunity.title || '', stage: opportunity.stage || 'initial', status: opportunity.status || 'open',
@@ -84,7 +92,7 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
   };
 
   const save = async () => {
-    if (saving) return;
+    if (saving || !canEdit) return;
     if (!form.business_line_id || !form.title.trim()) { toast.error('请选择业务线并填写商机名称'); return; }
     if (form.status === 'open' && !form.next_follow_up_at) { toast.error('跟进中商机必须填写下次跟进时间'); return; }
     if (selectedPlan?.scope_type === 'platforms' && form.status === 'won' && form.selected_platforms.length !== Number(selectedPlan.platform_limit || 0)) { toast.error(`成交前必须确认 ${selectedPlan.platform_limit} 个实际运营平台`); return; }
@@ -93,8 +101,8 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
       const data = {
         customer_id: customer.id, business_line_id: Number(form.business_line_id), product_id: form.product_id ? Number(form.product_id) : null,
         product_plan_id: form.product_plan_id ? Number(form.product_plan_id) : null, title: form.title.trim(), stage: form.stage, status: form.status,
-        estimated_amount: form.estimated_amount === '' ? null : Number(form.estimated_amount), currency: form.currency, probability: Number(form.probability),
-        owner_employee_id: employee?.id ? Number(employee.id) : null, owner_name: employee?.name || null, source: 'existing_customer', selected_platforms: form.selected_platforms,
+        ...(canViewAmounts ? {estimated_amount: form.estimated_amount === '' ? null : Number(form.estimated_amount), currency: form.currency} : {}), probability: Number(form.probability),
+        ...(!form.id ? {owner_employee_id: employee?.id ? Number(employee.id) : null, owner_name: employee?.name || null} : {}), source: 'existing_customer', selected_platforms: form.selected_platforms,
         service_scope: {}, expected_close_date: toApiDate(form.expected_close_date), next_follow_up_at: toApiDate(form.next_follow_up_at),
         pause_until: toApiDate(form.pause_until), lost_reason: form.lost_reason.trim() || null, notes: form.notes.trim() || null,
       };
@@ -105,11 +113,12 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
   };
 
   const openFollow = (opportunity: any) => {
+    if (!canEdit) return;
     setFollowTarget(opportunity);
     setFollowForm({ content: '', contact_method: 'phone', stage: opportunity.stage, probability: opportunity.probability, next_follow_up_at: formatBusinessDateTimeInput(new Date(Date.now() + 86400000).toISOString()) });
   };
   const saveFollow = async () => {
-    if (saving) return;
+    if (saving || !canEdit) return;
     if (!followTarget || !followForm.content.trim() || !followForm.next_follow_up_at) { toast.error('请填写跟进内容和下次跟进时间'); return; }
     setSaving(true);
     try {
@@ -119,7 +128,7 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
     finally { setSaving(false); }
   };
   const convert = async (opportunity: any) => {
-    if (conversionBusy.current.has(opportunity.id)) return;
+    if (!canConvert || conversionBusy.current.has(opportunity.id)) return;
     conversionBusy.current.add(opportunity.id);
     setConvertingIds(new Set(conversionBusy.current));
     try {
@@ -129,13 +138,14 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
     finally { conversionBusy.current.delete(opportunity.id); setConvertingIds(new Set(conversionBusy.current)); }
   };
 
+  if (!canRead) return <p className="py-6 text-sm text-slate-500">未授权查看此客户的商机。</p>;
   return <div className="space-y-4">
-    <div className="grid gap-3 sm:grid-cols-3"><Card><CardContent className="p-4"><p className="text-xs text-slate-500">跟进中商机</p><p className="mt-1 text-2xl font-semibold text-blue-600">{openCount}</p></CardContent></Card><Card><CardContent className="p-4"><p className="text-xs text-slate-500">加权商机金额</p><p className="mt-1 text-2xl font-semibold text-slate-900">${weightedPipeline.toLocaleString()}</p></CardContent></Card><Card><CardContent className="flex h-full items-center justify-between p-4"><div><p className="text-sm font-medium">新增交叉销售机会</p><p className="mt-1 text-xs text-slate-500">不会覆盖客户当前合作项目</p></div><Button size="sm" onClick={() => openEditor()}><Plus className="mr-1 h-4 w-4" />新商机</Button></CardContent></Card></div>
+    <div className="grid gap-3 sm:grid-cols-3"><Card><CardContent className="p-4"><p className="text-xs text-slate-500">跟进中商机</p><p className="mt-1 text-2xl font-semibold text-blue-600">{openCount}</p></CardContent></Card><Card><CardContent className="p-4"><p className="text-xs text-slate-500">加权商机金额</p><p className="mt-1 text-2xl font-semibold text-slate-900">{canViewAmounts ? `$${weightedPipeline.toLocaleString()}` : '未开放金额'}</p></CardContent></Card><Card><CardContent className="flex h-full items-center justify-between p-4"><div><p className="text-sm font-medium">新增交叉销售机会</p><p className="mt-1 text-xs text-slate-500">不会覆盖客户当前合作项目</p></div><Button size="sm" disabled={!canEdit} onClick={() => openEditor()}><Plus className="mr-1 h-4 w-4" />新商机</Button></CardContent></Card></div>
     {loading ? <p className="py-8 text-center text-sm text-slate-400">正在读取商机…</p> : opportunities.length === 0 ? <div className="rounded-xl border border-dashed py-10 text-center"><Target className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 text-sm text-slate-500">暂无商机。已有合作客户的新需求应在这里单独建立，不修改原订阅。</p></div> : <div className="space-y-3">{opportunities.map(opportunity => <div key={opportunity.id} className="rounded-xl border border-slate-200 p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-slate-900">{opportunity.title}</p><Badge className={statusTone[opportunity.status]}>{statusLabels[opportunity.status]}</Badge><Badge variant="outline">{stageLabels[opportunity.stage]}</Badge></div><p className="mt-1 text-xs text-slate-500">{opportunity.business_line?.name || '业务待确认'} · {opportunity.product?.name || '产品待确认'} · {opportunity.plan?.name || '套餐待确认'}</p></div><div className="text-right"><p className="font-semibold text-slate-900">{opportunity.currency} {Number(opportunity.estimated_amount || 0).toLocaleString()}</p><p className="text-xs text-slate-500">概率 {opportunity.probability}% · 加权 {Number(opportunity.weighted_amount || 0).toLocaleString()}</p></div></div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-slate-900">{opportunity.title}</p><Badge className={statusTone[opportunity.status]}>{statusLabels[opportunity.status]}</Badge><Badge variant="outline">{stageLabels[opportunity.stage]}</Badge></div><p className="mt-1 text-xs text-slate-500">{opportunity.business_line?.name || '业务待确认'} · {opportunity.product?.name || '产品待确认'} · {opportunity.plan?.name || '套餐待确认'}</p></div>{canViewAmounts && <div className="text-right"><p className="font-semibold text-slate-900">{opportunity.currency} {Number(opportunity.estimated_amount || 0).toLocaleString()}</p><p className="text-xs text-slate-500">概率 {opportunity.probability}% · 加权 {Number(opportunity.weighted_amount || 0).toLocaleString()}</p></div>}</div>
       {opportunity.selected_platforms?.length > 0 && <div className="mt-3 flex flex-wrap gap-1">{opportunity.selected_platforms.map((platform: string) => <Badge key={platform} variant="secondary">{customerPlatformLabels[platform] || platform}</Badge>)}</div>}
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3"><div className="rounded-lg bg-slate-50 p-2"><p className="text-slate-400">负责人</p><p className="mt-1 text-slate-700">{opportunity.owner_name || '-'}</p></div><div className="rounded-lg bg-slate-50 p-2"><p className="text-slate-400">下次跟进</p><p className="mt-1 text-slate-700">{formatBusinessDateTimeInput(opportunity.next_follow_up_at).replace('T', ' ') || '-'} · 北京时间</p></div><div className="rounded-lg bg-slate-50 p-2"><p className="text-slate-400">任务闭环</p><p className="mt-1 text-slate-700">{opportunity.task_id ? <button type="button" className="text-blue-700 underline" onClick={() => navigate(buildReturnLink(`/tasks?task_id=${opportunity.task_id}`, `${location.pathname}${location.search}`, 'customers'))}>任务 #{opportunity.task_id}</button> : '已结束'}</p></div></div>
-      <div className="mt-3 flex flex-wrap justify-end gap-2"><Button size="sm" variant="outline" onClick={() => openEditor(opportunity)}>编辑</Button>{opportunity.status === 'open' && <Button size="sm" variant="outline" onClick={() => openFollow(opportunity)}><CalendarClock className="mr-1 h-3.5 w-3.5" />记录跟进</Button>}{opportunity.status === 'open' && <Button size="sm" disabled={convertingIds.has(opportunity.id)} onClick={() => convert(opportunity)}><CheckCircle2 className="mr-1 h-3.5 w-3.5" />转待收款</Button>}{opportunity.converted_deal_id && <Button size="sm" variant="ghost" onClick={() => navigate(buildReturnLink(`/deals?deal_id=${opportunity.converted_deal_id}`, `${location.pathname}${location.search}`, 'customers'))}><ArrowRight className="mr-1 h-3.5 w-3.5" />待收款 #{opportunity.converted_deal_id}</Button>}</div>
+      <div className="mt-3 flex flex-wrap justify-end gap-2">{canEdit && <Button size="sm" variant="outline" onClick={() => openEditor(opportunity)}>编辑</Button>}{canEdit && opportunity.status === 'open' && <Button size="sm" variant="outline" onClick={() => openFollow(opportunity)}><CalendarClock className="mr-1 h-3.5 w-3.5" />记录跟进</Button>}{canConvert && opportunity.status === 'open' && <Button size="sm" disabled={convertingIds.has(opportunity.id)} onClick={() => convert(opportunity)}><CheckCircle2 className="mr-1 h-3.5 w-3.5" />转待收款</Button>}{canConvert && opportunity.converted_deal_id && <Button size="sm" variant="ghost" onClick={() => navigate(buildReturnLink(`/deals?deal_id=${opportunity.converted_deal_id}`, `${location.pathname}${location.search}`, 'customers'))}><ArrowRight className="mr-1 h-3.5 w-3.5" />待收款 #{opportunity.converted_deal_id}</Button>}</div>
     </div>)}</div>}
     <Button variant="ghost" size="sm" onClick={load} disabled={loading}><RefreshCw className={`mr-1 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />刷新商机</Button>
 
@@ -144,7 +154,7 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
       <div><Label>业务线 *</Label><NativeSelect value={form.business_line_id} onChange={value => { const product = catalog.products.find((item: any) => String(item.business_line_id) === value); setForm(prev => ({ ...prev, business_line_id: value, product_id: product ? String(product.id) : '', product_plan_id: '', selected_platforms: [] })); }} options={catalog.business_lines.map((line: any) => ({ value: String(line.id), label: line.name }))} /></div>
       <div><Label>产品</Label><NativeSelect value={form.product_id} onChange={value => setForm(prev => ({ ...prev, product_id: value, product_plan_id: '', selected_platforms: [] }))} placeholder="待确认" options={products.map((product: any) => ({ value: String(product.id), label: product.name }))} /></div>
       <div><Label>套餐</Label><NativeSelect value={form.product_plan_id} onChange={value => setForm(prev => ({ ...prev, product_plan_id: value, selected_platforms: [] }))} placeholder="待确认" options={plans.map((plan: any) => ({ value: String(plan.id), label: `${plan.name}${plan.pricing_status === 'draft' ? '（价格待定）' : ''}` }))} /></div>
-      <div><Label>预计金额</Label><Input type="number" min="0" value={form.estimated_amount} onChange={event => setForm(prev => ({ ...prev, estimated_amount: event.target.value }))} /></div>
+      <div><Label>预计金额</Label><Input disabled={!canViewAmounts} type="number" min="0" value={form.estimated_amount} onChange={event => setForm(prev => ({ ...prev, estimated_amount: event.target.value }))} /></div>
       {selectedPlan?.scope_type === 'platforms' && <div className="md:col-span-2"><Label>实际运营平台（该套餐任选 {selectedPlan.platform_limit} 个）</Label><div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">{Object.entries(customerPlatformLabels).map(([key, label]) => <label key={key} className="flex items-center gap-2 rounded-lg border p-2 text-sm"><input type="checkbox" checked={form.selected_platforms.includes(key)} onChange={event => setForm(prev => ({ ...prev, selected_platforms: event.target.checked ? [...prev.selected_platforms, key] : prev.selected_platforms.filter(item => item !== key) }))} />{label}</label>)}</div><p className="mt-1 text-xs text-slate-500">套餐只定义数量，运营人员在这里看到实际平台。</p></div>}
       <div><Label>阶段</Label><NativeSelect value={form.stage} onChange={value => setForm(prev => ({ ...prev, stage: value, probability: ({ initial: 10, needs_confirmed: 25, quoted: 45, negotiating: 70, payment_pending: 90 } as any)[value] }))} options={Object.entries(stageLabels).map(([value, label]) => ({ value, label }))} /></div>
       <div><Label>状态</Label><NativeSelect value={form.status} onChange={value => setForm(prev => ({ ...prev, status: value }))} options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))} /></div>

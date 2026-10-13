@@ -541,7 +541,7 @@ async def partner_login_options(
 
 @router.get("/unbound-partners")
 async def unbound_partners(
-    _user: UserResponse = Depends(get_admin_user),
+    _user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     rows = (await db.scalars(select(SalesPartner).where(

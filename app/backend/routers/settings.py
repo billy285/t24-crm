@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict
 
-from dependencies.auth import get_admin_user
+from dependencies.auth import get_owner_user
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from schemas.auth import UserResponse
@@ -64,7 +64,7 @@ def write_env_file(env_type: str, env_vars: Dict[str, str]):
 
 
 @router.get("", response_model=EnvConfig)
-async def get_settings(current_user: UserResponse = Depends(get_admin_user)):
+async def get_settings(current_user: UserResponse = Depends(get_owner_user)):
     """Retrieve environment variable configuration."""
     try:
         backend_vars = read_env_file("backend")
@@ -109,7 +109,7 @@ async def get_settings(current_user: UserResponse = Depends(get_admin_user)):
 
 @router.put("/backend/{key}")
 async def update_backend_setting(
-    key: str, update: EnvVariableUpdate, current_user: UserResponse = Depends(get_admin_user)
+    key: str, update: EnvVariableUpdate, current_user: UserResponse = Depends(get_owner_user)
 ):
     """Update a backend environment variable."""
     try:
@@ -123,7 +123,7 @@ async def update_backend_setting(
 
 @router.put("/frontend/{key}")
 async def update_frontend_setting(
-    key: str, update: EnvVariableUpdate, current_user: UserResponse = Depends(get_admin_user)
+    key: str, update: EnvVariableUpdate, current_user: UserResponse = Depends(get_owner_user)
 ):
     """Update a frontend environment variable."""
     try:
@@ -137,7 +137,7 @@ async def update_frontend_setting(
 
 @router.post("/backend/{key}")
 async def add_backend_setting(
-    key: str, update: EnvVariableUpdate, current_user: UserResponse = Depends(get_admin_user)
+    key: str, update: EnvVariableUpdate, current_user: UserResponse = Depends(get_owner_user)
 ):
     """Add a backend environment variable."""
     try:
@@ -151,7 +151,7 @@ async def add_backend_setting(
 
 @router.post("/frontend/{key}")
 async def add_frontend_setting(
-    key: str, update: EnvVariableUpdate, current_user: UserResponse = Depends(get_admin_user)
+    key: str, update: EnvVariableUpdate, current_user: UserResponse = Depends(get_owner_user)
 ):
     """Add a frontend environment variable."""
     try:
@@ -164,7 +164,7 @@ async def add_frontend_setting(
 
 
 @router.delete("/backend/{key}")
-async def delete_backend_setting(key: str, current_user: UserResponse = Depends(get_admin_user)):
+async def delete_backend_setting(key: str, current_user: UserResponse = Depends(get_owner_user)):
     """Delete a backend environment variable."""
     try:
         env_vars = read_env_file("backend")
@@ -179,7 +179,7 @@ async def delete_backend_setting(key: str, current_user: UserResponse = Depends(
 
 
 @router.delete("/frontend/{key}")
-async def delete_frontend_setting(key: str, current_user: UserResponse = Depends(get_admin_user)):
+async def delete_frontend_setting(key: str, current_user: UserResponse = Depends(get_owner_user)):
     """Delete a frontend environment variable."""
     try:
         env_vars = read_env_file("frontend")

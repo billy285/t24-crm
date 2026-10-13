@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_current_user
+from dependencies.auth import get_current_user, get_finance_user
 from models.customers import Customers
 from models.deals import Deals
 from models.follow_ups import Follow_ups
@@ -18,6 +18,10 @@ from models.opportunities import Opportunities
 from models.tasks import Tasks
 from schemas.auth import UserResponse
 from services.customers import CustomersService
+from services.customer_scope import ensure_customer_access
+from services.customer_permissions import get_customer_permissions
+from services.customer_record_audit import record_customer_change
+from services.role_permissions import require_button_permission
 
 
 router = APIRouter(prefix="/api/v1/opportunities", tags=["opportunities"])
@@ -168,14 +172,12 @@ async def _validate_catalog(
 
 
 async def _get_scoped_opportunity(
-    db: AsyncSession, opportunity_id: int, current_user: UserResponse
+    db: AsyncSession, opportunity_id: int, current_user: UserResponse, *, write=False
 ) -> Opportunities:
     opportunity = await db.get(Opportunities, opportunity_id)
     if not opportunity:
         raise HTTPException(status_code=404, detail="商机不存在")
-    customer = await CustomersService(db).get_by_id(opportunity.customer_id, scope_user=current_user)
-    if not customer:
-        raise HTTPException(status_code=404, detail="商机不存在或无权访问")
+    await ensure_customer_access(db, current_user, opportunity.customer_id, module="followups", write=write)
     return opportunity
 
 
@@ -183,6 +185,8 @@ async def _sync_task(db: AsyncSession, opportunity: Opportunities) -> None:
     task = (await db.execute(select(Tasks).where(Tasks.opportunity_id == opportunity.id))).scalar_one_or_none()
     terminal = opportunity.status in {"won", "lost"}
     due_date = opportunity.next_follow_up_at if opportunity.status == "open" else opportunity.pause_until
+    if due_date is not None and due_date.tzinfo is None:
+        due_date = due_date.replace(tzinfo=timezone.utc)
     title = f"跟进商机：{opportunity.customer_name} · {opportunity.title}"
     if not task:
         task = Tasks(opportunity_id=opportunity.id, created_at=utcnow())
@@ -207,9 +211,10 @@ async def _sync_task(db: AsyncSession, opportunity: Opportunities) -> None:
         task.completed_at = None
 
 
-async def _payload(db: AsyncSession, opportunity: Opportunities) -> dict:
+async def _payload(db: AsyncSession, opportunity: Opportunities, current_user=None) -> dict:
     line, product, plan = await _load_context(db, opportunity)
     task = (await db.execute(select(Tasks).where(Tasks.opportunity_id == opportunity.id))).scalar_one_or_none()
+    financial = current_user is None or (await get_customer_permissions(db, current_user, opportunity.customer_id))["finance_access"] in {"receipts", "profit"}
     return {
         "id": opportunity.id,
         "opportunity_code": opportunity.opportunity_code,
@@ -218,10 +223,11 @@ async def _payload(db: AsyncSession, opportunity: Opportunities) -> dict:
         "title": opportunity.title,
         "stage": opportunity.stage,
         "status": opportunity.status,
-        "estimated_amount": opportunity.estimated_amount,
+        "estimated_amount": opportunity.estimated_amount if financial else None,
         "currency": opportunity.currency,
         "probability": opportunity.probability,
-        "weighted_amount": round(float(opportunity.estimated_amount or 0) * opportunity.probability / 100, 2),
+        "weighted_amount": round(float(opportunity.estimated_amount or 0) * opportunity.probability / 100, 2) if financial else None,
+        "financial_fields_hidden": not financial,
         "owner_employee_id": opportunity.owner_employee_id,
         "owner_name": opportunity.owner_name,
         "source": opportunity.source,
@@ -250,6 +256,28 @@ async def _payload(db: AsyncSession, opportunity: Opportunities) -> dict:
     }
 
 
+async def _validate_opportunity_write(db, user, customer_id, changes, existing=None):
+    await ensure_customer_access(db, user, customer_id, module="followups", write=True)
+    if existing is not None and any(k in changes and changes[k] != getattr(existing, k) for k in ("owner_employee_id", "owner_name")):
+        await ensure_customer_access(db, user, customer_id, module="followups", write=True, action="reassign")
+    if "estimated_amount" in changes or "currency" in changes:
+        permissions = await get_customer_permissions(db, user, customer_id)
+        if permissions["finance_access"] not in {"receipts", "profit"}:
+            # A masked field is often sent back as null by an older editor.
+            # Ignore null, but never let it erase a value the caller cannot see.
+            if changes.get("estimated_amount") is None:
+                changes.pop("estimated_amount", None)
+            else:
+                raise HTTPException(status_code=403, detail="未获该客户金额资料权限，不能修改预计金额")
+            if "currency" in changes:
+                prior_currency = getattr(existing, "currency", "USD")
+                if changes["currency"] not in {None, prior_currency}:
+                    raise HTTPException(status_code=403, detail="未获该客户金额资料权限，不能修改币种")
+                if existing is not None:
+                    changes.pop("currency", None)
+
+
+
 @router.get("/metadata")
 async def opportunity_metadata(_current_user: UserResponse = Depends(get_current_user)):
     return {"stages": list(STAGES), "statuses": list(STATUSES), "default_probabilities": STAGE_PROBABILITIES}
@@ -264,8 +292,8 @@ async def list_opportunities(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if customer_id and not await CustomersService(db).get_by_id(customer_id, scope_user=current_user):
-        raise HTTPException(status_code=404, detail="客户不存在或无权访问")
+    if customer_id:
+        await ensure_customer_access(db, current_user, customer_id, module="followups")
     query = select(Opportunities)
     filters = []
     if customer_id:
@@ -274,7 +302,7 @@ async def list_opportunities(
         if status not in STATUSES:
             raise HTTPException(status_code=400, detail="商机状态无效")
         filters.append(Opportunities.status == status)
-    scope = CustomersService(db)._scope_filter(current_user)
+    scope = CustomersService._scope_filter_for_user(current_user, module="followups")
     if scope is not None:
         query = query.join(Customers, Customers.id == Opportunities.customer_id).where(scope)
     query = query.where(*filters)
@@ -285,7 +313,7 @@ async def list_opportunities(
         .offset((page - 1) * page_size).limit(page_size)
     )).scalars().all()
     return {
-        "items": [await _payload(db, row) for row in rows],
+        "items": [await _payload(db, row, current_user) for row in rows],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -298,14 +326,14 @@ async def create_opportunity(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    customer = await CustomersService(db).get_by_id(data.customer_id, scope_user=current_user)
-    if not customer:
-        raise HTTPException(status_code=404, detail="客户不存在或无权访问")
+    await require_button_permission(db, current_user, "follow_up_create")
+    customer = await ensure_customer_access(db, current_user, data.customer_id, module="followups", write=True)
+    payload = data.model_dump(exclude={"selected_platforms", "service_scope"})
+    await _validate_opportunity_write(db, current_user, data.customer_id, payload)
     await _validate_catalog(
         db, data.business_line_id, data.product_id, data.product_plan_id, data.selected_platforms,
         require_complete=data.status == "won",
     )
-    payload = data.model_dump(exclude={"selected_platforms", "service_scope"})
     probability = payload.pop("probability")
     opportunity = Opportunities(
         **payload,
@@ -322,7 +350,7 @@ async def create_opportunity(
     await _sync_task(db, opportunity)
     await db.commit()
     await db.refresh(opportunity)
-    return await _payload(db, opportunity)
+    return await _payload(db, opportunity, current_user)
 
 
 @router.put("/{opportunity_id}")
@@ -332,8 +360,10 @@ async def update_opportunity(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    opportunity = await _get_scoped_opportunity(db, opportunity_id, current_user)
+    await require_button_permission(db, current_user, "follow_up_edit")
+    opportunity = await _get_scoped_opportunity(db, opportunity_id, current_user, write=True)
     patch = data.model_dump(exclude_unset=True)
+    await _validate_opportunity_write(db, current_user, opportunity.customer_id, patch, opportunity)
     selected = patch.pop("selected_platforms", _json_list(opportunity.selected_platforms))
     scope = patch.pop("service_scope", _json_dict(opportunity.service_scope_json))
     business_line_id = patch.get("business_line_id", opportunity.business_line_id)
@@ -352,6 +382,7 @@ async def update_opportunity(
     await _validate_catalog(
         db, business_line_id, product_id, product_plan_id, selected, require_complete=next_status == "won"
     )
+    record_customer_change(db, current_user, opportunity, "followups", changes={**patch, "selected_platforms": json.dumps(selected, ensure_ascii=False), "service_scope_json": json.dumps(scope, ensure_ascii=False)})
     for key, value in patch.items():
         setattr(opportunity, key, value.upper() if key == "currency" and value else value)
     opportunity.selected_platforms = json.dumps(selected, ensure_ascii=False)
@@ -365,7 +396,7 @@ async def update_opportunity(
     await _sync_task(db, opportunity)
     await db.commit()
     await db.refresh(opportunity)
-    return await _payload(db, opportunity)
+    return await _payload(db, opportunity, current_user)
 
 
 @router.post("/{opportunity_id}/follow-ups", status_code=201)
@@ -375,7 +406,9 @@ async def create_opportunity_follow_up(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    opportunity = await _get_scoped_opportunity(db, opportunity_id, current_user)
+    await require_button_permission(db, current_user, "follow_up_create")
+    opportunity = await _get_scoped_opportunity(db, opportunity_id, current_user, write=True)
+    record_customer_change(db, current_user, opportunity, "followups", changes={"stage": data.stage or opportunity.stage, "next_follow_up_at": data.next_follow_up_at, "probability": data.probability if data.probability is not None else opportunity.probability})
     if opportunity.status != "open":
         raise HTTPException(status_code=400, detail="只有跟进中的商机可以新增跟进记录")
     if data.stage:
@@ -404,19 +437,19 @@ async def create_opportunity_follow_up(
     await db.commit()
     await db.refresh(follow_up)
     await db.refresh(opportunity)
-    return {"follow_up_id": follow_up.id, "opportunity": await _payload(db, opportunity)}
+    return {"follow_up_id": follow_up.id, "opportunity": await _payload(db, opportunity, current_user)}
 
 
 @router.post("/{opportunity_id}/convert")
 async def convert_opportunity(
     opportunity_id: int,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Convert once, without fabricating payment or starting paid lifecycle."""
-    opportunity = await _get_scoped_opportunity(db, opportunity_id, current_user)
+    opportunity = await _get_scoped_opportunity(db, opportunity_id, current_user, write=True)
     if opportunity.converted_deal_id:
-        return {"idempotent": True, "opportunity": await _payload(db, opportunity)}
+        return {"idempotent": True, "opportunity": await _payload(db, opportunity, current_user)}
     line, product, plan = await _validate_catalog(
         db,
         opportunity.business_line_id,
@@ -464,6 +497,7 @@ async def convert_opportunity(
     )
     db.add(engagement)
     await db.flush()
+    record_customer_change(db, current_user, opportunity, "followups", changes={"status": "won", "converted_deal_id": deal.id, "converted_engagement_id": engagement.id})
     opportunity.status = "won"
     opportunity.won_at = opportunity.won_at or now
     opportunity.converted_deal_id = deal.id
@@ -478,5 +512,5 @@ async def convert_opportunity(
         "subscription_id": None,
         "lifecycle_started": False,
         "message": "已转为待首笔收款，尚未生成收入或开始付费生命周期",
-        "opportunity": await _payload(db, opportunity),
+        "opportunity": await _payload(db, opportunity, current_user),
     }

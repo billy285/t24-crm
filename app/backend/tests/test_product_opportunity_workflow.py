@@ -18,7 +18,7 @@ from models.payments import Payments
 from models.tasks import Tasks
 
 
-def auth_headers(role: str = "admin", employee_id: int = 1) -> dict[str, str]:
+def auth_headers(role: str = "super_admin", employee_id: int = 1) -> dict[str, str]:
     token = create_access_token({
         "emp_id": employee_id,
         "email": f"{employee_id}@test.local",

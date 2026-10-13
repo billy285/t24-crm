@@ -37,5 +37,6 @@ class Customers(Base):
     level = Column(String, nullable=True)
     status = Column(String, nullable=True)
     notes = Column(String, nullable=True)
+    private_notes = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

@@ -13,10 +13,12 @@ from core.database import get_db
 from dependencies.auth import get_admin_user, get_current_user
 from schemas.auth import UserResponse
 from services.customer_scope import ensure_customer_access
+from services.customer_permissions import get_customer_permissions
 from services.media_accounts import (
     Media_accountsService,
     decrypt_media_account_password,
     has_media_account_password,
+    guard_media_password_write,
 )
 from services.operation_logs import Operation_logsService, build_server_operation_log_data
 from services.role_permissions import load_role_permission_config, normalized_role
@@ -219,7 +221,7 @@ async def query_media_accountss(
 ):
     """Query media_accountss with filtering, sorting, and pagination (user can only see their own records)"""
     await require_media_account_read_access(current_user, db)
-    logger.debug(f"Querying media_accountss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
+    logger.debug("Querying media accounts skip=%s limit=%s", skip, limit)
     
     service = Media_accountsService(db)
     try:
@@ -259,7 +261,7 @@ async def query_media_accountss_all(
     db: AsyncSession = Depends(get_db),
 ):
     # Query media_accountss with filtering, sorting, and pagination without user limitation
-    logger.debug(f"Querying media_accountss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
+    logger.debug("Querying media accounts skip=%s limit=%s", skip, limit)
 
     service = Media_accountsService(db)
     try:
@@ -275,6 +277,7 @@ async def query_media_accountss_all(
             skip=skip,
             limit=limit,
             query_dict=query_dict,
+            scope_user=current_user,
             sort=sort
         )
         logger.debug(f"Found {result['total']} media_accountss")
@@ -332,6 +335,9 @@ async def get_media_account_password(
             logger.warning(f"Media_accounts with id {id} not found for password reveal")
             raise HTTPException(status_code=404, detail="Media_accounts not found")
 
+        permissions = await get_customer_permissions(db, current_user, result.customer_id)
+        if not permissions.get("reveal_secrets", False):
+            raise HTTPException(status_code=403, detail="客户资料共享不包含账号密码查看权限")
         plaintext_password = decrypt_media_account_password(result.login_password)
         # A password reveal is not successful unless its trusted server-side
         # audit record is durable.  Do this before returning the plaintext and
@@ -369,7 +375,8 @@ async def create_media_accounts(
 ):
     """Create a new media_accounts"""
     await require_media_account_permission(current_user, db, "media_account_create")
-    await ensure_customer_access(db, current_user, data.customer_id, write=True)
+    await ensure_customer_access(db, current_user, data.customer_id, write=True, module="materials")
+    payload = guard_media_password_write(data.model_dump(), current_user)
     logger.debug(
         "Creating media account customer_id=%s platform=%s account=%s",
         data.customer_id,
@@ -379,7 +386,7 @@ async def create_media_accounts(
     
     service = Media_accountsService(db)
     try:
-        result = await service.create(data.model_dump(), user_id=str(current_user.id))
+        result = await service.create(payload, user_id=str(current_user.id), scope_user=current_user)
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create media_accounts")
         
@@ -401,21 +408,25 @@ async def create_media_accountss_batch(
 ):
     """Create multiple media_accountss in a single request"""
     await require_media_account_permission(current_user, db, "media_account_create")
+    prepared = [guard_media_password_write(item.model_dump(), current_user) for item in request.items]
     for item_data in request.items:
-        await ensure_customer_access(db, current_user, item_data.customer_id, write=True)
+        await ensure_customer_access(db, current_user, item_data.customer_id, write=True, module="materials")
     logger.debug(f"Batch creating {len(request.items)} media_accountss")
     
     service = Media_accountsService(db)
     results = []
     
     try:
-        for item_data in request.items:
-            result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
+        for payload in prepared:
+            result = await service.create(payload, user_id=str(current_user.id), scope_user=current_user)
             if result:
                 results.append(serialize_media_account(result))
         
         logger.info(f"Batch created {len(results)} media_accountss successfully")
         return results
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch create: {str(e)}", exc_info=True)
@@ -438,11 +449,13 @@ async def update_media_accountss_batch(
     # Validate the entire batch before the first write so one hidden customer
     # cannot cause a partial cross-scope update.
     for item in request.items:
+        guard_media_password_write(item.updates.model_dump(exclude_unset=True), current_user)
         existing = await service.get_by_id(item.id, scope_user=current_user)
         if not existing:
             raise HTTPException(status_code=404, detail="Media_accounts not found")
+        await ensure_customer_access(db, current_user, existing.customer_id, write=True, module="materials")
         if item.updates.customer_id is not None:
-            await ensure_customer_access(db, current_user, item.updates.customer_id, write=True)
+            await ensure_customer_access(db, current_user, item.updates.customer_id, write=True, module="materials")
     
     try:
         for item in request.items:
@@ -454,6 +467,9 @@ async def update_media_accountss_batch(
         
         logger.info(f"Batch updated {len(results)} media_accountss successfully")
         return results
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
@@ -470,7 +486,7 @@ async def update_media_accounts(
     """Update an existing media_accounts (requires ownership)"""
     await require_media_account_permission(current_user, db, "media_account_edit")
     if data.customer_id is not None:
-        await ensure_customer_access(db, current_user, data.customer_id, write=True)
+        await ensure_customer_access(db, current_user, data.customer_id, write=True, module="materials")
     logger.debug(
         "Updating media account id=%s fields=%s",
         id,
@@ -512,8 +528,10 @@ async def delete_media_accountss_batch(
     deleted_count = 0
 
     for item_id in request.ids:
-        if not await service.get_by_id(item_id, scope_user=current_user):
+        existing = await service.get_by_id(item_id, scope_user=current_user)
+        if not existing:
             raise HTTPException(status_code=404, detail="Media_accounts not found")
+        await ensure_customer_access(db, current_user, existing.customer_id, write=True, module="materials", action="delete")
     
     try:
         for item_id in request.ids:
@@ -523,6 +541,9 @@ async def delete_media_accountss_batch(
         
         logger.info(f"Batch deleted {deleted_count} media_accountss successfully")
         return {"message": f"Successfully deleted {deleted_count} media_accountss", "deleted_count": deleted_count}
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch delete: {str(e)}", exc_info=True)

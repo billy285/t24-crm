@@ -2,11 +2,14 @@ import logging
 from typing import Optional, Dict, Any, List
 
 from core.mask_crypto import decrypt_text, encrypt_text, key_prefix
+from fastapi import HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.media_accounts import Media_accounts
 from services.customer_scope import apply_customer_scope, ensure_customer_access
+
+from services.customer_record_audit import record_customer_change
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,24 @@ def decrypt_media_account_password(value: Optional[str]) -> str:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to decrypt media account password: %s", exc)
         return ""
+
+
+def guard_media_password_write(data: Dict[str, Any], scope_user) -> Dict[str, Any]:
+    """Customer collaboration never grants credential management."""
+    safe = dict(data)
+    if scope_user is not None and str(getattr(scope_user, "role", "")).lower() != "super_admin":
+        if has_media_account_password(safe.get("login_password")):
+            raise HTTPException(status_code=403, detail="仅老板可以设置媒体账号密码")
+        # Hidden fields posted by old editors must not clear existing secrets.
+        safe.pop("login_password", None)
+    return safe
+
+
+def guard_media_password_query(query_dict, sort):
+    if query_dict is not None and not isinstance(query_dict, dict):
+        raise HTTPException(status_code=400, detail="Query must be a JSON object")
+    if (query_dict and "login_password" in query_dict) or str(sort or "").strip().lstrip("+-") == "login_password":
+        raise HTTPException(status_code=400, detail="账号密码不支持筛选或排序")
 
 
 def normalize_media_account_payload(
@@ -73,10 +94,10 @@ class Media_accountsService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, data: Dict[str, Any], user_id: Optional[str] = None) -> Optional[Media_accounts]:
+    async def create(self, data: Dict[str, Any], user_id: Optional[str] = None, scope_user: Optional[Any] = None) -> Optional[Media_accounts]:
         """Create a new media_accounts"""
         try:
-            data = normalize_media_account_payload(data)
+            data = normalize_media_account_payload(guard_media_password_write(data, scope_user))
             if user_id:
                 data['user_id'] = user_id
             obj = Media_accounts(**data)
@@ -129,6 +150,7 @@ class Media_accountsService:
         sort: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Get media accounts constrained by linked-customer visibility."""
+        guard_media_password_query(query_dict, sort)
         try:
             query = select(Media_accounts)
             count_query = select(func.count(Media_accounts.id))
@@ -176,13 +198,15 @@ class Media_accountsService:
         scope_user: Optional[Any] = None,
     ) -> Optional[Media_accounts]:
         """Update a media account within the caller's customer scope."""
+        update_data = guard_media_password_write(update_data, scope_user)
         try:
             obj = await self.get_by_id(obj_id, scope_user=scope_user)
             if not obj:
                 logger.warning(f"Media_accounts {obj_id} not found for update")
                 return None
-            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True)
+            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="materials")
             update_data = normalize_media_account_payload(update_data, preserve_existing_password=True)
+            record_customer_change(self.db, scope_user, obj, "materials", changes=update_data)
             for key, value in update_data.items():
                 if hasattr(obj, key) and key != 'user_id':
                     setattr(obj, key, value)
@@ -208,7 +232,8 @@ class Media_accountsService:
             if not obj:
                 logger.warning(f"Media_accounts {obj_id} not found for deletion")
                 return False
-            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True)
+            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="materials", action="delete")
+            record_customer_change(self.db, scope_user, obj, "materials", deleted=True)
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted media_accounts {obj_id}")

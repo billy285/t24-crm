@@ -131,7 +131,7 @@ async def test_customer_service_scopes_sales_to_explicitly_visible_customers(db_
 
 
 @pytest.mark.asyncio
-async def test_customer_service_finance_sees_all_but_operations_requires_invitation(db_session):
+async def test_customer_service_finance_and_operations_require_invitation(db_session):
     service = CustomersService(db_session)
     invited = await service.create({"business_name": "A", "contact_name": "A", "phone": "111", "sales_employee_id": 101})
     await service.create({"business_name": "B", "contact_name": "B", "phone": "222", "sales_employee_id": 202})
@@ -143,7 +143,7 @@ async def test_customer_service_finance_sees_all_but_operations_requires_invitat
     finance_scoped = await service.get_list(limit=10, scope_user=finance_user)
     operations_scoped = await service.get_list(limit=10, scope_user=operations_user)
 
-    assert finance_scoped["total"] == 2
+    assert finance_scoped["total"] == 0
     assert operations_scoped["total"] == 1
     assert operations_scoped["items"][0].business_name == "A"
 
@@ -173,7 +173,7 @@ async def test_customer_access_endpoint_replaces_invited_employees(db_session, m
                     {"employee_id": 801, "access_level": "read_only"},
                     {"employee_id": 802, "access_level": "read_write"},
                 ]},
-                headers=_auth_headers("admin", emp_id=9001, name="Admin"),
+                headers=_auth_headers("super_admin", emp_id=9001, name="Owner"),
             )
             assert response.status_code == 200
             assert {row["employee_id"] for row in response.json()["members"]} == {801, 802}
@@ -195,7 +195,7 @@ async def test_customer_access_endpoint_replaces_invited_employees(db_session, m
                     "operation": "upsert",
                     "members": [{"employee_id": 801, "access_level": "read_write"}],
                 },
-                headers=_auth_headers("admin", emp_id=9001, name="Admin"),
+                headers=_auth_headers("super_admin", emp_id=9001, name="Owner"),
             )
             assert bulk_add.status_code == 200
             assert bulk_add.json()["updated_grants"] == 2
@@ -215,7 +215,7 @@ async def test_customer_access_endpoint_replaces_invited_employees(db_session, m
                     "operation": "remove",
                     "members": [{"employee_id": 801, "access_level": "read_only"}],
                 },
-                headers=_auth_headers("admin", emp_id=9001, name="Admin"),
+                headers=_auth_headers("super_admin", emp_id=9001, name="Owner"),
             )
             assert bulk_remove.status_code == 200
             assert bulk_remove.json()["updated_grants"] == 2
@@ -223,7 +223,7 @@ async def test_customer_access_endpoint_replaces_invited_employees(db_session, m
             replacement = await ac.put(
                 f"/api/v1/entities/customers/{customer_id}/access",
                 json={"employee_ids": [801]},
-                headers=_auth_headers("admin", emp_id=9001, name="Admin"),
+                headers=_auth_headers("super_admin", emp_id=9001, name="Owner"),
             )
             assert replacement.status_code == 200
             assert [row["employee_id"] for row in replacement.json()["members"]] == [801]
@@ -391,7 +391,7 @@ async def test_customer_routes_enforce_page_and_button_contracts(db_session):
     })
     db_session.add_all([
         CustomerAccessGrant(customer_id=design_customer.id, employee_id=9101, granted_by_name="Admin"),
-        CustomerAccessGrant(customer_id=ops_customer.id, employee_id=9103, granted_by_name="Admin"),
+        CustomerAccessGrant(customer_id=ops_customer.id, employee_id=9103, access_level="read_write", granted_by_name="Owner"),
     ])
     await db_session.commit()
     design_customer_id = design_customer.id
@@ -415,7 +415,7 @@ async def test_customer_routes_enforce_page_and_button_contracts(db_session):
                 f"/api/v1/entities/customers/{design_customer_id}/projects",
             ):
                 response = await ac.get(path, headers=design_headers)
-                assert response.status_code == 403
+                assert response.status_code == 200
 
             payload = {
                 "business_name": "Direct Write Attempt",

@@ -441,7 +441,7 @@ async def delete_customer_callbacks_batch(
         await _require_callback_mutation(db, current_user, "follow_up_delete")
         for item_id in request.ids:
             callback = await _get_scoped_callback(service, item_id, current_user)
-            await ensure_callback_customer_access(db, current_user, callback.customer_id, write=True)
+            await ensure_callback_customer_access(db, current_user, callback.customer_id, write=True, action="delete")
         for item_id in request.ids:
             success = await service.delete(item_id, scope_user=current_user)
             if success:
@@ -470,7 +470,7 @@ async def delete_customer_callback(
     try:
         await _require_callback_mutation(db, current_user, "follow_up_delete")
         callback = await _get_scoped_callback(service, id, current_user)
-        await ensure_callback_customer_access(db, current_user, callback.customer_id, write=True)
+        await ensure_callback_customer_access(db, current_user, callback.customer_id, write=True, action="delete")
         success = await service.delete(id, scope_user=current_user)
         if not success:
             logger.warning(f"Customer_callback with id {id} not found for deletion")

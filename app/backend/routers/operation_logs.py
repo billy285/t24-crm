@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from services.customer_scope import ensure_customer_access
+from services.customer_permissions import get_customer_owner_user
 from services.operation_logs import (
     CLIENT_OPERATION_ACTION_TYPES,
     MAX_OPERATION_BATCH_SIZE,
@@ -75,6 +76,13 @@ class Operation_logsBatchCreateRequest(BaseModel):
     items: List[Operation_logsData] = Field(min_length=1, max_length=MAX_OPERATION_BATCH_SIZE)
 
 
+def _safe_log_payload(row, user):
+    payload = Operation_logsResponse.model_validate(row, from_attributes=True).model_dump()
+    if str(user.role or "").lower() != "super_admin" and row.action_type != "user_note":
+        payload["action_detail"] = "详细审计记录仅老板可查看"
+    return payload
+
+
 # ---------- Routes ----------
 @router.get("", response_model=Operation_logsListResponse)
 async def query_operation_logss(
@@ -105,8 +113,10 @@ async def query_operation_logss(
             query_dict=query_dict,
             sort=sort,
             user_id=str(current_user.id),
+            scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} operation_logss")
+        result["items"] = [_safe_log_payload(row, current_user) for row in result["items"]]
         return result
     except HTTPException:
         raise
@@ -122,7 +132,7 @@ async def query_operation_logss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_customer_owner_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Query operation_logss with filtering, sorting, and pagination without user limitation
@@ -145,6 +155,7 @@ async def query_operation_logss_all(
             sort=sort,
         )
         logger.debug(f"Found {result['total']} operation_logss")
+        result["items"] = [_safe_log_payload(row, current_user) for row in result["items"]]
         return result
     except HTTPException:
         raise
@@ -165,12 +176,12 @@ async def get_operation_logs(
     
     service = Operation_logsService(db)
     try:
-        result = await service.get_by_id(id, user_id=str(current_user.id))
+        result = await service.get_by_id(id, user_id=str(current_user.id), scope_user=current_user)
         if not result:
             logger.warning(f"Operation_logs with id {id} not found")
             raise HTTPException(status_code=404, detail="Operation_logs not found")
         
-        return result
+        return _safe_log_payload(result, current_user)
     except HTTPException:
         raise
     except Exception as e:

@@ -219,7 +219,7 @@ async def _validate_task_linkage(
     customer_id: int,
     service_progress_id: Optional[int],
 ):
-    customer = await ensure_customer_access(db, current_user, customer_id, write=True)
+    customer = await ensure_customer_access(db, current_user, customer_id, write=True, module="delivery")
     if service_progress_id is None:
         return customer, None
 
@@ -440,6 +440,9 @@ async def create_service_taskss_batch(
         
         logger.info(f"Batch created {len(results)} service_taskss successfully")
         return results
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch create: {str(e)}", exc_info=True)
@@ -468,6 +471,7 @@ async def update_service_taskss_batch(
         task = await service.get_by_id(item.id, scope_user=current_user)
         if not task:
             raise HTTPException(status_code=404, detail="Service_tasks not found")
+        await ensure_customer_access(db, current_user, task.customer_id, write=True, module="delivery")
         if task.status == "completed":
             raise HTTPException(status_code=409, detail="已完成任务不能通过通用编辑接口修改")
 
@@ -491,6 +495,9 @@ async def update_service_taskss_batch(
         
         logger.info(f"Batch updated {len(results)} service_taskss successfully")
         return results
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
@@ -510,6 +517,7 @@ async def complete_service_task(
     task = await service.get_by_id(id, scope_user=current_user)
     if not task:
         raise HTTPException(status_code=404, detail="Service_tasks not found")
+    await ensure_customer_access(db, current_user, task.customer_id, write=True, module="delivery")
     if task.status == "completed":
         raise HTTPException(status_code=409, detail="任务已经完成")
 
@@ -531,16 +539,16 @@ async def complete_service_task(
     selected_material = None
 
     if data.selected_copy_id:
-        selected_copy = await Customer_ai_copiesService(db).get_by_id(data.selected_copy_id)
+        selected_copy = await Customer_ai_copiesService(db).get_by_id(data.selected_copy_id, scope_user=current_user)
         if not selected_copy or selected_copy.customer_id != task.customer_id:
             raise HTTPException(status_code=400, detail="选择的文案不属于当前客户")
         copy_title = selected_copy.title or f"文案 #{selected_copy.id}"
 
     if data.selected_material_id:
-        selected_material = await Customer_materialsService(db).get_by_id(data.selected_material_id)
+        selected_material = await Customer_materialsService(db).get_by_id(data.selected_material_id, scope_user=current_user)
         if not selected_material or selected_material.customer_id != task.customer_id:
             raise HTTPException(status_code=400, detail="选择的素材不属于当前客户")
-        material_title = selected_material.title or selected_material.file_name or f"素材 #{selected_material.id}"
+        material_title = (selected_material.title or selected_material.file_name or f"素材 #{selected_material.id}") if selected_material.visibility == "team" else "受限素材"
 
     now = datetime.utcnow()
     now_iso = now.isoformat()
@@ -573,11 +581,12 @@ async def complete_service_task(
     # Best-effort side effects: mark the selected copy/material as used and write an audit log.
     try:
         if selected_copy:
-            await Customer_ai_copiesService(db).update(selected_copy.id, {"status": "used", "updated_at": now})
+            await Customer_ai_copiesService(db).update(selected_copy.id, {"status": "used", "updated_at": now}, scope_user=current_user)
         if selected_material:
             await Customer_materialsService(db).update(
                 selected_material.id,
                 {"usage_status": "used", "used_at": now, "updated_at": now},
+                scope_user=current_user,
             )
         if task.service_progress_id and linked_progress:
             next_stage = _infer_stage_from_completed_task(task)
@@ -692,8 +701,10 @@ async def delete_service_taskss_batch(
     deleted_count = 0
 
     for item_id in request.ids:
-        if not await service.get_by_id(item_id, scope_user=current_user):
+        existing = await service.get_by_id(item_id, scope_user=current_user)
+        if not existing:
             raise HTTPException(status_code=404, detail="Service_tasks not found")
+        await ensure_customer_access(db, current_user, existing.customer_id, write=True, module="delivery", action="delete")
     
     try:
         for item_id in request.ids:
@@ -703,6 +714,9 @@ async def delete_service_taskss_batch(
         
         logger.info(f"Batch deleted {deleted_count} service_taskss successfully")
         return {"message": f"Successfully deleted {deleted_count} service_taskss", "deleted_count": deleted_count}
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch delete: {str(e)}", exc_info=True)

@@ -60,7 +60,8 @@ const emptyForm = {
 
 export default function Employees() {
   const [searchParams] = useSearchParams();
-  const { isAdmin, employee: currentEmp, hasPermission } = useRole();
+  const { systemRole, employee: currentEmp, hasPermission } = useRole();
+  const isAdmin = systemRole === 'super_admin';
   const isMobile = useIsMobile();
   const { statuses: statusLabels, taskStatuses: taskStatusLabels } = useBusinessDicts();
   const [employees, setEmployees] = useState<any[]>([]);
@@ -366,7 +367,7 @@ export default function Employees() {
   }, [selectedEmp, empCustomers, empDeals, empTasks]);
 
   if (!isAdmin) {
-    return <div className="flex items-center justify-center h-64"><p className="text-slate-400">仅管理员可管理员工</p></div>;
+    return <div className="flex items-center justify-center h-64"><p className="text-slate-400">仅老板可管理员工账号</p></div>;
   }
 
   const canCreate = hasPermission('employee_create');

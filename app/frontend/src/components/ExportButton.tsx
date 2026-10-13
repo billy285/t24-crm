@@ -14,9 +14,10 @@ interface ExportButtonProps {
   columns: { key: string; label: string }[];
   filename: string;
   sheetName?: string;
+  prepareData?: () => Promise<Record<string, any>[]>;
 }
 
-export default function ExportButton({ data, columns, filename, sheetName }: ExportButtonProps) {
+export default function ExportButton({ data, columns, filename, sheetName, prepareData }: ExportButtonProps) {
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async (format: 'csv' | 'xlsx') => {
@@ -27,16 +28,18 @@ export default function ExportButton({ data, columns, filename, sheetName }: Exp
     if (exporting) return;
     setExporting(true);
     try {
+      const exportData = prepareData ? await prepareData() : data;
+      if (!exportData.length) { toast.error('当前没有可导出的授权数据'); return; }
       // XLSX is intentionally loaded only after a desktop user chooses an
       // export format, keeping the large spreadsheet library out of mobile
       // customer and delivery route startup bundles.
       const { exportCSV, exportExcel } = await import('@/lib/export');
       if (format === 'csv') {
-        exportCSV({ data, columns, filename });
+        exportCSV({ data: exportData, columns, filename });
       } else {
-        exportExcel({ data, columns, filename, sheetName });
+        exportExcel({ data: exportData, columns, filename, sheetName });
       }
-      toast.success(`已导出 ${data.length} 条数据为 ${format.toUpperCase()} 文件`);
+      toast.success(`已导出 ${exportData.length} 条数据为 ${format.toUpperCase()} 文件`);
     } catch (err) {
       toast.error('导出失败，请重试');
       console.error(err);

@@ -15,6 +15,7 @@ from schemas.auth import UserResponse
 from services.ai_config import humanize_ai_error, resolve_ai_runtime_config
 from services.aihub import AIHubService
 from services.customer_ai_copies import Customer_ai_copiesService
+from services.customer_ai_context import customer_for_content
 from services.customer_materials import Customer_materialsService
 from services.customer_menu_items import Customer_menu_itemsService
 from services.customers import CustomersService
@@ -30,6 +31,8 @@ CUSTOMER_WORKSPACE_PAGES = {"/customers", "/service-board"}
 
 
 async def _require_copy_read(current_user: UserResponse, db: AsyncSession) -> None:
+    if normalized_role(current_user) == "design":
+        return  # Every read below still requires an explicit customer materials grant.
     await require_any_page_permission(db, current_user, CUSTOMER_WORKSPACE_PAGES)
 
 
@@ -182,37 +185,41 @@ def _parse_query(query: Optional[str]) -> Optional[Dict[str, Any]]:
         raise HTTPException(status_code=400, detail="Invalid query JSON format")
 
 
-async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession, *, write: bool = False):
-    return await ensure_scoped_customer_access(db, current_user, customer_id, write=write)
+async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession, *, write: bool = False, action: str | None = None):
+    return await ensure_scoped_customer_access(db, current_user, customer_id, write=write, module="materials", action=action)
 
 
 def _label(mapping: Dict[str, str], key: Optional[str]) -> str:
     return mapping.get(key or "", key or "-")
 
 
-async def _load_operational_context(db: AsyncSession, customer_id: int) -> Dict[str, Any]:
+async def _load_operational_context(db: AsyncSession, customer_id: int, scope_user=None) -> Dict[str, Any]:
     materials_result = await Customer_materialsService(db).get_list(
         skip=0,
         limit=60,
-        query_dict={"customer_id": customer_id},
+        query_dict={"customer_id": customer_id, "visibility": "team"},
+        scope_user=scope_user,
         sort="-created_at",
     )
     menu_result = await Customer_menu_itemsService(db).get_list(
         skip=0,
         limit=100,
         query_dict={"customer_id": customer_id},
+        scope_user=scope_user,
         sort="-updated_at",
     )
     task_result = await Service_tasksService(db).get_list(
         skip=0,
         limit=80,
         query_dict={"customer_id": customer_id},
+        scope_user=scope_user,
         sort="-created_at",
     )
     progress_result = await Service_progressesService(db).get_list(
         skip=0,
         limit=20,
         query_dict={"customer_id": customer_id},
+        scope_user=scope_user,
         sort="-last_update_time",
     )
 
@@ -418,8 +425,10 @@ async def _generate_variants(
     customer: Any,
     request: CustomerAiGenerateRequest,
     db: AsyncSession,
+    scope_user=None,
 ) -> tuple[List[Dict[str, str]], bool, Optional[str], str, str]:
-    operational_context = await _load_operational_context(db, request.customer_id)
+    customer = await customer_for_content(db, customer, scope_user)
+    operational_context = await _load_operational_context(db, request.customer_id, scope_user=scope_user)
     prompt = _build_prompt(customer, request, operational_context)
     runtime = await resolve_ai_runtime_config(db)
     model = runtime.model
@@ -448,6 +457,14 @@ async def _generate_variants(
         return _template_variants(customer, request), False, f"{humanize_ai_error(exc)}已生成可编辑模板草稿。", prompt, model
 
 
+def _copy_response(row, user):
+    payload = CustomerAiCopyResponse.model_validate(row).model_dump()
+    # Historic prompts can contain broader source context than the saved copy.
+    if normalized_role(user) != "super_admin":
+        payload["prompt"] = None
+    return payload
+
+
 @router.get("", response_model=CustomerAiCopyListResponse)
 async def query_customer_ai_copies(
     query: str = Query(None),
@@ -465,13 +482,16 @@ async def query_customer_ai_copies(
         await _ensure_customer_access(int(customer_id), current_user, db)
     elif normalized_role(current_user) not in {"admin", "super_admin"}:
         raise HTTPException(status_code=400, detail="customer_id query is required")
-    return await Customer_ai_copiesService(db).get_list(
+    result = await Customer_ai_copiesService(db).get_list(
         skip=skip,
         limit=limit,
         query_dict=query_dict,
+        scope_user=current_user,
         sort=sort,
         search=search,
     )
+    result["items"] = [_copy_response(row, current_user) for row in result["items"]]
+    return result
 
 
 @router.post("", response_model=CustomerAiCopyResponse, status_code=201)
@@ -488,7 +508,8 @@ async def create_customer_ai_copy(
     payload["generated_by"] = payload.get("generated_by") or current_user.name or current_user.email
     payload["created_at"] = payload.get("created_at") or now
     payload["updated_at"] = payload.get("updated_at") or now
-    return await Customer_ai_copiesService(db).create(payload, user_id=str(current_user.id))
+    row = await Customer_ai_copiesService(db).create(payload, user_id=str(current_user.id))
+    return _copy_response(row, current_user)
 
 
 @router.put("/{copy_id}", response_model=CustomerAiCopyResponse)
@@ -500,16 +521,16 @@ async def update_customer_ai_copy(
 ):
     await _require_copy_write(current_user, db, "task_edit")
     service = Customer_ai_copiesService(db)
-    obj = await service.get_by_id(copy_id)
+    obj = await service.get_by_id(copy_id, scope_user=current_user)
     if not obj:
         raise HTTPException(status_code=404, detail="AI copy not found")
     await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
     payload = data.model_dump(exclude_unset=True)
     payload["updated_at"] = payload.get("updated_at") or datetime.utcnow()
-    updated = await service.update(copy_id, payload)
+    updated = await service.update(copy_id, payload, scope_user=current_user)
     if not updated:
         raise HTTPException(status_code=404, detail="AI copy not found")
-    return updated
+    return _copy_response(updated, current_user)
 
 
 @router.delete("/{copy_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -520,11 +541,11 @@ async def delete_customer_ai_copy(
 ):
     await _require_copy_write(current_user, db, "task_delete", admin_override=True)
     service = Customer_ai_copiesService(db)
-    obj = await service.get_by_id(copy_id)
+    obj = await service.get_by_id(copy_id, scope_user=current_user)
     if not obj:
         raise HTTPException(status_code=404, detail="AI copy not found")
-    await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
-    deleted = await service.delete(copy_id)
+    await _ensure_customer_access(obj.customer_id, current_user, db, write=True, action="delete")
+    deleted = await service.delete(copy_id, scope_user=current_user)
     if not deleted:
         raise HTTPException(status_code=404, detail="AI copy not found")
 
@@ -537,7 +558,7 @@ async def generate_customer_ai_copy(
 ):
     await _require_copy_write(current_user, db, "task_create")
     customer = await _ensure_customer_access(request.customer_id, current_user, db, write=True)
-    variants, ai_used, warning, prompt, model = await _generate_variants(customer, request, db)
+    variants, ai_used, warning, prompt, model = await _generate_variants(customer, request, db, scope_user=current_user)
     service = Customer_ai_copiesService(db)
     now = datetime.utcnow()
     saved = []
@@ -565,4 +586,4 @@ async def generate_customer_ai_copy(
                 user_id=str(current_user.id),
             )
         )
-    return CustomerAiGenerateResponse(items=saved, ai_used=ai_used, warning=warning)
+    return CustomerAiGenerateResponse(items=[_copy_response(row, current_user) for row in saved], ai_used=ai_used, warning=warning)

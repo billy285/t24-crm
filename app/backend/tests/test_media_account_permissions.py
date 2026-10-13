@@ -44,19 +44,19 @@ async def media_account_api():
             Employees(id=61, user_id="61", name="Ops Creator", role="ops", status="active", email="media-61@example.com"),
             Employees(id=62, user_id="62", name="Ops Handoff", role="ops", status="active", email="media-62@example.com"),
             Employees(id=63, user_id="63", name="Ops Hidden", role="ops", status="active", email="media-63@example.com"),
-            Employees(id=64, user_id="64", name="Admin", role="admin", status="active", email="media-64@example.com"),
+            Employees(id=64, user_id="64", name="Admin", role="super_admin", status="active", email="media-64@example.com"),
             Employees(id=65, user_id="65", name="Designer", role="design", status="active", email="media-65@example.com"),
             Customers(id=901, business_name="Shared Customer", contact_name="Owner", phone="555-0901"),
             Customers(id=902, business_name="Hidden Customer", contact_name="Owner", phone="555-0902"),
-            CustomerAccessGrant(customer_id=901, employee_id=61, granted_by_name="Admin"),
-            CustomerAccessGrant(customer_id=901, employee_id=62, granted_by_name="Admin"),
+            CustomerAccessGrant(customer_id=901, employee_id=61, granted_by_name="Admin", access_level="read_write"),
+            CustomerAccessGrant(customer_id=901, employee_id=62, granted_by_name="Admin", access_level="read_write"),
         ])
         await session.execute(text(
             "CREATE TABLE IF NOT EXISTS app_settings "
             "(config_key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TIMESTAMP)"
         ))
         role_permissions = {
-            "admin": {
+            "super_admin": {
                 "pages": ["/customers"],
                 "buttons": ["media_account_create", "media_account_edit", "media_account_delete"],
                 "dataScope": "all",
@@ -96,7 +96,7 @@ async def media_account_api():
 async def test_media_account_access_follows_customer_grants_not_creator_ownership(media_account_api: AsyncClient):
     creator_headers = _headers("ops", 61)
     handoff_headers = _headers("ops", 62)
-    admin_headers = _headers("admin", 64)
+    admin_headers = _headers("super_admin", 64)
 
     created = await media_account_api.post(
         "/api/v1/entities/media_accounts",
@@ -104,12 +104,13 @@ async def test_media_account_access_follows_customer_grants_not_creator_ownershi
             "customer_id": 901,
             "platform_name": "Facebook",
             "account_name": "race-safe-store",
-            "login_password": "shared-secret",
         },
         headers=creator_headers,
     )
     assert created.status_code == 201
     account_id = created.json()["id"]
+    secured = await media_account_api.put(f"/api/v1/entities/media_accounts/{account_id}", json={"login_password": "shared-secret"}, headers=admin_headers)
+    assert secured.status_code == 200
 
     read = await media_account_api.get(
         f"/api/v1/entities/media_accounts/{account_id}",
@@ -165,7 +166,7 @@ async def test_media_account_access_follows_customer_grants_not_creator_ownershi
     assert password_audits.json()["total"] == 1
     password_audit = password_audits.json()["items"][0]
     assert password_audit["user_id"] == "64"
-    assert password_audit["operator_name"] == "Media admin"
+    assert password_audit["operator_name"] == "Media super_admin"
     assert password_audit["ip_address"] == "127.0.0.1"
     assert password_audit["customer_id"] == 901
     assert password_audit["action_type"] == "view_password"
@@ -183,7 +184,7 @@ async def test_media_account_create_and_update_logs_never_include_plaintext_pass
     caplog.set_level(logging.DEBUG, logger=media_accounts_router.logger.name)
     create_secret = "create-secret-must-not-enter-logs"
     update_secret = "update-secret-must-not-enter-logs"
-    headers = _headers("admin", 64)
+    headers = _headers("super_admin", 64)
 
     created = await media_account_api.post(
         "/api/v1/entities/media_accounts",
@@ -212,7 +213,7 @@ async def test_password_plaintext_is_not_returned_when_trusted_audit_write_fails
     media_account_api: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    headers = _headers("admin", 64)
+    headers = _headers("super_admin", 64)
     created = await media_account_api.post(
         "/api/v1/entities/media_accounts",
         json={
@@ -242,7 +243,7 @@ async def test_password_plaintext_is_not_returned_when_trusted_audit_write_fails
 async def test_explicit_sensitive_field_false_revokes_password_access_despite_legacy_allowlist(
     media_account_api: AsyncClient,
 ):
-    headers = _headers("admin", 64)
+    headers = _headers("super_admin", 64)
     created = await media_account_api.post(
         "/api/v1/entities/media_accounts",
         json={
@@ -259,7 +260,7 @@ async def test_explicit_sensitive_field_false_revokes_password_access_despite_le
         "/api/v1/app-config/role_permissions",
         json={
             "value": {
-                "admin": {
+                "super_admin": {
                     "sensitiveFields": {"viewPassword": False},
                 },
             },
@@ -268,7 +269,7 @@ async def test_explicit_sensitive_field_false_revokes_password_access_despite_le
     )
     legacy_allowlist_updated = await media_account_api.put(
         "/api/v1/app-config/security_config",
-        json={"value": {"passwordViewRoles": ["admin", "super_admin"]}},
+        json={"value": {"passwordViewRoles": ["super_admin", "super_admin"]}},
         headers=headers,
     )
     revealed = await media_account_api.get(
@@ -316,7 +317,7 @@ async def test_role_without_media_permissions_cannot_bypass_ui_with_direct_api(m
     )
 
     assert create.status_code == 403
-    assert read.status_code == 403
+    assert read.status_code == 404  # Design can enter materials; the missing scoped record stays hidden.
     assert update.status_code == 403
     assert delete.status_code == 403
 
@@ -379,7 +380,7 @@ async def test_fresh_database_permission_reads_fall_back_without_creating_app_se
                 id=64,
                 user_id="64",
                 name="Fresh Admin",
-                role="admin",
+                role="super_admin",
                 status="active",
                 email="media-64@example.com",
             ),
@@ -409,11 +410,11 @@ async def test_fresh_database_permission_reads_fall_back_without_creating_app_se
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 listed = await client.get(
                     '/api/v1/entities/media_accounts?query={"customer_id":903}',
-                    headers=_headers("admin", 64),
+                    headers=_headers("super_admin", 64),
                 )
                 revealed = await client.get(
                     "/api/v1/entities/media_accounts/904/password",
-                    headers=_headers("admin", 64),
+                    headers=_headers("super_admin", 64),
                 )
 
             table = (await session.execute(text(

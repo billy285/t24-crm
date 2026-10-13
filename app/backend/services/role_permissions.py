@@ -24,6 +24,9 @@ FIXED_ROLE_PAGES = {
     # needed for scoped sales/customer-detail workflows.
     "sales": ("/customers", "/sales-leads"),
     "sales_manager": ("/customers", "/merchant-pool", "/sales-leads"),
+    # An invited designer needs a customer entry point; row/module grants still
+    # decide whether any customer or content is actually visible.
+    "design": ("/customers",),
 }
 
 

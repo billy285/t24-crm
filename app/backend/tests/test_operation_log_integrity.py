@@ -40,7 +40,7 @@ async def audit_api():
             Customers(id=701, business_name="Visible", contact_name="Owner", phone="701"),
             Customers(id=702, business_name="Hidden", contact_name="Owner", phone="702"),
             Customers(id=703, business_name="Delete Me", contact_name="Owner", phone="703"),
-            CustomerAccessGrant(customer_id=701, employee_id=11, granted_by_name="Admin"),
+            CustomerAccessGrant(customer_id=701, employee_id=11, access_level="read_write", granted_by_name="Admin"),
         ])
         await session.commit()
 
@@ -175,12 +175,12 @@ async def test_batch_is_admin_only_bounded_and_uses_server_attribution(audit_api
     )
     created = await client.post(
         "/api/v1/entities/operation_logs/batch",
-        headers=_headers("admin", 1, "Trusted Admin"),
+        headers=_headers("super_admin", 1, "Trusted Admin"),
         json={"items": [item]},
     )
     oversized = await client.post(
         "/api/v1/entities/operation_logs/batch",
-        headers=_headers("admin", 1, "Trusted Admin"),
+        headers=_headers("super_admin", 1, "Trusted Admin"),
         json={"items": [item] * (MAX_OPERATION_BATCH_SIZE + 1)},
     )
 
@@ -197,7 +197,7 @@ async def test_batch_is_admin_only_bounded_and_uses_server_attribution(audit_api
 @pytest.mark.asyncio
 async def test_operation_logs_are_append_only_and_all_update_delete_methods_are_unavailable(audit_api):
     client, session = audit_api
-    admin = _headers("admin", 1, "Trusted Admin")
+    admin = _headers("super_admin", 1, "Trusted Admin")
     created = await client.post(
         "/api/v1/entities/operation_logs",
         headers=admin,
@@ -239,7 +239,7 @@ async def test_customer_delete_writes_durable_server_audit_in_the_same_transacti
     client, session = audit_api
     response = await client.delete(
         "/api/v1/entities/customers/703",
-        headers=_headers("admin", 1, "Trusted Admin"),
+        headers=_headers("super_admin", 1, "Trusted Admin"),
     )
 
     assert response.status_code == 200

@@ -1,14 +1,9 @@
 from core.database import Base
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint, func
 
 
 class CustomerAccessGrant(Base):
-    """Explicit customer visibility granted by an administrator.
-
-    This table only controls whether an employee may read a customer. It does
-    not change sales ownership, project ownership, commissions, or finance
-    permissions.
-    """
+    """Owner-reviewed access; an explicit row overrides all inherited access."""
 
     __tablename__ = "customer_access_grants"
     __table_args__ = (
@@ -19,7 +14,25 @@ class CustomerAccessGrant(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     customer_id = Column(Integer, ForeignKey("customers.id", ondelete="CASCADE"), nullable=False, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
-    access_level = Column(String(20), nullable=False, default="read_write", server_default="read_write")
+    access_level = Column(String(20), nullable=False, default="read_only", server_default="read_only")
+    scopes = Column(JSON, nullable=False, default=dict, server_default="{}")
+    finance_access = Column(String(20), nullable=False, default="none", server_default="none")
+    can_export = Column(Boolean, nullable=False, default=False, server_default="0")
+    can_delete = Column(Boolean, nullable=False, default=False, server_default="0")
+    can_reassign = Column(Boolean, nullable=False, default=False, server_default="0")
     granted_by_id = Column(String, nullable=True)
     granted_by_name = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class CustomerAccessAudit(Base):
+    """Immutable permission snapshots, retained even after customer deletion."""
+
+    __tablename__ = "customer_access_audits"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    customer_id = Column(Integer, nullable=False, index=True)
+    actor_id = Column(String, nullable=False)
+    actor_name = Column(String, nullable=False)
+    before = Column(JSON, nullable=False)
+    after = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

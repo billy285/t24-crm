@@ -221,6 +221,8 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
   },
 };
 
+const OWNER_COMPANY_PAGES = ['/', '/finance', '/rmb-profit', '/commissions', '/payroll', '/settings/deduction', '/management-decisions', '/company-roadmap', '/customer-lifecycle', '/permissions', '/settings', '/employees'];
+
 // ==================== 权限存储与读取 ====================
 
 const PERMISSIONS_STORAGE_KEY = 'crm_role_permissions';
@@ -269,13 +271,14 @@ export function normalizeRolePermissions(
     };
   }
 
-  // Finance visibility is a server-enforced company boundary, not a role
-  // customization. Sales, operations, design, and partners may see service
-  // status for invited customers but never internal finance details.
-  for (const role of ['sales', 'sales_manager', 'sales_partner', 'ops', 'design'] as SystemRole[]) {
+  // Company finance is owner-only. Customer-specific finance is returned by
+  // effective_permissions and never unlocks a company-wide finance route.
+  for (const role of ['admin', 'finance', 'sales', 'sales_manager', 'sales_partner', 'ops', 'design'] as SystemRole[]) {
     normalized[role].sensitiveFields.viewFinance = false;
+    normalized[role].pages = normalized[role].pages.filter(path => !OWNER_COMPANY_PAGES.includes(path));
+    if (role !== 'sales_partner' && !normalized[role].pages.includes('/customers')) normalized[role].pages.push('/customers');
   }
-  for (const role of ['super_admin', 'admin', 'finance'] as SystemRole[]) {
+  for (const role of ['super_admin'] as SystemRole[]) {
     if (!normalized[role].pages.includes('/settings/deduction')) {
       normalized[role].pages.push('/settings/deduction');
     }
@@ -296,7 +299,7 @@ export function loadRolePermissions(): Record<SystemRole, RolePermissionConfig> 
   // Preserve existing custom permissions while migrating newly added pages.
   const savedVersion = Number(localStorage.getItem(PERMISSIONS_VERSION_KEY) || 0);
   if (savedVersion < CURRENT_PERMISSIONS_VERSION) {
-    for (const role of ['super_admin', 'admin', 'finance'] as SystemRole[]) {
+    for (const role of ['super_admin'] as SystemRole[]) {
       if (!normalized[role].pages.includes('/payroll')) normalized[role].pages.push('/payroll');
       if (!normalized[role].pages.includes('/customer-lifecycle')) normalized[role].pages.push('/customer-lifecycle');
       if (!normalized[role].pages.includes('/management-decisions')) normalized[role].pages.push('/management-decisions');
@@ -379,19 +382,11 @@ export function getPermissions(role: string): RolePermissionConfig {
 }
 
 export function canAccessPage(role: string, path: string): boolean {
-  if (!role) return true; // No role = treat as super_admin
+  if (!role) return false;
+  if (OWNER_COMPANY_PAGES.includes(path)) return mapToSystemRole(role) === 'super_admin';
   // /apps and /more are authenticated navigation shells. It never grants access to a
   // business page; every visible app and destination is filtered separately.
   if (path === '/apps' || path === '/more') return true;
-  // Payroll is an independent finance worksheet. Keep its access available for
-  // finance administrators even when an older cached permission config exists.
-  if (path === '/payroll' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
-  if (path === '/customer-lifecycle' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
-  if (path === '/management-decisions' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
-  if (path === '/commissions' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
-  if (path === '/rmb-profit' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
-  if (path === '/company-roadmap' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
-  if (path === '/settings/deduction' && ['super_admin', 'admin', 'finance'].includes(mapToSystemRole(role))) return true;
   if (path === '/partner-portal' && mapToSystemRole(role) === 'super_admin') return true;
   const perms = getPermissions(role);
   return perms.pages.includes(path);

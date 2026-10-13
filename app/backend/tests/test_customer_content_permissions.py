@@ -56,13 +56,13 @@ async def content_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
     async with session_maker() as session:
         session.add_all([
-            Employees(id=1, user_id="1", name="Admin", role="admin", status="active", email="content-1@example.com"),
+            Employees(id=1, user_id="1", name="Admin", role="super_admin", status="active", email="content-1@example.com"),
             Employees(id=21, user_id="21", name="Ops", role="ops", status="active", email="content-21@example.com"),
             Employees(id=31, user_id="31", name="Designer", role="design", status="active", email="content-31@example.com"),
             Employees(id=41, user_id="41", name="Finance", role="finance", status="active", email="content-41@example.com"),
             Customers(id=501, business_name="Visible Content", contact_name="Owner", phone="501"),
             Customers(id=502, business_name="Hidden Content", contact_name="Owner", phone="502"),
-            CustomerAccessGrant(customer_id=501, employee_id=21, granted_by_name="Admin"),
+            CustomerAccessGrant(customer_id=501, employee_id=21, granted_by_name="Admin", access_level="read_write"),
             Customer_materials(id=601, user_id="1", customer_id=501, title="Visible File", material_type="document", source_type="upload", file_name="visible.txt", file_path="501/visible.txt"),
             Customer_materials(id=602, user_id="1", customer_id=502, title="Hidden File", material_type="document", source_type="external_link", file_url="https://example.com/hidden"),
             Customer_ai_copies(id=701, user_id="1", customer_id=501, platform="facebook", content_type="weekly_update", title="Visible Copy", content="visible"),
@@ -75,7 +75,7 @@ async def content_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             "(config_key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TIMESTAMP)"
         ))
         permissions = {
-            "admin": {
+            "super_admin": {
                 "pages": ["/customers", "/service-board"],
                 "buttons": ["task_create", "task_edit", "task_delete"],
                 "dataScope": "all",
@@ -122,7 +122,7 @@ async def test_content_reads_require_workspace_page_and_customer_scope(content_a
     ops = _headers("ops", 21, "Ops")
     finance = _headers("finance", 41, "Finance")
     design = _headers("design", 31, "Designer")
-    admin = _headers("admin", 1, "Admin")
+    admin = _headers("super_admin", 1, "Admin")
     endpoints = (
         "/api/v1/entities/customer_materials",
         "/api/v1/entities/customer_ai_copies",
@@ -141,8 +141,8 @@ async def test_content_reads_require_workspace_page_and_customer_scope(content_a
         assert visible.json()["total"] == 1
         assert hidden.status_code == 404
         assert no_scope.status_code == 400
-        assert finance_read.status_code == 200
-        assert design_read.status_code == 403
+        assert finance_read.status_code == 404  # A finance role is not a customer content grant.
+        assert design_read.status_code == 404  # Invitation, not job title, controls customer visibility.
         assert admin_all.status_code == 200
         assert admin_all.json()["total"] == 2
 
@@ -245,7 +245,7 @@ async def test_finance_and_design_cannot_write_or_trigger_ai(content_api):
 @pytest.mark.asyncio
 async def test_admin_delete_removes_private_file_and_linked_records(content_api):
     client, visible_file = content_api
-    admin = _headers("admin", 1, "Admin")
+    admin = _headers("super_admin", 1, "Admin")
 
     assert visible_file.exists()
     assert (await client.delete("/api/v1/entities/customer_materials/601", headers=admin)).status_code == 204
@@ -274,7 +274,7 @@ async def test_fresh_database_sales_defaults_keep_owned_and_manager_scoped_custo
             Customers(id=904, business_name="East Department", contact_name="Owner", phone="904", sales_employee_id=53, sales_person="East Sales"),
             Customers(id=905, business_name="West Department", contact_name="Owner", phone="905", sales_employee_id=54, sales_person="West Sales"),
             Customers(id=906, business_name="Inactive Department Member", contact_name="Owner", phone="906", sales_employee_id=55, sales_person="Inactive East"),
-            CustomerAccessGrant(customer_id=901, employee_id=52, granted_by_name="Admin"),
+            CustomerAccessGrant(customer_id=901, employee_id=52, granted_by_name="Admin", access_level="read_write"),
             Customer_materials(id=911, user_id="1", customer_id=901, title="Sales Material", material_type="image", source_type="external_link", file_url="https://example.com/901"),
             Customer_materials(id=912, user_id="1", customer_id=902, title="Hidden Material", material_type="image", source_type="external_link", file_url="https://example.com/902"),
             Customer_materials(id=913, user_id="1", customer_id=903, title="Manager Material", material_type="image", source_type="external_link", file_url="https://example.com/903"),

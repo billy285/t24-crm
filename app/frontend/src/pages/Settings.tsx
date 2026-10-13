@@ -70,10 +70,11 @@ const defaultAiSettings: AiSettings = {
 };
 
 export default function Settings() {
-  const { isAdmin, hasPermission } = useRole();
+  const { systemRole } = useRole();
+  const isAdmin = systemRole === 'super_admin';
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const canEditSettings = isAdmin || hasPermission('settings_edit');
+  const canEditSettings = isAdmin;
 
   // Customer code settings
   const [codeSettings, setCodeSettings] = useState<CustomerCodeSettings>(defaultSettings);

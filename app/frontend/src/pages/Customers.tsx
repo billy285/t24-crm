@@ -32,9 +32,14 @@ import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import CustomerPhoneDial from '@/components/CustomerPhoneDial';
+import CustomerAccessPanel from '@/components/CustomerAccessPanel';
+import CustomerPrivateNote from '@/components/CustomerPrivateNote';
+import { customerCan, customerCanReadTab, customerPermissions, customerFinanceLabels, editableCustomerPayload, CUSTOMER_SHELL_LIST_QUERY, customerCanDeleteCustomer } from '@/lib/customer-permissions';
 import { formatPhoneNumber, parsePhoneNumber, phoneMatchKey, phoneSearchMatches } from '@/lib/phone-format';
 import MediaAccountsTab from '@/components/MediaAccountsTab';
 import OperationLogsTab from '@/components/OperationLogsTab';
+import CustomerRecordHistory from '@/components/CustomerRecordHistory';
+import CustomerFinanceSummary from '@/components/CustomerFinanceSummary';
 import CustomerAiCopyTab from '@/components/CustomerAiCopyTab';
 import CustomerMaterialsTab from '@/components/CustomerMaterialsTab';
 import CustomerOpportunitiesTab from '@/components/CustomerOpportunitiesTab';
@@ -91,7 +96,6 @@ const customerTimestampFormatter = new Intl.DateTimeFormat('zh-CN', {
   second: '2-digit',
   hour12: false,
 });
-type CustomerAccessLevel = 'read_only' | 'read_write';
 const lifecycleEventLabels: Record<string, string> = {
   started: '第一笔有效记账', pause: '暂停合作', pending_stop: '进入待确认停止',
   resume: '恢复合作', stop: '停止合作', reactivate: '重新合作', adjust_start: '修正合作开始日期',
@@ -684,7 +688,8 @@ const archivedSubscriptionStatuses = new Set(['stopped', 'lost', 'paused', 'upgr
 
 export default function Customers() {
   const navigate = useNavigate();
-  const { role, employee, hasPermission, isAdmin, dataScope, canViewFinance } = useRole();
+  const { role, employee, hasPermission, isAdmin, systemRole } = useRole();
+  const isOwner = systemRole === 'super_admin';
   const isMobile = useIsMobile();
   const businessToday = businessDateKey();
   const dictConfig = useDictConfig();
@@ -704,11 +709,6 @@ export default function Customers() {
   const subStatusLabels = businessDicts.subscriptionStatuses;
   const methodLabels = businessDicts.followUpMethods;
   const canManageDict = isAdmin || hasPermission('settings_edit');
-  const canCreateFollowUp = isAdmin || hasPermission('follow_up_create');
-  const canEditFollowUp = isAdmin || hasPermission('follow_up_edit');
-  const canDeleteFollowUp = isAdmin || hasPermission('follow_up_delete');
-  const canManageContacts = hasPermission('customer_edit');
-  const canDeleteContacts = isAdmin || hasPermission('customer_delete');
   const [searchParams, setSearchParams] = useSearchParams();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -741,6 +741,7 @@ export default function Customers() {
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [deals, setDeals] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [customerRefunds, setCustomerRefunds] = useState<any[]>([]);
   const [customerExpenses, setCustomerExpenses] = useState<any[]>([]);
   const [customerDeductionRates, setCustomerDeductionRates] = useState<Record<string, number>>({});
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
@@ -767,6 +768,23 @@ export default function Customers() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailLoadError, setDetailLoadError] = useState<string | null>(null);
   const [detailLoadedAt, setDetailLoadedAt] = useState<string | null>(null);
+  const [financeStatus, setFinanceStatus] = useState<{payment_count: number; last_payment_date: string | null; has_outstanding: boolean} | null>(null);
+  const effective = customerPermissions(selectedCustomer);
+  const canViewFinance = effective.finance_access === 'profit';
+  const canViewReceipts = ['receipts', 'profit'].includes(effective.finance_access);
+  const canViewFinanceStatus = effective.finance_access !== 'none';
+  const canCreateFollowUp = !detailLoading && effective.modules.followups.write;
+  const canEditFollowUp = canCreateFollowUp;
+  const canDeleteFollowUp = canCreateFollowUp && effective.can_delete;
+  const canManageContacts = !detailLoading && effective.modules.basic.write;
+  const canDeleteContacts = canManageContacts && effective.can_delete;
+  const canEditBasic = (customer: any) => customerCan(customer, 'basic', 'write');
+  const canAssignCustomer = (customer: any) => customerPermissions(customer).can_reassign;
+  const canDeleteCustomer = (customer: any) => customerCanDeleteCustomer(customer, systemRole);
+  const canManageCustomerAccess = (customer: any) => customerPermissions(customer).can_manage_access;
+  const editingCustomer = customers.find(customer => customer.id === editingId) || (selectedCustomer?.id === editingId ? selectedCustomer : null);
+  const canEditProjects = isOwner;
+
   const detailRequestSeqRef = useRef(0);
   const activeDetailCustomerIdRef = useRef<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1112,12 +1130,8 @@ export default function Customers() {
   const [assigning, setAssigning] = useState(false);
   const [showAccessDialog, setShowAccessDialog] = useState(false);
   const [accessTarget, setAccessTarget] = useState<any>(null);
-  const [accessMembers, setAccessMembers] = useState<Record<number, CustomerAccessLevel>>({});
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<number[]>([]);
   const [bulkAccessMode, setBulkAccessMode] = useState(false);
-  const [accessSearch, setAccessSearch] = useState('');
-  const [accessLoading, setAccessLoading] = useState(false);
-  const [accessSaving, setAccessSaving] = useState(false);
   const [inlineSavingKey, setInlineSavingKey] = useState('');
   const [cityDrafts, setCityDrafts] = useState<Record<number, string>>({});
   const salesPersonOptions = useMemo(() => {
@@ -1140,8 +1154,8 @@ export default function Customers() {
   const activeReminderMessage = customerReminderMessages[activeReminder];
   const detailFromFinance = searchParams.get('from') === 'finance';
   const detailReturnTo = getSafeInternalPath(searchParams.get('returnTo'));
-  const normalizeCustomerDetailTab = (tab?: string | null) => {
-    if (tab === 'payments' && !canViewFinance) return 'overview';
+  const normalizeCustomerDetailTab = (tab?: string | null, customer = selectedCustomer) => {
+    if (customer && !customerCanReadTab(customer, tab || 'overview')) return 'overview';
     return tab && customerDetailTabValues.has(tab) ? tab : 'overview';
   };
 
@@ -1149,8 +1163,10 @@ export default function Customers() {
     setFollowUps([]);
     setDeals([]);
     setPayments([]);
+    setCustomerRefunds([]);
     setCustomerExpenses([]);
     setCustomerDeductionRates({});
+    setFinanceStatus(null);
     setSubscriptions([]);
     setCustomerProjects([]);
     setServiceProgresses([]);
@@ -1214,40 +1230,6 @@ export default function Customers() {
     }
   };
 
-  const fetchCustomerDeductionRates = async (paymentItems: any[]) => {
-    if (!canViewFinance) return {} as Record<string, number>;
-    const months = Array.from(new Set(
-      paymentItems
-        .map(item => getPaymentYearMonth(item))
-        .filter(Boolean)
-    )).sort();
-    if (months.length === 0) return {} as Record<string, number>;
-    try {
-      const res = isMobile
-        ? await invokeWithAuth({
-          url: '/api/v1/deductions-monthly',
-          method: 'GET',
-          data: { start: months[0], end: months[months.length - 1] },
-        })
-        : await invokeWithAuth({
-          url: '/api/v1/deductions-monthly/ensure',
-          method: 'POST',
-          data: { months },
-        });
-      const rates: Record<string, number> = {};
-      const requestedMonths = new Set(months);
-      (res.data || []).forEach((row: any) => {
-        if (row?.year_month && requestedMonths.has(row.year_month) && typeof row.rate === 'number') {
-          rates[row.year_month] = row.rate;
-        }
-      });
-      return rates;
-    } catch (err) {
-      console.warn('Load customer deduction rates failed:', err);
-      return {} as Record<string, number>;
-    }
-  };
-
   const loadCustomerDetail = async (customerId: number, fallbackCustomer?: any) => {
     const requestSeq = ++detailRequestSeqRef.current;
     activeDetailCustomerIdRef.current = customerId;
@@ -1255,31 +1237,43 @@ export default function Customers() {
       detailRequestSeqRef.current === requestSeq
       && activeDetailCustomerIdRef.current === customerId
     );
+    clearCustomerDetailAssociations();
     setDetailLoading(true);
     setDetailLoadError(null);
     try {
+      const verifiedCustomer = await client.entities.customers.query({query: {id: customerId}, limit: 1});
+      if (!isCurrentRequest()) return;
+      const verified = verifiedCustomer?.data?.items?.[0];
+      if (!verified || customerPermissions(verified).access_level === 'none') {
+        setSelectedCustomer(null); setCustomers(rows => rows.filter(row => row.id !== customerId));
+        throw new Error('当前账号已无权查看这位客户');
+      }
+      setSelectedCustomer(displayCustomerStatus(verified));
+      const permission = customerPermissions(verified);
+      setSelectedCustomerTab(tab => customerCanReadTab(verified,tab) ? tab : 'overview');
+      const permitted = (key: 'basic' | 'followups' | 'delivery') => permission.modules[key].read;
+      const empty = () => Promise.resolve({data:{items:[]}});
+      const financeResponse = permission.finance_access !== 'none'
+        ? await invokeWithAuth({url:`/api/v1/entities/customers/${customerId}/finance-access-data`,method:'GET'})
+        : {data:{payments:[],expenses:[],deduction_rates:{},status:null}};
+      if (!isCurrentRequest()) return;
       const settledResults = await Promise.allSettled([
-        client.entities.customers.query({ query: { id: customerId }, limit: 1 }),
-        client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
-        client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 1000 }),
-        canViewFinance
-          ? client.entities.payments.queryAll({ query: { customer_id: customerId }, sort: '-payment_date', limit: 1000 })
-          : Promise.resolve({ data: { items: [] } }),
-        canViewFinance
-          ? client.entities.expenses.queryAll({ query: { customer_id: customerId }, sort: '-expense_date', limit: 1000 })
-          : Promise.resolve({ data: { items: [] } }),
-        client.entities.subscriptions.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
-        client.entities.service_progresses.queryAll({ query: { customer_id: customerId }, sort: '-last_update_time', limit: 1000 }),
-        client.entities.service_tasks.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }),
-        canViewFinance
+        Promise.resolve(verifiedCustomer),
+        permitted('followups') ? client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }) : empty(),
+        permitted('delivery') ? client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 1000 }) : empty(),
+        Promise.resolve({data:{items:financeResponse.data?.payments || []}}),
+        Promise.resolve({data:{items:financeResponse.data?.expenses || []}}),
+        permitted('delivery') ? client.entities.subscriptions.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }) : empty(),
+        permitted('delivery') ? client.entities.service_progresses.queryAll({ query: { customer_id: customerId }, sort: '-last_update_time', limit: 1000 }) : empty(),
+        permitted('delivery') ? client.entities.service_tasks.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }) : empty(),
+        isOwner && permitted('delivery')
           ? invokeWithAuth({ url: `/api/v1/customer-lifecycle/customers/${customerId}`, method: 'GET' })
           : Promise.resolve({ data: null }),
-        invokeWithAuth({ url: `/api/v1/entities/customers/${customerId}/projects`, method: 'GET' }),
-        role === 'sales' || role === 'sales_manager'
+        permitted('delivery') ? invokeWithAuth({ url: `/api/v1/entities/customers/${customerId}/projects`, method: 'GET' }) : empty(),
+        !isOwner
           ? Promise.resolve({ data: { business_lines: [], products: [], plans: [] } })
           : invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }).catch(() => ({ data: { business_lines: [], products: [], plans: [] } })),
-        client.entities.customer_contacts.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 })
-          .catch(() => ({ data: { items: [] } })),
+        permitted('basic') ? client.entities.customer_contacts.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }).catch(() => ({ data: { items: [] } })) : empty(),
       ]);
 
       if (!isCurrentRequest()) return;
@@ -1307,7 +1301,8 @@ export default function Customers() {
         setDetailLoadError(getLoadErrorMessage(customerResult.reason));
       }
       const paymentItems = pRes?.data?.items || [];
-      const deductionRates = await fetchCustomerDeductionRates(paymentItems);
+      const deductionRates = financeResponse.data?.deduction_rates || {};
+      setFinanceStatus(financeResponse.data?.status || null);
       if (!isCurrentRequest()) return;
 
       if (latestCustomer) {
@@ -1317,6 +1312,7 @@ export default function Customers() {
       setFollowUps(fuRes?.data?.items || []);
       setDeals(dRes?.data?.items || []);
       setPayments(paymentItems);
+      setCustomerRefunds(financeResponse.data?.refunds || []);
       setCustomerExpenses(expenseRes?.data?.items || []);
       setCustomerDeductionRates(deductionRates);
       setSubscriptions(decorateEffectiveSubscriptions(sRes?.data?.items || []));
@@ -1443,11 +1439,11 @@ export default function Customers() {
   useEffect(() => { if (showForm) setCodeSettings(loadSettings()); }, [showForm]);
 
   useEffect(() => {
-    if (!showForm || editingId) return;
+    if (!isOwner || !showForm || editingId) return;
     invokeWithAuth({ url: '/api/v1/commissions/assignment-options', method: 'GET' })
       .then(response => setCommissionPartners(response?.data?.items || []))
       .catch(() => setCommissionPartners([]));
-  }, [showForm, editingId]);
+  }, [showForm, editingId, isOwner]);
 
   const loadEmployees = async () => {
     try {
@@ -1463,10 +1459,9 @@ export default function Customers() {
   const loadCustomers = async () => {
     try {
       const res = await loadWithRetry(
-        () => client.entities.customers.query({ limit: 1000, sort: '-created_at' }),
+        () => client.entities.customers.query(CUSTOMER_SHELL_LIST_QUERY),
       );
-      let items = (res?.data?.items || []).map(displayCustomerStatus);
-      if (dataScope === 'self' && employee) items = items.filter((c: any) => c.sales_person === employee.name || c.sales_employee_id === employee.id);
+      const items = (res?.data?.items || []).map(displayCustomerStatus);
       setCustomers(items);
       setLoadError(null);
       setCustomersLoadedAt(new Date().toISOString());
@@ -1482,7 +1477,7 @@ export default function Customers() {
     setLoading(true);
     void loadCustomers();
     void loadEmployees();
-  }, [dataScope, employee?.id, employee?.name]);
+  }, [employee?.id, employee?.name]);
 
   useAutoRefresh(async () => {
     await loadCustomers();
@@ -1498,7 +1493,7 @@ export default function Customers() {
   });
 
   const reconcileSelectedCustomerClosure = async () => {
-    if (!selectedCustomer?.id) return;
+    if (!isOwner || !selectedCustomer?.id) return;
     setClosureSyncing(true);
     try {
       const response = await invokeWithAuth({
@@ -1604,6 +1599,7 @@ export default function Customers() {
 
   const openCreate = () => { setForm({ ...emptyForm, selected_platforms: [], interested_packages: [], interested_packages_snapshot: {} }); setCustomerProjectForms([]); setCommissionPartnerId('auto'); setCommissionEffectiveFrom(businessToday); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
   const openEdit = async (c: any) => {
+    if (!canEditBasic(c)) return;
     const interestedPackages = parseMultiValue(c.interested_packages);
     const snapshot = parsePackageSnapshot(c.interested_packages_snapshot);
     interestedPackages.forEach(key => {
@@ -1612,6 +1608,7 @@ export default function Customers() {
     setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || '', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', selected_platforms: parseMultiValue(c.selected_platforms), interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
     setManualCityInput(false);
     setEditingId(c.id); setDuplicateWarning(null); setShowForm(true);
+    if (!isOwner) { setCustomerProjectForms([]); setCustomerProjectsLoading(false); return; }
     setCustomerProjectsLoading(true);
     try {
       const response = await invokeWithAuth({ url: `/api/v1/entities/customers/${c.id}/projects`, method: 'GET' });
@@ -1666,7 +1663,7 @@ export default function Customers() {
   };
 
   const handleSave = async () => {
-    if (saving || customerProjectsLoading) return;
+    if (saving || customerProjectsLoading || (editingId && !canEditBasic(editingCustomer))) return;
     if (!form.business_name || !form.contact_name || !form.phone) { toast.error('请填写必填字段'); return; }
     const originalCustomer = customers.find(customer => customer.id === editingId);
     if (!editingId || form.phone !== originalCustomer?.phone || (form.country || null) !== (originalCustomer?.country || null)) {
@@ -1708,7 +1705,10 @@ export default function Customers() {
         source_subscription_ids: [],
       }));
       if (editingId) {
-        const updatedRes = await invokeWithAuth({ url: `/api/v1/entities/customers/${editingId}/with-projects`, method: 'PUT', data: { customer: { ...payload, updated_at: now }, projects } });
+        const safePayload = editableCustomerPayload({...payload, updated_at: now}, canAssignCustomer(editingCustomer));
+        const updatedRes = canEditProjects
+          ? await invokeWithAuth({ url: `/api/v1/entities/customers/${editingId}/with-projects`, method: 'PUT', data: { customer: safePayload, projects } })
+          : await client.entities.customers.update({id:String(editingId),data:safePayload});
         const updatedCustomer = updatedRes?.data || { ...payload, id: editingId, updated_at: now };
         setCustomers(prev => prev.map(item => (item.id === editingId ? { ...item, ...updatedCustomer } : item)));
         toast.success('客户信息已更新');
@@ -1716,12 +1716,12 @@ export default function Customers() {
       } else {
         const code = form.customer_code.trim() || getNextAutoCode(form.industry);
         if (customers.some(c => c.customer_code === code)) { toast.error(`编号「${code}」已存在`); setSaving(false); return; }
-        const res = await invokeWithAuth({ url: '/api/v1/entities/customers/with-projects', method: 'POST', data: {
+        const res = isOwner ? await invokeWithAuth({ url: '/api/v1/entities/customers/with-projects', method: 'POST', data: {
           customer: { ...payload, customer_code: code, created_at: now, updated_at: now },
           projects,
           commission_partner_id: commissionPartnerId === 'auto' ? null : Number(commissionPartnerId),
           commission_effective_from: commissionEffectiveFrom || now.slice(0, 10),
-        } });
+        } }) : await client.entities.customers.create({data:{...payload,customer_code:code,created_at:now,updated_at:now}});
         if (res?.data) {
           setCustomers(prev => [res.data, ...prev]);
         }
@@ -1738,7 +1738,7 @@ export default function Customers() {
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !canDeleteCustomer(deleteTarget)) return;
     setDeleting(true);
     try {
       await client.entities.customers.delete({ id: String(deleteTarget.id) });
@@ -1754,148 +1754,23 @@ export default function Customers() {
   };
 
   const openAssign = (c: any) => {
+    if (!canAssignCustomer(c)) return;
     setAssignTarget(c);
     setAssignEmployeeId(c.sales_employee_id ? String(c.sales_employee_id) : '');
     setShowAssignDialog(true);
   };
 
-  const eligibleAccessEmployees = useMemo(() => {
-    const keyword = accessSearch.trim().toLowerCase();
-    return employeesList
-      .filter(emp => ['sales', 'sales_manager', 'ops', 'operations', 'design'].includes(emp.role))
-      .filter(emp => !keyword || [emp.name, emp.employee_code, emp.department, emp.role].some(value => String(value || '').toLowerCase().includes(keyword)));
-  }, [employeesList, accessSearch]);
-
-  const openAccessManager = async (c: any) => {
-    setAccessTarget(c);
-    setBulkAccessMode(false);
-    setAccessSearch('');
-    setAccessMembers({});
-    setShowAccessDialog(true);
-    setAccessLoading(true);
-    try {
-      const employeePromise = employeesList.length > 0
-        ? Promise.resolve(null)
-        : invokeWithAuth({
-          url: '/api/v1/entities/employees/directory',
-          method: 'GET',
-          data: { query: JSON.stringify({ status: 'active' }), limit: 200 },
-        });
-      const [response, employeeResponse] = await Promise.all([
-        invokeWithAuth({ url: `/api/v1/entities/customers/${c.id}/access`, method: 'GET' }),
-        employeePromise,
-      ]);
-      const directoryEmployees = employeeResponse?.data?.items || employeesList;
-      if (employeeResponse) setEmployeesList(directoryEmployees);
-      const loadedMembers = Object.fromEntries((response?.data?.members || []).map((item: any) => [
-        Number(item.employee_id),
-        item.access_level === 'read_only' ? 'read_only' : 'read_write',
-      ])) as Record<number, CustomerAccessLevel>;
-      const ownerEmployeeId = Number(c.sales_employee_id || directoryEmployees.find((item: any) => item.name === c.sales_person)?.id || 0);
-      if (ownerEmployeeId) loadedMembers[ownerEmployeeId] = 'read_write';
-      setAccessMembers(loadedMembers);
-    } catch (error: any) {
-      toast.error(getErrorDetail(error, '客户可见人员加载失败'));
-      setShowAccessDialog(false);
-    } finally {
-      setAccessLoading(false);
-    }
+  const openAccessManager = (customer: any) => {
+    if (!canManageCustomerAccess(customer)) return;
+    setAccessTarget(customer); setBulkAccessMode(false); setShowAccessDialog(true);
   };
-
-  const openBulkAccessManager = async () => {
-    if (!selectedCustomerIds.length) return;
-    setAccessTarget(null);
-    setBulkAccessMode(true);
-    setAccessSearch('');
-    setAccessMembers({});
-    setShowAccessDialog(true);
-    if (employeesList.length > 0) return;
-    setAccessLoading(true);
-    try {
-      const response = await invokeWithAuth({
-        url: '/api/v1/entities/employees/directory',
-        method: 'GET',
-        data: { query: JSON.stringify({ status: 'active' }), limit: 200 },
-      });
-      setEmployeesList(response?.data?.items || []);
-    } catch (error: any) {
-      toast.error(getErrorDetail(error, '团队成员加载失败'));
-      setShowAccessDialog(false);
-    } finally {
-      setAccessLoading(false);
-    }
-  };
-
-  const toggleAccessEmployee = (employeeId: number) => {
-    setAccessMembers(current => {
-      if (current[employeeId]) {
-        return Object.fromEntries(Object.entries(current).filter(([id]) => Number(id) !== employeeId));
-      }
-      return { ...current, [employeeId]: 'read_write' };
-    });
-  };
-
-  const setAccessLevel = (employeeId: number, accessLevel: CustomerAccessLevel) => {
-    setAccessMembers(current => ({ ...current, [employeeId]: accessLevel }));
-  };
-
-  const selectedAccessMembers = Object.entries(accessMembers).map(([employeeId, accessLevel]) => ({
-    employee_id: Number(employeeId),
-    access_level: accessLevel,
-  }));
-
-  const saveCustomerAccess = async () => {
-    if (!accessTarget) return;
-    setAccessSaving(true);
-    try {
-      await invokeWithAuth({
-        url: `/api/v1/entities/customers/${accessTarget.id}/access`,
-        method: 'PUT',
-        data: { members: selectedAccessMembers },
-      });
-      toast.success(`已更新「${accessTarget.business_name}」的可见人员`);
-      logOperation({
-        customerId: accessTarget.id,
-        actionType: 'other',
-        actionDetail: `更新客户团队成员：${selectedAccessMembers.length} 人`,
-        operatorName: employee?.name || '管理员',
-      });
-      setShowAccessDialog(false);
-      setAccessTarget(null);
-    } catch (error: any) {
-      toast.error(getErrorDetail(error, '保存客户可见人员失败'));
-    } finally {
-      setAccessSaving(false);
-    }
-  };
-
-  const saveBulkCustomerAccess = async (operation: 'upsert' | 'remove') => {
-    if (!selectedCustomerIds.length || !selectedAccessMembers.length) {
-      toast.error('请至少选择一位团队成员');
-      return;
-    }
-    setAccessSaving(true);
-    try {
-      const response = await invokeWithAuth({
-        url: '/api/v1/entities/customers/access/bulk-update',
-        method: 'POST',
-        data: { customer_ids: selectedCustomerIds, operation, members: selectedAccessMembers },
-      });
-      toast.success(operation === 'remove'
-        ? `已从 ${response.data?.customer_count || selectedCustomerIds.length} 位客户移除所选成员`
-        : `已为 ${response.data?.customer_count || selectedCustomerIds.length} 位客户更新团队成员`);
-      setShowAccessDialog(false);
-      setSelectedCustomerIds([]);
-      setAccessMembers({});
-    } catch (error: any) {
-      toast.error(getErrorDetail(error, operation === 'remove' ? '批量移除成员失败' : '批量添加成员失败'));
-    } finally {
-      setAccessSaving(false);
-    }
+  const openBulkAccessManager = () => {
+    if (!isOwner || !selectedCustomerIds.length) return;
+    setAccessTarget(null); setBulkAccessMode(true); setShowAccessDialog(true);
   };
 
   const handleAssign = async () => {
-    if (!assignTarget || !assignEmployeeId) { toast.error('请选择负责人'); return; }
+    if (!assignTarget || !canAssignCustomer(assignTarget) || !assignEmployeeId) { toast.error('请选择负责人'); return; }
     setAssigning(true);
     try {
       const emp = employeesList.find(e => e.id === Number(assignEmployeeId));
@@ -1934,6 +1809,7 @@ export default function Customers() {
     successMessage: string,
     actionDetail: string,
   ) => {
+    if (!canEditBasic(customer)) return;
     const nextUpdates = Object.fromEntries(
       Object.entries(updates).filter(([key, value]) => (customer[key] ?? '') !== (value ?? '')),
     );
@@ -1987,7 +1863,7 @@ export default function Customers() {
   const openDetail = async (c: any, nextTab = 'overview') => {
     detailRequestSeqRef.current += 1;
     activeDetailCustomerIdRef.current = c.id;
-    setSelectedCustomerTab(normalizeCustomerDetailTab(nextTab));
+    setSelectedCustomerTab(normalizeCustomerDetailTab(nextTab, c));
     clearCustomerDetailAssociations();
     setSelectedCustomer(c);
     await loadCustomerDetail(c.id, c);
@@ -2115,45 +1991,7 @@ export default function Customers() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showAccessDialog} onOpenChange={open => { setShowAccessDialog(open); if (!open) { setAccessTarget(null); setBulkAccessMode(false); setAccessMembers({}); } }}>
-        <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
-          <DialogHeader><DialogTitle>{bulkAccessMode ? `批量管理 ${selectedCustomerIds.length} 位客户的团队成员` : '管理客户团队成员'}</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
-              <p className="text-sm font-semibold text-blue-900">{bulkAccessMode ? `已选择 ${selectedCustomerIds.length} 位客户` : accessTarget?.business_name}</p>
-              <p className="mt-1 text-xs leading-5 text-blue-700">“只读”可以查看客户与服务资料但不能新增、编辑或删除；“可读写”可以协作维护。客户负责人始终可读写，团队成员权限不会改变负责人、业绩归属或分润。</p>
-            </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-              财务明细始终只对老板、管理员和财务开放。受邀销售或运营仍看不到扣点、手续费、客户成本、利润及收款拆分。
-            </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <Input value={accessSearch} onChange={event => setAccessSearch(event.target.value)} className="pl-9" placeholder="搜索员工姓名、编号、部门或角色" />
-            </div>
-            {accessLoading ? <p className="py-8 text-center text-sm text-slate-400">正在加载人员…</p> : (
-              <div className="space-y-2">
-                {eligibleAccessEmployees.map(emp => {
-                  const selected = Boolean(accessMembers[emp.id]);
-                  const isOwner = Number(accessTarget?.sales_employee_id) === Number(emp.id)
-                    || (!accessTarget?.sales_employee_id && Boolean(accessTarget?.sales_person) && emp.name === accessTarget.sales_person);
-                  return <div key={emp.id} className={`flex flex-col gap-3 rounded-xl border p-3 transition sm:flex-row sm:items-center sm:justify-between ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                    <button type="button" disabled={isOwner} onClick={() => toggleAccessEmployee(emp.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default">
-                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white'}`}>{selected ? '✓' : ''}</span>
-                      <span className="min-w-0"><span className="block truncate text-sm font-medium text-slate-900">{emp.name}</span><span className="mt-1 block text-xs text-slate-500">{emp.employee_code || '无员工编号'} · {emp.department || emp.role || '未分组'}{isOwner ? ' · 当前负责人' : ''}</span></span>
-                    </button>
-                    {isOwner ? <Badge className="bg-blue-100 text-blue-700">负责人 · 可读写</Badge> : selected && <NativeSelect className="sm:w-28" value={accessMembers[emp.id]} onChange={value => setAccessLevel(emp.id, value as CustomerAccessLevel)} options={[{ value: 'read_write', label: '可读写' }, { value: 'read_only', label: '只读' }]} />}
-                  </div>;
-                })}
-                {eligibleAccessEmployees.length === 0 && <p className="py-8 text-center text-sm text-slate-400">没有找到可邀请的员工</p>}
-              </div>
-            )}
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-slate-500">已选择 {selectedAccessMembers.length} 人</p>
-              <div className="flex flex-wrap justify-end gap-2"><Button variant="outline" onClick={() => setShowAccessDialog(false)}>取消</Button>{bulkAccessMode ? <><Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => void saveBulkCustomerAccess('remove')} disabled={accessLoading || accessSaving || !selectedAccessMembers.length}>批量移除</Button><Button onClick={() => void saveBulkCustomerAccess('upsert')} disabled={accessLoading || accessSaving || !selectedAccessMembers.length}>{accessSaving ? '处理中…' : '批量添加 / 更新'}</Button></> : <Button onClick={() => void saveCustomerAccess()} disabled={accessLoading || accessSaving}>{accessSaving ? '保存中…' : '保存团队成员'}</Button>}</div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CustomerAccessPanel customer={accessTarget} customerIds={bulkAccessMode ? selectedCustomerIds : []} open={showAccessDialog} onClose={() => { setShowAccessDialog(false); setAccessTarget(null); setBulkAccessMode(false); }} onSaved={async () => { setSelectedCustomerIds([]); await loadCustomers(); if (selectedCustomer) await loadCustomerDetail(selectedCustomer.id); }} />
 
       <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && customerDraft.confirmDiscard())) setShowForm(open); }}>
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl overflow-y-auto sm:max-h-[90vh]">
@@ -2291,9 +2129,9 @@ export default function Customers() {
             <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
             <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-2">
               <p className="text-sm font-semibold text-slate-800">合作项目与归属</p>
-              <p className="mt-1 text-xs text-slate-500">记录负责人、分润归属和当前合作项目；历史记录仍按原规则保留。</p>
+              <p className="mt-1 text-xs text-slate-500">记录当前授权范围内的合作资料。</p>
             </div>
-            {!editingId && <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 sm:col-span-2">
+            {isOwner && !editingId && <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 sm:col-span-2">
               <div>
                 <Label className="text-sm font-semibold text-slate-800">客户来源与分润归属</Label>
                 <p className="mt-1 text-xs leading-5 text-slate-500">首次保存时建立归属。自动模式会优先匹配“负责销售”对应的内部销售渠道，未匹配时归为公司直营；以后变更请到“渠道与分润中心”保留历史。</p>
@@ -2303,6 +2141,7 @@ export default function Customers() {
                 <div><Label className="text-xs">归属生效日期</Label><Input type="date" value={commissionEffectiveFrom} onChange={event => setCommissionEffectiveFrom(event.target.value)} /></div>
               </div>
             </div>}
+            {canEditProjects && (
             <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 sm:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -2354,6 +2193,7 @@ export default function Customers() {
                 </div>
               )}
             </div>
+            )}
             <div className="sm:col-span-2">
               <Label>历史意向套餐（兼容旧资料）</Label>
               <div className="mt-1 space-y-2">
@@ -2471,7 +2311,7 @@ export default function Customers() {
                 <p className="mt-1 text-xs text-blue-600">这里只记录客户目前已有的平台，不代表 T24 实际代运营范围；实际运营平台随每个商机/订阅单独确认。</p>
               </div>
             </div>
-            <div><Label>负责销售</Label><NativeSelect value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
+            <div><Label>负责销售</Label><NativeSelect disabled={Boolean(editingId && !canAssignCustomer(editingCustomer))} value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
             <div><Label>官网</Label><Input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
             <div><Label>客户平台现状备注</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} placeholder="如：客户自营 Facebook，Google 暂未维护" /></div>
             <div className="mt-1 border-t border-slate-200 pt-3 sm:col-span-2">
@@ -2484,7 +2324,7 @@ export default function Customers() {
                 <div><Label className="text-xs">TikTok</Label><Input value={form.tiktok_link} onChange={e => setForm({ ...form, tiktok_link: e.target.value })} placeholder="https://tiktok.com/@..." /></div>
               </div>
             </div>
-            <div className="sm:col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
+            <div className="sm:col-span-2"><Label>团队备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
           </div>
           <div data-testid="customer-form-actions" className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-5 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
             <Button variant="outline" disabled={saving} onClick={() => { if (customerDraft.confirmDiscard()) setShowForm(false); }} className="min-h-11 flex-1 sm:flex-none">取消</Button>
@@ -2685,13 +2525,13 @@ export default function Customers() {
       { value: 'ai_copy', label: 'AI 文案' },
       { value: 'media', label: '媒体账号' },
       { value: 'logs', label: '操作日志' },
-    ];
+    ].filter(item => customerCanReadTab(c, item.value));
     const secondaryDetailTabValues = new Set(secondaryDetailTabs.map(item => item.value));
     const mobileSecondaryDetailTabs = [
       { value: 'opportunities', label: '客户商机' },
       ...(canViewFinance ? [{ value: 'renewals', label: `续费信息 (${renewalRows.length})` }] : []),
       ...secondaryDetailTabs,
-    ];
+    ].filter(item => customerCanReadTab(c, item.value));
     const mobileSecondaryDetailTabValues = new Set(mobileSecondaryDetailTabs.map(item => item.value));
     const customer360Actions: Array<{
       key: string;
@@ -2748,7 +2588,7 @@ export default function Customers() {
           <div className="customer-detail-actions flex w-full items-center gap-2 md:w-auto md:justify-end">
             {c.phone && <CustomerPhoneDial phone={c.phone} country={c.country} label="网页拨号" className="min-w-0 flex-[1.15] md:flex-none" buttonClassName="px-3" />}
             {canCreateFollowUp && <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0 md:flex-none" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
-            {isAdmin && <Button variant="outline" size="sm" className="hidden md:inline-flex" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 管理团队成员</Button>}
+            {canManageCustomerAccess(c) && <Button variant="outline" size="sm" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 访问权限</Button>}
             <Button aria-label="刷新客户数据" variant="outline" size="sm" className="h-11 w-11 shrink-0 px-0 md:h-8 md:w-auto md:px-3" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
               <RefreshCw className={`h-3.5 w-3.5 md:mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> <span className="hidden md:inline">刷新数据</span>
             </Button>
@@ -2768,10 +2608,11 @@ export default function Customers() {
             <Button size="sm" variant="outline" className="border-red-200 bg-white text-red-700 hover:bg-red-100" onClick={() => loadCustomerDetail(c.id, c)}>重新加载</Button>
           </div>
         )}
+        <div className="flex flex-wrap gap-2 text-xs text-slate-500"><span>{effective.access_level === 'read_write' ? '按授权范围协作' : '只读查看'}</span><span>财务：{customerFinanceLabels[effective.finance_access]}</span><span>{effective.sources.map(item => item.label).join(' · ')}</span></div>
         {hasClosureMismatch && (
           <div className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
             <div><p className="font-semibold">客户已停止，但仍有项目或续费显示合作中</p><p className="mt-1 text-xs text-red-600">同步只关闭未来合作与扣款，不会删除成交、收款或历史服务。</p></div>
-            {isAdmin && <Button size="sm" className="shrink-0 bg-red-600 hover:bg-red-700" disabled={closureSyncing} onClick={() => void reconcileSelectedCustomerClosure()}>{closureSyncing ? '同步中…' : '一键同步闭环'}</Button>}
+            {isOwner && <Button size="sm" className="shrink-0 bg-red-600 hover:bg-red-700" disabled={closureSyncing} onClick={() => void reconcileSelectedCustomerClosure()}>{closureSyncing ? '同步中…' : '一键同步闭环'}</Button>}
           </div>
         )}
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
@@ -2780,10 +2621,10 @@ export default function Customers() {
             <TabsList aria-label="客户手机主导航" className="grid h-auto w-full grid-cols-4 gap-1 bg-slate-100 p-1">
               <TabsTrigger value="overview" className="min-h-11 min-w-0 px-1 text-sm">概览</TabsTrigger>
               <TabsTrigger value="timeline" className="min-h-11 min-w-0 px-1 text-sm">动态</TabsTrigger>
-              <TabsTrigger value="subscriptions" className="min-h-11 min-w-0 px-1 text-sm">服务</TabsTrigger>
-              {canViewFinance
+              {customerCanReadTab(c, 'subscriptions') && <TabsTrigger value="subscriptions" className="min-h-11 min-w-0 px-1 text-sm">服务</TabsTrigger>}
+              {canViewFinanceStatus
                 ? <TabsTrigger value="payments" className="min-h-11 min-w-0 px-1 text-sm">财务</TabsTrigger>
-                : <TabsTrigger value="renewals" className="min-h-11 min-w-0 px-1 text-sm">续费</TabsTrigger>}
+                : customerCanReadTab(c, 'renewals') ? <TabsTrigger value="renewals" className="min-h-11 min-w-0 px-1 text-sm">续费</TabsTrigger> : null}
             </TabsList>
           </div>
           <label className="md:hidden">
@@ -2798,10 +2639,10 @@ export default function Customers() {
           <TabsList className="hidden h-auto max-w-full flex-wrap justify-start gap-1 bg-slate-100 p-1 md:flex">
             <TabsTrigger value="overview" className="shrink-0 text-xs">客户 360</TabsTrigger>
             <TabsTrigger value="timeline" className="shrink-0 text-xs">时间线 ({detailLoading ? '…' : timelineEvents.length})</TabsTrigger>
-            <TabsTrigger value="opportunities" className="shrink-0 text-xs">客户商机</TabsTrigger>
-            <TabsTrigger value="subscriptions" className="shrink-0 text-xs">服务信息 ({detailLoading ? '…' : currentServiceRows.length})</TabsTrigger>
-            {canViewFinance && <TabsTrigger value="payments" className="shrink-0 text-xs">财务信息 ({detailLoading ? '…' : customerFinanceRecordCount})</TabsTrigger>}
-            <TabsTrigger value="renewals" className="shrink-0 text-xs">续费信息 ({detailLoading ? '…' : renewalRows.length})</TabsTrigger>
+            {customerCanReadTab(c, 'opportunities') && <TabsTrigger value="opportunities" className="shrink-0 text-xs">客户商机</TabsTrigger>}
+            {customerCanReadTab(c, 'subscriptions') && <TabsTrigger value="subscriptions" className="shrink-0 text-xs">服务信息 ({detailLoading ? '…' : currentServiceRows.length})</TabsTrigger>}
+            {canViewFinanceStatus && <TabsTrigger value="payments" className="shrink-0 text-xs">财务信息 ({detailLoading ? '…' : customerFinanceRecordCount})</TabsTrigger>}
+            {customerCanReadTab(c, 'renewals') && <TabsTrigger value="renewals" className="shrink-0 text-xs">续费信息 ({detailLoading ? '…' : renewalRows.length})</TabsTrigger>}
           </TabsList>
           <NativeSelect
             value={secondaryDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
@@ -2816,13 +2657,13 @@ export default function Customers() {
               <div className="space-y-4">
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">下一步动作</h3><p className="mt-1 text-xs text-slate-500">提醒已转换成可直接处理的动作，不再需要先去别的页面找记录。</p></div><Badge className={customer360Actions.length ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}>{customer360Actions.length ? `${customer360Actions.length} 项待处理` : '当前无风险事项'}</Badge></div>
-                  {customer360Actions.length === 0 ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-sm text-emerald-800">客户资料、服务和财务状态目前没有发现需要立即处理的问题。</div> : <div className="mt-4 space-y-2">{customer360Actions.slice(0, 6).map(action => <div key={action.key} className={`flex items-center gap-3 rounded-xl border p-3 ${action.tone}`}><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{action.title}</p><p className="mt-1 line-clamp-2 text-xs text-slate-600">{action.description}</p></div><Button size="sm" variant="outline" className="shrink-0 bg-white" onClick={action.onClick}>{action.button}</Button></div>)}</div>}
+                  {customer360Actions.length === 0 ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-sm text-emerald-800">当前已授权资料中没有需要立即处理的事项。</div> : <div className="mt-4 space-y-2">{customer360Actions.slice(0, 6).map(action => <div key={action.key} className={`flex items-center gap-3 rounded-xl border p-3 ${action.tone}`}><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{action.title}</p><p className="mt-1 line-clamp-2 text-xs text-slate-600">{action.description}</p></div><Button size="sm" variant="outline" className="shrink-0 bg-white" onClick={action.onClick}>{action.button}</Button></div>)}</div>}
                 </CardContent></Card>
 
-                <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
+                {effective.modules.delivery.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">当前合作与交付</h3><p className="mt-1 text-xs text-slate-500">项目、套餐和服务任务统一查看。</p></div><Button size="sm" variant="outline" onClick={() => handleDetailTabChange('subscriptions')}>查看服务明细</Button></div>
                   <div className="mt-4 grid grid-cols-3 gap-2 md:gap-3"><div className="rounded-xl bg-blue-50 p-2.5 md:p-3"><p className="text-[11px] leading-4 text-blue-700 md:text-xs">合作项目</p><p className="mt-1 text-xl font-semibold text-blue-900">{activeCustomerProjectCount}</p></div><div className="rounded-xl bg-slate-50 p-2.5 md:p-3"><p className="text-[11px] leading-4 text-slate-500 md:text-xs">在服套餐</p><p className="mt-1 text-xl font-semibold text-slate-900">{activeSubscriptionCount}</p></div><div className="rounded-xl bg-slate-50 p-2.5 md:p-3"><p className="text-[11px] leading-4 text-slate-500 md:text-xs">待办任务</p><p className="mt-1 text-xl font-semibold text-slate-900">{pendingServiceTasks}</p></div></div>
-                </CardContent></Card>
+                </CardContent></Card>)}
 
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <div className="flex items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">最近动态</h3><p className="mt-1 text-xs text-slate-500">跟进、成交、收款、服务和生命周期的统一时间线。</p></div><Button size="sm" variant="ghost" onClick={() => handleDetailTabChange('timeline')}>查看全部</Button></div>
@@ -2831,18 +2672,18 @@ export default function Customers() {
               </div>
 
               <div className="space-y-4">
-                <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
+                {effective.modules.basic.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <h3 className="text-base font-semibold text-slate-900">客户摘要</h3>
                   <div className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{formatPhoneNumber(c.phone, c.country)}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
-                  <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}<Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>管理新商机</Button></div>
-                </CardContent></Card>
+                  <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}{effective.modules.followups.read && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>查看商机</Button>}</div>
+                </CardContent></Card>)}
 
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
-                  <div className="flex items-center justify-between gap-3"><h3 className="text-base font-semibold text-slate-900">经营摘要</h3>{canViewFinance && <Button size="sm" variant="ghost" onClick={() => handleDetailTabChange('payments')}>财务明细</Button>}</div>
-                  <div className="mt-4 space-y-3">{canViewFinance && <><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计成交</p><p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(totalDealAmount)}</p></div><span className="text-xs text-slate-400">最近 {latestDealDate}</span></div><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计实收</p><p className="mt-1 text-xl font-semibold text-emerald-700">{formatCurrency(totalAmountPaid)}</p></div><span className="text-xs text-slate-400">最近 {latestPaymentDate}</span></div><div className="flex items-end justify-between"><div><p className="text-xs text-slate-500">当前未结清</p><p className={`mt-1 text-xl font-semibold ${totalOutstanding > 0 ? 'text-rose-700' : 'text-slate-900'}`}>{formatCurrency(totalOutstanding)}</p></div><span className="text-xs text-slate-400">累计应收 {formatCurrency(totalAmountDue)}</span></div></>}{!canViewFinance && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">当前角色仅显示合作、服务和续费状态；成交金额、收款、手续费、扣点、成本与利润均不可见。</p>}</div>
+                  <div className="flex items-center justify-between gap-3"><h3 className="text-base font-semibold text-slate-900">经营摘要</h3>{canViewFinanceStatus && <Button size="sm" variant="ghost" onClick={() => handleDetailTabChange('payments')}>财务明细</Button>}</div>
+                  <div className="mt-4 space-y-3">{canViewReceipts && <><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计应收</p><p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(totalAmountDue)}</p></div><span className="text-xs text-slate-400">最近 {latestDealDate}</span></div><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计实收</p><p className="mt-1 text-xl font-semibold text-emerald-700">{formatCurrency(totalAmountPaid)}</p></div><span className="text-xs text-slate-400">最近 {latestPaymentDate}</span></div><div className="flex items-end justify-between"><div><p className="text-xs text-slate-500">当前未结清</p><p className={`mt-1 text-xl font-semibold ${totalOutstanding > 0 ? 'text-rose-700' : 'text-slate-900'}`}>{formatCurrency(totalOutstanding)}</p></div><span className="text-xs text-slate-400">累计应收 {formatCurrency(totalAmountDue)}</span></div></>}{!canViewReceipts && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">{effective.finance_access === 'status' ? `收款记录 ${financeStatus?.payment_count ?? 0} 笔 · ${financeStatus?.has_outstanding ? '有待收款' : '暂无待收款'}；金额未授权` : '财务信息未授权'}</p>}</div>
                 </CardContent></Card>
 
-                <Card className="border-slate-200"><CardContent className="p-4 md:p-5"><h3 className="text-base font-semibold text-slate-900">续费摘要</h3><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-amber-50 p-3"><p className="text-xs text-amber-700">即将到期</p><p className="mt-1 text-xl font-semibold text-amber-900">{upcomingRenewalCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">自动续费</p><p className="mt-1 text-xl font-semibold text-slate-900">{autoRenewCount}</p></div></div><Button className="mt-4 w-full" variant="outline" onClick={() => handleDetailTabChange('renewals')}>查看续费与收款状态</Button></CardContent></Card>
+                {effective.modules.delivery.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5"><h3 className="text-base font-semibold text-slate-900">续费摘要</h3><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-amber-50 p-3"><p className="text-xs text-amber-700">即将到期</p><p className="mt-1 text-xl font-semibold text-amber-900">{upcomingRenewalCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">自动续费</p><p className="mt-1 text-xl font-semibold text-slate-900">{autoRenewCount}</p></div></div><Button className="mt-4 w-full" variant="outline" onClick={() => handleDetailTabChange('renewals')}>查看续费与收款状态</Button></CardContent></Card>)}
               </div>
             </div>}
           </TabsContent>
@@ -2869,16 +2710,19 @@ export default function Customers() {
             </CardContent></Card>
           </TabsContent>
 
+          {customerCanReadTab(c, 'opportunities') && (
           <TabsContent value="opportunities">
             <CustomerOpportunitiesTab customer={c} />
           </TabsContent>
+          )}
 
+          {customerCanReadTab(c, 'info') && (
           <TabsContent value="info">
             <Card className="border-slate-200"><CardContent className="p-5">
               <div className="flex justify-end mb-4 gap-2">
-                {hasPermission('customer_assign') && <Button size="sm" variant="outline" className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50" onClick={() => openAssign(c)}><ArrowRightLeft className="w-3 h-3 mr-1" /> 分配负责人</Button>}
-                {hasPermission('customer_edit') && <Button size="sm" variant="outline" onClick={() => openEdit(c)}><Edit className="w-3 h-3 mr-1" /> 编辑</Button>}
-                {hasPermission('customer_delete') && <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => setDeleteTarget(c)}><Trash2 className="w-3 h-3 mr-1" /> 删除</Button>}
+                {canAssignCustomer(c) && <Button size="sm" variant="outline" className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50" onClick={() => openAssign(c)}><ArrowRightLeft className="w-3 h-3 mr-1" /> 分配负责人</Button>}
+                {canEditBasic(c) && <Button size="sm" variant="outline" onClick={() => openEdit(c)}><Edit className="w-3 h-3 mr-1" /> 编辑</Button>}
+                {canDeleteCustomer(c) && <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => setDeleteTarget(c)}><Trash2 className="w-3 h-3 mr-1" /> 删除</Button>}
               </div>
               <div className="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">客户编号:</span><span>{c.customer_code}</span></div>
@@ -2909,11 +2753,13 @@ export default function Customers() {
                   {!c.facebook_link && !c.instagram_link && !c.google_business_link && !c.yelp_link && !c.tiktok_link && <span className="text-slate-400">暂无</span>}
                 </div>
               </div>
-              {c.notes && <div className="mt-4 p-3 bg-slate-50 rounded text-slate-600 text-sm">{c.notes}</div>}
+              {c.notes && <div className="mt-4 p-3 bg-slate-50 rounded text-slate-600 text-sm"><p className="mb-1 text-xs text-slate-500">团队备注 · 授权成员可见</p>{c.notes}</div>}{isOwner && <div className="mt-4"><CustomerPrivateNote customerId={c.id} /></div>}
             </CardContent></Card>
           </TabsContent>
+          )}
 
           {/* ========== CONTACTS TAB ========== */}
+          {customerCanReadTab(c, 'contacts') && (
           <TabsContent value="contacts">
             <Card className="border-slate-200"><CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
@@ -2962,7 +2808,9 @@ export default function Customers() {
               )}
             </CardContent></Card>
           </TabsContent>
+          )}
 
+          {customerCanReadTab(c, 'followups') && (
           <TabsContent value="followups">
             <Card className="border-slate-200"><CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
@@ -3023,7 +2871,9 @@ export default function Customers() {
               )}
             </CardContent></Card>
           </TabsContent>
+          )}
 
+          {customerCanReadTab(c, 'deals') && (
           <TabsContent value="deals">
             <Card className="border-slate-200"><CardContent className="p-5">
               {deals.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无成交记录</p> : (
@@ -3044,7 +2894,9 @@ export default function Customers() {
               )}
             </CardContent></Card>
           </TabsContent>
+          )}
 
+          {customerCanReadTab(c, 'subscriptions') && (
           <TabsContent value="subscriptions">
             <Card className="border-slate-200"><CardContent className="p-5">
               {subscriptions.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无套餐</p> : (
@@ -3079,6 +2931,9 @@ export default function Customers() {
               )}
             </CardContent></Card>
           </TabsContent>
+          )}
+
+          {canViewFinanceStatus && !canViewFinance && <TabsContent value="payments"><Card><CustomerFinanceSummary level={effective.finance_access} status={financeStatus} payments={payments} refunds={customerRefunds} /></Card></TabsContent>}
 
           {canViewFinance && (
             <TabsContent value="payments">
@@ -3263,6 +3118,7 @@ export default function Customers() {
             </TabsContent>
           )}
 
+          {customerCanReadTab(c, 'renewals') && (
           <TabsContent value="renewals">
             <Card className="border-slate-200"><CardContent className="p-5">
               {subscriptions.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无续费信息</p> : (
@@ -3307,22 +3163,31 @@ export default function Customers() {
               )}
             </CardContent></Card>
           </TabsContent>
+          )}
 
+          {customerCanReadTab(c, 'ai_copy') && (
           <TabsContent value="ai_copy">
             <CustomerAiCopyTab key={`ai-copy-${c.id}`} customer={c} />
           </TabsContent>
+          )}
 
+          {customerCanReadTab(c, 'materials') && (
           <TabsContent value="materials">
-            <CustomerMaterialsTab key={`materials-${c.id}`} customerId={c.id} customerName={c.business_name} />
+            <CustomerMaterialsTab key={`materials-${c.id}`} customerId={c.id} customerName={c.business_name} permissions={effective} />
           </TabsContent>
+          )}
 
+          {customerCanReadTab(c, 'media') && (
           <TabsContent value="media">
-            <Card className="border-slate-200"><CardContent className="p-5"><MediaAccountsTab customerId={c.id} customerName={c.business_name} /></CardContent></Card>
+            <Card className="border-slate-200"><CardContent className="p-5"><MediaAccountsTab customerId={c.id} customerName={c.business_name} permissions={effective} /></CardContent></Card>
           </TabsContent>
+          )}
 
+          {customerCanReadTab(c, 'logs') && (
           <TabsContent value="logs">
-            <Card className="border-slate-200"><CardContent className="p-5"><OperationLogsTab customerId={c.id} /></CardContent></Card>
+            <Card className="border-slate-200"><CardContent className="p-5"><CustomerRecordHistory customerId={c.id} /><OperationLogsTab customerId={c.id} /></CardContent></Card>
           </TabsContent>
+          )}
         </Tabs>
         {sharedCustomerDialogs}
       </div>
@@ -3347,11 +3212,12 @@ export default function Customers() {
                 <ImportCustomers existingCustomers={customers} onImportComplete={loadCustomers} />
               </Suspense>
             )}
-            {hasPermission('customer_export') && <ExportButton data={filtered.map(c => ({ ...c, industry_label: industryLabels[c.industry] || c.industry, status_label: statusLabels[c.status] || c.status, level_label: levelLabels[c.level] || c.level, source_label: sourceLabels[c.source] || c.source, country_label: c.country ? getCountryLabel(c.country) : '' }))}
+            {filtered.some(item => customerPermissions(item).can_export) && <ExportButton data={filtered.filter(item => customerPermissions(item).can_export).map(c => ({ ...c, industry_label: industryLabels[c.industry] || c.industry, status_label: statusLabels[c.status] || c.status, level_label: levelLabels[c.level] || c.level, source_label: sourceLabels[c.source] || c.source, country_label: c.country ? getCountryLabel(c.country) : '' }))}
+            prepareData={async () => { const response = await invokeWithAuth({url:'/api/v1/entities/customers/access/export',method:'POST',data:{ids:filtered.filter(item => customerPermissions(item).can_export).map(item=>item.id)}}); return (response.data?.items || []).map((c:any)=>({...c,industry_label:industryLabels[c.industry] || c.industry,status_label:statusLabels[c.status] || c.status,level_label:levelLabels[c.level] || c.level,source_label:sourceLabels[c.source] || c.source,country_label:c.country ? getCountryLabel(c.country) : ''})); }}
             columns={[{ key: 'customer_code', label: '编号' }, { key: 'business_name', label: '商家名称' }, { key: 'contact_name', label: '联系人' }, { key: 'phone', label: '电话' }, { key: 'email', label: '邮箱' }, { key: 'industry_label', label: '行业' }, { key: 'city', label: '城市' }, { key: 'state', label: '州' }, { key: 'country_label', label: '国家' }, { key: 'status_label', label: '状态' }, { key: 'level_label', label: '等级' }, { key: 'source_label', label: '来源' }, { key: 'sales_person', label: '负责销售' }, { key: 'facebook_link', label: 'Facebook' }, { key: 'instagram_link', label: 'Instagram' }, { key: 'google_business_link', label: 'Google Business' }, { key: 'yelp_link', label: 'Yelp' }, { key: 'tiktok_link', label: 'TikTok' }, { key: 'notes', label: '备注' }]}
             filename={`客户列表_${businessToday}`} sheetName="客户列表" />}
             <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-slate-200 hover:bg-white/10 hover:text-white" onClick={() => setShowColPicker(!showColPicker)}><Columns3 className="w-4 h-4" /> 列设置</Button>
-            {hasPermission('customer_edit') && (
+            {customers.some(canEditBasic) && (
               <Button
                 variant={inlineEditMode ? 'default' : 'ghost'}
                 size="sm"
@@ -3392,10 +3258,10 @@ export default function Customers() {
         </div>
       )}
 
-      {!isMobile && isAdmin && selectedCustomerIds.length > 0 && (
+      {!isMobile && isOwner && selectedCustomerIds.length > 0 && (
         <Card className="border-blue-200 bg-blue-50/70"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
-          <div><p className="text-sm font-semibold text-blue-950">已选择 {selectedCustomerIds.length} 位客户</p><p className="mt-1 text-xs text-blue-700">可同时添加、更新或移除团队成员，成员权限逐人设置。</p></div>
-          <div className="flex gap-2"><Button variant="outline" onClick={() => setSelectedCustomerIds([])}>取消选择</Button><Button onClick={() => void openBulkAccessManager()}><Users className="mr-2 h-4 w-4" />批量管理团队成员</Button></div>
+          <div><p className="text-sm font-semibold text-blue-950">已选择 {selectedCustomerIds.length} 位客户</p><p className="mt-1 text-xs text-blue-700">按员工设置明确授权；“不可见”覆盖继承权限。</p></div>
+          <div className="flex gap-2"><Button variant="outline" onClick={() => setSelectedCustomerIds([])}>取消选择</Button><Button onClick={() => void openBulkAccessManager()}><Users className="mr-2 h-4 w-4" />批量设置访问权限</Button></div>
         </CardContent></Card>
       )}
 
@@ -3470,17 +3336,17 @@ export default function Customers() {
                 <div className="mt-2.5 flex items-center gap-2 border-t border-slate-100 pt-2.5">
                   <div className="min-w-0 flex-1">{c.phone ? <CustomerPhoneDial phone={c.phone} country={c.country} label={formatPhoneNumber(c.phone, c.country)} variant="outline" className="w-full min-w-0" buttonClassName="min-w-0 flex-1 justify-start px-3" /> : <span className="flex min-h-11 items-center px-3 text-xs text-slate-400">电话未填写</span>}</div>
                   <Button size="sm" className="min-h-11 w-24 shrink-0 bg-blue-600 hover:bg-blue-700 md:min-h-0" onClick={() => openDetail(c)}>查看</Button>
-                  {(isAdmin || hasPermission('customer_assign') || hasPermission('customer_edit') || hasPermission('customer_delete')) && (
+                  {(canManageCustomerAccess(c) || canAssignCustomer(c) || canEditBasic(c) || canDeleteCustomer(c)) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="sm" variant="outline" className="h-11 min-w-11 px-2.5 md:h-8 md:min-w-0" aria-label={`更多客户操作：${c.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
-                        {isAdmin && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />管理团队成员</DropdownMenuItem>}
-                        {hasPermission('customer_assign') && <DropdownMenuItem onSelect={() => openAssign(c)}><ArrowRightLeft className="mr-2 h-4 w-4" />分配负责人</DropdownMenuItem>}
-                        {hasPermission('customer_edit') && <DropdownMenuItem onSelect={() => openEdit(c)}><Edit className="mr-2 h-4 w-4" />编辑客户</DropdownMenuItem>}
-                        {hasPermission('customer_delete') && <DropdownMenuSeparator />}
-                        {hasPermission('customer_delete') && <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-700" onSelect={() => setDeleteTarget(c)}><Trash2 className="mr-2 h-4 w-4" />删除客户</DropdownMenuItem>}
+                        {canManageCustomerAccess(c) && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />访问权限</DropdownMenuItem>}
+                        {canAssignCustomer(c) && <DropdownMenuItem onSelect={() => openAssign(c)}><ArrowRightLeft className="mr-2 h-4 w-4" />分配负责人</DropdownMenuItem>}
+                        {canEditBasic(c) && <DropdownMenuItem onSelect={() => openEdit(c)}><Edit className="mr-2 h-4 w-4" />编辑客户</DropdownMenuItem>}
+                        {canDeleteCustomer(c) && <DropdownMenuSeparator />}
+                        {canDeleteCustomer(c) && <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-700" onSelect={() => setDeleteTarget(c)}><Trash2 className="mr-2 h-4 w-4" />删除客户</DropdownMenuItem>}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
@@ -3489,7 +3355,7 @@ export default function Customers() {
             ))}
           </div>
           <div className="crm-customer-ledger-scroll hidden max-h-[calc(100vh-280px)] overflow-auto md:block"><table className="crm-customer-ledger w-full text-sm"><thead className="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_rgb(226,232,240)]"><tr className="text-left text-slate-500">
-            {isAdmin && <th data-customer-column="selection" className="w-12 px-4 py-3"><input type="checkbox" aria-label="选择本页客户" checked={paginatedCustomers.items.length > 0 && paginatedCustomers.items.every(customer => selectedCustomerIds.includes(customer.id))} onChange={event => setSelectedCustomerIds(current => event.target.checked ? Array.from(new Set([...current, ...paginatedCustomers.items.map(customer => customer.id)])) : current.filter(id => !paginatedCustomers.items.some(customer => customer.id === id)))} /></th>}
+            {isOwner && <th data-customer-column="selection" className="w-12 px-4 py-3"><input type="checkbox" aria-label="选择本页客户" checked={paginatedCustomers.items.length > 0 && paginatedCustomers.items.every(customer => selectedCustomerIds.includes(customer.id))} onChange={event => setSelectedCustomerIds(current => event.target.checked ? Array.from(new Set([...current, ...paginatedCustomers.items.map(customer => customer.id)])) : current.filter(id => !paginatedCustomers.items.some(customer => customer.id === id)))} /></th>}
             {visibleCols.includes('customer_code') && <th data-customer-column="customer_code" className="px-4 py-3 font-medium">编号</th>}
             {visibleCols.includes('business_name') && <th data-customer-column="business_name" className="px-4 py-3 font-medium">商家名称</th>}
             {visibleCols.includes('contact_name') && <th data-customer-column="contact_name" className="px-4 py-3 font-medium">联系人</th>}
@@ -3508,7 +3374,7 @@ export default function Customers() {
           </tr></thead>
           <tbody>{paginatedCustomers.items.map(c => (
             <tr key={c.id} className={`border-b border-slate-100 cursor-pointer transition-colors hover:bg-blue-50/60 ${previewCustomer?.id === c.id ? 'bg-blue-50/50' : ''}`}>
-              {isAdmin && <td data-customer-column="selection" className="px-4 py-3" onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={`选择客户 ${c.business_name}`} checked={selectedCustomerIds.includes(c.id)} onChange={event => setSelectedCustomerIds(current => event.target.checked ? [...current, c.id] : current.filter(id => id !== c.id))} /></td>}
+              {isOwner && <td data-customer-column="selection" className="px-4 py-3" onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={`选择客户 ${c.business_name}`} checked={selectedCustomerIds.includes(c.id)} onChange={event => setSelectedCustomerIds(current => event.target.checked ? [...current, c.id] : current.filter(id => id !== c.id))} /></td>}
               {visibleCols.includes('customer_code') && <td data-customer-column="customer_code" className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
               {visibleCols.includes('business_name') && <td data-customer-column="business_name" className="px-4 py-3 font-medium text-blue-600" title={c.business_name} onClick={() => openDetail(c)}>{c.business_name}</td>}
               {visibleCols.includes('contact_name') && <td data-customer-column="contact_name" className="px-4 py-3" onClick={() => openDetail(c)}>{c.contact_name}</td>}
@@ -3516,8 +3382,8 @@ export default function Customers() {
               {visibleCols.includes('state') && <td data-customer-column="state" className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.state || '-'}</td>}
               {visibleCols.includes('country') && <td data-customer-column="country" className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.country || '-'}</td>}
               {visibleCols.includes('industry') && (
-                <td className="px-4 py-3 hidden md:table-cell" onClick={() => !(hasPermission('customer_edit') && inlineEditMode) && openDetail(c)}>
-                  {hasPermission('customer_edit') && inlineEditMode ? (
+                <td className="px-4 py-3 hidden md:table-cell" onClick={() => !(canEditBasic(c) && inlineEditMode) && openDetail(c)}>
+                  {canEditBasic(c) && inlineEditMode ? (
                     <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
                       <select
                         value={c.industry || ''}
@@ -3544,8 +3410,8 @@ export default function Customers() {
                 </td>
               )}
               {visibleCols.includes('city') && (
-                <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => !(hasPermission('customer_edit') && inlineEditMode) && openDetail(c)}>
-                  {hasPermission('customer_edit') && inlineEditMode ? (
+                <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => !(canEditBasic(c) && inlineEditMode) && openDetail(c)}>
+                  {canEditBasic(c) && inlineEditMode ? (
                     <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
                       {getCitiesForState(c.country || 'US', c.state || '').length > 0 ? (
                         <select
@@ -3589,8 +3455,8 @@ export default function Customers() {
                 </td>
               )}
               {visibleCols.includes('status') && (
-                <td className="px-4 py-3" onClick={() => !(hasPermission('customer_edit') && inlineEditMode) && openDetail(c)}>
-                  {hasPermission('customer_edit') && inlineEditMode ? (
+                <td className="px-4 py-3" onClick={() => !(canEditBasic(c) && inlineEditMode) && openDetail(c)}>
+                  {canEditBasic(c) && inlineEditMode ? (
                     <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
                       <select
                         value={c.status || ''}
@@ -3617,8 +3483,8 @@ export default function Customers() {
                 </td>
               )}
               {visibleCols.includes('level') && (
-                <td className="px-4 py-3 hidden lg:table-cell" onClick={() => !(hasPermission('customer_edit') && inlineEditMode) && openDetail(c)}>
-                  {hasPermission('customer_edit') && inlineEditMode ? (
+                <td className="px-4 py-3 hidden lg:table-cell" onClick={() => !(canEditBasic(c) && inlineEditMode) && openDetail(c)}>
+                  {canEditBasic(c) && inlineEditMode ? (
                     <div onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
                       <select
                         value={c.level || ''}
@@ -3655,17 +3521,17 @@ export default function Customers() {
                     if (window.matchMedia('(min-width: 1024px)').matches && frameWidth >= 1100) setPreviewCustomerId(c.id);
                     else openDetail(c);
                   }}>概览</Button>
-                  {(isAdmin || hasPermission('customer_assign') || hasPermission('customer_edit') || hasPermission('customer_delete')) && (
+                  {(canManageCustomerAccess(c) || canAssignCustomer(c) || canEditBasic(c) || canDeleteCustomer(c)) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-blue-600" aria-label={`更多客户操作：${c.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
-                        {isAdmin && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />管理团队成员</DropdownMenuItem>}
-                        {hasPermission('customer_assign') && <DropdownMenuItem onSelect={() => openAssign(c)}><ArrowRightLeft className="mr-2 h-4 w-4" />分配负责人</DropdownMenuItem>}
-                        {hasPermission('customer_edit') && <DropdownMenuItem onSelect={() => openEdit(c)}><Edit className="mr-2 h-4 w-4" />编辑客户</DropdownMenuItem>}
-                        {hasPermission('customer_delete') && <DropdownMenuSeparator />}
-                        {hasPermission('customer_delete') && <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-700" onSelect={() => setDeleteTarget(c)}><Trash2 className="mr-2 h-4 w-4" />删除客户</DropdownMenuItem>}
+                        {canManageCustomerAccess(c) && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />访问权限</DropdownMenuItem>}
+                        {canAssignCustomer(c) && <DropdownMenuItem onSelect={() => openAssign(c)}><ArrowRightLeft className="mr-2 h-4 w-4" />分配负责人</DropdownMenuItem>}
+                        {canEditBasic(c) && <DropdownMenuItem onSelect={() => openEdit(c)}><Edit className="mr-2 h-4 w-4" />编辑客户</DropdownMenuItem>}
+                        {canDeleteCustomer(c) && <DropdownMenuSeparator />}
+                        {canDeleteCustomer(c) && <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-700" onSelect={() => setDeleteTarget(c)}><Trash2 className="mr-2 h-4 w-4" />删除客户</DropdownMenuItem>}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}

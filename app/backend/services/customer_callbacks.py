@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.customer_callbacks import Customer_callbacks
 from services.customer_scope import apply_callback_customer_scope, ensure_callback_customer_access
 
+from services.customer_record_audit import record_customer_change
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,6 +104,7 @@ class Customer_callbacksService:
                 next_customer_id = update_data.get("customer_id")
                 if next_customer_id is not None and int(next_customer_id) != int(obj.customer_id):
                     await ensure_callback_customer_access(self.db, scope_user, int(next_customer_id), write=True)
+            record_customer_change(self.db, scope_user, obj, "followups", changes=update_data)
             for key, value in update_data.items():
                 if hasattr(obj, key):
                     setattr(obj, key, value)
@@ -123,7 +126,8 @@ class Customer_callbacksService:
                 logger.warning(f"Customer_callback {obj_id} not found for deletion")
                 return False
             if scope_user is not None:
-                await ensure_callback_customer_access(self.db, scope_user, obj.customer_id, write=True)
+                await ensure_callback_customer_access(self.db, scope_user, obj.customer_id, write=True, action="delete")
+            record_customer_change(self.db, scope_user, obj, "followups", deleted=True)
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted customer_callback {obj_id}")

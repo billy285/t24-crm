@@ -5,7 +5,7 @@ from backend.tests.test_sales_lead_isolation import _auth_headers, sales_app_cli
 
 @pytest.mark.asyncio
 async def test_post_call_analysis_and_manager_conversion_keep_lead_history(sales_app_client):
-    admin = _auth_headers("admin", 1, "Admin")
+    admin = _auth_headers("super_admin", 1, "Owner")
     manager = _auth_headers("sales_manager", 10, "Manager A")
     sales = _auth_headers("sales", 11, "Sales A")
 
@@ -150,7 +150,7 @@ async def test_post_call_analysis_and_manager_conversion_keep_lead_history(sales
 
 @pytest.mark.asyncio
 async def test_newly_approved_quote_supersedes_previous_approved_quote(sales_app_client):
-    admin = _auth_headers("admin", 1, "Admin")
+    admin = _auth_headers("super_admin", 1, "Owner")
     manager = _auth_headers("sales_manager", 10, "Manager A")
     sales = _auth_headers("sales", 11, "Sales A")
     created = await sales_app_client.post(
@@ -198,7 +198,7 @@ async def test_newly_approved_quote_supersedes_previous_approved_quote(sales_app
 
 @pytest.mark.asyncio
 async def test_structured_quote_creates_quarterly_engagement_and_employee_handoff(sales_app_client):
-    admin = _auth_headers("admin", 1, "Admin")
+    admin = _auth_headers("super_admin", 1, "Owner")
     manager = _auth_headers("sales_manager", 10, "Manager A")
     sales = _auth_headers("sales", 11, "Sales A")
     created = await sales_app_client.post(

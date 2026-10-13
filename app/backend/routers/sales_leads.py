@@ -1390,7 +1390,7 @@ def _business_date(value: Optional[datetime]) -> Optional[date]:
     return normalized.astimezone(BUSINESS_TIMEZONE).date()
 
 
-async def _find_customer_duplicates(db: AsyncSession, lead: SalesLeads) -> list[dict]:
+async def _find_customer_duplicates(db: AsyncSession, lead: SalesLeads, current_user=None) -> list[dict]:
     customers = (await db.execute(select(Customers))).scalars().all()
     matches = []
     phone = phone_match_key(lead.phone, lead.country) or _normalize_identity(lead.phone)
@@ -1403,6 +1403,12 @@ async def _find_customer_duplicates(db: AsyncSession, lead: SalesLeads) -> list[
         if website and website == _normalize_identity(customer.website): reasons.append("官网相同")
         if business and address and business == _normalize_identity(customer.business_name) and address == _normalize_identity(customer.address): reasons.append("商家名称和地址相同")
         if reasons:
+            if current_user is not None:
+                from services.customer_permissions import get_customer_permissions
+                rights = await get_customer_permissions(db, current_user, customer.id)
+                if not rights["modules"]["basic"]["read"]:
+                    matches.append({"message": "存在未向你开放的正式客户，请由老板核对", "reasons": reasons})
+                    continue
             matches.append({"customer_id": customer.id, "customer_code": customer.customer_code, "business_name": customer.business_name, "reasons": reasons})
     return matches
 
@@ -1451,7 +1457,7 @@ async def convert_sales_lead_to_customer(
             blockers.append("周期性服务必须填写服务开始和结束日期")
     if blockers:
         raise HTTPException(status_code=400, detail={"message": "成交审核尚未完成", "blockers": blockers})
-    duplicates = await _find_customer_duplicates(db, lead)
+    duplicates = await _find_customer_duplicates(db, lead, current_user)
     if duplicates:
         raise HTTPException(status_code=409, detail={"message": "发现可能重复的正式客户，请确认后不要重复转入", "duplicates": duplicates})
 
@@ -1619,7 +1625,13 @@ async def convert_sales_lead_to_customer(
     lead.converted_by_name = current_user.name
     lead.status = "won"
     owner = await db.get(Employees, handoff.operations_owner_employee_id) if handoff.operations_owner_employee_id else None
-    access_status = "authorized" if owner and owner.role in {"admin", "super_admin", "finance"} else "pending"
+    access_status = "pending"
+    if owner:
+        from services.customer_permissions import get_customer_permissions
+        from types import SimpleNamespace
+        rights = await get_customer_permissions(db, SimpleNamespace(id=owner.id, role=owner.role, name=owner.name), customer.id)
+        if rights["modules"]["delivery"]["read"]:
+            access_status = "authorized"
     await db.commit()
     return {
         "operations_owner": handoff.operations_owner, "operations_access_status": access_status,

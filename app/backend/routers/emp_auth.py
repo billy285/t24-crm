@@ -189,7 +189,7 @@ async def set_employee_password(
     payload = _get_token_payload(authorization)
     caller = await _get_active_employee(payload, db)
     caller_role = caller.get("role", "")
-    if caller_role not in ("admin", "super_admin"):
+    if caller_role != "super_admin":
         raise HTTPException(status_code=403, detail="无权限操作")
 
     if len(data.new_password) < 8:

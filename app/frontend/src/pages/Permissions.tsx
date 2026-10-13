@@ -36,7 +36,8 @@ const buttonGroups: { label: string; buttons: ButtonPermission[] }[] = [
 ];
 
 export default function Permissions() {
-  const { isAdmin, employee } = useRole();
+  const { systemRole, employee } = useRole();
+  const isAdmin = systemRole === 'super_admin';
   const isMobile = useIsMobile();
   const [config, setConfig] = useState<Record<SystemRole, RolePermissionConfig>>(defaultRolePermissions);
   const [selectedRole, setSelectedRole] = useState<SystemRole>('sales');
@@ -97,7 +98,7 @@ export default function Permissions() {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-center">
         <Lock className="w-12 h-12 text-slate-300 mb-4" />
-        <p className="text-slate-400">仅管理员可访问权限设置</p>
+        <p className="text-slate-400">仅老板可调整权限设置</p>
       </div>
     );
   }
@@ -307,8 +308,8 @@ export default function Permissions() {
                 <Switch aria-label="复制媒体账号密码" checked={currentPerms.sensitiveFields.copyPassword} onCheckedChange={() => toggleSensitive('copyPassword')} />
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                <div><p className="text-sm font-medium">查看财务信息</p><p className="text-xs text-slate-500">仅老板、管理员和财务可查看；销售、运营、设计与合伙人固定隔离</p></div>
-                <Switch aria-label="查看财务信息" checked={currentPerms.sensitiveFields.viewFinance} disabled={['sales', 'sales_manager', 'sales_partner', 'ops', 'design'].includes(selectedRole)} onCheckedChange={() => toggleSensitive('viewFinance')} />
+                <div><p className="text-sm font-medium">查看财务信息</p><p className="text-xs text-slate-500">公司财务仅老板可查看；员工财务范围在客户访问权限中单独设置</p></div>
+                <Switch aria-label="查看财务信息" checked={currentPerms.sensitiveFields.viewFinance} disabled={selectedRole !== 'super_admin'} onCheckedChange={() => toggleSensitive('viewFinance')} />
               </div>
               <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <p className="text-xs text-amber-700">

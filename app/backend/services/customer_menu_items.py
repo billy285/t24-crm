@@ -5,6 +5,10 @@ from models.customer_menu_items import Customer_menu_items
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.customer_scope import apply_customer_scope, ensure_customer_access
+
+from services.customer_record_audit import record_customer_change
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,8 +32,8 @@ class Customer_menu_itemsService:
             logger.exception("Error creating customer menu item")
             raise
 
-    async def get_by_id(self, obj_id: int, user_id: Optional[str] = None) -> Optional[Customer_menu_items]:
-        query = select(Customer_menu_items).where(Customer_menu_items.id == obj_id)
+    async def get_by_id(self, obj_id: int, user_id: Optional[str] = None, scope_user: Optional[Any] = None) -> Optional[Customer_menu_items]:
+        query = apply_customer_scope(select(Customer_menu_items).where(Customer_menu_items.id == obj_id), Customer_menu_items, scope_user)
         if user_id:
             query = query.where(Customer_menu_items.user_id == user_id)
         result = await self.db.execute(query)
@@ -42,9 +46,12 @@ class Customer_menu_itemsService:
         user_id: Optional[str] = None,
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        scope_user: Optional[Any] = None,
     ) -> Dict[str, Any]:
         query = select(Customer_menu_items)
         count_query = select(func.count(Customer_menu_items.id))
+        query = apply_customer_scope(query, Customer_menu_items, scope_user)
+        count_query = apply_customer_scope(count_query, Customer_menu_items, scope_user)
 
         if user_id:
             query = query.where(Customer_menu_items.user_id == user_id)
@@ -73,11 +80,14 @@ class Customer_menu_itemsService:
         result = await self.db.execute(query.offset(skip).limit(limit))
         return {"items": result.scalars().all(), "total": total, "skip": skip, "limit": limit}
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any], user_id: Optional[str] = None) -> Optional[Customer_menu_items]:
+    async def update(self, obj_id: int, update_data: Dict[str, Any], user_id: Optional[str] = None, scope_user: Optional[Any] = None) -> Optional[Customer_menu_items]:
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, user_id=user_id, scope_user=scope_user)
             if not obj:
                 return None
+            if scope_user is not None:
+                await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="materials")
+            record_customer_change(self.db, scope_user, obj, "materials", changes=update_data)
             for key, value in update_data.items():
                 if hasattr(obj, key) and key != "user_id":
                     setattr(obj, key, value)
@@ -89,11 +99,14 @@ class Customer_menu_itemsService:
             logger.exception("Error updating customer menu item %s", obj_id)
             raise
 
-    async def delete(self, obj_id: int, user_id: Optional[str] = None) -> Optional[Customer_menu_items]:
+    async def delete(self, obj_id: int, user_id: Optional[str] = None, scope_user: Optional[Any] = None) -> Optional[Customer_menu_items]:
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, user_id=user_id, scope_user=scope_user)
             if not obj:
                 return None
+            if scope_user is not None:
+                await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="materials", action="delete")
+            record_customer_change(self.db, scope_user, obj, "materials", deleted=True)
             await self.db.delete(obj)
             await self.db.commit()
             return obj

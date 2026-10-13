@@ -3,6 +3,7 @@ from datetime import date
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -23,7 +24,7 @@ from backend.services.emp_auth import create_access_token
 
 def _auth_headers(role: str) -> dict[str, str]:
     token = create_access_token({
-        "emp_id": 2001,
+        "emp_id": {"super_admin": 2002, "admin": 2001, "sales": 2010, "ops": 2011}.get(role, 2001),
         "email": f"{role}@example.com",
         "role": role,
         "name": role,
@@ -175,9 +176,9 @@ async def employee_integrity_api():
 
 
 @pytest.mark.asyncio
-async def test_employee_write_endpoints_require_admin_role():
-    transport = ASGITransport(app=app)
-    headers = _auth_headers("sales")
+@pytest.mark.parametrize("role", ["sales", "admin"])
+async def test_employee_write_endpoints_require_owner_role(role, employee_read_api):
+    headers = _auth_headers(role)
     employee_payload = {
         "name": "Test Employee",
         "role": "sales",
@@ -185,8 +186,8 @@ async def test_employee_write_endpoints_require_admin_role():
         "status": "active",
     }
 
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        responses = [
+    ac = employee_read_api
+    responses = [
             await ac.post("/api/v1/entities/employees", json=employee_payload, headers=headers),
             await ac.post("/api/v1/entities/employees/batch", json={"items": [employee_payload]}, headers=headers),
             await ac.put("/api/v1/entities/employees/1", json={"name": "Changed"}, headers=headers),
@@ -265,23 +266,26 @@ async def test_admin_can_read_full_employee_records(employee_read_api: AsyncClie
 @pytest.mark.asyncio
 async def test_direct_delete_blocks_self_last_super_admin_and_unhanded_ownership(employee_integrity_api):
     client, db = employee_integrity_api
-    headers = _auth_headers("admin")
+    headers = _auth_headers("super_admin")
 
-    self_delete = await client.delete("/api/v1/entities/employees/2001", headers=headers)
-    last_owner = await client.delete("/api/v1/entities/employees/2002", headers=headers)
+    self_delete = await client.delete("/api/v1/entities/employees/2002", headers=headers)
+    # A real sole-owner actor hits the self-delete guard first. Independently
+    # prove the shared delete continuity guard also rejects removing that owner.
+    with pytest.raises(HTTPException) as last_owner:
+        await employees_router._assert_super_admin_continuity(db, deleted_ids={2002})
     customer_owner = await client.delete("/api/v1/entities/employees/2010", headers=headers)
     task_owner = await client.delete("/api/v1/entities/employees/2011", headers=headers)
     service_owner = await client.delete("/api/v1/entities/employees/2012", headers=headers)
 
     assert [
         self_delete.status_code,
-        last_owner.status_code,
+        last_owner.value.status_code,
         customer_owner.status_code,
         task_owner.status_code,
         service_owner.status_code,
     ] == [409, 409, 409, 409, 409]
     assert "当前登录账号" in self_delete.json()["detail"]
-    assert "最后一个超级管理员" in last_owner.json()["detail"]
+    assert "最后一个超级管理员" in last_owner.value.detail
     assert "客户" in customer_owner.json()["detail"]
     assert "待办任务" in task_owner.json()["detail"]
     assert "交付任务" in service_owner.json()["detail"]
@@ -292,7 +296,7 @@ async def test_direct_delete_blocks_self_last_super_admin_and_unhanded_ownership
 @pytest.mark.asyncio
 async def test_single_update_cannot_offboard_owner_or_disable_last_super_admin(employee_integrity_api):
     client, db = employee_integrity_api
-    headers = _auth_headers("admin")
+    headers = _auth_headers("super_admin")
 
     owner_response = await client.put(
         "/api/v1/entities/employees/2010",
@@ -314,7 +318,7 @@ async def test_single_update_cannot_offboard_owner_or_disable_last_super_admin(e
 @pytest.mark.asyncio
 async def test_unknown_employee_status_is_rejected_before_single_or_batch_mutation(employee_integrity_api):
     client, db = employee_integrity_api
-    headers = _auth_headers("admin")
+    headers = _auth_headers("super_admin")
 
     single = await client.put(
         "/api/v1/entities/employees/2003",
@@ -341,7 +345,7 @@ async def test_unknown_employee_status_is_rejected_before_single_or_batch_mutati
 @pytest.mark.asyncio
 async def test_batch_update_and_delete_preflight_prevents_partial_writes(employee_integrity_api):
     client, db = employee_integrity_api
-    headers = _auth_headers("admin")
+    headers = _auth_headers("super_admin")
 
     update_response = await client.put(
         "/api/v1/entities/employees/batch",
@@ -374,7 +378,7 @@ async def test_safe_employee_can_be_physically_deleted_after_preflight(employee_
 
     response = await client.delete(
         "/api/v1/entities/employees/2003",
-        headers=_auth_headers("admin"),
+        headers=_auth_headers("super_admin"),
     )
 
     assert response.status_code == 200
@@ -387,7 +391,7 @@ async def test_sales_partner_delete_deactivates_login_and_transfers_attribution(
 
     response = await client.delete(
         "/api/v1/entities/employees/2020",
-        headers=_auth_headers("admin"),
+        headers=_auth_headers("super_admin"),
     )
 
     assert response.status_code == 200
@@ -425,7 +429,7 @@ async def test_batch_update_syncs_existing_sales_partner_when_role_is_omitted(em
                 {"id": 2021, "updates": {"name": "Updated Partner", "status": "disabled"}},
             ]
         },
-        headers=_auth_headers("admin"),
+        headers=_auth_headers("super_admin"),
     )
 
     assert response.status_code == 200
@@ -455,7 +459,7 @@ async def test_batch_rejects_sales_partner_role_change_before_any_write(employee
                 {"id": 2021, "updates": {"role": "sales"}},
             ]
         },
-        headers=_auth_headers("admin"),
+        headers=_auth_headers("super_admin"),
     )
 
     assert response.status_code == 409
@@ -482,7 +486,7 @@ async def test_project_handoff_all_owned_rows_only_and_idempotent(employee_integ
     await session.commit()
     columns = [column.name for column in CustomerEngagement.__table__.columns if column.name not in {"updated_at", "owner_employee_id", "sales_employee_id"}]
     before = {row.id: {name: getattr(row, name) for name in columns} for row in rows}
-    response = await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("admin"), json={"target_employee_id": 2003})
+    response = await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("super_admin"), json={"target_employee_id": 2003})
     assert response.status_code == 200, response.text
     assert response.json() == {"transferred_count": 206, "remaining_count": 0}
     for row in rows:
@@ -495,7 +499,7 @@ async def test_project_handoff_all_owned_rows_only_and_idempotent(employee_integ
             assert row.sales_employee_id == (2003 if row.id == 9302 else 2011)
     audits = (await session.scalars(select(Operation_logs))).all()
     assert len(audits) == 1
-    second = await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("admin"), json={"target_employee_id": 2003})
+    second = await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("super_admin"), json={"target_employee_id": 2003})
     assert second.json() == {"transferred_count": 0, "remaining_count": 0}
     assert len((await session.scalars(select(Operation_logs))).all()) == 1
 
@@ -503,10 +507,11 @@ async def test_project_handoff_all_owned_rows_only_and_idempotent(employee_integ
 @pytest.mark.asyncio
 @pytest.mark.parametrize("role,payload,status", [
     ("sales", {"target_employee_id": 2003}, 403),
-    ("admin", {"target_employee_id": 2010}, 400),
-    ("admin", {"target_employee_id": 999999}, 404),
-    ("admin", {"target_employee_id": 2020}, 409),
-    ("admin", {"target_employee_id": 2003, "currency": "CNY"}, 422),
+    ("admin", {"target_employee_id": 2003}, 403),
+    ("super_admin", {"target_employee_id": 2010}, 400),
+    ("super_admin", {"target_employee_id": 999999}, 404),
+    ("super_admin", {"target_employee_id": 2020}, 409),
+    ("super_admin", {"target_employee_id": 2003, "currency": "CNY"}, 422),
 ])
 async def test_project_handoff_keeps_permission_and_field_boundaries(employee_integrity_api, role, payload, status):
     client, session = employee_integrity_api
@@ -521,7 +526,7 @@ async def test_project_handoff_rejects_inactive_recipient(employee_integrity_api
     target = await session.get(Employees, 2003)
     target.status = "resigned"
     await session.commit()
-    response = await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("admin"), json={"target_employee_id":2003})
+    response = await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("super_admin"), json={"target_employee_id":2003})
     assert response.status_code == 409
 
 
@@ -537,7 +542,7 @@ async def test_project_handoff_audit_failure_rolls_back_ownership(employee_integ
         raise RuntimeError("isolated audit failure")
     monkeypatch.setattr(employees_router.Operation_logsService, "create", fail_audit)
     with pytest.raises(RuntimeError, match="isolated audit failure"):
-        await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("admin"), json={"target_employee_id":2003})
+        await client.post("/api/v1/entities/employees/2010/handoff-projects", headers=_auth_headers("super_admin"), json={"target_employee_id":2003})
     await session.refresh(project)
     assert project.owner_employee_id == project.sales_employee_id == 2010
     assert project.currency == "USD" and project.billing_cycle == "monthly" and project.status == "active_paid"

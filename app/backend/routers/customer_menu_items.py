@@ -28,6 +28,8 @@ CUSTOMER_WORKSPACE_PAGES = {"/customers", "/service-board"}
 
 
 async def _require_item_read(current_user: UserResponse, db: AsyncSession) -> None:
+    if normalized_role(current_user) == "design":
+        return  # Every read below still requires an explicit customer materials grant.
     await require_any_page_permission(db, current_user, CUSTOMER_WORKSPACE_PAGES)
 
 
@@ -107,8 +109,8 @@ def _parse_query(query: Optional[str]) -> Optional[dict]:
         raise HTTPException(status_code=400, detail="Invalid query JSON format")
 
 
-async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession, *, write: bool = False):
-    return await ensure_scoped_customer_access(db, current_user, customer_id, write=write)
+async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession, *, write: bool = False, action: str | None = None):
+    return await ensure_scoped_customer_access(db, current_user, customer_id, write=write, module="materials", action=action)
 
 
 def _clean_item_payload(payload: dict) -> dict:
@@ -161,7 +163,7 @@ async def query_customer_menu_items(
         await _ensure_customer_access(int(customer_id), current_user, db)
     elif normalized_role(current_user) not in {"admin", "super_admin"}:
         raise HTTPException(status_code=400, detail="customer_id query is required")
-    return await Customer_menu_itemsService(db).get_list(skip=skip, limit=limit, query_dict=query_dict, sort=sort)
+    return await Customer_menu_itemsService(db).get_list(skip=skip, limit=limit, query_dict=query_dict, sort=sort, scope_user=current_user)
 
 
 @router.post("", response_model=CustomerMenuItemResponse, status_code=201)
@@ -199,14 +201,14 @@ async def update_customer_menu_item(
 ):
     await _require_item_write(current_user, db, "task_edit")
     service = Customer_menu_itemsService(db)
-    obj = await service.get_by_id(item_id)
+    obj = await service.get_by_id(item_id, scope_user=current_user)
     if not obj:
         raise HTTPException(status_code=404, detail="Menu item not found")
     await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
 
     payload = _clean_item_payload(data.model_dump(exclude_unset=True))
     payload["updated_at"] = payload.get("updated_at") or datetime.utcnow()
-    updated = await service.update(item_id, payload)
+    updated = await service.update(item_id, payload, scope_user=current_user)
     if not updated:
         raise HTTPException(status_code=404, detail="Menu item not found")
 
@@ -228,10 +230,10 @@ async def delete_customer_menu_item(
 ):
     await _require_item_write(current_user, db, "task_delete", admin_override=True)
     service = Customer_menu_itemsService(db)
-    obj = await service.get_by_id(item_id)
+    obj = await service.get_by_id(item_id, scope_user=current_user)
     if not obj:
         raise HTTPException(status_code=404, detail="Menu item not found")
-    await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
+    await _ensure_customer_access(obj.customer_id, current_user, db, write=True, action="delete")
 
     await db.execute(
         update(Customer_materials)
@@ -239,7 +241,7 @@ async def delete_customer_menu_item(
         .where(Customer_materials.linked_item_id == obj.id)
         .values(linked_item_id=None, linked_item_snapshot=obj.name, updated_at=datetime.utcnow())
     )
-    deleted = await service.delete(item_id)
+    deleted = await service.delete(item_id, scope_user=current_user)
     if not deleted:
         raise HTTPException(status_code=404, detail="Menu item not found")
 

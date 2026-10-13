@@ -252,11 +252,13 @@ export function getRoleTodayPath(role?: string | null): string {
   if (role === 'sales_partner') return '/partner-portal';
   if (role === 'sales' || role === 'sales_manager') return '/sales-workbench';
   if (role === 'ops') return '/operations-workbench';
+  if (role === 'admin' || role === 'finance') return '/customers';
+  if (role === 'design') return '/tasks?view=mine';
   return '/';
 }
 
 export function getRolePendingPath(role?: string | null): string {
-  if (role === 'finance') return '/finance';
+  if (role === 'finance') return '/customers';
   if (role === 'sales_partner') return '/partner-portal';
   if (role === 'sales' || role === 'sales_manager') return '/sales-leads';
   if (role === 'ops' || role === 'design') return '/tasks?view=mine';
@@ -266,5 +268,8 @@ export function getRolePendingPath(role?: string | null): string {
 export function getDesktopLoginPath(role?: string | null): string {
   if (role === 'sales_partner') return '/partner-portal';
   if (role === 'sales' || role === 'sales_manager') return '/sales-leads';
+  if (role === 'ops') return '/operations-workbench';
+  if (role === 'admin' || role === 'finance') return '/customers';
+  if (role === 'design') return '/tasks?view=mine';
   return '/';
 }

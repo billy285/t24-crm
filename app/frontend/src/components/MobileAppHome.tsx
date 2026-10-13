@@ -208,7 +208,7 @@ export default function MobileAppHome({
   const hasStructuredPriority = priorityItems !== undefined;
   const accessibleRecentItems = recentItems.filter(item => canOpen(item.path)).slice(0, 3);
   const showRecentSection = accessibleRecentItems.length > 0 || loading || Boolean(loadError);
-  const isOwnerHome = role === 'super_admin' || role === 'admin';
+  const isOwnerHome = role === 'super_admin';
   const primaryPath = hasStructuredPriority || !topTodayItem ? resolvedTodayPath : topTodayItem.path;
   const primaryLabel = hasStructuredPriority || !topTodayItem ? '打开今日工作台' : topTodayItem.actionLabel || '立即处理';
   const roleLabel = roleLabels[employee?.role] || roleLabels[role] || '员工';

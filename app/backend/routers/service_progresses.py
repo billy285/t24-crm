@@ -202,9 +202,10 @@ async def _prepare_progress_update(
     progress,
     data: Service_progressesUpdateData,
 ) -> dict:
+    await ensure_customer_access(db, current_user, progress.customer_id, write=True, module="delivery")
     update_dict = _progress_payload(data)
     final_customer_id = update_dict.get("customer_id", progress.customer_id)
-    customer = await ensure_customer_access(db, current_user, final_customer_id, write=True)
+    customer = await ensure_customer_access(db, current_user, final_customer_id, write=True, module="delivery")
     if int(final_customer_id) != int(progress.customer_id) and await _progress_has_tasks(db, progress.id):
         raise HTTPException(status_code=409, detail="该服务进度仍有关联任务，不能更换客户")
     update_dict["customer_name"] = _trusted_customer_name(customer)
@@ -328,7 +329,7 @@ async def create_service_progresses(
 ):
     """Create a new service_progresses"""
     await require_service_board_access(db, current_user, "task_create")
-    customer = await ensure_customer_access(db, current_user, data.customer_id, write=True)
+    customer = await ensure_customer_access(db, current_user, data.customer_id, write=True, module="delivery")
     create_dict = _progress_payload(data)
     now = datetime.utcnow().isoformat()
     create_dict.update({
@@ -365,7 +366,7 @@ async def create_service_progressess_batch(
     await require_service_board_access(db, current_user, "task_create")
     prepared_items = []
     for item_data in request.items:
-        customer = await ensure_customer_access(db, current_user, item_data.customer_id, write=True)
+        customer = await ensure_customer_access(db, current_user, item_data.customer_id, write=True, module="delivery")
         create_dict = _progress_payload(item_data)
         now = datetime.utcnow().isoformat()
         create_dict.update({
@@ -388,6 +389,9 @@ async def create_service_progressess_batch(
         
         logger.info(f"Batch created {len(results)} service_progressess successfully")
         return results
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch create: {str(e)}", exc_info=True)
@@ -427,6 +431,9 @@ async def update_service_progressess_batch(
         
         logger.info(f"Batch updated {len(results)} service_progressess successfully")
         return results
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
@@ -483,8 +490,10 @@ async def delete_service_progressess_batch(
         raise HTTPException(status_code=400, detail="批量删除不能包含重复服务进度")
 
     for item_id in request.ids:
-        if not await service.get_by_id(item_id, scope_user=current_user):
+        existing = await service.get_by_id(item_id, scope_user=current_user)
+        if not existing:
             raise HTTPException(status_code=404, detail="Service_progresses not found")
+        await ensure_customer_access(db, current_user, existing.customer_id, write=True, module="delivery", action="delete")
         if await _progress_has_tasks(db, item_id):
             raise HTTPException(status_code=409, detail="该服务进度仍有关联任务，不能删除")
     
@@ -496,6 +505,9 @@ async def delete_service_progressess_batch(
         
         logger.info(f"Batch deleted {deleted_count} service_progressess successfully")
         return {"message": f"Successfully deleted {deleted_count} service_progressess", "deleted_count": deleted_count}
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch delete: {str(e)}", exc_info=True)

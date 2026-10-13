@@ -6,6 +6,8 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.operation_logs import Operation_logs
+from models.customers import Customers
+from services.customers import CustomersService
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,18 @@ def build_server_operation_log_data(
     }
 
 
+def _apply_log_customer_scope(statement, scope_user):
+    if scope_user is None or str(getattr(scope_user, "role", "")).lower() == "super_admin":
+        return statement
+    customers = select(Customers.id)
+    scope = CustomersService._scope_filter_for_user(scope_user, module="basic")
+    if scope is not None:
+        customers = customers.where(scope)
+    # A creator ID cannot retain access after the linked customer is revoked;
+    # unlinked company-wide events are owner-only.
+    return statement.where(Operation_logs.customer_id.in_(customers))
+
+
 # ------------------ Service Layer ------------------
 class Operation_logsService:
     """Service layer for Operation_logs operations"""
@@ -116,10 +130,10 @@ class Operation_logsService:
             logger.error(f"Error checking ownership for operation_logs {obj_id}: {str(e)}")
             return False
 
-    async def get_by_id(self, obj_id: int, user_id: Optional[str] = None) -> Optional[Operation_logs]:
+    async def get_by_id(self, obj_id: int, user_id: Optional[str] = None, scope_user: Optional[Any] = None) -> Optional[Operation_logs]:
         """Get operation_logs by ID (user can only see their own records)"""
         try:
-            query = select(Operation_logs).where(Operation_logs.id == obj_id)
+            query = _apply_log_customer_scope(select(Operation_logs).where(Operation_logs.id == obj_id), scope_user)
             if user_id:
                 query = query.where(Operation_logs.user_id == user_id)
             result = await self.db.execute(query)
@@ -135,11 +149,14 @@ class Operation_logsService:
         user_id: Optional[str] = None,
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        scope_user: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of operation_logss (user can only see their own records)"""
         try:
             query = select(Operation_logs)
             count_query = select(func.count(Operation_logs.id))
+            query = _apply_log_customer_scope(query, scope_user)
+            count_query = _apply_log_customer_scope(count_query, scope_user)
             
             if user_id:
                 query = query.where(Operation_logs.user_id == user_id)

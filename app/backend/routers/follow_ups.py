@@ -25,10 +25,12 @@ async def _get_scoped_follow_up(
     service: Follow_upsService,
     follow_up_id: int,
     current_user: UserResponse,
+    *, action: str | None = None,
 ):
     item = await service.get_by_id(follow_up_id, scope_user=current_user)
     if not item:
         raise HTTPException(status_code=404, detail="Follow_ups not found")
+    await ensure_customer_access(service.db, current_user, item.customer_id, write=True, module="followups", action=action)
     return item
 
 
@@ -236,7 +238,7 @@ async def create_follow_ups(
     service = Follow_upsService(db)
     try:
         await require_button_permission(db, current_user, "follow_up_create", admin_override=True)
-        await ensure_customer_access(db, current_user, data.customer_id, write=True)
+        await ensure_customer_access(db, current_user, data.customer_id, write=True, module="followups")
         result = await service.create(data.model_dump())
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create follow_ups")
@@ -268,7 +270,7 @@ async def create_follow_upss_batch(
     try:
         await require_button_permission(db, current_user, "follow_up_create", admin_override=True)
         for item_data in request.items:
-            await ensure_customer_access(db, current_user, item_data.customer_id, write=True)
+            await ensure_customer_access(db, current_user, item_data.customer_id, write=True, module="followups")
         for item_data in request.items:
             result = await service.create(item_data.model_dump())
             if result:
@@ -301,7 +303,7 @@ async def update_follow_upss_batch(
         for item in request.items:
             await _get_scoped_follow_up(service, item.id, current_user)
             if item.updates.customer_id is not None:
-                await ensure_customer_access(db, current_user, item.updates.customer_id, write=True)
+                await ensure_customer_access(db, current_user, item.updates.customer_id, write=True, module="followups")
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
@@ -336,7 +338,7 @@ async def update_follow_ups(
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
         if update_dict.get("customer_id") is not None:
-            await ensure_customer_access(db, current_user, update_dict["customer_id"], write=True)
+            await ensure_customer_access(db, current_user, update_dict["customer_id"], write=True, module="followups")
         result = await service.update(id, update_dict, scope_user=current_user)
         if not result:
             logger.warning(f"Follow_ups with id {id} not found for update")
@@ -369,7 +371,7 @@ async def delete_follow_upss_batch(
     try:
         await require_button_permission(db, current_user, "follow_up_delete", admin_override=True)
         for item_id in request.ids:
-            await _get_scoped_follow_up(service, item_id, current_user)
+            await _get_scoped_follow_up(service, item_id, current_user, action="delete")
         for item_id in request.ids:
             success = await service.delete(item_id, scope_user=current_user)
             if success:
@@ -397,7 +399,7 @@ async def delete_follow_ups(
     service = Follow_upsService(db)
     try:
         await require_button_permission(db, current_user, "follow_up_delete", admin_override=True)
-        await _get_scoped_follow_up(service, id, current_user)
+        await _get_scoped_follow_up(service, id, current_user, action="delete")
         success = await service.delete(id, scope_user=current_user)
         if not success:
             logger.warning(f"Follow_ups with id {id} not found for deletion")

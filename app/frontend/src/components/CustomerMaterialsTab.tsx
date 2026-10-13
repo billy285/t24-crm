@@ -1,3 +1,5 @@
+import { useCustomerPermissions } from '@/lib/use-customer-permissions';
+import type { CustomerEffectivePermissions } from '@/lib/customer-permissions';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -102,7 +104,10 @@ const approvalColors: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700',
 };
 
+const visibilityOptions = [{value:'team',label:'团队素材'}, {value:'owner',label:'仅老板'}, {value:'finance',label:'财务敏感'}];
+
 const emptyForm = {
+  visibility: 'team',
   title: '',
   material_type: 'image',
   platform: 'general',
@@ -177,14 +182,18 @@ async function authedFetch(url: string, init: RequestInit = {}, retry = true) {
 interface Props {
   customerId: number;
   customerName: string;
+  permissions?: CustomerEffectivePermissions;
 }
 
-export default function CustomerMaterialsTab({ customerId, customerName }: Props) {
-  const { canAccess, hasPermission, isAdmin } = useRole();
-  const canRead = canAccess('/customers') || canAccess('/service-board');
-  const canCreate = canRead && hasPermission('task_create');
-  const canEdit = canRead && hasPermission('task_edit');
-  const canDelete = canRead && (isAdmin || hasPermission('task_delete'));
+export default function CustomerMaterialsTab({ customerId, customerName, permissions }: Props) {
+  const permission = useCustomerPermissions(customerId, permissions);
+  const { systemRole } = useRole();
+  const canClassify = systemRole === 'super_admin' || (systemRole === 'finance' && ['receipts','profit'].includes(permission.finance_access));
+  const permittedVisibilityOptions = systemRole === 'super_admin' ? visibilityOptions : visibilityOptions.filter(item => item.value !== 'owner');
+  const canRead = permission.modules.materials.read;
+  const canCreate = permission.modules.materials.write;
+  const canEdit = canCreate;
+  const canDelete = canEdit && permission.can_delete;
   const activeCustomerIdRef = useRef(customerId);
   const materialsRequestSeqRef = useRef(0);
   const menuItemsRequestSeqRef = useRef(0);
@@ -379,6 +388,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
   const openEdit = (item: any) => {
     if (!canEdit || !belongsToCustomer(item, activeCustomerIdRef.current)) return;
     setForm({
+      visibility: item.visibility || 'team',
       title: item.title || '',
       material_type: item.material_type || 'image',
       platform: item.platform || 'general',
@@ -509,6 +519,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
   const materialPayload = () => ({
     ...form,
     linked_item_id: form.linked_item_id ? Number(form.linked_item_id) : null,
+    visibility: canClassify ? form.visibility : (editingId ? visibleMaterials.find(item => item.id === editingId)?.visibility || 'team' : 'team'),
   });
 
   const handleSave = async () => {
@@ -552,6 +563,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
         if (form.linked_item_id) data.append('linked_item_id', form.linked_item_id);
         data.append('usage_status', form.usage_status);
         data.append('approval_status', form.approval_status);
+        data.append('visibility', canClassify ? form.visibility : 'team');
         data.append('copyright_status', form.copyright_status);
         data.append('notes', form.notes || '');
         data.append('thumbnail_url', form.thumbnail_url || '');
@@ -1027,6 +1039,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
                 )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {canClassify && <div><Label className="text-xs">可见范围</Label><NativeSelect aria-label="素材可见范围" value={form.visibility} onChange={value => setForm({...form,visibility:value})} options={permittedVisibilityOptions} /></div>}
                 <div>
                   <Label className="text-xs">素材名称 *</Label>
                   <Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="例如：餐厅门头照片 / 七月活动海报" />
@@ -1152,6 +1165,7 @@ export default function CustomerMaterialsTab({ customerId, customerName }: Props
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           <Badge variant="secondary" className="text-xs">{labelOf(platformOptions, item.platform)}</Badge>
                           <Badge variant="outline" className="text-xs">{labelOf(materialTypeOptions, item.material_type)}</Badge>
+                          {item.visibility && item.visibility !== 'team' && <Badge variant="outline" className="text-xs">{labelOf(visibilityOptions, item.visibility)}</Badge>}
                           {linkedItemName && <Badge className="bg-indigo-100 text-indigo-700">关联：{linkedItemName}</Badge>}
                           <Badge className={usageColors[item.usage_status] || usageColors.unused}>{labelOf(usageStatusOptions, item.usage_status)}</Badge>
                           <Badge className={approvalColors[item.approval_status] || approvalColors.pending}>{labelOf(approvalStatusOptions, item.approval_status)}</Badge>

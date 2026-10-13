@@ -269,6 +269,8 @@ def get_default_config(key: str) -> Any:
 
 def ensure_can_update_config(key: str, user: UserResponse) -> None:
     """Keep sensitive settings admin-only while allowing business teams to maintain dictionaries."""
+    if key in {"role_permissions", "page_permissions"} and user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="仅老板可以修改访问权限")
     if user.role in ADMIN_CONFIG_ROLES:
         return
 

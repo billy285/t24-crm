@@ -6,7 +6,7 @@ import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 from core.database import get_db
 from dependencies.auth import get_current_user
@@ -18,8 +18,10 @@ from schemas.auth import UserResponse
 from services.ai_config import humanize_ai_error, resolve_ai_runtime_config
 from services.aihub import AIHubService
 from services.customer_menu_items import Customer_menu_itemsService
+from services.customer_ai_context import customer_for_content
 from services.customer_materials import Customer_materialsService
 from services.customers import CustomersService
+from services.customer_permissions import get_customer_permissions
 from services.customer_scope import ensure_customer_access as ensure_scoped_customer_access
 from services.operation_logs import Operation_logsService
 from services.role_permissions import normalized_role, require_any_page_permission, require_button_permission
@@ -104,6 +106,8 @@ CUSTOMER_WORKSPACE_PAGES = {"/customers", "/service-board"}
 
 
 async def _require_material_read(current_user: UserResponse, db: AsyncSession) -> None:
+    if normalized_role(current_user) == "design":
+        return  # Every read below still requires an explicit customer materials grant.
     await require_any_page_permission(db, current_user, CUSTOMER_WORKSPACE_PAGES)
 
 
@@ -122,6 +126,7 @@ class CustomerMaterialData(BaseModel):
     customer_id: int
     title: str
     material_type: str = "image"
+    visibility: Literal["team", "owner", "finance"] = "team"
     platform: Optional[str] = "general"
     source_type: Optional[str] = "external_link"
     file_name: Optional[str] = None
@@ -145,6 +150,7 @@ class CustomerMaterialData(BaseModel):
 class CustomerMaterialUpdateData(BaseModel):
     title: Optional[str] = None
     material_type: Optional[str] = None
+    visibility: Optional[Literal["team", "owner", "finance"]] = None
     platform: Optional[str] = None
     source_type: Optional[str] = None
     file_name: Optional[str] = None
@@ -169,6 +175,7 @@ class CustomerMaterialResponse(BaseModel):
     customer_id: int
     title: str
     material_type: str
+    visibility: str = "team"
     platform: Optional[str] = None
     source_type: Optional[str] = None
     file_name: Optional[str] = None
@@ -226,8 +233,23 @@ def _parse_query(query: Optional[str]) -> Optional[dict]:
         raise HTTPException(status_code=400, detail="Invalid query JSON format")
 
 
-async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession, *, write: bool = False):
-    return await ensure_scoped_customer_access(db, current_user, customer_id, write=write)
+async def _ensure_customer_access(customer_id: int, current_user: UserResponse, db: AsyncSession, *, write: bool = False, action: str | None = None):
+    return await ensure_scoped_customer_access(db, current_user, customer_id, write=write, module="materials", action=action)
+
+
+async def _ensure_material_classification(db, current_user, customer_id, visibility, *, existing=None):
+    target = visibility or (getattr(existing, "visibility", None) if existing else None) or "team"
+    prior = (getattr(existing, "visibility", None) if existing else None) or "team"
+    if target == prior and existing is not None:
+        return
+    if target == "team" and prior == "team":
+        return
+    if normalized_role(current_user) == "super_admin":
+        return
+    permissions = await get_customer_permissions(db, current_user, customer_id)
+    if (target == "owner" or prior == "owner" or normalized_role(current_user) != "finance"
+            or permissions.get("finance_access") not in {"receipts", "profit"}):
+        raise HTTPException(status_code=403, detail="仅老板或获授权财务可调整敏感素材分类")
 
 
 async def _resolve_linked_item(
@@ -252,12 +274,12 @@ def _safe_filename(filename: str) -> str:
     return f"{safe_stem}{suffix}"
 
 
-def _material_path_from_record(file_path: Optional[str]) -> Optional[Path]:
+def _material_path_from_record(file_path: Optional[str], customer_id: Optional[int] = None) -> Optional[Path]:
     if not file_path:
         return None
     path = (MATERIALS_ROOT / file_path).resolve()
     try:
-        path.relative_to(MATERIALS_ROOT.resolve())
+        path.relative_to((MATERIALS_ROOT / str(customer_id)).resolve() if customer_id is not None else MATERIALS_ROOT.resolve())
     except ValueError:
         return None
     return path
@@ -555,6 +577,7 @@ async def query_customer_materials(
         skip=skip,
         limit=limit,
         query_dict=query_dict,
+        scope_user=current_user,
         sort=sort,
     )
 
@@ -567,10 +590,12 @@ async def ai_match_customer_materials(
 ):
     await _require_material_write(current_user, db, "task_create")
     customer = await _ensure_customer_access(request.customer_id, current_user, db)
+    customer = await customer_for_content(db, customer, current_user)
     result = await Customer_materialsService(db).get_list(
         skip=0,
         limit=200,
         query_dict={"customer_id": request.customer_id},
+        scope_user=current_user,
         sort="-created_at",
     )
     materials = result["items"]
@@ -578,6 +603,7 @@ async def ai_match_customer_materials(
         skip=0,
         limit=300,
         query_dict={"customer_id": request.customer_id},
+        scope_user=current_user,
         sort="-updated_at",
     )
     menu_items = item_result["items"]
@@ -625,6 +651,9 @@ async def create_customer_material(
 ):
     await _require_material_write(current_user, db, "task_create")
     await _ensure_customer_access(data.customer_id, current_user, db, write=True)
+    await _ensure_material_classification(db, current_user, data.customer_id, data.visibility)
+    if data.file_path:
+        raise HTTPException(status_code=400, detail="素材存储路径由上传接口生成，不能手动指定")
     payload = data.model_dump()
     now = datetime.utcnow()
     payload["title"] = payload["title"].strip()
@@ -645,7 +674,7 @@ async def create_customer_material(
         current_user=current_user,
         customer_id=result.customer_id,
         action_type="create_material",
-        detail=f"新增素材: {result.title}",
+        detail=f"新增素材记录 #{result.id}",
     )
     return result
 
@@ -655,6 +684,7 @@ async def upload_customer_material(
     customer_id: int = Form(...),
     title: str = Form(...),
     material_type: str = Form("image"),
+    visibility: Literal["team", "owner", "finance"] = Form("team"),
     platform: str = Form("general"),
     usage_status: str = Form("unused"),
     approval_status: str = Form("pending"),
@@ -668,6 +698,7 @@ async def upload_customer_material(
 ):
     await _require_material_write(current_user, db, "task_create")
     await _ensure_customer_access(customer_id, current_user, db, write=True)
+    await _ensure_material_classification(db, current_user, customer_id, visibility)
     resolved_linked_item_id, linked_item_snapshot = await _resolve_linked_item(
         db,
         customer_id=customer_id,
@@ -705,6 +736,7 @@ async def upload_customer_material(
         "customer_id": customer_id,
         "title": title.strip() or safe_name,
         "material_type": material_type,
+        "visibility": visibility,
         "platform": platform,
         "source_type": "upload",
         "file_name": safe_name,
@@ -730,7 +762,7 @@ async def upload_customer_material(
         current_user=current_user,
         customer_id=customer_id,
         action_type="create_material",
-        detail=f"上传素材: {result.title}",
+        detail=f"上传素材记录 #{result.id}",
     )
     return result
 
@@ -744,12 +776,15 @@ async def update_customer_material(
 ):
     await _require_material_write(current_user, db, "task_edit")
     service = Customer_materialsService(db)
-    obj = await service.get_by_id(material_id)
+    obj = await service.get_by_id(material_id, scope_user=current_user)
     if not obj:
         raise HTTPException(status_code=404, detail="Material not found")
     await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
 
+    await _ensure_material_classification(db, current_user, obj.customer_id, data.visibility, existing=obj)
     payload = data.model_dump(exclude_unset=True)
+    if payload.get("visibility") is None:
+        payload.pop("visibility", None)
     if "linked_item_id" in payload:
         payload["linked_item_id"], payload["linked_item_snapshot"] = await _resolve_linked_item(
             db,
@@ -757,7 +792,7 @@ async def update_customer_material(
             linked_item_id=payload.get("linked_item_id"),
         )
     payload["updated_at"] = payload.get("updated_at") or datetime.utcnow()
-    updated = await service.update(material_id, payload)
+    updated = await service.update(material_id, payload, scope_user=current_user)
     if not updated:
         raise HTTPException(status_code=404, detail="Material not found")
 
@@ -766,7 +801,7 @@ async def update_customer_material(
         current_user=current_user,
         customer_id=updated.customer_id,
         action_type="edit_material",
-        detail=f"编辑素材: {updated.title}",
+        detail=f"编辑素材记录 #{updated.id}",
     )
     return updated
 
@@ -779,13 +814,13 @@ async def delete_customer_material(
 ):
     await _require_material_write(current_user, db, "task_delete", admin_override=True)
     service = Customer_materialsService(db)
-    obj = await service.get_by_id(material_id)
+    obj = await service.get_by_id(material_id, scope_user=current_user)
     if not obj:
         raise HTTPException(status_code=404, detail="Material not found")
-    await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
+    await _ensure_customer_access(obj.customer_id, current_user, db, write=True, action="delete")
 
-    file_path = _material_path_from_record(obj.file_path)
-    deleted = await service.delete(material_id)
+    file_path = _material_path_from_record(obj.file_path, obj.customer_id)
+    deleted = await service.delete(material_id, scope_user=current_user)
     if not deleted:
         raise HTTPException(status_code=404, detail="Material not found")
     if file_path and file_path.exists():
@@ -796,7 +831,7 @@ async def delete_customer_material(
         current_user=current_user,
         customer_id=obj.customer_id,
         action_type="delete_material",
-        detail=f"删除素材: {obj.title}",
+        detail=f"删除素材记录 #{obj.id}",
     )
 
 
@@ -807,12 +842,12 @@ async def download_customer_material(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_material_read(current_user, db)
-    obj = await Customer_materialsService(db).get_by_id(material_id)
+    obj = await Customer_materialsService(db).get_by_id(material_id, scope_user=current_user)
     if not obj:
         raise HTTPException(status_code=404, detail="Material not found")
     await _ensure_customer_access(obj.customer_id, current_user, db)
 
-    file_path = _material_path_from_record(obj.file_path)
+    file_path = _material_path_from_record(obj.file_path, obj.customer_id)
     if not file_path or not file_path.exists():
         raise HTTPException(status_code=404, detail="素材文件不存在")
 
@@ -831,7 +866,7 @@ async def duplicate_customer_material(
 ):
     await _require_material_write(current_user, db, "task_create")
     service = Customer_materialsService(db)
-    obj = await service.get_by_id(material_id)
+    obj = await service.get_by_id(material_id, scope_user=current_user)
     if not obj:
         raise HTTPException(status_code=404, detail="Material not found")
     await _ensure_customer_access(obj.customer_id, current_user, db, write=True)
@@ -839,8 +874,10 @@ async def duplicate_customer_material(
     file_path = None
     next_file_path = None
     if obj.file_path:
-        file_path = _material_path_from_record(obj.file_path)
-        if file_path and file_path.exists():
+        file_path = _material_path_from_record(obj.file_path, obj.customer_id)
+        if file_path is None:
+            raise HTTPException(status_code=404, detail="素材文件不存在")
+        if file_path.exists():
             next_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:10]}_{file_path.name}"
             next_path = file_path.parent / next_name
             shutil.copyfile(file_path, next_path)
@@ -851,6 +888,7 @@ async def duplicate_customer_material(
         "customer_id": obj.customer_id,
         "title": f"{obj.title} 副本",
         "material_type": obj.material_type,
+        "visibility": obj.visibility,
         "platform": obj.platform,
         "source_type": obj.source_type,
         "file_name": obj.file_name,
@@ -875,6 +913,6 @@ async def duplicate_customer_material(
         current_user=current_user,
         customer_id=obj.customer_id,
         action_type="create_material",
-        detail=f"复制素材: {obj.title}",
+        detail=f"复制素材记录 #{obj.id}",
     )
     return duplicated

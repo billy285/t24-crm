@@ -1,3 +1,5 @@
+import { useCustomerPermissions } from '@/lib/use-customer-permissions';
+import type { CustomerEffectivePermissions } from '@/lib/customer-permissions';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
@@ -45,6 +47,7 @@ const statusColors: Record<string, string> = {
 interface Props {
   customerId: number;
   customerName: string;
+  permissions?: CustomerEffectivePermissions;
 }
 
 const emptyForm = {
@@ -58,11 +61,14 @@ const emptyForm = {
   notes: '',
 };
 
-export default function MediaAccountsTab({ customerId, customerName }: Props) {
-  const { employee, canViewPassword, hasPermission } = useRole();
-  const canCreate = hasPermission('media_account_create');
-  const canEdit = hasPermission('media_account_edit');
-  const canDelete = hasPermission('media_account_delete');
+export default function MediaAccountsTab({ customerId, customerName, permissions }: Props) {
+  const { employee } = useRole();
+  const permission = useCustomerPermissions(customerId, permissions);
+  const canRead = permission.modules.materials.read;
+  const canCreate = permission.modules.materials.write;
+  const canEdit = canCreate;
+  const canDelete = canEdit && permission.can_delete;
+  const canViewPassword = permission.reveal_secrets;
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -142,7 +148,7 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
     setSaving(false);
     setDeleting(false);
     setLoading(true);
-    void loadAccounts(customerId);
+    if (canRead) void loadAccounts(customerId); else setLoading(false);
 
     return () => {
       if (activeCustomerIdRef.current === customerId) activeCustomerIdRef.current = null;
@@ -151,7 +157,7 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
       accountsAbortRef.current?.abort();
       passwordAbortRef.current?.abort();
     };
-  }, [customerId, loadAccounts]);
+  }, [customerId, canRead, loadAccounts]);
 
   const openCreate = () => {
     if (!canCreate) {
@@ -200,10 +206,11 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
     try {
       const now = new Date().toISOString();
       const operatorName = employee?.name || '管理员';
+      const safeForm = canViewPassword ? form : Object.fromEntries(Object.entries(form).filter(([key]) => key !== 'login_password'));
       if (targetEditingId) {
         await client.entities.media_accounts.update({
           id: String(targetEditingId),
-          data: { ...form, updated_at: now },
+          data: { ...safeForm, updated_at: now },
         });
         if (activeCustomerIdRef.current !== targetCustomerId) return;
         toast.success('媒体账号已更新');
@@ -215,7 +222,7 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
         });
       } else {
         await client.entities.media_accounts.create({
-          data: { ...form, customer_id: targetCustomerId, created_at: now, updated_at: now },
+          data: { ...safeForm, customer_id: targetCustomerId, created_at: now, updated_at: now },
         });
         if (activeCustomerIdRef.current !== targetCustomerId) return;
         toast.success('媒体账号已添加');
@@ -252,6 +259,7 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
       if (activeCustomerIdRef.current !== targetCustomerId) return;
       toast.success('媒体账号已删除');
       const operatorName = employee?.name || '管理员';
+      const safeForm = canViewPassword ? form : Object.fromEntries(Object.entries(form).filter(([key]) => key !== 'login_password'));
       logOperation({
         customerId: targetCustomerId,
         actionType: 'delete_media_account',
@@ -346,6 +354,7 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
     );
   }
 
+  if (!canRead) return <p className="py-6 text-sm text-slate-500">未授权查看此客户的媒体账号。</p>;
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -377,6 +386,7 @@ export default function MediaAccountsTab({ customerId, customerName }: Props) {
               <Label className="text-xs">登录密码</Label>
               <Input
                 type="password"
+                disabled={!canViewPassword}
                 value={form.login_password}
                 onChange={e => setForm({ ...form, login_password: e.target.value })}
                 placeholder={editingId && editingHasPassword ? '留空则保留原密码，填写则更新' : '登录密码'}

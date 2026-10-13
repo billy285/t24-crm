@@ -1,11 +1,12 @@
 import json
 import logging
 from typing import List, Literal, Optional
+from types import SimpleNamespace
 
 from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,7 @@ from schemas.auth import UserResponse
 from services.customers import CustomersService
 from services.customer_scope import ensure_customer_access
 from models.customers import Customers
-from models.customer_access_grants import CustomerAccessGrant
+from models.customer_access_grants import CustomerAccessGrant, CustomerAccessAudit
 from models.employees import Employees
 from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from services.commissions import auto_assign_new_customer
@@ -23,6 +24,11 @@ from services.management_decision_workflow import save_customer_classification_r
 from services.operation_logs import Operation_logsService, build_server_operation_log_data
 from services.role_permissions import require_any_page_permission, require_button_permission
 from services.phone_numbers import parse_phone_number
+from services.customer_record_audit import record_customer_change
+from services.customer_permissions import (
+    GRANT_FIELDS, MODULES, customer_permissions_for_rows, get_customer_owner_user,
+    get_customer_permissions, grant_snapshot, is_customer_owner, preview_customer_permissions,
+)
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -81,9 +87,8 @@ def _assigned_to_current_user(data: dict, user: UserResponse) -> dict:
 
 
 def _strip_owner_fields_for_non_admin(update_dict: dict, user: UserResponse) -> dict:
-    if _is_admin_role(user):
-        return update_dict
-    return {key: value for key, value in update_dict.items() if key not in CUSTOMER_OWNER_FIELDS}
+    # Every update path checks reassign permission before reaching this point.
+    return update_dict
 
 
 # ---------- Pydantic Schemas ----------
@@ -191,6 +196,7 @@ class CustomersResponse(BaseModel):
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    effective_permissions: dict = Field(default_factory=dict)
 
     class Config:
         from_attributes = True
@@ -225,31 +231,53 @@ class CustomersBatchDeleteRequest(BaseModel):
     ids: List[int]
 
 
-class CustomerAccessMember(BaseModel):
+class CustomerAccessAssignment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    employee_id: int = Field(gt=0)
+    access_level: Literal["none", "read_only", "read_write"] = "read_only"
+    scopes: dict[Literal["basic", "followups", "delivery", "materials"], Literal["none", "read_only", "read_write"]] = Field(default_factory=dict)
+    finance_access: Literal["none", "status", "receipts", "profit"] = "none"
+    can_export: bool = False
+    can_delete: bool = False
+    can_reassign: bool = False
+
+    @model_validator(mode="after")
+    def no_hidden_permissions(self):
+        if self.access_level == "none":
+            self.scopes = {name: "none" for name in MODULES}
+            self.finance_access = "none"
+            self.can_export = self.can_delete = self.can_reassign = False
+        if self.access_level != "read_write":
+            self.can_delete = self.can_reassign = False
+        return self
+
+
+class CustomerAccessMember(CustomerAccessAssignment):
     employee_id: int
     name: str
     role: str
     department: Optional[str] = None
     employee_code: Optional[str] = None
-    access_level: Literal["read_only", "read_write"] = "read_write"
-
-
-class CustomerAccessAssignment(BaseModel):
-    employee_id: int = Field(gt=0)
-    access_level: Literal["read_only", "read_write"] = "read_write"
+    email: Optional[str] = None
+    status: Optional[str] = None
+    explicit: bool = False
+    effective_permissions: dict = Field(default_factory=dict)
 
 
 class CustomerAccessResponse(BaseModel):
     customer_id: int
     members: List[CustomerAccessMember]
+    eligible_employees: list[dict] = Field(default_factory=list)
 
 
 class CustomerAccessUpdateRequest(BaseModel):
-    members: List[CustomerAccessAssignment] = Field(default_factory=list)
+    model_config = ConfigDict(extra="forbid")
+    members: List[CustomerAccessAssignment] = Field(default_factory=list, max_length=200)
     employee_ids: Optional[List[int]] = None
 
 
 class CustomerAccessBulkUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     customer_ids: List[int] = Field(min_length=1, max_length=200)
     operation: Literal["upsert", "remove"]
     members: List[CustomerAccessAssignment] = Field(min_length=1, max_length=100)
@@ -259,6 +287,11 @@ class CustomerAccessBulkResponse(BaseModel):
     customer_count: int
     member_count: int
     updated_grants: int
+
+
+class CustomerPrivateNoteInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    private_notes: Optional[str] = Field(default=None, max_length=30000)
 
 
 class CustomerProjectInput(BaseModel):
@@ -335,44 +368,98 @@ async def _ensure_owner_visibility_grant(db: AsyncSession, customer: Customers, 
             granted_by_id=str(actor.id),
             granted_by_name=actor.name or actor.email,
         ))
-    else:
-        existing.access_level = "read_write"
+    # Never undo an explicit owner-reviewed denial or read-only setting merely
+    # because the sales owner changed.
 
 
 def _actor_name(user: UserResponse) -> str:
     return user.name or user.email or "管理员"
 
 
-def _access_assignment_map(data: CustomerAccessUpdateRequest | CustomerAccessBulkUpdateRequest) -> dict[int, str]:
-    assignments = {item.employee_id: item.access_level for item in data.members}
+def _access_assignment_map(data: CustomerAccessUpdateRequest | CustomerAccessBulkUpdateRequest) -> dict[int, dict]:
+    assignments = {item.employee_id: item.model_dump() for item in data.members}
+    if len(assignments) != len(data.members):
+        raise HTTPException(status_code=400, detail="同一员工不能重复设置权限")
     if isinstance(data, CustomerAccessUpdateRequest) and data.employee_ids is not None:
-        assignments.update({employee_id: "read_write" for employee_id in data.employee_ids})
+        for employee_id in data.employee_ids:
+            assignments.setdefault(employee_id, CustomerAccessAssignment(employee_id=employee_id).model_dump())
     return assignments
 
 
-async def _eligible_access_employees(db: AsyncSession, employee_ids: set[int]) -> dict[int, Employees]:
+async def _eligible_access_employees(db: AsyncSession, employee_ids: set[int], *,
+                                    existing: dict[int, dict] | None = None,
+                                    assignments: dict[int, dict] | None = None,
+                                    removing: bool = False) -> dict[int, Employees]:
     employees = list((await db.execute(
         select(Employees).where(
             Employees.id.in_(employee_ids),
-            Employees.status.in_(("active", "probation")),
-            Employees.role.in_(("sales", "sales_manager", "ops", "operations", "design")),
+            Employees.role.in_(("admin", "finance", "sales", "sales_manager", "ops", "operations", "design")),
         )
     )).scalars().all()) if employee_ids else []
-    employee_by_id = {employee.id: employee for employee in employees}
+    def allowed(employee):
+        if employee.status in {"active", "probation"}:
+            return True
+        previous = (existing or {}).get(employee.id)
+        requested = (assignments or {}).get(employee.id)
+        # A stopped team member must not prevent editing other members. Keep
+        # exactly the existing rule or remove/deny it; never grant an upgrade.
+        return previous is not None and (removing or requested == previous or (requested or {}).get("access_level") == "none")
+    employee_by_id = {employee.id: employee for employee in employees if allowed(employee)}
     if set(employee_by_id) != employee_ids:
-        raise HTTPException(status_code=400, detail="只能添加在职的销售、运营或设计团队成员")
+        raise HTTPException(status_code=400, detail="只能设置在职的内部员工；老板权限及外部渠道不在客户共享范围内")
     return employee_by_id
 
 
-def _customer_access_member(grant: CustomerAccessGrant, employee: Employees) -> CustomerAccessMember:
-    return CustomerAccessMember(
-        employee_id=employee.id,
-        name=employee.name,
-        role=employee.role,
-        department=employee.department,
-        employee_code=employee.employee_code,
-        access_level=grant.access_level or "read_write",
-    )
+async def _access_response(db: AsyncSession, customer: Customers) -> CustomerAccessResponse:
+    grants = {row.employee_id: row for row in (await db.execute(
+        select(CustomerAccessGrant).where(CustomerAccessGrant.customer_id == customer.id)
+    )).scalars()}
+    employees = list((await db.execute(select(Employees).order_by(Employees.name))).scalars())
+    members, eligible = [], []
+    for employee in employees:
+        user = SimpleNamespace(id=str(employee.id), role=employee.role, name=employee.name)
+        permission = (await customer_permissions_for_rows(db, user, [customer]))[customer.id]
+        base = {"employee_id": employee.id, "name": employee.name, "role": employee.role,
+                "email": employee.email, "status": employee.status, "department": employee.department,
+                "employee_code": employee.employee_code}
+        if employee.status in {"active", "probation"} and employee.role in {"admin", "finance", "sales", "sales_manager", "ops", "operations", "design"}:
+            eligible.append({"id": employee.id, **base, "effective_permissions": permission})
+        grant = grants.get(employee.id)
+        if grant is not None or permission["access_level"] != "none":
+            assignment = grant_snapshot(grant) if grant else CustomerAccessAssignment(employee_id=employee.id, access_level=permission["access_level"]).model_dump()
+            members.append(CustomerAccessMember(**{**assignment, **base}, explicit=grant is not None, effective_permissions=permission))
+    return CustomerAccessResponse(customer_id=customer.id, members=members, eligible_employees=eligible)
+
+
+async def _grant_snapshots(db: AsyncSession, customer_id: int) -> list[dict]:
+    return [grant_snapshot(row) for row in (await db.execute(select(CustomerAccessGrant).where(
+        CustomerAccessGrant.customer_id == customer_id).order_by(CustomerAccessGrant.employee_id))).scalars()]
+
+
+async def _audit_grants(db: AsyncSession, customer_id: int, actor: UserResponse, before: list[dict]):
+    after = await _grant_snapshots(db, customer_id)
+    if before != after:
+        db.add(CustomerAccessAudit(customer_id=customer_id, actor_id=str(actor.id), actor_name=_actor_name(actor), before=before, after=after))
+
+
+async def _customer_responses(db: AsyncSession, user: UserResponse, rows: list[Customers]) -> list[dict]:
+    permissions = await customer_permissions_for_rows(db, user, rows)
+    responses = []
+    for row in rows:
+        response = CustomersResponse.model_validate(row).model_dump()
+        effective = permissions[row.id]
+        if not effective["modules"]["basic"]["read"]:
+            response = {key: (value if key in {"id", "business_name"} else "" if key in {"phone", "contact_name"} else None)
+                        for key, value in response.items()}
+        response["effective_permissions"] = effective
+        responses.append(response)
+    return responses
+
+
+async def _check_owner_update(db: AsyncSession, user: UserResponse, customer: Customers, updates: dict):
+    if any(key in updates and updates[key] != getattr(customer, key) for key in CUSTOMER_OWNER_FIELDS):
+        await ensure_customer_access(db, user, customer.id, write=True, action="reassign")
+        await require_button_permission(db, user, "customer_assign", admin_override=True)
 
 
 def _new_customer_commission_date(
@@ -443,6 +530,7 @@ async def query_customerss(
             scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} customerss")
+        result["items"] = await _customer_responses(db, current_user, result["items"])
         return result
     except HTTPException:
         raise
@@ -483,6 +571,7 @@ async def query_customerss_all(
             scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} customerss")
+        result["items"] = await _customer_responses(db, current_user, result["items"])
         return result
     except HTTPException:
         raise
@@ -509,7 +598,7 @@ async def get_customers(
             logger.warning(f"Customers with id {id} not found")
             raise HTTPException(status_code=404, detail="Customers not found")
         
-        return result
+        return (await _customer_responses(db, current_user, [result]))[0]
     except HTTPException:
         raise
     except Exception as e:
@@ -524,10 +613,7 @@ async def get_customer_projects(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_customer_page(db, current_user)
-    service = CustomersService(db)
-    customer = await service.get_by_id(id, scope_user=current_user)
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customers not found")
+    await ensure_customer_access(db, current_user, id, module="delivery")
     rows = (await db.execute(
         select(CustomerEngagement, BusinessLine, ProductCatalog)
         .join(BusinessLine, BusinessLine.id == CustomerEngagement.business_line_id)
@@ -559,130 +645,133 @@ async def get_customer_projects(
 
 
 @router.get("/{id}/access", response_model=CustomerAccessResponse)
-async def get_customer_access(
-    id: int,
-    _admin: UserResponse = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """List employees explicitly invited to view a customer."""
-    if not await db.get(Customers, id):
+async def get_customer_access(id: int, _admin: UserResponse = Depends(get_customer_owner_user), db: AsyncSession = Depends(get_db)):
+    customer = await db.get(Customers, id)
+    if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    rows = (await db.execute(
-        select(CustomerAccessGrant, Employees)
-        .join(Employees, Employees.id == CustomerAccessGrant.employee_id)
-        .where(CustomerAccessGrant.customer_id == id)
-        .order_by(Employees.name.asc())
-    )).all()
-    return CustomerAccessResponse(
-        customer_id=id,
-        members=[
-            _customer_access_member(grant, employee)
-            for grant, employee in rows
-        ],
-    )
+    return await _access_response(db, customer)
 
 
 @router.put("/{id}/access", response_model=CustomerAccessResponse)
-async def replace_customer_access(
-    id: int,
-    data: CustomerAccessUpdateRequest,
-    admin: UserResponse = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Replace visibility without changing sales, project, or commission ownership."""
-    if not await db.get(Customers, id):
+async def replace_customer_access(id: int, data: CustomerAccessUpdateRequest, admin: UserResponse = Depends(get_customer_owner_user), db: AsyncSession = Depends(get_db)):
+    customer = (await db.execute(select(Customers).where(Customers.id == id).with_for_update())).scalar_one_or_none()
+    if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-
     assignments = _access_assignment_map(data)
-    requested_ids = sorted(assignments)
-    employee_by_id = await _eligible_access_employees(db, set(requested_ids))
+    before = await _grant_snapshots(db, id)
+    await _eligible_access_employees(db, set(assignments), existing={row["employee_id"]:row for row in before}, assignments=assignments)
+    try:
+        await db.execute(delete(CustomerAccessGrant).where(CustomerAccessGrant.customer_id == id))
+        await db.flush()
+        for employee_id, assignment in assignments.items():
+            db.add(CustomerAccessGrant(customer_id=id, **assignment, granted_by_id=str(admin.id), granted_by_name=_actor_name(admin)))
+        await db.flush()
+        await _audit_grants(db, id, admin, before)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    return await _access_response(db, customer)
 
-    await db.execute(delete(CustomerAccessGrant).where(CustomerAccessGrant.customer_id == id))
-    await db.flush()
-    for employee_id in requested_ids:
-        db.add(CustomerAccessGrant(
-            customer_id=id,
-            employee_id=employee_id,
-            access_level=assignments[employee_id],
-            granted_by_id=str(admin.id),
-            granted_by_name=admin.name or admin.email,
-        ))
+
+@router.post("/{id}/access/preview")
+async def preview_customer_access(id: int, data: CustomerAccessAssignment, _owner: UserResponse = Depends(get_customer_owner_user), db: AsyncSession = Depends(get_db)):
+    customer = await db.get(Customers, id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    employee = (await _eligible_access_employees(db, {data.employee_id}))[data.employee_id]
+    permissions = await preview_customer_permissions(db, employee, customer, data.model_dump())
+    visible = [name for name, value in permissions["modules"].items() if value["read"]]
+    if permissions["finance_access"] != "none":
+        visible.append("finance:" + permissions["finance_access"])
+    return {"employee_id": data.employee_id, "effective_permissions": permissions, "visible_sections": visible}
+
+
+@router.get("/{id}/access/history")
+async def customer_access_history(id: int, _owner: UserResponse = Depends(get_customer_owner_user), db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(select(CustomerAccessAudit).where(CustomerAccessAudit.customer_id == id).order_by(CustomerAccessAudit.id.desc()).limit(100))).scalars()
+    return {"items": [{"id": row.id, "actor_id": row.actor_id, "actor_name": row.actor_name, "created_at": row.created_at, "before": row.before, "after": row.after} for row in rows]}
+
+
+@router.get("/{id}/record-audits")
+async def customer_record_audits(id: int, _owner: UserResponse = Depends(get_customer_owner_user), db: AsyncSession = Depends(get_db)):
+    from models.customer_record_audits import CustomerRecordAudit
+    rows = (await db.execute(select(CustomerRecordAudit).where(CustomerRecordAudit.customer_id == id).order_by(CustomerRecordAudit.id.desc()).limit(100))).scalars()
+    return {"items": [{"id": row.id, "module": row.module, "entity_type": row.entity_type, "entity_id": row.entity_id, "actor_id": row.actor_id, "actor_name": row.actor_name, "action": row.action, "created_at": row.created_at, "before": row.before, "after": row.after} for row in rows]}
+
+
+@router.get("/{id}/private-note")
+async def get_customer_private_note(id: int, _owner: UserResponse = Depends(get_customer_owner_user), db: AsyncSession = Depends(get_db)):
+    customer = await db.get(Customers, id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return {"customer_id": id, "private_notes": customer.private_notes}
+
+
+@router.put("/{id}/private-note")
+async def update_customer_private_note(id: int, data: CustomerPrivateNoteInput, owner: UserResponse = Depends(get_customer_owner_user), db: AsyncSession = Depends(get_db)):
+    customer = (await db.execute(select(Customers).where(Customers.id == id).with_for_update())).scalar_one_or_none()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    customer.private_notes = data.private_notes
+    # Keep sensitive contents only in owner-only storage, never public logs.
+    from models.customer_record_audits import CustomerRecordAudit
+    db.add(CustomerRecordAudit(customer_id=id, module="private_notes", entity_type="customers", entity_id=id,
+        actor_id=str(owner.id), actor_name=_actor_name(owner), action="update", before={"private_notes": "[redacted]"}, after={"private_notes": "[redacted]"}))
     await db.commit()
-
-    return CustomerAccessResponse(
-        customer_id=id,
-        members=[
-            CustomerAccessMember(
-                employee_id=employee_id,
-                name=employee_by_id[employee_id].name,
-                role=employee_by_id[employee_id].role,
-                department=employee_by_id[employee_id].department,
-                employee_code=employee_by_id[employee_id].employee_code,
-                access_level=assignments[employee_id],
-            )
-            for employee_id in requested_ids
-        ],
-    )
+    return {"customer_id": id, "private_notes": customer.private_notes}
 
 
 @router.post("/access/bulk-update", response_model=CustomerAccessBulkResponse)
-async def bulk_update_customer_access(
-    data: CustomerAccessBulkUpdateRequest,
-    admin: UserResponse = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Add, update, or remove team members across selected customers."""
+async def bulk_update_customer_access(data: CustomerAccessBulkUpdateRequest, admin: UserResponse = Depends(get_customer_owner_user), db: AsyncSession = Depends(get_db)):
     customer_ids = sorted(set(data.customer_ids))
-    customers = set((await db.execute(
-        select(Customers.id).where(Customers.id.in_(customer_ids))
-    )).scalars().all())
+    customers = set((await db.execute(select(Customers.id).where(Customers.id.in_(customer_ids)).order_by(Customers.id).with_for_update())).scalars())
     if customers != set(customer_ids):
         raise HTTPException(status_code=404, detail="部分客户不存在，请刷新列表后重试")
-
     assignments = _access_assignment_map(data)
-    member_ids = set(assignments)
-    await _eligible_access_employees(db, member_ids)
     updated_grants = 0
-    if data.operation == "remove":
-        existing_count = len((await db.execute(
-            select(CustomerAccessGrant.id).where(
-                CustomerAccessGrant.customer_id.in_(customer_ids),
-                CustomerAccessGrant.employee_id.in_(member_ids),
-            )
-        )).scalars().all())
-        await db.execute(delete(CustomerAccessGrant).where(
-            CustomerAccessGrant.customer_id.in_(customer_ids),
-            CustomerAccessGrant.employee_id.in_(member_ids),
-        ))
-        updated_grants = existing_count
-    else:
-        existing_rows = list((await db.execute(
-            select(CustomerAccessGrant).where(
-                CustomerAccessGrant.customer_id.in_(customer_ids),
-                CustomerAccessGrant.employee_id.in_(member_ids),
-            )
-        )).scalars().all())
-        existing_by_key = {(row.customer_id, row.employee_id): row for row in existing_rows}
+    try:
         for customer_id in customer_ids:
-            for employee_id, access_level in assignments.items():
-                existing = existing_by_key.get((customer_id, employee_id))
-                if existing:
-                    existing.access_level = access_level
+            before = await _grant_snapshots(db, customer_id)
+            await _eligible_access_employees(db, set(assignments), existing={row["employee_id"]:row for row in before}, assignments=assignments, removing=data.operation == "remove")
+            existing = {row.employee_id: row for row in (await db.execute(select(CustomerAccessGrant).where(CustomerAccessGrant.customer_id == customer_id))).scalars()}
+            for employee_id, assignment in assignments.items():
+                grant = existing.get(employee_id)
+                if data.operation == "remove":
+                    if grant:
+                        await db.delete(grant)
+                        updated_grants += 1
                 else:
-                    db.add(CustomerAccessGrant(
-                        customer_id=customer_id,
-                        employee_id=employee_id,
-                        access_level=access_level,
-                        granted_by_id=str(admin.id),
-                        granted_by_name=admin.name or admin.email,
-                    ))
-                updated_grants += 1
+                    if not grant:
+                        grant = CustomerAccessGrant(customer_id=customer_id, employee_id=employee_id)
+                        db.add(grant)
+                    for key in GRANT_FIELDS:
+                        setattr(grant, key, assignment[key])
+                    grant.granted_by_id, grant.granted_by_name = str(admin.id), _actor_name(admin)
+                    updated_grants += 1
+            await db.flush()
+            await _audit_grants(db, customer_id, admin, before)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    return CustomerAccessBulkResponse(customer_count=len(customer_ids), member_count=len(assignments), updated_grants=updated_grants)
+
+
+@router.post("/access/export")
+async def export_customers(data: CustomersBatchDeleteRequest, request: Request, user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await _require_customer_page(db, user)
+    await require_button_permission(db, user, "customer_export", admin_override=True)
+    if not data.ids or len(data.ids) > 2000:
+        raise HTTPException(status_code=400, detail="请选择 1 至 2000 位客户")
+    rows = []
+    for customer_id in sorted(set(data.ids)):
+        rows.append(await ensure_customer_access(db, user, customer_id, action="export"))
+    response = await _customer_responses(db, user, rows)
+    await Operation_logsService(db).create(build_server_operation_log_data(current_user=user, request=request,
+        action_type="export_data", action_detail=f"导出已授权客户 {len(rows)} 位（客户ID：{','.join(str(row.id) for row in rows)})"[:2000]), user_id=str(user.id), commit=False)
     await db.commit()
-    return CustomerAccessBulkResponse(
-        customer_count=len(customer_ids),
-        member_count=len(member_ids),
-        updated_grants=updated_grants,
-    )
+    return {"items": response, "total": len(response)}
 
 
 @router.post("", response_model=CustomersResponse, status_code=201)
@@ -707,7 +796,7 @@ async def create_customers(
         await db.refresh(result)
         
         logger.info(f"Customers created successfully with id: {result.id}")
-        return result
+        return (await _customer_responses(db, current_user, [result]))[0]
     except HTTPException:
         raise
     except ValueError as e:
@@ -725,6 +814,8 @@ async def create_customer_with_projects(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_customer_write(db, current_user, "customer_create")
+    if not is_customer_owner(current_user) and (request.projects or request.commission_partner_id is not None or request.commission_effective_from is not None):
+        raise HTTPException(status_code=403, detail="合作项目及分润归属配置仅老板可以设置")
     if len(request.projects) > 12:
         raise HTTPException(status_code=400, detail="单个客户最多维护12个合作项目")
     service = CustomersService(db)
@@ -757,7 +848,7 @@ async def create_customer_with_projects(
         )
         await db.commit()
         await db.refresh(customer)
-        return customer
+        return (await _customer_responses(db, current_user, [customer]))[0]
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -793,7 +884,7 @@ async def create_customerss_batch(
             await db.refresh(result)
         
         logger.info(f"Batch created {len(results)} customerss successfully")
-        return results
+        return await _customer_responses(db, current_user, results)
     except HTTPException:
         raise
     except Exception as e:
@@ -819,13 +910,15 @@ async def update_customerss_batch(
         for item in request.items:
             existing = await ensure_customer_access(db, current_user, item.id, write=True)
             _validate_customer_phone(item.updates.model_dump(exclude_none=True), existing)
+            await _check_owner_update(db, current_user, existing, item.updates.model_dump(exclude_none=True))
         for item in request.items:
-            await ensure_customer_access(db, current_user, item.id, write=True)
+            existing = await ensure_customer_access(db, current_user, item.id, write=True)
             if item.updates.status == "lost":
                 await _ensure_no_active_projects_before_direct_loss(db, item.id)
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
             update_dict = _strip_owner_fields_for_non_admin(update_dict, current_user)
+            record_customer_change(db, current_user, existing, "basic", changes=update_dict)
             result = await service.update(item.id, update_dict, scope_user=current_user, commit=False)
             if result:
                 if _is_admin_role(current_user) and CUSTOMER_OWNER_FIELDS.intersection(update_dict):
@@ -836,7 +929,7 @@ async def update_customerss_batch(
             await db.refresh(result)
 
         logger.info(f"Batch updated {len(results)} customerss successfully")
-        return results
+        return await _customer_responses(db, current_user, results)
     except HTTPException:
         raise
     except Exception as e:
@@ -859,24 +952,26 @@ async def update_customers(
     try:
         await _require_customer_write(db, current_user, "customer_edit")
         existing = await ensure_customer_access(db, current_user, id, write=True)
+        await _check_owner_update(db, current_user, existing, data.model_dump(exclude_none=True))
         _validate_customer_phone(data.model_dump(exclude_none=True), existing)
         if data.status == "lost":
             await _ensure_no_active_projects_before_direct_loss(db, id)
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
         update_dict = _strip_owner_fields_for_non_admin(update_dict, current_user)
-        owner_changed = _is_admin_role(current_user) and bool(CUSTOMER_OWNER_FIELDS.intersection(update_dict))
-        result = await service.update(id, update_dict, scope_user=current_user, commit=not owner_changed)
+        owner_changed = bool(CUSTOMER_OWNER_FIELDS.intersection(update_dict))
+        record_customer_change(db, current_user, existing, "basic", changes=update_dict)
+        result = await service.update(id, update_dict, scope_user=current_user, commit=False)
         if not result:
             logger.warning(f"Customers with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Customers not found")
         
         if owner_changed:
             await _ensure_owner_visibility_grant(db, result, current_user)
-            await db.commit()
-            await db.refresh(result)
+        await db.commit()
+        await db.refresh(result)
         logger.info(f"Customers {id} updated successfully")
-        return result
+        return (await _customer_responses(db, current_user, [result]))[0]
     except HTTPException:
         raise
     except ValueError as e:
@@ -896,6 +991,15 @@ async def update_customer_with_projects(
 ):
     await _require_customer_write(db, current_user, "customer_edit")
     existing = await ensure_customer_access(db, current_user, id, write=True)
+    await _check_owner_update(db, current_user, existing, request.customer.model_dump(exclude_none=True))
+    if request.projects:
+        if not is_customer_owner(current_user):
+            raise HTTPException(status_code=403, detail="合作项目及财务来源配置仅老板可以设置")
+        await ensure_customer_access(db, current_user, id, write=True, module="delivery")
+        await require_button_permission(db, current_user, "task_edit", admin_override=True)
+        # This composite endpoint can also change project owners and financial
+        # source links. Keep those high-impact actions separately authorized.
+        await ensure_customer_access(db, current_user, id, write=True, module="delivery", action="reassign")
     _validate_customer_phone(request.customer.model_dump(exclude_none=True), existing)
     if len(request.projects) > 12:
         raise HTTPException(status_code=400, detail="单个客户最多维护12个合作项目")
@@ -904,6 +1008,7 @@ async def update_customer_with_projects(
         _validate_customer_project_consistency(request.customer.status, request.projects)
         update_dict = {key: value for key, value in request.customer.model_dump().items() if value is not None}
         update_dict = _strip_owner_fields_for_non_admin(update_dict, current_user)
+        record_customer_change(db, current_user, existing, "basic", changes=update_dict)
         customer = await service.update(id, update_dict, scope_user=current_user, commit=False)
         if not customer:
             raise HTTPException(status_code=404, detail="Customers not found")
@@ -922,7 +1027,7 @@ async def update_customer_with_projects(
             )
         await db.commit()
         await db.refresh(customer)
-        return customer
+        return (await _customer_responses(db, current_user, [customer]))[0]
     except HTTPException:
         await db.rollback()
         raise
@@ -938,7 +1043,7 @@ async def update_customer_with_projects(
 async def delete_customerss_batch(
     request: CustomersBatchDeleteRequest,
     http_request: Request,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_customer_owner_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple customerss by their IDs"""
@@ -950,13 +1055,12 @@ async def delete_customerss_batch(
     try:
         customers = []
         for item_id in request.ids:
-            customer = await service.get_by_id(item_id, scope_user=current_user)
-            if not customer:
-                raise HTTPException(status_code=404, detail="Customers not found")
+            customer = await ensure_customer_access(db, current_user, item_id, write=True, action="delete")
             customers.append(customer)
 
         audit_service = Operation_logsService(db)
         for customer in customers:
+            record_customer_change(db, current_user, customer, "basic", deleted=True)
             await audit_service.create(
                 build_server_operation_log_data(
                     current_user=current_user,
@@ -989,7 +1093,7 @@ async def delete_customerss_batch(
 async def delete_customers(
     id: int,
     request: Request,
-    current_user: UserResponse = Depends(get_admin_user),
+    current_user: UserResponse = Depends(get_customer_owner_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single customers by ID"""
@@ -997,10 +1101,8 @@ async def delete_customers(
     
     service = CustomersService(db)
     try:
-        customer = await service.get_by_id(id, scope_user=current_user)
-        if not customer:
-            logger.warning(f"Customers with id {id} not found for deletion")
-            raise HTTPException(status_code=404, detail="Customers not found")
+        customer = await ensure_customer_access(db, current_user, id, write=True, action="delete")
+        record_customer_change(db, current_user, customer, "basic", deleted=True)
 
         await Operation_logsService(db).create(
             build_server_operation_log_data(

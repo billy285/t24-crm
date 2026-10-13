@@ -34,7 +34,7 @@ from services.owner_cockpit import build_owner_cockpit
 from services.business_intelligence import build_growth_dashboard
 
 
-router = APIRouter(prefix="/api/v1/management-decisions", tags=["management-decisions"])
+router = APIRouter(prefix="/api/v1/management-decisions", tags=["management-decisions"], dependencies=[Depends(get_finance_user)])
 
 
 def _can_write(user: UserResponse) -> bool:

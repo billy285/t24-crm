@@ -11,13 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from core.mask_crypto import encrypt_text
-from dependencies.auth import get_current_user
+from dependencies.auth import get_finance_user, get_current_user
 from models.employees import Employees
 from models.payroll import PayrollAuditLogs, PayrollItems, PayrollSheets
 from schemas.auth import UserResponse
 
 
-router = APIRouter(prefix="/api/v1/payroll", tags=["payroll"])
+router = APIRouter(prefix="/api/v1/payroll", tags=["payroll"], dependencies=[Depends(get_finance_user)])
 PAYROLL_ROLES = {"admin", "super_admin", "finance"}
 ADMIN_ROLES = {"admin", "super_admin"}
 PAYMENT_METHODS = {"alipay", "bank_card", "wechat", "cash", "other"}

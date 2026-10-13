@@ -10,26 +10,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.customers import Customers
 from services.customers import CustomersService
 
+CUSTOMER_MODULE_BY_TABLE = {
+    "customer_contacts": "basic", "follow_ups": "followups", "customer_callbacks": "followups",
+    "service_tasks": "delivery", "service_progresses": "delivery",
+    "customer_materials": "materials", "customer_menu_items": "materials", "customer_ai_copies": "materials",
+    "media_accounts": "materials", "payments": "finance", "expenses": "finance",
+    "subscriptions": "delivery", "deals": "delivery",
+}
+
 
 def apply_customer_scope(
     statement: Select,
     entity_model: Type[Any],
     scope_user: Optional[Any],
+    *,
+    module: str | None = None,
+    write: bool = False,
 ) -> Select:
     """Restrict a customer-linked entity statement to customers visible to a user."""
-    scope_filter = CustomersService._scope_filter_for_user(scope_user)
+    scope_filter = CustomersService._scope_filter_for_user(scope_user, write=write,
+        module=module or CUSTOMER_MODULE_BY_TABLE.get(getattr(entity_model, "__tablename__", ""), "basic"))
     if scope_filter is None:
         return statement
     return statement.join(Customers, entity_model.customer_id == Customers.id).where(scope_filter)
 
 
-async def ensure_customer_access(db: AsyncSession, scope_user: Any, customer_id: int, *, write: bool = False) -> Customers:
+async def ensure_customer_access(db: AsyncSession, scope_user: Any, customer_id: int, *, write: bool = False,
+                                 module: str = "basic", action: str | None = None) -> Customers:
     """Return the visible customer or fail without revealing whether it exists."""
     customer = await CustomersService(db).get_by_id(int(customer_id), scope_user=scope_user)
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    if write and not await CustomersService(db).get_by_id(int(customer_id), scope_user=scope_user, write=True):
-        raise HTTPException(status_code=403, detail="你对该客户只有只读权限，不能新增、修改或删除资料")
+    if not await CustomersService(db).get_by_id(int(customer_id), scope_user=scope_user, write=write, module=module, action=action):
+        raise HTTPException(status_code=403, detail="该客户的此项操作尚未授权；只读权限不能新增、修改或删除资料")
     return customer
 
 
@@ -37,11 +50,9 @@ def callback_customer_scope_filter(scope_user: Any):
     """Reuse the customer source-of-truth scope with callback role hardening."""
     role = str(getattr(scope_user, "role", "") or "").strip().lower()
     role = {"operations": "ops", "operation": "ops"}.get(role, role)
-    if role in {"admin", "super_admin"}:
-        return None
-    if role not in {"ops", "sales", "sales_manager"}:
+    if role not in {"admin", "super_admin", "ops", "sales", "sales_manager"}:
         return false()
-    return CustomersService._scope_filter_for_user(scope_user)
+    return CustomersService._scope_filter_for_user(scope_user, module="followups")
 
 
 def apply_callback_customer_scope(statement: Select, entity_model: Type[Any], scope_user: Any) -> Select:
@@ -57,6 +68,7 @@ async def ensure_callback_customer_access(
     customer_id: int,
     *,
     write: bool = False,
+    action: str | None = None,
 ) -> Customers:
     statement = select(Customers).where(Customers.id == int(customer_id))
     scope_filter = callback_customer_scope_filter(scope_user)
@@ -65,6 +77,4 @@ async def ensure_callback_customer_access(
     customer = (await db.execute(statement)).scalar_one_or_none()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    if write and not await CustomersService(db).get_by_id(int(customer_id), scope_user=scope_user, write=True):
-        raise HTTPException(status_code=403, detail="你对该客户只有只读权限，不能新增、修改或删除资料")
-    return customer
+    return await ensure_customer_access(db, scope_user, customer_id, write=write, module="followups", action=action)

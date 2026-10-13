@@ -41,7 +41,7 @@ async def interaction_api():
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
     async with session_maker() as session:
         session.add_all([
-            Employees(id=1, user_id="1", name="Admin", role="admin", status="active", email="interaction-1@example.com"),
+            Employees(id=1, user_id="1", name="Admin", role="super_admin", status="active", email="interaction-1@example.com"),
             Employees(id=11, user_id="11", name="Sales One", role="sales", status="active", email="interaction-11@example.com"),
             Employees(id=12, user_id="12", name="Sales Manager", role="sales_manager", status="active", email="interaction-12@example.com", department="Sales East"),
             Employees(id=13, user_id="13", name="Sales One", role="sales", status="active", email="interaction-13@example.com"),
@@ -60,8 +60,8 @@ async def interaction_api():
             Customers(id=107, business_name="Manager Other Department", contact_name="Owner", phone="107", sales_employee_id=15, sales_person="West Report"),
             Customers(id=108, business_name="Manager Inactive Department", contact_name="Owner", phone="108", sales_employee_id=16, sales_person="Inactive East"),
             Customers(id=109, business_name="Read-only Operations", contact_name="Owner", phone="109"),
-            CustomerAccessGrant(customer_id=102, employee_id=11, granted_by_name="Admin"),
-            CustomerAccessGrant(customer_id=104, employee_id=21, granted_by_name="Admin"),
+            CustomerAccessGrant(customer_id=102, employee_id=11, granted_by_name="Admin", access_level="read_write"),
+            CustomerAccessGrant(customer_id=104, employee_id=21, granted_by_name="Admin", access_level="read_write"),
             CustomerAccessGrant(customer_id=109, employee_id=21, access_level="read_only", granted_by_name="Admin"),
             Customer_callbacks(id=201, customer_id=101, employee_id=11, employee_name="Sales One", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="owned"),
             Customer_callbacks(id=202, customer_id=102, employee_id=11, employee_name="Sales One", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="granted"),
@@ -82,7 +82,7 @@ async def interaction_api():
             "(config_key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TIMESTAMP)"
         ))
         role_permissions = {
-            "admin": {
+            "super_admin": {
                 "pages": ["/customers", "/callbacks"],
                 "buttons": ["customer_edit"],
                 "dataScope": "all",
@@ -130,7 +130,7 @@ async def test_callback_list_all_and_id_are_server_scoped(interaction_api):
     client, _ = interaction_api
     sales = _headers("sales", 11, "Sales One")
     ops = _headers("ops", 21, "Ops One")
-    admin = _headers("admin", 1, "Admin")
+    admin = _headers("super_admin", 1, "Admin")
 
     sales_list = await client.get("/api/v1/entities/customer_callbacks?limit=100", headers=sales)
     sales_all = await client.get("/api/v1/entities/customer_callbacks/all?limit=100", headers=sales)
@@ -274,7 +274,7 @@ async def test_callback_writes_require_permission_and_visible_customer(interacti
     client, session = interaction_api
     sales = _headers("sales", 11, "Sales One")
     ops = _headers("ops", 21, "Ops One")
-    admin = _headers("admin", 1, "Admin")
+    admin = _headers("super_admin", 1, "Admin")
     payload = {
         "customer_id": 104,
         "employee_id": 21,
@@ -340,7 +340,7 @@ async def test_follow_up_and_contact_mutations_use_configured_buttons(interactio
     client, session = interaction_api
     sales = _headers("sales", 11, "Sales One")
     ops = _headers("ops", 21, "Ops One")
-    admin = _headers("admin", 1, "Admin")
+    admin = _headers("super_admin", 1, "Admin")
     finance = _headers("finance", 41, "Finance")
 
     follow_created = await client.post(

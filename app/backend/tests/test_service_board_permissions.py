@@ -43,12 +43,12 @@ async def service_board_api():
         session.add_all([
             Employees(id=71, user_id="71", name="Ops", role="ops", status="active", email="service-71@example.com"),
             Employees(id=72, user_id="72", name="Sales", role="sales", status="active", email="service-72@example.com"),
-            Employees(id=73, user_id="73", name="Admin", role="admin", status="active", email="service-73@example.com"),
+            Employees(id=73, user_id="73", name="Admin", role="super_admin", status="active", email="service-73@example.com"),
             Customers(id=9901, business_name="Scoped Service Customer", contact_name="Owner", phone="555-9901"),
             Customers(id=9902, business_name="Other Service Customer", contact_name="Other", phone="555-9902"),
-            CustomerAccessGrant(customer_id=9901, employee_id=71, granted_by_name="Admin"),
-            CustomerAccessGrant(customer_id=9902, employee_id=71, granted_by_name="Admin"),
-            CustomerAccessGrant(customer_id=9901, employee_id=72, granted_by_name="Admin"),
+            CustomerAccessGrant(customer_id=9901, employee_id=71, granted_by_name="Admin", access_level="read_write"),
+            CustomerAccessGrant(customer_id=9902, employee_id=71, granted_by_name="Admin", access_level="read_write"),
+            CustomerAccessGrant(customer_id=9901, employee_id=72, granted_by_name="Admin", access_level="read_write"),
             Service_progresses(
                 id=9911,
                 customer_id=9901,
@@ -95,7 +95,7 @@ async def service_board_api():
             "(config_key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TIMESTAMP)"
         ))
         permissions = {
-            "admin": {
+            "super_admin": {
                 "pages": ["/service-board"],
                 "buttons": ["task_create", "task_edit", "task_delete"],
                 "dataScope": "all",
@@ -205,7 +205,7 @@ async def test_sales_direct_service_board_deletes_are_forbidden(service_board_ap
 
 @pytest.mark.asyncio
 async def test_admin_can_delete_service_task_and_progress(service_board_api: AsyncClient):
-    headers = _headers("admin", 73)
+    headers = _headers("super_admin", 73)
 
     first_task_delete = await service_board_api.delete(
         "/api/v1/entities/service_tasks/9921",
@@ -356,7 +356,7 @@ async def test_generic_update_can_detach_progress_without_changing_customer(
 async def test_linked_progress_cannot_move_customer_or_be_deleted(
     service_board_api: AsyncClient,
 ):
-    headers = _headers("admin", 73)
+    headers = _headers("super_admin", 73)
 
     move_response = await service_board_api.put(
         "/api/v1/entities/service_progresses/9911",

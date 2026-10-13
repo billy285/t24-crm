@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_admin_user, get_current_user
+from dependencies.auth import get_finance_user, get_admin_user, get_current_user
 from models.company_roadmap import (
     CashAccount,
     CashAccountBalance,
@@ -34,7 +34,7 @@ from services.company_roadmap import (
 )
 
 
-router = APIRouter(prefix="/api/v1/company-roadmap", tags=["company-roadmap"])
+router = APIRouter(prefix="/api/v1/company-roadmap", tags=["company-roadmap"], dependencies=[Depends(get_finance_user)])
 ALLOWED_ROLES = {"admin", "super_admin", "finance"}
 ACCOUNT_TYPES = {"bank", "payment_platform", "cash", "other"}
 POTENTIAL_FULL_ACCOUNT_NUMBER = re.compile(r"(?:\d[\s./-]*){7,}")

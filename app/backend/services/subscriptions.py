@@ -38,7 +38,7 @@ class SubscriptionsService:
         """Get subscriptions by ID"""
         try:
             query = select(Subscriptions).where(Subscriptions.id == obj_id)
-            scope_filter = CustomersService(self.db)._scope_filter(scope_user)
+            scope_filter = CustomersService._scope_filter_for_user(scope_user, module="delivery")
             if scope_filter is not None:
                 query = query.join(Customers, Customers.id == Subscriptions.customer_id).where(scope_filter)
             result = await self.db.execute(query)
@@ -59,7 +59,7 @@ class SubscriptionsService:
         try:
             query = select(Subscriptions)
             count_query = select(func.count(Subscriptions.id))
-            scope_filter = CustomersService(self.db)._scope_filter(scope_user)
+            scope_filter = CustomersService._scope_filter_for_user(scope_user, module="delivery")
             if scope_filter is not None:
                 query = query.join(Customers, Customers.id == Subscriptions.customer_id).where(scope_filter)
                 count_query = count_query.join(Customers, Customers.id == Subscriptions.customer_id).where(scope_filter)

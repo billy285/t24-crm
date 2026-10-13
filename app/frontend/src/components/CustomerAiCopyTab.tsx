@@ -1,3 +1,5 @@
+import { useCustomerPermissions } from '@/lib/use-customer-permissions';
+import type { CustomerEffectivePermissions } from '@/lib/customer-permissions';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Copy, RefreshCw, RotateCcw, Search, Sparkles, Trash2 } from 'lucide-react';
@@ -157,11 +159,11 @@ interface Props {
 
 export default function CustomerAiCopyTab({ customer }: Props) {
   const businessDicts = useBusinessDicts();
-  const { canAccess, hasPermission, isAdmin } = useRole();
-  const canRead = canAccess('/customers') || canAccess('/service-board');
-  const canCreate = canRead && hasPermission('task_create');
-  const canEdit = canRead && hasPermission('task_edit');
-  const canDelete = canRead && (isAdmin || hasPermission('task_delete'));
+  const permission = useCustomerPermissions(Number(customer?.id || 0), customer?.effective_permissions);
+  const canRead = permission.modules.materials.read;
+  const canCreate = permission.modules.materials.write;
+  const canEdit = canCreate;
+  const canDelete = canEdit && permission.can_delete;
   const customerId = Number(customer?.id || 0);
   const activeCustomerIdRef = useRef(customerId);
   const copiesRequestSeqRef = useRef(0);

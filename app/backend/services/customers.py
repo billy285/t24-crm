@@ -52,26 +52,52 @@ class CustomersService:
         return owner_filters
 
     @classmethod
-    def _scope_filter_for_user(cls, scope_user: Optional[Any] = None, *, write: bool = False):
-        """Return a customer visibility or write filter for non-all-data roles."""
+    def _scope_filter_for_user(cls, scope_user: Optional[Any] = None, *, write: bool = False,
+                               module: str | None = None, action: str | None = None,
+                               finance_level: str = "status"):
+        """Explicit rules override inheritance, including denials and read-only.
+
+        module=None selects customer shells; each linked resource separately
+        checks its module. Only authenticated super_admin is unconditionally
+        trusted. A missing user remains the internal, non-HTTP service contract.
+        """
         if not scope_user:
             return None
 
         role = str(getattr(scope_user, "role", "") or "").lower()
-        if role in {"admin", "super_admin", "finance"}:
+        if role == "super_admin":
             return None
+        if role == "sales_partner":
+            return false()
 
         raw_user_id = getattr(scope_user, "id", None)
         try:
             employee_id = int(raw_user_id)
-            granted = Customers.id.in_(
-                select(CustomerAccessGrant.customer_id).where(
-                    CustomerAccessGrant.employee_id == employee_id,
-                    *([CustomerAccessGrant.access_level == "read_write"] if write else []),
-                )
-            )
+            all_grants = select(CustomerAccessGrant.customer_id).where(CustomerAccessGrant.employee_id == employee_id)
+            allowed = [CustomerAccessGrant.access_level.in_(("read_only", "read_write"))]
+            if write or action in {"delete", "reassign"}:
+                allowed.append(CustomerAccessGrant.access_level == "read_write")
+            if module == "finance":
+                levels = ("none", "status", "receipts", "profit")
+                if finance_level not in levels[1:]:
+                    raise ValueError("Invalid finance permission level")
+                allowed.append(CustomerAccessGrant.finance_access.in_(levels[levels.index(finance_level):]))
+            elif module is not None:
+                if module not in {"basic", "followups", "delivery", "materials"}:
+                    raise ValueError("Invalid customer permission module")
+                level = func.coalesce(CustomerAccessGrant.scopes[module].as_string(), CustomerAccessGrant.access_level)
+                allowed.append(level == "read_write" if write else level.in_(("read_only", "read_write")))
+            if action is not None:
+                if action not in {"delete", "export", "reassign"}:
+                    raise ValueError("Invalid customer permission action")
+                allowed.append(getattr(CustomerAccessGrant, "can_" + action).is_(True))
+            granted = Customers.id.in_(all_grants.where(*allowed))
             owner_filters = cls._owner_filters_for_user(scope_user, employee_id, role)
-            return or_(granted, *owner_filters) if owner_filters else granted
+            # Ownership never grants finance, destructive actions or exports.
+            if module == "finance" or action:
+                owner_filters = []
+            inherited = and_(~Customers.id.in_(all_grants), or_(*owner_filters)) if owner_filters else false()
+            return or_(granted, inherited)
         except (TypeError, ValueError):
             return false()
 
@@ -95,13 +121,16 @@ class CustomersService:
             logger.error(f"Error creating customers: {str(e)}")
             raise
 
-    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None, *, write: bool = False) -> Optional[Customers]:
+    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None, *, write: bool = False,
+                        module: str | None = None, action: str | None = None) -> Optional[Customers]:
         """Get customers by ID"""
         try:
             query = select(Customers).where(Customers.id == obj_id)
-            scope_filter = self._scope_filter_for_user(scope_user, write=write)
+            scope_filter = self._scope_filter_for_user(scope_user, write=write, module=module, action=action)
             if scope_filter is not None:
                 query = query.where(scope_filter)
+            if write or action in {"delete", "reassign"}:
+                query = query.with_for_update().execution_options(populate_existing=True)
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -124,9 +153,20 @@ class CustomersService:
             if scope_filter is not None:
                 query = query.where(scope_filter)
                 count_query = count_query.where(scope_filter)
+            # A shared project may expose only a customer name, not contacts.
+            # Filtering/sorting hidden basic fields must not become an oracle.
+            uses_basic_fields = any(field not in {"id", "business_name"} for field in (query_dict or {}))
+            uses_basic_fields = uses_basic_fields or bool(sort and sort.lstrip("-") not in {"id", "business_name"})
+            if uses_basic_fields:
+                basic_filter = self._scope_filter_for_user(scope_user, module="basic")
+                if basic_filter is not None:
+                    query = query.where(basic_filter)
+                    count_query = count_query.where(basic_filter)
             
             if query_dict:
                 for field, value in query_dict.items():
+                    if field == "private_notes":
+                        raise ValueError("Private notes cannot be used in customer list filters")
                     if hasattr(Customers, field):
                         query = query.where(getattr(Customers, field) == value)
                         count_query = count_query.where(getattr(Customers, field) == value)
@@ -135,6 +175,8 @@ class CustomersService:
             total = count_result.scalar()
 
             if sort:
+                if sort.lstrip("-") == "private_notes":
+                    raise ValueError("Private notes cannot be used in customer list sorting")
                 if sort.startswith('-'):
                     field_name = sort[1:]
                     if hasattr(Customers, field_name):
@@ -163,7 +205,7 @@ class CustomersService:
     ) -> Optional[Customers]:
         """Update customers"""
         try:
-            obj = await self.get_by_id(obj_id, scope_user=scope_user, write=True)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user, write=True, module="basic")
             if not obj:
                 logger.warning(f"Customers {obj_id} not found for update")
                 return None
@@ -192,7 +234,7 @@ class CustomersService:
     ) -> bool:
         """Delete customers"""
         try:
-            obj = await self.get_by_id(obj_id, scope_user=scope_user, write=True)
+            obj = await self.get_by_id(obj_id, scope_user=scope_user, write=True, action="delete")
             if not obj:
                 logger.warning(f"Customers {obj_id} not found for deletion")
                 return False

@@ -3,10 +3,14 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from fastapi import HTTPException
-from sqlalchemy import false, func, literal, or_, select
+from sqlalchemy import false, func, literal, or_, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.tasks import Tasks
+from models.customers import Customers
+from services.customers import CustomersService
+from services.customer_scope import ensure_customer_access
+from services.customer_record_audit import record_customer_change
 from models.automation import DataQualityIssue
 from models.company_roadmap import StrategyRecommendationDecision
 
@@ -20,9 +24,10 @@ class TasksService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, data: Dict[str, Any]) -> Optional[Tasks]:
+    async def create(self, data: Dict[str, Any], *, scope_user=None) -> Optional[Tasks]:
         """Create a new tasks"""
         try:
+            await self.validate_customer_write(scope_user, data)
             obj = Tasks(**data)
             self.db.add(obj)
             await self.db.commit()
@@ -33,6 +38,46 @@ class TasksService:
             await self.db.rollback()
             logger.error(f"Error creating tasks: {str(e)}")
             raise
+
+    @staticmethod
+    def customer_module(obj):
+        return "followups" if getattr(obj, "opportunity_id", None) else "delivery"
+
+    @staticmethod
+    def _customer_scope(query, scope_user):
+        if scope_user is None:
+            return query
+        def customer_ids(module):
+            statement = select(Customers.id)
+            predicate = CustomersService._scope_filter_for_user(scope_user, module=module)
+            return statement.where(predicate) if predicate is not None else statement
+        return query.where(or_(
+            Tasks.customer_id.is_(None),
+            and_(Tasks.opportunity_id.is_(None), Tasks.customer_id.in_(customer_ids("delivery"))),
+            and_(Tasks.opportunity_id.is_not(None), Tasks.customer_id.in_(customer_ids("followups"))),
+        ))
+
+    async def validate_customer_write(self, user, changes, existing=None, *, deleting=False):
+        if user is None:
+            return
+        module = self.customer_module(existing)
+        if existing is not None and existing.customer_id is not None:
+            action = "delete" if deleting else None
+            if not deleting and any(k in changes and changes[k] != getattr(existing, k) for k in ("assignee_id", "assignee_name", "collaborator_names", "customer_id")):
+                action = "reassign"
+            await ensure_customer_access(self.db, user, existing.customer_id, module=module, write=True, action=action)
+        target = changes.get("customer_id", getattr(existing, "customer_id", None))
+        if target is not None and (existing is None or target != existing.customer_id):
+            await ensure_customer_access(self.db, user, target, module=module, write=True)
+        # Automation/opportunity linkage is server managed. A client may not
+        # switch a delivery record into a different module to bypass its grant.
+        for field in ("opportunity_id", "source_type"):
+            value = changes.get(field)
+            prior = getattr(existing, field, None)
+            if field == "opportunity_id" and value is not None and value != prior:
+                raise HTTPException(status_code=403, detail="商机关联由系统维护")
+            if field == "source_type" and value in {"opportunity", "automation", "system"} and value != prior:
+                raise HTTPException(status_code=403, detail="系统任务来源不能手工设置")
 
     @staticmethod
     def _visibility_conditions(
@@ -87,6 +132,7 @@ class TasksService:
         unrestricted: bool = True,
         employee_ids: Optional[List[int]] = None,
         employee_names: Optional[List[str]] = None,
+        scope_user: Optional[Any] = None,
     ) -> Optional[Tasks]:
         """Get tasks by ID"""
         try:
@@ -97,6 +143,7 @@ class TasksService:
                 employee_ids=employee_ids,
                 employee_names=employee_names,
             )
+            query = self._customer_scope(query, scope_user)
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -112,6 +159,7 @@ class TasksService:
         unrestricted: bool = True,
         employee_ids: Optional[List[int]] = None,
         employee_names: Optional[List[str]] = None,
+        scope_user: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of taskss"""
         try:
@@ -131,6 +179,9 @@ class TasksService:
                 employee_names=employee_names,
             )
             
+            query = self._customer_scope(query, scope_user)
+            count_query = self._customer_scope(count_query, scope_user)
+
             if query_dict:
                 for field, value in query_dict.items():
                     if hasattr(Tasks, field):
@@ -172,6 +223,7 @@ class TasksService:
         unrestricted: bool = True,
         employee_ids: Optional[List[int]] = None,
         employee_names: Optional[List[str]] = None,
+        scope_user: Optional[Any] = None,
     ) -> Optional[Tasks]:
         """Update tasks"""
         try:
@@ -180,10 +232,14 @@ class TasksService:
                 unrestricted=unrestricted,
                 employee_ids=employee_ids,
                 employee_names=employee_names,
+                scope_user=scope_user,
             )
             if not obj:
                 logger.warning(f"Tasks {obj_id} not found for update")
                 return None
+            await self.validate_customer_write(scope_user, update_data, obj)
+            if obj.customer_id is not None:
+                record_customer_change(self.db, scope_user, obj, self.customer_module(obj), changes=update_data)
             for key, value in update_data.items():
                 if hasattr(obj, key):
                     setattr(obj, key, value)
@@ -257,6 +313,7 @@ class TasksService:
         unrestricted: bool = True,
         employee_ids: Optional[List[int]] = None,
         employee_names: Optional[List[str]] = None,
+        scope_user: Optional[Any] = None,
     ) -> bool:
         """Delete tasks"""
         try:
@@ -265,10 +322,12 @@ class TasksService:
                 unrestricted=unrestricted,
                 employee_ids=employee_ids,
                 employee_names=employee_names,
+                scope_user=scope_user,
             )
             if not obj:
                 logger.warning(f"Tasks {obj_id} not found for deletion")
                 return False
+            await self.validate_customer_write(scope_user, {}, obj, deleting=True)
             if obj.automation_issue_id:
                 raise ValueError("系统自动任务属于数据质量闭环，不能删除；可以完成并填写处理结果")
             if obj.opportunity_id:
@@ -285,6 +344,8 @@ class TasksService:
                     status_code=409,
                     detail="公司里程碑任务属于经营决策闭环，不能直接删除；请先在公司战略与里程碑中解除或调整决策",
                 )
+            if obj.customer_id is not None:
+                record_customer_change(self.db, scope_user, obj, self.customer_module(obj), deleted=True)
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted tasks {obj_id}")

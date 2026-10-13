@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.customer_contacts import Customer_contacts
 from services.customer_scope import apply_customer_scope, ensure_customer_access
 
+from services.customer_record_audit import record_customer_change
+
 logger = logging.getLogger(__name__)
 
 
@@ -97,7 +99,8 @@ class Customer_contactsService:
             if not obj:
                 logger.warning(f"Customer_contacts {obj_id} not found for update")
                 return None
-            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True)
+            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="basic")
+            record_customer_change(self.db, scope_user, obj, "basic", changes=update_data)
             for key, value in update_data.items():
                 if hasattr(obj, key):
                     setattr(obj, key, value)
@@ -118,7 +121,8 @@ class Customer_contactsService:
             if not obj:
                 logger.warning(f"Customer_contacts {obj_id} not found for deletion")
                 return False
-            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True)
+            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="basic", action="delete")
+            record_customer_change(self.db, scope_user, obj, "basic", deleted=True)
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted customer_contacts {obj_id}")

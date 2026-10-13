@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.follow_ups import Follow_ups
 from services.customer_scope import apply_customer_scope, ensure_customer_access
 
+from services.customer_record_audit import record_customer_change
+
 logger = logging.getLogger(__name__)
 
 
@@ -97,7 +99,8 @@ class Follow_upsService:
             if not obj:
                 logger.warning(f"Follow_ups {obj_id} not found for update")
                 return None
-            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True)
+            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="followups")
+            record_customer_change(self.db, scope_user, obj, "followups", changes=update_data)
             for key, value in update_data.items():
                 if hasattr(obj, key):
                     setattr(obj, key, value)
@@ -118,7 +121,8 @@ class Follow_upsService:
             if not obj:
                 logger.warning(f"Follow_ups {obj_id} not found for deletion")
                 return False
-            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True)
+            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="followups", action="delete")
+            record_customer_change(self.db, scope_user, obj, "followups", deleted=True)
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted follow_ups {obj_id}")

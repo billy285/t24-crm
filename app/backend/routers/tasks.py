@@ -6,7 +6,7 @@ from typing import Any, FrozenSet, List, Optional, Tuple
 from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import or_, select, text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -246,16 +246,18 @@ async def _get_scoped_task(
     service: TasksService,
     task_id: int,
     policy: TaskAccessPolicy,
+    current_user: UserResponse,
 ) -> Tasks:
     item = await service.get_by_id(
         task_id,
         unrestricted=policy.unrestricted,
         employee_ids=policy.employee_ids,
         employee_names=policy.employee_names,
+        scope_user=current_user,
     )
     if item:
         return item
-    if await service.get_by_id(task_id):
+    if await service.get_by_id(task_id, scope_user=current_user):
         raise HTTPException(status_code=403, detail="Task is outside your data scope")
     raise HTTPException(status_code=404, detail="Tasks not found")
 
@@ -264,7 +266,7 @@ async def _get_scoped_task(
 class TasksData(BaseModel):
     """Entity data schema (for create/update)"""
     title: str
-    customer_id: Optional[int] = None
+    customer_id: Optional[int] = Field(None, ge=1)
     opportunity_id: Optional[int] = None
     customer_name: Optional[str] = None
     assignee_id: Optional[int] = None
@@ -285,7 +287,7 @@ class TasksData(BaseModel):
 class TasksUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
     title: Optional[str] = None
-    customer_id: Optional[int] = None
+    customer_id: Optional[int] = Field(None, ge=1)
     opportunity_id: Optional[int] = None
     customer_name: Optional[str] = None
     assignee_id: Optional[int] = None
@@ -307,7 +309,7 @@ class TasksResponse(BaseModel):
     """Entity response schema"""
     id: int
     title: str
-    customer_id: Optional[int] = None
+    customer_id: Optional[int] = Field(None, ge=1)
     opportunity_id: Optional[int] = None
     customer_name: Optional[str] = None
     assignee_id: Optional[int] = None
@@ -405,6 +407,7 @@ async def query_taskss(
             unrestricted=policy.unrestricted,
             employee_ids=policy.employee_ids,
             employee_names=policy.employee_names,
+            scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} taskss")
         return result
@@ -449,6 +452,7 @@ async def query_taskss_all(
             unrestricted=policy.unrestricted,
             employee_ids=policy.employee_ids,
             employee_names=policy.employee_names,
+            scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} taskss")
         return result
@@ -504,7 +508,7 @@ async def get_tasks(
     try:
         policy = await _task_access_policy(db, current_user)
         _ensure_task_page(policy)
-        return await _get_scoped_task(service, id, policy)
+        return await _get_scoped_task(service, id, policy, current_user)
     except HTTPException:
         raise
     except Exception as e:
@@ -526,7 +530,7 @@ async def create_tasks(
         policy = await _task_access_policy(db, current_user)
         _ensure_task_button(policy, "task_create")
         create_data = _prepare_task_write(data.model_dump(), policy, creating=True)
-        result = await service.create(create_data)
+        result = await service.create(create_data, scope_user=current_user)
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create tasks")
         
@@ -562,7 +566,9 @@ async def create_taskss_batch(
             for item_data in request.items
         ]
         for item_data in prepared_items:
-            result = await service.create(item_data)
+            await service.validate_customer_write(current_user, item_data)
+        for item_data in prepared_items:
+            result = await service.create(item_data, scope_user=current_user)
             if result:
                 results.append(result)
         
@@ -593,8 +599,9 @@ async def update_taskss_batch(
         _ensure_task_button(policy, "task_edit")
         prepared_items = []
         for item in request.items:
-            existing = await _get_scoped_task(service, item.id, policy)
+            existing = await _get_scoped_task(service, item.id, policy, current_user)
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
+            await service.validate_customer_write(current_user, update_dict, existing)
             prepared_items.append((item.id, _prepare_task_write(
                 update_dict,
                 policy,
@@ -608,6 +615,7 @@ async def update_taskss_batch(
                 unrestricted=policy.unrestricted,
                 employee_ids=policy.employee_ids,
                 employee_names=policy.employee_names,
+                scope_user=current_user,
             )
             if result:
                 results.append(result)
@@ -639,7 +647,7 @@ async def update_tasks(
     try:
         policy = await _task_access_policy(db, current_user)
         _ensure_task_button(policy, "task_edit")
-        existing = await _get_scoped_task(service, id, policy)
+        existing = await _get_scoped_task(service, id, policy, current_user)
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
         update_dict = _prepare_task_write(update_dict, policy, creating=False, existing=existing)
@@ -649,6 +657,7 @@ async def update_tasks(
             unrestricted=policy.unrestricted,
             employee_ids=policy.employee_ids,
             employee_names=policy.employee_names,
+            scope_user=current_user,
         )
         if not result:
             logger.warning(f"Tasks with id {id} not found for update")
@@ -682,13 +691,15 @@ async def delete_taskss_batch(
         policy = await _task_access_policy(db, current_user)
         _ensure_task_button(policy, "task_delete")
         for item_id in request.ids:
-            await _get_scoped_task(service, item_id, policy)
+            existing = await _get_scoped_task(service, item_id, policy, current_user)
+            await service.validate_customer_write(current_user, {}, existing, deleting=True)
         for item_id in request.ids:
             success = await service.delete(
                 item_id,
                 unrestricted=policy.unrestricted,
                 employee_ids=policy.employee_ids,
                 employee_names=policy.employee_names,
+                scope_user=current_user,
             )
             if success:
                 deleted_count += 1
@@ -720,12 +731,13 @@ async def delete_tasks(
     try:
         policy = await _task_access_policy(db, current_user)
         _ensure_task_button(policy, "task_delete")
-        await _get_scoped_task(service, id, policy)
+        await _get_scoped_task(service, id, policy, current_user)
         success = await service.delete(
             id,
             unrestricted=policy.unrestricted,
             employee_ids=policy.employee_ids,
             employee_names=policy.employee_names,
+            scope_user=current_user,
         )
         if not success:
             logger.warning(f"Tasks with id {id} not found for deletion")
