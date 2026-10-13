@@ -20,6 +20,7 @@ BACKEND={'models/commissions.py','routers/commissions.py','routers/employees.py'
 OLD_REVISION='ab6d8e2f0411'
 NEW_REVISION='b3e7c1d9a614'
 DOCKERIGNORE=b'*\n!Dockerfile\n!Dockerfile.rollback\n!backend\n!backend/**\n'
+_TOOLS_CACHE=None
 PERSONAL=Path('/opt/t24-crm/releases/personal-finance-1a9232dcc04a-20261012-retry2/release.py')
 PERSONAL_SHA='a3d63f63a6c2b0483469c27a488f7c115848e63a603ad3f5fbdc92c16b382d16'
 ADDITIONS={'commission_agreements':{'calculation_version','renewal_policy'},'customer_commission_attributions':{'commission_mode','commission_start_date','first_service_start','history_basis'}}
@@ -56,8 +57,16 @@ def clone_networks(info):
 def runtime(info):
  return {'id':info['Id'],'image':info['Image'],'started':info['State']['StartedAt'],'restart':info['RestartCount'],'config':digest({'Config':info['Config'],'HostConfig':info['HostConfig'],'Mounts':info['Mounts'],'networks':clone_networks(info)})}
 def tools():
- b=read(PERSONAL,PERSONAL_SHA);spec=importlib.util.spec_from_loader('_commission_personal',loader=None);r=importlib.util.module_from_spec(spec);r.__file__=str(PERSONAL);exec(compile(b,str(PERSONAL),'exec'),r.__dict__)
- u=r.load_legacy('upgrade.py');base,nav,prep,switch=u.retained_tools(r.LEGACY);return r,u,base,prep,switch
+ global _TOOLS_CACHE
+ # Retained helpers reject loading their module identities twice. Cache only
+ # after the full hash-verified initialization succeeds, while still checking
+ # the entry helper's bytes on every boundary. Runtime/DB checks live outside
+ # this loader and are deliberately never cached.
+ b=read(PERSONAL,PERSONAL_SHA)
+ if _TOOLS_CACHE is not None:return _TOOLS_CACHE
+ spec=importlib.util.spec_from_loader('_commission_personal',loader=None);r=importlib.util.module_from_spec(spec);r.__file__=str(PERSONAL);exec(compile(b,str(PERSONAL),'exec'),r.__dict__)
+ u=r.load_legacy('upgrade.py');base,nav,prep,switch=u.retained_tools(r.LEGACY)
+ _TOOLS_CACHE=(r,u,base,prep,switch);return _TOOLS_CACHE
 
 def sql_snapshot(path,columns=None):
  con=sqlite3.connect(f'file:{path}?mode=ro',uri=True)

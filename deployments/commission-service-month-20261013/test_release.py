@@ -9,7 +9,7 @@ import sqlite3
 import subprocess
 import sys
 import tarfile
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -24,6 +24,7 @@ def module(name, filename):
 
 r = module("commission_release_tested", "release.py")
 b = module("commission_payload_tested", "build_payload.py")
+REAL_PRIVATE_BOUNDARY = r.private_boundary
 SOURCE = "1" * 40
 CANDIDATE = "sha256:" + "2" * 64
 ROLLBACK = "sha256:" + "3" * 64
@@ -36,6 +37,7 @@ def no_real_processes(monkeypatch):
     monkeypatch.setattr(subprocess, "run", forbidden)
     monkeypatch.setattr(subprocess, "check_output", forbidden)
     monkeypatch.setattr(r, "docker_request", forbidden)
+    monkeypatch.setattr(r, "_TOOLS_CACHE", None)
 
 
 def original_container():
@@ -650,3 +652,129 @@ def test_base_alias_rechecks_the_id_after_tag_creation(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="BASE_TAG_ID_DRIFT"):
         r.build_images(tmp_path, {"source_sha": SOURCE})
     assert not (tmp_path / "Dockerfile").exists()
+
+
+def install_single_load_trusted_helpers(lab, monkeypatch):
+    """Model the retained loader that refuses a duplicate sys.modules identity."""
+    counts = {"legacy_loads": 0, "retained_loads": 0, "personal_hash_checks": 0, "environment_reads": 0}
+    private = {"identity": {"inode": 42}, "schema_objects": {"mail": "unchanged"}}
+    env = lab.release / "synthetic-private.env"
+    env.write_bytes(b"SYNTHETIC=private\n")
+    helper = lab.release / "synthetic-helper.py"
+    helper.write_bytes(b"LEGACY = 'synthetic'\ndef load_legacy(name):\n return _synthetic_load(name)\n")
+    pins = {"environment_sha256": r.H(env.read_bytes()), "databases": {"private": private}, "roles": {}}
+    for role in ("api", "worker"):
+        pins["roles"][role] = {"id": "private-" + role, "image": "immutable", "attempt": "same", "source": "same", "runtime": {"role": role}}
+    base = SimpleNamespace(ENV=env, PRIVATE_DB="synthetic-private.db", BUSINESS=lab.business,
+        public_check=Mock(), file_map=lambda root: {})
+    prep = SimpleNamespace(release_snapshot=Mock(return_value={"private": private}))
+    switch = SimpleNamespace(environment=lambda info: {})
+    def retained_tools(path):
+        counts["retained_loads"] += 1
+        if counts["retained_loads"] > 1:
+            raise RuntimeError("RETAINED_TOOL_MODULE_ALREADY_LOADED")
+        return base, None, prep, switch
+    legacy = SimpleNamespace(retained_tools=retained_tools, own_role=Mock(side_effect=lambda *args: {"role": args[3]}))
+    def load(name):
+        assert name == "upgrade.py"
+        counts["legacy_loads"] += 1
+        return legacy
+    compiled_module = ModuleType("_commission_personal_synthetic")
+    compiled_module._synthetic_load = load
+    monkeypatch.setattr(r.importlib.util, "module_from_spec", lambda spec: compiled_module)
+    monkeypatch.setattr(r, "PERSONAL", helper)
+    monkeypatch.setattr(r, "PERSONAL_SHA", r.H(helper.read_bytes()))
+    original_read = r.read
+    def read(path, expected=None):
+        if Path(path) == helper:
+            counts["personal_hash_checks"] += 1
+        elif Path(path) == env:
+            counts["environment_reads"] += 1
+        return original_read(path, expected)
+    monkeypatch.setattr(r, "read", read)
+    original_inspect = r.inspect
+    inspections = []
+    def inspect(name):
+        inspections.append(name)
+        return {"Id": name} if name.startswith("t24-private-") else original_inspect(name)
+    monkeypatch.setattr(r, "inspect", inspect)
+    monkeypatch.setattr(r, "private_boundary", REAL_PRIVATE_BOUNDARY)
+    return SimpleNamespace(counts=counts, pins=pins, env=env, helper=helper, prep=prep, legacy=legacy, inspections=inspections)
+
+
+def assert_live_checks_and_one_load(helpers, expected_boundaries):
+    assert helpers.counts == {"legacy_loads": 1, "retained_loads": 1,
+        "personal_hash_checks": expected_boundaries, "environment_reads": expected_boundaries}
+    assert helpers.prep.release_snapshot.call_count == expected_boundaries
+    assert helpers.legacy.own_role.call_count == 2 * expected_boundaries
+    for role in ("api", "worker"):
+        assert helpers.inspections.count("t24-private-" + role) == expected_boundaries
+
+
+def test_one_prepare_checks_head_and_tail_without_reloading_retained_modules(lab, monkeypatch):
+    helpers = install_single_load_trusted_helpers(lab, monkeypatch)
+    # Prepare's repeated live guards previously triggered the retained loader's
+    # duplicate-module rejection. Exercise actual prepare through its final guard.
+    (lab.release / "prepared.json").unlink()
+    (lab.release / "original-container.json").unlink()
+    lab.manifest["backend_before"] = {name: None if name == r.MIGRATION else "e" * 64 for name in r.BACKEND}
+    monkeypatch.setattr(r, "extract", lambda *args: None)
+    monkeypatch.setattr(r, "build_images", lambda *args: (CANDIDATE, ROLLBACK))
+    def inventory(name, paths):
+        if name == "t24-crm":
+            return lab.manifest["backend_before"]
+        if "candidate" in name:
+            return lab.manifest["backend_after"]
+        return {**lab.manifest["backend_before"], r.MIGRATION: lab.manifest["backend_after"][r.MIGRATION]}
+    monkeypatch.setattr(r, "inventory_in_container", inventory)
+    monkeypatch.setattr(r, "ready", lambda *args: None)
+    def run(command, code, timeout=180):
+        if code == "OFFLINE_MIGRATION_FAILED":
+            apply_additive_migration(lab.release / "probe-data/crm_prod.db")
+        else:
+            assert code in {"OFFLINE_STARTUP_FAILED", "OFFLINE_PROBE_STOP_FAILED"}
+        return b""
+    monkeypatch.setattr(r, "run", run)
+    boundary = r.current_boundary
+    counter = {"calls": 0}
+    def stop_after_tail(*args, **kwargs):
+        value = boundary(*args, **kwargs)
+        counter["calls"] += 1
+        if counter["calls"] == 2:
+            raise RuntimeError("SYNTHETIC_PREPARE_TAIL_VERIFIED")
+        return value
+    monkeypatch.setattr(r, "current_boundary", stop_after_tail)
+    with pytest.raises(RuntimeError, match="SYNTHETIC_PREPARE_TAIL_VERIFIED"):
+        r.prepare(lab.release, lab.args, lab.manifest, helpers.pins)
+    assert_live_checks_and_one_load(helpers, 2)
+    assert r.committed_revision() == r.OLD_REVISION  # Only the offline copy migrated.
+
+
+@pytest.mark.parametrize("fail_candidate,expected_boundaries", [(False, 3), (True, 2)])
+def test_activate_and_rollback_reuse_loader_but_recheck_private_state(lab, monkeypatch, fail_candidate, expected_boundaries):
+    helpers = install_single_load_trusted_helpers(lab, monkeypatch)
+    if fail_candidate:
+        lab.faults.add("candidate_ready")
+        with pytest.raises(RuntimeError, match="CANDIDATE_READINESS_TIMEOUT"):
+            r.activate(lab.release, lab.args, lab.manifest, helpers.pins)
+        assert json.loads((lab.release / "rollback.json").read_bytes())["stage"] == "ROLLED_BACK"
+    else:
+        r.activate(lab.release, lab.args, lab.manifest, helpers.pins)
+        assert json.loads((lab.release / "deployed.json").read_bytes())["deployed"] is True
+    assert_live_checks_and_one_load(helpers, expected_boundaries)
+
+
+def test_cached_loader_still_rejects_private_env_and_helper_hash_drift(lab, monkeypatch):
+    helpers = install_single_load_trusted_helpers(lab, monkeypatch)
+    r.current_boundary(helpers.pins)
+    helpers.env.write_bytes(b"SYNTHETIC=changed\n")
+    with pytest.raises(RuntimeError, match="PRIVATE_ENV_CHANGED"):
+        r.current_boundary(helpers.pins)
+    assert helpers.counts["retained_loads"] == 1
+    helpers.env.write_bytes(b"SYNTHETIC=private\n")
+    helpers.helper.write_bytes(b"changed trusted helper")
+    # lab.read verifies expected bytes; production read raises FILE_HASH_DRIFT.
+    with pytest.raises(AssertionError):
+        r.current_boundary(helpers.pins)
+    assert helpers.counts["retained_loads"] == 1
+    assert helpers.prep.release_snapshot.call_count == 1
