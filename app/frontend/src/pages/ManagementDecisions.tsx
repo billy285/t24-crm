@@ -1,3 +1,5 @@
+import ManagementActionDesk, { managementSourceTime } from '@/components/ManagementActionDesk';
+import './management-action-desk.css';
 import CompactFinanceTable from '@/components/CompactFinanceTable';
 import { CRM_COMMAND_TABLES } from '@/components/crm-command-tables';
 import './crm-command-compact.css';
@@ -407,6 +409,12 @@ export default function ManagementDecisions() {
   const [reopenProfitMonth, setReopenProfitMonth] = useState('');
   const [reopenReason, setReopenReason] = useState('');
   const [loading, setLoading] = useState(true);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [viewLoadedAt, setViewLoadedAt] = useState('');
+  const [growthLoadedAt, setGrowthLoadedAt] = useState('');
+  const [analysisView, setAnalysisView] = useState(searchParams.get('focus') === 'health' ? 'health' : searchParams.get('focus') === 'capacity' ? 'capacity' : 'economics');
+  const [reviewPreview, setReviewPreview] = useState(false);
+  const [reviewStopAcknowledged, setReviewStopAcknowledged] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
   const [bulkTaskLoading, setBulkTaskLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -464,6 +472,8 @@ export default function ManagementDecisions() {
       setData(response.data);
       setAutomation(automationResponse.data);
       setGrowth(growthResponse.data);
+      setViewLoadedAt(new Date().toISOString());
+      if (growthResponse.data) setGrowthLoadedAt(new Date().toISOString());
       if (growthResponse.data?.formal_monthly_profit?.rows) {
         setRateDrafts(Object.fromEntries(growthResponse.data.formal_monthly_profit.rows.map((row: any) => [row.year_month, {
           rate: row.exchange_rate == null ? '' : String(row.exchange_rate),
@@ -490,6 +500,7 @@ export default function ManagementDecisions() {
         method: 'GET', options: authOptions(),
       });
       setGrowth(response.data);
+      setGrowthLoadedAt(new Date().toISOString());
       if (response.data?.formal_monthly_profit?.rows) {
         setRateDrafts(Object.fromEntries(response.data.formal_monthly_profit.rows.map((row: any) => [row.year_month, {
           rate: row.exchange_rate == null ? '' : String(row.exchange_rate),
@@ -650,7 +661,8 @@ export default function ManagementDecisions() {
   };
   const changeProjectPage = (value: number) => { setProjectPage(value); const params = new URLSearchParams(searchParams); params.set('projectPage', String(value)); setSearchParams(params, { replace: true }); };
   useEffect(() => { setEconomicsVisibleCount(30); setHealthVisibleCount(20); }, [growth]);
-  useEffect(() => { const focus = searchParams.get('focus'); if (!loading && section === 'insights' && ['health', 'capacity'].includes(focus || '')) requestAnimationFrame(() => document.getElementById(`decision-${focus}`)?.scrollIntoView({ block: 'start' })); }, [loading, section]);
+  useEffect(() => { const focus = searchParams.get('focus'); setAnalysisView(focus === 'health' ? 'health' : focus === 'capacity' ? 'capacity' : 'economics'); }, [searchParams]);
+  useEffect(() => { setReviewPreview(false); setReviewStopAcknowledged(false); }, [reviewing, projectForms, reviewNote]);
 
   const visibleQualityIssues = useMemo(() => (automation?.items || []).filter(row => {
     const statusMatches = qualityStatusFilter === 'all'
@@ -818,37 +830,61 @@ export default function ManagementDecisions() {
   const economicsTotals = Object.entries(growth?.unit_economics.totals || {});
   const riskyHealth = (growth?.customer_health.items || []).filter(row => searchParams.get('health') === 'risk' ? ['risk', 'critical'].includes(row.level) : row.level !== 'healthy');
   const salesCapacitySummary = growth?.team_capacity.sales_lead_capacity || {};
-  const isFinancialInsights = section === 'insights';
   const profitCenter = growth?.formal_monthly_profit;
   const profitSummary = profitCenter?.summary;
   const currentMonth = today.slice(0, 7);
+  const contributionRanking = (growth?.unit_economics.business_lines || []).map(row => {
+    const lineProjects = (growth?.unit_economics.projects || []).filter(project => project.business_line_code === row.business_line_code);
+    const currencyProjects = lineProjects.filter(project => project.metrics.some(metric => metric.currency === row.currency));
+    const supported = currencyProjects.filter(project => project.confidence !== 'no_finance_data');
+    const hasEvidence = supported.length > 0;
+    const partial = supported.length < row.project_count || lineProjects.some(project => project.confidence === 'no_finance_data');
+    const inferred = supported.some(project => project.confidence === 'single_project_inferred');
+    return { ...row, hasEvidence, coverageLabel: !hasEvidence ? '财务数据待核实' : partial ? `覆盖不完整 · ${supported.length}/${row.project_count} 项` : inferred ? '含单项目自动归属' : '已直接关联' };
+  });
+
+  const reviewStoppingProjects = projectForms.filter(project => ['stopped', 'completed'].includes(project.status));
+  const changeAnalysisView = (value: string) => {
+    setAnalysisView(value);
+    const params = new URLSearchParams(searchParams);
+    params.set('section', 'insights');
+    if (value === 'economics') params.delete('focus'); else params.set('focus', value);
+    setSearchParams(params, { replace: true });
+  };
+  const requestReviewPreview = () => {
+    if (!reviewing || saving) return;
+    if (projectForms.some(row => !row.package_name.trim())) { toast.error('请填写每个项目的套餐或项目名称'); return; }
+    if (projectForms.some(row => ['active_paid', 'reactivated'].includes(row.status) && !row.paid_started_at)) { toast.error('付费合作中的项目必须填写第一笔有效收款日期'); return; }
+    setReviewPreview(true);
+  };
 
   return (
-    <div className="management-decisions-page t24-command-page calm-admin-page calm-decisions-page app-page space-y-5">
-      <div className="app-page-title gap-4">
-        <div>
-          <p className="app-page-kicker">{isFinancialInsights ? 'T24 Marketing · Operating Decisions' : 'T24 Marketing · Management Decisions'}</p>
-          <h1 className="app-page-heading">{isFinancialInsights ? '经营健康与决策' : '经营分类与项目'}</h1>
-          <p className="app-page-description">{isFinancialInsights ? '集中查看项目效益、客户健康与团队产能；公司人民币利润使用独立报表。' : '先处理风险和分类，再看项目规模与业务线留存；客户合作状态与独立项目继续分别管理。'}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <div className="management-decisions-page management-action-page t24-command-page calm-admin-page calm-decisions-page app-page space-y-5">
+      <div className="mgt-page-header">
+        <div><h1 className="app-page-heading">经营管理</h1></div>
+        <div className="mgt-header-actions">
           {sourceReturn && <Button variant="outline" onClick={() => navigate(sourceReturn)}>{getReturnLabel(sourceReturn)}</Button>}
-          <Button asChild variant="outline"><Link to={isFinancialInsights ? '/finance' : '/customer-lifecycle'}><ArrowLeft className="mr-2 h-4 w-4" />{isFinancialInsights ? '财务管理' : '客户生命周期'}</Link></Button>
-          <Button onClick={() => void loadData()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新数据</Button>
+          <Button variant="outline" aria-expanded={toolsOpen} aria-controls="management-tools" onClick={() => setToolsOpen(value => !value)}>管理工具</Button>
+          <Button variant="outline" onClick={() => void loadData()} disabled={loading}><RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />{loading ? '更新中' : '刷新'}</Button>
         </div>
       </div>
-
+      <div id="management-tools" className="mgt-tools-panel" hidden={!toolsOpen}>
+        <div className="mgt-tools-links">
+          <Button asChild variant="outline" size="sm"><Link to="/customer-lifecycle">客户生命周期</Link></Button>
+          {isAdmin && <Button asChild variant="outline" size="sm"><Link to="/rmb-profit">人民币利润预估</Link></Button>}
+          {!isMobile && <><Button variant="outline" size="sm" onClick={() => { changeSection('exceptions'); setToolsOpen(false); }}>扫描与处理记录</Button><Button variant="outline" size="sm" onClick={() => { changeSection('history'); setToolsOpen(false); }}>全部历史补录</Button></>}
+        </div>
       <details className="group rounded-xl border border-blue-200 bg-blue-50/45 shadow-sm">
         <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm"><ShieldCheck className="h-4 w-4" /></span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-800">{isFinancialInsights ? '老板管理口径' : '安全审核模式'}</p>
-            <p className="mt-0.5 truncate text-xs text-slate-500">{isFinancialInsights ? '财务原账不变，经营结果按锁定汇率汇总。' : '项目确认不会改变客户整体合作状态。'}</p>
+            <p className="text-sm font-semibold text-slate-800">管理口径</p>
+            <p className="mt-0.5 truncate text-xs text-slate-500">项目与客户状态分别管理</p>
           </div>
           <span className="ml-auto shrink-0 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700 group-open:bg-blue-100">查看计算口径</span>
         </summary>
         <div className="flex flex-col gap-4 border-t border-blue-100 px-4 py-4 lg:flex-row lg:items-end lg:justify-between">
-          <p className="max-w-2xl text-xs leading-5 text-slate-600">{isFinancialInsights ? '财务数据保持原账不变；本页按锁定月均汇率汇总，并只读已发放工资用于经营判断。' : '确认项目不会改变客户“合作中/已停止”状态；原收款、订阅和生命周期记录保持不变。'}</p>
+          <p className="max-w-2xl text-xs leading-5 text-slate-600">客户整体合作状态与独立项目分别管理。分类保存涉及停止或完成时，须先确认关联订阅的影响。财务核算沿用原规则。</p>
           <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-end lg:w-auto">
             <div><Label className="text-xs">统计开始</Label><Input type="date" min="2026-01-01" value={startDate} onChange={event => setStartDate(event.target.value)} className="mt-1 w-full bg-white sm:w-40" /></div>
             {isAdmin && <div className="hidden md:block"><Label className="text-xs">单人项目容量</Label><Input type="number" min={1} max={100} value={projectCapacityTarget} onChange={event => setProjectCapacityTarget(Math.max(1, Number(event.target.value) || 1))} className="mt-1 w-28 bg-white" /></div>}
@@ -857,65 +893,10 @@ export default function ManagementDecisions() {
         </div>
       </details>
 
-      <Card className="border-slate-200">
-        <CardContent className="flex flex-wrap items-center gap-2 p-2">
-          {[
-            ['overview', '经营总览', BarChart3],
-            ...(isAdmin ? [['insights', '项目效益·健康·产能', Gauge]] : []),
-            ['projects', '项目客户明细', BriefcaseBusiness],
-          ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" className="min-h-11" variant={section === value ? 'default' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
-          <div className="ml-auto hidden items-center gap-1 border-l border-slate-200 pl-2 md:flex" aria-label="辅助管理入口">
-            {[
-              ['exceptions', `数据质量 ${activeQualityCount || summary?.anomaly_count || 0}`, Database],
-              ['history', `历史补录 ${pendingCount}`, Clock3],
-            ].map(([value, label, Icon]: any[]) => <Button key={value} type="button" size="sm" variant={section === value ? 'secondary' : 'ghost'} onClick={() => changeSection(value)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}
-          </div>
-        </CardContent>
-      </Card>
 
-      {!['overview', 'insights', 'projects'].includes(section) && <MobileDesktopOnlyNotice title="该管理流程请在电脑端处理" description="手机版保留经营总览和老板决策摘要；项目状态、数据质量批处理和历史补录需要完整影响预览，因此仅在电脑端开放。" />}
-
-      {section === 'overview' && <div className="space-y-5">
-        <Card className="overflow-hidden border-blue-200 shadow-sm">
-          <CardHeader className="border-b border-blue-100 bg-blue-50/60 pb-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-600">现在先处理</p>
-                <h2 id="owner-decisions-heading" className="mt-1 text-lg font-semibold text-slate-950">老板待办与决策建议</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500">先处理真实风险和待确认分类，再决定招聘、投入与交付安排。</p>
-              </div>
-              <Badge className="bg-white text-blue-700 shadow-sm" variant="outline"><ListChecks className="mr-1.5 h-3.5 w-3.5" />决策优先</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="grid gap-5 p-4 lg:p-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-            <section aria-labelledby="owner-decisions-heading">
-              <div className="grid gap-3 sm:grid-cols-2">
-                {[
-                  ['高优先异常', summary?.high_anomaly_count || 0, '需要老板确认', AlertTriangle, 'border-red-200 bg-red-50 text-red-800'],
-                  ['自动风险提醒', summary?.risk_reminder_count || 0, '只提醒，不自动停止', AlertTriangle, 'border-amber-200 bg-amber-50 text-amber-800'],
-                  ['分类提示', warningTotal, '确认后才会写入', ShieldCheck, 'border-blue-200 bg-blue-50 text-blue-800'],
-                  ['待补录客户', pendingCount, '仅限历史数据', Clock3, 'border-orange-200 bg-orange-50 text-orange-800'],
-                ].map(([label, value, hint, Icon, activeClass]: any[]) => {
-                  const hasItems = Number(value) > 0;
-                  return <div key={label} className={`rounded-xl border p-4 ${hasItems ? activeClass : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                    <div className="flex items-center justify-between gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/80"><Icon className="h-4 w-4" /></span><strong className="text-2xl leading-none">{value}</strong></div>
-                    <p className="mt-3 text-sm font-semibold">{label}</p>
-                    <p className="mt-1 text-[11px] opacity-75">{hasItems ? hint : '当前无需处理'}</p>
-                  </div>;
-                })}
-              </div>
-            </section>
-            <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-4" aria-labelledby="owner-advice-heading">
-              <h3 id="owner-advice-heading" className="text-sm font-semibold text-slate-900">老板决策建议</h3>
-              <p className="mt-1 text-xs leading-5 text-slate-500">招聘和投入必须同时满足样本、留存与交付产能。</p>
-              <div className="mt-3 space-y-2.5">
-                {(data?.recommendations || []).map((row, index) => <div key={`${row.title}-${index}`} className={`rounded-xl border p-3.5 ${row.level === 'risk' ? 'border-red-200 bg-red-50 text-red-800' : row.level === 'growth' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-blue-200 bg-blue-50 text-blue-800'}`}><p className="text-sm font-semibold">{row.title}</p><p className="mt-1 text-xs leading-5">{row.message}</p></div>)}
-                <div className="rounded-xl border border-slate-200 bg-white p-3.5"><p className="text-sm font-semibold text-slate-800">多项目组合</p><div className="mt-2 space-y-2 text-xs text-slate-600">{Object.entries(summary?.multi_project_combinations || {}).map(([name, count]) => <div key={name} className="flex justify-between gap-4"><span>{name}</span><strong className="text-slate-900">{count} 位客户</strong></div>)}{Object.keys(summary?.multi_project_combinations || {}).length === 0 && <p className="text-slate-400">项目确认后显示交叉销售组合</p>}</div></div>
-              </div>
-            </section>
-          </CardContent>
-        </Card>
-
+        <details className="mgt-disclosure"><summary>经营规模、留存与建议</summary><div className="space-y-4">
+          <div className="mgt-advice-list">{(data?.recommendations || []).map((row, index) => <div key={`${row.title}-${index}`}><h3>{row.title}</h3><p>{row.message}</p></div>)}</div>
+          <div className="mgt-source-note">{Object.entries(summary?.multi_project_combinations || {}).map(([name, count]) => <span key={name}>{name} · {count} 位客户</span>)}</div>
         <section aria-labelledby="business-scale-heading" className="space-y-3">
           <div>
             <h2 id="business-scale-heading" className="text-base font-semibold text-slate-900">经营规模</h2>
@@ -937,24 +918,8 @@ export default function ManagementDecisions() {
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Object.entries(lineLabels).map(([code, label]) => { const metric = summary?.line_metrics?.[code]; return <div key={code} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between"><p className="font-semibold">{label}</p><Badge variant="outline">{metric?.active_count || 0} 合作中</Badge></div><div className="mt-3 grid grid-cols-3 gap-2 text-center"><div><p className="text-lg font-bold">{metric?.project_count || 0}</p><p className="text-[11px] text-slate-400">项目</p></div><div><p className="text-lg font-bold">{metric?.average_months ?? '-'}</p><p className="text-[11px] text-slate-400">平均月数</p></div><div><p className="text-lg font-bold">{metric?.churn_rate == null ? '-' : `${Math.round(metric.churn_rate * 100)}%`}</p><p className="text-[11px] text-slate-400">项目流失</p></div></div><p className="mt-3 text-[11px] text-slate-400">有效时长样本 {metric?.duration_sample_count || 0} 个</p></div>; })}</CardContent>
         </Card>
-      </div>}
-
-      {section === 'insights' && <div className="space-y-5">
-        {!growth && !loading && <Card className="border-amber-200 bg-amber-50"><CardContent className="p-6 text-sm text-amber-800">当前账号没有老板经营分析权限，或数据尚未加载。</CardContent></Card>}
-        {growth && <>
-          <nav className="calm-analysis-jumps" aria-label="经营分析内容">
-            <a href="#decision-economics">项目效益</a><a href="#decision-health">客户健康</a><a href="#decision-capacity">团队产能</a>
-          </nav>
-          <Card className="border-blue-200 bg-blue-50/50">
-            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-semibold text-slate-900">公司人民币利润已使用独立报表</p>
-                <p className="mt-1 text-xs leading-5 text-slate-600">月度、季度和年度预估统一在“人民币利润预估”查看；本页只保留项目、客户和团队经营判断。</p>
-              </div>
-              <Button asChild><Link to="/rmb-profit">查看人民币利润预估<ArrowLeft className="ml-2 h-4 w-4 rotate-180" /></Link></Button>
-            </CardContent>
-          </Card>
-
+        </div></details>
+        {isAdmin && growth && <>
           {!isMobile && <details className="rounded-xl border border-slate-200 bg-white">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">高级财务月结与历史口径</summary>
             <div className="space-y-4 border-t border-slate-200 p-4">
@@ -998,16 +963,55 @@ export default function ManagementDecisions() {
           </Card>
             </div>
           </details>}
+        </>}
+      </div>
+      <nav className="mgt-main-tabs" aria-label="经营管理视图">
+        {([['overview', '待处理'], ['projects', '全部项目'], ...(isAdmin ? [['insights', '经营分析']] : [])]).map(([value, label]) => <button key={value} type="button" aria-current={section === value || (value === 'overview' && ['history', 'exceptions'].includes(section)) ? 'page' : undefined} onClick={() => changeSection(value as Section)}>{label}</button>)}
+      </nav>
+      <div className="mgt-summary-strip" aria-label="项目规模">
+        <span>合作中项目 <strong>{summary?.active_project_count ?? '—'}</strong></span><span>已确认项目 <strong>{summary?.project_count ?? '—'}</strong></span><span>多项目客户 <strong>{summary?.multi_project_customers ?? '—'}</strong></span>
+        <span className="mgt-loaded-at">读取 {managementSourceTime(viewLoadedAt)}</span>
+      </div>
+      {!['overview', 'insights', 'projects'].includes(section) && <><Button variant="ghost" size="sm" onClick={() => changeSection('overview')}><ArrowLeft className="mr-1 h-3.5 w-3.5" />返回待处理</Button><MobileDesktopOnlyNotice title="该管理流程请在电脑端处理" description="手机可查看经营待办与依据；项目状态、数据质量批处理和历史补录仍在电脑端处理。" /></>}
+      {section === 'overview' && <ManagementActionDesk
+        automation={automation} items={data?.items || []} anomalies={data?.anomalies || []}
+        riskCount={summary?.risk_reminder_count || 0} warningCount={warningTotal} loadedAt={viewLoadedAt}
+        loading={loading} isAdmin={isAdmin} isMobile={isMobile} returnPath={currentDecisionPath()}
+        onReview={openReview} onCreateTask={createQualityTask} onHistory={() => changeSection('history')} onQuality={() => changeSection('exceptions')}
+      />}
+
+      {section === 'insights' && <div className="space-y-5">
+        {!growth && !loading && <Card className="border-amber-200 bg-amber-50"><CardContent className="p-6 text-sm text-amber-800">当前账号没有老板经营分析权限，或数据尚未加载。</CardContent></Card>}
+        {growth && <>
+          <div className="mgt-analysis-toolbar">
+            <div className="mgt-inbox-tabs" aria-label="经营分析内容">{[['economics', '项目效益'], ['health', '客户健康'], ['capacity', '团队产能']].map(([value, label]) => <button type="button" key={value} aria-pressed={analysisView === value} onClick={() => changeAnalysisView(value)}>{label}</button>)}</div>
+            <span className="mgt-source-note">读取 {managementSourceTime(growthLoadedAt)}</span>
+          </div>
+          <div className="mgt-analysis-period">
+            <NativeSelect aria-label="经营分析期间" value={profitPreset} onChange={changeProfitPreset} options={[{ value: 'month', label: '本月' }, { value: 'last_month', label: '上月' }, { value: 'quarter', label: '本季度' }, { value: 'last_quarter', label: '上季度' }, { value: 'year', label: '本年度' }, { value: 'all', label: '全部历史' }, { value: 'custom', label: '自定义时间' }]} />
+            <Input aria-label="分析开始日期" type="date" value={profitStartDate} onChange={event => { setProfitPreset('custom'); setProfitStartDate(event.target.value); }} />
+            <span>至</span><Input aria-label="分析结束日期" type="date" value={profitEndDate} max={today} onChange={event => { setProfitPreset('custom'); setProfitEndDate(event.target.value); }} />
+            <Button variant="outline" disabled={growthLoading} onClick={() => void loadGrowth()}>{growthLoading ? '读取中…' : '应用期间'}</Button>
+          </div>
+          {analysisView === 'economics' && <>
+          <section className="mgt-board mgt-ranking"><div className="mgt-board-head"><h2>业务贡献排行</h2><span>{growth.period.start_date} 至 {growth.period.end_date}</span></div>
+            {Array.from(new Set(contributionRanking.map(row => row.currency))).map(currency => <div key={currency}><div className="mgt-ranking-currency">{currency} · 可核算贡献利润</div><div className="mgt-ranking-header"><span>业务</span><span>项目</span><span>贡献利润</span><span>利润率</span></div>{contributionRanking.filter(row => row.currency === currency).slice().sort((a, b) => Number(b.hasEvidence) - Number(a.hasEvidence) || (a.hasEvidence && b.hasEvidence ? b.contribution_profit - a.contribution_profit : 0)).map((row, index) => <div key={row.business_line_code} className="mgt-ranking-row"><span><i>{row.hasEvidence ? String(index + 1).padStart(2, '0') : '—'}</i>{row.business_line}<small>{row.coverageLabel}</small></span><span>{row.project_count}</span><strong>{row.hasEvidence ? money(row.contribution_profit, currency) : '待核实'}</strong><span>{!row.hasEvidence || row.contribution_margin == null ? '—' : `${(row.contribution_margin * 100).toFixed(1)}%`}</span></div>)}</div>)}
+            {growth.unit_economics.business_lines.length === 0 && <p className="mgt-empty">当前期间暂无业务贡献数据</p>}
+            <p className="mgt-ranking-note">项目贡献并非公司净利润；不同币种分别排行。无财务数据 {growth.unit_economics.coverage.projects_without_finance_data} 个项目。</p>
+          </section>
+          <details className="mgt-disclosure"><summary>项目收支、数据覆盖与核算明细</summary>
           <Card id="decision-economics" className="calm-analysis-section border-slate-200">
-            <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><WalletCards className="h-5 w-5 text-blue-600" />项目级真实利润与单位经济</CardTitle><p className="mt-1 text-xs text-slate-500">{growth.unit_economics.definition}</p></div><Badge variant="outline">{growth.period.start_date} 至 {growth.period.end_date}</Badge></CardHeader>
+            <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><WalletCards className="h-5 w-5 text-blue-600" />项目级真实利润与单位经济</CardTitle><details className="mgt-disclosure"><summary>查看核算口径</summary><p>{growth.unit_economics.definition}</p></details></div><Badge variant="outline">{growth.period.start_date} 至 {growth.period.end_date}</Badge></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {economicsTotals.map(([currency, value]) => <div key={currency} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between"><p className="font-semibold">{currency} 可核算贡献利润</p><Badge className={value.contribution_profit >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>{value.contribution_profit >= 0 ? '正贡献' : '负贡献'}</Badge></div><p className={`mt-3 text-2xl font-bold ${value.contribution_profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(value.contribution_profit, currency)}</p><div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500"><span>服务收入 {money(value.service_revenue, currency)}</span><span>投流差价 {money(value.ad_spread, currency)}</span><span>退款 {money(value.service_refunds, currency)}</span><span>客户成本 {money(value.customer_cost, currency)}</span></div></div>)}
                 {economicsTotals.length === 0 && <div className="col-span-full rounded-xl border border-dashed p-6 text-center text-sm text-slate-400">当前期间暂无可核算项目收支</div>}
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="font-semibold text-blue-900">数据可信度</p><div className="mt-3 space-y-2 text-xs text-blue-800"><p>直接关联项目：{growth.unit_economics.coverage.direct_projects}</p><p>单项目自动归属：{growth.unit_economics.coverage.inferred_projects}</p><p>尚无财务数据：{growth.unit_economics.coverage.projects_without_finance_data}</p></div></div>
               </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800"><p className="font-semibold">核算护栏</p><p className="mt-1 leading-5">{growth.unit_economics.guardrails.join('；')}</p><div className="mt-2 flex flex-wrap gap-3">{Object.entries(growth.unit_economics.unallocated).flatMap(([name, currencies]) => Object.entries(currencies).filter(([, value]) => Number(value) !== 0).map(([currency, value]) => <span key={`${name}-${currency}`}>待分摊 {name}：{money(value, currency)}</span>))}</div></div>
-              <div><p className="mb-2 text-sm font-semibold text-slate-800">业务线单位经济</p><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{growth.unit_economics.business_lines.map(row => <div key={`${row.business_line_code}-${row.currency}`} className="rounded-xl border border-slate-200 p-4"><div className="flex items-center justify-between"><p className="font-semibold">{row.business_line}</p><Badge variant="outline">{row.project_count} 项 · {row.currency}</Badge></div><p className={`mt-3 text-xl font-bold ${row.contribution_profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(row.contribution_profit, row.currency)}</p><div className="mt-2 space-y-1 text-xs text-slate-500"><p>单项目平均贡献 {money(row.average_project_contribution, row.currency)}</p><p>贡献利润率 {row.contribution_margin == null ? '-' : `${(row.contribution_margin * 100).toFixed(1)}%`}</p></div></div>)}</div></div>
+              <details className="mgt-disclosure"><summary>数据覆盖与核算护栏</summary>              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800"><p className="font-semibold">核算护栏</p><p className="mt-1 leading-5">{growth.unit_economics.guardrails.join('；')}</p><div className="mt-2 flex flex-wrap gap-3">{Object.entries(growth.unit_economics.unallocated).flatMap(([name, currencies]) => Object.entries(currencies).filter(([, value]) => Number(value) !== 0).map(([currency, value]) => <span key={`${name}-${currency}`}>待分摊 {name}：{money(value, currency)}</span>))}</div></div>
+</details>
+              <details className="mgt-disclosure"><summary>业务线单位经济详情</summary>              <div><p className="mb-2 text-sm font-semibold text-slate-800">业务线单位经济</p><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{growth.unit_economics.business_lines.map(row => <div key={`${row.business_line_code}-${row.currency}`} className="rounded-xl border border-slate-200 p-4"><div className="flex items-center justify-between"><p className="font-semibold">{row.business_line}</p><Badge variant="outline">{row.project_count} 项 · {row.currency}</Badge></div><p className={`mt-3 text-xl font-bold ${row.contribution_profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(row.contribution_profit, row.currency)}</p><div className="mt-2 space-y-1 text-xs text-slate-500"><p>单项目平均贡献 {money(row.average_project_contribution, row.currency)}</p><p>贡献利润率 {row.contribution_margin == null ? '-' : `${(row.contribution_margin * 100).toFixed(1)}%`}</p></div></div>)}</div></div>
+</details>
       <details className="calm-admin-disclosure"><summary><span>项目收支明细</span><span className="text-xs font-normal text-slate-500">展开完整记录</span></summary>
               {!isMobile && <div className="overflow-x-auto"><CompactFinanceTable {...CRM_COMMAND_TABLES.unitEconomics} legacyClassName="w-full min-w-[1000px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户/项目</th><th className="px-3 py-3">业务线</th><th className="px-3 py-3">服务收入</th><th className="px-3 py-3">投流差价</th><th className="px-3 py-3">退款及手续费</th><th className="px-3 py-3">成本及分润</th><th className="px-3 py-3">贡献利润</th><th className="px-3 py-3">可信度</th></tr></thead><tbody>{growth.unit_economics.projects.slice(0, economicsVisibleCount).flatMap(project => project.metrics.map((metric, index) => { const currency = String(metric.currency); const profit = Number(metric.contribution_profit || 0); return <tr key={`${project.project_id}-${currency}`} className="border-b border-slate-100"><td className="px-3 py-3"><Link className="font-medium text-blue-700 hover:underline" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="text-xs text-slate-400">{project.product_name}</p></td><td className="px-3 py-3">{project.business_line}</td><td className="px-3 py-3">{money(Number(metric.service_revenue), currency)}</td><td className="px-3 py-3">{money(Number(metric.ad_spread), currency)}</td><td className="px-3 py-3">{money(Number(metric.service_refunds) + Number(metric.stripe_fee_burden), currency)}</td><td className="px-3 py-3">{money(Number(metric.customer_cost) + Number(metric.channel_commission), currency)}</td><td className={`px-3 py-3 font-semibold ${profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{money(profit, currency)}<p className="text-[11px] font-normal text-slate-400">利润率 {metric.contribution_margin == null ? '-' : `${(Number(metric.contribution_margin) * 100).toFixed(1)}%`}</p></td><td className="px-3 py-3"><Badge variant="outline">{project.confidence === 'direct' ? '直接关联' : project.confidence === 'single_project_inferred' ? '单项目推断' : '待关联'}</Badge></td></tr>; }))}</tbody></CompactFinanceTable></div>}
               {isMobile && <div className="workflow-data-cards" data-testid="mobile-project-economics">{growth.unit_economics.projects.slice(0, economicsVisibleCount).map(project => <article key={project.project_id} className="workflow-data-card"><Link className="text-base font-semibold text-blue-700" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="mt-1 text-sm text-slate-500">{project.business_line} · {project.product_name}</p>{project.metrics.map(metric => <div key={String(metric.currency)} className="mt-3 border-t border-dashed border-slate-200 pt-3"><dl className="workflow-data-fields">{[['服务收入', metric.service_revenue], ['投流差价', metric.ad_spread], ['服务退款', metric.service_refunds], ['手续费', metric.stripe_fee_burden], ['客户成本', metric.customer_cost], ['渠道分润', metric.channel_commission]].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><dd>{money(Number(value), String(metric.currency))}</dd></div>)}<div className="workflow-data-total"><dt>贡献利润</dt><dd className={Number(metric.contribution_profit) >= 0 ? 'text-emerald-700' : 'text-rose-700'}>{money(Number(metric.contribution_profit), String(metric.currency))}</dd></div><div><dt>利润率</dt><dd>{metric.contribution_margin == null ? '-' : `${(Number(metric.contribution_margin) * 100).toFixed(1)}%`}</dd></div></dl></div>)}<p className="mt-3 text-sm text-slate-500">数据关联：{project.confidence === 'direct' ? '直接关联' : project.confidence === 'single_project_inferred' ? '单项目推断' : '待关联'}</p></article>)}</div>}
@@ -1016,6 +1020,9 @@ export default function ManagementDecisions() {
             </CardContent>
           </Card>
 
+          </details>
+          </>}
+          {analysisView === 'health' && <>
           <Card id="decision-health" className="calm-analysis-section border-slate-200">
             <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-5 w-5 text-orange-600" />客户健康度与流失预警</CardTitle><p className="mt-1 text-xs text-slate-500">收款、续费、退款、任务、交付和回访共同评分；每日自动更新，只提醒不自动停止。</p></div><Badge variant="outline">更新至 {growth.customer_health.updated_through}</Badge></CardHeader>
             <CardContent className="space-y-4">
@@ -1025,6 +1032,8 @@ export default function ManagementDecisions() {
             </CardContent>
           </Card>
 
+          </>}
+          {analysisView === 'capacity' && <>
           <Card id="decision-capacity" className="calm-analysis-section border-slate-200">
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Users className="h-5 w-5 text-violet-600" />团队产能与招聘决策</CardTitle><p className="mt-1 text-xs text-slate-500">项目负载与逾期必须同时越线才建议招聘；销售招聘还要先看可复用线索池是否够用。</p></CardHeader>
             <CardContent className="space-y-4">
@@ -1038,11 +1047,12 @@ export default function ManagementDecisions() {
               </details>
             </CardContent>
           </Card>
+          </>}
         </>}
       </div>}
 
       {section === 'projects' && <Card className="border-slate-200">
-        <CardHeader className="gap-3"><div><CardTitle className="text-base">项目客户明细</CardTitle><p className="mt-1 text-xs text-slate-500">日常项目维护从客户管理进入；本页用于筛选、观察和调整状态。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={projectSearch} onChange={event => changeProjectFilter('projectSearch', event.target.value)} placeholder="客户、编号、套餐或负责人" className="w-64 pl-9" /></div><select value={projectLineFilter} onChange={event => changeProjectFilter('businessLine', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部业务</option><option value="os">餐饮与美业 OS</option>{Object.entries(lineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectStatusFilter} onChange={event => changeProjectFilter('projectStatus', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部状态</option>{Object.entries(projectStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectIndustryFilter} onChange={event => changeProjectFilter('industry', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部行业</option>{industries.map(value => <option key={value} value={value}>{value}</option>)}</select></div></CardHeader>
+        <CardHeader className="gap-3"><div><CardTitle className="text-base">项目台账</CardTitle><p className="mt-1 text-xs text-slate-500">日常项目维护从客户管理进入；本页用于筛选、观察和调整状态。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={projectSearch} onChange={event => changeProjectFilter('projectSearch', event.target.value)} placeholder="客户、编号、套餐或负责人" className="w-64 pl-9" /></div><select value={projectLineFilter} onChange={event => changeProjectFilter('businessLine', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部业务</option><option value="os">餐饮与美业 OS</option>{Object.entries(lineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectStatusFilter} onChange={event => changeProjectFilter('projectStatus', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部状态</option>{Object.entries(projectStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={projectIndustryFilter} onChange={event => changeProjectFilter('industry', event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="all">全部行业</option>{industries.map(value => <option key={value} value={value}>{value}</option>)}</select></div></CardHeader>
         <CardContent className="overflow-x-auto">{!isMobile && <CompactFinanceTable {...CRM_COMMAND_TABLES.businessProjects} legacyClassName="w-full min-w-[1050px] text-sm"><thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500"><th className="px-3 py-3">客户</th><th className="px-3 py-3">业务项目</th><th className="px-3 py-3">套餐/项目名称</th><th className="px-3 py-3">行业/负责人</th><th className="px-3 py-3">首次有效收款</th><th className="px-3 py-3">状态</th><th className="px-3 py-3">收费</th><th className="px-3 py-3 text-right">操作</th></tr></thead><tbody>{paginatedProjects.map(project => <tr key={project.id} className="border-b border-slate-100"><td className="px-3 py-3 font-medium"><Link className="text-blue-700 hover:underline" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><p className="text-xs font-normal text-slate-400">{project.customer_code || '-'}</p></td><td className="px-3 py-3">{project.business_line.name}</td><td className="px-3 py-3">{project.package_name || project.product.name}</td><td className="px-3 py-3">{project.industry || '-'}<p className="text-xs text-slate-400">{project.sales_person || '销售待分配'}</p></td><td className="px-3 py-3">{dateValue(project.paid_started_at) || '待首笔收款'}</td><td className="px-3 py-3"><Badge className={projectStatusClasses[project.status] || 'bg-slate-100 text-slate-700'}>{projectStatusLabels[project.status] || project.status}</Badge></td><td className="px-3 py-3">{project.billing_cycle || '-'} · {project.currency}</td><td className="px-3 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openStatus(project)} disabled={!isAdmin}>更改状态</Button></td></tr>)}</tbody></CompactFinanceTable>}
 {isMobile && <div className="workflow-data-cards" data-testid="mobile-management-projects">{paginatedProjects.map(project => <article key={project.id} className="workflow-data-card"><div className="flex items-start justify-between gap-3"><Link className="min-w-0 break-words text-base font-semibold text-blue-700" to={buildReturnLink(`/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions')}>{project.customer_name}</Link><Badge className={`shrink-0 ${projectStatusClasses[project.status] || ''}`}>{projectStatusLabels[project.status] || project.status}</Badge></div><p className="mt-1 text-sm text-slate-500">{project.business_line.name} · {project.package_name || project.product.name}</p><dl className="workflow-data-fields mt-3"><div><dt>负责人</dt><dd>{project.sales_person || '待分配'}</dd></div><div><dt>首次有效收款</dt><dd>{dateValue(project.paid_started_at) || '待首笔收款'}</dd></div><div><dt>行业</dt><dd>{project.industry || '未填写'}</dd></div><div><dt>收费</dt><dd>{project.billing_cycle || '-'} · {project.currency}</dd></div></dl><Button variant="outline" className="mt-3 min-h-11 w-full" onClick={() => navigate(buildReturnLink(`/customers?detail=${project.customer_id}&tab=service`, currentDecisionPath(), 'management-decisions'))}>查看客户与服务</Button></article>)}</div>}
           {paidOnly && !verifiedOs && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">核验客户名单尚未读取完成，无法用项目状态代替实收证据。请更新数据后重试。</p>}
@@ -1110,11 +1120,17 @@ export default function ManagementDecisions() {
       {section === 'history' && <Card className="border-slate-200"><CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle className="text-base">历史客户一次性补录</CardTitle><p className="mt-1 text-xs text-slate-500">新客户已改为在客户管理首次录入；这里只处理历史资料。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索客户名称或编号" className="w-64 pl-9" /></div><select value={reviewFilter} onChange={event => setReviewFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="pending">待审核</option><option value="needs_follow_up">稍后核对</option><option value="confirmed">已确认</option><option value="all">全部</option></select></div></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{visibleItems.map(item => <div key={item.customer_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.customer_name}</p><p className="mt-1 text-xs text-slate-400">{item.customer_code || `客户 #${item.customer_id}`} · {item.industry || '行业待补充'}</p></div><Badge className={item.review_status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : item.review_status === 'needs_follow_up' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'}>{reviewLabels[item.review_status]}</Badge></div><div className="mt-3 flex flex-wrap gap-1.5">{item.suggestions.map(suggestion => <Badge key={suggestion.business_line} variant="outline">建议：{lineLabels[suggestion.business_line]}</Badge>)}{item.projects.map(project => <Badge key={project.id} className="bg-blue-100 text-blue-700">已建：{project.business_line.name}</Badge>)}</div>{item.warnings.length > 0 && <div className="mt-3 rounded-xl bg-orange-50 p-3 text-xs text-orange-700"><p className="font-semibold">{item.warnings.length} 项需要确认</p><p className="mt-1 line-clamp-2">{item.warnings.slice(0, 2).map(row => row.message).join('；')}</p></div>}<div className="mt-4 flex items-center justify-between"><p className="text-xs text-slate-400">客户状态：{item.customer_lifecycle?.status === 'active' ? '合作中' : item.customer_lifecycle?.status || '待确认'}</p><Button size="sm" variant={item.review_status === 'confirmed' ? 'outline' : 'default'} onClick={() => openReview(item)} disabled={!isAdmin}>{item.review_status === 'confirmed' ? '重新核对' : '开始审核'}</Button></div></div>)}{!loading && visibleItems.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">当前筛选下没有历史客户</div>}</CardContent></Card>}
 
       {!isMobile && <Dialog open={!!reviewing} onOpenChange={open => { if (!open && !saving && reviewDraft.confirmDiscard()) setReviewing(null); }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>{reviewing?.customer_name} · 分类与项目确认</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"><strong>客户整体状态保持不变：</strong>当前为 {reviewing?.customer_lifecycle?.status === 'active' ? '合作中' : reviewing?.customer_lifecycle?.status || '待确认'}。这里只确认该客户购买了哪些项目。</div>{reviewing?.warnings.map((warning, index) => <div key={`${warning.code}-${warning.source_id || index}`} className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">{warning.message}{warning.source_id ? `（${warning.scope} #${warning.source_id}）` : ''}</div>)}<div className="space-y-3">{projectForms.map((project, index) => <div key={`${project.engagement_id || 'new'}-${index}`} className="rounded-2xl border border-slate-200 p-4"><div className="mb-3 flex items-center justify-between"><p className="font-semibold">项目 {index + 1}</p><Button size="sm" variant="ghost" className="text-red-600" onClick={() => setProjectForms(rows => rows.filter((_row, rowIndex) => rowIndex !== index))} disabled={projectForms.length <= 1}>移除</Button></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div><Label>业务板块 *</Label><select value={project.business_line_code} onChange={event => updateProjectForm(index, { business_line_code: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(lineLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>项目状态 *</Label><select value={project.status} onChange={event => updateProjectForm(index, { status: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>开始日期 *</Label><Input type="date" value={project.paid_started_at} max={today} onChange={event => updateProjectForm(index, { paid_started_at: event.target.value })} className="mt-1" /></div><div><Label>结束日期</Label><Input type="date" value={project.stopped_at} max={today} onChange={event => updateProjectForm(index, { stopped_at: event.target.value })} className="mt-1" /></div><div><Label>收费周期</Label><select value={project.billing_cycle} onChange={event => updateProjectForm(index, { billing_cycle: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"><option value="">待确认</option><option value="monthly">月付</option><option value="quarterly">季付</option><option value="annual">年付</option><option value="one_time">一次性</option></select></div><div><Label>收款方式</Label><select value={project.collection_method} onChange={event => updateProjectForm(index, { collection_method: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(collectionLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateProjectForm(index, { currency: event.target.value.toUpperCase() })} className="mt-1" /></div><div><Label>产品名称</Label><Input value={project.product_name} onChange={event => updateProjectForm(index, { product_name: event.target.value })} className="mt-1" /></div></div><p className="mt-3 text-xs text-slate-400">关联收款 {project.source_payment_ids.length} 笔 · 关联订阅 {project.source_subscription_ids.length} 条</p></div>)}</div><Button variant="outline" onClick={() => setProjectForms(rows => [...rows, suggestionToForm({ business_line: 'managed_service', product_code: 'managed_service_legacy', product_name: '代运营历史套餐', currency: 'USD', source_payment_ids: [], source_subscription_ids: [], basis: [] })])}><Layers3 className="mr-2 h-4 w-4" />增加一个项目</Button><div><Label>审核备注</Label><Textarea value={reviewNote} onChange={event => setReviewNote(event.target.value)} rows={3} className="mt-1" placeholder="记录为什么这样分类，方便以后复盘" /></div></div><DialogFooter className="gap-2"><Button variant="outline" onClick={() => void saveReview('needs_follow_up')} disabled={saving}>资料不足，稍后核对</Button><Button onClick={() => void saveReview('confirmed')} disabled={saving}>{saving ? '保存中…' : '确认分类并建立项目'}</Button></DialogFooter></DialogContent>
+        <DialogContent className="mgt-review-dialog max-h-[90vh] overflow-y-auto sm:max-w-4xl"><DialogHeader><DialogTitle>{reviewing?.customer_name} · 分类与项目确认</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"><strong>客户整体状态：</strong>当前为 {reviewing?.customer_lifecycle?.status === 'active' ? '合作中' : reviewing?.customer_lifecycle?.status || '待确认'}。项目与客户状态分别管理；停止或完成项须确认订阅影响。</div>{reviewing?.warnings.map((warning, index) => <div key={`${warning.code}-${warning.source_id || index}`} className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">{warning.message}{warning.source_id ? `（${warning.scope} #${warning.source_id}）` : ''}</div>)}<div className="space-y-3">{projectForms.map((project, index) => <div key={`${project.engagement_id || 'new'}-${index}`} className="rounded-2xl border border-slate-200 p-4"><div className="mb-3 flex items-center justify-between"><p className="font-semibold">项目 {index + 1}</p><Button size="sm" variant="ghost" className="text-red-600" onClick={() => setProjectForms(rows => rows.filter((_row, rowIndex) => rowIndex !== index))} disabled={projectForms.length <= 1}>移除</Button></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div><Label>业务板块 *</Label><select value={project.business_line_code} onChange={event => updateProjectForm(index, { business_line_code: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(lineLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>项目状态 *</Label><select value={project.status} onChange={event => updateProjectForm(index, { status: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>开始日期 *</Label><Input type="date" value={project.paid_started_at} max={today} onChange={event => updateProjectForm(index, { paid_started_at: event.target.value })} className="mt-1" /></div><div><Label>结束日期</Label><Input type="date" value={project.stopped_at} max={today} onChange={event => updateProjectForm(index, { stopped_at: event.target.value })} className="mt-1" /></div><div><Label>收费周期</Label><select value={project.billing_cycle} onChange={event => updateProjectForm(index, { billing_cycle: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"><option value="">待确认</option><option value="monthly">月付</option><option value="quarterly">季付</option><option value="annual">年付</option><option value="one_time">一次性</option></select></div><div><Label>收款方式</Label><select value={project.collection_method} onChange={event => updateProjectForm(index, { collection_method: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(collectionLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateProjectForm(index, { currency: event.target.value.toUpperCase() })} className="mt-1" /></div><div><Label>产品名称</Label><Input value={project.product_name} onChange={event => updateProjectForm(index, { product_name: event.target.value })} className="mt-1" /></div></div><p className="mt-3 text-xs text-slate-400">本次提供来源：收款 {project.source_payment_ids.length} 笔 · 订阅 {project.source_subscription_ids.length} 条{project.engagement_id ? '；既有关联清单未在此接口列出' : ''}</p></div>)}</div><Button variant="outline" onClick={() => setProjectForms(rows => [...rows, suggestionToForm({ business_line: 'managed_service', product_code: 'managed_service_legacy', product_name: '代运营历史套餐', currency: 'USD', source_payment_ids: [], source_subscription_ids: [], basis: [] })])}><Layers3 className="mr-2 h-4 w-4" />增加一个项目</Button><div><Label>审核备注</Label><Textarea value={reviewNote} onChange={event => setReviewNote(event.target.value)} rows={3} className="mt-1" placeholder="记录为什么这样分类，方便以后复盘" /></div></div>{reviewPreview && <section className="mgt-save-preview" aria-label="保存前影响预览">
+          <h3>保存前确认影响</h3>
+          <p>客户整体合作状态保持不变。以下项目将按本次表单保存：</p>
+          <ul>{projectForms.map((project, index) => <li key={index}><strong>{project.engagement_id ? `更新项目 #${project.engagement_id}` : '确认项目（由服务端匹配或新建）'} · {project.package_name}</strong><span>{lineLabels[project.business_line_code]} · {projectStatusLabels[project.status]} · {project.currency}</span><span>首款 {project.paid_started_at || '未填写'} · 结束 {project.stopped_at || '未填写'}</span><span>本次提供来源：收款 {project.source_payment_ids.length ? project.source_payment_ids.map(id => `#${id}`).join('、') : '未提供'}；订阅 {project.source_subscription_ids.length ? project.source_subscription_ids.map(id => `#${id}`).join('、') : '未提供'}</span></li>)}</ul>
+          {reviewStoppingProjects.length > 0 && <div className="mgt-stop-impact" role="alert"><h4>停止 / 完成会影响关联订阅</h4><p>{reviewStoppingProjects.map(project => project.package_name).join('、')}：符合原规则的关联订阅会停止，自动续费关闭，下一次收款日期清空。当前接口未提供这些订阅的完整清单和数量，不能把未提供来源当作没有关联。</p><label><input type="checkbox" checked={reviewStopAcknowledged} onChange={event => setReviewStopAcknowledged(event.target.checked)} />我已核对关联订阅，并确认上述停止影响</label></div>}
+        </section>}
+        <DialogFooter className="gap-2"><Button variant="outline" onClick={() => void saveReview('needs_follow_up')} disabled={saving}>资料不足，稍后核对</Button>{reviewPreview ? <><Button variant="outline" disabled={saving} onClick={() => setReviewPreview(false)}>返回修改</Button><Button onClick={() => void saveReview('confirmed')} disabled={saving || (reviewStoppingProjects.length > 0 && !reviewStopAcknowledged)}>{saving ? '保存中…' : '确认保存'}</Button></> : <Button onClick={requestReviewPreview} disabled={saving}>预览保存影响</Button>}</DialogFooter></DialogContent>
       </Dialog>}
 
       {!isMobile && <Dialog open={!!statusProject} onOpenChange={open => { if (!open && !saving && statusDraft.confirmDiscard()) setStatusProject(null); }}>
-        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>更改项目状态</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl bg-slate-50 p-3 text-sm"><p className="font-semibold">{statusProject?.customer_name}</p><p className="mt-1 text-xs text-slate-500">{statusProject?.business_line.name} · 只更改项目，不更改客户整体合作状态</p></div><div><Label>项目状态</Label><select value={nextStatus} onChange={event => setNextStatus(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>生效日期</Label><Input type="date" value={statusDate} max={today} onChange={event => setStatusDate(event.target.value)} className="mt-1" /></div><div><Label>原因与备注</Label><Textarea value={statusReason} onChange={event => setStatusReason(event.target.value)} rows={3} className="mt-1" /></div></div><DialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (statusDraft.confirmDiscard()) setStatusProject(null); }}>取消</Button><Button onClick={() => void saveStatus()} disabled={saving}>{saving ? '保存中…' : '确认更新'}</Button></DialogFooter></DialogContent>
+        <DialogContent className="mgt-status-dialog sm:max-w-lg"><DialogHeader><DialogTitle>更改项目状态</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-xl bg-slate-50 p-3 text-sm"><p className="font-semibold">{statusProject?.customer_name}</p><p className="mt-1 text-xs text-slate-500">{statusProject?.business_line.name} · 只更改项目，不更改客户整体合作状态</p></div><div><Label>项目状态</Label><select value={nextStatus} onChange={event => setNextStatus(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>生效日期</Label><Input type="date" value={statusDate} max={today} onChange={event => setStatusDate(event.target.value)} className="mt-1" /></div><div><Label>原因与备注</Label><Textarea value={statusReason} onChange={event => setStatusReason(event.target.value)} rows={3} className="mt-1" /></div></div><div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3 text-xs leading-5 text-slate-600"><strong>变更预览：</strong>{projectStatusLabels[statusProject?.status || ''] || statusProject?.status} → {projectStatusLabels[nextStatus]}，{statusDate} 生效。此入口只更新独立项目状态并记录原因；客户整体状态及订阅不随此操作更改。</div><DialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (statusDraft.confirmDiscard()) setStatusProject(null); }}>取消</Button><Button onClick={() => void saveStatus()} disabled={saving}>{saving ? '保存中…' : '确认更新'}</Button></DialogFooter></DialogContent>
       </Dialog>}
 
       {!isMobile && <Dialog open={!!reopenProfitMonth} onOpenChange={open => { if (!open && !profitCloseLoading && reopenDraft.confirmDiscard()) setReopenProfitMonth(''); }}>
