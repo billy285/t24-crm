@@ -30,6 +30,7 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import FinanceOwnerOverview from '@/components/FinanceOwnerOverview';
 import CompactFinanceTable from '@/components/CompactFinanceTable';
 import FinanceDonutChart from '@/components/FinanceDonutChart';
+import FinanceClosingChecklist from '@/components/FinanceClosingChecklist';
 import { FINANCE_DESKTOP_TABLES } from '@/components/finance-desktop-tables';
 import MobileFinanceDetails, { isMobileFinanceDetailTab, MobileFinanceDateFilter } from '@/components/MobileFinanceDetails';
 import PageLoadState from '@/components/PageLoadState';
@@ -5744,104 +5745,10 @@ export default function Finance() {
                 </div>
               </div>
             </div>
-            <div className="mx-4 mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">关账前检查流程 · {selectedClosingChecklist.month || '-'}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    先把“必处理”清零，再确认关账；提醒项不会阻止关账，但建议老板确认。
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge className={selectedClosingChecklist.blockerCount > 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}>
-                    必处理 {selectedClosingChecklist.blockerCount}
-                  </Badge>
-                  <Badge className={selectedClosingChecklist.warningCount > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}>
-                    提醒 {selectedClosingChecklist.warningCount}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-slate-500">本月收款</p>
-                  <p className="mt-1 text-lg font-bold text-slate-800">{selectedClosingChecklist.paymentCount}</p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-slate-500">客户成本</p>
-                  <p className="mt-1 text-lg font-bold text-slate-800">{selectedClosingChecklist.customerExpenseCount}</p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-slate-500">计划扣款</p>
-                  <p className="mt-1 text-lg font-bold text-slate-800">{selectedClosingChecklist.subscriptionCount}</p>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {selectedClosingChecklist.items.map((item: any) => {
-                  const hasIssue = item.count > 0;
-                  const blocker = item.level === 'blocker';
-                  return (
-                    <div
-                      key={item.key}
-                      className={`rounded-xl border p-3 ${
-                        hasIssue
-                          ? blocker
-                            ? 'border-red-100 bg-red-50'
-                            : 'border-amber-100 bg-amber-50'
-                          : 'border-emerald-100 bg-emerald-50'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className={`text-sm font-semibold ${hasIssue ? (blocker ? 'text-red-800' : 'text-amber-800') : 'text-emerald-800'}`}>
-                            {item.label}
-                          </p>
-                          <p className={`mt-1 text-xs ${hasIssue ? (blocker ? 'text-red-700' : 'text-amber-700') : 'text-emerald-700'}`}>
-                            {item.help}
-                          </p>
-                        </div>
-                        <Badge className={blocker ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}>
-                          {blocker ? '必处理' : '提醒'}
-                        </Badge>
-                      </div>
-                      <div className="mt-3 flex items-center justify-between">
-                        <p className={`text-xl font-bold ${hasIssue ? (blocker ? 'text-red-700' : 'text-amber-700') : 'text-emerald-700'}`}>
-                          {item.count}
-                        </p>
-                        {hasIssue ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="bg-white"
-                            onClick={() => openClosingIssue(item, selectedClosingChecklist.month)}
-                          >
-                            去处理
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-emerald-700">已通过</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
-                selectedClosingChecklist.blockerCount > 0
-                  ? 'border-red-100 bg-red-50 text-red-700'
-                  : selectedClosingChecklist.warningCount > 0
-                    ? 'border-amber-100 bg-amber-50 text-amber-700'
-                    : 'border-emerald-100 bg-emerald-50 text-emerald-700'
-              }`}>
-                {selectedClosingChecklist.blockerCount > 0
-                  ? `还有 ${selectedClosingChecklist.blockerCount} 个必处理项，暂时不能关账。`
-                  : selectedClosingChecklist.warningCount > 0
-                    ? `必处理项已清零，还有 ${selectedClosingChecklist.warningCount} 个提醒项，可由老板确认后关账。`
-                    : '检查全部通过，可以放心关账。'}
-              </div>
-            </div>
+            <FinanceClosingChecklist
+              checklist={selectedClosingChecklist}
+              onOpenIssue={openClosingIssue}
+            />
             {!loading && monthlyDetail.rows.length > 0 && (
               <div className="grid grid-cols-2 gap-3 px-4 pb-4 lg:grid-cols-6">
                 <div className="rounded-xl border border-green-100 bg-green-50 p-3">

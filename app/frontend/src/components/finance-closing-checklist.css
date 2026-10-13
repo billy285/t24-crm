@@ -1,0 +1,73 @@
+.finance-closing-checklist {
+  margin: 0 16px 16px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.finance-closing-checklist .fcc-header,
+.finance-closing-checklist .fcc-heading,
+.finance-closing-checklist .fcc-summary,
+.finance-closing-checklist .fcc-row-heading,
+.finance-closing-checklist .fcc-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; min-width: 0; }
+.finance-closing-checklist .fcc-header { justify-content: space-between; gap: 4px 12px; }
+.finance-closing-checklist .fcc-heading { gap: 10px; }
+.finance-closing-checklist h3 { margin: 0; font-size: 14px; font-weight: 600; color: #1e293b; }
+.finance-closing-checklist .fcc-month { color: #64748b; font-variant-numeric: tabular-nums; }
+.finance-closing-checklist button { font: inherit; }
+.finance-closing-checklist .fcc-toggle,
+.finance-closing-checklist .fcc-action { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 32px; padding: 4px 6px; border-radius: 5px; white-space: nowrap; color: #2563eb; }
+.finance-closing-checklist .fcc-toggle { font-size: 12px; }
+.finance-closing-checklist .fcc-toggle:hover,
+.finance-closing-checklist .fcc-action:hover { background: #eff6ff; }
+.finance-closing-checklist .fcc-toggle svg,
+.finance-closing-checklist .fcc-action svg { width: 14px; height: 14px; flex-shrink: 0; }
+.finance-closing-checklist .fcc-toggle .is-expanded { transform: rotate(180deg); }
+.finance-closing-checklist .fcc-summary { padding: 3px 0 9px; color: #64748b; gap: 4px 18px; font-size: 12px; }
+.finance-closing-checklist strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.finance-closing-checklist .fcc-summary strong { margin-left: 3px; font-size: 13px; }
+.finance-closing-checklist .fcc-passed-count { display: inline-flex; align-items: center; gap: 5px; }
+.finance-closing-checklist .fcc-passed-count svg { width: 13px; height: 13px; color: #059669; }
+.finance-closing-checklist .fcc-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: start; gap: 9px; padding: 9px 0; border-top: 1px solid #edf1f5; }
+.finance-closing-checklist .fcc-status-icon { width: 15px; height: 15px; margin-top: 8px; }
+.finance-closing-checklist .fcc-row-content { min-width: 0; }
+.finance-closing-checklist .fcc-row-heading { min-height: 31px; gap: 2px 12px; }
+.finance-closing-checklist .fcc-label { font-weight: 500; overflow-wrap: anywhere; }
+.finance-closing-checklist .fcc-status { font-size: 12px; white-space: nowrap; }
+.finance-closing-checklist .fcc-blocker { color: #b91c1c; }
+.finance-closing-checklist .fcc-warning { color: #a16207; }
+.finance-closing-checklist .fcc-passed { color: #059669; }
+.finance-closing-checklist .fcc-muted { color: #64748b; }
+.finance-closing-checklist .fcc-help { min-width: 0; }
+.finance-closing-checklist .fcc-help[open] { flex-basis: 100%; }
+.finance-closing-checklist .fcc-help summary { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; color: #64748b; cursor: pointer; border-radius: 4px; font-size: 12px; list-style: none; }
+.finance-closing-checklist .fcc-help summary::-webkit-details-marker { display: none; }
+.finance-closing-checklist .fcc-help summary::marker { content: ''; }
+.finance-closing-checklist .fcc-help summary svg { width: 12px; height: 12px; }
+.finance-closing-checklist .fcc-help p { margin: 2px 0 6px; max-width: 64ch; color: #64748b; font-size: 12px; overflow-wrap: anywhere; }
+.finance-closing-checklist .fcc-help[open] summary { color: #2563eb; }
+.finance-closing-checklist .fcc-all-clear { display: flex; align-items: center; gap: 7px; margin: 0; padding: 9px 0 1px; border-top: 1px solid #edf1f5; color: #047857; }
+.finance-closing-checklist .fcc-all-clear svg { width: 15px; height: 15px; }
+.finance-closing-checklist .fcc-scope { padding-top: 9px; border-top: 1px dashed #e2e8f0; color: #64748b; font-size: 12px; gap: 4px 20px; }
+.finance-closing-checklist .fcc-conclusion { margin: 0; padding-top: 9px; border-top: 1px solid #edf1f5; font-size: 12px; }
+.finance-closing-checklist button:focus-visible,
+.finance-closing-checklist summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+@media (hover: none), (pointer: coarse) {
+  .finance-closing-checklist .fcc-toggle,
+  .finance-closing-checklist .fcc-action,
+  .finance-closing-checklist .fcc-help summary { min-height: 44px; }
+  .finance-closing-checklist .fcc-help summary { min-width: 44px; }
+}
+@media (max-width: 480px) {
+  .finance-closing-checklist { margin-right: 12px; margin-left: 12px; padding: 10px 12px; }
+  .finance-closing-checklist .fcc-header { align-items: flex-start; }
+  .finance-closing-checklist .fcc-heading { min-height: 32px; gap: 3px 8px; }
+  .finance-closing-checklist .fcc-summary { gap: 4px 14px; }
+  .finance-closing-checklist .fcc-passed-count { flex-basis: 100%; }
+  .finance-closing-checklist .fcc-row { column-gap: 7px; }
+  .finance-closing-checklist .fcc-row-heading { align-items: center; gap: 2px 8px; }
+}
