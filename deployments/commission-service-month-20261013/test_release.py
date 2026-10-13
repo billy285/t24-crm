@@ -568,3 +568,85 @@ def test_private_runtime_identity_environment_and_schema_are_independent_guards(
         assert r.private_boundary(pins)[2] is base
     if drift == "environment":
         prep.release_snapshot.assert_not_called()
+
+
+@pytest.mark.parametrize("existing_state", ["missing", "same", "different"])
+def test_base_alias_is_local_exact_and_never_overwrites_another_image(tmp_path, monkeypatch, existing_state):
+    manifest = {"source_sha": SOURCE}
+    expected_tag = "t24-crm:commission-base-" + SOURCE[:12] + "-" + r.H(str(tmp_path).encode())[:12]
+    images = {r.BASE_IMAGE: r.BASE_IMAGE}
+    if existing_state != "missing":
+        images[expected_tag] = r.BASE_IMAGE if existing_state == "same" else "sha256:" + "f" * 64
+    commands = []
+    def request(method, path, body=None):
+        assert method == "GET" and path.startswith("/images/") and path.endswith("/json")
+        name = r.urllib.parse.unquote(path[len("/images/"):-len("/json")])
+        return (200, json.dumps({"Id": images[name]}).encode()) if name in images else (404, b'{}')
+    def run(command, code, timeout=180):
+        commands.append(command)
+        if command[:3] == ["docker", "image", "tag"]:
+            assert command[3] == r.BASE_IMAGE and command[4] == expected_tag
+            assert command[4] not in images  # No replacement of a different tag.
+            images[command[4]] = images[command[3]]
+        elif command[:2] == ["docker", "build"]:
+            assert "--network=none" in command and "--pull=false" in command
+            assert images[expected_tag] == r.BASE_IMAGE
+            filename = "Dockerfile.rollback" if "-f" in command else "Dockerfile"
+            contents = (tmp_path / filename).read_text()
+            assert contents.splitlines()[0] == "FROM " + expected_tag
+            assert "FROM sha256:" not in contents
+            images[command[command.index("-t") + 1]] = ROLLBACK if "-f" in command else CANDIDATE
+        elif command[:3] == ["docker", "image", "inspect"]:
+            return json.dumps([{"Id": images[command[3]]}]).encode()
+        else:
+            raise AssertionError(command)
+        return b""
+    monkeypatch.setattr(r, "docker_request", request)
+    monkeypatch.setattr(r, "run", run)
+    if existing_state == "different":
+        with pytest.raises(RuntimeError, match="BASE_TAG_ID_DRIFT"):
+            r.build_images(tmp_path, manifest)
+        assert commands == [] and not (tmp_path / "Dockerfile").exists()
+        assert images[expected_tag] == "sha256:" + "f" * 64
+    else:
+        assert r.build_images(tmp_path, manifest) == (CANDIDATE, ROLLBACK)
+        assert len([cmd for cmd in commands if cmd[:2] == ["docker", "build"]]) == 2
+        assert len([cmd for cmd in commands if cmd[:3] == ["docker", "image", "tag"]]) == (1 if existing_state == "missing" else 0)
+        assert (tmp_path / "Dockerfile.rollback").read_text().splitlines()[1] == "COPY backend/" + r.MIGRATION + " /app/backend/" + r.MIGRATION
+
+
+def test_base_alias_change_during_candidate_build_blocks_the_release(tmp_path, monkeypatch):
+    tag = "t24-crm:commission-base-" + SOURCE[:12] + "-" + r.H(str(tmp_path).encode())[:12]
+    state = {"changed": False, "builds": 0}
+    def image_id(name):
+        if name == tag and state["changed"]:
+            return "sha256:" + "f" * 64
+        return r.BASE_IMAGE
+    def run(command, code, timeout=180):
+        assert command[:2] == ["docker", "build"]
+        state["builds"] += 1
+        state["changed"] = True
+        return b""
+    monkeypatch.setattr(r, "local_image_id", image_id)
+    monkeypatch.setattr(r, "run", run)
+    with pytest.raises(RuntimeError, match="BASE_TAG_ID_DRIFT"):
+        r.build_images(tmp_path, {"source_sha": SOURCE})
+    assert state["builds"] == 1
+    assert not (tmp_path / "Dockerfile.rollback").exists()
+
+
+def test_base_alias_rechecks_the_id_after_tag_creation(tmp_path, monkeypatch):
+    state = {"tagged": False}
+    def image_id(name):
+        if name == r.BASE_IMAGE:
+            return r.BASE_IMAGE
+        return "sha256:" + "f" * 64 if state["tagged"] else None
+    def run(command, code, timeout=180):
+        assert command[:3] == ["docker", "image", "tag"]
+        state["tagged"] = True
+        return b""
+    monkeypatch.setattr(r, "local_image_id", image_id)
+    monkeypatch.setattr(r, "run", run)
+    with pytest.raises(RuntimeError, match="BASE_TAG_ID_DRIFT"):
+        r.build_images(tmp_path, {"source_sha": SOURCE})
+    assert not (tmp_path / "Dockerfile").exists()

@@ -6,7 +6,7 @@ additive migration and both candidate/rollback startup on offline DB copies.
 Activate requires a reviewed receipt, stops only CRM, migrates atomically, swaps
 one CRM container and one static root. Rollback retains forward audit columns.
 """
-import argparse,copy,fcntl,hashlib,http.client,importlib.util,io,json,os,re,socket,sqlite3,stat,subprocess,sys,tarfile,time,urllib.request
+import argparse,copy,fcntl,hashlib,http.client,importlib.util,io,json,os,re,socket,sqlite3,stat,subprocess,sys,tarfile,time,urllib.parse,urllib.request
 from pathlib import Path
 HOST='iZj6c4cj7edgnhdimts4l7Z'
 BASE_IMAGE='sha256:7a1b09bbb04899e7c6459491d32c45c25d789801a51b4a95e9b77b7dafcbb4ab'
@@ -125,14 +125,32 @@ def extract(release,m):
 def environment_file(release,info):
  lines=info['Config']['Env'];need(all('\n' not in v and '\r' not in v and '=' in v for v in lines),'ENV_FORMAT_REJECTED');write(release/'crm.env',('\n'.join(lines)+'\n').encode())
 
+def local_image_id(reference):
+ status,blob=docker_request('GET','/images/'+urllib.parse.quote(reference,safe=':')+'/json')
+ if status==404:return None
+ need(status==200,'LOCAL_IMAGE_INSPECTION_FAILED');return json.loads(blob)['Id']
+def checked_base_tag(release,m):
+ need(local_image_id(BASE_IMAGE)==BASE_IMAGE,'BASE_IMAGE_ID_DRIFT')
+ # BuildKit interprets bare sha256:<config-id> as repository:tag. Alias the
+ # exact local image instead; never retag a pre-existing different image.
+ tag='t24-crm:commission-base-'+m['source_sha'][:12]+'-'+H(str(release).encode())[:12]
+ existing=local_image_id(tag)
+ need(existing is None or existing==BASE_IMAGE,'BASE_TAG_ID_DRIFT')
+ if existing is None:run(['docker','image','tag',BASE_IMAGE,tag],'BASE_TAG_CREATE_FAILED')
+ need(local_image_id(tag)==BASE_IMAGE,'BASE_TAG_ID_DRIFT');return tag
 def build_images(release,m):
- dockerfile='FROM '+BASE_IMAGE+'\nCOPY backend/ /app/backend/\n'
+ base_tag=checked_base_tag(release,m)
+ dockerfile='FROM '+base_tag+'\nCOPY backend/ /app/backend/\n'
  write(release/'Dockerfile',dockerfile.encode());tag='t24-crm:commission-'+m['source_sha'][:12]
+ need(local_image_id(base_tag)==BASE_IMAGE,'BASE_TAG_ID_DRIFT')
  run(['docker','build','--network=none','--pull=false','-t',tag,str(release)],'CANDIDATE_BUILD_FAILED',300)
+ need(local_image_id(base_tag)==BASE_IMAGE,'BASE_TAG_ID_DRIFT')
  image=json.loads(run(['docker','image','inspect',tag],'CANDIDATE_IMAGE_INSPECTION_FAILED'))[0]['Id']
- rollbackfile='FROM '+BASE_IMAGE+'\nCOPY backend/'+MIGRATION+' /app/backend/'+MIGRATION+'\n'
+ rollbackfile='FROM '+base_tag+'\nCOPY backend/'+MIGRATION+' /app/backend/'+MIGRATION+'\n'
  write(release/'Dockerfile.rollback',rollbackfile.encode());rollbacktag=tag+'-rollback'
+ need(local_image_id(base_tag)==BASE_IMAGE,'BASE_TAG_ID_DRIFT')
  run(['docker','build','--network=none','--pull=false','-f',str(release/'Dockerfile.rollback'),'-t',rollbacktag,str(release)],'ROLLBACK_IMAGE_BUILD_FAILED',300)
+ need(local_image_id(base_tag)==BASE_IMAGE,'BASE_TAG_ID_DRIFT')
  rollback=json.loads(run(['docker','image','inspect',rollbacktag],'ROLLBACK_IMAGE_INSPECTION_FAILED'))[0]['Id'];return image,rollback
 
 MIGRATE="""import importlib.util,sqlalchemy as sa
