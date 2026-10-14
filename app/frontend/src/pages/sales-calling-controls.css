@@ -1,0 +1,119 @@
+/* Calling controls are scoped to the sales workbench and its queue sheet. */
+.sales-center-ui.sw-refined .sw-customer-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+}
+.sales-center-ui.sw-refined .sw-customer-heading > div:first-child {
+  display: contents;
+}
+.sales-center-ui.sw-refined .sw-customer-context {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+.sales-center-ui.sw-refined .sw-customer-heading h2,
+.sales-center-ui.sw-refined .sw-customer-heading > div:first-child > p {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.sales-center-ui.sw-refined .sw-customer-navigation {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.sales-center-ui.sw-refined .sw-customer-navigation .sw-enrichment-trigger {
+  width: auto;
+  min-width: 92px;
+  height: 34px;
+  min-height: 34px;
+  padding: 6px 10px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  gap: 6px;
+}
+.sales-center-ui.sw-refined .sw-customer-paging {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sales-center-ui.sw-refined .sw-customer-paging button {
+  width: 32px;
+  min-width: 32px;
+  height: 34px;
+  min-height: 34px;
+  padding: 5px;
+  flex: 0 0 auto;
+}
+.sales-center-ui.sw-refined .sw-quality-filter,
+.sales-center-ui.sw-queue-sheet .sw-quality-filter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 4px 12px 10px;
+}
+.sales-center-ui.sw-refined .sw-quality-filter > div,
+.sales-center-ui.sw-queue-sheet .sw-quality-filter > div {
+  width: 100%;
+  min-width: 0;
+}
+.sales-center-ui.sw-refined .sw-quality-filter select,
+.sales-center-ui.sw-queue-sheet .sw-quality-filter select {
+  width: 100%;
+  min-width: 0;
+}
+.sales-center-ui.sw-refined .sw-record .sw-result-row .sc-outcomes.sw-outcomes-expanded {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  gap: 6px;
+}
+.sales-center-ui.sw-refined .sw-record .sw-result-row .sc-outcomes.sw-outcomes-expanded button {
+  min-width: 0;
+  min-height: 44px;
+  flex-direction: column;
+  gap: 0;
+  padding: 7px 8px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.sales-center-ui.sw-refined .sw-outcomes-expanded button small {
+  font-size: 11px;
+  font-weight: 400;
+  color: inherit;
+  opacity: .8;
+}
+@media (max-width: 767px) {
+  .sales-center-ui.sw-refined .sw-customer-heading {
+    gap: 5px 8px;
+  }
+  .sales-center-ui.sw-refined .sw-customer-navigation {
+    gap: 8px;
+  }
+  .sales-center-ui.sw-refined .sw-customer-navigation .sw-enrichment-trigger {
+    height: 44px;
+    min-height: 44px;
+  }
+  .sales-center-ui.sw-refined .sw-customer-paging button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  .sales-center-ui.sw-refined .sw-record .sw-result-row .sc-outcomes.sw-outcomes-expanded {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .sales-center-ui.sw-refined .sw-customer-navigation {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: space-between;
+    margin: 3px 0;
+  }
+}
