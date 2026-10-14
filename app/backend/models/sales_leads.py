@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from core.database import Base
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func
 
@@ -46,4 +47,4 @@ class SalesLeads(Base):
     created_by_id = Column(Integer, nullable=True)
     created_by_name = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=lambda: datetime.now(timezone.utc), nullable=False)

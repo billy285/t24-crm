@@ -18,6 +18,7 @@ from core.database import Base
 from models.employees import Employees
 from models.sales_call_activities import SalesCallActivities
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
+from models.sales_lead_enrichments import SalesDialAttempt
 from models.sales_leads import SalesLeads
 from models.sales_lead_assignment_logs import SalesLeadAssignmentLogs
 from models.ringcentral_call_records import RingCentralCallRecords
@@ -41,7 +42,7 @@ async def file_sales_db(tmp_path):
     async with engine.begin() as connection:
         await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=[
             Employees.__table__, SalesLeads.__table__, SalesCallActivities.__table__,
-            SalesDailyDialTasks.__table__, SalesLeadAssignmentLogs.__table__, RingCentralCallRecords.__table__,
+            SalesDailyDialTasks.__table__, SalesDialAttempt.__table__, SalesLeadAssignmentLogs.__table__, RingCentralCallRecords.__table__,
         ]))
         await connection.execute(text("CREATE TABLE IF NOT EXISTS app_settings (config_key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TIMESTAMP)"))
     maker = async_sessionmaker(engine, expire_on_commit=False)

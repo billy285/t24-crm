@@ -1,11 +1,16 @@
 import { formatBusinessDateTimeInput, parseBusinessDateTimeInput } from '@/lib/business-date';
 import { formatPhoneNumber, getPhoneCopyValue, phoneSearchMatches } from '@/lib/phone-format';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ChevronDown, ChevronRight, Clipboard, MoreHorizontal } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, Clipboard, MoreHorizontal, PencilLine } from 'lucide-react';
 import { toast } from 'sonner';
 
 import SalesLeadDossier from '@/components/SalesLeadDossier';
 import SalesCallRecord, { type SalesCallValues } from '@/components/SalesCallRecord';
+import SalesLeadQuickEdit from '@/components/SalesLeadQuickEdit';
+import SalesWorkbenchDial from '@/components/SalesWorkbenchDial';
+import { useSalesLeadEnrichment, enrichmentError } from '@/lib/use-sales-lead-enrichment';
+import { validateEnrichmentUpdate, enrichmentWarningText } from '@/lib/sales-lead-enrichment';
+import { getCustomerDialValidation } from '@/lib/phone-dial';
 import SalesRecentHistory from '@/components/SalesRecentHistory';
 import SalesLocalTime, { useSalesContactWindow } from '@/components/SalesLocalTime';
 import { SalesTeamToday } from '@/components/SalesTeamPerformance';
@@ -14,7 +19,6 @@ import './sales-workspace.css';
 import './sales-workbench-refined.css';
 import './crm-sales-compact.css';
 import SalesKnowledgeAssistant from '@/components/SalesKnowledgeAssistant';
-import CustomerPhoneDial from '@/components/CustomerPhoneDial';
 import MobileSalesQueue from '@/components/MobileSalesQueue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,12 +36,12 @@ import { wasExplicitlyLoggedOut } from '@/lib/auth-storage';
 import { clearSalesCallDraftMemory, legacySalesCallDraftKey, readSalesWorkbenchFocus, salesCallDraftKey, setSalesCallDraftOwner, writeSalesWorkbenchFocus } from '@/lib/sales-call-draft';
 import { isSalesWorkspaceDate, isSalesWorkspaceFilter, readSalesWorkspaceViewState, readSalesWorkspaceQueueQuery, writeSalesWorkspaceQueueQuery, salesWorkspaceFilters, writeSalesWorkspaceViewState, type SalesWorkspaceViewState } from '@/lib/sales-workspace-view-state';
 
-type Lead = { id: number; business_name: string; contact_name?: string; phone: string; industry?: string; city?: string; state?: string; country?: string; status: string; next_follow_up_at?: string; last_contact_at?: string; do_not_contact: boolean; is_blacklisted: boolean; converted_customer_id?: number | null };
+type Lead = { id: number; business_name: string; contact_name?: string; phone: string; industry?: string; city?: string; state?: string; country?: string; status: string; next_follow_up_at?: string; last_contact_at?: string; do_not_contact: boolean; is_blacklisted: boolean; converted_customer_id?: number | null; enrichment_summary?: { has_contact: boolean; needs_review: boolean; has_interest: boolean; interest_product_names: string[]; revision: number } };
 type Task = { task_id: number; task_status: string; completed_at?: string; priority?: 'urgent' | 'high' | 'normal'; next_action_label?: string; queue_category?: 'new' | 'retry' | 'recycled' | 'follow_up'; lead: Lead };
 type Workbench = { salesperson: { id: number; name: string }; quota: number; assigned_count: number; completed_count: number; remaining_count: number; is_target_complete: boolean; categories: { unfinished: number; callback: number; interested: number; appointment: number; new: number; retry: number; recycled: number; follow_up: number }; performance: { attempted: number; connected: number; interested: number; appointments: number; callbacks_due: number; connection_rate: number }; items: Task[] };
 type AutomationOverview = { counts: { eligible: number; assigned: number; protected: number; cooling: number; blocked: number; closed: number }; total: number; reusable: number; active_sales: number; daily_capacity: number; estimated_pool_days?: number; rules: { unstarted_release_hours: number; same_sales_no_answer_attempts: number; no_answer_cooldown_days: number; soft_reject_cooldown_days: number; existing_provider_cooldown_days: number } };
 type Assignee = { id: number; name: string };
-type HistoryItem = { id: number; outcome: string; outcome_label: string; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string; call_duration_seconds?: number; sync_status?: string };
+type HistoryItem = { id: number; outcome: string; outcome_label: string; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string; call_duration_seconds?: number; sync_status?: string; dial_phone?: string | null };
 type Analysis = { available: boolean; message?: string; analysis?: { warning?: string; cards: { title: string; content: string; kind: string; sources: { label: string; value?: string | number; updated_at?: string }[] }[] } };
 type RecoveryAlert = { lead_id: number; business_name: string; state: 'watch' | 'recoverable'; message: string; deadline?: string; extension_request?: { reason?: string } | null };
 type PersonalPerformance = { rank: number; score: number; confidence: string; score_breakdown: { execution: number; discipline: number; opportunity: number; results: number; documentation: number }; metrics: { completion_rate: number; connection_rate: number; interest_rate: number; note_quality_rate: number; overdue_followups: number }; suggestions: string[] };
@@ -202,10 +206,13 @@ function SalesWorkspace() {
   const setAuxiliaryError = (section: string, failed: boolean) => setAuxiliaryErrors(current => failed ? current.includes(section) ? current : [...current, section] : current.filter(item => item !== section));
   const [filter, setFilter] = useState(initialView.filter);
   const [queueQuery, setQueueQuery] = useState('');
+  const [qualityFilter, setQualityFilter] = useState('all');
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [focusedTask, setFocusedTask] = useState<Task | null>(null);
   const [supplementalFollowUp, setSupplementalFollowUp] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [savingCall, setSaving] = useState(false);
+  const [dialPreparing, setDialPreparing] = useState(false);
+  const [selectedDialPhone, setSelectedDialPhone] = useState('');
   const [savedReceipt, setSavedReceipt] = useState<SavedCallReceipt | null>(null);
   const [historyTask, setHistoryTask] = useState<Task | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -230,8 +237,32 @@ function SalesWorkspace() {
   const workbenchRequestRef = useRef(0);
   const ringCentralSubscriptionRequestedRef = useRef(false);
   const ringCentralBackfillRequestedRef = useRef(false);
+  const supplementalAttemptRef = useRef<{ taskId: number; leadId: number; id: number } | null>(null);
   const pendingDialRestoreAttemptedRef = useRef(false);
   const restoredFocusScopeRef = useRef('');
+
+  const enrichmentTask = supplementalFollowUp && activeTask ? activeTask : focusedTask;
+  const enrichment = useSalesLeadEnrichment({ userId: employee?.id, salesId: workbench?.salesperson.id, leadId: enrichmentTask?.lead.id, taskId: enrichmentTask?.task_id, date }, value => {
+    const patch = (task: Task): Task => task.lead.id !== value.lead_id ? task : { ...task, lead: { ...task.lead, business_name: value.business_name, phone: value.store_phone, industry: value.industry || undefined, city: value.city || undefined, state: value.state || undefined, country: value.country || undefined, enrichment_summary: { has_contact: value.contacts.length > 0, needs_review: value.verification !== 'confirmed' || value.contacts.some(contact => contact.verification !== 'confirmed') || Boolean(value.warnings.length), has_interest: value.interest_product_ids.length > 0, interest_product_names: [], revision: value.revision } } };
+    setWorkbench(current => current ? { ...current, items: current.items.map(patch) } : current);
+    setFocusedTask(current => current ? patch(current) : current);
+    setActiveTask(current => current ? patch(current) : current);
+  });
+  const saving = savingCall || enrichment.saving || dialPreparing;
+  const dialOptions = useMemo(() => {
+    const value = enrichment.value;
+    const country = value?.country || enrichmentTask?.lead.country;
+    const options = [{ value: value?.store_phone || enrichmentTask?.lead.phone || '', label: '门店电话' }];
+    for (const contact of value?.contacts || []) {
+      if (contact.phone && getCustomerDialValidation(contact.phone, country).isValid) options.push({ value: contact.phone, label: `${contact.name || '联系人'}${contact.role ? ` · ${contact.role}` : ''}${contact.verification === 'confirmed' ? '' : ' · 待核实'}` });
+    }
+    return options.filter((option, index) => option.value && options.findIndex(item => item.value === option.value) === index);
+  }, [enrichment.value, enrichmentTask?.lead.phone, enrichmentTask?.lead.country]);
+  useEffect(() => {
+    const preferred = enrichment.value?.contacts.find(contact => contact.id === enrichment.value?.preferred_contact_id);
+    setSelectedDialPhone(preferred?.phone && dialOptions.some(option => option.value === preferred.phone) ? preferred.phone : dialOptions[0]?.value || '');
+  }, [enrichment.key, enrichment.value?.revision]);
+  const dialPhone = dialOptions.some(option => option.value === selectedDialPhone) ? selectedDialPhone : dialOptions[0]?.value || '';
 
   useEffect(() => {
     writeSalesWorkspaceViewState(employee?.id, role, today(), { date, selectedSalesId: canManage ? selectedSalesId : '', filter, teamView: canManage && teamView });
@@ -441,7 +472,7 @@ function SalesWorkspace() {
     removeSessionValue(scopedStorageKey('pending-dial', employee?.id));
     if (!activeTask && task && task.lead.id === pending.leadId && task.task_status !== 'completed') openCall(task);
   }, [activeTask, loading, workbench, employee?.id, date]);
-  useAutoRefresh(async () => { await loadWorkbench({ background: true }); await loadRecoveryAlerts(); await loadPersonalPerformance(); await loadRingCentral(); }, { intervalMs: 30000, enabled: !teamView && !activeTask && !historyTask && !analysisTask && (!canManage || !!selectedSalesId) });
+  useAutoRefresh(async () => { await loadWorkbench({ background: true }); await loadRecoveryAlerts(); await loadPersonalPerformance(); await loadRingCentral(); }, { intervalMs: 30000, enabled: !teamView && !saving && !enrichment.open && !enrichment.draft && !activeTask && !historyTask && !analysisTask && (!canManage || !!selectedSalesId) });
 
   const overdueFollowUpCount = useMemo(() => (workbench?.items || []).filter(task => (
     task.task_status !== 'completed'
@@ -464,7 +495,8 @@ function SalesWorkspace() {
     const bTime = parseBackendDate(b.lead.next_follow_up_at)?.getTime() ?? Number.POSITIVE_INFINITY;
     return aTime - bTime;
   }), [filter, workbench]);
-  const matchingQueue = useMemo(() => filteredTasks.filter(task => !queueQuery.trim() || `${task.lead.business_name} ${task.lead.city || ''} ${task.lead.state || ''}`.toLowerCase().includes(queueQuery.trim().toLowerCase()) || phoneSearchMatches(task.lead.phone, queueQuery, task.lead.country)), [filteredTasks, queueQuery]);
+  const qualityTasks = useMemo(() => filteredTasks.filter(task => qualityFilter === 'all' || qualityFilter === 'missing_contact' && !(task.lead.enrichment_summary?.has_contact ?? Boolean(task.lead.contact_name)) || qualityFilter === 'needs_review' && (task.lead.enrichment_summary?.needs_review ?? true) || qualityFilter === 'has_interest' && Boolean(task.lead.enrichment_summary?.has_interest)), [filteredTasks, qualityFilter]);
+  const matchingQueue = useMemo(() => qualityTasks.filter(task => !queueQuery.trim() || `${task.lead.business_name} ${task.lead.city || ''} ${task.lead.state || ''}`.toLowerCase().includes(queueQuery.trim().toLowerCase()) || phoneSearchMatches(task.lead.phone, queueQuery, task.lead.country)), [qualityTasks, queueQuery]);
   const visibleTasks = useMemo(() => matchingQueue.slice(0, visibleCount), [matchingQueue, visibleCount]);
   useEffect(() => { setQueueQuery(readSalesWorkspaceQueueQuery({ userId: employee?.id, role, salesId: workbench?.salesperson.id, date }, today())); }, [employee?.id, role, workbench?.salesperson.id, date]);
   const updateQueueQuery = (value: string) => { setQueueQuery(value); setVisibleCount(20); writeSalesWorkspaceQueueQuery({ userId: employee?.id, role, salesId: workbench?.salesperson.id, date }, today(), value); };
@@ -482,7 +514,7 @@ function SalesWorkspace() {
         if (restored) return restored;
       }
       const currentTask = current && filteredTasks.find(task => task.task_id === current.task_id);
-      if (currentTask && currentTask.task_status !== 'completed') return currentTask;
+      if (currentTask) return currentTask;
       return filteredTasks.find(task => task.task_status !== 'completed') || filteredTasks[0] || null;
     });
   }, [filteredTasks, employee?.id, workbench, date]);
@@ -518,16 +550,26 @@ function SalesWorkspace() {
   const markDialStarted = (task: Task) => {
     if (saving || task.task_status === 'completed' || task.lead.do_not_contact || task.lead.is_blacklisted || task.lead.converted_customer_id) return;
     rememberPendingDial(task, employee?.id, workbench?.salesperson.id, date);
-    void invokeWithAuth({ url: `/api/v1/sales-leads/workbench/tasks/${task.task_id}/dial-started`, method: 'POST' }).catch(() => undefined);
     openCall(task);
+  };
+  const prepareDial = async (task: Task, phone: string) => {
+    const response = await invokeWithAuth({ url: `/api/v1/sales-leads/workbench/tasks/${task.task_id}/dial-started`, method: 'POST', data: { phone } });
+    const confirmed = getCustomerDialValidation(response.data?.dial_phone || response.data?.phone || '', task.lead.country).e164;
+    if (confirmed !== phone || (response.data?.lead_id != null && Number(response.data.lead_id) !== task.lead.id)) throw new Error('拨号号码确认失败，尚未打开拨号器，请刷新资料后重试');
+    if (task.task_status === 'completed') {
+      const attemptId = response.data?.dial_attempt_id;
+      if (!Number.isSafeInteger(attemptId) || attemptId <= 0) throw new Error('追加拨号记录未确认，请重试');
+      supplementalAttemptRef.current = { taskId: task.task_id, leadId: task.lead.id, id: attemptId };
+    }
   };
   const openSupplementalFollowUp = (task: Task) => {
     if (saving || task.task_status !== 'completed' || task.lead.do_not_contact || task.lead.is_blacklisted || task.lead.converted_customer_id) return;
+    supplementalAttemptRef.current = null;
     setSupplementalFollowUp(true);
     setActiveTask(task);
   };
   const copyPhone = async (task = activeTask) => {
-    const number = task ? getPhoneCopyValue(task.lead.phone || '', task.lead.country) : '';
+    const number = task ? getPhoneCopyValue(task.lead.id === enrichmentTask?.lead.id ? dialPhone : task.lead.phone || '', task.lead.country) : '';
     if (!number) return toast.error('该线索没有可用电话号码');
     try { await navigator.clipboard.writeText(number); toast.success(`已复制 ${number}`); }
     catch { toast.error('复制失败，请手动选择号码'); }
@@ -538,10 +580,18 @@ function SalesWorkspace() {
     if (result === 'callback' && !followUpTime) { toast.error('待回访请设置下次跟进时间'); return false; }
     if (result === 'do_not_contact' && !resultNotes.trim()) { toast.error('禁止再联系请填写商家要求或原因'); return false; }
     if (['interested', 'appointment'].includes(result) && (!resultNotes.trim() || !followUpTime)) { toast.error('有意向或已预约必须填写跟进内容和下次跟进时间'); return false; }
+    const pendingEnrichment = enrichmentTask?.lead.id === task.lead.id ? enrichment.draft : null;
+    if (pendingEnrichment) {
+      const errors = validateEnrichmentUpdate(pendingEnrichment);
+      if (errors.length) { toast.error(errors[0]); enrichment.setOpen(true); return false; }
+    }
+    const savedEnrichmentKey = enrichment.key;
     setSaving(true);
     try {
       const url = supplemental ? `/api/v1/sales-leads/${task.lead.id}/follow-up` : `/api/v1/sales-leads/workbench/tasks/${task.task_id}/result`;
-      const response = await invokeWithAuth({ url, method: 'POST', data: { outcome: result, contact_details: values.contactDetails || null, notes: resultNotes || null, next_follow_up_at: followUpTime ? parseBusinessDateTimeInput(followUpTime) : null } });
+      const response = await invokeWithAuth({ url, method: 'POST', data: { outcome: result, contact_details: values.contactDetails || null, notes: resultNotes || null, next_follow_up_at: followUpTime ? parseBusinessDateTimeInput(followUpTime) : null, ...(pendingEnrichment ? { enrichment: pendingEnrichment } : {}), ...(supplemental && supplementalAttemptRef.current?.taskId === task.task_id && supplementalAttemptRef.current.leadId === task.lead.id ? { dial_attempt_id: supplementalAttemptRef.current.id } : {}) } });
+      if (pendingEnrichment && response.data?.enrichment) enrichment.acceptSaved(response.data.enrichment, savedEnrichmentKey);
+      if (supplemental) supplementalAttemptRef.current = null;
       const returnedLead = response.data?.lead;
       const responseMatches = Number(response.data?.lead_id || returnedLead?.id) === task.lead.id;
       const protectedAfterSave = result === 'do_not_contact' || Boolean(returnedLead?.do_not_contact || returnedLead?.is_blacklisted || returnedLead?.converted_customer_id);
@@ -556,7 +606,7 @@ function SalesWorkspace() {
         setFocusedTask(remaining[0] || null);
       }
       return true;
-    } catch (error: any) { toast.error(error?.response?.data?.detail || error?.data?.detail || error?.message || '通话结果保存失败'); return false; } finally { setSaving(false); }
+    } catch (error: any) { toast.error(enrichmentError(error)); if (pendingEnrichment) { enrichment.reportSaveError(error); enrichment.setOpen(true); } return false; } finally { setSaving(false); }
   };
   const openHistory = async (task: Task) => {
     setHistoryTask(task); setHistory([]);
@@ -651,17 +701,27 @@ function SalesWorkspace() {
     {!teamView && auxiliaryErrors.length > 0 && <div className="sales-v3-alert" role="status">{auxiliaryErrors.join('、')}暂时无法更新，已保留最近读取的数据。<Button size="sm" variant="outline" onClick={() => void Promise.all([loadRecoveryAlerts(), loadPersonalPerformance(), loadRingCentral()])}>重试更新</Button></div>}
     {!teamView && loadError && <div className="sales-v3-alert" role="alert">今日任务暂时无法更新{workbench ? '，保留上次读取的任务' : ''}<Button size="sm" variant="outline" onClick={() => void loadWorkbench()}>重新加载</Button></div>}
     {teamView && canManage ? assigneesLoaded && !assigneeLoadError ? <SalesTeamToday employees={assignees} targetDate={date} onOpenWorkbench={openSalesTasks} /> : <div className="sc-empty">{assigneeLoadError ? '销售人员暂不可用' : '正在读取团队任务…'}</div> : <>
-    {isMobile ? <MobileSalesQueue key={`${employee?.id}:${role}:${date}:${canManage ? selectedSalesId : employee?.id}`} workspaceScope={{ userId: employee?.id, role, date, salesId: canManage ? Number(selectedSalesId) : employee?.id }} businessDay={today()} tasks={filteredTasks} selectedTaskId={focusedTask?.task_id} filter={filter} overdueCount={overdueFollowUpCount} disabled={saving} onFilterChange={setFilter} onSelect={taskId => { const task = filteredTasks.find(item => item.task_id === taskId); if (task) chooseTask(task); }} /> : <div className="sw-mobile-queue"><label><span className="sr-only">选择客户</span><select aria-label="选择客户" value={focusedTask?.task_id || ''} disabled={saving} onChange={event => { const task = filteredTasks.find(item => String(item.task_id) === event.target.value); if (task) chooseTask(task); }}><option value="" disabled>选择客户</option>{filteredTasks.map((task, index) => <option key={task.task_id} value={task.task_id}>{index + 1}. {task.lead.business_name}{task.task_status === 'completed' ? ' · 已完成' : ''}</option>)}</select></label><label><span className="sr-only">队列状态</span><NativeSelect value={filter} onChange={value => setFilter(value as typeof filter)} disabled={saving} options={[{value:'all',label:'全部任务'},{value:'unfinished',label:'未完成'},{value:'overdue',label:`逾期 ${overdueFollowUpCount}`}]} /></label></div>}
+    {isMobile ? <MobileSalesQueue key={`${employee?.id}:${role}:${date}:${canManage ? selectedSalesId : employee?.id}`} workspaceScope={{ userId: employee?.id, role, date, salesId: canManage ? Number(selectedSalesId) : employee?.id }} businessDay={today()} tasks={qualityTasks} qualityFilter={qualityFilter} onQualityFilterChange={setQualityFilter} selectedTaskId={focusedTask?.task_id} filter={filter} overdueCount={overdueFollowUpCount} disabled={saving} onFilterChange={setFilter} onSelect={taskId => { const task = filteredTasks.find(item => item.task_id === taskId); if (task) chooseTask(task); }} /> : <div className="sw-mobile-queue"><label><span className="sr-only">选择客户</span><select aria-label="选择客户" value={focusedTask?.task_id || ''} disabled={saving} onChange={event => { const task = filteredTasks.find(item => String(item.task_id) === event.target.value); if (task) chooseTask(task); }}><option value="" disabled>选择客户</option>{filteredTasks.map((task, index) => <option key={task.task_id} value={task.task_id}>{index + 1}. {task.lead.business_name}{task.task_status === 'completed' ? ' · 已完成' : ''}</option>)}</select></label><label><span className="sr-only">队列状态</span><NativeSelect value={filter} onChange={value => setFilter(value as typeof filter)} disabled={saving} options={[{value:'all',label:'全部任务'},{value:'unfinished',label:'未完成'},{value:'overdue',label:`逾期 ${overdueFollowUpCount}`}]} /></label></div>}
 
     <div className="sc-call-layout">
       <aside className="sc-queue" aria-label="今日客户队列"><div className="sc-queue-head"><div className="sc-panel-heading"><h3>接下来</h3><span>{workbench?.remaining_count ?? '—'} 位</span></div><div className="sc-queue-filters"><button type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')} disabled={saving}>全部</button><button type="button" aria-pressed={filter === 'unfinished'} onClick={() => setFilter('unfinished')} disabled={saving}>未完成</button><button type="button" aria-pressed={filter === 'overdue'} onClick={() => setFilter('overdue')} disabled={saving}>逾期 {overdueFollowUpCount}</button></div></div>
-        <Input className="sw-queue-search" aria-label="搜索今日客户队列" maxLength={200} value={queueQuery} disabled={saving} onChange={event => updateQueueQuery(event.target.value)} placeholder="搜索商家或电话" /><div className="sc-queue-list">{loading && !workbench ? <p className="sc-muted-state">正在加载…</p> : !visibleTasks.length ? <p className="sc-muted-state">暂无任务</p> : visibleTasks.map((task, index) => <button key={task.task_id} type="button" data-lead-id={task.lead.id} disabled={saving} aria-pressed={focusedTask?.task_id === task.task_id} onClick={() => chooseTask(task)} className={`sc-queue-item ${task.task_status === 'completed' ? 'is-done' : ''}`}><span className="sc-queue-number">{task.task_status === 'completed' ? <CheckCircle2 size={14} /> : String(index + 1).padStart(2, '0')}</span><span className="sc-queue-copy"><strong title={task.lead.business_name}>{task.lead.business_name}</strong><small>{task.task_status === 'completed' ? '已记录' : isFollowUpOverdue(task.lead.next_follow_up_at) ? '逾期跟进' : statusLabels[task.lead.status] || '待联系'}{task.lead.industry ? ` · ${task.lead.industry}` : ''}</small></span></button>)}{visibleTasks.length < matchingQueue.length && <Button className="sc-load-more" size="sm" variant="ghost" onClick={() => setVisibleCount(count => count + 20)}>显示更多客户</Button>}</div><div className="sc-queue-footer">共 {matchingQueue.length} 位{queueQuery.trim() && ` / 队列 ${filteredTasks.length} 位`}</div>
+        <Input className="sw-queue-search" aria-label="搜索今日客户队列" maxLength={200} value={queueQuery} disabled={saving} onChange={event => updateQueueQuery(event.target.value)} placeholder="搜索商家或电话" /><label className="sw-quality-filter"><span>资料状态</span><NativeSelect aria-label="筛选资料状态" value={qualityFilter} onChange={value => { setQualityFilter(value); setVisibleCount(20); }} disabled={saving} options={[{value:"all",label:"全部资料"},{value:"missing_contact",label:"缺联系人"},{value:"needs_review",label:"资料待核实"},{value:"has_interest",label:"已明确意向产品"}]} /></label><div className="sc-queue-list">{loading && !workbench ? <p className="sc-muted-state">正在加载…</p> : !visibleTasks.length ? <p className="sc-muted-state">暂无任务</p> : visibleTasks.map((task, index) => <button key={task.task_id} type="button" data-lead-id={task.lead.id} disabled={saving} aria-pressed={focusedTask?.task_id === task.task_id} onClick={() => chooseTask(task)} className={`sc-queue-item ${task.task_status === 'completed' ? 'is-done' : ''}`}><span className="sc-queue-number">{task.task_status === 'completed' ? <CheckCircle2 size={14} /> : String(index + 1).padStart(2, '0')}</span><span className="sc-queue-copy"><strong title={task.lead.business_name}>{task.lead.business_name}</strong><small>{task.task_status === 'completed' ? '已记录' : isFollowUpOverdue(task.lead.next_follow_up_at) ? '逾期跟进' : statusLabels[task.lead.status] || '待联系'}{task.lead.industry ? ` · ${task.lead.industry}` : ''}</small></span></button>)}{visibleTasks.length < matchingQueue.length && <Button className="sc-load-more" size="sm" variant="ghost" onClick={() => setVisibleCount(count => count + 20)}>显示更多客户</Button>}</div><div className="sc-queue-footer">共 {matchingQueue.length} 位{queueQuery.trim() && ` / 队列 ${filteredTasks.length} 位`}</div>
       </aside>
       <div className="sc-call-center sw-current">
         {loading && !workbench ? <div className="sc-empty">正在准备今天的任务…</div> : canManage && !selectedSalesId ? <div className="sc-empty">{assigneesLoaded && assignees.length === 0 ? '暂无可用销售人员，请先新增或启用销售员工。' : '请选择销售人员'}</div> : !focusedTask ? <div className="sc-empty"><CheckCircle2 size={28} /><h3>{loadError ? '今日任务暂不可用' : filter !== 'all' ? '当前筛选暂无任务' : '当前队列暂无任务'}</h3>{!loadError && (filter !== 'all' ? <Button variant="outline" onClick={() => setFilter('all')}>查看全部任务</Button> : prepareButton)}</div> : <>
           <section className="sc-customer" aria-label="当前客户与拨号">
-            <div className="sw-customer-heading"><div><div className="sw-customer-context">{!isMobile && <span>当前客户</span>}<Badge className={statusColor[focusedTask.lead.status] || statusColor.new}>{statusLabels[focusedTask.lead.status] || focusedTask.lead.status}</Badge></div><h2>{focusedTask.lead.business_name}</h2><p>{[focusedTask.lead.industry, focusedTask.lead.city || focusedTask.lead.state, focusedTask.lead.contact_name].filter(Boolean).join(' · ') || '资料待补充'}</p>{focusedTask.lead.next_follow_up_at && <p className="sw-followup-plan">回访 · <time>{formatDate(focusedTask.lead.next_follow_up_at)}</time></p>}</div><div className="sw-customer-navigation"><Button variant="ghost" size="icon" aria-label="上一位客户" disabled={saving || currentPosition <= 1} onClick={() => moveCustomer(-1)}><ChevronRight className="rotate-180" size={17} /></Button><Button variant="ghost" size="icon" aria-label="下一位客户" disabled={saving || currentPosition >= filteredTasks.length} onClick={() => moveCustomer(1)}><ChevronRight size={17} /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多客户操作"><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu"><DropdownMenuItem onSelect={() => void openHistory(focusedTask)}>历史联系</DropdownMenuItem><DropdownMenuItem onSelect={() => setDossierId(focusedTask.lead.id)}>累计档案</DropdownMenuItem><DropdownMenuItem onSelect={() => void openAnalysis(focusedTask)}>AI 分析卡</DropdownMenuItem>{focusedTask.task_status === 'completed' && !focusedTask.lead.do_not_contact && !focusedTask.lead.is_blacklisted && !focusedTask.lead.converted_customer_id && <DropdownMenuItem onSelect={() => openSupplementalFollowUp(focusedTask)}>追加跟进</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></div>
-            <div className="sw-dial-row"><div><div className="sw-phone"><strong>{formatPhoneNumber(focusedTask.lead.phone, focusedTask.lead.country) || '电话未填写'}</strong><Button size="icon" variant="ghost" aria-label="复制客户号码" disabled={!focusedTask.lead.phone} onClick={() => void copyPhone(focusedTask)}><Clipboard size={14} /></Button></div><span className="sw-provider-status" role="status">{providerLabel}</span></div><div className="sw-dial-actions">{canPrepareQuote && <Button variant="outline" disabled={saving} onClick={() => window.location.assign(`/sales-leads?lead_id=${focusedTask.lead.id}&action=quote&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>准备报价</Button>}<CustomerPhoneDial country={focusedTask.lead.country} phone={focusedTask.lead.phone} label="拨打电话" variant="outline" className="sw-dial-button" disabled={Boolean(disabledReason) || saving} onLaunched={() => markDialStarted(focusedTask)} /></div></div>
+            <div className="sw-customer-heading"><div><div className="sw-customer-context">{!isMobile && <span>当前客户</span>}<Badge className={statusColor[focusedTask.lead.status] || statusColor.new}>{statusLabels[focusedTask.lead.status] || focusedTask.lead.status}</Badge></div><h2>{focusedTask.lead.business_name}</h2><p>{[focusedTask.lead.industry, focusedTask.lead.city || focusedTask.lead.state, focusedTask.lead.contact_name].filter(Boolean).join(' · ') || '资料待补充'}</p>{focusedTask.lead.next_follow_up_at && <p className="sw-followup-plan">回访 · <time>{formatDate(focusedTask.lead.next_follow_up_at)}</time></p>}</div><div className="sw-customer-navigation"><Button type="button" variant="outline" size="sm" className="sw-enrichment-trigger" disabled={saving || !enrichment.key} onClick={() => enrichment.setOpen(true)}><PencilLine size={14} />完善资料</Button><Button variant="ghost" size="icon" aria-label="上一位客户" disabled={saving || currentPosition <= 1} onClick={() => moveCustomer(-1)}><ChevronRight className="rotate-180" size={17} /></Button><Button variant="ghost" size="icon" aria-label="下一位客户" disabled={saving || currentPosition >= filteredTasks.length} onClick={() => moveCustomer(1)}><ChevronRight size={17} /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多客户操作"><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu"><DropdownMenuItem onSelect={() => void openHistory(focusedTask)}>历史联系</DropdownMenuItem><DropdownMenuItem onSelect={() => setDossierId(focusedTask.lead.id)}>累计档案</DropdownMenuItem><DropdownMenuItem onSelect={() => void openAnalysis(focusedTask)}>AI 分析卡</DropdownMenuItem>{focusedTask.task_status === 'completed' && !focusedTask.lead.do_not_contact && !focusedTask.lead.is_blacklisted && !focusedTask.lead.converted_customer_id && <DropdownMenuItem onSelect={() => openSupplementalFollowUp(focusedTask)}>追加跟进</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></div>
+            <div className="sw-dial-row"><div><div className="sw-phone"><strong>{formatPhoneNumber(dialPhone, focusedTask.lead.country) || '电话未填写'}</strong><Button size="icon" variant="ghost" aria-label="复制客户号码" disabled={!dialPhone} onClick={() => void copyPhone(focusedTask)}><Clipboard size={14} /></Button></div><span className="sw-provider-status" role="status">{providerLabel}</span></div><div className="sw-dial-actions">{canPrepareQuote && <Button variant="outline" disabled={saving} onClick={() => window.location.assign(`/sales-leads?lead_id=${focusedTask.lead.id}&action=quote&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>准备报价</Button>}<SalesWorkbenchDial key={`${employee?.id}:${date}:${focusedTask.task_id}:${focusedTask.lead.id}`} country={focusedTask.lead.country} phone={dialPhone} disabled={Boolean(disabledReason) || saving} onBusyChange={setDialPreparing} onPrepare={phone => prepareDial(focusedTask, phone)} onLaunched={() => markDialStarted(focusedTask)} /></div></div>
+            {dialOptions.length > 1 && <label className="sw-dial-choice"><span>本次拨打</span><NativeSelect aria-label="选择本次拨打号码" value={dialPhone} disabled={saving} onChange={setSelectedDialPhone} options={dialOptions.map(option => ({ ...option, label: `${option.label} · ${formatPhoneNumber(option.value, focusedTask.lead.country)}` }))} /></label>}
+            <div className="sw-enrichment-summary" aria-label="商家资料补全状态">
+              {enrichment.loading ? <span>正在读取补充资料…</span> : enrichment.error && !enrichment.value ? <button type="button" onClick={() => enrichment.setOpen(true)}>补充资料暂不可用 · 重试</button> : <>
+                <button type="button" disabled={saving} onClick={() => enrichment.setOpen(true)}>{enrichment.value?.contacts.length ? `${enrichment.value.contacts.length} 位联系人` : focusedTask.lead.contact_name || '＋联系人 / 手机'}</button>
+                <button type="button" disabled={saving} onClick={() => enrichment.setOpen(true)}>{enrichment.value?.interest_product_ids.length ? `意向：${enrichment.value.interest_product_ids.map(id => enrichment.catalog.find(product => product.id === id)?.name || '已记录产品').join('、')}` : '＋意向产品'}</button>
+                {enrichment.value?.updated_by_name && <span>最近补充：{enrichment.value.updated_by_name}</span>}
+              </>}
+            </div>
+            {enrichment.draft && <div className="sw-enrichment-notice" role="status">资料有待保存修改 · 将随本次沟通一起保存<Button size="sm" variant="ghost" onClick={() => enrichment.setOpen(true)}>查看</Button></div>}
+            {!enrichment.draft && enrichment.value?.warnings.length ? <p className="sw-enrichment-warning" role="status">{enrichmentWarningText(enrichment.value.warnings)}</p> : null}
             <SalesLocalTime {...contactWindow} /><SalesRecentHistory compact key={focusedTask.lead.id} leadId={focusedTask.lead.id} lastContactAt={focusedTask.lead.last_contact_at} onOpenAll={() => void openHistory(focusedTask)} formatDate={formatDate} />
           </section>
           <SalesCallRecord key={draftKey} draftKey={draftKey} legacyDraftKey={legacyDraftKey} options={outcomeOptions} suggestedFollowUp={suggestedFollowUpValue} timezone={contactWindow.timezone} saving={saving} disabledReason={disabledReason} providerCall={null} onOpenKnowledge={() => setKnowledgeExpanded(true)} onSave={values => submitResult(focusedTask, values)} />
@@ -671,9 +731,10 @@ function SalesWorkspace() {
     </>}
     <Dialog open={knowledgeExpanded} onOpenChange={setKnowledgeExpanded}><DialogContent className="sw-knowledge-dialog sales-center-ui max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>销售话术</DialogTitle></DialogHeader><SalesKnowledgeAssistant contextLabel={focusedTask?.lead.industry} contextCategory={focusedTask && ['interested', 'appointment'].includes(focusedTask.lead.status) ? '套餐与报价' : focusedTask?.lead.status === 'new' ? '销售准备与开场' : '需求诊断'} /></DialogContent></Dialog>
     <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}><DialogContent className="sales-center-ui max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>拨号与任务设置</DialogTitle></DialogHeader><div className="space-y-4"><div><h3>RingCentral</h3><p className="mt-2 text-sm text-slate-500">{ringCentral?.realtime_sync_enabled ? '实时通话同步已启用' : ringCentral?.last_error || ringCentral?.message || '官方通话状态待同步'}</p>{ringCentral?.configured && <Button className="mt-3" variant="outline" onClick={() => void connectRingCentral()}>{ringCentral.connected ? '检查 / 重连' : '连接 RingCentral'}</Button>}</div>{canManage && <div><h3>每日任务配额</h3><div className="mt-3 flex gap-2"><Input aria-label="每日任务数量" className="w-24" type="number" min="1" max="300" value={quotaInput} onChange={event => setQuotaInput(event.target.value)} /><Button disabled={!selectedSalesId} onClick={() => void updateQuota()}>保存数量</Button></div></div>}</div></DialogContent></Dialog>
+    <SalesLeadQuickEdit open={enrichment.open} onOpenChange={open => !saving && enrichment.setOpen(open)} leadId={enrichmentTask?.lead.id || null} value={enrichment.value} draft={enrichment.draft} onDraftChange={enrichment.changeDraft} onSave={enrichment.save} saving={saving} loading={enrichment.loading} error={enrichment.error} catalog={enrichment.catalog} history={enrichment.history} onLoadHistory={enrichment.loadHistory} onReload={enrichment.reload} draftNotice={enrichment.notice} />
     <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} />
-    <Dialog open={supplementalFollowUp && Boolean(activeTask)} onOpenChange={open => { if (!open && !saving) { setActiveTask(null); setSupplementalFollowUp(false); } }}><DialogContent className="sales-center-ui sw-refined sw-supplemental max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>追加跟进 · {activeTask?.lead.business_name}</DialogTitle></DialogHeader>{activeTask && <div className="sw-supplemental-dial"><span>{formatPhoneNumber(activeTask.lead.phone, activeTask.lead.country)}</span><CustomerPhoneDial country={activeTask.lead.country} phone={activeTask.lead.phone} label="再次拨打" disabled={saving || activeTask.lead.do_not_contact || activeTask.lead.is_blacklisted || Boolean(activeTask.lead.converted_customer_id)} /><Button type="button" variant="ghost" disabled={saving || !activeTask.lead.phone} onClick={() => void copyPhone(activeTask)}>复制号码</Button></div>}{activeTask && <SalesCallRecord key={supplementalDraftKey} draftKey={supplementalDraftKey} legacyDraftKey={legacySalesCallDraftKey(supplementalDraftScope)} saving={saving} disabledReason={activeTask.lead.do_not_contact || activeTask.lead.is_blacklisted || activeTask.lead.converted_customer_id ? '该商家已受保护，不能追加跟进' : undefined} providerCall={providerCallTaskId === activeTask.task_id ? providerCall : null} options={outcomeOptions} suggestedFollowUp={suggestedFollowUpValue} submitLabel="保存跟进" onSave={values => submitResult(activeTask, values, true)} />}</DialogContent></Dialog>
-    <Dialog open={!!historyTask} onOpenChange={open => !open && setHistoryTask(null)}><DialogContent className="sales-center-ui max-h-[80vh] overflow-y-auto"><DialogHeader><DialogTitle>{historyTask?.lead.business_name} · 历史联系记录</DialogTitle></DialogHeader><div className="space-y-3">{history.length ? history.map(item => <div key={item.id} className="rounded-lg border p-3"><div className="flex items-center justify-between"><Badge className={statusColor[item.outcome === 'callback' ? 'follow_up' : item.outcome === 'interested' ? 'interested' : item.outcome === 'appointment' ? 'appointment' : 'contacted']}>{item.outcome_label}</Badge><span className="text-xs text-slate-500">{formatDate(item.called_at)}</span></div><p className="mt-2 whitespace-pre-line text-sm text-slate-700">{item.notes || '未填写备注'}</p><p className="mt-2 text-xs text-slate-500">下次跟进：{formatDate(item.next_follow_up_at)} · 记录人：{item.sales_employee_name || '-'}</p></div>) : <p className="py-8 text-center text-sm text-slate-500">暂无联系记录</p>}</div></DialogContent></Dialog>
+    <Dialog open={supplementalFollowUp && Boolean(activeTask)} onOpenChange={open => { if (!open && !saving) { setActiveTask(null); setSupplementalFollowUp(false); } }}><DialogContent className="sales-center-ui sw-refined sw-supplemental max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>追加跟进 · {activeTask?.lead.business_name}</DialogTitle></DialogHeader>{activeTask && <div className="sw-supplemental-dial"><span>{formatPhoneNumber(dialPhone, activeTask.lead.country)}</span><SalesWorkbenchDial key={`${employee?.id}:${date}:${activeTask.task_id}:${activeTask.lead.id}:supplemental`} country={activeTask.lead.country} phone={dialPhone} onBusyChange={setDialPreparing} onPrepare={phone => prepareDial(activeTask, phone)} onLaunched={() => setProviderCall(null)} disabled={saving || activeTask.lead.do_not_contact || activeTask.lead.is_blacklisted || Boolean(activeTask.lead.converted_customer_id)} /><Button type="button" variant="ghost" disabled={saving || !dialPhone} onClick={() => void copyPhone(activeTask)}>复制号码</Button><Button type="button" variant="ghost" disabled={saving || enrichment.loading || !enrichment.value?.can_edit} onClick={() => enrichment.setOpen(true)}>完善资料</Button></div>}{activeTask && dialOptions.length > 1 && <label className="sw-dial-choice"><span>本次拨打</span><NativeSelect aria-label="追加跟进拨打号码" value={dialPhone} disabled={saving} onChange={setSelectedDialPhone} options={dialOptions.map(option => ({ ...option, label: `${option.label} · ${formatPhoneNumber(option.value, activeTask.lead.country)}` }))} /></label>}{activeTask && <SalesCallRecord key={supplementalDraftKey} draftKey={supplementalDraftKey} legacyDraftKey={legacySalesCallDraftKey(supplementalDraftScope)} saving={saving} disabledReason={activeTask.lead.do_not_contact || activeTask.lead.is_blacklisted || activeTask.lead.converted_customer_id ? '该商家已受保护，不能追加跟进' : undefined} providerCall={null} options={outcomeOptions} suggestedFollowUp={suggestedFollowUpValue} submitLabel="保存跟进" onSave={values => submitResult(activeTask, values, true)} />}</DialogContent></Dialog>
+    <Dialog open={!!historyTask} onOpenChange={open => !open && setHistoryTask(null)}><DialogContent className="sales-center-ui max-h-[80vh] overflow-y-auto"><DialogHeader><DialogTitle>{historyTask?.lead.business_name} · 历史联系记录</DialogTitle></DialogHeader><div className="space-y-3">{history.length ? history.map(item => <div key={item.id} className="rounded-lg border p-3"><div className="flex items-center justify-between"><Badge className={statusColor[item.outcome === 'callback' ? 'follow_up' : item.outcome === 'interested' ? 'interested' : item.outcome === 'appointment' ? 'appointment' : 'contacted']}>{item.outcome_label}</Badge><span className="text-xs text-slate-500">{formatDate(item.called_at)}</span></div><p className="mt-2 whitespace-pre-line text-sm text-slate-700">{item.notes || '未填写备注'}</p>{item.dial_phone && <p className="mt-2 text-xs text-slate-500">本次拨打：{formatPhoneNumber(item.dial_phone)}</p>}<p className="mt-2 text-xs text-slate-500">下次跟进：{formatDate(item.next_follow_up_at)} · 记录人：{item.sales_employee_name || '-'}</p></div>) : <p className="py-8 text-center text-sm text-slate-500">暂无联系记录</p>}</div></DialogContent></Dialog>
     <Dialog open={!!analysisTask} onOpenChange={open => !open && setAnalysisTask(null)}><DialogContent className="sales-center-ui max-h-[86vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>{analysisTask?.lead.business_name} · AI 销售分析卡</DialogTitle></DialogHeader>{!analysis ? <p className="py-8 text-center text-sm text-slate-500">正在读取经主管确认的资料...</p> : !analysis.available ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{analysis.message}</div> : <div className="space-y-3">{analysis.analysis?.warning && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{analysis.analysis.warning}</div>}{analysis.analysis?.cards.map((card, index) => <Card key={`${card.title}-${index}`}><CardContent className="p-4"><div className="flex justify-between gap-2"><p className="font-semibold text-slate-900">{card.title}</p><Badge className={card.kind === 'insufficient' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700'}>{card.kind === 'insufficient' ? '信息不足' : '资料建议'}</Badge></div><p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{card.content}</p><div className="mt-3 border-t pt-2 text-xs text-slate-500">{card.sources.map((source, sourceIndex) => <p key={sourceIndex}>{source.label}{source.value ? `：${source.value}` : ''} · {formatDate(source.updated_at)}</p>)}</div></CardContent></Card>)}</div>}</DialogContent></Dialog>
   </div>;
 }

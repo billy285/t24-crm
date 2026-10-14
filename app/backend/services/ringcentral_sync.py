@@ -9,6 +9,7 @@ from models.ringcentral_call_records import RingCentralCallRecords
 from models.ringcentral_connections import RingCentralConnections
 from models.sales_call_activities import SalesCallActivities
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
+from models.sales_lead_enrichments import SalesDialAttempt
 from models.sales_leads import SalesLeads
 from services.phone_numbers import phone_match_key
 
@@ -95,6 +96,62 @@ async def _match_lead_and_task(
     normalized = normalize_phone(remote_phone)
     if not normalized:
         return None, None
+
+    # A dial snapshot records who actually called which number. It remains
+    # authoritative after a contact number changes or a lead is reassigned.
+    # Do not pick the newest of multiple plausible tasks: provider data does
+    # not prove which one was dialled in that case.
+    if call_started_at:
+        earliest_dial = _utc(call_started_at) - CALL_TASK_MATCH_WINDOW
+        latest_dial = _utc(call_started_at) + timedelta(minutes=5)
+        attempt_rows = (
+            await db.execute(
+                select(SalesDialAttempt, SalesDailyDialTasks, SalesLeads)
+                .join(SalesDailyDialTasks, SalesDialAttempt.task_id == SalesDailyDialTasks.id)
+                .join(SalesLeads, SalesDialAttempt.lead_id == SalesLeads.id)
+                .where(
+                    SalesDialAttempt.sales_employee_id == employee_id,
+                    SalesDialAttempt.started_at >= earliest_dial,
+                    SalesDialAttempt.started_at <= latest_dial,
+                )
+            )
+        ).all()
+        attempt_contexts = {
+            (lead.id, task.id): (lead, task)
+            for attempt, task, lead in attempt_rows
+            if task.sales_employee_id == employee_id
+            and task.lead_id == lead.id
+            and normalize_phone(attempt.dial_phone) == normalized
+            and _within_call_window(attempt.started_at, call_started_at)
+        }
+        # Repeated calls within one task share a context, but two customers
+        # with the same phone cannot be distinguished safely. Immutable
+        # attempts keep an earlier store call after a later mobile call.
+        if attempt_contexts:
+            return next(iter(attempt_contexts.values())) if len(attempt_contexts) == 1 else (None, None)
+        dial_rows = (
+            await db.execute(
+                select(SalesDailyDialTasks, SalesLeads)
+                .join(SalesLeads, SalesDailyDialTasks.lead_id == SalesLeads.id)
+                .where(
+                    SalesDailyDialTasks.sales_employee_id == employee_id,
+                    SalesDailyDialTasks.dial_started_at >= earliest_dial,
+                    SalesDailyDialTasks.dial_started_at <= latest_dial,
+                    ~select(SalesDialAttempt.id).where(
+                        SalesDialAttempt.task_id == SalesDailyDialTasks.id
+                    ).exists(),
+                )
+            )
+        ).all()
+        snapshot_matches = [
+            (lead, task) for task, lead in dial_rows
+            if task.dial_phone
+            and normalize_phone(task.dial_phone) == normalized
+            and _within_call_window(task.dial_started_at, call_started_at)
+        ]
+        if snapshot_matches:
+            return snapshot_matches[0] if len(snapshot_matches) == 1 else (None, None)
+
     leads = (
         await db.execute(select(SalesLeads).where(SalesLeads.assigned_sales_id == employee_id))
     ).scalars().all()
@@ -110,26 +167,35 @@ async def _match_lead_and_task(
                 SalesDailyDialTasks.sales_employee_id == employee_id,
                 SalesDailyDialTasks.lead_id == lead.id,
                 SalesDailyDialTasks.dial_started_at.is_not(None),
+                ~select(SalesDialAttempt.id).where(
+                    SalesDialAttempt.task_id == SalesDailyDialTasks.id
+                ).exists(),
             )
             .order_by(SalesDailyDialTasks.dial_started_at.desc(), SalesDailyDialTasks.id.desc())
         )
     ).scalars().all()
-    task = None
-    if call_started_at:
-        call_time = call_started_at if call_started_at.tzinfo else call_started_at.replace(tzinfo=timezone.utc)
-        call_time = call_time.astimezone(timezone.utc)
-        for candidate in tasks:
-            dial_time = candidate.dial_started_at
-            if not dial_time:
-                continue
-            dial_time = dial_time if dial_time.tzinfo else dial_time.replace(tzinfo=timezone.utc)
-            dial_time = dial_time.astimezone(timezone.utc)
-            # Allow a small provider clock skew, but never attach an old dial
-            # attempt merely because the employee and phone number match.
-            if dial_time <= call_time + timedelta(minutes=5) and call_time - dial_time <= CALL_TASK_MATCH_WINDOW:
-                task = candidate
-                break
-    return lead, task
+    # Only pre-migration tasks can fall back to the current lead phone. A
+    # populated snapshot for a different number must never be rewritten by it.
+    legacy_matches = [
+        candidate for candidate in tasks
+        if not candidate.dial_phone
+        and call_started_at
+        and _within_call_window(candidate.dial_started_at, call_started_at)
+    ]
+    if len(legacy_matches) > 1:
+        return None, None
+    return lead, legacy_matches[0] if legacy_matches else None
+
+
+def _utc(value: datetime) -> datetime:
+    return (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+
+
+def _within_call_window(dial_time: datetime | None, call_time: datetime) -> bool:
+    if not dial_time:
+        return False
+    delta = _utc(call_time) - _utc(dial_time)
+    return -timedelta(minutes=5) <= delta <= CALL_TASK_MATCH_WINDOW
 
 
 async def _linked_activity(
@@ -137,12 +203,54 @@ async def _linked_activity(
     employee_id: int,
     lead_id: int | None,
     task: SalesDailyDialTasks | None,
+    *,
+    remote_phone: str | None = None,
+    call_started_at: datetime | None = None,
 ) -> SalesCallActivities | None:
-    if task and task.completed_activity_id:
-        return await db.get(SalesCallActivities, task.completed_activity_id)
-    if not lead_id:
+    if task:
+        if task.sales_employee_id != employee_id or task.lead_id != lead_id:
+            return None
+        attempts = (
+            await db.execute(
+                select(SalesDialAttempt).where(
+                    SalesDialAttempt.task_id == task.id,
+                    SalesDialAttempt.sales_employee_id == employee_id,
+                    SalesDialAttempt.lead_id == lead_id,
+                )
+            )
+        ).scalars().all()
+        if attempts:
+            # A completed daily task can be called again for a follow-up.
+            # Its completed_activity_id still points to the original result,
+            # so new calls must bind through their immutable attempt instead.
+            # Until that attempt has a result, leave the provider row unlinked.
+            normalized = normalize_phone(remote_phone)
+            candidates = [attempt for attempt in attempts
+                          if normalized and call_started_at
+                          and normalize_phone(attempt.dial_phone) == normalized
+                          and _within_call_window(attempt.started_at, call_started_at)]
+            if len(candidates) != 1:
+                return None
+            activity = (
+                await db.execute(
+                    select(SalesCallActivities).where(
+                        SalesCallActivities.dial_attempt_id == candidates[0].id,
+                        SalesCallActivities.sales_employee_id == employee_id,
+                        SalesCallActivities.lead_id == lead_id,
+                    )
+                )
+            ).scalars().one_or_none()
+            return activity if activity and normalize_phone(activity.dial_phone) == normalized else None
+        if task.completed_activity_id:
+            activity = await db.get(SalesCallActivities, task.completed_activity_id)
+            if activity and activity.sales_employee_id == employee_id and activity.lead_id == lead_id:
+                if not activity.dial_phone or normalize_phone(activity.dial_phone) == normalize_phone(remote_phone):
+                    return activity
+            return None
+    normalized = normalize_phone(remote_phone)
+    if not lead_id or not normalized or not call_started_at:
         return None
-    return (
+    activities = (
         await db.execute(
             select(SalesCallActivities)
             .where(
@@ -151,7 +259,18 @@ async def _linked_activity(
             )
             .order_by(SalesCallActivities.called_at.desc(), SalesCallActivities.id.desc())
         )
-    ).scalars().first()
+    ).scalars().all()
+    # A manual follow-up can exist without a daily task, but only a unique
+    # actual-number snapshot saved around this call is enough to link it.
+    # In particular, a stale provider call must not overwrite the latest note.
+    matches = [
+        activity for activity in activities
+        if activity.dial_attempt_id is None
+        and activity.dial_phone
+        and normalize_phone(activity.dial_phone) == normalized
+        and _within_call_window(call_started_at, activity.called_at)
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _provider_key(*values: Any) -> str:
@@ -294,7 +413,11 @@ async def upsert_call_log_record(
     item.sync_status = "verified"
     item.synced_at = datetime.now(timezone.utc)
     await db.flush()
-    activity = await _linked_activity(db, connection.employee_id, item.lead_id, await db.get(SalesDailyDialTasks, item.task_id) if item.task_id else None)
+    activity = await _linked_activity(
+        db, connection.employee_id, item.lead_id,
+        await db.get(SalesDailyDialTasks, item.task_id) if item.task_id else None,
+        remote_phone=item.remote_phone, call_started_at=item.started_at,
+    )
     if activity:
         item.activity_id = activity.id
         activity.call_duration_seconds = duration

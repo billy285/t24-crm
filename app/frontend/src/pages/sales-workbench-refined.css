@@ -345,3 +345,24 @@
 
 .sw-queue-search { display:block; padding:10px 12px; border-bottom:1px solid #eef2f7; }
 .sw-queue-search input { width:100%; min-width:0; font-size:14px; }
+/* Call-time enrichment stays inside the sales workspace. */
+.sw-refined .sw-quality-filter { display: flex; align-items: center; gap: 8px; padding: 4px 12px 10px; color: #64748b; font-size: 12px; }
+.sw-refined .sw-quality-filter > span { flex: 0 0 auto; }
+.sw-refined .sw-quality-filter select { min-width: 0; width: 100%; font-size: 12px; }
+.sw-refined .sw-enrichment-trigger { display: inline-flex; gap: 5px; white-space: nowrap; }
+.sw-refined .sw-enrichment-summary { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 10px 0; font-size: 12px; color: #64748b; }
+.sw-refined .sw-enrichment-summary button { text-align: left; min-height: 32px; max-width: 100%; overflow-wrap: anywhere; border: 1px solid #dce6f2; border-radius: 7px; padding: 4px 9px; color: #2563eb; background: #f8faff; }
+.sw-refined .sw-enrichment-summary button:disabled { opacity: .55; }
+.sw-refined .sw-enrichment-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px; padding: 6px 10px; border-radius: 8px; color: #1e40af; background: #eff6ff; font-size: 12px; }
+.sw-refined .sw-enrichment-warning { padding: 6px 10px; color: #92400e; background: #fffbeb; border-radius: 8px; font-size: 12px; }
+.sw-refined .sw-dial-choice { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: #64748b; }
+.sw-refined .sw-dial-choice > span { white-space: nowrap; }
+.sw-refined .sw-dial-choice select { min-width: 0; width: 100%; }
+@media (max-width: 767px) {
+  .sw-queue-sheet .sw-quality-filter { display: flex; align-items: center; gap: 10px; margin: 6px 0 10px; font-size: 13px; color: #64748b; }
+  .sw-queue-sheet .sw-quality-filter > span { white-space: nowrap; }
+  .sw-queue-sheet .sw-quality-filter select { min-height: 44px; min-width: 0; width: 100%; font-size: 16px; }
+  .sw-refined .sw-enrichment-trigger { min-height: 36px; padding: 6px 9px; font-size: 12px; }
+  .sw-refined .sw-customer-navigation { flex-wrap: wrap; justify-content: flex-end; }
+  .sw-refined .sw-enrichment-summary button { min-height: 38px; }
+}

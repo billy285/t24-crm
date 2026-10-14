@@ -5,7 +5,7 @@ from typing import List, Optional
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +38,10 @@ from services.deal_payment_sync import sync_payment_from_deal
 from services.sales_task_assignment import sync_pending_daily_tasks
 from services.sales_workflow_locks import lock_sales_workflow
 from services.phone_numbers import parse_phone_number, phone_match_key
+from schemas.sales_enrichment import SalesEnrichmentUpdate, SalesDialStartedInput
+from models.sales_lead_enrichments import SalesLeadEnrichmentAudit, SalesDialAttempt
+from services.sales_enrichment import (apply_enrichment, get_enrichment, enrichment_catalog,
+    ensure_enrichment_editable, saved_dial_phone, enrichment_summaries)
 from services.sales_lead_cycle import (
     automation_overview as sales_automation_overview,
     ensure_daily_batch,
@@ -280,6 +284,8 @@ class SalesDailyQuotaUpdate(BaseModel):
 
 
 class SalesCallResultCreate(BaseModel):
+    dial_attempt_id: Optional[int] = Field(default=None, ge=1)
+    enrichment: Optional[SalesEnrichmentUpdate] = None
     contact_details: Optional[ContactDetails] = None
     outcome: str
     notes: Optional[str] = Field(default=None, max_length=4000)
@@ -861,6 +867,14 @@ async def get_daily_call_workbench(
         )
         .order_by(SalesDailyDialTasks.status.asc(), SalesLeads.next_follow_up_at.is_(None), SalesLeads.next_follow_up_at.asc(), SalesDailyDialTasks.id.asc())
     )).all()
+    # Enrichment is restricted to the current lead scope, even when historical
+    # completed task rows remain in this employee's performance batch.
+    visible_query = select(SalesLeads.id).where(SalesLeads.id.in_([lead.id for _, lead in tasks]))
+    scope = await _scope_condition(db, current_user)
+    if scope is not None:
+        visible_query = visible_query.where(scope)
+    visible_ids = set((await db.execute(visible_query)).scalars()) if tasks else set()
+    summaries = await enrichment_summaries(db, [lead for _, lead in tasks if lead.id in visible_ids])
     items = []
     categories = {"unfinished": 0, "callback": 0, "interested": 0, "appointment": 0, "new": 0, "retry": 0, "recycled": 0, "follow_up": 0}
     for task, lead in tasks:
@@ -882,7 +896,8 @@ async def get_daily_call_workbench(
             "priority": priority,
             "next_action_label": next_action_label,
             "queue_category": queue_category,
-            "lead": SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
+            "lead": {**SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
+                     **({"enrichment_summary": summaries[lead.id]} if lead.id in summaries else {})},
         })
     completed = sum(1 for task, _lead in tasks if task.status == "completed")
     activities = (await db.execute(
@@ -1258,7 +1273,7 @@ async def get_sales_call_history(
         "sales_employee_id": row.sales_employee_id, "sales_employee_name": row.sales_employee_name,
         "call_duration_seconds": row.call_duration_seconds, "sync_status": row.sync_status,
         "ringcentral_connected": row.ringcentral_connected,
-        "ringcentral_call_id": row.ringcentral_call_id,
+        "ringcentral_call_id": row.ringcentral_call_id, "dial_phone": row.dial_phone, "dial_attempt_id": row.dial_attempt_id,
     } for row in rows]
 
 
@@ -2083,6 +2098,68 @@ async def _save_contact_details(db, activity, payload, user):
         recorded_by_id=_employee_id(user), **details.model_dump()))
 
 
+async def _result_dial_attempt(db, lead, user, attempt_id, *, task=None):
+    if attempt_id is None and task is not None:
+        attempt_id = (await db.execute(select(SalesDialAttempt.id).where(
+            SalesDialAttempt.task_id == task.id, SalesDialAttempt.lead_id == lead.id,
+            SalesDialAttempt.sales_employee_id == task.sales_employee_id,
+        ).order_by(SalesDialAttempt.id.desc()).limit(1))).scalar_one_or_none()
+    if attempt_id is None:
+        return None
+    attempt = await db.get(SalesDialAttempt, attempt_id)
+    if not attempt or attempt.lead_id != lead.id:
+        raise HTTPException(status_code=409, detail="拨号记录不属于本次线索，请重新拨打后记录")
+    target_task = task or await db.get(SalesDailyDialTasks, attempt.task_id)
+    if not target_task or attempt.task_id != target_task.id or target_task.lead_id != lead.id \
+            or target_task.sales_employee_id != attempt.sales_employee_id \
+            or lead.assigned_sales_id != attempt.sales_employee_id:
+        raise HTTPException(status_code=409, detail="拨号记录或线索归属已改变，请刷新后核对")
+    if (task is None and target_task.status != "completed") or (task is not None and target_task.status != "pending"):
+        raise HTTPException(status_code=409, detail="拨号对应任务的状态已改变，请刷新后核对")
+    await _resolve_workbench_salesperson(db, user, attempt.sales_employee_id)
+    age = datetime.now(timezone.utc) - _as_utc(attempt.started_at)
+    if age < -timedelta(minutes=5) or age > timedelta(hours=12):
+        raise HTTPException(status_code=409, detail="拨号记录已超时，请重新拨打；历史记录继续保留")
+    if (await db.execute(select(SalesCallActivities.id).where(SalesCallActivities.dial_attempt_id == attempt.id))).first():
+        raise HTTPException(status_code=409, detail="本次拨号结果已经保存，请勿重复提交")
+    return attempt
+
+
+async def _attach_result_provider_call(db, lead, activity, task, dial_started_at):
+    provider_candidates = (await db.execute(select(RingCentralCallRecords).where(
+        RingCentralCallRecords.task_id == task.id, RingCentralCallRecords.lead_id == lead.id,
+        RingCentralCallRecords.sales_employee_id == activity.sales_employee_id,
+        RingCentralCallRecords.activity_id.is_(None),
+    ).order_by(RingCentralCallRecords.started_at.desc(), RingCentralCallRecords.id.desc()))).scalars().all()
+    dial_key = phone_match_key(activity.dial_phone or lead.phone, lead.country)
+    provider_call = None
+    for record in provider_candidates:
+        if not (dial_key and phone_match_key(record.remote_phone, lead.country) == dial_key
+                and record.started_at and dial_started_at
+                and -timedelta(minutes=5) <= _as_utc(record.started_at) - _as_utc(dial_started_at) <= timedelta(hours=12)):
+            continue
+        if activity.dial_attempt_id is not None:
+            # Share the provider sync's attempt-level association rule. An old
+            # same-number call, or an ambiguous repeated dial, cannot fill this
+            # new result just because the task IDs match.
+            from services.ringcentral_sync import _linked_activity
+            linked = await _linked_activity(db, activity.sales_employee_id, lead.id, task,
+                remote_phone=record.remote_phone, call_started_at=record.started_at)
+            if linked is None or linked.id != activity.id:
+                continue
+        provider_call = record
+        break
+    if provider_call:
+        activity.dial_phone = activity.dial_phone or dial_key
+        provider_call.activity_id = activity.id
+        activity.call_duration_seconds = provider_call.duration_seconds
+        activity.ringcentral_connected = provider_call.connected
+        activity.ringcentral_call_id = provider_call.ringcentral_call_id
+        activity.ringcentral_session_id = provider_call.ringcentral_session_id or provider_call.telephony_session_id
+        activity.recording_uri = provider_call.recording_uri
+        activity.sync_status = provider_call.sync_status
+
+
 @router.post("/workbench/tasks/{task_id}/result")
 async def record_daily_call_result(
     task_id: int,
@@ -2105,6 +2182,14 @@ async def record_daily_call_result(
     lead = await _get_scoped_lead(db, task.lead_id, current_user)
     if lead.is_blacklisted or lead.do_not_contact:
         raise HTTPException(status_code=400, detail="该商家已被保护，禁止拨打")
+    ensure_enrichment_editable(lead)
+    if lead.assigned_sales_id != task.sales_employee_id:
+        raise HTTPException(status_code=409, detail="线索归属已变更，请刷新任务队列")
+
+    dial_attempt = await _result_dial_attempt(db, lead, current_user, payload.dial_attempt_id, task=task)
+
+    if payload.enrichment is not None:
+        await apply_enrichment(db, lead, payload.enrichment.model_copy(update={"source": "call"}), current_user)
 
     now = datetime.now(timezone.utc)
     suggested_follow_up_at, next_action_label = _suggest_follow_up(payload.outcome, now)
@@ -2113,6 +2198,8 @@ async def record_daily_call_result(
         lead_id=lead.id,
         sales_employee_id=task.sales_employee_id,
         sales_employee_name=(await db.execute(select(Employees.name).where(Employees.id == task.sales_employee_id))).scalar_one_or_none(),
+        dial_phone=dial_attempt.dial_phone if dial_attempt else task.dial_phone,
+        dial_attempt_id=dial_attempt.id if dial_attempt else None,
         outcome=payload.outcome,
         notes=payload.notes,
         next_follow_up_at=next_follow_up_at,
@@ -2121,21 +2208,8 @@ async def record_daily_call_result(
     db.add(activity)
     await _save_contact_details(db, activity, payload, current_user)
     await db.flush()
-    provider_call = (
-        await db.execute(
-            select(RingCentralCallRecords)
-            .where(RingCentralCallRecords.task_id == task.id)
-            .order_by(RingCentralCallRecords.started_at.desc(), RingCentralCallRecords.id.desc())
-        )
-    ).scalars().first()
-    if provider_call:
-        provider_call.activity_id = activity.id
-        activity.call_duration_seconds = provider_call.duration_seconds
-        activity.ringcentral_connected = provider_call.connected
-        activity.ringcentral_call_id = provider_call.ringcentral_call_id
-        activity.ringcentral_session_id = provider_call.ringcentral_session_id or provider_call.telephony_session_id
-        activity.recording_uri = provider_call.recording_uri
-        activity.sync_status = provider_call.sync_status
+    await _attach_result_provider_call(db, lead, activity, task,
+        dial_attempt.started_at if dial_attempt else task.dial_started_at)
     old_assignment = (lead.assigned_sales_id, lead.assigned_sales_name)
     lead.status = _lead_status_from_outcome(payload.outcome)
     next_follow_up_at = _apply_automation_outcome(lead, payload.outcome, now, next_follow_up_at)
@@ -2163,6 +2237,7 @@ async def record_daily_call_result(
         "task_id": task.id,
         "lead_id": lead.id,
         "lead": SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
+        "enrichment": await get_enrichment(db, lead) if payload.enrichment is not None else None,
         "status": lead.status,
         "next_follow_up_at": next_follow_up_at,
         "next_action_label": next_action_label,
@@ -2186,16 +2261,24 @@ async def record_supplemental_follow_up(
         raise HTTPException(status_code=403, detail="只能追加本人负责线索的跟进")
     if lead.is_blacklisted or lead.do_not_contact:
         raise HTTPException(status_code=400, detail="该商家已被保护，禁止继续联系")
+    ensure_enrichment_editable(lead)
     if lead.status not in {"contacted", "follow_up", "interested", "appointment"}:
         raise HTTPException(status_code=400, detail="请先通过每日任务完成首次联系，再追加跟进")
+
+    dial_attempt = await _result_dial_attempt(db, lead, current_user, payload.dial_attempt_id)
+
+    if payload.enrichment is not None:
+        await apply_enrichment(db, lead, payload.enrichment.model_copy(update={"source": "call"}), current_user)
 
     now = datetime.now(timezone.utc)
     suggested_follow_up_at, next_action_label = _suggest_follow_up(payload.outcome, now)
     next_follow_up_at = payload.next_follow_up_at or suggested_follow_up_at
     activity = SalesCallActivities(
         lead_id=lead.id,
-        sales_employee_id=_employee_id(current_user),
-        sales_employee_name=current_user.name,
+        sales_employee_id=dial_attempt.sales_employee_id if dial_attempt else _employee_id(current_user),
+        sales_employee_name=(await db.get(Employees, dial_attempt.sales_employee_id)).name if dial_attempt else current_user.name,
+        dial_phone=dial_attempt.dial_phone if dial_attempt else None,
+        dial_attempt_id=dial_attempt.id if dial_attempt else None,
         outcome=payload.outcome,
         notes=payload.notes,
         next_follow_up_at=next_follow_up_at,
@@ -2203,6 +2286,10 @@ async def record_supplemental_follow_up(
     )
     db.add(activity)
     await _save_contact_details(db, activity, payload, current_user)
+    if dial_attempt:
+        await db.flush()
+        await _attach_result_provider_call(db, lead, activity,
+            await db.get(SalesDailyDialTasks, dial_attempt.task_id), dial_attempt.started_at)
     old_assignment = (lead.assigned_sales_id, lead.assigned_sales_name)
     lead.status = _lead_status_from_outcome(payload.outcome)
     next_follow_up_at = _apply_automation_outcome(lead, payload.outcome, now, next_follow_up_at)
@@ -2226,6 +2313,7 @@ async def record_supplemental_follow_up(
         "message": "追加跟进已记录并加入时间线，不会覆盖历史记录，也不会重复增加今日任务完成数",
         "lead_id": lead.id,
         "lead": SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
+        "enrichment": await get_enrichment(db, lead) if payload.enrichment is not None else None,
         "status": lead.status,
         "next_follow_up_at": next_follow_up_at,
         "next_action_label": next_action_label,
@@ -2236,6 +2324,7 @@ async def record_supplemental_follow_up(
 @router.post("/workbench/tasks/{task_id}/dial-started")
 async def record_ringcentral_dial_started(
     task_id: int,
+    payload: Optional[SalesDialStartedInput] = Body(default=None),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -2249,14 +2338,75 @@ async def record_ringcentral_dial_started(
     task = (await db.execute(select(SalesDailyDialTasks).where(SalesDailyDialTasks.id == task_id).execution_options(populate_existing=True))).scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="每日任务不存在")
-    if task.status != "pending":
-        raise HTTPException(status_code=400, detail="该任务已完成或已转交，请刷新当前队列")
+    if task.status not in {"pending", "completed"}:
+        raise HTTPException(status_code=400, detail="该任务已转交或取消，请刷新当前队列")
     lead = await _get_scoped_lead(db, task.lead_id, current_user)
     if lead.is_blacklisted or lead.do_not_contact:
         raise HTTPException(status_code=400, detail="该商家已被保护，禁止拨打")
+    ensure_enrichment_editable(lead)
+    if lead.assigned_sales_id != task.sales_employee_id:
+        raise HTTPException(status_code=409, detail="线索归属已变更，请刷新任务队列")
+    if task.status == "completed":
+        if lead.status not in {"contacted", "follow_up", "interested", "appointment"}:
+            raise HTTPException(status_code=409, detail="此线索当前不允许追加联系")
+        original_activity = await db.get(SalesCallActivities, task.completed_activity_id) if task.completed_activity_id else None
+        if not original_activity or original_activity.lead_id != lead.id or original_activity.sales_employee_id != task.sales_employee_id:
+            raise HTTPException(status_code=409, detail="原通话记录不完整，请刷新后核对")
+    task.dial_phone = await saved_dial_phone(db, lead, payload.phone if payload else None)
     task.dial_started_at = datetime.now(timezone.utc)
+    attempt = SalesDialAttempt(task_id=task.id, lead_id=lead.id, sales_employee_id=task.sales_employee_id,
+                               dial_phone=task.dial_phone, started_at=task.dial_started_at)
+    db.add(attempt)
     await db.commit()
-    return {"task_id": task.id, "dial_started_at": task.dial_started_at, "phone": lead.phone}
+    return {"task_id": task.id, "dial_attempt_id": attempt.id, "dial_started_at": task.dial_started_at, "phone": task.dial_phone}
+
+
+@router.get("/enrichment/catalog")
+async def get_sales_enrichment_catalog(
+    current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    _ensure_lead_role(current_user)
+    return {"items": await enrichment_catalog(db)}
+
+
+@router.get("/{lead_id}/enrichment")
+async def get_sales_lead_enrichment(
+    lead_id: int, current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    _ensure_lead_role(current_user)
+    lead = await _get_scoped_lead(db, lead_id, current_user)
+    return await get_enrichment(db, lead)
+
+
+@router.put("/{lead_id}/enrichment")
+async def update_sales_lead_enrichment(
+    lead_id: int, payload: SalesEnrichmentUpdate,
+    current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    _ensure_lead_role(current_user)
+    await lock_sales_workflow(db, lead_ids=[lead_id])
+    lead = await _get_scoped_lead(db, lead_id, current_user)
+    await apply_enrichment(db, lead, payload, current_user)
+    await db.commit()
+    await db.refresh(lead)
+    return await get_enrichment(db, lead)
+
+
+@router.get("/{lead_id}/enrichment/history")
+async def get_sales_lead_enrichment_history(
+    lead_id: int, skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100),
+    current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    _ensure_lead_role(current_user)
+    await _get_scoped_lead(db, lead_id, current_user)
+    query = select(SalesLeadEnrichmentAudit).where(SalesLeadEnrichmentAudit.lead_id == lead_id)
+    rows = (await db.execute(query.order_by(SalesLeadEnrichmentAudit.revision.desc()).offset(skip).limit(limit))).scalars().all()
+    total = (await db.execute(select(func.count()).select_from(SalesLeadEnrichmentAudit)
+                             .where(SalesLeadEnrichmentAudit.lead_id == lead_id))).scalar_one()
+    return {"items": [{"id": row.id, "revision": row.revision, "source": row.source,
+        "changed_fields": row.changed_fields, "before": row.before, "after": row.after,
+        "actor_name": row.actor_name, "created_at": row.created_at} for row in rows],
+        "total": total, "skip": skip, "limit": limit}
 
 
 @router.get("/{lead_id}", response_model=SalesLeadResponse)

@@ -11,6 +11,7 @@ from models.ringcentral_call_records import RingCentralCallRecords
 from models.ringcentral_connections import RingCentralConnections
 from models.sales_call_activities import SalesCallActivities
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
+from models.sales_lead_enrichments import SalesDialAttempt
 from models.sales_lead_conversion_logs import SalesLeadConversionLogs
 from models.sales_leads import SalesLeads
 from routers import ringcentral as ringcentral_router
@@ -34,7 +35,7 @@ def test_remote_international_numbers_are_not_truncated_and_extensions_are_not_p
 async def test_shared_phone_does_not_arbitrarily_link_a_call_and_other_owners_are_excluded():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
-        await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=[SalesLeads.__table__, SalesDailyDialTasks.__table__]))
+        await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=[SalesLeads.__table__, SalesDailyDialTasks.__table__, SalesDialAttempt.__table__]))
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
     async with session_maker() as db:
         first = SalesLeads(business_name="First", phone="202-555-0123 ext 1", country="US", assigned_sales_id=11)
@@ -109,6 +110,7 @@ async def test_event_and_call_log_are_idempotent_and_match_employee_lead_task():
         RingCentralConnections.__table__,
         SalesLeads.__table__,
         SalesDailyDialTasks.__table__,
+        SalesDialAttempt.__table__,
         SalesCallActivities.__table__,
         RingCentralCallRecords.__table__,
     ]

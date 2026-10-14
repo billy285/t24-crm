@@ -10,6 +10,8 @@ class SalesCallActivities(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     lead_id = Column(Integer, nullable=False, index=True)
+    dial_phone = Column(String(64), nullable=True)
+    dial_attempt_id = Column(Integer, nullable=True, unique=True, index=True)
     sales_employee_id = Column(Integer, nullable=False, index=True)
     sales_employee_name = Column(String, nullable=True)
     outcome = Column(String, nullable=False, index=True)
