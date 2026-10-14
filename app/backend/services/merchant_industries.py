@@ -9,7 +9,7 @@ UNCLASSIFIED_INDUSTRY = "__unclassified__"
 
 # Keep Python normalization identical to the portable SQL filter expression.
 # Only punctuation/spacing is ignored; there is no substring/name matching.
-_IGNORED_CHARACTERS = " \t\r\n/_-()（）·"
+_IGNORED_CHARACTERS = " \t\r\n/／_-()（）·"
 
 
 def _key(value: str) -> str:
@@ -32,6 +32,13 @@ _BEAUTY_ALIASES = {
         "beauty", "beauty industry", "beauty salon", "beauty salons", "salon", "salons",
         "nail salon", "nail salons", "nails", "nail", "hair salon", "hair salons", "spa", "medspa", "med spa",
         "massage", "massage therapy", "massage salon", "barber", "barbershop", "lash salon",
+        # Reviewed industry labels found in historical pool records. These are
+        # exact aliases only; never inspect business names to assign a category.
+        "Asian Massage", "Asian Massage/SPA", "Day Spa/按摩", "SPA/按摩", "Thai/Asian Massage", "中式按摩",
+        "护肤/美容", "按摩/SPA", "无毒美甲沙龙", "日式美甲／美甲艺术", "美发/SPA", "美发/染发",
+        "美发/理发/足疗", "美发/美容", "美发/美甲", "美发/美甲/SPA", "美容/Day Spa", "美容/Salon",
+        "美甲/SPA", "美甲/护肤", "美甲/皮肤护理", "美甲/眉毛", "美甲/美容", "美甲/美容/护肤", "美甲工作室",
+        "美甲／手足护理", "美甲／美容水疗", "美甲／美容沙龙", "美甲／美甲艺术", "足疗/SPA", "足疗/按摩",
     )
 }
 _UNCLASSIFIED_ALIASES = {

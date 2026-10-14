@@ -19,6 +19,15 @@ from models.sales_leads import SalesLeads
 from services.merchant_industries import normalize_merchant_industry
 
 
+REVIEWED_LEGACY_BEAUTY_INDUSTRIES = (
+    "Asian Massage", "Asian Massage/SPA", "Day Spa/按摩", "SPA/按摩", "Thai/Asian Massage", "中式按摩",
+    "护肤/美容", "按摩/SPA", "无毒美甲沙龙", "日式美甲／美甲艺术", "美发/SPA", "美发/染发",
+    "美发/理发/足疗", "美发/美容", "美发/美甲", "美发/美甲/SPA", "美容/Day Spa", "美容/Salon",
+    "美甲/SPA", "美甲/护肤", "美甲/皮肤护理", "美甲/眉毛", "美甲/美容", "美甲/美容/护肤", "美甲工作室",
+    "美甲／手足护理", "美甲／美容水疗", "美甲／美容沙龙", "美甲／美甲艺术", "足疗/SPA", "足疗/按摩",
+)
+
+
 def auth(role="sales_manager", employee_id=10):
     token = create_access_token({"emp_id": employee_id, "email": f"{employee_id}@example.com",
                                  "role": role, "name": f"Manager {employee_id}"})
@@ -70,6 +79,37 @@ def facets(body):
 ])
 def test_only_explicit_industries_are_normalized(raw, expected):
     assert normalize_merchant_industry(raw) == expected
+
+
+@pytest.mark.parametrize("industry", REVIEWED_LEGACY_BEAUTY_INDUSTRIES)
+def test_reviewed_legacy_beauty_subcategories_normalize_exactly(industry):
+    assert normalize_merchant_industry(industry) == "美业"
+    assert normalize_merchant_industry(industry.replace("/", "／")) == "美业"
+    assert normalize_merchant_industry(industry.replace("／", "/")) == "美业"
+
+
+@pytest.mark.asyncio
+async def test_legacy_subcategories_filter_into_beauty_facets_without_backfill(industry_client):
+    client, maker = industry_client
+    # Matches the observed pool's 141 already-normalized beauty records and
+    # 44 records carrying explicit subcategory labels, plus 20 restaurants.
+    legacy_industries = [REVIEWED_LEGACY_BEAUTY_INDUSTRIES[index % len(REVIEWED_LEGACY_BEAUTY_INDUSTRIES)] for index in range(44)]
+    records = [{"industry": "美业"} for _ in range(141)]
+    records += [{"industry": value} for value in legacy_industries]
+    records += [{"industry": "餐厅"} for _ in range(20)]
+    ids = await seed(maker, records)
+    response = await client.get("/api/v1/merchant-pool", headers=auth(), params={"industry": "美业", "limit": 200})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total"] == 185 and body["facet_total"] == 205
+    assert len(body["items"]) == 185 and {item["industry"] for item in body["items"]} == {"美业"}
+    assert facets(body) == {"餐厅": 20, "美业": 185}
+    selected_alias = await client.get("/api/v1/merchant-pool", headers=auth(), params={"industry": "美容／Day Spa", "limit": 200})
+    assert selected_alias.status_code == 200 and selected_alias.json()["total"] == 185
+    async with maker() as session:
+        original = (await session.execute(select(MerchantPool).where(MerchantPool.id.in_(ids[141:185])).order_by(MerchantPool.id))).scalars().all()
+        assert [row.industry for row in original] == legacy_industries
+        assert {row.raw_payload for row in original} == {'{"original":"proof"}'}
 
 
 @pytest.mark.asyncio
