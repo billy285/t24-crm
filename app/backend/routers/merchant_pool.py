@@ -22,6 +22,7 @@ from models.employees import Employees
 from schemas.auth import UserResponse
 from services.phone_numbers import normalize_phone_country, parse_phone_number, phone_match_key
 from services.merchant_row_locks import lock_merchant_rows
+from services.merchant_industries import merchant_industry_facets, merchant_industry_filter, normalize_merchant_industry
 
 
 router = APIRouter(prefix="/api/v1/merchant-pool", tags=["merchant-pool"])
@@ -110,6 +111,11 @@ class MerchantRecord(BaseModel):
     def strip_business_name(cls, value: str) -> str:
         return value.strip()
 
+    @field_validator("industry")
+    @classmethod
+    def normalize_industry(cls, value: Optional[str]) -> Optional[str]:
+        return normalize_merchant_industry(value)
+
 
 class MerchantImportRequest(BaseModel):
     data_source: str = Field(default="api", min_length=1, max_length=50)
@@ -141,6 +147,11 @@ class MerchantUpdate(BaseModel):
     data_source: Optional[str] = None
     business_status: Optional[str] = None
 
+    @field_validator("industry")
+    @classmethod
+    def normalize_industry(cls, value: Optional[str]) -> Optional[str]:
+        return normalize_merchant_industry(value)
+
 
 class ConvertToLeadRequest(BaseModel):
     assigned_sales_id: Optional[int] = None
@@ -164,7 +175,7 @@ class BulkIndustryUpdateRequest(BulkMerchantIdsRequest):
         value = value.strip()
         if not value:
             raise ValueError("行业不能为空")
-        return value
+        return normalize_merchant_industry(value) or "__unclassified__"
 
 
 class MerchantResponse(BaseModel):
@@ -201,8 +212,19 @@ class MerchantResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator("industry")
+    @classmethod
+    def normalize_industry(cls, value: Optional[str]) -> Optional[str]:
+        return normalize_merchant_industry(value)
+
     class Config:
         from_attributes = True
+
+
+class MerchantIndustryFacet(BaseModel):
+    value: str
+    label: str
+    count: int
 
 
 class MerchantListResponse(BaseModel):
@@ -210,6 +232,8 @@ class MerchantListResponse(BaseModel):
     total: int
     skip: int
     limit: int
+    industry_facets: list[MerchantIndustryFacet] = Field(default_factory=list)
+    facet_total: int = 0
 
 
 CSV_HEADERS = {
@@ -376,7 +400,7 @@ async def _create_sales_lead_from_merchant(
         business_name=merchant.business_name,
         contact_name=merchant.contact_name,
         phone=merchant.phone or "",
-        industry=merchant.industry,
+        industry=normalize_merchant_industry(merchant.industry),
         country=merchant.country,
         state=merchant.state,
         city=merchant.city,
@@ -579,14 +603,20 @@ async def list_merchant_pool(
         elif region_values:
             term = f"%{region_values[0]}%"
             conditions.append(or_(MerchantPool.country.ilike(term), MerchantPool.state.ilike(term), MerchantPool.city.ilike(term)))
-    if industry:
-        conditions.append(MerchantPool.industry.ilike(f"%{industry.strip()}%"))
     if source:
         conditions.append(MerchantPool.data_source == source)
     if rating_min is not None:
         conditions.append(MerchantPool.rating >= rating_min)
     if not pool_status:
         conditions.append(MerchantPool.pool_status != ARCHIVED_STATUS)
+    # Category counts follow this exact view/search/scope, before applying the
+    # selected category. That keeps the other categories discoverable.
+    facet_query = select(MerchantPool.industry, func.count(MerchantPool.id)).group_by(MerchantPool.industry)
+    if conditions:
+        facet_query = facet_query.where(*conditions)
+    facets = merchant_industry_facets((await db.execute(facet_query)).all())
+    if industry:
+        conditions.append(merchant_industry_filter(MerchantPool.industry, industry))
     query = select(MerchantPool)
     count_query = select(func.count(MerchantPool.id))
     if conditions:
@@ -594,7 +624,8 @@ async def list_merchant_pool(
         count_query = count_query.where(*conditions)
     total = (await db.execute(count_query)).scalar() or 0
     items = (await db.execute(query.order_by(MerchantPool.id.desc()).offset(skip).limit(limit))).scalars().all()
-    return {"items": items, "total": total, "skip": skip, "limit": limit}
+    return {"items": items, "total": total, "skip": skip, "limit": limit,
+            "industry_facets": facets, "facet_total": sum(facet["count"] for facet in facets)}
 
 
 @router.post("/import")
@@ -725,6 +756,8 @@ async def update_merchant_pool_record(
     merchant = (await db.execute(query)).scalar_one_or_none()
     if not merchant:
         raise HTTPException(status_code=404, detail="商家池记录不存在或不在权限范围内")
+    if merchant.pool_status in {"converted", ARCHIVED_STATUS} or merchant.converted_lead_id:
+        raise HTTPException(status_code=409, detail="已转线索或已归档的记录不能修改，请在对应记录中处理")
     updates = payload.model_dump(exclude_unset=True)
     for key, value in updates.items():
         setattr(merchant, key, value)
@@ -875,6 +908,7 @@ async def bulk_update_merchant_industry(
     """Apply one reviewed industry label to selected non-final pool records."""
     _ensure_pool_role(current_user)
     merchant_ids = list(dict.fromkeys(payload.merchant_ids))
+    await lock_merchant_rows(db, merchant_ids)
     query = select(MerchantPool).where(MerchantPool.id.in_(merchant_ids))
     scope = await _manager_scope(db, current_user)
     if scope is not None:
@@ -885,16 +919,19 @@ async def bulk_update_merchant_industry(
     if missing_ids:
         raise HTTPException(status_code=404, detail=f"有 {len(missing_ids)} 条记录不存在或不在您的权限范围内")
 
-    locked = [merchant for merchant in merchants if merchant.pool_status in {"converted", ARCHIVED_STATUS}]
+    locked = [merchant for merchant in merchants if merchant.pool_status in {"converted", ARCHIVED_STATUS} or merchant.converted_lead_id]
     if locked:
         raise HTTPException(status_code=409, detail="已转线索或已归档的记录不能批量修改行业")
 
     updated_at = datetime.now(timezone.utc)
-    for merchant in merchants:
-        merchant.industry = payload.industry
+    industry = normalize_merchant_industry(payload.industry)
+    changed = [merchant for merchant in merchants if merchant.industry != industry]
+    for merchant in changed:
+        merchant.industry = industry
         merchant.updated_at = updated_at
     await db.commit()
-    return {"message": f"已更新 {len(merchants)} 条商家的行业", "updated_count": len(merchants), "industry": payload.industry}
+    return {"message": f"已更新 {len(changed)} 条商家的行业", "updated_count": len(changed),
+            "selected_count": len(merchants), "industry": industry}
 
 
 @router.post("/bulk-delete")

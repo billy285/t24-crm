@@ -168,7 +168,7 @@ test('已转线索详情只读，不能重新保存或分配', async ({ page }) 
   expect(writes).toEqual([]);
 });
 
-test('桌面视图与搜索各占一行，独立地区和虚线边界清楚，电话及分配栏在窄幅可读', async ({ page }) => {
+test('桌面视图与搜索各占一行，独立地区和行分隔清楚，电话及分配栏在窄幅可读', async ({ page }) => {
   const { writes } = await seedPool(page, { ...manager, role: 'admin' });
   for (const width of [1440, 1093, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
@@ -188,13 +188,13 @@ test('桌面视图与搜索各占一行，独立地区和虚线边界清楚，�
         return { whiteSpace: style.whiteSpace, borderStyle: style.borderTopStyle, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
       });
       expect(phoneStyle.whiteSpace).toBe('nowrap');
-      expect(phoneStyle.borderStyle).toBe('dashed');
+      expect(phoneStyle.borderStyle).toBe('solid');
       expect(phoneStyle.scrollWidth).toBeLessThanOrEqual(phoneStyle.clientWidth + 1);
       if (width >= 1093) {
         await expect(page.getByRole('columnheader', { name: '地区', exact: true })).toBeVisible();
-        await expect(row.locator('.mp-region-column')).toHaveText('Los Angeles, CA');
+        await expect(row.locator('.mp-region-column')).toHaveText('CA');
       } else {
-        await expect(row.locator('.mp-inline-region')).toContainText('Los Angeles, CA');
+        await expect(row.locator('.mp-region-column')).toHaveText('CA');
       }
     }
     await page.getByRole('button', { name: '分配：Golden Dragon Restaurant', exact: true }).click();
@@ -208,7 +208,7 @@ test('桌面视图与搜索各占一行，独立地区和虚线边界清楚，�
     expect(batchBox.y + batchBox.height).toBeLessThanOrEqual(900);
     if (width >= 768) {
       await batch.getByText('其他批量操作', { exact: true }).click();
-      await expect(batch.getByRole('button', { name: '批量设置行业', exact: true })).toBeVisible();
+      await expect(batch.getByRole('button', { name: '设置行业', exact: true })).toBeVisible();
       await expect(batch.getByRole('button', { name: 'AI 补充空白资料', exact: true })).toBeVisible();
       await expect(batch.getByRole('button', { name: '批量删除', exact: true })).toBeVisible();
       await expect(batch.getByRole('button', { name: '查看所选资料', exact: true })).toBeVisible();

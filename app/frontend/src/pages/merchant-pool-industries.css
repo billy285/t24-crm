@@ -1,0 +1,78 @@
+/* Merchant pool only: separate scan columns and explicit category assignment. */
+.t24-system .merchant-pool-refined-page .mp-list-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+}
+.t24-system .merchant-pool-refined-page .mp-industry-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.t24-system .merchant-pool-refined-page .mp-industry-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.t24-system .merchant-pool-refined-page .mp-industry-filters > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 5px 11px;
+  border: 1px solid #dfe6f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #526681;
+  font-size: 12px;
+  line-height: 20px;
+}
+.t24-system .merchant-pool-refined-page .mp-industry-filters > button[aria-pressed='true'] {
+  color: #245de8;
+  border-color: #bfd1ff;
+  background: #eef4ff;
+}
+.t24-system .merchant-pool-refined-page .mp-industry-filters > button > span {
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+}
+.t24-system .merchant-pool-refined-page .mp-industry-filters > .relative { max-width: 180px; }
+.t24-system .merchant-pool-refined-page .mp-industry-hint { color: #8190a6; font-size: 12px; }
+.t24-system .merchant-pool-refined-page .mp-industry-label {
+  display: inline-block;
+  max-width: 100%;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #526681;
+  font-size: 12px;
+  line-height: 18px;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t24-system .merchant-pool-refined-page .mp-industry-label.is-unclassified { color: #a16207; background: #fff8e7; }
+.t24-system .merchant-pool-refined-page .mp-selection-category { font-size: 12px; color: #245de8; }
+.t24-system .merchant-pool-refined-page .mp-selection-context { flex-wrap: wrap; gap: 6px 12px; }
+.t24-system .merchant-pool-refined-page .mp-merchant-card .mp-merchant-meta { display: flex; align-items: center; gap: 8px; }
+
+@media (min-width: 768px) {
+  .t24-system .merchant-pool-refined-page .mp-queue-table { table-layout: fixed; min-width: 0; width: 100%; }
+  .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table :is(th,td).mp-phone-column { display: table-cell; width: 166px; white-space: nowrap; }
+  .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table :is(th,td).mp-region-column { display: table-cell; width: 64px; }
+  .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table :is(th,td).mp-industry-column { width: 86px; }
+  .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table :is(th,td).mp-action-column { width: 90px; }
+  .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table :is(th,td).mp-select-column { width: 32px; }
+  .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table td { height: 46px; padding-block: 6px; }
+  .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table .mp-merchant-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (max-width: 767px) {
+  .t24-system .merchant-pool-refined-page .mp-industry-filters > button { min-height: 44px; }
+  .t24-system .merchant-pool-refined-page .mp-industry-hint { display: none; }
+  .t24-system .merchant-pool-refined-page .mp-selection-context > button { min-height: 44px; }
+}
