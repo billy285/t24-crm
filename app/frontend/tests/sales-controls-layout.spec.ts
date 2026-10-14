@@ -97,11 +97,14 @@ async function expectSelectTextFits(select: Locator) {
       text,
       measured: ctx.measureText(text).width,
       available: select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+      availableHeight: select.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+      lineHeight: parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2,
       client: select.clientWidth,
     };
   });
   expect(info.text).toBe('已明确意向产品');
   expect(info.measured, `资料状态文字需要完整显示，可用宽度 ${info.available}`).toBeLessThanOrEqual(info.available + 1);
+  expect(info.lineHeight, `资料状态行高不能被上下内边距裁切，可用高度 ${info.availableHeight}`).toBeLessThanOrEqual(info.availableHeight + 1);
 }
 
 for (const viewport of viewports) {

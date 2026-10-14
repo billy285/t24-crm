@@ -66,6 +66,21 @@
   width: 100%;
   min-width: 0;
 }
+/* Compact controls must leave room for the native select's complete text line. */
+.t24-system.app-shell .crm-desktop-main .sales-center-ui.sw-refined.crm-sales-compact .sw-quality-filter select {
+  height: 34px;
+  min-height: 34px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  line-height: 20px;
+}
+.sales-center-ui.sw-queue-sheet .sw-quality-filter select {
+  height: 44px;
+  min-height: 44px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  line-height: 24px;
+}
 .sales-center-ui.sw-refined .sw-record .sw-result-row .sc-outcomes.sw-outcomes-expanded {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
