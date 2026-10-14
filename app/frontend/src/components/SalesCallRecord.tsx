@@ -26,6 +26,17 @@ type Props = {
   timezone?: string;
 };
 
+const noteTemplates = [
+  { label: '本次未接通', text: '本次未接通。' },
+  { label: '前台／老板不在', text: '前台接听，老板不在。' },
+  { label: '英文沟通', text: '对方讲英文，暂未能有效沟通。' },
+  { label: '老板有兴趣／忙', text: '老板有兴趣，目前比较忙。' },
+  { label: '先看资料', text: '希望先看资料，关注：____。' },
+  { label: '已有服务商', text: '已有服务商，补充：____。' },
+  { label: '暂时不需要', text: '暂时不需要，原因：____。' },
+  { label: '要求不再联系', text: '对方明确要求不再联系。' },
+];
+
 // The mounting key scopes drafts to employee, salesperson, lead, workday and task.
 // A draft never writes a business record.
 export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disabledReason, providerCall, options, suggestedFollowUp, onSave, onOpenKnowledge, submitLabel = '保存并下一位', timezone }: Props) {
@@ -36,6 +47,7 @@ export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disa
   const [draftInvalid, setDraftInvalid] = useState(initialDraft.invalid || false);
   const [validation, setValidation] = useState('');
   const submitting = useRef(false);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
   const fieldId = useId();
   const requiresNotes = ['interested', 'appointment', 'do_not_contact'].includes(values.outcome);
   const requiresFollowUp = ['callback', 'interested', 'appointment'].includes(values.outcome);
@@ -55,6 +67,21 @@ export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disa
     setRestored(false);
     setDraftInvalid(false);
     setPersistence(writeSalesCallDraft(draftKey, next));
+  };
+  const insertNoteTemplate = (text: string) => {
+    if (saving || disabledReason || submitting.current) return;
+    const notes = values.notes
+      ? `${values.notes}${values.notes.endsWith('\n') ? '' : '\n'}${text}`
+      : text;
+    if (notes.length > 10000) {
+      toast.warning('插入后会超出字数上限，请先删减沟通记录');
+      return;
+    }
+    update({ notes });
+    requestAnimationFrame(() => {
+      notesRef.current?.focus();
+      notesRef.current?.setSelectionRange(notes.length, notes.length);
+    });
   };
   const discard = () => {
     if (saving || disabledReason || !(dirty || draftInvalid) || !window.confirm('确定丢弃这位商家的本地草稿？尚未保存的记录会被清空。')) return;
@@ -93,7 +120,8 @@ export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disa
       : '通话已回传 · 待核验'}</div>}
     <fieldset disabled={saving || Boolean(disabledReason)} className="sc-record-fields">
       <div className="sw-note-heading"><Label htmlFor={`${fieldId}-notes`}>沟通记录{requiresNotes && <span className="sc-required"> *</span>}</Label><div className="sw-draft-tools"><span role="status" title="仅保存在当前浏览器页签，明确保存后才写入联系记录">{dirty ? persistence === 'memory' ? '本次页面保留' : restored ? '已恢复草稿' : '草稿已暂存' : ''}</span>{(dirty || draftInvalid) && <Button type="button" variant="ghost" onClick={discard}>丢弃草稿</Button>}</div></div>
-      <Textarea id={`${fieldId}-notes`} aria-label="沟通记录" maxLength={10000} value={values.notes} onChange={event => update({ notes: event.target.value })} placeholder="记下客户的需求、顾虑和约定的下一步…" rows={5} className="sw-notes" />
+      <div className="sw-note-templates" role="group" aria-label="快捷备注模板"><p>快捷备注<span>点击追加</span></p><div>{noteTemplates.map(template => <button key={template.text} type="button" aria-label={`插入模板：${template.text}`} title={template.text} onClick={() => insertNoteTemplate(template.text)}>{template.label}</button>)}</div></div>
+      <Textarea ref={notesRef} id={`${fieldId}-notes`} aria-label="沟通记录" maxLength={10000} value={values.notes} onChange={event => update({ notes: event.target.value })} placeholder="记下客户的需求、顾虑和约定的下一步…" rows={5} className="sw-notes" />
       <div className="sw-result-heading">本次结果</div>
       <div className="sw-result-row">
         <div className="sc-outcomes sw-outcomes-expanded" role="group" aria-label="选择通话结果">{options.map(option => {
