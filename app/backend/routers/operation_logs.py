@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from services.customer_scope import ensure_customer_access
-from services.customer_permissions import get_customer_owner_user
+from services.customer_permissions import get_customer_owner_user, get_customer_permissions
 from services.operation_logs import (
     CLIENT_OPERATION_ACTION_TYPES,
     MAX_OPERATION_BATCH_SIZE,
@@ -81,6 +81,13 @@ def _safe_log_payload(row, user):
     if str(user.role or "").lower() != "super_admin" and row.action_type != "user_note":
         payload["action_detail"] = "详细审计记录仅老板可查看"
     return payload
+
+
+async def _ensure_customer_note_write(db, current_user, customer_id):
+    await ensure_customer_access(db, current_user, customer_id, module="basic", write=True)
+    permissions = await get_customer_permissions(db, current_user, customer_id)
+    if not permissions["modules"]["basic"]["write"]:
+        raise HTTPException(status_code=403, detail="仅获准编辑客户基础信息的成员可以新增客户备注")
 
 
 # ---------- Routes ----------
@@ -206,7 +213,7 @@ async def create_operation_logs(
     service = Operation_logsService(db)
     try:
         if data.customer_id is not None:
-            await ensure_customer_access(db, current_user, data.customer_id)
+            await _ensure_customer_note_write(db, current_user, data.customer_id)
         trusted_data = build_server_operation_log_data(
             current_user=current_user,
             request=request,
@@ -246,7 +253,7 @@ async def create_operation_logss_batch(
     try:
         for item_data in request.items:
             if item_data.customer_id is not None:
-                await ensure_customer_access(db, current_user, item_data.customer_id)
+                await _ensure_customer_note_write(db, current_user, item_data.customer_id)
         for item_data in request.items:
             trusted_data = build_server_operation_log_data(
                 current_user=current_user,

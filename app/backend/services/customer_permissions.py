@@ -13,10 +13,52 @@ from models.customer_access_grants import CustomerAccessGrant
 from schemas.auth import UserResponse
 from services.role_permissions import FIXED_ROLE_PAGES, normalized_role
 
-MODULES = ("basic", "followups", "delivery", "materials")
+MODULES = ("basic", "contacts", "followups", "opportunities", "delivery", "renewals", "deals", "materials")
+DEFAULT_INVITATION_SCOPES = {name: "read_only" if name in {"basic", "deals"} else "none" for name in MODULES}
 ACCESS_LEVELS = ("none", "read_only", "read_write")
 FINANCE_LEVELS = ("none", "status", "receipts", "profit")
 GRANT_FIELDS = ("access_level", "scopes", "finance_access", "can_export", "can_delete", "can_reassign")
+SHARED_BASIC_FIELDS = frozenset({
+    "id", "customer_code", "business_name", "contact_name", "phone", "wechat", "email", "address",
+    "city", "state", "country", "industry", "website", "google_business_link", "facebook_link",
+    "instagram_link", "yelp_link", "tiktok_link", "has_ordering_system", "current_platform", "selected_platforms",
+    "interested_packages", "monthly_orders", "source", "sales_person",
+    "sales_employee_id", "level", "status", "created_at", "updated_at",
+})
+
+
+
+# Customer/platform fields predate typed schemas. Only recognized business
+# platform names may leave the owner boundary; arbitrary legacy text is not a label.
+SHARED_PLATFORM_NAMES = frozenset({
+    "google_business", "google_ads", "facebook", "instagram", "yelp", "tiktok",
+    "xiaohongshu", "x", "ads_campaign", "brand_website", "website",
+    "google", "google business", "google business profile", "google ads", "google商家",
+    "google商家管理", "facebook商家管理", "instagram商家管理", "yelp商家管理",
+    "tiktok商家管理", "twitter", "小红书", "小红书管理", "广告投放", "品牌官网", "官网", "网站",
+})
+
+
+def shared_platform_names(raw: str | None) -> str | None:
+    """Preserve standard JSON-list/CSV shape, never arbitrary/nested metadata."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    raw = raw.strip()
+    is_json = raw.startswith(("[", "{", '\"'))
+    if is_json:
+        try:
+            entries = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(entries, list) or not all(isinstance(item, str) for item in entries):
+            return None
+    else:
+        entries = raw.replace("，", ",").split(",")
+    values = list(dict.fromkeys(item.strip() for item in entries
+                              if item.strip().casefold() in SHARED_PLATFORM_NAMES))
+    if not values:
+        return None
+    return json.dumps(values, ensure_ascii=False) if is_json else ",".join(values)
 
 
 async def _role_config(db: AsyncSession, user: Any) -> dict:
@@ -61,63 +103,74 @@ def grant_snapshot(grant: Any) -> dict:
         "can_export": bool(grant.can_export),
         "can_delete": bool(grant.can_delete),
         "can_reassign": bool(grant.can_reassign),
+        "invitation_source": grant.invitation_source,
+        "invitation_status": grant.invitation_status,
+        "invited_at": grant.invited_at.isoformat() if grant.invited_at else None,
+        "invited_by_id": grant.invited_by_id,
+        "invited_by_name": grant.invited_by_name,
     }
 
 
-def _effective_permissions(user: Any, customer: Customers, grant: Any, inherited: bool, config: dict) -> dict:
+def is_active_customer_invitation(grant: Any) -> bool:
+    return bool(grant is not None and getattr(grant, "invitation_source", None) == "owner_invitation"
+                and getattr(grant, "invitation_status", None) == "active"
+                and getattr(grant, "access_level", "none") in {"read_only", "read_write"})
+
+
+def _effective_permissions(user: Any, customer: Customers, grant: Any, config: dict) -> dict:
     owner = is_customer_owner(user)
     role = str(getattr(user, "role", "") or "").lower()
-    sources = []
+    active = is_active_customer_invitation(grant) and role != "sales_partner"
     if owner:
-        sources.append({"code": "owner", "label": "老板完整权限"})
-    elif grant is not None:
-        sources.append({"code": "explicit", "label": "老板单独设置（覆盖归属与部门继承）"})
-    elif inherited:
-        direct = str(customer.sales_employee_id or "") == str(user.id) or (
-            customer.sales_employee_id is None and customer.sales_person == getattr(user, "name", None))
-        sources.append({"code": "sales_owner" if direct else "department", "label": "客户负责人继承" if direct else "销售部门继承"})
+        sources = [{"code": "owner", "label": "老板完整权限"}]
+    elif active:
+        sources = [{"code": "owner_invitation", "label": "老板主动邀请"}]
+    elif grant is not None and getattr(grant, "invitation_status", None) == "pending_review":
+        sources = [{"code": "pending_review", "label": "旧授权待老板确认，尚未开放"}]
+    elif grant is not None and getattr(grant, "invitation_status", None) == "revoked":
+        sources = [{"code": "revoked", "label": "邀请已撤销"}]
     else:
-        sources.append({"code": "unshared", "label": "未获客户授权"})
-    level = "read_write" if owner or (grant is None and inherited) else (getattr(grant, "access_level", "none") or "none")
-    if role == "sales_partner":
-        level = "none"
-    pages = set(config.get("pages", []))
-    buttons = set(config.get("buttons", []))
+        sources = [{"code": "uninvited", "label": "老板尚未邀请"}]
+    level = "read_write" if owner else grant.access_level if active else "none"
+    pages, buttons = set(config.get("pages", [])), set(config.get("buttons", []))
     admin_buttons = role in {"admin", "super_admin"}
-    module_buttons = {"basic": {"customer_edit"}, "followups": {"follow_up_create", "follow_up_edit"},
-                      "delivery": {"task_create", "task_edit"}, "materials": {"customer_edit", "media_account_create", "media_account_edit", "task_edit"}}
-    scopes = (getattr(grant, "scopes", None) or {}) if grant is not None else {}
+    module_buttons = {
+        "basic": {"customer_edit"}, "contacts": {"customer_edit"},
+        "followups": {"follow_up_create", "follow_up_edit"},
+        "opportunities": {"follow_up_create", "follow_up_edit"},
+        "delivery": {"task_create", "task_edit"},
+        "renewals": set(), "deals": set(),
+        "materials": {"customer_edit", "media_account_create", "media_account_edit", "task_edit"},
+    }
+    scopes = (getattr(grant, "scopes", None) or {}) if active else {}
     modules = {}
     for name in MODULES:
-        module_level = "read_write" if owner else scopes.get(name, level)
+        module_level = "read_write" if owner else scopes.get(name, "none")
         read = level != "none" and module_level in {"read_only", "read_write"}
         write = level == "read_write" and module_level == "read_write"
-        # Keep global role page/button boundaries. Effective output explains the
-        # intersection, not a promise that a grant changes system roles.
-        page_allowed = owner or "/customers" in pages or (name != "basic" and "/service-board" in pages)
-        modules[name] = {"read": bool(read and page_allowed), "write": bool(write and page_allowed and (admin_buttons or buttons & module_buttons[name]))}
-    if level != "none" and not owner and not all(modules[m]["write"] for m in MODULES):
+        page_allowed = owner or "/customers" in pages or (name in {"delivery", "materials"} and "/service-board" in pages)
+        # Deals and renewals include payment-sensitive mutations; their general
+        # write APIs remain owner-only, regardless of a collaboration toggle.
+        write_allowed = owner or (name not in {"deals", "renewals"} and (admin_buttons or bool(buttons & module_buttons[name])))
+        modules[name] = {"read": bool(read and page_allowed), "write": bool(write and page_allowed and write_allowed)}
+    if active and not owner and any(scopes.get(m) == "read_write" and not modules[m]["write"] for m in MODULES):
         sources.append({"code": "role_limit", "label": "操作仍受员工角色功能权限限制"})
-    finance = "profit" if owner else (getattr(grant, "finance_access", "none") or "none")
-    if level == "none":
-        finance = "none"
-    action_allowed = lambda name: owner or (level != "none" and bool(getattr(grant, "can_" + name, False)))
+    finance = "profit" if owner else (getattr(grant, "finance_access", "none") or "none") if active else "none"
+    action_allowed = lambda name: owner or (active and bool(getattr(grant, "can_" + name, False)))
     return {
-        "access_level": level,
-        "modules": modules,
-        "finance_access": finance,
+        "access_level": level, "modules": modules, "finance_access": finance,
         "can_export": bool(action_allowed("export") and (owner or "customer_export" in buttons)),
         "can_delete": bool(level == "read_write" and action_allowed("delete") and (admin_buttons or bool(buttons & {"customer_delete", "follow_up_delete", "task_delete", "media_account_delete"}))),
         "can_reassign": bool(level == "read_write" and action_allowed("reassign") and (admin_buttons or "customer_assign" in buttons)),
-        "can_manage_access": owner,
-        "reveal_secrets": owner,
-        "explicit": grant is not None,
+        "can_manage_access": owner, "reveal_secrets": owner,
+        "explicit": active,
+        "invitation_status": "owner" if owner else getattr(grant, "invitation_status", "not_invited"),
+        "invitation_source": "owner" if owner else getattr(grant, "invitation_source", None),
         "sources": sources,
     }
 
 
 async def customer_permissions_for_rows(db: AsyncSession, user: Any, customers: list[Customers], *, config: dict | None = None) -> dict[int, dict]:
-    from services.customers import CustomersService
     if not customers:
         return {}
     config = config if config is not None else await _role_config(db, user)
@@ -129,12 +182,7 @@ async def customer_permissions_for_rows(db: AsyncSession, user: Any, customers: 
     grants = {row.customer_id: row for row in (await db.execute(select(CustomerAccessGrant).where(
         CustomerAccessGrant.employee_id == employee_id, CustomerAccessGrant.customer_id.in_(ids)
     ))).scalars()}
-    inherited_ids = set()
-    filters = CustomersService._owner_filters_for_user(user, employee_id, str(user.role or "").lower())
-    if filters:
-        from sqlalchemy import or_
-        inherited_ids = set((await db.execute(select(Customers.id).where(Customers.id.in_(ids), or_(*filters)))).scalars())
-    return {row.id: _effective_permissions(user, row, grants.get(row.id), row.id in inherited_ids, config) for row in customers}
+    return {row.id: _effective_permissions(user, row, grants.get(row.id), config) for row in customers}
 
 
 async def get_customer_permissions(db: AsyncSession, user: Any, customer_id: int) -> dict:
@@ -147,7 +195,8 @@ async def get_customer_permissions(db: AsyncSession, user: Any, customer_id: int
 async def preview_customer_permissions(db: AsyncSession, employee: Any, customer: Customers, assignment: dict) -> dict:
     user = SimpleNamespace(id=str(employee.id), role=employee.role, name=employee.name)
     config = await _role_config(db, user)
-    return _effective_permissions(user, customer, SimpleNamespace(**assignment), False, config)
+    invitation = {**assignment, "invitation_source": "owner_invitation", "invitation_status": "active"}
+    return _effective_permissions(user, customer, SimpleNamespace(**invitation), config)
 
 
 async def require_customer_finance(db: AsyncSession, user: Any, customer_id: int, *, level: str = "status") -> dict:

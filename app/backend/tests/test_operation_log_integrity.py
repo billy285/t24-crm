@@ -40,7 +40,7 @@ async def audit_api():
             Customers(id=701, business_name="Visible", contact_name="Owner", phone="701"),
             Customers(id=702, business_name="Hidden", contact_name="Owner", phone="702"),
             Customers(id=703, business_name="Delete Me", contact_name="Owner", phone="703"),
-            CustomerAccessGrant(customer_id=701, employee_id=11, access_level="read_write", granted_by_name="Admin"),
+            CustomerAccessGrant(customer_id=701, employee_id=11, access_level="read_write", granted_by_name="Admin", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
         ])
         await session.commit()
 

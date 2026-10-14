@@ -17,6 +17,7 @@ from services.operation_logs import Operation_logsService
 from services.service_progresses import Service_progressesService
 from services.service_tasks import Service_tasksService
 from services.customer_scope import ensure_customer_access
+from services.customer_permissions import get_customer_permissions
 from services.service_board_access import require_service_board_access
 
 # Set up logging
@@ -265,6 +266,31 @@ def _should_advance_stage(current_stage: Optional[str], next_stage: Optional[str
     return next_order > current_order
 
 
+REFERENCE_FIELDS = {"selected_copy_id", "selected_copy_title", "selected_material_id", "selected_material_title"}
+
+
+def _guard_reference_query(user, query, sort):
+    if str(user.role or "") != "super_admin" and (REFERENCE_FIELDS.intersection(query or {}) or str(sort or "").strip().lstrip("+-") in REFERENCE_FIELDS):
+        raise HTTPException(status_code=403, detail="关联素材字段不可用于筛选或排序")
+
+
+async def _task_for_user(db, user, task):
+    payload = Service_tasksResponse.model_validate(task).model_dump()
+    if str(user.role or "") == "super_admin":
+        return payload
+    permissions = await get_customer_permissions(db, user, task.customer_id)
+    for prefix, service in (("selected_copy", Customer_ai_copiesService), ("selected_material", Customer_materialsService)):
+        record_id = payload.get(prefix + "_id")
+        readable = bool(permissions["modules"]["materials"]["read"] and record_id)
+        if readable:
+            record = await service(db).get_by_id(record_id, scope_user=user)
+            readable = record is not None and record.customer_id == task.customer_id
+        if not readable:
+            payload[prefix + "_id"] = None
+            payload[prefix + "_title"] = None
+    return payload
+
+
 # ---------- Routes ----------
 @router.get("", response_model=Service_tasksListResponse)
 async def query_service_taskss(
@@ -290,6 +316,7 @@ async def query_service_taskss(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid query JSON format")
         
+        _guard_reference_query(current_user, query_dict, sort)
         result = await service.get_list(
             skip=skip, 
             limit=limit,
@@ -298,7 +325,7 @@ async def query_service_taskss(
             scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} service_taskss")
-        return result
+        return {**result, "items": [await _task_for_user(db, current_user, row) for row in result["items"]]}
     except HTTPException:
         raise
     except Exception as e:
@@ -330,6 +357,7 @@ async def query_service_taskss_all(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid query JSON format")
 
+        _guard_reference_query(current_user, query_dict, sort)
         result = await service.get_list(
             skip=skip,
             limit=limit,
@@ -338,7 +366,7 @@ async def query_service_taskss_all(
             scope_user=current_user,
         )
         logger.debug(f"Found {result['total']} service_taskss")
-        return result
+        return {**result, "items": [await _task_for_user(db, current_user, row) for row in result["items"]]}
     except HTTPException:
         raise
     except Exception as e:
@@ -364,7 +392,7 @@ async def get_service_tasks(
             logger.warning(f"Service_tasks with id {id} not found")
             raise HTTPException(status_code=404, detail="Service_tasks not found")
         
-        return result
+        return await _task_for_user(db, current_user, result)
     except HTTPException:
         raise
     except Exception as e:
@@ -398,7 +426,7 @@ async def create_service_tasks(
             raise HTTPException(status_code=400, detail="Failed to create service_tasks")
         
         logger.info(f"Service_tasks created successfully with id: {result.id}")
-        return result
+        return await _task_for_user(db, current_user, result)
     except ValueError as e:
         logger.error(f"Validation error creating service_tasks: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -439,7 +467,7 @@ async def create_service_taskss_batch(
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} service_taskss successfully")
-        return results
+        return [await _task_for_user(db, current_user, row) for row in results]
     except HTTPException:
         await db.rollback()
         raise
@@ -494,7 +522,7 @@ async def update_service_taskss_batch(
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} service_taskss successfully")
-        return results
+        return [await _task_for_user(db, current_user, row) for row in results]
     except HTTPException:
         await db.rollback()
         raise
@@ -638,7 +666,7 @@ async def complete_service_task(
 
     if not result:
         raise HTTPException(status_code=404, detail="Service_tasks not found")
-    return result
+    return await _task_for_user(db, current_user, result)
 
 
 @router.put("/{id}", response_model=Service_tasksResponse)
@@ -676,7 +704,7 @@ async def update_service_tasks(
             raise HTTPException(status_code=404, detail="Service_tasks not found")
         
         logger.info(f"Service_tasks {id} updated successfully")
-        return result
+        return await _task_for_user(db, current_user, result)
     except HTTPException:
         raise
     except ValueError as e:

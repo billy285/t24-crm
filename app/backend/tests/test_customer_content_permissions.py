@@ -62,7 +62,7 @@ async def content_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             Employees(id=41, user_id="41", name="Finance", role="finance", status="active", email="content-41@example.com"),
             Customers(id=501, business_name="Visible Content", contact_name="Owner", phone="501"),
             Customers(id=502, business_name="Hidden Content", contact_name="Owner", phone="502"),
-            CustomerAccessGrant(customer_id=501, employee_id=21, granted_by_name="Admin", access_level="read_write"),
+            CustomerAccessGrant(customer_id=501, employee_id=21, granted_by_name="Admin", access_level="read_write", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
             Customer_materials(id=601, user_id="1", customer_id=501, title="Visible File", material_type="document", source_type="upload", file_name="visible.txt", file_path="501/visible.txt"),
             Customer_materials(id=602, user_id="1", customer_id=502, title="Hidden File", material_type="document", source_type="external_link", file_url="https://example.com/hidden"),
             Customer_ai_copies(id=701, user_id="1", customer_id=501, platform="facebook", content_type="weekly_update", title="Visible Copy", content="visible"),
@@ -255,7 +255,7 @@ async def test_admin_delete_removes_private_file_and_linked_records(content_api)
 
 
 @pytest.mark.asyncio
-async def test_fresh_database_sales_defaults_keep_owned_and_manager_scoped_customer_reads():
+async def test_fresh_database_requires_invitation_even_for_owned_and_department_customers():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -274,7 +274,7 @@ async def test_fresh_database_sales_defaults_keep_owned_and_manager_scoped_custo
             Customers(id=904, business_name="East Department", contact_name="Owner", phone="904", sales_employee_id=53, sales_person="East Sales"),
             Customers(id=905, business_name="West Department", contact_name="Owner", phone="905", sales_employee_id=54, sales_person="West Sales"),
             Customers(id=906, business_name="Inactive Department Member", contact_name="Owner", phone="906", sales_employee_id=55, sales_person="Inactive East"),
-            CustomerAccessGrant(customer_id=901, employee_id=52, granted_by_name="Admin", access_level="read_write"),
+            CustomerAccessGrant(customer_id=901, employee_id=52, granted_by_name="Admin", access_level="read_write", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
             Customer_materials(id=911, user_id="1", customer_id=901, title="Sales Material", material_type="image", source_type="external_link", file_url="https://example.com/901"),
             Customer_materials(id=912, user_id="1", customer_id=902, title="Hidden Material", material_type="image", source_type="external_link", file_url="https://example.com/902"),
             Customer_materials(id=913, user_id="1", customer_id=903, title="Manager Material", material_type="image", source_type="external_link", file_url="https://example.com/903"),
@@ -353,17 +353,15 @@ async def test_fresh_database_sales_defaults_keep_owned_and_manager_scoped_custo
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'app_settings'"
             ))).first()
 
-            assert sales_customer.status_code == 200
-            assert sales_customer.json()["id"] == 901
+            assert sales_customer.status_code == 404
             assert sales_cannot_read_department_peer.status_code == 404
-            assert sales_material.status_code == 200
-            assert [item["id"] for item in sales_material.json()["items"]] == [911]
+            assert sales_material.status_code == 404
             assert sales_hidden.status_code == 404
             assert manager_granted.status_code == 200
-            assert manager_owned.status_code == 200
+            assert manager_owned.status_code == 404
             assert manager_hidden.status_code == 404
-            assert manager_department_customer.status_code == 200
-            assert [item["id"] for item in manager_department_material.json()["items"]] == [914]
+            assert manager_department_customer.status_code == 404
+            assert manager_department_material.status_code == 404
             assert manager_cross_department.status_code == 404
             assert manager_inactive_department.status_code == 404
             assert app_settings is None

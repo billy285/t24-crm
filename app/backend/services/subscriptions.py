@@ -34,11 +34,11 @@ class SubscriptionsService:
             logger.error(f"Error creating subscriptions: {str(e)}")
             raise
 
-    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None) -> Optional[Subscriptions]:
+    async def get_by_id(self, obj_id: int, scope_user: Optional[Any] = None, *, access_module: str = "renewals") -> Optional[Subscriptions]:
         """Get subscriptions by ID"""
         try:
             query = select(Subscriptions).where(Subscriptions.id == obj_id)
-            scope_filter = CustomersService._scope_filter_for_user(scope_user, module="delivery")
+            scope_filter = CustomersService._scope_filter_for_user(scope_user, module=access_module)
             if scope_filter is not None:
                 query = query.join(Customers, Customers.id == Subscriptions.customer_id).where(scope_filter)
             result = await self.db.execute(query)
@@ -54,12 +54,13 @@ class SubscriptionsService:
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
         scope_user: Optional[Any] = None,
+        access_module: str = "renewals",
     ) -> Dict[str, Any]:
         """Get paginated list of subscriptionss"""
         try:
             query = select(Subscriptions)
             count_query = select(func.count(Subscriptions.id))
-            scope_filter = CustomersService._scope_filter_for_user(scope_user, module="delivery")
+            scope_filter = CustomersService._scope_filter_for_user(scope_user, module=access_module)
             if scope_filter is not None:
                 query = query.join(Customers, Customers.id == Subscriptions.customer_id).where(scope_filter)
                 count_query = count_query.join(Customers, Customers.id == Subscriptions.customer_id).where(scope_filter)

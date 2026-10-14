@@ -26,6 +26,14 @@ from services.follow_ups import Follow_upsService
 from services.service_progresses import Service_progressesService
 from services.service_tasks import Service_tasksService
 
+def active_grant(**kwargs):
+    """Synthetic, deliberately owner-invited fixture; never a legacy default."""
+    kwargs.setdefault("invitation_source", "owner_invitation")
+    kwargs.setdefault("invitation_status", "active")
+    kwargs.setdefault("scopes", {m: "read_write" for m in ("basic", "contacts", "followups", "opportunities", "delivery", "renewals", "deals", "materials")})
+    return CustomerAccessGrant(**kwargs)
+
+
 
 def _auth_headers(role: str, emp_id: int = 6001, name: str | None = None) -> dict[str, str]:
     token = create_access_token({
@@ -99,8 +107,8 @@ async def test_customer_service_scopes_sales_to_explicitly_visible_customers(db_
         "sales_person": "Alice",
     })
     db_session.add_all([
-        CustomerAccessGrant(customer_id=own_by_id.id, employee_id=101, granted_by_name="Admin"),
-        CustomerAccessGrant(customer_id=own_by_name.id, employee_id=101, granted_by_name="Admin"),
+        active_grant(customer_id=own_by_id.id, employee_id=101, granted_by_name="Admin"),
+        active_grant(customer_id=own_by_name.id, employee_id=101, granted_by_name="Admin"),
     ])
     await db_session.commit()
 
@@ -126,7 +134,7 @@ async def test_customer_service_scopes_sales_to_explicitly_visible_customers(db_
     await db_session.commit()
     # Removing an explicit grant must not hide a customer that is still owned
     # by the same sales employee.
-    assert await service.get_by_id(own_by_id.id, scope_user=alice_user) is not None
+    assert await service.get_by_id(own_by_id.id, scope_user=alice_user) is None
     assert own_by_id.sales_employee_id == 101
 
 
@@ -135,7 +143,7 @@ async def test_customer_service_finance_and_operations_require_invitation(db_ses
     service = CustomersService(db_session)
     invited = await service.create({"business_name": "A", "contact_name": "A", "phone": "111", "sales_employee_id": 101})
     await service.create({"business_name": "B", "contact_name": "B", "phone": "222", "sales_employee_id": 202})
-    db_session.add(CustomerAccessGrant(customer_id=invited.id, employee_id=404, granted_by_name="Admin"))
+    db_session.add(active_grant(customer_id=invited.id, employee_id=404, granted_by_name="Admin"))
     await db_session.commit()
 
     finance_user = SimpleNamespace(id="303", role="finance", name="Finance")
@@ -193,7 +201,7 @@ async def test_customer_access_endpoint_replaces_invited_employees(db_session, m
                 json={
                     "customer_ids": [customer_id, second_customer_id],
                     "operation": "upsert",
-                    "members": [{"employee_id": 801, "access_level": "read_write"}],
+                    "members": [{"employee_id": 801, "access_level": "read_write", "scopes": {"basic": "read_write"}}],
                 },
                 headers=_auth_headers("super_admin", emp_id=9001, name="Owner"),
             )
@@ -236,7 +244,7 @@ async def test_non_finance_customer_records_are_scoped_and_amounts_redacted(db_s
     visible = await CustomersService(db_session).create({"business_name": "Visible", "contact_name": "V", "phone": "111"})
     hidden = await CustomersService(db_session).create({"business_name": "Hidden", "contact_name": "H", "phone": "222"})
     db_session.add_all([
-        CustomerAccessGrant(customer_id=visible.id, employee_id=404, granted_by_name="Admin"),
+        active_grant(customer_id=visible.id, employee_id=404, granted_by_name="Admin"),
         Deals(customer_id=visible.id, product_type="service", deal_amount=999, is_paid=True),
         Deals(customer_id=hidden.id, product_type="service", deal_amount=888, is_paid=True),
         Subscriptions(customer_id=visible.id, package_name="Visible Plan", package_price=249, status="active"),
@@ -259,12 +267,12 @@ async def test_non_finance_customer_records_are_scoped_and_amounts_redacted(db_s
 
         assert deals_response.status_code == 200
         assert [row["customer_id"] for row in deals_response.json()["items"]] == [visible.id]
-        assert deals_response.json()["items"][0]["deal_amount"] is None
-        assert deals_response.json()["items"][0]["is_paid"] is None
+        assert deals_response.json()["items"][0].get("deal_amount") is None
+        assert deals_response.json()["items"][0].get("is_paid") is None
         assert subscriptions_response.status_code == 200
         assert [row["customer_id"] for row in subscriptions_response.json()["items"]] == [visible.id]
-        assert subscriptions_response.json()["items"][0]["package_price"] is None
-        assert subscriptions_response.json()["items"][0]["last_payment_date"] is None
+        assert subscriptions_response.json()["items"][0].get("package_price") is None
+        assert subscriptions_response.json()["items"][0].get("last_payment_date") is None
     finally:
         app.dependency_overrides.clear()
 
@@ -274,7 +282,7 @@ async def test_customer_access_removal_hides_linked_operational_records(db_sessi
     visible = await CustomersService(db_session).create({"business_name": "Visible Ops", "contact_name": "V", "phone": "111"})
     hidden = await CustomersService(db_session).create({"business_name": "Hidden Ops", "contact_name": "H", "phone": "222"})
     db_session.add_all([
-        CustomerAccessGrant(customer_id=visible.id, employee_id=404, granted_by_name="Admin"),
+        active_grant(customer_id=visible.id, employee_id=404, granted_by_name="Admin"),
         Follow_ups(customer_id=visible.id, content="visible follow-up"),
         Follow_ups(customer_id=hidden.id, content="hidden follow-up"),
         Customer_contacts(customer_id=visible.id, contact_name="Visible Contact"),
@@ -310,7 +318,7 @@ async def test_customer_access_removal_hides_linked_operational_records(db_sessi
 async def test_read_only_customer_member_can_view_but_cannot_modify_linked_records(db_session):
     customer = await CustomersService(db_session).create({"business_name": "Read Only Ops", "contact_name": "Owner", "phone": "111"})
     follow_up = Follow_ups(customer_id=customer.id, content="visible but protected")
-    grant = CustomerAccessGrant(
+    grant = active_grant(
         customer_id=customer.id,
         employee_id=404,
         access_level="read_only",
@@ -390,8 +398,8 @@ async def test_customer_routes_enforce_page_and_button_contracts(db_session):
         "phone": "555-3000",
     })
     db_session.add_all([
-        CustomerAccessGrant(customer_id=design_customer.id, employee_id=9101, granted_by_name="Admin"),
-        CustomerAccessGrant(customer_id=ops_customer.id, employee_id=9103, access_level="read_write", granted_by_name="Owner"),
+        active_grant(customer_id=design_customer.id, employee_id=9101, granted_by_name="Admin"),
+        active_grant(customer_id=ops_customer.id, employee_id=9103, access_level="read_write", granted_by_name="Owner"),
     ])
     await db_session.commit()
     design_customer_id = design_customer.id

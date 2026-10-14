@@ -48,8 +48,8 @@ async def media_account_api():
             Employees(id=65, user_id="65", name="Designer", role="design", status="active", email="media-65@example.com"),
             Customers(id=901, business_name="Shared Customer", contact_name="Owner", phone="555-0901"),
             Customers(id=902, business_name="Hidden Customer", contact_name="Owner", phone="555-0902"),
-            CustomerAccessGrant(customer_id=901, employee_id=61, granted_by_name="Admin", access_level="read_write"),
-            CustomerAccessGrant(customer_id=901, employee_id=62, granted_by_name="Admin", access_level="read_write"),
+            CustomerAccessGrant(customer_id=901, employee_id=61, granted_by_name="Admin", access_level="read_write", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
+            CustomerAccessGrant(customer_id=901, employee_id=62, granted_by_name="Admin", access_level="read_write", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
         ])
         await session.execute(text(
             "CREATE TABLE IF NOT EXISTS app_settings "

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_current_user, get_finance_user
-from services.customer_permissions import get_customer_permissions
+from services.customer_permissions import get_customer_permissions, shared_platform_names
 from schemas.auth import UserResponse
 from services.deals import DealsService
 from services.deal_payment_sync import sync_payment_from_deal, unlink_synced_payment_for_deal
@@ -164,25 +164,36 @@ class DealFinalizeResponse(BaseModel):
     steps: dict[str, DealFinalizeStep]
 
 
+DEAL_BUSINESS_FIELDS = frozenset({
+    "id", "customer_id", "customer_name", "sales_employee_id", "sales_name",
+    "product_type", "package_name", "package_platforms", "billing_cycle",
+    "service_start_date", "service_end_date", "needs_group", "is_handed_over",
+    "is_transferred_ops", "deal_date", "created_at",
+})
+
+
 def _check_visible_query(user, query, sort):
-    # Filtering/counting/sorting a concealed value would disclose it even if
-    # the response DTO removed the value. Use customer-specific finance view.
-    hidden = {'source_payment_id', 'is_paid', 'notes', 'deal_amount'}
-    if user.role != "super_admin" and (set(query or {}) & hidden or (sort or "").lstrip("-") in hidden):
-        raise HTTPException(status_code=403, detail="请在已授权客户的财务明细中查看金额；此列表不支持按隐藏字段筛选")
+    if query is not None and not isinstance(query, dict):
+        raise HTTPException(status_code=400, detail="Query must be a JSON object")
+    fields = set(query or {}) | ({str(sort).strip().lstrip("+-")} if sort else set())
+    if user.role != "super_admin" and not fields.issubset(DEAL_BUSINESS_FIELDS - {"package_platforms"}):
+        raise HTTPException(status_code=403, detail="成交列表仅支持已授权业务字段筛选；金额请使用客户财务明细")
 
 
 async def _deal_for_user(item, user: UserResponse, db: AsyncSession) -> DealsResponse:
     response = DealsResponse.model_validate(item)
-    permissions = await get_customer_permissions(db, user, item.customer_id)
-    if permissions.get("finance_access") in {"receipts", "profit"}:
+    if user.role == "super_admin":
         return response
-    return response.model_copy(update={
-        "notes": None,
-        "source_payment_id": None,
-        "deal_amount": None,
-        "is_paid": None,
-    })
+    permissions = await get_customer_permissions(db, user, item.customer_id)
+    allowed = set(DEAL_BUSINESS_FIELDS)
+    if permissions.get("finance_access") in {"receipts", "profit"}:
+        allowed.update({"deal_amount", "is_paid", "source_payment_id"})
+    if permissions.get("modules", {}).get("opportunities", {}).get("read"):
+        allowed.add("opportunity_id")
+    # Free-text notes can contain finances, credentials or other module data.
+    payload = {key: value for key, value in response.model_dump().items() if key in allowed}
+    payload["package_platforms"] = shared_platform_names(payload.get("package_platforms"))
+    return DealsResponse.model_validate(payload)
 
 
 def _failed_finalize_step(message: str, *, retryable: bool = True) -> dict:
@@ -196,7 +207,7 @@ def _failed_finalize_step(message: str, *, retryable: bool = True) -> dict:
 
 
 # ---------- Routes ----------
-@router.get("", response_model=DealsListResponse)
+@router.get("", response_model=DealsListResponse, response_model_exclude_none=True)
 async def query_dealss(
     query: str = Query(None, description="Query conditions (JSON string)"),
     sort: str = Query(None, description="Sort field (prefix with '-' for descending)"),
@@ -237,7 +248,7 @@ async def query_dealss(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/all", response_model=DealsListResponse)
+@router.get("/all", response_model=DealsListResponse, response_model_exclude_none=True)
 async def query_dealss_all(
     query: str = Query(None, description="Query conditions (JSON string)"),
     sort: str = Query(None, description="Sort field (prefix with '-' for descending)"),
@@ -278,7 +289,7 @@ async def query_dealss_all(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/{id}", response_model=DealsResponse)
+@router.get("/{id}", response_model=DealsResponse, response_model_exclude_none=True)
 async def get_deals(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),

@@ -65,13 +65,13 @@ async def module_api(tmp_path, monkeypatch):
                 Media_accounts(id=cid,customer_id=cid,user_id='1',platform_name='facebook',account_name='synthetic',login_password='synthetic-secret'),
             ])
         db.add_all([
-            CustomerAccessGrant(customer_id=101,employee_id=21,access_level='read_write',scopes={m:'read_write' for m in ('basic','followups','delivery','materials')}),
-            CustomerAccessGrant(customer_id=104,employee_id=21,access_level='read_write',scopes={m:'read_only' for m in ('basic','followups','delivery','materials')}),
-            CustomerAccessGrant(customer_id=105,employee_id=21,access_level='read_write',scopes={'basic':'read_only','followups':'none','delivery':'none','materials':'read_write'}),
-            CustomerAccessGrant(customer_id=103,employee_id=22,access_level='none'),
-            CustomerAccessGrant(customer_id=101,employee_id=23,access_level='none'),
-            CustomerAccessGrant(customer_id=101,employee_id=24,access_level='read_only',scopes={'basic':'none','followups':'none','delivery':'none','materials':'read_only'}),
-            CustomerAccessGrant(customer_id=101,employee_id=25,access_level='read_only',scopes={'materials':'read_only'},finance_access='status'),
+            CustomerAccessGrant(customer_id=101,employee_id=21,access_level='read_write',scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}, invitation_status='active', invitation_source='owner_invitation'),
+            CustomerAccessGrant(customer_id=104,employee_id=21,access_level='read_write',scopes={m:'read_only' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}, invitation_status='active', invitation_source='owner_invitation'),
+            CustomerAccessGrant(customer_id=105,employee_id=21,access_level='read_write',scopes={'basic':'read_only','followups':'none','delivery':'none','materials':'read_write'}, invitation_status='active', invitation_source='owner_invitation'),
+            CustomerAccessGrant(customer_id=103,employee_id=22,access_level='none', invitation_status='active', invitation_source='owner_invitation', scopes={m:'none' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
+            CustomerAccessGrant(customer_id=101,employee_id=23,access_level='none', invitation_status='active', invitation_source='owner_invitation', scopes={m:'none' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
+            CustomerAccessGrant(customer_id=101,employee_id=24,access_level='read_only',scopes={'basic':'none','followups':'none','delivery':'none','materials':'read_only'}, invitation_status='active', invitation_source='owner_invitation'),
+            CustomerAccessGrant(customer_id=101,employee_id=25,access_level='read_only',scopes={'materials':'read_only'},finance_access='status', invitation_status='active', invitation_source='owner_invitation'),
             Customer_materials(id=901,customer_id=101,user_id='1',title='owner-only',material_type='document',visibility='owner',file_path='101/file.txt'),
             Customer_materials(id=902,customer_id=101,user_id='1',title='financial receipt',material_type='document',visibility='finance',file_path='101/file.txt'),
             Customer_materials(id=903,customer_id=101,user_id='1',title='forged cross customer path',material_type='document',visibility='team',file_path='102/file.txt'),
@@ -203,7 +203,7 @@ async def test_revocation_removes_own_logs_and_admin_cannot_read_company_audit(m
     ])
     await db.commit()
     listed=await client.get('/api/v1/entities/operation_logs',headers=headers())
-    assert {r['id'] for r in listed.json()['items']}=={710,712}
+    assert {r['id'] for r in listed.json()['items']}=={710}
     assert 'private attachment original title' not in listed.text
     assert (await client.get('/api/v1/entities/operation_logs/711',headers=headers())).status_code==404
     assert (await client.get('/api/v1/entities/operation_logs/all',headers=headers('admin',23))).status_code==403

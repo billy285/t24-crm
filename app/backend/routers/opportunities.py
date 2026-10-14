@@ -177,7 +177,7 @@ async def _get_scoped_opportunity(
     opportunity = await db.get(Opportunities, opportunity_id)
     if not opportunity:
         raise HTTPException(status_code=404, detail="商机不存在")
-    await ensure_customer_access(db, current_user, opportunity.customer_id, module="followups", write=write)
+    await ensure_customer_access(db, current_user, opportunity.customer_id, module="opportunities", write=write)
     return opportunity
 
 
@@ -214,7 +214,9 @@ async def _sync_task(db: AsyncSession, opportunity: Opportunities) -> None:
 async def _payload(db: AsyncSession, opportunity: Opportunities, current_user=None) -> dict:
     line, product, plan = await _load_context(db, opportunity)
     task = (await db.execute(select(Tasks).where(Tasks.opportunity_id == opportunity.id))).scalar_one_or_none()
-    financial = current_user is None or (await get_customer_permissions(db, current_user, opportunity.customer_id))["finance_access"] in {"receipts", "profit"}
+    permissions = await get_customer_permissions(db, current_user, opportunity.customer_id) if current_user is not None else None
+    financial = permissions is None or permissions["finance_access"] in {"receipts", "profit"}
+    readable = lambda module: permissions is None or permissions["modules"][module]["read"]
     return {
         "id": opportunity.id,
         "opportunity_code": opportunity.opportunity_code,
@@ -246,9 +248,9 @@ async def _payload(db: AsyncSession, opportunity: Opportunities, current_user=No
             "scope_type": plan.scope_type, "pricing_status": plan.pricing_status,
         } if plan else None,
         "task_id": task.id if task else None,
-        "converted_deal_id": opportunity.converted_deal_id,
-        "converted_engagement_id": opportunity.converted_engagement_id,
-        "converted_subscription_id": opportunity.converted_subscription_id,
+        "converted_deal_id": opportunity.converted_deal_id if readable("deals") else None,
+        "converted_engagement_id": opportunity.converted_engagement_id if readable("delivery") else None,
+        "converted_subscription_id": opportunity.converted_subscription_id if readable("delivery") or readable("renewals") else None,
         "won_at": opportunity.won_at,
         "lost_at": opportunity.lost_at,
         "created_at": opportunity.created_at,
@@ -257,9 +259,9 @@ async def _payload(db: AsyncSession, opportunity: Opportunities, current_user=No
 
 
 async def _validate_opportunity_write(db, user, customer_id, changes, existing=None):
-    await ensure_customer_access(db, user, customer_id, module="followups", write=True)
+    await ensure_customer_access(db, user, customer_id, module="opportunities", write=True)
     if existing is not None and any(k in changes and changes[k] != getattr(existing, k) for k in ("owner_employee_id", "owner_name")):
-        await ensure_customer_access(db, user, customer_id, module="followups", write=True, action="reassign")
+        await ensure_customer_access(db, user, customer_id, module="opportunities", write=True, action="reassign")
     if "estimated_amount" in changes or "currency" in changes:
         permissions = await get_customer_permissions(db, user, customer_id)
         if permissions["finance_access"] not in {"receipts", "profit"}:
@@ -293,7 +295,7 @@ async def list_opportunities(
     db: AsyncSession = Depends(get_db),
 ):
     if customer_id:
-        await ensure_customer_access(db, current_user, customer_id, module="followups")
+        await ensure_customer_access(db, current_user, customer_id, module="opportunities")
     query = select(Opportunities)
     filters = []
     if customer_id:
@@ -302,7 +304,7 @@ async def list_opportunities(
         if status not in STATUSES:
             raise HTTPException(status_code=400, detail="商机状态无效")
         filters.append(Opportunities.status == status)
-    scope = CustomersService._scope_filter_for_user(current_user, module="followups")
+    scope = CustomersService._scope_filter_for_user(current_user, module="opportunities")
     if scope is not None:
         query = query.join(Customers, Customers.id == Opportunities.customer_id).where(scope)
     query = query.where(*filters)
@@ -327,7 +329,7 @@ async def create_opportunity(
     db: AsyncSession = Depends(get_db),
 ):
     await require_button_permission(db, current_user, "follow_up_create")
-    customer = await ensure_customer_access(db, current_user, data.customer_id, module="followups", write=True)
+    customer = await ensure_customer_access(db, current_user, data.customer_id, module="opportunities", write=True)
     payload = data.model_dump(exclude={"selected_platforms", "service_scope"})
     await _validate_opportunity_write(db, current_user, data.customer_id, payload)
     await _validate_catalog(
@@ -382,7 +384,7 @@ async def update_opportunity(
     await _validate_catalog(
         db, business_line_id, product_id, product_plan_id, selected, require_complete=next_status == "won"
     )
-    record_customer_change(db, current_user, opportunity, "followups", changes={**patch, "selected_platforms": json.dumps(selected, ensure_ascii=False), "service_scope_json": json.dumps(scope, ensure_ascii=False)})
+    record_customer_change(db, current_user, opportunity, "opportunities", changes={**patch, "selected_platforms": json.dumps(selected, ensure_ascii=False), "service_scope_json": json.dumps(scope, ensure_ascii=False)})
     for key, value in patch.items():
         setattr(opportunity, key, value.upper() if key == "currency" and value else value)
     opportunity.selected_platforms = json.dumps(selected, ensure_ascii=False)
@@ -408,7 +410,8 @@ async def create_opportunity_follow_up(
 ):
     await require_button_permission(db, current_user, "follow_up_create")
     opportunity = await _get_scoped_opportunity(db, opportunity_id, current_user, write=True)
-    record_customer_change(db, current_user, opportunity, "followups", changes={"stage": data.stage or opportunity.stage, "next_follow_up_at": data.next_follow_up_at, "probability": data.probability if data.probability is not None else opportunity.probability})
+    await ensure_customer_access(db, current_user, opportunity.customer_id, module="followups", write=True)
+    record_customer_change(db, current_user, opportunity, "opportunities", changes={"stage": data.stage or opportunity.stage, "next_follow_up_at": data.next_follow_up_at, "probability": data.probability if data.probability is not None else opportunity.probability})
     if opportunity.status != "open":
         raise HTTPException(status_code=400, detail="只有跟进中的商机可以新增跟进记录")
     if data.stage:
@@ -497,7 +500,7 @@ async def convert_opportunity(
     )
     db.add(engagement)
     await db.flush()
-    record_customer_change(db, current_user, opportunity, "followups", changes={"status": "won", "converted_deal_id": deal.id, "converted_engagement_id": engagement.id})
+    record_customer_change(db, current_user, opportunity, "opportunities", changes={"status": "won", "converted_deal_id": deal.id, "converted_engagement_id": engagement.id})
     opportunity.status = "won"
     opportunity.won_at = opportunity.won_at or now
     opportunity.converted_deal_id = deal.id

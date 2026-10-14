@@ -34,8 +34,9 @@ function toLocalDate(value?: string | null) { return formatBusinessDateTimeInput
 export default function CustomerOpportunitiesTab({ customer }: { customer: any }) {
   const { employee } = useRole();
   const permission = useCustomerPermissions(Number(customer?.id || 0), customer?.effective_permissions);
-  const canRead = permission.modules.followups.read;
-  const canEdit = permission.modules.followups.write;
+  const canRead = permission.modules.opportunities.read;
+  const canEdit = permission.modules.opportunities.write;
+  const canFollow = canEdit && permission.modules.followups.write;
   const canViewAmounts = ['receipts','profit'].includes(permission.finance_access);
   const canConvert = permission.can_manage_access;
   const navigate = useNavigate();
@@ -113,11 +114,13 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
   };
 
   const openFollow = (opportunity: any) => {
+    if (!canFollow) return;
     if (!canEdit) return;
     setFollowTarget(opportunity);
     setFollowForm({ content: '', contact_method: 'phone', stage: opportunity.stage, probability: opportunity.probability, next_follow_up_at: formatBusinessDateTimeInput(new Date(Date.now() + 86400000).toISOString()) });
   };
   const saveFollow = async () => {
+    if (!canFollow) return;
     if (saving || !canEdit) return;
     if (!followTarget || !followForm.content.trim() || !followForm.next_follow_up_at) { toast.error('请填写跟进内容和下次跟进时间'); return; }
     setSaving(true);
@@ -145,7 +148,7 @@ export default function CustomerOpportunitiesTab({ customer }: { customer: any }
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-slate-900">{opportunity.title}</p><Badge className={statusTone[opportunity.status]}>{statusLabels[opportunity.status]}</Badge><Badge variant="outline">{stageLabels[opportunity.stage]}</Badge></div><p className="mt-1 text-xs text-slate-500">{opportunity.business_line?.name || '业务待确认'} · {opportunity.product?.name || '产品待确认'} · {opportunity.plan?.name || '套餐待确认'}</p></div>{canViewAmounts && <div className="text-right"><p className="font-semibold text-slate-900">{opportunity.currency} {Number(opportunity.estimated_amount || 0).toLocaleString()}</p><p className="text-xs text-slate-500">概率 {opportunity.probability}% · 加权 {Number(opportunity.weighted_amount || 0).toLocaleString()}</p></div>}</div>
       {opportunity.selected_platforms?.length > 0 && <div className="mt-3 flex flex-wrap gap-1">{opportunity.selected_platforms.map((platform: string) => <Badge key={platform} variant="secondary">{customerPlatformLabels[platform] || platform}</Badge>)}</div>}
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3"><div className="rounded-lg bg-slate-50 p-2"><p className="text-slate-400">负责人</p><p className="mt-1 text-slate-700">{opportunity.owner_name || '-'}</p></div><div className="rounded-lg bg-slate-50 p-2"><p className="text-slate-400">下次跟进</p><p className="mt-1 text-slate-700">{formatBusinessDateTimeInput(opportunity.next_follow_up_at).replace('T', ' ') || '-'} · 北京时间</p></div><div className="rounded-lg bg-slate-50 p-2"><p className="text-slate-400">任务闭环</p><p className="mt-1 text-slate-700">{opportunity.task_id ? <button type="button" className="text-blue-700 underline" onClick={() => navigate(buildReturnLink(`/tasks?task_id=${opportunity.task_id}`, `${location.pathname}${location.search}`, 'customers'))}>任务 #{opportunity.task_id}</button> : '已结束'}</p></div></div>
-      <div className="mt-3 flex flex-wrap justify-end gap-2">{canEdit && <Button size="sm" variant="outline" onClick={() => openEditor(opportunity)}>编辑</Button>}{canEdit && opportunity.status === 'open' && <Button size="sm" variant="outline" onClick={() => openFollow(opportunity)}><CalendarClock className="mr-1 h-3.5 w-3.5" />记录跟进</Button>}{canConvert && opportunity.status === 'open' && <Button size="sm" disabled={convertingIds.has(opportunity.id)} onClick={() => convert(opportunity)}><CheckCircle2 className="mr-1 h-3.5 w-3.5" />转待收款</Button>}{canConvert && opportunity.converted_deal_id && <Button size="sm" variant="ghost" onClick={() => navigate(buildReturnLink(`/deals?deal_id=${opportunity.converted_deal_id}`, `${location.pathname}${location.search}`, 'customers'))}><ArrowRight className="mr-1 h-3.5 w-3.5" />待收款 #{opportunity.converted_deal_id}</Button>}</div>
+      <div className="mt-3 flex flex-wrap justify-end gap-2">{canEdit && <Button size="sm" variant="outline" onClick={() => openEditor(opportunity)}>编辑</Button>}{canFollow && opportunity.status === 'open' && <Button size="sm" variant="outline" onClick={() => openFollow(opportunity)}><CalendarClock className="mr-1 h-3.5 w-3.5" />记录跟进</Button>}{canConvert && opportunity.status === 'open' && <Button size="sm" disabled={convertingIds.has(opportunity.id)} onClick={() => convert(opportunity)}><CheckCircle2 className="mr-1 h-3.5 w-3.5" />转待收款</Button>}{canConvert && opportunity.converted_deal_id && <Button size="sm" variant="ghost" onClick={() => navigate(buildReturnLink(`/deals?deal_id=${opportunity.converted_deal_id}`, `${location.pathname}${location.search}`, 'customers'))}><ArrowRight className="mr-1 h-3.5 w-3.5" />待收款 #{opportunity.converted_deal_id}</Button>}</div>
     </div>)}</div>}
     <Button variant="ghost" size="sm" onClick={load} disabled={loading}><RefreshCw className={`mr-1 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />刷新商机</Button>
 

@@ -60,9 +60,9 @@ async def interaction_api():
             Customers(id=107, business_name="Manager Other Department", contact_name="Owner", phone="107", sales_employee_id=15, sales_person="West Report"),
             Customers(id=108, business_name="Manager Inactive Department", contact_name="Owner", phone="108", sales_employee_id=16, sales_person="Inactive East"),
             Customers(id=109, business_name="Read-only Operations", contact_name="Owner", phone="109"),
-            CustomerAccessGrant(customer_id=102, employee_id=11, granted_by_name="Admin", access_level="read_write"),
-            CustomerAccessGrant(customer_id=104, employee_id=21, granted_by_name="Admin", access_level="read_write"),
-            CustomerAccessGrant(customer_id=109, employee_id=21, access_level="read_only", granted_by_name="Admin"),
+            CustomerAccessGrant(customer_id=102, employee_id=11, granted_by_name="Admin", access_level="read_write", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
+            CustomerAccessGrant(customer_id=104, employee_id=21, granted_by_name="Admin", access_level="read_write", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
+            CustomerAccessGrant(customer_id=109, employee_id=21, access_level="read_only", granted_by_name="Admin", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_only' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
             Customer_callbacks(id=201, customer_id=101, employee_id=11, employee_name="Sales One", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="owned"),
             Customer_callbacks(id=202, customer_id=102, employee_id=11, employee_name="Sales One", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="granted"),
             Customer_callbacks(id=203, customer_id=103, employee_id=1, employee_name="Admin", callback_date=datetime(2026, 8, 16, tzinfo=timezone.utc), status="pending", content="hidden"),
@@ -156,12 +156,12 @@ async def test_callback_list_all_and_id_are_server_scoped(interaction_api):
     )
 
     assert sales_list.status_code == 200
-    assert {row["id"] for row in sales_list.json()["items"]} == {201, 202}
-    assert {row["id"] for row in sales_all.json()["items"]} == {201, 202}
+    assert {row["id"] for row in sales_list.json()["items"]} == {202}
+    assert {row["id"] for row in sales_all.json()["items"]} == {202}
     assert hidden_direct.status_code == 404
     assert same_name_direct.status_code == 404
-    assert {row["id"] for row in strong_owner_list.json()["items"]} == {205}
-    assert {row["id"] for row in manager_list.json()["items"]} == {206}
+    assert {row["id"] for row in strong_owner_list.json()["items"]} == set()
+    assert {row["id"] for row in manager_list.json()["items"]} == set()
     assert manager_cross_department.status_code == 404
     assert manager_inactive_department.status_code == 404
     assert {row["id"] for row in ops_list.json()["items"]} == {204, 209}

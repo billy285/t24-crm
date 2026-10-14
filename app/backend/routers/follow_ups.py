@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from dependencies.auth import get_current_user
 from services.follow_ups import Follow_upsService
+from models.opportunities import Opportunities
 from services.customer_scope import ensure_customer_access
 from services.role_permissions import require_button_permission
 from schemas.auth import UserResponse
@@ -32,6 +33,15 @@ async def _get_scoped_follow_up(
         raise HTTPException(status_code=404, detail="Follow_ups not found")
     await ensure_customer_access(service.db, current_user, item.customer_id, write=True, module="followups", action=action)
     return item
+
+
+async def _validate_opportunity_link(db, user, customer_id, opportunity_id):
+    if opportunity_id is None:
+        return
+    await ensure_customer_access(db, user, customer_id, module="opportunities", write=True)
+    opportunity = await db.get(Opportunities, opportunity_id)
+    if opportunity is None or opportunity.customer_id != customer_id:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
 
 
 # ---------- Pydantic Schemas ----------
@@ -239,6 +249,7 @@ async def create_follow_ups(
     try:
         await require_button_permission(db, current_user, "follow_up_create", admin_override=True)
         await ensure_customer_access(db, current_user, data.customer_id, write=True, module="followups")
+        await _validate_opportunity_link(db, current_user, data.customer_id, data.opportunity_id)
         result = await service.create(data.model_dump())
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create follow_ups")
@@ -271,6 +282,7 @@ async def create_follow_upss_batch(
         await require_button_permission(db, current_user, "follow_up_create", admin_override=True)
         for item_data in request.items:
             await ensure_customer_access(db, current_user, item_data.customer_id, write=True, module="followups")
+            await _validate_opportunity_link(db, current_user, item_data.customer_id, item_data.opportunity_id)
         for item_data in request.items:
             result = await service.create(item_data.model_dump())
             if result:
@@ -301,7 +313,8 @@ async def update_follow_upss_batch(
     try:
         await require_button_permission(db, current_user, "follow_up_edit", admin_override=True)
         for item in request.items:
-            await _get_scoped_follow_up(service, item.id, current_user)
+            existing = await _get_scoped_follow_up(service, item.id, current_user)
+            await _validate_opportunity_link(db, current_user, item.updates.customer_id or existing.customer_id, item.updates.opportunity_id if item.updates.opportunity_id is not None else existing.opportunity_id)
             if item.updates.customer_id is not None:
                 await ensure_customer_access(db, current_user, item.updates.customer_id, write=True, module="followups")
         for item in request.items:
@@ -334,7 +347,8 @@ async def update_follow_ups(
     service = Follow_upsService(db)
     try:
         await require_button_permission(db, current_user, "follow_up_edit", admin_override=True)
-        await _get_scoped_follow_up(service, id, current_user)
+        existing = await _get_scoped_follow_up(service, id, current_user)
+        await _validate_opportunity_link(db, current_user, data.customer_id or existing.customer_id, data.opportunity_id if data.opportunity_id is not None else existing.opportunity_id)
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
         if update_dict.get("customer_id") is not None:

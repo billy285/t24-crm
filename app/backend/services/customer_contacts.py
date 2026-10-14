@@ -99,8 +99,8 @@ class Customer_contactsService:
             if not obj:
                 logger.warning(f"Customer_contacts {obj_id} not found for update")
                 return None
-            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="basic")
-            record_customer_change(self.db, scope_user, obj, "basic", changes=update_data)
+            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="contacts")
+            record_customer_change(self.db, scope_user, obj, "contacts", changes=update_data)
             for key, value in update_data.items():
                 if hasattr(obj, key):
                     setattr(obj, key, value)
@@ -121,8 +121,8 @@ class Customer_contactsService:
             if not obj:
                 logger.warning(f"Customer_contacts {obj_id} not found for deletion")
                 return False
-            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="basic", action="delete")
-            record_customer_change(self.db, scope_user, obj, "basic", deleted=True)
+            await ensure_customer_access(self.db, scope_user, obj.customer_id, write=True, module="contacts", action="delete")
+            record_customer_change(self.db, scope_user, obj, "contacts", deleted=True)
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted customer_contacts {obj_id}")

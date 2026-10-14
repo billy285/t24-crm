@@ -46,9 +46,9 @@ async def service_board_api():
             Employees(id=73, user_id="73", name="Admin", role="super_admin", status="active", email="service-73@example.com"),
             Customers(id=9901, business_name="Scoped Service Customer", contact_name="Owner", phone="555-9901"),
             Customers(id=9902, business_name="Other Service Customer", contact_name="Other", phone="555-9902"),
-            CustomerAccessGrant(customer_id=9901, employee_id=71, granted_by_name="Admin", access_level="read_write"),
-            CustomerAccessGrant(customer_id=9902, employee_id=71, granted_by_name="Admin", access_level="read_write"),
-            CustomerAccessGrant(customer_id=9901, employee_id=72, granted_by_name="Admin", access_level="read_write"),
+            CustomerAccessGrant(customer_id=9901, employee_id=71, granted_by_name="Admin", access_level="read_write", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
+            CustomerAccessGrant(customer_id=9902, employee_id=71, granted_by_name="Admin", access_level="read_write", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
+            CustomerAccessGrant(customer_id=9901, employee_id=72, granted_by_name="Admin", access_level="read_write", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_write' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
             Service_progresses(
                 id=9911,
                 customer_id=9901,

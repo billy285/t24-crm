@@ -22,6 +22,14 @@ from services.customers import CustomersService
 from services.customer_scope import ensure_customer_access
 from services.customer_permissions import get_customer_permissions, require_customer_finance
 
+def active_grant(**kwargs):
+    """Synthetic, deliberately owner-invited fixture; never a legacy default."""
+    kwargs.setdefault("invitation_source", "owner_invitation")
+    kwargs.setdefault("invitation_status", "active")
+    kwargs.setdefault("scopes", {m: "read_write" for m in ("basic", "contacts", "followups", "opportunities", "delivery", "renewals", "deals", "materials")})
+    return CustomerAccessGrant(**kwargs)
+
+
 
 def user(id=2, role="ops", name="Member"):
     return UserResponse(id=str(id), role=role, name=name, email=f"synthetic-{id}@example.invalid")
@@ -61,7 +69,7 @@ async def env():
 @pytest.mark.parametrize("employee_id,role,name", [(3,"sales","Sales"),(4,"sales_manager","Manager"),(5,"admin","Admin"),(6,"finance","Finance")])
 async def test_explicit_deny_overrides_all_inheritance(env, employee_id, role, name):
     db, customer, _, _ = env
-    db.add(CustomerAccessGrant(customer_id=customer.id,employee_id=employee_id,access_level="none"))
+    db.add(active_grant(customer_id=customer.id,employee_id=employee_id,access_level="none"))
     await db.commit()
     actor=user(employee_id,role,name)
     assert await CustomersService(db).get_by_id(customer.id,scope_user=actor) is None
@@ -77,14 +85,14 @@ async def test_only_owner_has_unconditional_access(env):
     for role in ("admin","finance","ops","sales_partner"):
         assert await CustomersService(db).get_by_id(customer.id,scope_user=user(5,role)) is None
     assert await CustomersService(db).get_by_id(customer.id,scope_user=user(1,"super_admin")) is customer
-    assert await CustomersService(db).get_by_id(customer.id,scope_user=user(3,"sales","Sales")) is customer
+    assert await CustomersService(db).get_by_id(customer.id,scope_user=user(3,"sales","Sales")) is None
 
 
 @pytest.mark.asyncio
 async def test_owner_and_department_can_be_downgraded_to_read_only(env):
     db,customer,_,_=env
     for employee_id in (3,4):
-        db.add(CustomerAccessGrant(customer_id=customer.id,employee_id=employee_id,access_level="read_only"))
+        db.add(active_grant(customer_id=customer.id,employee_id=employee_id,access_level="read_only"))
     await db.commit()
     for employee_id,role,name in ((3,"sales","Sales"),(4,"sales_manager","Manager")):
         actor=user(employee_id,role,name)
@@ -97,7 +105,7 @@ async def test_owner_and_department_can_be_downgraded_to_read_only(env):
 @pytest.mark.asyncio
 async def test_module_boundaries_and_finance_are_independent(env):
     db,customer,_,_=env
-    db.add(CustomerAccessGrant(customer_id=1,employee_id=2,access_level="read_write",scopes={"basic":"read_only","followups":"read_write","materials":"none"},finance_access="status"))
+    db.add(active_grant(customer_id=1,employee_id=2,access_level="read_write",scopes={"basic":"read_only","followups":"read_write","materials":"none"},finance_access="status"))
     await db.commit()
     await ensure_customer_access(db,user(),1,write=True,module="followups")
     for module,write in (("basic",True),("materials",False)):
@@ -117,7 +125,7 @@ async def test_module_boundaries_and_finance_are_independent(env):
 @pytest.mark.asyncio
 async def test_sharing_cannot_read_private_notes_or_manage_access(env):
     db,customer,client,identity=env
-    db.add(CustomerAccessGrant(customer_id=1,employee_id=2,access_level="read_write"))
+    db.add(active_grant(customer_id=1,employee_id=2,access_level="read_write"))
     await db.commit()
     response=await client.get("/api/v1/entities/customers/1")
     assert response.status_code == 200, response.text
@@ -138,8 +146,9 @@ async def test_owner_saves_denial_with_atomic_before_after_audit(env):
     path="/api/v1/entities/customers/1/access"
     response=await client.put(path,json={"members":[{"employee_id":3,"access_level":"none"}]})
     assert response.status_code == 200, response.text
-    sales=next(row for row in response.json()["members"] if row["employee_id"]==3)
-    assert sales["explicit"] is True and sales["effective_permissions"]["access_level"] == "none"
+    assert response.json()["members"] == []
+    sales=(await db.execute(select(CustomerAccessGrant).where(CustomerAccessGrant.employee_id==3))).scalar_one()
+    assert sales.invitation_status == "revoked" and sales.access_level == "none"
     history=(await client.get(path+"/history")).json()["items"]
     assert len(history)==1 and history[0]["before"]==[]
     assert history[0]["after"][0]["access_level"]=="none"
@@ -175,7 +184,7 @@ async def test_private_note_owner_edit_and_public_field_exclusion(env):
 @pytest.mark.asyncio
 async def test_hidden_basic_returns_only_customer_shell(env):
     db,customer,client,_=env
-    db.add(CustomerAccessGrant(customer_id=1,employee_id=2,access_level="read_only",scopes={"basic":"none","delivery":"read_only"}))
+    db.add(active_grant(customer_id=1,employee_id=2,access_level="read_only",scopes={"basic":"none","delivery":"read_only"}))
     await db.commit()
     response=await client.get("/api/v1/entities/customers/1")
     assert response.status_code==200,response.text
@@ -189,7 +198,7 @@ async def test_hidden_basic_returns_only_customer_shell(env):
 @pytest.mark.asyncio
 async def test_edit_does_not_implicitly_allow_delete_export_or_reassignment(env):
     db,customer,client,identity=env
-    db.add(CustomerAccessGrant(customer_id=1,employee_id=5,access_level="read_write"))
+    db.add(active_grant(customer_id=1,employee_id=5,access_level="read_write"))
     await db.commit()
     identity["user"]=user(5,"admin")
     assert (await client.delete("/api/v1/entities/customers/1")).status_code==403
@@ -212,7 +221,7 @@ async def test_regular_admin_cannot_configure_financial_project_or_commission_so
 @pytest.mark.asyncio
 async def test_export_checks_all_ids_and_records_server_audit(env):
     db,customer,client,identity=env
-    db.add(CustomerAccessGrant(customer_id=1,employee_id=6,access_level="read_only",can_export=True))
+    db.add(active_grant(customer_id=1,employee_id=6,access_level="read_only",can_export=True))
     await db.commit()
     identity["user"]=user(6,"finance")
     response=await client.post("/api/v1/entities/customers/access/export",json={"ids":[1]})
@@ -241,7 +250,7 @@ async def test_private_notes_not_queryable_side_channel(env):
 async def test_permission_audit_failure_rolls_back_the_authorization(env, monkeypatch):
     import routers.customers as customer_router
     db,customer,client,identity=env
-    db.add(CustomerAccessGrant(customer_id=1,employee_id=3,access_level="read_only"))
+    db.add(active_grant(customer_id=1,employee_id=3,access_level="read_only"))
     await db.commit()
     identity["user"]=user(1,"super_admin")
     async def fail_audit(*args, **kwargs):
@@ -259,12 +268,12 @@ async def test_inactive_member_rule_can_be_preserved_or_denied_but_not_upgraded(
     db,_,client,identity=env
     employee=await db.get(Employees,2)
     employee.status="inactive"
-    db.add(CustomerAccessGrant(customer_id=1,employee_id=2,access_level="read_only"))
+    db.add(active_grant(customer_id=1,employee_id=2,access_level="read_only"))
     await db.commit()
     identity["user"]=user(1,"super_admin")
     path="/api/v1/entities/customers/1/access"
     kept=await client.put(path,json={"members":[{"employee_id":2,"access_level":"read_only"}]})
-    assert kept.status_code==200,kept.text
+    assert kept.status_code==400,kept.text
     blocked=await client.put(path,json={"members":[{"employee_id":2,"access_level":"read_write"}]})
     assert blocked.status_code==400
     denied=await client.put(path,json={"members":[{"employee_id":2,"access_level":"none"}]})

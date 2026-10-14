@@ -39,7 +39,7 @@ class DealsService:
         """Get deals by ID"""
         try:
             query = select(Deals).where(Deals.id == obj_id)
-            scope_filter = CustomersService._scope_filter_for_user(scope_user, module="delivery")
+            scope_filter = CustomersService._scope_filter_for_user(scope_user, module="deals")
             if scope_filter is not None:
                 query = query.join(Customers, Customers.id == Deals.customer_id).where(scope_filter)
             result = await self.db.execute(query)
@@ -60,7 +60,7 @@ class DealsService:
         try:
             query = select(Deals)
             count_query = select(func.count(Deals.id))
-            scope_filter = CustomersService._scope_filter_for_user(scope_user, module="delivery")
+            scope_filter = CustomersService._scope_filter_for_user(scope_user, module="deals")
             if scope_filter is not None:
                 query = query.join(Customers, Customers.id == Deals.customer_id).where(scope_filter)
                 count_query = count_query.join(Customers, Customers.id == Deals.customer_id).where(scope_filter)

@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from datetime import datetime, date
 
@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_current_user, get_finance_user
-from services.customer_permissions import get_customer_permissions
+from services.customer_permissions import get_customer_permissions, shared_platform_names
 from schemas.auth import UserResponse
 from services.subscriptions import SubscriptionsService
 
@@ -141,27 +141,38 @@ class SubscriptionsBatchDeleteRequest(BaseModel):
     ids: List[int]
 
 
-def _check_visible_query(user, query, sort):
-    # Filtering/counting/sorting a concealed value would disclose it even if
-    # the response DTO removed the value. Use customer-specific finance view.
-    hidden = {'pricing_source', 'list_price_snapshot', 'package_price', 'last_payment_date', 'renewal_result', 'notes'}
-    if user.role != "super_admin" and (set(query or {}) & hidden or (sort or "").lstrip("-") in hidden):
-        raise HTTPException(status_code=403, detail="请在已授权客户的财务明细中查看金额；此列表不支持按隐藏字段筛选")
+SUBSCRIPTION_DELIVERY_FIELDS = frozenset({
+    "id", "customer_id", "customer_name", "engagement_id", "business_line_id", "product_id",
+    "product_plan_id", "package_name", "selected_platforms", "billing_cycle",
+    "start_date", "end_date", "status", "created_at", "updated_at",
+})
+SUBSCRIPTION_RENEWAL_FIELDS = SUBSCRIPTION_DELIVERY_FIELDS | {"auto_renew", "renewal_person", "next_payment_date"}
 
 
-async def _subscription_for_user(item, user: UserResponse, db: AsyncSession) -> SubscriptionsResponse:
+def _check_visible_query(user, query, sort, access_module="renewals"):
+    if query is not None and not isinstance(query, dict):
+        raise HTTPException(status_code=400, detail="Query must be a JSON object")
+    fields = set(query or {}) | ({str(sort).strip().lstrip("+-")} if sort else set())
+    allowed = SUBSCRIPTION_DELIVERY_FIELDS if access_module == "delivery" else SUBSCRIPTION_RENEWAL_FIELDS
+    if user.role != "super_admin" and not fields.issubset(allowed - {"selected_platforms"}):
+        raise HTTPException(status_code=403, detail="此列表不支持按未授权模块或财务字段筛选")
+
+
+async def _subscription_for_user(item, user: UserResponse, db: AsyncSession, access_module="renewals") -> SubscriptionsResponse:
     response = SubscriptionsResponse.model_validate(item)
-    permissions = await get_customer_permissions(db, user, item.customer_id)
-    if permissions.get("finance_access") in {"receipts", "profit"}:
+    if user.role == "super_admin":
         return response
-    return response.model_copy(update={
-        "notes": None,
-        "package_price": None,
-        "list_price_snapshot": None,
-        "pricing_source": None,
-        "last_payment_date": None,
-        "renewal_result": None,
-    })
+    permissions = await get_customer_permissions(db, user, item.customer_id)
+    allowed = set(SUBSCRIPTION_DELIVERY_FIELDS if access_module == "delivery" else SUBSCRIPTION_RENEWAL_FIELDS)
+    if access_module == "renewals" and permissions.get("finance_access") in {"receipts", "profit"}:
+        allowed.update({"package_price", "list_price_snapshot", "pricing_source", "last_payment_date", "renewal_result"})
+    if permissions.get("modules", {}).get("deals", {}).get("read"):
+        allowed.add("deal_id")
+    if permissions.get("modules", {}).get("opportunities", {}).get("read"):
+        allowed.add("opportunity_id")
+    payload = {key: value for key, value in response.model_dump().items() if key in allowed}
+    payload["selected_platforms"] = shared_platform_names(payload.get("selected_platforms"))
+    return SubscriptionsResponse.model_validate(payload)
 
 
 class SubscriptionPackageChangeRequest(BaseModel):
@@ -177,13 +188,14 @@ class SubscriptionPackageChangeResponse(BaseModel):
 
 
 # ---------- Routes ----------
-@router.get("", response_model=SubscriptionsListResponse)
+@router.get("", response_model=SubscriptionsListResponse, response_model_exclude_none=True)
 async def query_subscriptionss(
     query: str = Query(None, description="Query conditions (JSON string)"),
     sort: str = Query(None, description="Sort field (prefix with '-' for descending)"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    access_module: Literal["delivery", "renewals"] = Query("renewals"),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -200,15 +212,16 @@ async def query_subscriptionss(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid query JSON format")
         
-        _check_visible_query(current_user, query_dict, sort)
+        _check_visible_query(current_user, query_dict, sort, access_module)
         result = await service.get_list(
             skip=skip, 
             limit=limit,
             query_dict=query_dict,
             sort=sort,
             scope_user=current_user,
+            access_module=access_module,
         )
-        result["items"] = [await _subscription_for_user(item, current_user, db) for item in result["items"]]
+        result["items"] = [await _subscription_for_user(item, current_user, db, access_module) for item in result["items"]]
         logger.debug(f"Found {result['total']} subscriptionss")
         return result
     except HTTPException:
@@ -218,13 +231,14 @@ async def query_subscriptionss(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/all", response_model=SubscriptionsListResponse)
+@router.get("/all", response_model=SubscriptionsListResponse, response_model_exclude_none=True)
 async def query_subscriptionss_all(
     query: str = Query(None, description="Query conditions (JSON string)"),
     sort: str = Query(None, description="Sort field (prefix with '-' for descending)"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    access_module: Literal["delivery", "renewals"] = Query("renewals"),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -241,15 +255,16 @@ async def query_subscriptionss_all(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid query JSON format")
 
-        _check_visible_query(current_user, query_dict, sort)
+        _check_visible_query(current_user, query_dict, sort, access_module)
         result = await service.get_list(
             skip=skip,
             limit=limit,
             query_dict=query_dict,
             sort=sort,
             scope_user=current_user,
+            access_module=access_module,
         )
-        result["items"] = [await _subscription_for_user(item, current_user, db) for item in result["items"]]
+        result["items"] = [await _subscription_for_user(item, current_user, db, access_module) for item in result["items"]]
         logger.debug(f"Found {result['total']} subscriptionss")
         return result
     except HTTPException:
@@ -259,10 +274,11 @@ async def query_subscriptionss_all(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/{id}", response_model=SubscriptionsResponse)
+@router.get("/{id}", response_model=SubscriptionsResponse, response_model_exclude_none=True)
 async def get_subscriptions(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    access_module: Literal["delivery", "renewals"] = Query("renewals"),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -271,12 +287,12 @@ async def get_subscriptions(
     
     service = SubscriptionsService(db)
     try:
-        result = await service.get_by_id(id, scope_user=current_user)
+        result = await service.get_by_id(id, scope_user=current_user, access_module=access_module)
         if not result:
             logger.warning(f"Subscriptions with id {id} not found")
             raise HTTPException(status_code=404, detail="Subscriptions not found")
         
-        return await _subscription_for_user(result, current_user, db)
+        return await _subscription_for_user(result, current_user, db, access_module)
     except HTTPException:
         raise
     except Exception as e:

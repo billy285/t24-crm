@@ -1,12 +1,12 @@
 import logging
 from typing import Optional, Dict, Any, List
 
-from sqlalchemy import and_, false, or_, select, func
+from fastapi import HTTPException
+from sqlalchemy import false, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customers import Customers
 from models.customer_access_grants import CustomerAccessGrant
-from models.employees import Employees
 
 logger = logging.getLogger(__name__)
 
@@ -18,44 +18,11 @@ class CustomersService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    @staticmethod
-    def _owner_filters_for_user(scope_user: Any, employee_id: int, role: str):
-        owner_filters = []
-        if role not in {"sales", "sales_manager"}:
-            return owner_filters
-        owner_filters.append(Customers.sales_employee_id == employee_id)
-        employee_name = str(getattr(scope_user, "name", "") or "").strip()
-        if employee_name:
-            owner_filters.append(and_(
-                Customers.sales_employee_id.is_(None),
-                Customers.sales_person == employee_name,
-            ))
-        if role == "sales_manager":
-            manager_department = (
-                select(Employees.department)
-                .where(Employees.id == employee_id)
-                .scalar_subquery()
-            )
-            eligible_department_members = (
-                Employees.department.is_not(None),
-                Employees.department == manager_department,
-                Employees.status.in_(("active", "probation")),
-                Employees.role.in_(("sales", "sales_manager")),
-            )
-            owner_filters.append(Customers.sales_employee_id.in_(
-                select(Employees.id).where(*eligible_department_members)
-            ))
-            owner_filters.append(and_(
-                Customers.sales_employee_id.is_(None),
-                Customers.sales_person.in_(select(Employees.name).where(*eligible_department_members)),
-            ))
-        return owner_filters
-
     @classmethod
     def _scope_filter_for_user(cls, scope_user: Optional[Any] = None, *, write: bool = False,
                                module: str | None = None, action: str | None = None,
                                finance_level: str = "status"):
-        """Explicit rules override inheritance, including denials and read-only.
+        """Only an active owner invitation grants access; ownership is unrelated.
 
         module=None selects customer shells; each linked resource separately
         checks its module. Only authenticated super_admin is unconditionally
@@ -69,12 +36,18 @@ class CustomersService:
             return None
         if role == "sales_partner":
             return false()
+        if write and module in {"deals", "renewals"}:
+            # Their write APIs can mutate payment/renewal state. A shared view
+            # does not confer that capability, including through linked tasks.
+            return false()
 
         raw_user_id = getattr(scope_user, "id", None)
         try:
             employee_id = int(raw_user_id)
             all_grants = select(CustomerAccessGrant.customer_id).where(CustomerAccessGrant.employee_id == employee_id)
-            allowed = [CustomerAccessGrant.access_level.in_(("read_only", "read_write"))]
+            allowed = [CustomerAccessGrant.access_level.in_(("read_only", "read_write")),
+                       CustomerAccessGrant.invitation_source == "owner_invitation",
+                       CustomerAccessGrant.invitation_status == "active"]
             if write or action in {"delete", "reassign"}:
                 allowed.append(CustomerAccessGrant.access_level == "read_write")
             if module == "finance":
@@ -83,21 +56,16 @@ class CustomersService:
                     raise ValueError("Invalid finance permission level")
                 allowed.append(CustomerAccessGrant.finance_access.in_(levels[levels.index(finance_level):]))
             elif module is not None:
-                if module not in {"basic", "followups", "delivery", "materials"}:
+                if module not in {"basic", "contacts", "followups", "opportunities", "delivery", "renewals", "deals", "materials"}:
                     raise ValueError("Invalid customer permission module")
-                level = func.coalesce(CustomerAccessGrant.scopes[module].as_string(), CustomerAccessGrant.access_level)
+                level = func.coalesce(CustomerAccessGrant.scopes[module].as_string(), "none")
                 allowed.append(level == "read_write" if write else level.in_(("read_only", "read_write")))
             if action is not None:
                 if action not in {"delete", "export", "reassign"}:
                     raise ValueError("Invalid customer permission action")
                 allowed.append(getattr(CustomerAccessGrant, "can_" + action).is_(True))
             granted = Customers.id.in_(all_grants.where(*allowed))
-            owner_filters = cls._owner_filters_for_user(scope_user, employee_id, role)
-            # Ownership never grants finance, destructive actions or exports.
-            if module == "finance" or action:
-                owner_filters = []
-            inherited = and_(~Customers.id.in_(all_grants), or_(*owner_filters)) if owner_filters else false()
-            return or_(granted, inherited)
+            return granted
         except (TypeError, ValueError):
             return false()
 
@@ -147,6 +115,11 @@ class CustomersService:
     ) -> Dict[str, Any]:
         """Get paginated list of customerss"""
         try:
+            if scope_user and str(scope_user.role or "").lower() != "super_admin":
+                from services.customer_permissions import SHARED_BASIC_FIELDS
+                requested = set(query_dict or {}) | ({sort.lstrip("-")} if sort else set())
+                if requested - (SHARED_BASIC_FIELDS - {"selected_platforms"}):
+                    raise HTTPException(status_code=403, detail="此客户列表不支持按未共享字段筛选或排序")
             query = select(Customers)
             count_query = select(func.count(Customers.id))
             scope_filter = self._scope_filter(scope_user)

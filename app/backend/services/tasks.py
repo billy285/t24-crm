@@ -39,28 +39,54 @@ class TasksService:
             logger.error(f"Error creating tasks: {str(e)}")
             raise
 
-    @staticmethod
-    def customer_module(obj):
-        return "followups" if getattr(obj, "opportunity_id", None) else "delivery"
+    SYSTEM_TASK_MODULES = {
+        "delivery": {"delivery_task_overdue", "delivery_issue_unresolved", "subscription_missing_business_line", "subscription_missing_service_scope"},
+        "renewals": {"subscription_missing_next_payment"},
+        "followups": {"customer_follow_up_overdue", "customer_callback_overdue"},
+        "opportunities": {"opportunity_missing_next_follow_up"},
+    }
 
-    @staticmethod
-    def _customer_scope(query, scope_user):
-        if scope_user is None:
+    async def customer_module(self, obj):
+        if getattr(obj, "automation_issue_id", None):
+            issue = await self.db.get(DataQualityIssue, obj.automation_issue_id)
+            for module, codes in self.SYSTEM_TASK_MODULES.items():
+                if issue and issue.customer_id == obj.customer_id and issue.code in codes:
+                    return module
+            return "delivery"  # Unknown/finance system tasks are owner-only below.
+        return "opportunities" if getattr(obj, "opportunity_id", None) else "delivery"
+
+    @classmethod
+    def _customer_scope(cls, query, scope_user):
+        if scope_user is None or str(getattr(scope_user, "role", "")) == "super_admin":
             return query
         def customer_ids(module):
             statement = select(Customers.id)
             predicate = CustomersService._scope_filter_for_user(scope_user, module=module)
             return statement.where(predicate) if predicate is not None else statement
+        ordinary = and_(Tasks.automation_issue_id.is_(None), func.coalesce(Tasks.source_type, "").notin_(("system", "automation")))
+        system_scopes = []
+        for module, codes in cls.SYSTEM_TASK_MODULES.items():
+            known_issue = select(DataQualityIssue.id).where(
+                DataQualityIssue.id == Tasks.automation_issue_id,
+                DataQualityIssue.customer_id == Tasks.customer_id,
+                DataQualityIssue.code.in_(codes),
+            ).exists()
+            system_scopes.append(and_(known_issue, Tasks.customer_id.in_(customer_ids(module))))
+        # Financial/unknown automatic reminders can contain ledger amounts in
+        # their notes. Only the owner can read those through the general board.
         return query.where(or_(
-            Tasks.customer_id.is_(None),
-            and_(Tasks.opportunity_id.is_(None), Tasks.customer_id.in_(customer_ids("delivery"))),
-            and_(Tasks.opportunity_id.is_not(None), Tasks.customer_id.in_(customer_ids("followups"))),
+            and_(ordinary, Tasks.customer_id.is_(None)),
+            and_(ordinary, Tasks.opportunity_id.is_(None), Tasks.customer_id.in_(customer_ids("delivery"))),
+            and_(ordinary, Tasks.opportunity_id.is_not(None), Tasks.customer_id.in_(customer_ids("opportunities"))),
+            *system_scopes,
         ))
 
     async def validate_customer_write(self, user, changes, existing=None, *, deleting=False):
         if user is None:
             return
-        module = self.customer_module(existing)
+        module = await self.customer_module(existing)
+        if module == "renewals" and str(getattr(user, "role", "")) != "super_admin":
+            raise HTTPException(status_code=403, detail="续费提醒仅可查看，处理需由老板确认")
         if existing is not None and existing.customer_id is not None:
             action = "delete" if deleting else None
             if not deleting and any(k in changes and changes[k] != getattr(existing, k) for k in ("assignee_id", "assignee_name", "collaborator_names", "customer_id")):
@@ -239,7 +265,7 @@ class TasksService:
                 return None
             await self.validate_customer_write(scope_user, update_data, obj)
             if obj.customer_id is not None:
-                record_customer_change(self.db, scope_user, obj, self.customer_module(obj), changes=update_data)
+                record_customer_change(self.db, scope_user, obj, await self.customer_module(obj), changes=update_data)
             for key, value in update_data.items():
                 if hasattr(obj, key):
                     setattr(obj, key, value)
@@ -345,7 +371,7 @@ class TasksService:
                     detail="公司里程碑任务属于经营决策闭环，不能直接删除；请先在公司战略与里程碑中解除或调整决策",
                 )
             if obj.customer_id is not None:
-                record_customer_change(self.db, scope_user, obj, self.customer_module(obj), deleted=True)
+                record_customer_change(self.db, scope_user, obj, await self.customer_module(obj), deleted=True)
             await self.db.delete(obj)
             await self.db.commit()
             logger.info(f"Deleted tasks {obj_id}")

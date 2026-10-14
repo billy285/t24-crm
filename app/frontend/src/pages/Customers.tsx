@@ -33,8 +33,11 @@ import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import CustomerPhoneDial from '@/components/CustomerPhoneDial';
 import CustomerAccessPanel from '@/components/CustomerAccessPanel';
+import CustomerCollaborationTabs from '@/components/CustomerCollaborationTabs';
+import CustomerDealRecords from '@/components/CustomerDealRecords';
+import CustomerFinanceAccessPanel from '@/components/CustomerFinanceAccessPanel';
 import CustomerPrivateNote from '@/components/CustomerPrivateNote';
-import { customerCan, customerCanReadTab, customerPermissions, customerFinanceLabels, editableCustomerPayload, CUSTOMER_SHELL_LIST_QUERY, customerCanDeleteCustomer } from '@/lib/customer-permissions';
+import { customerCan, customerCanReadTab, customerPermissions, customerFinanceLabels, editableCustomerPayload, CUSTOMER_SHELL_LIST_QUERY, customerCanDeleteCustomer, customerDefaultTab, customerCreationFeedback, type CustomerModule } from '@/lib/customer-permissions';
 import { formatPhoneNumber, parsePhoneNumber, phoneMatchKey, phoneSearchMatches } from '@/lib/phone-format';
 import MediaAccountsTab from '@/components/MediaAccountsTab';
 import OperationLogsTab from '@/components/OperationLogsTab';
@@ -745,6 +748,7 @@ export default function Customers() {
   const [customerExpenses, setCustomerExpenses] = useState<any[]>([]);
   const [customerDeductionRates, setCustomerDeductionRates] = useState<Record<string, number>>({});
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [renewalSubscriptions, setRenewalSubscriptions] = useState<any[]>([]);
   const [customerProjects, setCustomerProjects] = useState<any[]>([]);
   const [productCatalog, setProductCatalog] = useState<any>({ business_lines: [], products: [], plans: [] });
   const [serviceProgresses, setServiceProgresses] = useState<any[]>([]);
@@ -776,7 +780,7 @@ export default function Customers() {
   const canCreateFollowUp = !detailLoading && effective.modules.followups.write;
   const canEditFollowUp = canCreateFollowUp;
   const canDeleteFollowUp = canCreateFollowUp && effective.can_delete;
-  const canManageContacts = !detailLoading && effective.modules.basic.write;
+  const canManageContacts = !detailLoading && effective.modules.contacts.write;
   const canDeleteContacts = canManageContacts && effective.can_delete;
   const canEditBasic = (customer: any) => customerCan(customer, 'basic', 'write');
   const canAssignCustomer = (customer: any) => customerPermissions(customer).can_reassign;
@@ -1129,6 +1133,7 @@ export default function Customers() {
   const [assignEmployeeId, setAssignEmployeeId] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [showAccessDialog, setShowAccessDialog] = useState(false);
+  const [financeAccessTarget, setFinanceAccessTarget] = useState<any>(null);
   const [accessTarget, setAccessTarget] = useState<any>(null);
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<number[]>([]);
   const [bulkAccessMode, setBulkAccessMode] = useState(false);
@@ -1155,7 +1160,7 @@ export default function Customers() {
   const detailFromFinance = searchParams.get('from') === 'finance';
   const detailReturnTo = getSafeInternalPath(searchParams.get('returnTo'));
   const normalizeCustomerDetailTab = (tab?: string | null, customer = selectedCustomer) => {
-    if (customer && !customerCanReadTab(customer, tab || 'overview')) return 'overview';
+    if (customer && !customerCanReadTab(customer, tab || 'overview')) return customerDefaultTab(customer);
     return tab && customerDetailTabValues.has(tab) ? tab : 'overview';
   };
 
@@ -1168,6 +1173,7 @@ export default function Customers() {
     setCustomerDeductionRates({});
     setFinanceStatus(null);
     setSubscriptions([]);
+    setRenewalSubscriptions([]);
     setCustomerProjects([]);
     setServiceProgresses([]);
     setServiceTasks([]);
@@ -1250,8 +1256,8 @@ export default function Customers() {
       }
       setSelectedCustomer(displayCustomerStatus(verified));
       const permission = customerPermissions(verified);
-      setSelectedCustomerTab(tab => customerCanReadTab(verified,tab) ? tab : 'overview');
-      const permitted = (key: 'basic' | 'followups' | 'delivery') => permission.modules[key].read;
+      setSelectedCustomerTab(tab => customerCanReadTab(verified,tab) ? tab : customerDefaultTab(verified));
+      const permitted = (key: CustomerModule) => permission.modules[key].read;
       const empty = () => Promise.resolve({data:{items:[]}});
       const financeResponse = permission.finance_access !== 'none'
         ? await invokeWithAuth({url:`/api/v1/entities/customers/${customerId}/finance-access-data`,method:'GET'})
@@ -1260,10 +1266,10 @@ export default function Customers() {
       const settledResults = await Promise.allSettled([
         Promise.resolve(verifiedCustomer),
         permitted('followups') ? client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }) : empty(),
-        permitted('delivery') ? client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 1000 }) : empty(),
+        permitted('deals') ? client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 1000 }) : empty(),
         Promise.resolve({data:{items:financeResponse.data?.payments || []}}),
         Promise.resolve({data:{items:financeResponse.data?.expenses || []}}),
-        permitted('delivery') ? client.entities.subscriptions.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }) : empty(),
+        permitted('delivery') ? invokeWithAuth({url:'/api/v1/entities/subscriptions',method:'GET',data:{query:JSON.stringify({customer_id:customerId}),sort:'-created_at',limit:1000,access_module:'delivery'}}) : empty(),
         permitted('delivery') ? client.entities.service_progresses.queryAll({ query: { customer_id: customerId }, sort: '-last_update_time', limit: 1000 }) : empty(),
         permitted('delivery') ? client.entities.service_tasks.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }) : empty(),
         isOwner && permitted('delivery')
@@ -1273,7 +1279,8 @@ export default function Customers() {
         !isOwner
           ? Promise.resolve({ data: { business_lines: [], products: [], plans: [] } })
           : invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }).catch(() => ({ data: { business_lines: [], products: [], plans: [] } })),
-        permitted('basic') ? client.entities.customer_contacts.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }).catch(() => ({ data: { items: [] } })) : empty(),
+        permitted('contacts') ? client.entities.customer_contacts.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }).catch(() => ({ data: { items: [] } })) : empty(),
+        permitted('renewals') ? invokeWithAuth({url:'/api/v1/entities/subscriptions',method:'GET',data:{query:JSON.stringify({customer_id:customerId}),sort:'-created_at',limit:1000,access_module:'renewals'}}) : empty(),
       ]);
 
       if (!isCurrentRequest()) return;
@@ -1282,7 +1289,7 @@ export default function Customers() {
         console.warn(`Load customer detail section failed: ${label}`, result.reason);
         return fallback;
       };
-      const [customerResult, fuResult, dealResult, paymentResult, expenseResult, subscriptionResult, progressResult, taskResult, lifecycleResult, projectResult, catalogResult, contactResult] = settledResults;
+      const [customerResult, fuResult, dealResult, paymentResult, expenseResult, subscriptionResult, progressResult, taskResult, lifecycleResult, projectResult, catalogResult, contactResult, renewalResult] = settledResults;
       const emptyItems = { data: { items: [] } };
       const customerRes = readSettled(customerResult, emptyItems, 'customer');
       const fuRes = readSettled(fuResult, emptyItems, 'follow_ups');
@@ -1296,6 +1303,7 @@ export default function Customers() {
       const projectRes = readSettled(projectResult, emptyItems, 'projects');
       const catalogRes = readSettled(catalogResult, { data: { business_lines: [], products: [], plans: [] } }, 'catalog');
       const contactRes = readSettled(contactResult, emptyItems, 'contacts');
+      const renewalRes = readSettled(renewalResult, emptyItems, 'renewals');
       const latestCustomer = displayCustomerStatus(customerRes?.data?.items?.[0] || fallbackCustomer || null);
       if (!latestCustomer && customerResult.status === 'rejected') {
         setDetailLoadError(getLoadErrorMessage(customerResult.reason));
@@ -1316,6 +1324,7 @@ export default function Customers() {
       setCustomerExpenses(expenseRes?.data?.items || []);
       setCustomerDeductionRates(deductionRates);
       setSubscriptions(decorateEffectiveSubscriptions(sRes?.data?.items || []));
+      setRenewalSubscriptions(decorateEffectiveSubscriptions(renewalRes?.data?.items || []));
       setServiceProgresses(progressRes?.data?.items || []);
       setServiceTasks(taskRes?.data?.items || []);
       setLifecycleDetail(lifecycleRes?.data || null);
@@ -1705,7 +1714,7 @@ export default function Customers() {
         source_subscription_ids: [],
       }));
       if (editingId) {
-        const safePayload = editableCustomerPayload({...payload, updated_at: now}, canAssignCustomer(editingCustomer));
+        const safePayload = editableCustomerPayload({...payload, updated_at: now}, canAssignCustomer(editingCustomer), isOwner);
         const updatedRes = canEditProjects
           ? await invokeWithAuth({ url: `/api/v1/entities/customers/${editingId}/with-projects`, method: 'PUT', data: { customer: safePayload, projects } })
           : await client.entities.customers.update({id:String(editingId),data:safePayload});
@@ -1721,11 +1730,16 @@ export default function Customers() {
           projects,
           commission_partner_id: commissionPartnerId === 'auto' ? null : Number(commissionPartnerId),
           commission_effective_from: commissionEffectiveFrom || now.slice(0, 10),
-        } }) : await client.entities.customers.create({data:{...payload,customer_code:code,created_at:now,updated_at:now}});
-        if (res?.data) {
-          setCustomers(prev => [res.data, ...prev]);
+        } }) : await client.entities.customers.create({data:editableCustomerPayload({...payload,customer_code:code,created_at:now,updated_at:now},false,false)});
+        const created = customerCreationFeedback(res?.data);
+        if (created.canOpen && res?.data) setCustomers(prev => [res.data, ...prev]);
+        if (!created.canOpen) {
+          invalidateCustomerDetailRequests(); clearCustomerDetailAssociations(); setSelectedCustomer(null);
+          const nextParams = new URLSearchParams(searchParams);
+          ['detail','tab','reminder','from','financeTab','returnTo'].forEach(key => nextParams.delete(key));
+          setSearchParams(nextParams);
         }
-        toast.success('客户创建成功');
+        toast.success(created.message);
         logOperation({ customerId: res?.data?.id, actionType: 'create_customer', actionDetail: `新增客户: ${form.business_name}`, operatorName: op });
       }
       customerDraft.markSaved();
@@ -1991,6 +2005,7 @@ export default function Customers() {
         </DialogContent>
       </Dialog>
 
+      <CustomerFinanceAccessPanel customer={financeAccessTarget} open={Boolean(financeAccessTarget)} onClose={() => setFinanceAccessTarget(null)} onSaved={async () => { await loadCustomers(); if (selectedCustomer) await loadCustomerDetail(selectedCustomer.id); }} />
       <CustomerAccessPanel customer={accessTarget} customerIds={bulkAccessMode ? selectedCustomerIds : []} open={showAccessDialog} onClose={() => { setShowAccessDialog(false); setAccessTarget(null); setBulkAccessMode(false); }} onSaved={async () => { setSelectedCustomerIds([]); await loadCustomers(); if (selectedCustomer) await loadCustomerDetail(selectedCustomer.id); }} />
 
       <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && customerDraft.confirmDiscard())) setShowForm(open); }}>
@@ -2324,7 +2339,7 @@ export default function Customers() {
                 <div><Label className="text-xs">TikTok</Label><Input value={form.tiktok_link} onChange={e => setForm({ ...form, tiktok_link: e.target.value })} placeholder="https://tiktok.com/@..." /></div>
               </div>
             </div>
-            <div className="sm:col-span-2"><Label>团队备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
+            {isOwner && <div className="sm:col-span-2"><Label>历史备注 · 仅老板</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>}
           </div>
           <div data-testid="customer-form-actions" className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-5 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
             <Button variant="outline" disabled={saving} onClick={() => { if (customerDraft.confirmDiscard()) setShowForm(false); }} className="min-h-11 flex-1 sm:flex-none">取消</Button>
@@ -2464,7 +2479,7 @@ export default function Customers() {
     const customerFinanceRecordCount = payments.length + customerExpenses.length;
     const latestPaymentDate = payments[0]?.payment_date?.slice(0, 10) || '-';
     const latestDealDate = deals[0]?.deal_date?.slice(0, 10) || '-';
-    const renewalRows = subscriptions
+    const renewalRows = renewalSubscriptions
       .map(item => {
         const status = computeSubscriptionState(item);
         const daysLeft = getSubscriptionRemainingDays(item);
@@ -2475,8 +2490,9 @@ export default function Customers() {
         const bTime = b.end_date ? new Date(b.end_date).getTime() : Number.MAX_SAFE_INTEGER;
         return aTime - bTime;
       });
-    const currentServiceRows = renewalRows.filter(item => !archivedSubscriptionStatuses.has(item.computed_status));
-    const historicalServiceRows = renewalRows.filter(item => archivedSubscriptionStatuses.has(item.computed_status));
+    const serviceRows = subscriptions.map(item => ({...item, computed_status:computeSubscriptionState(item), days_left:getSubscriptionRemainingDays(item)}));
+    const currentServiceRows = serviceRows.filter(item => !archivedSubscriptionStatuses.has(item.computed_status));
+    const historicalServiceRows = serviceRows.filter(item => archivedSubscriptionStatuses.has(item.computed_status));
     const activeSubscriptionCount = currentServiceRows.length;
     const activeCustomerProjectCount = customerProjects.filter(item => activeCustomerProjectStatuses.has(item.status)).length;
     const currentLifecycleStatus = lifecycleDetail?.cycles?.[0]?.status;
@@ -2588,13 +2604,13 @@ export default function Customers() {
           <div className="customer-detail-actions flex w-full items-center gap-2 md:w-auto md:justify-end">
             {c.phone && <CustomerPhoneDial phone={c.phone} country={c.country} label="网页拨号" className="min-w-0 flex-[1.15] md:flex-none" buttonClassName="px-3" />}
             {canCreateFollowUp && <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0 md:flex-none" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
-            {canManageCustomerAccess(c) && <Button variant="outline" size="sm" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 访问权限</Button>}
+            {canManageCustomerAccess(c) && <><Button variant="outline" size="sm" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 协作成员</Button><Button variant="outline" size="sm" onClick={() => setFinanceAccessTarget(c)}>财务授权</Button></>}
             <Button aria-label="刷新客户数据" variant="outline" size="sm" className="h-11 w-11 shrink-0 px-0 md:h-8 md:w-auto md:px-3" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
               <RefreshCw className={`h-3.5 w-3.5 md:mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> <span className="hidden md:inline">刷新数据</span>
             </Button>
           </div>
         </div>
-        {activeReminderMessage && (
+        {activeReminderMessage && customerCanReadTab(c, reminderActionTab) && (
           <Card className="border-blue-200 bg-blue-50">
             <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div><p className="text-sm font-medium text-blue-700">{activeReminderMessage.title}</p><p className="text-xs text-blue-600 mt-1">{activeReminderMessage.description}</p></div>
@@ -2608,7 +2624,7 @@ export default function Customers() {
             <Button size="sm" variant="outline" className="border-red-200 bg-white text-red-700 hover:bg-red-100" onClick={() => loadCustomerDetail(c.id, c)}>重新加载</Button>
           </div>
         )}
-        <div className="flex flex-wrap gap-2 text-xs text-slate-500"><span>{effective.access_level === 'read_write' ? '按授权范围协作' : '只读查看'}</span><span>财务：{customerFinanceLabels[effective.finance_access]}</span><span>{effective.sources.map(item => item.label).join(' · ')}</span></div>
+        <div className="flex flex-wrap gap-2 text-xs text-slate-500"><span>{effective.access_level === 'read_write' ? '按授权范围协作' : '只读查看'}</span>{(isOwner || canViewFinanceStatus) && <span>财务：{customerFinanceLabels[effective.finance_access]}</span>}<span>{effective.sources.map(item => item.label).join(' · ')}</span></div>
         {hasClosureMismatch && (
           <div className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
             <div><p className="font-semibold">客户已停止，但仍有项目或续费显示合作中</p><p className="mt-1 text-xs text-red-600">同步只关闭未来合作与扣款，不会删除成交、收款或历史服务。</p></div>
@@ -2616,7 +2632,7 @@ export default function Customers() {
           </div>
         )}
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
-          <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
+          {isOwner ? <>          <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
           <div className="md:hidden">
             <TabsList aria-label="客户手机主导航" className="grid h-auto w-full grid-cols-4 gap-1 bg-slate-100 p-1">
               <TabsTrigger value="overview" className="min-h-11 min-w-0 px-1 text-sm">概览</TabsTrigger>
@@ -2652,7 +2668,9 @@ export default function Customers() {
           />
           </div>
 
-          <TabsContent value="overview">
+</> : <CustomerCollaborationTabs customer={c} />}
+
+          {customerCanReadTab(c, 'overview') && <TabsContent value="overview">
             {detailLoading || detailLoadError ? <div role="status" className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">{detailLoading ? '正在核对客户的服务、收款与待办，完成后显示完整概览…' : '客户关联数据未完成核对，请重新加载后查看概览。'}</div> : <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
               <div className="space-y-4">
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
@@ -2675,7 +2693,7 @@ export default function Customers() {
                 {effective.modules.basic.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <h3 className="text-base font-semibold text-slate-900">客户摘要</h3>
                   <div className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{formatPhoneNumber(c.phone, c.country)}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
-                  <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}{effective.modules.followups.read && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>查看商机</Button>}</div>
+                  <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}{effective.modules.opportunities.read && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>查看商机</Button>}</div>
                 </CardContent></Card>)}
 
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
@@ -2686,9 +2704,9 @@ export default function Customers() {
                 {effective.modules.delivery.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5"><h3 className="text-base font-semibold text-slate-900">续费摘要</h3><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-amber-50 p-3"><p className="text-xs text-amber-700">即将到期</p><p className="mt-1 text-xl font-semibold text-amber-900">{upcomingRenewalCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">自动续费</p><p className="mt-1 text-xl font-semibold text-slate-900">{autoRenewCount}</p></div></div><Button className="mt-4 w-full" variant="outline" onClick={() => handleDetailTabChange('renewals')}>查看续费与收款状态</Button></CardContent></Card>)}
               </div>
             </div>}
-          </TabsContent>
+          </TabsContent>}
 
-          <TabsContent value="timeline">
+          {customerCanReadTab(c, 'timeline') && <TabsContent value="timeline">
             <Card className="border-slate-200"><CardContent className="p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div><h3 className="text-sm font-semibold text-slate-800">客户全生命周期</h3><p className="mt-1 text-xs text-slate-500">集中查看跟进、成交、收款、服务和续费记录</p></div>
@@ -2708,7 +2726,7 @@ export default function Customers() {
                 </div>
               )}
             </CardContent></Card>
-          </TabsContent>
+          </TabsContent>}
 
           {customerCanReadTab(c, 'opportunities') && (
           <TabsContent value="opportunities">
@@ -2753,7 +2771,7 @@ export default function Customers() {
                   {!c.facebook_link && !c.instagram_link && !c.google_business_link && !c.yelp_link && !c.tiktok_link && <span className="text-slate-400">暂无</span>}
                 </div>
               </div>
-              {c.notes && <div className="mt-4 p-3 bg-slate-50 rounded text-slate-600 text-sm"><p className="mb-1 text-xs text-slate-500">团队备注 · 授权成员可见</p>{c.notes}</div>}{isOwner && <div className="mt-4"><CustomerPrivateNote customerId={c.id} /></div>}
+              {isOwner && c.notes && <div className="mt-4 p-3 bg-slate-50 rounded text-slate-600 text-sm"><p className="mb-1 text-xs text-slate-500">历史备注 · 仅老板</p>{c.notes}</div>}{isOwner && <div className="mt-4"><CustomerPrivateNote customerId={c.id} /></div>}
             </CardContent></Card>
           </TabsContent>
           )}
@@ -2878,17 +2896,7 @@ export default function Customers() {
             <Card className="border-slate-200"><CardContent className="p-5">
               {deals.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无成交记录</p> : (
                 <>
-                  <div className="space-y-3">{paginatedDeals.items.map((d: any) => (
-                    <div key={d.id} className="p-3 bg-slate-50 rounded-lg">
-                  <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(d.package_name).currentLabel}</span>{canViewFinance && d.deal_amount != null && <span className="text-green-600 font-bold">${d.deal_amount}</span>}</div>
-                      {getPackageClassification(d.package_name).changed && <p className="mb-2 text-xs text-slate-400">历史成交原名：{getPackageClassification(d.package_name).historicalLabel}</p>}
-                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
-                        <span>产品: {productLabels[d.product_type] || d.product_type}</span><span>周期: {cycleLabels[d.billing_cycle] || d.billing_cycle}</span>
-                        <span>成交日: {d.deal_date?.slice(0, 10)}</span><span>销售: {d.sales_name}</span>
-                        {canViewFinance && <span>付款: {d.is_paid ? '✅ 已付' : '❌ 未付'}</span>}<span>交接: {d.is_handed_over ? '✅ 已交接' : '⏳ 待交接'}</span>
-                      </div>
-                    </div>
-                  ))}</div>
+                  <CustomerDealRecords customer={c} deals={paginatedDeals.items} classify={getPackageClassification} productLabels={productLabels} cycleLabels={cycleLabels} />
                   <DetailPaginationFooter pagination={paginatedDeals} pageSize={dealPageSize} onPageChange={setDealPage} onPageSizeChange={setDealPageSize} label="成交记录" />
                 </>
               )}
@@ -2909,7 +2917,7 @@ export default function Customers() {
                         <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm">{getPackageClassification(s.package_name).currentLabel}</span><Badge className={statusView.badgeClass}>{subStatusLabels[s.computed_status] || statusView.label}</Badge></div>
                         {getPackageClassification(s.package_name).changed && <p className="mb-2 text-xs text-slate-400">历史服务原名：{getPackageClassification(s.package_name).historicalLabel}</p>}
                         <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
-                          {canViewFinance && <span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span>}<span>续费方式: {s.auto_renew ? '自动续费' : '手动续费'}</span>
+                          {canViewFinance && <span>价格: ${s.package_price}/{cycleLabels[s.billing_cycle] || s.billing_cycle}</span>}{effective.modules.renewals.read && <span>续费方式: {renewalSubscriptions.find(row => row.id === s.id)?.auto_renew ? '自动续费' : '手动续费'}</span>}
                           <span>开始: {s.start_date?.slice(0, 10)}</span><span>到期: {s.end_date?.slice(0, 10)}</span>
                         </div>
                       </div>;
@@ -3261,7 +3269,7 @@ export default function Customers() {
       {!isMobile && isOwner && selectedCustomerIds.length > 0 && (
         <Card className="border-blue-200 bg-blue-50/70"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
           <div><p className="text-sm font-semibold text-blue-950">已选择 {selectedCustomerIds.length} 位客户</p><p className="mt-1 text-xs text-blue-700">按员工设置明确授权；“不可见”覆盖继承权限。</p></div>
-          <div className="flex gap-2"><Button variant="outline" onClick={() => setSelectedCustomerIds([])}>取消选择</Button><Button onClick={() => void openBulkAccessManager()}><Users className="mr-2 h-4 w-4" />批量设置访问权限</Button></div>
+          <div className="flex gap-2"><Button variant="outline" onClick={() => setSelectedCustomerIds([])}>取消选择</Button><Button onClick={() => void openBulkAccessManager()}><Users className="mr-2 h-4 w-4" />批量管理协作成员</Button></div>
         </CardContent></Card>
       )}
 
@@ -3342,7 +3350,7 @@ export default function Customers() {
                         <Button size="sm" variant="outline" className="h-11 min-w-11 px-2.5 md:h-8 md:min-w-0" aria-label={`更多客户操作：${c.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
-                        {canManageCustomerAccess(c) && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />访问权限</DropdownMenuItem>}
+                        {canManageCustomerAccess(c) && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />协作成员</DropdownMenuItem>}
                         {canAssignCustomer(c) && <DropdownMenuItem onSelect={() => openAssign(c)}><ArrowRightLeft className="mr-2 h-4 w-4" />分配负责人</DropdownMenuItem>}
                         {canEditBasic(c) && <DropdownMenuItem onSelect={() => openEdit(c)}><Edit className="mr-2 h-4 w-4" />编辑客户</DropdownMenuItem>}
                         {canDeleteCustomer(c) && <DropdownMenuSeparator />}
@@ -3527,7 +3535,7 @@ export default function Customers() {
                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-blue-600" aria-label={`更多客户操作：${c.business_name}`}><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
-                        {canManageCustomerAccess(c) && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />访问权限</DropdownMenuItem>}
+                        {canManageCustomerAccess(c) && <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />协作成员</DropdownMenuItem>}
                         {canAssignCustomer(c) && <DropdownMenuItem onSelect={() => openAssign(c)}><ArrowRightLeft className="mr-2 h-4 w-4" />分配负责人</DropdownMenuItem>}
                         {canEditBasic(c) && <DropdownMenuItem onSelect={() => openEdit(c)}><Edit className="mr-2 h-4 w-4" />编辑客户</DropdownMenuItem>}
                         {canDeleteCustomer(c) && <DropdownMenuSeparator />}
@@ -3553,8 +3561,8 @@ export default function Customers() {
             <div className="flex justify-between gap-3"><dt className="text-slate-500">联系人</dt><dd>{previewCustomer.contact_name || '待补充'}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-slate-500">联系电话</dt><dd>{previewCustomer.phone ? formatPhoneNumber(previewCustomer.phone, previewCustomer.country) : '待补充'}</dd></div>
           </dl>
-          <div className="rounded-xl bg-slate-50 p-4"><h4 className="text-sm font-semibold">继续处理</h4><p className="mt-2 text-sm leading-6 text-slate-500">打开客户 360，核对当前服务、跟进安排与下一步动作。</p></div>
-          <Button className="mt-4 w-full bg-blue-600 hover:bg-blue-700" onClick={() => openDetail(previewCustomer)}>打开客户 360</Button>
+          <div className="rounded-xl bg-slate-50 p-4"><h4 className="text-sm font-semibold">继续处理</h4><p className="mt-2 text-sm leading-6 text-slate-500">打开客户详情，核对当前服务、跟进安排与下一步动作。</p></div>
+          <Button className="mt-4 w-full bg-blue-600 hover:bg-blue-700" onClick={() => openDetail(previewCustomer)}>打开客户详情</Button>
           <p className="mt-4 text-xs leading-5 text-slate-400">服务与财务状态以客户详情完整加载后的数据为准。</p>
         </aside>}
       </div>

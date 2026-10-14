@@ -86,7 +86,7 @@ def _apply_log_customer_scope(statement, scope_user):
         customers = customers.where(scope)
     # A creator ID cannot retain access after the linked customer is revoked;
     # unlinked company-wide events are owner-only.
-    return statement.where(Operation_logs.customer_id.in_(customers))
+    return statement.where(Operation_logs.action_type == "user_note").where(Operation_logs.customer_id.in_(customers))
 
 
 # ------------------ Service Layer ------------------

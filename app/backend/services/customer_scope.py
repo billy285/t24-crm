@@ -11,11 +11,11 @@ from models.customers import Customers
 from services.customers import CustomersService
 
 CUSTOMER_MODULE_BY_TABLE = {
-    "customer_contacts": "basic", "follow_ups": "followups", "customer_callbacks": "followups",
+    "customer_contacts": "contacts", "follow_ups": "followups", "customer_callbacks": "followups",
     "service_tasks": "delivery", "service_progresses": "delivery",
     "customer_materials": "materials", "customer_menu_items": "materials", "customer_ai_copies": "materials",
     "media_accounts": "materials", "payments": "finance", "expenses": "finance",
-    "subscriptions": "delivery", "deals": "delivery",
+    "subscriptions": "renewals", "deals": "deals", "opportunities": "opportunities",
 }
 
 

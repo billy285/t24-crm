@@ -38,7 +38,7 @@ async def financial_api():
         db.add_all([
             Customers(id=1, business_name="Shared", contact_name="A", phone="111"),
             Customers(id=2, business_name="Other", contact_name="B", phone="222"),
-            CustomerAccessGrant(customer_id=1, employee_id=501, access_level="read_only", finance_access="none"),
+            CustomerAccessGrant(customer_id=1, employee_id=501, access_level="read_only", finance_access="none", invitation_status='active', invitation_source='owner_invitation', scopes={m:'read_only' for m in ('basic','contacts','followups','opportunities','delivery','renewals','deals','materials')}),
             Payments(id=11, customer_id=1, amount_due=500, amount_paid=400, outstanding_amount=100,
                 currency="USD", management_amount=400, stripe_fee_amount=12, payment_date=datetime(2026,10,1),
                 transaction_reference="restricted-reference", notes="financial-note", user_id="owner"),
@@ -134,18 +134,18 @@ async def test_delivery_records_hide_finance_and_reject_filter_inference(financi
         Subscriptions(id=81,customer_id=1,package_name="Website",package_price=400),
     ])
     grant = (await db.execute(select(CustomerAccessGrant))).scalar_one()
-    grant.scopes = {"delivery":"read_only"}
+    grant.scopes = {"deals":"read_only", "renewals":"read_only"}
     await db.commit()
     for entity, ident, hidden in [('deals',71,'deal_amount'),('subscriptions',81,'package_price')]:
         path='/api/v1/entities/'+entity
         result=await client.get(path+'/'+str(ident),headers=headers())
         assert result.status_code==200
-        assert result.json()[hidden] is None
+        assert hidden not in result.json()
         assert (await client.get(path,params={'query':json.dumps({hidden:400})},headers=headers())).status_code==403
         assert (await client.get(path+'/all',params={'sort':'-'+hidden},headers=headers())).status_code==403
     grant.finance_access='receipts';await db.commit()
     assert (await client.get('/api/v1/entities/deals/71',headers=headers())).json()['deal_amount']==400
-    grant.scopes={"delivery":"none"};await db.commit()
+    grant.scopes={"deals":"none", "renewals":"none"};await db.commit()
     for entity, ident in [('deals',71),('subscriptions',81)]:
         assert (await client.get('/api/v1/entities/'+entity+'/'+str(ident),headers=headers())).status_code==404
         assert (await client.get('/api/v1/entities/'+entity+'/all',headers=headers())).json()['total']==0
