@@ -68,7 +68,7 @@
   .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table :is(th,td).mp-industry-column { width: 86px; }
   .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table :is(th,td).mp-action-column { width: 90px; }
   .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table :is(th,td).mp-select-column { width: 32px; }
-  .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table td { height: 46px; padding-block: 6px; }
+  .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table td { height: 46px; padding-block: 6px; border-top: 1px solid #e7edf5; }
   .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table .mp-merchant-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 @media (max-width: 767px) {
