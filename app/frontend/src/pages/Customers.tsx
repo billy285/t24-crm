@@ -2009,7 +2009,7 @@ export default function Customers() {
       <CustomerAccessPanel customer={accessTarget} customerIds={bulkAccessMode ? selectedCustomerIds : []} open={showAccessDialog} onClose={() => { setShowAccessDialog(false); setAccessTarget(null); setBulkAccessMode(false); }} onSaved={async () => { setSelectedCustomerIds([]); await loadCustomers(); if (selectedCustomer) await loadCustomerDetail(selectedCustomer.id); }} />
 
       <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && customerDraft.confirmDiscard())) setShowForm(open); }}>
-        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl overflow-y-auto sm:max-h-[90vh]">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl overflow-y-auto sm:max-h-[90vh] [&>button]:z-30">
           <DialogHeader className="sticky top-0 z-20 -mx-6 -mt-6 border-b border-slate-200 bg-white px-6 py-4 sm:static sm:m-0 sm:border-0 sm:bg-transparent sm:p-0"><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle></DialogHeader>
           {duplicateWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><AlertCircle className="w-4 h-4 flex-shrink-0" />{duplicateWarning}</div>}
           <div data-testid="customer-form-grid" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
