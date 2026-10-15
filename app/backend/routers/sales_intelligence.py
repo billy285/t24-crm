@@ -44,6 +44,7 @@ from routers.sales_leads import (
     _role,
     ADMIN_ROLES,
 )
+from services.sales_workflow_locks import lock_sales_workflow
 from services.sales_intelligence import (
     default_config,
     summarize_lead,
@@ -492,8 +493,23 @@ async def update_profile(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_lead_role(current_user)
+    try:
+        # Assignment, contact results and profile edits share one transaction
+        # boundary. Authorize only after competing transfers have committed.
+        await lock_sales_workflow(
+            db, lead_ids=[lead_id], employee_ids=[_employee_id(current_user)]
+        )
+        return await _update_profile_locked(lead_id, payload, current_user, db)
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def _update_profile_locked(lead_id, payload, current_user, db):
+    # _get_scoped_lead populates existing identity-map rows, so neither the
+    # original owner nor a stale cached revision can authorize this mutation.
     lead = await _get_scoped_lead(db, lead_id, current_user)
-    old = await db.get(SalesLeadProfiles, lead_id)
+    old = await db.get(SalesLeadProfiles, lead_id, populate_existing=True)
     before = unpack(old.payload_json) if old else {}
     if (old.revision if old else 0) != payload.revision:
         raise HTTPException(409, "档案已被更新，请刷新后再保存")

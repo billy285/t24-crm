@@ -16,6 +16,7 @@ from models.employees import Employees
 from models.management_decisions import BusinessLine, ProductCatalog, ProductPlan
 from models.sales_leads import SalesLeads
 from schemas.auth import UserResponse
+from services.sales_workflow_locks import lock_sales_workflow
 
 
 router = APIRouter(prefix="/api/v1/sales-deal-controls", tags=["sales-deal-controls"])
@@ -60,7 +61,7 @@ async def _get_scoped_lead(db: AsyncSession, lead_id: int, user: UserResponse) -
         ))).all()
         visible_ids = list({_employee_id(user), *(int(item) for item in report_ids)})
         query = query.where(or_(SalesLeads.team_manager_id == _employee_id(user), SalesLeads.assigned_sales_id.in_(visible_ids)))
-    lead = (await db.scalars(query)).one_or_none()
+    lead = (await db.scalars(query.execution_options(populate_existing=True))).one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="销售线索不存在或不在您的权限范围内")
     return lead
@@ -300,6 +301,15 @@ async def create_quote(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_sales_access(current_user)
+    try:
+        await lock_sales_workflow(db, lead_ids=[lead_id], employee_ids=[_employee_id(current_user)])
+        return await _create_quote_locked(lead_id, payload, current_user, db)
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def _create_quote_locked(lead_id, payload, current_user, db):
     lead = await _get_scoped_lead(db, lead_id, current_user)
     if lead.converted_customer_id:
         raise HTTPException(status_code=409, detail="该线索已转为正式客户，不能再创建售前报价")
@@ -334,7 +344,17 @@ async def review_quote(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_manager(current_user)
-    row = await db.get(SalesQuoteRequests, quote_id)
+    try:
+        # Take the common transaction lock before resolving the quote's lead.
+        await lock_sales_workflow(db, employee_ids=[_employee_id(current_user)])
+        return await _review_quote_locked(quote_id, payload, current_user, db)
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def _review_quote_locked(quote_id, payload, current_user, db):
+    row = await db.get(SalesQuoteRequests, quote_id, populate_existing=True)
     if not row:
         raise HTTPException(status_code=404, detail="报价单不存在")
     await _get_scoped_lead(db, row.lead_id, current_user)
@@ -346,7 +366,9 @@ async def review_quote(
             .where(SalesQuoteRequests.status == "approved")
             .values(status="superseded", review_notes="已有更新报价获批，本报价自动失效")
         )
-        handoff = await db.scalar(select(SalesHandoffChecklists).where(SalesHandoffChecklists.lead_id == row.lead_id))
+        handoff = await db.scalar(select(SalesHandoffChecklists).where(
+            SalesHandoffChecklists.lead_id == row.lead_id
+        ).execution_options(populate_existing=True))
         if handoff and handoff.quote_id != row.id:
             handoff.finance_payment_confirmed = False
             handoff.payment_status = "pending"
@@ -373,7 +395,18 @@ async def save_handoff(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_sales_access(current_user)
+    try:
+        await lock_sales_workflow(db, lead_ids=[lead_id], employee_ids=[_employee_id(current_user)])
+        return await _save_handoff_locked(lead_id, payload, current_user, db)
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def _save_handoff_locked(lead_id, payload, current_user, db):
     lead = await _get_scoped_lead(db, lead_id, current_user)
+    if lead.converted_customer_id:
+        raise HTTPException(status_code=409, detail="该线索已转为正式客户，售前交接清单不可再修改")
     if payload.quote_id:
         quote = await db.get(SalesQuoteRequests, payload.quote_id)
         if not quote or quote.lead_id != lead.id:
@@ -390,10 +423,26 @@ async def save_handoff(
         ))).all())
         if valid_ids != set(collaborator_ids):
             raise HTTPException(status_code=400, detail="协作人中包含不存在或已停用的员工")
-    row = await db.scalar(select(SalesHandoffChecklists).where(SalesHandoffChecklists.lead_id == lead.id))
+    row = await db.scalar(select(SalesHandoffChecklists).where(
+        SalesHandoffChecklists.lead_id == lead.id
+    ).execution_options(populate_existing=True))
     if not row:
         row = SalesHandoffChecklists(lead_id=lead.id)
         db.add(row)
+    if payload.quote_id != row.quote_id:
+        # Sales can complete the delivery brief, but changing a quote must not
+        # silently erase evidence already confirmed by a financial reviewer.
+        has_payment_evidence = (
+            row.finance_payment_confirmed
+            or (row.payment_status or "pending") != "pending"
+            or bool(row.amount_received)
+            or bool(row.payment_reference)
+            or row.payment_confirmed_by_id is not None
+            or bool(row.payment_confirmed_by_name)
+            or row.payment_confirmed_at is not None
+        )
+        if _role(current_user) == "sales" and has_payment_evidence:
+            raise HTTPException(status_code=409, detail="收款确认已留档，请由主管核对报价，销售不能清除收款确认")
     if row.quote_id and payload.quote_id != row.quote_id:
         row.finance_payment_confirmed = False
         row.payment_status = "pending"
@@ -429,15 +478,26 @@ async def confirm_finance_payment(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_manager(current_user)
+    try:
+        await lock_sales_workflow(db, lead_ids=[lead_id], employee_ids=[_employee_id(current_user)])
+        return await _confirm_finance_payment_locked(lead_id, payload, current_user, db)
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def _confirm_finance_payment_locked(lead_id, payload, current_user, db):
     lead = await _get_scoped_lead(db, lead_id, current_user)
-    row = await db.scalar(select(SalesHandoffChecklists).where(SalesHandoffChecklists.lead_id == lead.id))
+    row = await db.scalar(select(SalesHandoffChecklists).where(
+        SalesHandoffChecklists.lead_id == lead.id
+    ).execution_options(populate_existing=True))
     if not row:
         raise HTTPException(status_code=400, detail="请先填写成交交接清单")
     payment_status = payload.payment_status
     if payment_status is None and payload.finance_payment_confirmed is not None:
         payment_status = "paid" if payload.finance_payment_confirmed else "pending"
     payment_status = payment_status or "pending"
-    quote = await db.get(SalesQuoteRequests, row.quote_id) if row.quote_id else None
+    quote = await db.get(SalesQuoteRequests, row.quote_id, populate_existing=True) if row.quote_id else None
     final_amount = float(quote.final_amount or 0) if quote else 0.0
     amount_received = float(payload.amount_received or 0)
     if payment_status == "paid":

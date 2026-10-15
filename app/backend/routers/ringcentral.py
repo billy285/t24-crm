@@ -15,6 +15,7 @@ from models.employees import Employees
 from models.ringcentral_call_records import RingCentralCallRecords
 from models.ringcentral_connections import RingCentralConnections
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
+from models.sales_leads import SalesLeads
 from schemas.auth import UserResponse
 from services.ringcentral import (
     authorization_url,
@@ -349,16 +350,27 @@ async def recent_ringcentral_call(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_sales_access(current_user)
-    task = await db.get(SalesDailyDialTasks, task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="每日任务不存在")
+    # Historical task ownership and a dossier invitation never grant access to
+    # the merchant's current provider status. Reuse the authoritative lead scope
+    # so managers cannot inspect other teams and former sellers lose access.
+    from routers.sales_leads import _scope_condition
+    query = select(SalesDailyDialTasks).join(SalesLeads, SalesLeads.id == SalesDailyDialTasks.lead_id).where(
+        SalesDailyDialTasks.id == task_id)
+    scope = await _scope_condition(db, current_user)
+    if scope is not None:
+        query = query.where(scope)
     role = str(current_user.role or "").strip().lower()
-    if role == "sales" and task.sales_employee_id != _employee_id(current_user):
-        raise HTTPException(status_code=403, detail="只能查看本人任务的通话状态")
+    if role == "sales":
+        query = query.where(SalesDailyDialTasks.sales_employee_id == _employee_id(current_user))
+    task = (await db.execute(query)).scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="每日任务不存在或不在您的权限范围内")
     item = (
         await db.execute(
             select(RingCentralCallRecords)
-            .where(RingCentralCallRecords.task_id == task_id)
+            .where(RingCentralCallRecords.task_id == task.id,
+                RingCentralCallRecords.lead_id == task.lead_id,
+                RingCentralCallRecords.sales_employee_id == task.sales_employee_id)
             .order_by(RingCentralCallRecords.started_at.desc(), RingCentralCallRecords.id.desc())
         )
     ).scalars().first()
