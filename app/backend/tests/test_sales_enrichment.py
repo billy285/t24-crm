@@ -296,7 +296,7 @@ async def test_summary_is_readonly_batch_and_only_current_scoped_queue(enrichmen
         (await db.get(SalesDailyDialTasks,101)).status='completed'
         await db.commit()
     result=await client.get(f'{API}/workbench/today',headers=auth())
-    assert 'enrichment_summary' not in result.json()['items'][0]['lead']
+    assert result.json()['items'] == []  # former task history must not reveal the current dossier
 
 
 def test_migration_only_adds_sales_tables_and_nullable_dial_columns():

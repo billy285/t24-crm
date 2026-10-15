@@ -38,6 +38,10 @@ from services.deal_payment_sync import sync_payment_from_deal
 from services.sales_task_assignment import sync_pending_daily_tasks
 from services.sales_workflow_locks import lock_sales_workflow
 from services.phone_numbers import parse_phone_number, phone_match_key
+from services.sales_contact_protection import (
+    contact_protection_summary, ensure_lead_contact_allowed, ensure_phone_contact_allowed,
+    lead_is_blocked, persist_lead_suppression, release_phone_suppression,
+)
 from schemas.sales_enrichment import SalesEnrichmentUpdate, SalesDialStartedInput
 from models.sales_lead_enrichments import SalesLeadEnrichmentAudit, SalesDialAttempt
 from services.sales_enrichment import (apply_enrichment, get_enrichment, enrichment_catalog,
@@ -325,6 +329,13 @@ class SalesLeadConvertRequest(BaseModel):
 class RecoveryReasonRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value):
+        if len(value.strip()) < 3:
+            raise ValueError("请填写至少三个字的真实操作原因")
+        return value.strip()
+
 
 class RecoveryExtensionRequest(RecoveryReasonRequest):
     requested_days: int = Field(default=3, ge=1, le=14)
@@ -332,7 +343,9 @@ class RecoveryExtensionRequest(RecoveryReasonRequest):
 
 class RecoveryReassignRequest(RecoveryReasonRequest):
     assigned_sales_id: int
+    expected_owner_id: Optional[int] = None
     confirm_protected_transfer: bool = False
+    handoff_summary: str = Field(default="", max_length=2000)
 
 
 class RecoveryBatchRequest(RecoveryReasonRequest):
@@ -340,6 +353,12 @@ class RecoveryBatchRequest(RecoveryReasonRequest):
     action: str = Field(pattern="^(reclaim|reassign)$")
     assigned_sales_id: Optional[int] = Field(default=None, ge=1)
     confirm_protected_transfer: bool = False
+    handoff_summary: str = Field(default="", max_length=2000)
+
+
+class ContactProtectionReleaseRequest(RecoveryReasonRequest):
+    phone: str = Field(min_length=3, max_length=64)
+    resume_lead: bool = False
 
 
 def _parse_json_dict(raw: Optional[str]) -> dict:
@@ -566,7 +585,7 @@ def _workbench_priority(lead: SalesLeads, target_date: date) -> tuple[str, str]:
     return "normal", "首次联系并记录结果"
 
 
-PROTECTED_LEAD_STATUSES = {"interested", "appointment"}
+PROTECTED_LEAD_STATUSES = {"follow_up", "interested", "appointment"}
 RECOVERY_GRACE_HOURS = 48
 OVERDUE_FOLLOW_UP_DAYS = 3
 
@@ -587,7 +606,7 @@ def _recovery_state(
     if lead.converted_customer_id or lead.status in {"won", "lost", "blocked"} or lead.do_not_contact or lead.is_blacklisted:
         return "excluded", "已成交、无意向或受保护线索不会进入回收流程", None
     if lead.status in PROTECTED_LEAD_STATUSES:
-        return "protected", "有意向或已预约，需主管填写原因后才可转交", None
+        return "protected", "已约定回访、有意向或已预约，需主管确认并填写原因后才可转交", None
     protection_until = _as_utc(protection_until)
     if protection_until and protection_until > now:
         return "extended", "销售延期已获主管批准，暂不回收", protection_until
@@ -636,6 +655,20 @@ async def _append_assignment_log(
     )
     db.add(log)
     return log
+
+
+async def _record_transfer_handoff(db, lead, user, old_id, old_name, note, reason):
+    """Initial allocation needs no acknowledgement; a real prior relationship does."""
+    if old_id is None:
+        old_id = lead.last_assigned_sales_id
+        if not old_id or not (await db.scalar(select(func.count(SalesCallActivities.id)).where(
+                SalesCallActivities.lead_id == lead.id))):
+            return
+        previous = await db.get(Employees, old_id)
+        old_name = previous.name if previous else None
+    if old_id != lead.assigned_sales_id:
+        from services.sales_dossiers import record_handoff
+        await record_handoff(db, lead, user, from_sales_id=old_id, from_sales_name=old_name, note=note, reason=reason)
 
 
 async def _load_recovery_snapshot(
@@ -874,6 +907,7 @@ async def get_daily_call_workbench(
     if scope is not None:
         visible_query = visible_query.where(scope)
     visible_ids = set((await db.execute(visible_query)).scalars()) if tasks else set()
+    tasks = [(task, lead) for task, lead in tasks if lead.id in visible_ids]
     summaries = await enrichment_summaries(db, [lead for _, lead in tasks if lead.id in visible_ids])
     items = []
     categories = {"unfinished": 0, "callback": 0, "interested": 0, "appointment": 0, "new": 0, "retry": 0, "recycled": 0, "follow_up": 0}
@@ -897,6 +931,7 @@ async def get_daily_call_workbench(
             "next_action_label": next_action_label,
             "queue_category": queue_category,
             "lead": {**SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
+                     "contact_protection": await contact_protection_summary(db, lead),
                      **({"enrichment_summary": summaries[lead.id]} if lead.id in summaries else {})},
         })
     completed = sum(1 for task, _lead in tasks if task.status == "completed")
@@ -1063,7 +1098,8 @@ async def batch_update_lead_recovery(
     if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
         raise HTTPException(status_code=403, detail="只有销售主管或系统管理员可以批量处理线索归属")
     lead_ids = list(dict.fromkeys(payload.lead_ids))
-    await lock_sales_workflow(db, lead_ids=lead_ids)
+    await lock_sales_workflow(db, lead_ids=lead_ids,
+        employee_ids=[payload.assigned_sales_id] if payload.assigned_sales_id else [])
     leads = [await _get_scoped_lead(db, lead_id, current_user) for lead_id in lead_ids]
     snapshot = {item["lead_id"]: item for item in await _load_recovery_snapshot(db, current_user)}
     target = None
@@ -1084,9 +1120,14 @@ async def batch_update_lead_recovery(
     for lead in leads:
         item = snapshot.get(lead.id)
         state = item["state"] if item else "unassigned"
+        if lead.converted_customer_id or lead.status in {"won", "lost", "blocked"} or lead_is_blocked(lead):
+            invalid.append(f"{lead.business_name}（已结束或禁止联系）")
+        if payload.action == "reassign" and target and target.id == lead.assigned_sales_id:
+            invalid.append(f"{lead.business_name}（目标已是主要负责人）")
         if payload.action == "reclaim" and state != "recoverable":
             invalid.append(f"{lead.business_name}（{state}）")
-        if payload.action == "reassign" and state == "protected" and not payload.confirm_protected_transfer:
+        if payload.action == "reassign" and (state in {"protected", "extended", "active"}
+                or lead.status in PROTECTED_LEAD_STATUSES) and not payload.confirm_protected_transfer:
             invalid.append(f"{lead.business_name}（受保护）")
     if invalid:
         raise HTTPException(status_code=400, detail=f"以下线索不符合本次批量操作：{'、'.join(invalid[:8])}")
@@ -1107,7 +1148,7 @@ async def batch_update_lead_recovery(
             lead.assigned_sales_id = target.id
             lead.assigned_sales_name = target.name
             lead.assigned_at = datetime.now(timezone.utc)
-            lead.automation_state = "assigned"
+            lead.automation_state = "protected" if lead.status in PROTECTED_LEAD_STATUSES else "assigned"
             if _role(current_user) == "sales_manager":
                 lead.team_manager_id = _employee_id(current_user)
             await _append_assignment_log(
@@ -1116,6 +1157,9 @@ async def batch_update_lead_recovery(
                 to_employee_id=target.id, to_employee_name=target.name, reason=payload.reason.strip(),
             )
         await sync_pending_daily_tasks(db, lead, lead.assigned_sales_id)
+        if payload.action == "reassign":
+            await _record_transfer_handoff(db, lead, current_user, old_id, old_name,
+                payload.handoff_summary.strip() or payload.reason.strip(), payload.reason.strip())
     await db.commit()
     verb = "回收至待分配" if payload.action == "reclaim" else f"重新分配给 {target.name}"
     return {"message": f"已将 {len(leads)} 条线索{verb}", "updated": len(leads)}
@@ -1220,11 +1264,16 @@ async def reassign_sales_lead(
     _ensure_lead_role(current_user)
     if _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
         raise HTTPException(status_code=403, detail="只有销售主管或系统管理员可以转交线索")
-    await lock_sales_workflow(db, lead_ids=[lead_id])
+    await lock_sales_workflow(db, lead_ids=[lead_id], employee_ids=[payload.assigned_sales_id])
     lead = await _get_scoped_lead(db, lead_id, current_user)
+    if "expected_owner_id" in payload.model_fields_set and payload.expected_owner_id != lead.assigned_sales_id:
+        raise HTTPException(status_code=409, detail="主要负责人已更新，本次没有覆盖；请刷新档案后再转交")
     snapshot = {item["lead_id"]: item for item in await _load_recovery_snapshot(db, current_user)}.get(lead.id)
-    if snapshot and snapshot["state"] == "protected" and not payload.confirm_protected_transfer:
-        raise HTTPException(status_code=400, detail="有意向或已预约线索受保护，请确认填写转交原因后再执行")
+    if lead.converted_customer_id or lead.status in {"won", "lost", "blocked"} or lead_is_blocked(lead):
+        raise HTTPException(status_code=409, detail="已结束或禁止联系的商家不能转交至拨打队列")
+    if ((snapshot and snapshot["state"] in {"protected", "extended", "active"})
+            or lead.status in PROTECTED_LEAD_STATUSES) and not payload.confirm_protected_transfer:
+        raise HTTPException(status_code=400, detail="已有跟进约定的线索受保护，请确认并填写转交原因后再执行")
     target = (await db.execute(
         select(Employees).where(
             Employees.id == payload.assigned_sales_id,
@@ -1236,6 +1285,8 @@ async def reassign_sales_lead(
         raise HTTPException(status_code=400, detail="只能转交给在职电话销售")
     if _role(current_user) == "sales_manager" and target.supervisor != (current_user.name or ""):
         raise HTTPException(status_code=403, detail="只能转交给直属销售")
+    if lead.assigned_sales_id == target.id:
+        raise HTTPException(status_code=409, detail="该销售已经是主要负责人；无需重复转交")
     old_id, old_name = lead.assigned_sales_id, lead.assigned_sales_name
     lead.assigned_sales_id = target.id
     lead.assigned_sales_name = target.name
@@ -1250,6 +1301,8 @@ async def reassign_sales_lead(
         reason=payload.reason.strip(),
     )
     await sync_pending_daily_tasks(db, lead, target.id)
+    await _record_transfer_handoff(db, lead, current_user, old_id, old_name,
+        payload.handoff_summary.strip() or payload.reason.strip(), payload.reason.strip())
     await db.commit()
     return {"message": "线索已转交，原负责人及原因已保留在操作日志中", "lead_id": lead.id, "assigned_sales_name": target.name}
 
@@ -2180,16 +2233,18 @@ async def record_daily_call_result(
     if task.status != "pending":
         raise HTTPException(status_code=400, detail="该任务已完成或已转交，请刷新当前队列")
     lead = await _get_scoped_lead(db, task.lead_id, current_user)
-    if lead.is_blacklisted or lead.do_not_contact:
-        raise HTTPException(status_code=400, detail="该商家已被保护，禁止拨打")
+    await ensure_lead_contact_allowed(db, lead)
     ensure_enrichment_editable(lead)
     if lead.assigned_sales_id != task.sales_employee_id:
         raise HTTPException(status_code=409, detail="线索归属已变更，请刷新任务队列")
 
     dial_attempt = await _result_dial_attempt(db, lead, current_user, payload.dial_attempt_id, task=task)
+    if dial_attempt:
+        await ensure_phone_contact_allowed(db, dial_attempt.dial_phone, lead.country)
 
     if payload.enrichment is not None:
         await apply_enrichment(db, lead, payload.enrichment.model_copy(update={"source": "call"}), current_user)
+        await ensure_lead_contact_allowed(db, lead)
 
     now = datetime.now(timezone.utc)
     suggested_follow_up_at, next_action_label = _suggest_follow_up(payload.outcome, now)
@@ -2227,6 +2282,8 @@ async def record_daily_call_result(
     if payload.outcome == "do_not_contact":
         lead.do_not_contact = True
         lead.do_not_contact_reason = payload.notes or "商家在通话中明确要求不再联系"
+        await persist_lead_suppression(db, lead, current_user, extra_phones=[activity.dial_phone])
+        await sync_pending_daily_tasks(db, lead, None)
     task.status = "completed"
     task.completed_activity_id = activity.id
     task.completed_at = now
@@ -2259,16 +2316,18 @@ async def record_supplemental_follow_up(
     lead = await _get_scoped_lead(db, lead_id, current_user)
     if _role(current_user) == "sales" and lead.assigned_sales_id != _employee_id(current_user):
         raise HTTPException(status_code=403, detail="只能追加本人负责线索的跟进")
-    if lead.is_blacklisted or lead.do_not_contact:
-        raise HTTPException(status_code=400, detail="该商家已被保护，禁止继续联系")
+    await ensure_lead_contact_allowed(db, lead)
     ensure_enrichment_editable(lead)
     if lead.status not in {"contacted", "follow_up", "interested", "appointment"}:
         raise HTTPException(status_code=400, detail="请先通过每日任务完成首次联系，再追加跟进")
 
     dial_attempt = await _result_dial_attempt(db, lead, current_user, payload.dial_attempt_id)
+    if dial_attempt:
+        await ensure_phone_contact_allowed(db, dial_attempt.dial_phone, lead.country)
 
     if payload.enrichment is not None:
         await apply_enrichment(db, lead, payload.enrichment.model_copy(update={"source": "call"}), current_user)
+        await ensure_lead_contact_allowed(db, lead)
 
     now = datetime.now(timezone.utc)
     suggested_follow_up_at, next_action_label = _suggest_follow_up(payload.outcome, now)
@@ -2307,6 +2366,8 @@ async def record_supplemental_follow_up(
     if payload.outcome == "do_not_contact":
         lead.do_not_contact = True
         lead.do_not_contact_reason = payload.notes or "商家在追加跟进中明确要求不再联系"
+        await persist_lead_suppression(db, lead, current_user, extra_phones=[activity.dial_phone])
+        await sync_pending_daily_tasks(db, lead, None)
     await db.commit()
     await db.refresh(lead)
     return {
@@ -2341,8 +2402,7 @@ async def record_ringcentral_dial_started(
     if task.status not in {"pending", "completed"}:
         raise HTTPException(status_code=400, detail="该任务已转交或取消，请刷新当前队列")
     lead = await _get_scoped_lead(db, task.lead_id, current_user)
-    if lead.is_blacklisted or lead.do_not_contact:
-        raise HTTPException(status_code=400, detail="该商家已被保护，禁止拨打")
+    await ensure_lead_contact_allowed(db, lead)
     ensure_enrichment_editable(lead)
     if lead.assigned_sales_id != task.sales_employee_id:
         raise HTTPException(status_code=409, detail="线索归属已变更，请刷新任务队列")
@@ -2433,16 +2493,19 @@ async def create_sales_lead(
     parsed = parse_phone_number(payload.phone, payload.country)
     if not parsed.is_valid:
         raise HTTPException(status_code=422, detail=parsed.reason)
+    await ensure_phone_contact_allowed(db, parsed.e164, payload.country)
     existing = await db.execute(select(SalesLeads.id, SalesLeads.phone, SalesLeads.country))
     for existing_id, existing_phone, existing_country in existing.all():
         if phone_match_key(existing_phone, existing_country) == parsed.e164:
-            raise HTTPException(status_code=409, detail=f"该电话号码已存在于线索库（编号 {existing_id}）")
+            raise HTTPException(status_code=409, detail="该电话号码可能已有档案，请由主管核实；本次没有创建或合并商家")
 
     assigned_id, assigned_name, manager_id = await _resolve_assignee(
         db, payload.assigned_sales_id, current_user
     )
     current_id = _employee_id(current_user)
+    from services.sales_dossiers import next_sales_lead_id
     lead = SalesLeads(
+        id=await next_sales_lead_id(db),
         **payload.model_dump(exclude={"assigned_sales_id"}),
         assigned_sales_id=assigned_id,
         assigned_sales_name=assigned_name,
@@ -2453,6 +2516,9 @@ async def create_sales_lead(
         automation_state="assigned" if assigned_id else "eligible",
     )
     db.add(lead)
+    await db.flush()
+    if lead_is_blocked(lead):
+        await persist_lead_suppression(db, lead, current_user)
     await db.commit()
     await db.refresh(lead)
     return lead
@@ -2471,6 +2537,24 @@ async def update_sales_lead(
     role = _role(current_user)
     updates = payload.model_dump(exclude_unset=True)
     old_id, old_name = lead.assigned_sales_id, lead.assigned_sales_name
+    if role == "sales":
+        forbidden = set(updates) - SALES_EDITABLE_FIELDS
+        if forbidden:
+            raise HTTPException(status_code=403, detail="销售只能更新跟进状态、备注和禁止联系标记")
+    if "assigned_sales_id" in updates:
+        if updates["assigned_sales_id"] != lead.assigned_sales_id:
+            raise HTTPException(status_code=409, detail="更换主要负责人请使用转交功能，并填写原因和交接摘要")
+        updates.pop("assigned_sales_id")
+    was_blocked = lead_is_blocked(lead)
+    if (lead.status in PROTECTED_LEAD_STATUSES and "status" in updates
+            and updates["status"] != lead.status and updates["status"] not in {"blocked"}):
+        raise HTTPException(status_code=409, detail="已有回访或意向记录，请通过本次通话结果更新状态；资料修改不能取消跟进保护")
+    if was_blocked and (("do_not_contact" in updates and not updates["do_not_contact"] and lead.do_not_contact)
+            or ("is_blacklisted" in updates and not updates["is_blacklisted"] and lead.is_blacklisted)
+            or ("status" in updates and updates["status"] != "blocked")):
+        raise HTTPException(status_code=403, detail="联系保护只能由老板通过专用解除功能核实并记录原因，普通资料修改不能解除")
+    if was_blocked:
+        await persist_lead_suppression(db, lead, current_user, preserve_releases=True)
     if "phone" in updates or "country" in updates:
         changed_phone = updates.get("phone", lead.phone)
         changed_country = updates.get("country", lead.country)
@@ -2482,21 +2566,6 @@ async def update_sales_lead(
             if any(phone_match_key(phone, country) == parsed.e164 for _, phone, country in others):
                 raise HTTPException(status_code=409, detail="该电话号码已存在于线索库")
 
-    if role == "sales":
-        forbidden = set(updates) - SALES_EDITABLE_FIELDS
-        if forbidden:
-            raise HTTPException(status_code=403, detail="销售只能更新跟进状态、备注和禁止联系标记")
-    elif "assigned_sales_id" in updates:
-        assigned_id, assigned_name, manager_id = await _resolve_assignee(
-            db, updates.pop("assigned_sales_id"), current_user
-        )
-        updates["assigned_sales_id"] = assigned_id
-        updates["assigned_sales_name"] = assigned_name
-        updates["assigned_at"] = datetime.now(timezone.utc) if assigned_id else None
-        updates["automation_state"] = "assigned" if assigned_id else "eligible"
-        if role == "sales_manager":
-            updates["team_manager_id"] = manager_id
-
     if updates.get("is_blacklisted") or updates.get("do_not_contact"):
         updates["status"] = "blocked"
 
@@ -2504,12 +2573,36 @@ async def update_sales_lead(
         if hasattr(lead, key):
             setattr(lead, key, value)
     lead.updated_at = datetime.now(timezone.utc)
-    if old_id != lead.assigned_sales_id:
-        await sync_pending_daily_tasks(db, lead, lead.assigned_sales_id)
-        await _append_assignment_log(db, lead, "reassigned" if lead.assigned_sales_id else "reclaimed", current_user, from_employee_id=old_id, from_employee_name=old_name, to_employee_id=lead.assigned_sales_id, to_employee_name=lead.assigned_sales_name, reason="通过线索资料更新归属")
+    if lead_is_blocked(lead):
+        await persist_lead_suppression(db, lead, current_user, preserve_releases=was_blocked)
+        await sync_pending_daily_tasks(db, lead, None)
     await db.commit()
     await db.refresh(lead)
     return lead
+
+
+@router.post("/{lead_id}/contact-protection/release")
+async def release_sales_contact_protection(
+    lead_id: int, payload: ContactProtectionReleaseRequest,
+    current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    if _role(current_user) != "super_admin":
+        raise HTTPException(status_code=403, detail="只有老板可以核实并解除联系保护")
+    from services.sales_dossiers import active_actor
+    actor = await active_actor(db, current_user)
+    if actor.role != "super_admin":
+        raise HTTPException(status_code=403, detail="只有老板可以核实并解除联系保护")
+    if len(payload.reason.strip()) < 3:
+        raise HTTPException(status_code=422, detail="请填写核实并解除保护的原因")
+    await lock_sales_workflow(db, lead_ids=[lead_id])
+    lead = await _get_scoped_lead(db, lead_id, current_user)
+    key = await release_phone_suppression(db, lead, payload.phone, current_user,
+        payload.reason.strip(), resume_lead=payload.resume_lead)
+    if payload.resume_lead:
+        await sync_pending_daily_tasks(db, lead, lead.assigned_sales_id)
+    await db.commit()
+    return {"message": "指定号码的解除记录已保存；其他商家的保护不变", "lead_id": lead.id,
+        "phone": key, "resumed": payload.resume_lead}
 
 
 @router.delete("/{lead_id}")
@@ -2523,6 +2616,10 @@ async def delete_sales_lead(
         raise HTTPException(status_code=403, detail="仅管理员可以删除线索")
     await lock_sales_workflow(db, lead_ids=[lead_id])
     lead = await _get_scoped_lead(db, lead_id, current_user)
+    from services.sales_dossiers import ensure_dossier_deletable
+    await ensure_dossier_deletable(db, lead)
+    if lead_is_blocked(lead):
+        await persist_lead_suppression(db, lead, current_user, preserve_releases=True)
     await db.delete(lead)
     await db.commit()
     return {"message": "线索已删除", "id": lead_id}

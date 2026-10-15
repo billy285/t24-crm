@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from openpyxl import load_workbook
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -23,6 +23,8 @@ from schemas.auth import UserResponse
 from services.phone_numbers import normalize_phone_country, parse_phone_number, phone_match_key
 from services.merchant_row_locks import lock_merchant_rows
 from services.merchant_industries import merchant_industry_facets, merchant_industry_filter, normalize_merchant_industry
+from services.sales_contact_protection import ensure_phone_contact_allowed
+from services.sales_workflow_locks import lock_sales_workflow
 
 
 router = APIRouter(prefix="/api/v1/merchant-pool", tags=["merchant-pool"])
@@ -396,7 +398,13 @@ async def _create_sales_lead_from_merchant(
     assigned_sales_name: Optional[str],
     team_manager_id: Optional[int],
 ) -> SalesLeads:
+    await lock_sales_workflow(db)
+    from services.sales_dossiers import next_sales_lead_id
+    # Importing or assigning a fresh pool record must not bypass a previous
+    # merchant request to stop contact, even if the old lead was deleted.
+    await ensure_phone_contact_allowed(db, merchant.phone, merchant.country)
     lead = SalesLeads(
+        id=await next_sales_lead_id(db),
         business_name=merchant.business_name,
         contact_name=merchant.contact_name,
         phone=merchant.phone or "",
@@ -574,6 +582,18 @@ async def list_merchant_pool(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_pool_role(current_user)
+    # The pool retains the original collection evidence. For converted records,
+    # display/filter the current lead only when the caller can still read it.
+    # A former manager's original import is not a grant to its latest dossier.
+    from routers.sales_leads import _scope_condition
+    lead_scope = await _scope_condition(db, current_user)
+    join_on = SalesLeads.id == MerchantPool.converted_lead_id
+    if lead_scope is not None:
+        join_on = and_(join_on, lead_scope)
+    current_fields = ("business_name", "contact_name", "phone", "industry", "country",
+                      "state", "city", "address", "website")
+    current = {field: case((SalesLeads.id.is_not(None), getattr(SalesLeads, field)),
+                           else_=getattr(MerchantPool, field)) for field in current_fields}
     conditions = []
     scope = await _manager_scope(db, current_user)
     if scope is not None:
@@ -590,19 +610,21 @@ async def list_merchant_pool(
         conditions.append(MerchantPool.id.in_(batch_ids))
     if search:
         term = f"%{search.strip()}%"
-        conditions.append(or_(MerchantPool.business_name.ilike(term), MerchantPool.phone.ilike(term), MerchantPool.website.ilike(term)))
+        conditions.append(or_(*(current[field].ilike(term) for field in ("business_name", "phone", "website")),
+                              MerchantPool.business_name.ilike(term), MerchantPool.phone.ilike(term),
+                              MerchantPool.website.ilike(term)))
     if pool_status:
         conditions.append(MerchantPool.pool_status == pool_status)
     if region:
         region_values = [value.strip() for value in region.split(",") if value.strip()]
         if len(region_values) > 1:
             conditions.append(or_(*(
-                func.upper(func.trim(MerchantPool.state)) == value.upper()
+                func.upper(func.trim(current["state"])) == value.upper()
                 for value in region_values
             )))
         elif region_values:
             term = f"%{region_values[0]}%"
-            conditions.append(or_(MerchantPool.country.ilike(term), MerchantPool.state.ilike(term), MerchantPool.city.ilike(term)))
+            conditions.append(or_(current["country"].ilike(term), current["state"].ilike(term), current["city"].ilike(term)))
     if source:
         conditions.append(MerchantPool.data_source == source)
     if rating_min is not None:
@@ -611,19 +633,27 @@ async def list_merchant_pool(
         conditions.append(MerchantPool.pool_status != ARCHIVED_STATUS)
     # Category counts follow this exact view/search/scope, before applying the
     # selected category. That keeps the other categories discoverable.
-    facet_query = select(MerchantPool.industry, func.count(MerchantPool.id)).group_by(MerchantPool.industry)
+    facet_query = (select(current["industry"], func.count(MerchantPool.id))
+                   .select_from(MerchantPool).outerjoin(SalesLeads, join_on).group_by(current["industry"]))
     if conditions:
         facet_query = facet_query.where(*conditions)
     facets = merchant_industry_facets((await db.execute(facet_query)).all())
     if industry:
-        conditions.append(merchant_industry_filter(MerchantPool.industry, industry))
-    query = select(MerchantPool)
-    count_query = select(func.count(MerchantPool.id))
+        conditions.append(merchant_industry_filter(current["industry"], industry))
+    query = select(MerchantPool, SalesLeads).outerjoin(SalesLeads, join_on)
+    count_query = select(func.count(MerchantPool.id)).select_from(MerchantPool).outerjoin(SalesLeads, join_on)
     if conditions:
         query = query.where(*conditions)
         count_query = count_query.where(*conditions)
     total = (await db.execute(count_query)).scalar() or 0
-    items = (await db.execute(query.order_by(MerchantPool.id.desc()).offset(skip).limit(limit))).scalars().all()
+    rows = (await db.execute(query.order_by(MerchantPool.id.desc()).offset(skip).limit(limit))).all()
+    items = []
+    for original, lead in rows:
+        item = MerchantResponse.model_validate(original).model_dump()
+        if lead is not None:
+            item.update({field: getattr(lead, field) for field in current_fields})
+            item["updated_at"] = lead.updated_at
+        items.append(item)
     return {"items": items, "total": total, "skip": skip, "limit": limit,
             "industry_facets": facets, "facet_total": sum(facet["count"] for facet in facets)}
 

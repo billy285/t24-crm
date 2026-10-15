@@ -18,7 +18,13 @@ from core.database import Base
 from models.employees import Employees
 from models.sales_call_activities import SalesCallActivities
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
-from models.sales_lead_enrichments import SalesDialAttempt
+from models.sales_lead_enrichments import SalesDialAttempt, SalesLeadEnrichment, SalesLeadEnrichmentAudit
+from models.sales_contact_protection import SalesPhoneSuppression, SalesContactProtectionAudit
+from models.sales_dossiers import (
+    SalesDossierSummary, SalesDossierSummaryAudit, SalesDossierGrant,
+    SalesDossierGrantAudit, SalesDossierHandoff,
+)
+from models.sales_intelligence import SalesLeadProfiles
 from models.sales_leads import SalesLeads
 from models.sales_lead_assignment_logs import SalesLeadAssignmentLogs
 from models.ringcentral_call_records import RingCentralCallRecords
@@ -43,6 +49,12 @@ async def file_sales_db(tmp_path):
         await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=[
             Employees.__table__, SalesLeads.__table__, SalesCallActivities.__table__,
             SalesDailyDialTasks.__table__, SalesDialAttempt.__table__, SalesLeadAssignmentLogs.__table__, RingCentralCallRecords.__table__,
+            # The real transfer/contact services now read these sales-only
+            # dossier and protection tables inside the same guarded transaction.
+            SalesLeadEnrichment.__table__, SalesLeadEnrichmentAudit.__table__, SalesLeadProfiles.__table__,
+            SalesDossierSummary.__table__, SalesDossierSummaryAudit.__table__, SalesDossierGrant.__table__,
+            SalesDossierGrantAudit.__table__, SalesDossierHandoff.__table__,
+            SalesPhoneSuppression.__table__, SalesContactProtectionAudit.__table__,
         ]))
         await connection.execute(text("CREATE TABLE IF NOT EXISTS app_settings (config_key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TIMESTAMP)"))
     maker = async_sessionmaker(engine, expire_on_commit=False)

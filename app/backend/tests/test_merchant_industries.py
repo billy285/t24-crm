@@ -253,3 +253,49 @@ async def test_lead_conversion_copies_normalized_industry_without_rewriting_pool
         assert lead.industry == "美业"
         merchant = await session.get(MerchantPool, ids[0])
         assert merchant.industry == "美甲" and merchant.pool_status == "converted"
+
+
+@pytest.mark.asyncio
+async def test_converted_pool_uses_latest_scoped_data_for_list_search_and_facets(industry_client):
+    client, maker = industry_client
+    ids = await seed(maker, [{"business_name": "Original Restaurant", "industry": "餐厅", "pool_status": "converted"}])
+    async with maker() as db:
+        db.add(SalesLeads(id=5001, business_name="Verified Beauty", phone="+13105550198", country="US",
+                         industry="美业", state="NY", city="New York", assigned_sales_id=11,
+                         team_manager_id=10, merchant_pool_id=ids[0]))
+        (await db.get(MerchantPool, ids[0])).converted_lead_id = 5001
+        await db.commit()
+    response = await client.get('/api/v1/merchant-pool', headers=auth(),
+                                params={'search': 'Verified Beauty', 'industry': '美业', 'region': 'NY'})
+    assert response.status_code == 200, response.text
+    assert response.json()['total'] == 1
+    row = response.json()['items'][0]
+    assert (row['business_name'], row['phone'], row['industry'], row['state']) == (
+        'Verified Beauty', '+13105550198', '美业', 'NY')
+    assert facets(response.json()) == {'美业': 1}
+    assert (await client.get('/api/v1/merchant-pool', headers=auth(),
+                             params={'search': 'Original Restaurant'})).json()['total'] == 1
+    async with maker() as db:
+        original = await db.get(MerchantPool, ids[0])
+        assert original.business_name == 'Original Restaurant' and original.industry == '餐厅'
+        assert original.state == 'CA' and json.loads(original.raw_payload) == {'original': 'proof'}
+
+
+@pytest.mark.asyncio
+async def test_former_import_manager_cannot_search_or_read_new_team_latest_data(industry_client):
+    client, maker = industry_client
+    ids = await seed(maker, [{"business_name": "Original Restaurant", "industry": "餐厅", "pool_status": "converted"}])
+    async with maker() as db:
+        db.add(SalesLeads(id=5002, business_name="PRIVATE_OTHER_TEAM", phone="+13105550199", country="US",
+                         industry="美业", state="NY", assigned_sales_id=12, team_manager_id=20,
+                         merchant_pool_id=ids[0]))
+        (await db.get(MerchantPool, ids[0])).converted_lead_id = 5002
+        await db.commit()
+    response = await client.get('/api/v1/merchant-pool', headers=auth())
+    assert response.status_code == 200 and response.json()['total'] == 1
+    assert 'PRIVATE_OTHER_TEAM' not in response.text and '+13105550199' not in response.text
+    assert response.json()['items'][0]['business_name'] == 'Original Restaurant'
+    assert facets(response.json()) == {'餐厅': 1}
+    for params in ({'search':'PRIVATE_OTHER_TEAM'}, {'industry':'美业'}, {'region':'NY'}):
+        denied = await client.get('/api/v1/merchant-pool', headers=auth(), params=params)
+        assert denied.status_code == 200 and denied.json()['total'] == 0

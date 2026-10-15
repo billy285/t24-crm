@@ -36,6 +36,7 @@ async def sales_app_client():
 
     async with session_maker() as session:
         session.add_all([
+            Employees(id=1, user_id="admin", name="Admin", role="admin", status="active"),
             Employees(id=10, user_id="manager", name="Manager A", role="sales_manager", status="active"),
             Employees(id=11, user_id="sales-a", name="Sales A", role="sales", status="active", supervisor="Manager A"),
             Employees(id=12, user_id="sales-b", name="Sales B", role="sales", status="active", supervisor="Manager B"),
@@ -602,7 +603,7 @@ async def test_pool_supports_bulk_industry_update_and_delete(sales_app_client):
 
     listed = await sales_app_client.get("/api/v1/merchant-pool", headers=admin)
     matching = [item for item in listed.json()["items"] if item["id"] in merchant_ids]
-    assert {item["industry"] for item in matching} == {"美容院"}
+    assert {item["industry"] for item in matching} == {"美业"}  # existing canonical industry label
 
     deleted = await sales_app_client.post(
         "/api/v1/merchant-pool/bulk-delete",

@@ -14,6 +14,7 @@ from models.sales_lead_assignment_logs import SalesLeadAssignmentLogs
 from models.sales_leads import SalesLeads
 from services.sales_task_assignment import sync_pending_daily_tasks
 from services.sales_workflow_locks import lock_sales_workflow
+from services.sales_contact_protection import (blocked_phone_keys, lead_phone_keys, persist_lead_suppression)
 
 
 PROTECTED_STATUSES = {"follow_up", "interested", "appointment"}
@@ -41,11 +42,19 @@ async def run_sales_lead_cycle(db: AsyncSession, *, now: Optional[datetime] = No
     await lock_sales_workflow(db)
     now = now or datetime.now(timezone.utc)
     leads = (await db.execute(select(SalesLeads).execution_options(populate_existing=True))).scalars().all()
+    keys_by_lead = {lead.id: await lead_phone_keys(db, lead) for lead in leads}
+    suppressed = await blocked_phone_keys(db, set().union(*keys_by_lead.values()) if keys_by_lead else set())
     released_cooldown = released_unstarted = protected = 0
     for lead in leads:
         lead.last_automation_at = now
         if lead.do_not_contact or lead.is_blacklisted or lead.status == "blocked":
+            await persist_lead_suppression(db, lead, preserve_releases=True)
             lead.automation_state = "blocked"
+            await sync_pending_daily_tasks(db, lead, None, now=now)
+            continue
+        if keys_by_lead[lead.id] & suppressed:
+            lead.automation_state = "blocked"
+            await sync_pending_daily_tasks(db, lead, None, now=now)
             continue
         if lead.status in {"won", "lost"} or lead.converted_customer_id:
             lead.automation_state = "closed"
@@ -126,8 +135,12 @@ async def ensure_daily_batch(
         SalesLeads.status.notin_(list(CLOSED_STATUSES)),
         or_(SalesLeads.assigned_sales_id == sales_employee_id, SalesLeads.assigned_sales_id.is_(None)),
     ))).scalars().all()
+    candidate_keys = {lead.id: await lead_phone_keys(db, lead) for lead in candidates}
+    suppressed = await blocked_phone_keys(db, set().union(*candidate_keys.values()) if candidate_keys else set())
 
     def eligible(lead: SalesLeads) -> bool:
+        if candidate_keys[lead.id] & suppressed:
+            return False
         if lead.id in used_today:
             return False
         follow_up = aware(lead.next_follow_up_at)
@@ -172,6 +185,15 @@ async def ensure_daily_batch(
                 reason=f"系统生成{target_date.isoformat()}每日队列（{category}）",
                 operated_by_name="系统自动循环",
             ))
+            if old_id and old_id != sales_employee_id:
+                activity_count = (await db.execute(select(func.count(SalesCallActivities.id)).where(
+                    SalesCallActivities.lead_id == lead.id))).scalar_one()
+                if activity_count:
+                    from services.sales_dossiers import record_system_handoff
+                    previous = await db.get(Employees, old_id)
+                    await record_system_handoff(db, lead, from_sales_id=old_id,
+                        from_sales_name=previous.name if previous else None,
+                        note=lead.last_recycle_reason or "系统按既有规则轮转；请核对累计记录与下一步安排后接收")
         db.add(SalesDailyDialTasks(
             sales_employee_id=sales_employee_id, task_date=target_date,
             lead_id=lead.id, status="pending", queue_category=category,

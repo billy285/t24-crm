@@ -12,6 +12,8 @@ from models.sales_leads import SalesLeads
 from models.sales_lead_enrichments import SalesLeadEnrichment, SalesLeadEnrichmentAudit
 from schemas.sales_enrichment import SalesEnrichmentUpdate
 from services.phone_numbers import parse_phone_number, phone_match_key
+from services.sales_contact_protection import (blocked_phone_keys, ensure_phone_contact_allowed,
+    snapshot_phone_keys, PROTECTION_NOTICE)
 
 BUSINESS_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
@@ -112,6 +114,8 @@ async def _warnings(db, lead_id, snapshot):
     duplicates = await _duplicate_keys(db, lead_id, snapshot)
     if duplicates:
         warnings.append("联系方式可能存在重复，请先核实；系统不会自动合并或显示其他记录")
+    if await blocked_phone_keys(db, snapshot_phone_keys(snapshot)):
+        warnings.append(PROTECTION_NOTICE)
     return warnings
 
 
@@ -180,6 +184,7 @@ async def saved_dial_phone(db, lead, requested_phone=None):
                    if result.is_valid and not result.extension}
     if parsed.e164 not in valid_saved:
         raise HTTPException(status_code=409, detail="此号码尚未保存，请先保存资料后再拨打")
+    await ensure_phone_contact_allowed(db, parsed.e164, lead.country)
     return parsed.e164
 
 

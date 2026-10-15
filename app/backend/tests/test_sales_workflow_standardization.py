@@ -47,8 +47,9 @@ async def test_transfer_moves_pending_task_and_preserves_original_dial_evidence(
     assert dial.status_code == 200
     if via_form:
         moved=await sales_app_client.put(f"/api/v1/sales-leads/{lead_id}", headers=admin,json={"assigned_sales_id":12})
-    else:
-        moved=await sales_app_client.post(f"/api/v1/sales-leads/{lead_id}/recovery/reassign", headers=admin,json={"assigned_sales_id":12,"reason":"客户需要新负责人"})
+        assert moved.status_code == 409  # generic editing cannot bypass the audited transfer flow
+    moved=await sales_app_client.post(f"/api/v1/sales-leads/{lead_id}/recovery/reassign", headers=admin,
+        json={"assigned_sales_id":12,"reason":"客户需要新负责人","handoff_summary":"已拨打，等待新负责人核对联系记录"})
     assert moved.status_code == 200
     assert (await sales_app_client.get("/api/v1/sales-leads/workbench/today", headers=sales_a)).json()["items"] == []
     target=(await sales_app_client.get("/api/v1/sales-leads/workbench/today", headers=sales_b)).json()["items"]
@@ -98,8 +99,16 @@ async def test_reclaim_then_assign_restores_cancelled_daily_work_without_deletin
     lead_id=created.json()["id"]
     await sales_app_client.post("/api/v1/sales-leads/workbench/prepare",headers=sales)
     old=(await sales_app_client.get("/api/v1/sales-leads/workbench/today",headers=sales)).json()["items"][0]
-    assert (await sales_app_client.put(f"/api/v1/sales-leads/{lead_id}",headers=admin,json={"assigned_sales_id":None})).status_code == 200
-    assert (await sales_app_client.put(f"/api/v1/sales-leads/{lead_id}",headers=admin,json={"assigned_sales_id":target_id})).status_code == 200
+    assert (await sales_app_client.put(f"/api/v1/sales-leads/{lead_id}",headers=admin,json={"assigned_sales_id":None})).status_code == 409
+    from datetime import timedelta
+    async for db in app.dependency_overrides[get_db]():
+        lead=await db.get(SalesLeads,lead_id)
+        lead.updated_at=lead.assigned_at=datetime.now(timezone.utc)-timedelta(days=3)
+        await db.commit()
+    assert (await sales_app_client.post(f"/api/v1/sales-leads/{lead_id}/recovery/reclaim",headers=admin,
+        json={"reason":"未开始处理超过保护期，核实后回收"})).status_code == 200
+    assert (await sales_app_client.post(f"/api/v1/sales-leads/{lead_id}/recovery/reassign",headers=admin,
+        json={"assigned_sales_id":target_id,"reason":"主管核实后重新分配"})).status_code == 200
     target_headers=_auth_headers("sales",target_id,"Sales A" if target_id == 11 else "Sales B")
     items=(await sales_app_client.get("/api/v1/sales-leads/workbench/today",headers=target_headers)).json()["items"]
     assert len(items) == 1 and items[0]["lead"]["id"] == lead_id and items[0]["task_status"] == "pending"

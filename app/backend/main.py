@@ -192,6 +192,7 @@ CONTENT_SECURITY_POLICY = os.environ.get(
 
 PHONE_SALES_ROLES = {"sales", "sales_manager"}
 PHONE_SALES_ALLOWED_API_PREFIXES = (
+    "/api/v1/sales-lead-dossiers",
     "/api/ringcentral",
     "/api/v1/emp-auth",
     "/api/v1/sales-leads",
