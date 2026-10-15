@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional, Tuple
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customers import Customers
@@ -163,6 +163,9 @@ async def sync_payment_from_deal(
     transaction_reference_override: Optional[str] = None,
     payment_date_override: Optional[datetime] = None,
 ) -> Payments:
+    handoff = await _catalog_sale_handoff(db, deal.id)
+    if handoff is not None and handoff.payment_status not in {"verifying", "paid"}:
+        raise HTTPException(status_code=409, detail="该成交尚未核款，请从成交交接的独立收款核对入口操作；本次没有生成收款")
     customer = await _load_customer(db, deal.customer_id)
     subscription = await _load_subscription_for_deal(db, deal)
     payment = await _load_synced_payment(db, deal.id)
@@ -259,6 +262,16 @@ async def sync_payment_from_deal(
     return payment
 
 
+async def _catalog_sale_handoff(db: AsyncSession, deal_id: int):
+    """New-source orchestration guard; legacy deal formulas remain unchanged."""
+    connection = await db.connection()
+    if not await connection.run_sync(lambda conn: inspect(conn).has_table("sales_deal_handoffs")):
+        return None
+    from models.sales_deal_handoffs import SalesDealHandoff
+    return await db.scalar(select(SalesDealHandoff).where(SalesDealHandoff.deal_id == deal_id)
+                           .execution_options(populate_existing=True))
+
+
 async def delete_synced_payment_for_deal(db: AsyncSession, deal_id: int, commit: bool = True) -> bool:
     payment = await _load_synced_payment(db, deal_id)
     if payment is None:
@@ -299,6 +312,9 @@ async def backfill_missing_payments_from_deals(db: AsyncSession) -> int:
     synced_count = 0
 
     for deal in deals:
+        handoff = await _catalog_sale_handoff(db, deal.id)
+        if handoff is not None and handoff.payment_status != "paid":
+            continue
         existing = await _load_synced_payment(db, deal.id)
         if existing is not None:
             continue

@@ -1,5 +1,6 @@
 import './crm-customer-delivery-compact.css';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
+import { confirmDiscardAllChanges } from '@/lib/use-unsaved-changes';
 import { useRetainedView } from '@/lib/use-retained-view';
 import { useListScroll } from '@/lib/use-list-scroll';
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
@@ -35,6 +36,7 @@ import CustomerPhoneDial from '@/components/CustomerPhoneDial';
 import CustomerAccessPanel from '@/components/CustomerAccessPanel';
 import CustomerCollaborationTabs from '@/components/CustomerCollaborationTabs';
 import CustomerDealRecords from '@/components/CustomerDealRecords';
+import CustomerSalesHandoff from '@/components/CustomerSalesHandoff';
 import CustomerFinanceAccessPanel from '@/components/CustomerFinanceAccessPanel';
 import CustomerPrivateNote from '@/components/CustomerPrivateNote';
 import { customerCan, customerCanReadTab, customerPermissions, customerFinanceLabels, editableCustomerPayload, CUSTOMER_SHELL_LIST_QUERY, customerCanDeleteCustomer, customerDefaultTab, customerCreationFeedback, type CustomerModule } from '@/lib/customer-permissions';
@@ -673,10 +675,17 @@ function buildCustomerFinanceSummary(
 }
 
 function computeSubscriptionState(subscription: any) {
-  return computeSubscriptionStatus(subscription);
+  return subscription?.status === 'pending' ? 'pending' : computeSubscriptionStatus(subscription);
+}
+
+// New sale registrations wait for verified collection. Keep their display separate
+// so a pending registration cannot replace an existing active package in this page.
+function decorateCustomerSubscriptions(rows: any[]) {
+  return [...rows.filter(item => item.status === 'pending'), ...decorateEffectiveSubscriptions(rows.filter(item => item.status !== 'pending'))];
 }
 
 const subscriptionStatusView: Record<string, { label: string; cardClass: string; badgeClass: string }> = {
+  pending: { label: '未开始服务', cardClass: 'border-amber-200 bg-amber-50', badgeClass: 'bg-amber-100 text-amber-800' },
   active: { label: '正常', cardClass: 'border-slate-200 bg-slate-50', badgeClass: 'bg-green-100 text-green-700' },
   expiring_soon: { label: '即将到期', cardClass: 'border-amber-200 bg-amber-50', badgeClass: 'bg-amber-100 text-amber-700' },
   renewal_pending: { label: '待扣款确认', cardClass: 'border-cyan-200 bg-cyan-50', badgeClass: 'bg-cyan-100 text-cyan-700' },
@@ -1323,8 +1332,8 @@ export default function Customers() {
       setCustomerRefunds(financeResponse.data?.refunds || []);
       setCustomerExpenses(expenseRes?.data?.items || []);
       setCustomerDeductionRates(deductionRates);
-      setSubscriptions(decorateEffectiveSubscriptions(sRes?.data?.items || []));
-      setRenewalSubscriptions(decorateEffectiveSubscriptions(renewalRes?.data?.items || []));
+      setSubscriptions(decorateCustomerSubscriptions(sRes?.data?.items || []));
+      setRenewalSubscriptions(decorateCustomerSubscriptions(renewalRes?.data?.items || []));
       setServiceProgresses(progressRes?.data?.items || []);
       setServiceTasks(taskRes?.data?.items || []);
       setLifecycleDetail(lifecycleRes?.data || null);
@@ -1884,7 +1893,7 @@ export default function Customers() {
   };
 
   const closeDetail = () => {
-    if (savingFollow || savingContact || !leaveInlineForms()) return;
+    if (savingFollow || savingContact || !leaveInlineForms() || !confirmDiscardAllChanges()) return;
     invalidateCustomerDetailRequests();
     clearCustomerDetailAssociations();
     setSelectedCustomer(null);
@@ -2491,7 +2500,8 @@ export default function Customers() {
         return aTime - bTime;
       });
     const serviceRows = subscriptions.map(item => ({...item, computed_status:computeSubscriptionState(item), days_left:getSubscriptionRemainingDays(item)}));
-    const currentServiceRows = serviceRows.filter(item => !archivedSubscriptionStatuses.has(item.computed_status));
+    const pendingServiceRows = serviceRows.filter(item => item.computed_status === 'pending');
+    const currentServiceRows = serviceRows.filter(item => item.computed_status !== 'pending' && !archivedSubscriptionStatuses.has(item.computed_status));
     const historicalServiceRows = serviceRows.filter(item => archivedSubscriptionStatuses.has(item.computed_status));
     const activeSubscriptionCount = currentServiceRows.length;
     const activeCustomerProjectCount = customerProjects.filter(item => activeCustomerProjectStatuses.has(item.status)).length;
@@ -2631,6 +2641,7 @@ export default function Customers() {
             {isOwner && <Button size="sm" className="shrink-0 bg-red-600 hover:bg-red-700" disabled={closureSyncing} onClick={() => void reconcileSelectedCustomerClosure()}>{closureSyncing ? '同步中…' : '一键同步闭环'}</Button>}
           </div>
         )}
+        {(effective.modules.delivery.read || effective.modules.deals.read || effective.modules.contacts.read || effective.modules.followups.read || canViewFinanceStatus) && <CustomerSalesHandoff key={`${employee?.id}:${c.id}`} customerId={c.id} refreshKey={detailLoadedAt} onChanged={() => loadCustomerDetail(c.id, c)} />}
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
           {isOwner ? <>          <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
           <div className="md:hidden">
@@ -2656,7 +2667,7 @@ export default function Customers() {
             <TabsTrigger value="overview" className="shrink-0 text-xs">客户 360</TabsTrigger>
             <TabsTrigger value="timeline" className="shrink-0 text-xs">时间线 ({detailLoading ? '…' : timelineEvents.length})</TabsTrigger>
             {customerCanReadTab(c, 'opportunities') && <TabsTrigger value="opportunities" className="shrink-0 text-xs">客户商机</TabsTrigger>}
-            {customerCanReadTab(c, 'subscriptions') && <TabsTrigger value="subscriptions" className="shrink-0 text-xs">服务信息 ({detailLoading ? '…' : currentServiceRows.length})</TabsTrigger>}
+            {customerCanReadTab(c, 'subscriptions') && <TabsTrigger value="subscriptions" className="shrink-0 text-xs">服务信息 ({detailLoading ? '…' : currentServiceRows.length + pendingServiceRows.length})</TabsTrigger>}
             {canViewFinanceStatus && <TabsTrigger value="payments" className="shrink-0 text-xs">财务信息 ({detailLoading ? '…' : customerFinanceRecordCount})</TabsTrigger>}
             {customerCanReadTab(c, 'renewals') && <TabsTrigger value="renewals" className="shrink-0 text-xs">续费信息 ({detailLoading ? '…' : renewalRows.length})</TabsTrigger>}
           </TabsList>
@@ -2909,6 +2920,7 @@ export default function Customers() {
             <Card className="border-slate-200"><CardContent className="p-5">
               {subscriptions.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无套餐</p> : (
                 <>
+                  {pendingServiceRows.length > 0 && <section className="mb-4 space-y-2" aria-label="待开始套餐"><p className="text-sm font-semibold text-amber-800">待开始套餐 · {pendingServiceRows.length}</p>{pendingServiceRows.map((item: any) => <div key={item.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-medium">{getPackageClassification(item.package_name).currentLabel}</span><Badge className="bg-amber-100 text-amber-800">{canViewFinanceStatus ? '待核款 · 未开始' : '未开始服务'}</Badge></div><p className="mt-2 text-xs text-amber-800">{canViewFinanceStatus ? '成交已登记，实际收款尚待老板核对；当前不计为在服套餐。' : '成交已登记，服务尚未开始；当前不计为在服套餐。'}</p><p className="mt-1 text-xs text-slate-500">约定服务：{item.start_date?.slice(0, 10) || '待确认'} 至 {item.end_date?.slice(0, 10) || '按套餐约定'}</p></div>)}</section>}
                   {currentServiceRows.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无当前服务套餐</p> : <>
                     <div className="mb-3"><p className="text-sm font-semibold text-slate-700">当前服务</p><p className="mt-1 text-xs text-slate-400">这里只显示仍需运营、续费或收款的套餐。</p></div>
                     <div className="space-y-3">{paginatedServiceInfo.items.map((s: any) => {
@@ -3158,7 +3170,7 @@ export default function Customers() {
                               ? 'text-amber-600 font-medium'
                               : 'text-slate-500'
                       }`}>
-                        {remainDays == null
+                        {computedStatus === 'pending' ? canViewFinanceStatus ? '待核款，尚未开始服务' : '尚未开始服务' : remainDays == null
                           ? '剩余: -'
                           : remainDays <= 0
                             ? `已逾期 ${Math.abs(remainDays)} 天`

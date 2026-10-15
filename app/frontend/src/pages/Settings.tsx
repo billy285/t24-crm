@@ -460,7 +460,7 @@ export default function Settings() {
       {changedCategories.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">未保存：{changedCategories.join('、')}。切换分类可以继续编辑，各分类分别保存。</div>}
       {settingsSaving && <p role="status" className="text-sm text-blue-700">正在保存，请稍候…</p>}
       <fieldset disabled={Boolean(settingsSaving) || settingsLoading || settingsLoadError || aiSaving || Boolean(envSavingKey)} className="min-w-0 border-0 p-0">
-      <Tabs defaultValue="company" orientation="vertical" className="calm-settings-tabs w-full">
+      <Tabs defaultValue={new URLSearchParams(window.location.search).get('tab') === 'products' ? 'products' : 'company'} orientation="vertical" className="calm-settings-tabs w-full">
         <TabsList className="calm-settings-navigation" aria-label="系统设置分类">
           <div className="calm-settings-group">
             <p>企业与业务</p>

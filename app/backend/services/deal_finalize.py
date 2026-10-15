@@ -160,6 +160,9 @@ async def finalize_subscription_and_customer(
     ensure_subscription: bool,
     auto_renew: bool,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    from services.deal_payment_sync import _catalog_sale_handoff
+    if await _catalog_sale_handoff(db, deal.id) is not None:
+        raise HTTPException(status_code=409, detail="该成交已使用统一价格交接，请在成交交接中分别核对收款并由运营本人接收，不能从旧一键交接激活")
     customer = await db.get(Customers, deal.customer_id)
     if not customer:
         raise HTTPException(status_code=409, detail="成交关联客户不存在，无法完成交接")

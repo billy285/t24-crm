@@ -3,6 +3,7 @@ import { Boxes, Edit3, Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { invokeWithAuth } from '@/lib/tokenStore';
+import { useRole } from '@/lib/role-context';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +20,7 @@ const blankPlan = {
   id: null as number | null,
   product_id: '', code: '', name: '', version_label: '', pricing_status: 'draft', standard_price: '',
   default_currency: 'USD', default_billing_cycle: 'monthly', platform_limit: '', scope_type: 'generic',
-  entitlements: '', is_active: true,
+  entitlements: '', is_active: true, collection_policy: 'manual',
 };
 const lineTone: Record<string, string> = {
   managed_service: 'bg-blue-100 text-blue-700', restaurant_os: 'bg-orange-100 text-orange-700',
@@ -27,7 +28,11 @@ const lineTone: Record<string, string> = {
 };
 
 export default function ProductPlanSettings({ canEdit }: { canEdit: boolean }) {
+  const { role } = useRole();
+  const canManagePolicies = role === 'super_admin';
   const [catalog, setCatalog] = useState<Catalog>(emptyCatalog);
+  const [policies, setPolicies] = useState<Record<number, string>>({});
+  const [policiesReady, setPoliciesReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -35,16 +40,24 @@ export default function ProductPlanSettings({ canEdit }: { canEdit: boolean }) {
 
   const loadCatalog = async () => {
     setLoading(true);
+    setPoliciesReady(false);
     try {
       const response = await invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' });
       setCatalog(response.data || emptyCatalog);
+      if (canManagePolicies) {
+        const policyResponse = await invokeWithAuth({ url: '/api/v1/sales-deal-handoffs/plan-policies', method: 'GET' });
+        if (!Array.isArray(policyResponse.data?.items)) throw new Error('套餐收款规则读取失败，请刷新后再编辑。');
+        setPolicies(Object.fromEntries(policyResponse.data.items.map((item: { plan_id: number; collection_policy: string }) => [item.plan_id, item.collection_policy])));
+        setPoliciesReady(true);
+      }
     } catch (error: any) {
+      if (canManagePolicies) setPoliciesReady(false);
       toast.error(error?.data?.detail || '加载产品套餐失败');
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => { void loadCatalog(); }, []);
+  useEffect(() => { void loadCatalog(); }, [canManagePolicies]);
 
   const grouped = useMemo(() => catalog.business_lines.map(line => ({
     line,
@@ -63,6 +76,7 @@ export default function ProductPlanSettings({ canEdit }: { canEdit: boolean }) {
         default_currency: plan.default_currency || 'USD', default_billing_cycle: plan.default_billing_cycle || 'monthly',
         platform_limit: plan.platform_limit == null ? '' : String(plan.platform_limit), scope_type: plan.scope_type || 'generic',
         entitlements: (plan.entitlements || []).join('\n'), is_active: Boolean(plan.is_active),
+        collection_policy: policies[plan.id] || 'manual',
       });
     } else {
       const product = catalog.products.find(item => item.id === preferredProductId) || catalog.products[0];
@@ -73,11 +87,15 @@ export default function ProductPlanSettings({ canEdit }: { canEdit: boolean }) {
   };
 
   const save = async () => {
+    if (saving || (canManagePolicies && !policiesReady)) return;
     if (!form.product_id || !form.code.trim() || !form.name.trim()) {
       toast.error('请选择产品并填写套餐名称和代码'); return;
     }
     if (form.scope_type === 'platforms' && !form.platform_limit) {
       toast.error('代运营套餐必须填写可选平台数量'); return;
+    }
+    if (canManagePolicies && form.collection_policy === 'stripe_auto' && form.default_billing_cycle === 'one_time') {
+      toast.error('Stripe 自动订阅需要月付、季付或年付周期。'); return;
     }
     setSaving(true);
     try {
@@ -90,15 +108,23 @@ export default function ProductPlanSettings({ canEdit }: { canEdit: boolean }) {
         scope_type: form.scope_type, entitlements: form.entitlements.split('\n').map(item => item.trim()).filter(Boolean),
         is_active: form.is_active, effective_from: null, effective_to: null,
       };
-      await invokeWithAuth({
+      const staged = canManagePolicies ? { ...data, pricing_status: 'draft', is_active: false } : data;
+      const response = await invokeWithAuth({
         url: form.id ? `/api/v1/product-plans/plans/${form.id}` : '/api/v1/product-plans/plans',
-        method: form.id ? 'PUT' : 'POST', data,
+        method: form.id ? 'PUT' : 'POST', data: staged,
       });
+      if (canManagePolicies) {
+        const planId = Number(response.data?.id || form.id);
+        if (!Number.isSafeInteger(planId) || planId <= 0) throw new Error('套餐保存结果待核实，请刷新目录。');
+        setForm(current => ({ ...current, id: planId }));
+        await invokeWithAuth({ url: `/api/v1/sales-deal-handoffs/plan-policies/${planId}`, method: 'PUT', data: { collection_policy: form.collection_policy } });
+        await invokeWithAuth({ url: `/api/v1/product-plans/plans/${planId}`, method: 'PUT', data });
+      }
       toast.success(form.id ? '套餐已更新' : '套餐已创建');
       setEditorOpen(false);
       await loadCatalog();
     } catch (error: any) {
-      toast.error(error?.data?.detail || error?.message || '保存套餐失败');
+      toast.error(error?.data?.detail || error?.message || '套餐保存未完成，请刷新核对；未完成收款规则的套餐保留为停用草稿。');
     } finally { setSaving(false); }
   };
 
@@ -108,10 +134,11 @@ export default function ProductPlanSettings({ canEdit }: { canEdit: boolean }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><CardTitle className="flex items-center gap-2 text-base"><Boxes className="h-4 w-4 text-blue-600" />产品、套餐与服务范围</CardTitle>
             <CardDescription className="mt-1">产品区分业务线；套餐定义价格、周期和可选数量；客户实际购买内容在商机和订阅中单独确认。</CardDescription></div>
-          <Button variant="outline" size="sm" onClick={loadCatalog} disabled={loading}><RefreshCw className={`mr-1 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新</Button>
+          <Button variant="outline" size="sm" onClick={loadCatalog} disabled={loading || saving}><RefreshCw className={`mr-1 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新</Button>
         </div>
       </CardHeader>
     </Card>
+    {canManagePolicies && !loading && !policiesReady && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">套餐收款规则尚未读取成功，请刷新后再编辑，避免把订阅优惠价用于人工收款。</p>}
     {loading ? <div className="py-12 text-center text-sm text-slate-400">正在读取产品目录…</div> : grouped.map(({ line, products }) => <Card key={line.id} className="border-slate-200">
       <CardHeader className="pb-3"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><CardTitle className="text-base">{line.name}</CardTitle><Badge className={lineTone[line.code] || lineTone.one_time_project}>{line.code}</Badge></div></div></CardHeader>
       <CardContent className="space-y-4">
@@ -121,8 +148,9 @@ export default function ProductPlanSettings({ canEdit }: { canEdit: boolean }) {
             {product.plans.map((plan: any) => <div key={plan.id} className="rounded-xl bg-slate-50 p-3">
               <div className="flex items-start justify-between gap-2"><div><p className="font-medium text-slate-800">{plan.name}</p><p className="mt-1 text-xs text-slate-400">{plan.version_label || '当前版本'}</p></div><Badge className={plan.pricing_status === 'published' ? 'bg-emerald-100 text-emerald-700' : plan.pricing_status === 'retired' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-700'}>{plan.pricing_status === 'published' ? '已发布' : plan.pricing_status === 'retired' ? '已停用' : '价格待定'}</Badge></div>
               <p className="mt-3 text-lg font-semibold text-slate-900">{plan.standard_price == null ? '暂未定价' : `${plan.default_currency} ${Number(plan.standard_price).toLocaleString()}`}</p>
+              {canManagePolicies && policiesReady && <p className="mt-1 text-xs text-slate-600">{policies[plan.id] === 'stripe_auto' ? '仅 Stripe 自动订阅' : '人工收款'} · {{ monthly: '每月收取', quarterly: '每季度收取', semi_annual: '每半年收取', annual: '每年收取', one_time: '一次性收取' }[plan.default_billing_cycle] || '周期待确认'}</p>}
               <p className="mt-1 text-xs text-slate-500">{plan.scope_type === 'platforms' ? `任选 ${plan.platform_limit} 个平台，实际平台另行确认` : plan.scope_type === 'restaurant_os' ? '餐饮 OS 独立服务范围' : plan.scope_type === 'beauty_os' ? '美业 OS 独立服务范围' : '按项目确认服务范围'}</p>
-              {canEdit && <Button size="sm" variant="ghost" className="mt-2 h-8 px-2 text-blue-600" onClick={() => openEditor(plan)}><Edit3 className="mr-1 h-3.5 w-3.5" />编辑</Button>}
+              {canEdit && <Button size="sm" variant="ghost" disabled={saving || (canManagePolicies && !policiesReady)} className="mt-2 h-8 px-2 text-blue-600" onClick={() => openEditor(plan)}><Edit3 className="mr-1 h-3.5 w-3.5" />编辑</Button>}
             </div>)}
             {product.plans.length === 0 && <p className="text-sm text-slate-400">暂无正式套餐，现有历史记录不会受影响。</p>}
           </div>
@@ -130,20 +158,21 @@ export default function ProductPlanSettings({ canEdit }: { canEdit: boolean }) {
       </CardContent>
     </Card>)}
 
-    <Dialog open={editorOpen} onOpenChange={setEditorOpen}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto"><DialogHeader><DialogTitle>{form.id ? '编辑套餐' : '新增套餐'}</DialogTitle></DialogHeader>
-      <div className="grid gap-4 py-2 md:grid-cols-2">
+    <Dialog open={editorOpen} onOpenChange={open => { if (!saving) setEditorOpen(open); }}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto [&>button]:z-30"><DialogHeader><DialogTitle>{form.id ? '编辑套餐' : '新增套餐'}</DialogTitle></DialogHeader>
+      <fieldset disabled={saving} className="min-w-0 grid gap-4 py-2 md:grid-cols-2">
         <div className="md:col-span-2"><Label>所属产品 *</Label><NativeSelect value={form.product_id} onChange={value => { const product = catalog.products.find(item => String(item.id) === value); setForm(prev => ({ ...prev, product_id: value, scope_type: product?.business_line_code === 'managed_service' ? 'platforms' : product?.business_line_code || 'generic', platform_limit: product?.business_line_code === 'managed_service' ? prev.platform_limit : '' })); }} disabled={Boolean(form.id)} placeholder="请选择" options={catalog.products.map(product => ({ value: String(product.id), label: `${product.business_line_name} · ${product.name}` }))} /></div>
-        <div><Label>套餐名称 *</Label><Input value={form.name} onChange={event => setForm(prev => ({ ...prev, name: event.target.value }))} /></div>
-        <div><Label>套餐代码 *</Label><Input value={form.code} onChange={event => setForm(prev => ({ ...prev, code: event.target.value }))} placeholder="managed_basic_v1" /></div>
-        <div><Label>版本说明</Label><Input value={form.version_label} onChange={event => setForm(prev => ({ ...prev, version_label: event.target.value }))} placeholder="2026 版" /></div>
-        <div><Label>价格状态</Label><NativeSelect value={form.pricing_status} onChange={value => setForm(prev => ({ ...prev, pricing_status: value }))} options={[{ value: 'draft', label: '价格待定' }, { value: 'published', label: '已发布' }, { value: 'retired', label: '已停用' }]} /></div>
-        <div><Label>标准价格</Label><Input type="number" min="0" value={form.standard_price} onChange={event => setForm(prev => ({ ...prev, standard_price: event.target.value }))} placeholder="价格未定可留空" /></div>
-        <div><Label>默认周期</Label><NativeSelect value={form.default_billing_cycle} onChange={value => setForm(prev => ({ ...prev, default_billing_cycle: value }))} options={[{ value: 'monthly', label: '月付' }, { value: 'quarterly', label: '季付' }, { value: 'annual', label: '年付' }, { value: 'one_time', label: '一次性' }]} /></div>
-        {form.scope_type === 'platforms' && <div><Label>可选平台数量 *</Label><Input type="number" min="1" max="50" value={form.platform_limit} onChange={event => setForm(prev => ({ ...prev, platform_limit: event.target.value }))} /><p className="mt-1 text-xs text-slate-500">这是数量上限；客户实际运营哪些平台在商机中选择。</p></div>}
-        <div className="md:col-span-2"><Label>包含权益（每行一项）</Label><Textarea rows={4} value={form.entitlements} onChange={event => setForm(prev => ({ ...prev, entitlements: event.target.value }))} /></div>
+        <div><Label>套餐名称 *</Label><Input aria-label="套餐名称" value={form.name} onChange={event => setForm(prev => ({ ...prev, name: event.target.value }))} /></div>
+        <div><Label>套餐代码 *</Label><Input aria-label="套餐代码" value={form.code} onChange={event => setForm(prev => ({ ...prev, code: event.target.value }))} placeholder="managed_basic_v1" /></div>
+        <div><Label>版本说明</Label><Input aria-label="版本说明" value={form.version_label} onChange={event => setForm(prev => ({ ...prev, version_label: event.target.value }))} placeholder="2026 版" /></div>
+        <div><Label>价格状态</Label><NativeSelect aria-label="价格状态" value={form.pricing_status} onChange={value => setForm(prev => ({ ...prev, pricing_status: value }))} options={[{ value: 'draft', label: '价格待定' }, { value: 'published', label: '已发布' }, { value: 'retired', label: '已停用' }]} /></div>
+        <div><Label>标准价格</Label><Input aria-label="标准价格" type="number" min="0" value={form.standard_price} onChange={event => setForm(prev => ({ ...prev, standard_price: event.target.value }))} placeholder="价格未定可留空" /></div>
+        <div><Label>默认周期</Label><NativeSelect aria-label="默认周期" value={form.default_billing_cycle} onChange={value => setForm(prev => ({ ...prev, default_billing_cycle: value }))} options={[{ value: 'monthly', label: '月付' }, { value: 'quarterly', label: '季付' }, { value: 'annual', label: '年付' }, { value: 'one_time', label: '一次性' }]} /></div>
+        {canManagePolicies && <div className="md:col-span-2"><Label>允许的收款方式</Label><NativeSelect aria-label="套餐允许的收款方式" value={form.collection_policy} onChange={value => setForm(prev => ({ ...prev, collection_policy: value }))} options={[{ value: 'manual', label: '人工收款（支票、转账等）' }, { value: 'stripe_auto', label: '仅 Stripe 自动订阅' }]} /><p className="mt-1 text-xs text-slate-500">订阅优惠价需绑定 Stripe。价格、周期与收款规则只影响之后的新成交，历史成交快照保留。</p></div>}
+        {form.scope_type === 'platforms' && <div><Label>可选平台数量 *</Label><Input aria-label="可选平台数量" type="number" min="1" max="50" value={form.platform_limit} onChange={event => setForm(prev => ({ ...prev, platform_limit: event.target.value }))} /><p className="mt-1 text-xs text-slate-500">这是数量上限；客户实际运营哪些平台在商机中选择。</p></div>}
+        <div className="md:col-span-2"><Label>包含权益（每行一项）</Label><Textarea aria-label="包含权益" rows={4} value={form.entitlements} onChange={event => setForm(prev => ({ ...prev, entitlements: event.target.value }))} /></div>
         <div className="md:col-span-2 flex items-center justify-between rounded-lg bg-slate-50 p-3"><div><p className="text-sm font-medium">允许新商机选择</p><p className="text-xs text-slate-500">停用后历史订阅仍保留。</p></div><Switch checked={form.is_active} onCheckedChange={checked => setForm(prev => ({ ...prev, is_active: checked }))} /></div>
-      </div>
-      <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEditorOpen(false)}>取消</Button><Button onClick={save} disabled={saving}>{saving ? '保存中…' : '保存套餐'}</Button></div>
+      </fieldset>
+      <div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => setEditorOpen(false)}>取消</Button><Button onClick={save} disabled={saving || (canManagePolicies && !policiesReady)}>{saving ? '保存中…' : '保存套餐'}</Button></div>
     </DialogContent></Dialog>
   </div>;
 }

@@ -358,6 +358,9 @@ async def _review_quote_locked(quote_id, payload, current_user, db):
     if not row:
         raise HTTPException(status_code=404, detail="报价单不存在")
     await _get_scoped_lead(db, row.lead_id, current_user)
+    # New fixed-catalog registrations retain old quotes as read-only evidence.
+    # Unfinished legacy quotes keep their existing approval workflow.
+    await _ensure_unregistered_catalog_sale(db, row.lead_id)
     if payload.decision == "approved":
         await db.execute(
             update(SalesQuoteRequests)
@@ -488,6 +491,7 @@ async def confirm_finance_payment(
 
 async def _confirm_finance_payment_locked(lead_id, payload, current_user, db):
     lead = await _get_scoped_lead(db, lead_id, current_user)
+    await _ensure_unregistered_catalog_sale(db, lead.id)
     row = await db.scalar(select(SalesHandoffChecklists).where(
         SalesHandoffChecklists.lead_id == lead.id
     ).execution_options(populate_existing=True))
@@ -526,3 +530,12 @@ async def _confirm_finance_payment_locked(lead_id, payload, current_user, db):
     await db.commit()
     await db.refresh(row)
     return _handoff_data(row)
+
+
+async def _ensure_unregistered_catalog_sale(db, lead_id):
+    from sqlalchemy import inspect
+    connection = await db.connection()
+    if await connection.run_sync(lambda conn: inspect(conn).has_table("sales_deal_handoffs")):
+        from models.sales_deal_handoffs import SalesDealHandoff
+        if await db.scalar(select(SalesDealHandoff.id).where(SalesDealHandoff.lead_id == lead_id)):
+            raise HTTPException(status_code=409, detail="该商家已按统一价格登记成交，旧报价与收款交接仅保留查看；请从新成交交接流程操作")

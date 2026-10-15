@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException
 
 from models.deals import Deals
 from models.customers import Customers
@@ -111,6 +112,11 @@ class DealsService:
             if not obj:
                 logger.warning(f"Deals {obj_id} not found for update")
                 return None
+            if any(key in update_data and update_data[key] != getattr(obj, key)
+                   for key in ("is_handed_over", "is_transferred_ops")):
+                from services.deal_payment_sync import _catalog_sale_handoff
+                if await _catalog_sale_handoff(self.db, obj.id) is not None:
+                    raise HTTPException(409, "统一价格成交请由指定运营在成交交接中本人确认，不能从旧入口代收或覆盖接收记录")
             for key, value in update_data.items():
                 if hasattr(obj, key):
                     setattr(obj, key, value)
