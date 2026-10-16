@@ -40,6 +40,12 @@ class VerifyReceipt(BaseModel):
     currency: str = Field(pattern=r"^[A-Z]{3}$")
     payment_method: Literal["stripe", "check", "zelle", "bank_transfer", "other"]
     transaction_reference: str = Field(min_length=1, max_length=240)
+    service_amount: Decimal | None = Field(default=None, ge=0, le=1000000, decimal_places=2, allow_inf_nan=False)
+    tax_amount: Decimal | None = Field(default=None, ge=0, le=1000000, decimal_places=2, allow_inf_nan=False)
+    fee_amount: Decimal | None = Field(default=None, ge=0, le=1000000, decimal_places=2, allow_inf_nan=False)
+    gross_amount: Decimal | None = Field(default=None, ge=0, le=2000000, decimal_places=2, allow_inf_nan=False)
+    net_amount: Decimal | None = Field(default=None, ge=0, le=2000000, decimal_places=2, allow_inf_nan=False)
+    stripe_observation_id: int | None = Field(default=None, ge=1)
 
 
 class AcknowledgeDelivery(BaseModel):

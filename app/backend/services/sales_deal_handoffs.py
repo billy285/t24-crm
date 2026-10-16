@@ -58,7 +58,7 @@ def moment(day):
 
 
 def plan_data(plan, product, line, policy=None):
-    value = {"id": plan.id, "product_id": product.id, "business_line_id": line.id,
+    value = {"id": plan.id, "product_id": product.id, "business_line_id": line.id, "plan_code": plan.code,
         "name": plan.name, "standard_price": plan.standard_price,
         "default_currency": plan.default_currency, "default_billing_cycle": plan.default_billing_cycle,
         "platform_limit": plan.platform_limit, "scope_type": plan.scope_type,
@@ -68,6 +68,8 @@ def plan_data(plan, product, line, policy=None):
     value["catalog_token"] = digest({**value, "plan_updated_at": plan.updated_at,
         "product_updated_at": product.updated_at, "line_updated_at": line.updated_at,
         "policy_revision": policy.revision if policy else 0, "policy_updated_at": policy.updated_at if policy else None})
+    from services.sales_payment_catalog import catalog_link
+    value["payment_link"] = catalog_link(value)
     return value
 
 
@@ -199,6 +201,17 @@ async def receipt(db, row, user, *, sales=False):
         "can_view_history": history, "history_url": f"/sales-leads?dossier={row.lead_id}" if history else None,
         "can_finance_confirm": is_customer_owner(user) and row.payment_status != "paid",
         "can_operations_ack": can_ack and row.operations_status != "accepted", "created_at": row.created_at}
+    from services.sales_deal_payments import can_request_payment, handoff_link
+    payment_sender = await can_request_payment(db, row, user)
+    data["can_request_payment"] = bool(row.payment_status != "paid" and handoff_link(row)
+        and payment_sender)
+    data["can_view_payment_observations"] = is_customer_owner(user)
+    # Operational progress for this seller's handoff, not customer financial
+    # access: no amounts received, receipt IDs, payer identity or tax data.
+    if is_customer_owner(user) or (sales and payment_sender):
+        data["receipt_review_status"] = "owner_verified" if row.payment_status == "paid" else "pending_owner_review"
+    created = row.created_at.replace(tzinfo=timezone.utc) if row.created_at and row.created_at.tzinfo is None else row.created_at
+    data["waiting_days"] = max(0, (stamp() - created).days) if created else 0
     if deals or delivery:
         data.update(lead_id=row.lead_id, engagement_id=row.engagement_id, deal_id=row.deal_id,
             subscription_id=row.subscription_id, package_name=row.plan_snapshot["name"],
@@ -480,7 +493,9 @@ async def finance_confirm(db, handoff_id, payload, user):
     row = await db.get(SalesDealHandoff, handoff_id, populate_existing=True)
     if not row:
         raise HTTPException(404, "成交交接不存在")
-    fingerprint = digest(payload.model_dump(mode="json"))
+    # Optional evidence fields are omitted for backwards-compatible replay of
+    # receipts verified before the independent tax/fee evidence was introduced.
+    fingerprint = digest(payload.model_dump(mode="json", exclude_none=True))
     if row.payment_status == "paid":
         if row.payment_fingerprint != fingerprint:
             raise HTTPException(409, "收款已核对，本次没有覆盖原凭证；更正请使用原财务流程")
@@ -515,6 +530,8 @@ async def finance_confirm(db, handoff_id, payload, user):
             & (Payments.amount_due == deal.deal_amount))))).all()
     if candidates:
         raise HTTPException(409, "已有可能关联的收款，请先从原财务流程核对关联，避免重复记账或覆盖凭证")
+    from services.sales_deal_payments import prepare_receipt_evidence
+    await prepare_receipt_evidence(db, row, payload, user)
     deal.is_paid = True
     row.payment_status = "verifying"
     await db.flush()
@@ -605,7 +622,8 @@ async def queue(db, user, status="all"):
             raise
         item["business_name"] = row.source_snapshot.get("business_name")
         # Counts may reveal status only within the same authorized row scope.
-        item["pending_payment"] = row.payment_status != "paid" if "payment_status" in item else False
+        item["pending_payment"] = (item.get("receipt_review_status") == "pending_owner_review"
+            if "receipt_review_status" in item else row.payment_status != "paid" if "payment_status" in item else False)
         item["pending_operations"] = row.operations_status != "accepted"
         item["pending_access"] = item.get("operations_access_status") == "pending" if owner else False
         item.pop("source", None)

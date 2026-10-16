@@ -5,7 +5,7 @@ const tokenA = 'a'.repeat(64);
 const tokenB = 'b'.repeat(64);
 const plan = { id: 9, product_id: 5, name: '统一基础套餐', standard_price: 499, default_currency: 'USD', default_billing_cycle: 'monthly', platform_limit: 2, scope_type: 'selected', catalog_token: tokenA, required_collection_method: 'stripe_auto', service_period_months: 1 };
 const allModules = ['basic', 'contacts', 'followups', 'opportunities', 'delivery', 'renewals', 'deals', 'materials'];
-type Scenario = { owner?: boolean; role?: string; modules?: string[]; emptyCatalog?: boolean; canRegister?: boolean; conflict?: boolean; lostResponse?: boolean; retryableFailure?: boolean; holdRegistration?: boolean; planOverride?: Record<string, any>; subscriptions?: Record<string, any>[]; receipt?: Record<string, any>; source?: Record<string, any> };
+type Scenario = { owner?: boolean; role?: string; modules?: string[]; emptyCatalog?: boolean; canRegister?: boolean; conflict?: boolean; lostResponse?: boolean; retryableFailure?: boolean; holdRegistration?: boolean; planOverride?: Record<string, any>; subscriptions?: Record<string, any>[]; receipt?: Record<string, any>; source?: Record<string, any>; paymentFeatures?: boolean; paymentUrl?: string; observations?: Record<string, any>[] };
 async function json(route: Route, data: unknown, status = 200) { await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) }); }
 async function fixture(page: Page, options: Scenario = {}) {
   const owner = options.owner === true;
@@ -18,11 +18,13 @@ async function fixture(page: Page, options: Scenario = {}) {
   let registrationCount = 0;
   let accepted = false;
   let paid = false;
+  let paymentRequested = false;
   let releaseRegistration = () => {};
   const registrationGate = new Promise<void>(resolve => { releaseRegistration = resolve; });
   const writes: { path: string; body: any }[] = [];
   const reads: string[] = [];
-  const currentReceipt = () => ({ id: 81, lead_id: 21, customer_id: 301, engagement_id: 61, deal_id: 71, package_name: plan.name, billing_cycle: 'monthly', amount: options.planOverride?.standard_price ?? (catalogRevision > 1 ? 529 : 499), currency: 'USD', operations_owner_employee_id: 7, operations_owner_name: '验收运营', operations_status: accepted ? 'accepted' : 'pending', operations_access_status: options.role === 'ops' ? 'authorized' : 'pending', can_view_customer: owner || options.role === 'ops', can_view_history: false, history_url: null, can_finance_confirm: owner && !paid, can_operations_ack: options.role === 'ops' && !accepted, ...(owner ? { payment_status: paid ? 'paid' : 'pending' } : {}), ...(accepted ? { operations_acknowledged_at: '2026-10-16T12:00:00', operations_ack_note: '已核对并接收' } : {}), source: options.source || { customer_goal: '提升餐厅预约量', special_commitments: '每周提供一组素材', handoff_notes: '先核实商家地图资料' }, ...options.receipt });
+  const currentReceipt = () => ({ id: 81, lead_id: 21, customer_id: 301, engagement_id: 61, deal_id: 71, package_name: plan.name, billing_cycle: options.planOverride?.default_billing_cycle || 'monthly', amount: options.planOverride?.standard_price ?? (catalogRevision > 1 ? 529 : 499), currency: 'USD', ...(options.paymentFeatures ? { collection_method: 'stripe_auto', can_request_payment: !paid && (owner || !options.role), can_view_payment_observations: owner, waiting_days: 3, ...((owner || !options.role) ? { receipt_review_status: paid ? 'owner_verified' : 'pending_owner_review' } : {}) } : {}), operations_owner_employee_id: 7, operations_owner_name: '验收运营', operations_status: accepted ? 'accepted' : 'pending', operations_access_status: options.role === 'ops' ? 'authorized' : 'pending', can_view_customer: owner || options.role === 'ops', can_view_history: false, history_url: null, can_finance_confirm: owner && !paid, can_operations_ack: options.role === 'ops' && !accepted, ...(owner ? { payment_status: paid ? 'paid' : 'pending' } : {}), ...(accepted ? { operations_acknowledged_at: '2026-10-16T12:00:00', operations_ack_note: '已核对并接收' } : {}), source: options.source || { customer_goal: '提升餐厅预约量', special_commitments: '每周提供一组素材', handoff_notes: '先核实商家地图资料' }, ...options.receipt });
+  const paymentRequestState = () => ({ can_create: true, payment_request: paymentRequested ? { id: 901, url: options.paymentUrl || 'https://buy.stripe.com/aFabJ1h030Pnh0WePK5gc0E?client_reference_id=t24_synthetic_reference_81', reference: 't24_synthetic_reference_81', amount: options.planOverride?.standard_price ?? 499, currency: 'USD', billing_cycle: options.planOverride?.default_billing_cycle || 'monthly', cadence_label: options.planOverride?.default_billing_cycle === 'quarterly' ? '每 3 个月' : options.planOverride?.default_billing_cycle === 'annual' ? '每年' : '每月', tax_mode: 'exclusive', automatic_renewal: true, status: 'ready', duplicate_warnings: ['此客户已有在服订阅，请老板核对后再发送链接。'], duplicate_scope: '只核查 CRM 在服服务与本接入收到的记录，非全部 Stripe 历史' } : null });
   const leadState = () => ({ registered, can_register: !registered && options.canRegister !== false, read_only_reason: options.canRegister === false ? '当前账号不是主要负责人，不能登记成交' : undefined, lead: { id: 21, business_name: customer.business_name, contact_name: customer.contact_name, phone: customer.phone }, operations_candidates: [{ id: 7, name: '验收运营' }], contacts: [{ id: 'c1', name: '陈老板', phone: '+1 310 555 0111' }], customer_goal: '提升餐厅预约量', handoff: registered ? currentReceipt() : null, legacy_quotes: [{ id: 40, package_name: '历史套餐', final_amount: 599, currency: 'USD', status: 'approved' }], can_view_history: true, history_url: '/sales-leads?dossier=21' });
   await page.addInitScript(emp => {
     localStorage.setItem('emp_auth_token', 'handoff-fixture-token'); localStorage.setItem('token', 'handoff-fixture-token'); localStorage.setItem('emp_auth_data', JSON.stringify(emp));
@@ -30,7 +32,7 @@ async function fixture(page: Page, options: Scenario = {}) {
   await page.route(/^https?:\/\/[^/]+\/api\//, async route => {
     const request = route.request(); const url = new URL(request.url()); const path = url.pathname; const method = request.method();
     if (method !== 'GET') {
-      const body = request.postDataJSON(); writes.push({ path, body });
+      const body = request.postData() ? request.postDataJSON() : {}; writes.push({ path, body });
       if (path === '/api/v1/sales-deal-handoffs/leads/21' && method === 'POST') {
         registrationCount += 1;
         if (options.holdRegistration) await registrationGate;
@@ -40,6 +42,7 @@ async function fixture(page: Page, options: Scenario = {}) {
         if (options.lostResponse && registrationCount === 1) return route.abort('failed');
         return json(route, { registered: true, handoff: currentReceipt() });
       }
+      if (path === '/api/v1/sales-deal-payments/81/request' && options.paymentFeatures && (owner || !options.role)) { paymentRequested = true; return json(route, paymentRequestState()); }
       if (path.endsWith('/operations-acknowledgment') && options.role === 'ops') { accepted = true; return json(route, { handoff: currentReceipt() }); }
       if (path.endsWith('/finance-confirmation') && owner) {
         if (body.amount_received !== 499 || body.currency !== 'USD') return json(route, { detail: '请按项目全额核对到账，订金不能确认全额' }, 400);
@@ -48,14 +51,16 @@ async function fixture(page: Page, options: Scenario = {}) {
       return json(route, { detail: '本验收禁止其他写入' }, 403);
     }
     reads.push(path);
+    if (path === '/api/v1/sales-deal-payments/81/request' && options.paymentFeatures) return json(route, paymentRequestState());
+    if (path === '/api/v1/sales-deal-payments/81/observations' && options.paymentFeatures && owner) return json(route, { items: options.observations || [], receipt_evidence: paid ? { service_amount: 499, tax_amount: 39.92, fee_amount: 15.94, gross_amount: 538.92, net_amount: 522.98, currency: 'USD' } : null, duplicate_warnings: [], duplicate_scope: '只核查 CRM 在服服务与本接入收到的记录，非全部 Stripe 历史' });
     if (path.endsWith('/emp-auth/me')) return json(route, employee);
-    if (path.endsWith('/sales-deal-handoffs/catalog')) { catalogRevision += 1; return json(route, { business_lines: [{ id: 3, code: 'media', name: '媒体服务' }], products: [{ id: 5, business_line_id: 3, name: '社交媒体代运营' }], plans: options.emptyCatalog ? [] : [{ ...plan, ...(catalogRevision > 1 ? { standard_price: 529, catalog_token: tokenB } : {}), ...options.planOverride }], can_manage_catalog: owner, platform_options: ['Facebook', 'Instagram', 'Google Ads'], message: options.emptyCatalog ? '暂无已发布且有效的统一价格套餐' : null }); }
+    if (path.endsWith('/sales-deal-handoffs/catalog')) { catalogRevision += 1; return json(route, { business_lines: [{ id: 3, code: 'media', name: '媒体服务' }], products: [{ id: 5, business_line_id: 3, name: '社交媒体代运营' }], plans: options.emptyCatalog ? [] : [{ ...plan, ...(catalogRevision > 1 ? { standard_price: 529, catalog_token: tokenB } : {}), ...options.planOverride, ...(options.paymentFeatures ? { payment_link: { url: 'https://buy.stripe.com/aFabJ1h030Pnh0WePK5gc0E', amount: options.planOverride?.standard_price ?? 499, currency: 'USD', billing_cycle: options.planOverride?.default_billing_cycle || 'monthly', cadence_label: options.planOverride?.default_billing_cycle === 'quarterly' ? '每 3 个月' : options.planOverride?.default_billing_cycle === 'annual' ? '每年' : '每月', tax_mode: 'exclusive', automatic_renewal: true } } : {}) }], can_manage_catalog: owner, platform_options: ['Facebook', 'Instagram', 'Google Ads'], message: options.emptyCatalog ? '暂无已发布且有效的统一价格套餐' : null }); }
     if (path.endsWith('/sales-deal-handoffs/leads/21')) return json(route, leadState());
     if (path.endsWith('/sales-deal-handoffs/customers/301')) return json(route, { items: [currentReceipt()] });
     if (path.endsWith('/sales-deal-handoffs/81')) return json(route, { registered: true, handoff: currentReceipt() });
     if (path.endsWith('/sales-deal-handoffs/queue')) {
-      const status = url.searchParams.get('status'); const item = { ...currentReceipt(), business_name: customer.business_name, pending_payment: owner && !paid, pending_operations: !accepted, pending_access: owner };
-      const counts = { all: 1, pending_payment: owner && !paid ? 1 : 0, pending_operations: !accepted ? 1 : 0, pending_access: owner ? 1 : 0, completed: 0 };
+      const status = url.searchParams.get('status'); const item = { ...currentReceipt(), business_name: customer.business_name, pending_payment: !paid && (owner || options.paymentFeatures && !options.role), pending_operations: !accepted, pending_access: owner };
+      const counts = { all: 1, pending_payment: !paid && (owner || options.paymentFeatures && !options.role) ? 1 : 0, pending_operations: !accepted ? 1 : 0, pending_access: owner ? 1 : 0, completed: 0 };
       return json(route, { items: status === 'pending_payment' && !owner ? [] : [item], counts, total: 1, is_owner: owner, status });
     }
     if (path.includes('/entities/customers/301/finance-access-data')) return json(route, { payments: [], expenses: [], deduction_rates: {}, refunds: [], status: { payment_count: 0, has_outstanding: false } });
@@ -242,7 +247,7 @@ async function settingsFixture(page: Page, failPolicy: boolean) {
       if (path.endsWith('/plan-policies')) return json(route, { items: [] });
       return json(route, { business_lines: [{ id: 3, code: 'managed_service', name: '代运营服务' }], products: [{ id: 5, business_line_id: 3, business_line_code: 'managed_service', business_line_name: '代运营服务', code: 'managed', name: '代运营产品', billing_kind: 'recurring' }], plans: saved ? [saved] : [] });
     }
-    const body = request.postDataJSON(); writes.push({ method: request.method(), path, body });
+    const body = request.postData() ? request.postDataJSON() : {}; writes.push({ method: request.method(), path, body });
     if (path.includes('/plan-policies/')) {
       if (failPolicy && !policiesFailed) { policiesFailed = true; return json(route, { detail: '合成测试：策略保存暂不可用' }, 503); }
       return json(route, { plan_id: 91, collection_policy: body.collection_policy });
@@ -256,7 +261,7 @@ async function settingsFixture(page: Page, failPolicy: boolean) {
 }
 
 test('老板发布统一套餐先停用草稿，再存收款策略，最后发布', async ({ page }) => {
-  const { writes, dialog } = await settingsFixture(page, false); await dialog.getByRole('button', { name: '保存套餐', exact: true }).click(); await expect(dialog).toHaveCount(0);
+  const { writes, dialog } = await settingsFixture(page, false); const published = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/product-plans/plans/91' && response.request().method() === 'PUT'); await dialog.getByRole('button', { name: '保存套餐', exact: true }).click(); await published; await expect(page.getByRole('dialog', { name: /新增套餐|编辑套餐/ })).toHaveCount(0);
   expect(writes.map(row => `${row.method} ${row.path}`)).toEqual(['POST /api/v1/product-plans/plans', 'PUT /api/v1/sales-deal-handoffs/plan-policies/91', 'PUT /api/v1/product-plans/plans/91']);
   expect(writes[0].body).toMatchObject({ pricing_status: 'draft', is_active: false, standard_price: 198 }); expect(writes[1].body).toEqual({ collection_policy: 'stripe_auto' }); expect(writes[2].body).toMatchObject({ pricing_status: 'published', is_active: true, standard_price: 198 });
 });
@@ -266,4 +271,62 @@ test('收款策略失败时不得发布优惠套餐，重试复用已创建草�
   const retained = page.getByRole('dialog', { name: '编辑套餐', exact: true }); await expect(retained.getByLabel('套餐名称', { exact: true })).toHaveValue('合成Stripe统一套餐'); await expect(retained.getByRole('button', { name: '保存套餐', exact: true })).toBeEnabled();
   expect(writes).toHaveLength(2); expect(writes[0].body).toMatchObject({ pricing_status: 'draft', is_active: false }); expect(writes.some(row => row.body.pricing_status === 'published')).toBe(false);
   await retained.getByRole('button', { name: '保存套餐', exact: true }).click(); await expect(retained).toHaveCount(0); expect(writes.filter(row => row.method === 'POST')).toHaveLength(1); expect(writes.at(-1)?.body).toMatchObject({ pricing_status: 'published', is_active: true });
+});
+
+for (const viewport of [{ width: 1093, height: 824 }, { width: 390, height: 844 }]) test(`成交付款 ${viewport.width}：本单关联链接、完整复制与重复订阅提醒，不自动记收款`, async ({ page }) => {
+  await page.setViewportSize(viewport); await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const { writes, reads } = await fixture(page, { paymentFeatures: true }); const dialog = await openRegistration(page); await fillToConfirm(dialog);
+  await dialog.getByRole('button', { name: '确认登记成交', exact: true }).click(); const payment = dialog.getByRole('region', { name: '本单付款链接', exact: true });
+  await payment.getByRole('button', { name: '获取本单付款链接', exact: true }).click(); await expect(payment.getByText('t24_synthetic_reference_81', { exact: true })).toBeVisible();
+  await expect(payment.getByText('此客户已有在服订阅，请老板核对后再发送链接。', { exact: true })).toBeVisible(); await payment.getByRole('button', { name: '复制本单付款信息', exact: true }).click();
+  const copied = await page.evaluate(() => navigator.clipboard.readText()); expect(copied).toContain('client_reference_id=t24_synthetic_reference_81'); expect(copied).toContain('USD 499.00'); expect(copied).toContain('税额'); expect(copied).toContain('订阅自动续费，直到取消'); expect(copied).toContain('避免重复订阅');
+  expect(writes.map(write => write.path)).toEqual(['/api/v1/sales-deal-handoffs/leads/21', '/api/v1/sales-deal-payments/81/request']); expect(reads.some(path => path.endsWith('/observations'))).toBe(false); await expect(dialog.getByRole('button', { name: '核对全额收款' })).toHaveCount(0); await noHorizontalOverflow(page);
+  if (process.env.T24_HANDOFF_SCREENSHOTS) await page.screenshot({ path: `${process.env.T24_HANDOFF_SCREENSHOTS}/payment-request-${viewport.width}.png`, animations: 'disabled' });
+});
+
+for (const [cycle, amount, cadence] of [['monthly', 198, '每月'], ['quarterly', 534.6, '每 3 个月'], ['annual', 1900.8, '每年']] as const) test(`成交套餐清楚显示 ${cycle} 每期总额，不提前提供通用链接`, async ({ page }) => {
+  const { writes } = await fixture(page, { paymentFeatures: true, planOverride: { standard_price: amount, default_billing_cycle: cycle } }); const dialog = await openRegistration(page); await dialog.getByLabel('统一套餐', { exact: true }).selectOption('9');
+  await expect(dialog.getByText(new RegExp(`${cadence}.*每期一次收取`))).toBeVisible(); await expect(dialog.getByText(`USD ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, { exact: true })).toBeVisible(); await expect(dialog.getByText(/适用税额另计/).first()).toBeVisible(); await expect(dialog.getByRole('link', { name: /付款/ })).toHaveCount(0); await expect(dialog.getByRole('button', { name: '获取本单付款链接' })).toHaveCount(0); expect(writes).toEqual([]);
+});
+
+test('协作或运营未获付款能力时不读取链接或观察，不显示未授权税费付款人', async ({ page }) => {
+  const { writes, reads } = await fixture(page, { paymentFeatures: true, role: 'ops', modules: ['delivery'], receipt: { amount: undefined, currency: undefined, can_request_payment: false, can_view_payment_observations: false }, source: { customer_goal: '仅可见交付目标' } }); await page.goto(`${baseUrl}/customers?detail=301`); const card = page.getByRole('region', { name: '售前承接', exact: true }); await expect(card.getByText('仅可见交付目标')).toBeVisible();
+  await expect(card.getByRole('region', { name: /付款/ })).toHaveCount(0); await expect(card.getByText(/税|手续费|净到账|付款人|USD/)).toHaveCount(0); expect(reads.some(path => path.startsWith('/api/v1/sales-deal-payments'))).toBe(false); expect(writes).toEqual([]);
+});
+
+for (const viewport of [{ width: 1093, height: 824 }, { width: 390, height: 844 }]) test(`老板含税核款 ${viewport.width}：差额阻止、服务基价只读、本人确认后才写入`, async ({ page }) => {
+  await page.setViewportSize(viewport); const { writes } = await fixture(page, { owner: true, paymentFeatures: true }); await page.goto(`${baseUrl}/customers?detail=301`); const card = page.getByRole('region', { name: '售前承接', exact: true }); await card.getByRole('button', { name: '核对全额收款', exact: true }).click();
+  await expect(card.getByLabel('服务费（统一成交价）', { exact: true })).toHaveValue('USD 499.00'); await expect(card.getByLabel('服务费（统一成交价）', { exact: true })).toHaveAttribute('readonly', ''); await expect(card.getByLabel('实际到账日期', { exact: true })).toHaveValue('');
+  await card.getByLabel('税额', { exact: true }).fill('39.92'); await card.getByLabel('客户支付总额', { exact: true }).fill('538.92'); await card.getByLabel('Stripe 手续费', { exact: true }).fill('15.94'); await card.getByLabel('净到账金额', { exact: true }).fill('522.97'); await card.getByLabel('实际到账日期', { exact: true }).fill('2026-10-16'); await card.getByLabel('交易号 / 凭据编号', { exact: true }).fill('SYNTHETIC-TAX-81'); await card.getByRole('checkbox', { name: '我已核对真实到账凭据' }).check();
+  await expect(card.getByText(/金额不一致：净到账/)).toBeVisible(); await expect(card.getByRole('button', { name: '确认全额到账', exact: true })).toBeDisabled(); expect(writes).toEqual([]);
+  await card.getByLabel('净到账金额', { exact: true }).fill('522.98'); await expect(card.getByRole('checkbox', { name: '我已核对真实到账凭据' })).not.toBeChecked(); await card.getByRole('checkbox', { name: '我已核对真实到账凭据' }).check(); await noHorizontalOverflow(page);
+  if (process.env.T24_HANDOFF_SCREENSHOTS) await page.screenshot({ path: `${process.env.T24_HANDOFF_SCREENSHOTS}/tax-reconciliation-${viewport.width}.png`, animations: 'disabled' });
+  await card.getByRole('button', { name: '确认全额到账', exact: true }).click(); await expect(card.getByText('收款已核对', { exact: true })).toBeVisible(); expect(writes).toHaveLength(1); expect(writes[0].body).toEqual({ amount_received: 499, service_amount: 499, tax_amount: 39.92, fee_amount: 15.94, gross_amount: 538.92, net_amount: 522.98, payment_date: '2026-10-16', payment_method: 'stripe', currency: 'USD', transaction_reference: 'SYNTHETIC-TAX-81' });
+});
+
+test('带入成功观察使用北京时间跨月，不自动填手续费或勾选核款', async ({ page }) => {
+  const { writes } = await fixture(page, { owner: true, paymentFeatures: true, observations: [{ id: 601, status: 'paid_observed', match_issues: [], service_amount: 499, tax_amount: 39.92, gross_amount: 538.92, currency: 'USD', paid_at: '2026-10-31T20:30:00Z', session_id: 'cs_synthetic', payment_intent_id: 'pi_synthetic', payer_business_name: '成交验收餐厅', payer_email: 'synthetic@example.test' }] }); await page.goto(`${baseUrl}/customers?detail=301`); const card = page.getByRole('region', { name: '售前承接', exact: true }); await expect(card.getByText('成交验收餐厅 · synthetic@example.test', { exact: true })).toBeVisible(); await card.getByRole('button', { name: '带入核款，仍需本人确认', exact: true }).click();
+  await expect(card.getByLabel('实际到账日期', { exact: true })).toHaveValue('2026-11-01'); await expect(card.getByLabel('税额', { exact: true })).toHaveValue('39.92'); await expect(card.getByLabel('客户支付总额', { exact: true })).toHaveValue('538.92'); await expect(card.getByLabel('Stripe 手续费', { exact: true })).toHaveValue(''); await expect(card.getByLabel('净到账金额', { exact: true })).toHaveValue(''); await expect(card.getByRole('checkbox', { name: '我已核对真实到账凭据' })).not.toBeChecked(); expect(writes).toEqual([]);
+});
+
+for (const status of ['processing', 'needs_review', 'failed']) test(`平台 ${status} 不允许带入核款，不冒认已收款`, async ({ page }) => {
+  const { writes } = await fixture(page, { owner: true, paymentFeatures: true, observations: [{ id: 602, status, match_issues: status === 'needs_review' ? ['套餐币种不一致'] : [], service_amount: 499, tax_amount: 39.92, gross_amount: 538.92, currency: 'USD', paid_at: '2026-10-16T01:00:00Z' }] }); await page.goto(`${baseUrl}/customers?detail=301`); const evidence = page.getByRole('region', { name: '老板付款核对依据', exact: true }); await expect(evidence).toBeVisible(); await expect(evidence.getByRole('button', { name: '带入核款，仍需本人确认' })).toHaveCount(0); await expect(page.getByText('收款已核对', { exact: true })).toHaveCount(0); expect(writes).toEqual([]);
+});
+
+test('返回的付款URL不是本单官方Stripe关联链接时拒绝复制', async ({ page }) => {
+  await fixture(page, { paymentFeatures: true, paymentUrl: 'https://example.test/?client_reference_id=t24_synthetic_reference_81' }); const dialog = await openRegistration(page); await fillToConfirm(dialog); await dialog.getByRole('button', { name: '确认登记成交', exact: true }).click(); const payment = dialog.getByRole('region', { name: '本单付款链接', exact: true }); await payment.getByRole('button', { name: '获取本单付款链接' }).click(); await expect(payment.getByRole('alert')).toContainText('付款链接关联未通过核对'); await expect(payment.getByRole('button', { name: '复制本单付款信息' })).toHaveCount(0);
+});
+
+test('交接待办显示独立的核款、授权、本人接收与等待天数，直接打开核款表单', async ({ page }) => {
+  await fixture(page, { owner: true, paymentFeatures: true }); await page.goto(`${baseUrl}/sales-leads?view=handoffs`); const queue = page.getByRole('region', { name: '成交与交接待办', exact: true }); await expect(queue.getByText('已等待 3 天', { exact: true })).toBeVisible(); const tasks = queue.getByRole('list', { name: '本单下一步', exact: true }); await expect(tasks.getByText('核对收款', { exact: true })).toBeVisible(); await expect(tasks.getByText('邀请运营授权', { exact: true })).toBeVisible(); await expect(tasks.getByText('运营本人接收', { exact: true })).toBeVisible();
+  await queue.getByRole('button', { name: '核对收款', exact: true }).click(); const dialog = page.getByRole('dialog', { name: '成交与交接详情', exact: true }); await expect(dialog.getByLabel('服务费（统一成交价）', { exact: true })).toBeVisible(); await expect(dialog.getByRole('button', { name: /审批|批准/ })).toHaveCount(0);
+});
+
+
+test('付款信息与冻结成交金额失配时拒绝复制，不用其他套餐凑价', async ({ page }) => {
+  await fixture(page, { paymentFeatures: true, receipt: { amount: 599 } }); const dialog = await openRegistration(page); await fillToConfirm(dialog); await dialog.getByRole('button', { name: '确认登记成交', exact: true }).click(); const payment = dialog.getByRole('region', { name: '本单付款链接', exact: true }); await payment.getByRole('button', { name: '获取本单付款链接' }).click(); await expect(payment.getByRole('alert')).toContainText('付款链接金额、币种或周期与本单不一致'); await expect(payment.getByRole('button', { name: '复制本单付款信息' })).toHaveCount(0);
+});
+
+test('销售交接待办只提示本人单待老板核对，不读取金额拆分或付款人', async ({ page }) => {
+  const { reads } = await fixture(page, { paymentFeatures: true }); await page.goto(`${baseUrl}/sales-leads?view=handoffs`); const queue = page.getByRole('region', { name: '成交与交接待办', exact: true }); await expect(queue.getByRole('list', { name: '本单下一步', exact: true }).getByText('核对收款', { exact: true })).toBeVisible(); await expect(queue.getByRole('button', { name: '核对收款', exact: true })).toHaveCount(0); await queue.getByRole('button', { name: '查看交接', exact: true }).click(); const dialog = page.getByRole('dialog', { name: '成交与交接详情', exact: true }); await expect(dialog.getByText('待老板核对收款', { exact: true })).toBeVisible(); await expect(dialog.getByRole('region', { name: '老板付款核对依据', exact: true })).toHaveCount(0); await expect(dialog.getByLabel(/税额|手续费|净到账/)).toHaveCount(0); await expect(dialog.getByText('付款人核验', { exact: true })).toHaveCount(0); expect(reads.some(path => path.endsWith('/observations'))).toBe(false);
 });

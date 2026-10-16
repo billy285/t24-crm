@@ -199,6 +199,7 @@ PHONE_SALES_ALLOWED_API_PREFIXES = (
     "/api/v1/sales-intelligence",
     "/api/v1/sales-deal-controls",
     "/api/v1/sales-deal-handoffs",
+    "/api/v1/sales-deal-payments",
     "/api/v1/merchant-pool",
     "/api/v1/sales-knowledge",
 )
