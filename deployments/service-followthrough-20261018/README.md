@@ -1,0 +1,17 @@
+# Service follow-through controlled release
+
+Application source is frozen at7afebc98140e00dfb5fed47be7215ef6db1e7b41 and frontend source/build versiond1dffbe546bf. Preparation still requires immutable artifact hashes and fresh authenticated receipt; activation requires a separately reviewed prepared-receipt hash. The baseline carrier is 5fc1235775219b103cc47dab74d94fddec2a2dd5, deployed application source 78d2bd9934bef296f655356e52efa3ff42e6c885, frontend 44abdb48cad7 and schema b9e3f7c5d012.
+
+Scope: read-only renewal lifecycle signals for mapped T24 subscriptions, package kickoff checklist evidence, and owner exception overview. Existing receipts still require owner confirmation; customer permissions require owner invitation. Company finance formulas, close conditions, commission attribution, customer permissions and private workspace are preserved. No old financial rows, catalog rows or existing data are seeded or migrated.
+
+The authenticated preflight at outputs/service-followthrough-20261018/preflight.py checks exact deployed receipts, backend inventory, all 100 existing business tables, complete schema, database identity, nginx/static root, CRM runtime and private service boundaries. No secrets or provider requests.
+
+Prepare builds offline with no network against the retained exact image, creates an isolated backup, rehearses only the exact additive migration, verifies every old row and schema object remains unchanged, verifies four new tables are empty, and checks candidate startup without provider access. Activation requires a separately reviewed prepared receipt hash and repeats all current-state boundaries. CRM container environment, mounts and networks remain identical. Recovery after new schema commits is forward only; no automatic database restore.
+
+The existing CRM webhook secret is reused without modifying process configuration or accessing private workspace credentials. Provider event subscription changes are a separate owner-authorized browser action performed by the root agent after the reader is ready. Nothing in these local tools performs a production action just by generation or testing.
+
+Fresh authenticated proof is frozen at outputs/service-followthrough-20261018/preflight.json, SHA256 2126a77b4382b4d194bbf0e93728adedaff8bbe679f9276acb147e2458a89819, observed UTC 2026-10-17T23:57:11.693651+00:00. The existing CRM runtime,336 backend files,100 business tables, original schema and private boundary match the previous deployment. No production business state was changed by that proof. Local publication guards currently pass53 tests.
+
+Expected exact app source scope is14 files: five backend files (one dispatch modification plus four new model/router/service/migration files), six frontend files and three focused tests. Tests are never included in the production image payload. The new migration head is c0f4a8d6e123; only service_kickoff_audits, service_kickoffs, service_renewal_events and service_renewal_signals may be added.
+
+The new command generator requires a local --preflight-receipt and emits a separate receipt-install-command.sh that creates only the exact hash-pinned safe preflight JSON under /opt/t24-crm/releases with root ownership and0600mode. Existing files must have identicalhash and protected regular-file properties. The helper binds --preflight to this fresh receipt and internally loads the already-retained private boundary proof separately by exact prior hash. The full proof stays outofGit and production payload.
