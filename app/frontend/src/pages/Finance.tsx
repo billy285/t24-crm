@@ -64,6 +64,7 @@ import { buildReturnLink } from '@/lib/navigation-state';
 import './finance-income-refined.css';
 import './finance-desktop-refined.css';
 import './mobile-finance-editor.css';
+import StripeHistoryReconciliation from '@/components/StripeHistoryReconciliation';
 
 // ─── Constants ───────────────────────────────────────────────────────
 const defaultIncomeTypeLabels: Record<string, string> = {
@@ -623,6 +624,12 @@ const safeQuery = async (queryFn: () => Promise<any>): Promise<any[]> => {
 };
 
 export default function Finance() {
+  const [params] = useSearchParams();
+  if (params.get('tab') === 'stripe_reconciliation') return <div className="app-page"><StripeHistoryReconciliation /></div>;
+  return <FinanceWorkspace />;
+}
+
+function FinanceWorkspace() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();

@@ -356,6 +356,8 @@ def _effective_legacy_subscriptions(subscriptions):
 async def renewals(db, user, status="all"):
     await live_actor(db, user, owner_only=True)
     handoffs = (await db.scalars(select(SalesDealHandoff).order_by(SalesDealHandoff.id.desc()))).all()
+    from services.stripe_history_reconciliation import historical_renewal_coverage
+    history = await historical_renewal_coverage(db)
     subscriptions = (await db.scalars(select(Subscriptions))).all()
     crm = {row.id: row for row in subscriptions}
     linked = (await db.execute(select(SalesPaymentRequest.handoff_id, SalesStripeObservation.subscription_id)
@@ -383,11 +385,16 @@ async def renewals(db, user, status="all"):
     sources += [(f"crm-{row.id}", None, row) for row in _effective_legacy_subscriptions(subscriptions)
         if row.id not in used and row.status in {"active", "trialing", "past_due", "expiring_soon", "renewal_pending", "expired"}]
     for identifier, handoff, sub in sources:
-        observed = signalmap.get(handoff.id, []) if handoff else []
-        connected = bool(handoff and linkmap.get(handoff.id))
+        observed = list(signalmap.get(handoff.id, [])) if handoff else []
+        historical = history["by_crm_subscription"].get(sub.id) if sub else None
+        if historical:
+            observed.extend(historical["observations"])
+        connected = bool(historical or (handoff and linkmap.get(handoff.id)))
         due = day(sub.next_payment_date) if sub else None
         # Stripe period_end is a billing observation, not a service-date rewrite.
         periods = [day(row.period_end) for row in observed if row.resource_type == "subscription" and row.period_end]
+        if historical and historical["period_end"]:
+            periods.append(day(historical["period_end"]))
         if periods:
             due = max(periods)
         if not due:
@@ -419,14 +426,14 @@ async def renewals(db, user, status="all"):
                 "CRM 登记即将到期，请检查日期与续费" if sub and sub.status == "expiring_soon" else LABELS[state]) if not state_from_signal else LABELS[state],
             "latest_event_at": max((utc(row.latest_event_at) for row in observed), default=None),
             "signals": [signal_data(row) for row in observed],
-            "href": f"/sales-leads?view=handoffs&handoff={handoff.id}" if handoff else f"/customers?detail={sub.customer_id}&tab=renewals"})
+            "href": historical["href"] if historical else f"/sales-leads?view=handoffs&handoff={handoff.id}" if handoff else f"/customers?detail={sub.customer_id}&tab=renewals"})
     counts = {"all": len(items), "attention": sum(item["status"] in ATTENTION for item in items),
         "unconnected": sum(item["connection_status"] == "unconnected" for item in items),
         "upcoming": sum(item["status"] == "upcoming" for item in items)}
     coverage = {"scope": "新成交关联订阅 + CRM 登记日期观察", "note": COVERAGE_NOTE,
-        "linked_subscriptions": len(unambiguous_subscriptions), "unconnected_subscriptions": counts["unconnected"],
-        "received_event_count": await db.scalar(select(func.count()).select_from(ServiceRenewalEvent)),
-        "latest_event_at": max((utc(row.latest_event_at) for row in signals), default=None)}
+        "linked_subscriptions": len(unambiguous_subscriptions | history["subscription_ids"]), "unconnected_subscriptions": counts["unconnected"],
+        "received_event_count": (await db.scalar(select(func.count()).select_from(ServiceRenewalEvent))) + history["received_event_count"],
+        "latest_event_at": max([utc(row.latest_event_at) for row in signals] + ([history["latest_event_at"]] if history["latest_event_at"] else []), default=None)}
     from services.sales_deal_payments import webhook_secret
     coverage["webhook_configured"] = bool(webhook_secret())
     filtered = items if status == "all" else [item for item in items if (

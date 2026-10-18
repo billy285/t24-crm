@@ -8,6 +8,7 @@ export const financeNavigationItems = [
   { tab: 'overview', label: '老板总览', group: '常用操作', icon: Wallet, description: '掌握收入、成本、利润和待处理事项' },
   { tab: 'income', label: '收入管理', group: '常用操作', icon: DollarSign, description: '查询收款记录，核对到账与收入明细' },
   { tab: 'subscriptions', label: '套餐续费', group: '常用操作', icon: Receipt, description: '跟进套餐到期、待扣款与续费事项' },
+  { tab: 'stripe_reconciliation', label: 'Stripe 对账', group: '常用操作', icon: ArrowRightLeft, description: '关联现有服务，逐笔核对 Stripe 到账及原账本' },
   { tab: 'monthly_detail', label: '按月明细', group: '常用操作', icon: CalendarDays, description: '逐月核对收入、支出与利润，完成月度关账' },
   { tab: 'customer_profit', label: '客户利润', group: '财务明细', icon: TrendingUp, description: '按客户核对收入、成本与利润' },
   { tab: 'receivables', label: '应收欠款', group: '财务明细', icon: Users, description: '查看客户应收与欠款，跟进待收款项' },

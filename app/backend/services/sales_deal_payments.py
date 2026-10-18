@@ -223,7 +223,10 @@ async def receive_event(db, body, signature):
         return {"received": True}
     if event["type"] in RENEWAL_EVENT_TYPES:
         from services.service_follow_through import observe_renewal
-        return await observe_renewal(db, event, body)
+        from services.stripe_history_reconciliation import observe_history_event
+        result = await observe_renewal(db, event, body)
+        await observe_history_event(db, event, body)
+        return result
     session_id = _id(obj.get("id"), "cs_")
     reference = obj.get("client_reference_id")
     if not session_id or not isinstance(reference, str) or not re.fullmatch(r"t24_[A-Za-z0-9_-]{43}", reference):

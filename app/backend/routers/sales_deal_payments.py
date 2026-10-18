@@ -1,5 +1,5 @@
 """Protected sales payment links and an independently signed Stripe callback."""
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -18,14 +18,17 @@ async def status(user: UserResponse = Depends(get_owner_user)):
 
 
 @router.post("/webhook")
-async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
+async def webhook(request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     # Stream with a hard bound; never load an unbounded body or log it/secrets.
     body = bytearray()
     async for chunk in request.stream():
         body.extend(chunk)
         if len(body) > service.MAX_BODY_BYTES:
             raise HTTPException(413, "回调内容超出限制")
-    return await mutate(db, lambda: service.receive_event(db, bytes(body), request.headers.get("stripe-signature")))
+    result = await mutate(db, lambda: service.receive_event(db, bytes(body), request.headers.get("stripe-signature")))
+    from services.stripe_history_reconciliation import process_pending_history
+    background_tasks.add_task(process_pending_history)
+    return result
 
 
 @router.get("/{handoff_id}/request")

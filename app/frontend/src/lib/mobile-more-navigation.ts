@@ -67,7 +67,7 @@ const mobileMoreGroups: MobileMoreGroup[] = [
   {
     key: 'finance', label: '财务结算', icon: Wallet,
     sections: [
-      { label: '日常账目', items: ['overview', 'income', 'subscriptions', 'receivables'].map(financeTab) },
+      { label: '日常账目', items: ['overview', 'income', 'subscriptions', 'stripe_reconciliation', 'receivables'].map(financeTab) },
       { label: '明细与分析', items: ['monthly_detail', 'customer_profit', 'refunds', 'ad_funds', 'customer_expense', 'company_expense', 'charts'].map(financeTab) },
       { label: '财务设置', items: ['/rmb-profit', '/payroll', '/settings/deduction'].map(page) },
     ],
