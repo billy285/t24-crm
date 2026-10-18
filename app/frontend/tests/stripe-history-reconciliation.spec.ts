@@ -6,12 +6,12 @@ const service = { customer_id: 301, customer_name: '历史对账验收餐厅', c
 const candidate = { subscription_id: 'sub_historyA1', customer_id: 'cus_historyA1', customer_name: 'Synthetic Restaurant', email: 'synthetic@example.test', status: 'active', currency: 'USD', amount: 198, billing_cycle: 'monthly', price_id: 'price_syntheticA1', items_count: 1 };
 const binding = { id: 41, customer_id: 301, customer_name: service.customer_name, crm_subscription_id: 51, package_name: service.package_name, stripe_subscription_id: candidate.subscription_id, stripe_customer_id: candidate.customer_id, currency: 'USD', amount: 198, billing_cycle: 'monthly', sync_from: '2026-10-01', status: 'active', revision: 1, needs_refresh: false, pilot_validated: false, pilot_evidence: { successful_sync_count: 2, repeat_dedupe_verified: true, cash_evidence_verified: true, invoice_count: 1, last_date_start: '2026-10-01', last_date_end: '2026-10-19' } };
 const review = { id: 71, binding_id: 41, customer_id: 301, customer_name: service.customer_name, package_name: '基础版', stripe_invoice_id: 'in_syntheticA1', status: 'pending_review', issues: [], service_amount: 198, tax_amount: 15.84, gross_amount: 213.84, fee_amount: 6.5, net_amount: 207.34, currency: 'USD', payment_date: '2026-10-18', coverage_start: '2026-10-01', coverage_end: '2026-11-01', revision: 1, lines: [{ description: '基础版服务', amount: 198, currency: 'USD', period_start: '2026-10-01', period_end: '2026-11-01' }], existing_payment_candidates: [] as any[], accounting_preview: { amount_due: 198, amount_paid: 198, management_amount: 198, ads_recharge_amount: 0, stripe_fee_amount: 6.04, net_amount: 191.96 }, can_confirm: true, can_create_payment: true, can_link_existing: false };
-type Scenario = { role?: string; configured?: boolean; warnings?: boolean; duplicate?: boolean; closed?: boolean; loadFail?: boolean; confirmFail?: boolean; revoked?: boolean; bulk?: boolean; pilotReady?: boolean; previewBlocked?: boolean };
+type Scenario = { role?: string; configured?: boolean; warnings?: boolean; duplicate?: boolean; closed?: boolean; loadFail?: boolean; confirmFail?: boolean; revoked?: boolean; bulk?: boolean; pilotReady?: boolean; previewBlocked?: boolean; reviewOverride?: Record<string, unknown> };
 async function json(route: Route, value: unknown, status = 200) { return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) }); }
 async function fixture(page: Page, options: Scenario = {}) {
   const role = options.role || 'super_admin'; const employee = { id: role === 'super_admin' ? 1 : 7, name: role === 'super_admin' ? '验收老板' : '验收运营', role, status: 'active' };
   const reads: string[] = []; const writes: { path: string; body: any }[] = []; let overviewCalls = 0; let previewCalls = 0; let finalized = false; let validated = false; let bulk = options.bulk || false; let confirmFailures = 0;
-  const detail = () => ({ ...review, ...(options.duplicate ? { existing_payment_candidates: [{ id: 90, customer_name: service.customer_name, product_name: '基础版', amount_paid: 198, payment_date: '2026-10-18', currency: 'USD', transaction_reference: 'pi_existingA1', coverage_start: '2026-10-01', coverage_end: '2026-11-01' }], can_create_payment: false, can_link_existing: true } : {}), ...(options.closed ? { status: 'exception', can_confirm: false, can_create_payment: false, can_link_existing: false, read_only_reason: '该月份已经关账，不能在此确认记账。', issues: [{ code: 'month_closed', message: '该月份已经关账，不能在此确认记账。' }] } : {}), ...(finalized ? { status: options.duplicate ? 'linked_existing' : 'confirmed', payment_id: 90, can_confirm: false, can_create_payment: false, can_link_existing: false } : {}) });
+  const detail = () => ({ ...review, ...(options.duplicate ? { existing_payment_candidates: [{ id: 90, customer_name: service.customer_name, product_name: '基础版', amount_paid: 198, payment_date: '2026-10-18', currency: 'USD', transaction_reference: 'pi_existingA1', coverage_start: '2026-10-01', coverage_end: '2026-11-01' }], can_create_payment: false, can_link_existing: true } : {}), ...(options.closed ? { status: 'exception', can_confirm: false, can_create_payment: false, can_link_existing: false, read_only_reason: '该月份已经关账，不能在此确认记账。', issues: [{ code: 'month_closed', message: '该月份已经关账，不能在此确认记账。' }] } : {}), ...(options.reviewOverride || {}), ...(finalized ? { status: options.duplicate ? 'linked_existing' : 'confirmed', payment_id: 90, can_confirm: false, can_create_payment: false, can_link_existing: false } : {}) });
   const pilot = () => ({ limit: 5, enabled_bindings: 1, validated_bindings: validated || options.pilotReady ? 3 : 0, bulk_enabled: bulk, can_activate_bulk: !bulk && (validated || options.pilotReady) });
   await page.addInitScript(value => { localStorage.setItem('emp_auth_token', 'reconciliation-fixture'); localStorage.setItem('token', 'reconciliation-fixture'); localStorage.setItem('emp_auth_data', JSON.stringify(value)); }, employee);
   await page.route(/^https?:\/\/[^/]+\/api\//, async route => {
@@ -85,3 +85,36 @@ test('总览数量和点入范围一致：待核对包含待刷新，已入账�
   await expect(page.getByRole('button', { name: /状态范围验收 linked_existing/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /状态范围验收 pending_review/ })).toHaveCount(0);
 });
+for (const width of [1093, 390]) {
+  test(`未付账单 ${width}：金额标为待核验，不能把账单总额或平台净额当作到账`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const { writes } = await fixture(page, { reviewOverride: { status: 'exception', service_amount: 399, tax_amount: 0, gross_amount: 399, fee_amount: 3.19, net_amount: 395.81, payment_date: null, issues: [{ code: 'not_paid', message: '账单尚未付清' }, { code: 'cash_unverified', message: '缺少实际扣款凭据' }], can_confirm: false, can_create_payment: false, accounting_preview: null } });
+    const dialog = await reviewDialog(page);
+    const warning = dialog.getByText('尚未确认实际到账，以下为账单或平台记录金额，不能作为已收款依据。', { exact: true });
+    await expect(warning).toBeVisible(); await expect(dialog.getByText('账单总额', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('平台手续费（待核验）', { exact: true })).toBeVisible(); await expect(dialog.getByText('平台净额（待核验）', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('USD 399.00', { exact: true })).toHaveCount(2); await expect(dialog.getByText('USD 3.19', { exact: true })).toBeVisible(); await expect(dialog.getByText('USD 395.81', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('客户支付总额', { exact: true })).toHaveCount(0); await expect(dialog.getByText('平台净到账', { exact: true })).toHaveCount(0); await expect(dialog.getByText('平台实际手续费', { exact: true })).toHaveCount(0);
+    expect(await warning.evaluate(element => Boolean(element.compareDocumentPosition(element.parentElement!.querySelector('.shr-evidence-grid')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+    await expect(dialog.getByRole('button', { name: '确认并记账', exact: true })).toBeDisabled(); expect(writes).toEqual([]); await noOverflow(page);
+    if (process.env.T24_RECONCILIATION_SCREENSHOTS) await page.screenshot({ path: `${process.env.T24_RECONCILIATION_SCREENSHOTS}/unpaid-cash-labels-${width}.png`, animations: 'disabled' });
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click(); await expect(dialog).toHaveCount(0); expect(writes).toEqual([]);
+  });
+}
+for (const override of [{ status: 'needs_refresh' }, { needs_refresh: true }, { payment_date: null }, { issues: [{ code: 'fee_unverified', message: '手续费凭据待核实' }] }]) {
+  test(`未完整现金依据标待核验：${JSON.stringify(override)}`, async ({ page }) => {
+    const { writes } = await fixture(page, { reviewOverride: { ...override, can_confirm: false, can_create_payment: false } });
+    const dialog = await reviewDialog(page); await expect(dialog.getByText('平台净额（待核验）', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('尚未确认实际到账，以下为账单或平台记录金额，不能作为已收款依据。', { exact: true })).toBeVisible();
+    expect(writes).toEqual([]);
+  });
+}
+for (const reason of ['现有分润归属或服务区间需核对；不会重新建立首月或猜测归属', '该月份已经关账，不能在此确认记账。']) {
+  test(`完整现金证据被原规则阻断仍保留实际手续费和净到账：${reason}`, async ({ page }) => {
+    const { writes } = await fixture(page, { reviewOverride: { can_confirm: false, can_create_payment: false, read_only_reason: reason } });
+    const dialog = await reviewDialog(page); await expect(dialog.getByText('Stripe 到账依据', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('账单总额', { exact: true })).toBeVisible(); await expect(dialog.getByText('平台实际手续费', { exact: true })).toBeVisible(); await expect(dialog.getByText('平台净到账', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('平台净额（待核验）', { exact: true })).toHaveCount(0); await expect(dialog.getByText('尚未确认实际到账，以下为账单或平台记录金额，不能作为已收款依据。', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText(reason, { exact: true })).toBeVisible(); await expect(dialog.getByRole('button', { name: '确认并记账', exact: true })).toBeDisabled(); expect(writes).toEqual([]);
+  });
+}
