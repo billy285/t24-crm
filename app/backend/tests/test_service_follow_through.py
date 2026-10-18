@@ -405,3 +405,114 @@ async def test_coverage_counts_distinct_subscriptions_and_excludes_cross_handoff
     assert (await deliver(client, lifecycle())).status_code == 200
     async with sessions() as db:
         assert await db.scalar(select(func.count()).select_from(ServiceRenewalSignal)) == 0
+
+@pytest.mark.asyncio
+async def test_legacy_effective_latest_month_suppresses_history_before_status_filter_no_writes(sale_api):
+    client, sessions = sale_api
+    async with sessions() as db:
+        db.add_all([
+            Subscriptions(id=101, customer_id=28, customer_name="Effective Merchant", package_name="专业套餐", package_price=329,
+                status="active", end_date=datetime(2026, 1, 31), next_payment_date=datetime(2026, 1, 31)),
+            Subscriptions(id=102, customer_id=28, customer_name="Effective Merchant", package_name="专业套餐", package_price=329,
+                status="expired", end_date=datetime(2026, 3, 2), next_payment_date=datetime(2026, 3, 2)),
+            Subscriptions(id=103, customer_id=28, customer_name="Effective Merchant", package_name="专业套餐", package_price=329,
+                status="active", end_date=datetime(2026, 6, 2), next_payment_date=datetime(2026, 6, 2)),
+        ])
+        await db.commit()
+    before = await old_snapshot(sessions)
+    data = (await client.get(API + "/renewals", headers=headers(1))).json()
+    assert [row["id"] for row in data["items"]] == ["crm-103"]
+    assert data["items"][0]["due_date"] == "2026-06-02" and data["counts"]["all"] == 1
+    assert (await client.get(API + "/owner-overview", headers=headers(1))).json()["counts"]["renewal_attention"] == 1
+    assert await old_snapshot(sessions) == before
+
+
+@pytest.mark.parametrize("latest_status", ["stopped", "lost", "paused", "renewed", "upgraded"])
+@pytest.mark.asyncio
+async def test_legacy_effective_archived_latest_suppresses_old_active_without_fallback(sale_api, latest_status):
+    client, sessions = sale_api
+    async with sessions() as db:
+        db.add_all([
+            Subscriptions(id=101, customer_id=28, package_name="Basic", package_price=198, status="active", end_date=datetime(2026, 1, 31)),
+            Subscriptions(id=102, customer_id=28, package_name=" basic ", package_price=198, status=latest_status, end_date=datetime(2026, 6, 2)),
+        ])
+        await db.commit()
+    before = await old_snapshot(sessions)
+    data = (await client.get(API + "/renewals", headers=headers(1))).json()
+    assert data["items"] == [] and data["counts"]["all"] == 0
+    assert (await client.get(API + "/owner-overview", headers=headers(1))).json()["counts"]["renewal_attention"] == 0
+    assert await old_snapshot(sessions) == before
+
+
+@pytest.mark.asyncio
+async def test_legacy_effective_package_normalization_customer_isolation_and_pending_separation(sale_api):
+    client, sessions = sale_api
+    async with sessions() as db:
+        db.add_all([
+            Subscriptions(id=101, customer_id=28, package_name="Google、 Meta", package_price=198, status="active", end_date=datetime(2026, 1, 31)),
+            Subscriptions(id=102, customer_id=28, package_name=" META,google ", package_price=198, status="active", end_date=datetime(2026, 6, 2)),
+            Subscriptions(id=103, customer_id=28, package_name="google，meta", package_price=198, status="pending", end_date=datetime(2099, 1, 1)),
+            Subscriptions(id=104, customer_id=28, package_name="Website", package_price=99, status="active", end_date=datetime(2026, 2, 1)),
+            Subscriptions(id=105, customer_id=29, package_name="google，meta", package_price=198, status="active", end_date=datetime(2026, 3, 1)),
+        ])
+        await db.commit()
+    before = await old_snapshot(sessions)
+    data = (await client.get(API + "/renewals", headers=headers(1))).json()
+    assert {row["id"] for row in data["items"]} == {"crm-102", "crm-104", "crm-105"}
+    assert await old_snapshot(sessions) == before
+
+
+@pytest.mark.asyncio
+async def test_pending_known_handoff_retained_without_replacing_existing_effective_legacy(sale_api, monkeypatch):
+    client, sessions = sale_api
+    handoff, _ = await linked(client, sessions, monkeypatch)
+    async with sessions() as db:
+        pending = await db.get(Subscriptions, handoff["subscription_id"])
+        assert pending.status == "pending"
+        db.add_all([
+            Subscriptions(id=101, customer_id=handoff["customer_id"], package_name=pending.package_name, package_price=198,
+                status="active", end_date=datetime(2026, 1, 31)),
+            Subscriptions(id=102, customer_id=handoff["customer_id"], package_name=pending.package_name, package_price=198,
+                status="active", end_date=datetime(2026, 6, 2)),
+        ])
+        await db.commit()
+    before = await old_snapshot(sessions)
+    data = (await client.get(API + "/renewals", headers=headers(1))).json()
+    assert {row["id"] for row in data["items"]} == {f"handoff-{handoff['id']}", "crm-102"}
+    assert next(row for row in data["items"] if row["handoff_id"])["connection_status"] == "linked"
+    assert await old_snapshot(sessions) == before
+
+
+@pytest.mark.parametrize("field", ["end_date", "next_payment_date", "updated_at", "created_at", "id"])
+def test_effective_legacy_uses_existing_frontend_priority_field_order(field):
+    from types import SimpleNamespace
+    common = {"customer_id": 28, "package_name": "Base", "status": "active", "end_date": None,
+        "next_payment_date": None, "updated_at": None, "created_at": None}
+    first = SimpleNamespace(id=101, **common)
+    second = SimpleNamespace(id=102, **common)
+    if field == "id":
+        expected = second
+    else:
+        setattr(first, field, datetime(2026, 6, 2))
+        setattr(second, field, datetime(2026, 1, 31))
+        fields = ("end_date", "next_payment_date", "updated_at", "created_at")
+        for later in fields[fields.index(field) + 1:]:
+            setattr(second, later, datetime(2099, 1, 1))
+        expected = first  # Earlier comparator field beats later fields and id.
+    assert service._effective_legacy_subscriptions([second, first]) == [expected]
+
+@pytest.mark.asyncio
+async def test_mapped_effective_nonpending_handoff_does_not_resurrect_older_legacy(sale_api, monkeypatch):
+    client, sessions = sale_api
+    handoff, _ = await linked(client, sessions, monkeypatch)
+    async with sessions() as db:
+        mapped = await db.get(Subscriptions, handoff["subscription_id"])
+        mapped.status = "active"
+        db.add(Subscriptions(id=101, customer_id=handoff["customer_id"], package_name=mapped.package_name,
+            package_price=198, status="active", end_date=datetime(2026, 1, 31)))
+        await db.commit()
+    before = await old_snapshot(sessions)
+    data = (await client.get(API + "/renewals", headers=headers(1))).json()
+    assert [row["id"] for row in data["items"]] == [f"handoff-{handoff['id']}"]
+    assert data["items"][0]["connection_status"] == "linked"
+    assert await old_snapshot(sessions) == before

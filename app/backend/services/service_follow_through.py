@@ -4,6 +4,7 @@ All renewal observations require a previously linked Checkout subscription. Raw
 payloads, unrelated accounts/subscriptions, and payer data are never persisted.
 """
 import hashlib
+import re
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -314,6 +315,44 @@ def signal_data(signal):
         "currency": signal.currency, "due_date": signal.due_date, "period_end": signal.period_end}
 
 
+def _subscription_priority_timestamp(value):
+    """Match subscription-utils.ts date-priority ordering without host TZ drift."""
+    if value is None:
+        return 0
+    if isinstance(value, datetime):
+        return utc(value).timestamp()
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time(), timezone.utc).timestamp()
+    try:
+        return utc(datetime.fromisoformat(str(value).replace("Z", "+00:00"))).timestamp()
+    except (ValueError, TypeError, OverflowError):
+        return 0
+
+
+def _effective_legacy_subscriptions(subscriptions):
+    """Read-only counterpart of Customers.decorateCustomerSubscriptions.
+
+    Pending registrations stay separate. Select the latest row for every
+    customer/package BEFORE filtering status, so an ended/stopped replacement
+    cannot resurrect an older active month. Known handoffs are retained by the
+    caller independently; this function does not mutate or reconcile any rows.
+    """
+    def priority(row):
+        return (*(_subscription_priority_timestamp(getattr(row, field, None)) for field in
+            ("end_date", "next_payment_date", "updated_at", "created_at")), int(row.id or 0))
+
+    ordered = sorted((row for row in subscriptions if row.status != "pending"), key=priority, reverse=True)
+    selected = {}
+    for row in ordered:
+        package_name = row.package_name or getattr(row, "product_name", None) or ""
+        names = sorted(part.strip().lower() for part in re.split(r"[、,，]", str(package_name)) if part.strip())
+        key = (str(row.customer_id) if row.customer_id is not None and row.customer_id != "" else "unknown_customer",
+            "|".join(names) or "__empty_package__")
+        if key not in selected:
+            selected[key] = row
+    return list(selected.values())
+
+
 async def renewals(db, user, status="all"):
     await live_actor(db, user, owner_only=True)
     handoffs = (await db.scalars(select(SalesDealHandoff).order_by(SalesDealHandoff.id.desc()))).all()
@@ -341,7 +380,8 @@ async def renewals(db, user, status="all"):
     used = set()
     sources = [(f"handoff-{row.id}", row, crm.get(row.subscription_id)) for row in handoffs]
     used.update(row.subscription_id for row in handoffs if row.subscription_id)
-    sources += [(f"crm-{row.id}", None, row) for row in subscriptions if row.id not in used and row.status in {"active", "trialing", "past_due", "expiring_soon", "renewal_pending", "expired"}]
+    sources += [(f"crm-{row.id}", None, row) for row in _effective_legacy_subscriptions(subscriptions)
+        if row.id not in used and row.status in {"active", "trialing", "past_due", "expiring_soon", "renewal_pending", "expired"}]
     for identifier, handoff, sub in sources:
         observed = signalmap.get(handoff.id, []) if handoff else []
         connected = bool(handoff and linkmap.get(handoff.id))
