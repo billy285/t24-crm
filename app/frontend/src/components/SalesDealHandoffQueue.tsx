@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronRight, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -6,6 +7,7 @@ import { HandoffRecord } from '@/components/CustomerSalesHandoff';
 import { confirmDiscardAllChanges } from '@/lib/use-unsaved-changes';
 import { dealHandoffApi, salesHandoffError, salesHandoffMoney, type SalesDealHandoff } from '@/lib/sales-deal-handoff';
 import './sales-deal-handoff.css';
+import { getSafeInternalPath } from '@/lib/navigation-state';
 
 type QueueStatus = 'all' | 'pending_payment' | 'pending_operations' | 'pending_access' | 'completed';
 type QueueItem = SalesDealHandoff & { pending_payment?: boolean; pending_operations?: boolean; pending_access?: boolean };
@@ -13,7 +15,13 @@ type Queue = { items: QueueItem[]; counts: Record<QueueStatus, number>; total: n
 const filters: { value: QueueStatus; label: string }[] = [{ value: 'pending_payment', label: '待核款' }, { value: 'pending_operations', label: '待接收' }, { value: 'pending_access', label: '待授权' }, { value: 'all', label: '全部登记' }, { value: 'completed', label: '已完成' }];
 
 export default function SalesDealHandoffQueue({ onOpenLead }: { onOpenLead: (leadId: number) => void }) {
-  const [status, setStatus] = useState<QueueStatus>('all');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const search = new URLSearchParams(location.search);
+  const requestedStatus = filters.some(item => item.value === search.get('status')) ? search.get('status') as QueueStatus : null;
+  const requestedHandoff = /^[1-9]\d*$/.test(search.get('handoff') || '') ? Number(search.get('handoff')) : null;
+  const returnTo = getSafeInternalPath(search.get('returnTo'));
+  const [status, setStatus] = useState<QueueStatus>(requestedStatus || 'all');
   const [queue, setQueue] = useState<Queue | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -34,7 +42,7 @@ export default function SalesDealHandoffQueue({ onOpenLead }: { onOpenLead: (lea
       if (sequence.current !== request) return;
       if (!Array.isArray(data.items) || !data.counts) throw new Error('成交与交接待办暂不可用。');
       setQueue(data);
-      if (!initialized.current) { initialized.current = true; if (data.is_owner) setStatus('pending_payment'); }
+      if (!initialized.current) { initialized.current = true; if (data.is_owner && !requestedStatus) setStatus('pending_payment'); }
     } catch (problem) { if (sequence.current === request) { setQueue(null); setError(salesHandoffError(problem, '成交与交接待办读取失败。')); } }
     finally { if (sequence.current === request) setLoading(false); }
   };
@@ -50,8 +58,11 @@ export default function SalesDealHandoffQueue({ onOpenLead }: { onOpenLead: (lea
     finally { if (detailSequence.current === request) setDetailLoading(false); }
   };
   useEffect(() => { void load(); return () => { sequence.current += 1; }; }, [status]);
+  useEffect(() => { if (requestedStatus) setStatus(requestedStatus); }, [requestedStatus]);
+  useEffect(() => { if (requestedHandoff) void readDetail(requestedHandoff); }, [requestedHandoff]);
   useEffect(() => () => { detailSequence.current += 1; }, []);
   return <section className="sdh-customer-card" aria-label="成交与交接待办">
+    {returnTo && <Button type="button" variant="ghost" size="sm" onClick={() => navigate(returnTo)}>返回来源页面</Button>}
     <div className="sdh-card-heading"><div><h3>成交与交接</h3><p>{queue?.is_owner ? '核款、客户授权与运营本人接收分别推进；各项由对应负责人完成。' : '只显示有权查看的登记；收款由老板核对，客户权限由老板邀请。'}</p></div><Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => void load()}><RefreshCw size={14}/>刷新待办</Button></div>
     <nav className="sdh-queue-filters" aria-label="成交待办分类">{filters.filter(filter => !['pending_access', 'pending_payment'].includes(filter.value) || queue?.is_owner === true).map(filter => <Button key={filter.value} type="button" size="sm" variant={status === filter.value ? 'secondary' : 'outline'} aria-pressed={status === filter.value} onClick={() => setStatus(filter.value)}>{filter.label}<span>{queue?.counts[filter.value] ?? '—'}</span></Button>)}</nav>
     {error ? <p className="sdh-note sdh-error" role="alert">{error}</p> : loading ? <p className="py-8 text-center text-sm text-slate-500" role="status">正在读取成交待办…</p> : !queue?.items.length ? <p className="py-8 text-center text-sm text-slate-500">当前分类没有待处理的成交登记。</p> : <div className="sdh-queue-list">{queue.items.map(item => <article key={item.id}>

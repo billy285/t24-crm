@@ -26,6 +26,7 @@ import { useAutoRefresh } from '../lib/use-auto-refresh';
 import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage } from '../lib/load-utils';
 import MobileOwnerDashboard from '@/components/MobileOwnerDashboard';
+import { OwnerExceptions } from '@/components/ServiceFollowThrough';
 
 interface Reminder {
   id: string;
@@ -983,6 +984,7 @@ export default function Dashboard() {
 
   return (
     <div className="t24-command-center calm-admin-page calm-admin-dashboard app-page space-y-6">
+      <OwnerExceptions />
       {renderOwnerCommandCenter()}
       <div id="owner-additional-details" className={`owner-mobile-additional-details space-y-6${showOwnerOperationalDetails ? ' is-expanded' : ''}${!ownerCockpit ? ' owner-detail-fallback' : ''}`}>
       {renderReminders()}

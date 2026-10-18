@@ -26,6 +26,7 @@ import PageLoadState from '@/components/PageLoadState';
 import { client } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/use-auto-refresh';
 import { useRole } from '@/lib/role-context';
+import { ServiceFollowThroughNav, ServiceFollowThroughWorkspace } from '@/components/ServiceFollowThrough';
 
 type WorkbenchTask = {
   id: number;
@@ -327,9 +328,19 @@ export default function OperationsWorkbench() {
     }
   };
 
-  if (loading && actions.length === 0) return <PageLoadState loading message="正在汇总今天的运营事项…" />;
+  const requestedView = new URLSearchParams(location.search).get('view');
+  const followThroughView = requestedView === 'kickoffs' || requestedView === 'renewals' ? requestedView : 'today';
+  const changeView = (view: string) => {
+    const query = new URLSearchParams(location.search);
+    if (view === 'today') query.delete('view'); else query.set('view', view);
+    query.delete('status'); query.delete('handoff');
+    navigate(`${location.pathname}${query.size ? `?${query}` : ''}`);
+  };
+  if (followThroughView !== 'today') return <div className="t24-work-page delivery-center-ui calm-operations-page app-page"><ServiceFollowThroughNav view={followThroughView} onChange={changeView} /><ServiceFollowThroughWorkspace view={followThroughView} /></div>;
+
+  if (loading && actions.length === 0) return <div className="t24-work-page app-page"><ServiceFollowThroughNav view="today" onChange={changeView} /><PageLoadState loading message="正在汇总今天的运营事项…" /></div>;
   if (loadError && actions.length === 0 && tasks.length === 0 && callbacks.length === 0 && progresses.length === 0) {
-    return <PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadData(); }} />;
+    return <div className="t24-work-page app-page"><ServiceFollowThroughNav view="today" onChange={changeView} /><PageLoadState error={loadError} onRetry={() => { setLoading(true); void loadData(); }} /></div>;
   }
 
   const urgencyStyles = {
@@ -341,6 +352,7 @@ export default function OperationsWorkbench() {
 
   return (
     <div className="t24-work-page delivery-center-ui dc-today calm-operations-page app-page">
+      <ServiceFollowThroughNav view="today" onChange={changeView} />
       {pendingWorkArrangement && !completeTarget && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>{pendingWorkArrangement.target.title}已完成，下一步任务待补齐。</span><Button variant="outline" onClick={() => { setCompleteTarget(pendingWorkArrangement.target); setCompletionNote(pendingWorkArrangement.note); setCreateNextTask(true); setNextTaskTitle(pendingWorkArrangement.title); setNextTaskDate(pendingWorkArrangement.date); setArrangementError('处理结果已保存，下一步任务未创建。请重试补齐安排。'); }}>补齐下一步安排</Button></div>}
       <div className="dc-heading">
         <div>

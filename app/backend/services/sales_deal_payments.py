@@ -28,10 +28,12 @@ from services.sales_payment_catalog import CADENCES, STRIPE_ACCOUNT_ID, approved
 from services.sales_workflow_locks import lock_sales_workflow
 
 DUPLICATE_SCOPE = "仅检查 CRM 已在服订阅及本接入已收到的 Stripe 记录，未查询 Stripe 全部历史；关联编号不证明付款人身份。"
-EVENT_TYPES = {
+CHECKOUT_EVENT_TYPES = {
     "checkout.session.completed", "checkout.session.async_payment_succeeded",
     "checkout.session.async_payment_failed", "checkout.session.expired",
 }
+from services.service_follow_through import RENEWAL_EVENT_TYPES
+EVENT_TYPES = CHECKOUT_EVENT_TYPES | RENEWAL_EVENT_TYPES
 MAX_BODY_BYTES = 262144
 DEFAULT_WEBHOOK_SECRET_FILE = "/app/backend/data/sales-stripe-webhook-secret"
 
@@ -212,16 +214,24 @@ async def receive_event(db, body, signature):
     at = _instant(event.get("created"))
     obj = event.get("data", {}).get("object") if isinstance(event.get("data"), dict) else None
     if not event_id or not at or not isinstance(obj, dict):
+        if event["type"] in RENEWAL_EVENT_TYPES:
+            return {"received": True}
         raise HTTPException(400, "回调缺少必要记录信息")
     if event.get("livemode") is not True or obj.get("livemode") is not True:
         return {"received": True}
     if event.get("account") is not None and event.get("account") != STRIPE_ACCOUNT_ID:
         return {"received": True}
+    if event["type"] in RENEWAL_EVENT_TYPES:
+        from services.service_follow_through import observe_renewal
+        return await observe_renewal(db, event, body)
     session_id = _id(obj.get("id"), "cs_")
     reference = obj.get("client_reference_id")
     if not session_id or not isinstance(reference, str) or not re.fullmatch(r"t24_[A-Za-z0-9_-]{43}", reference):
         return {"received": True}
     await lock_sales_workflow(db)
+    from models.service_follow_through import ServiceRenewalEvent
+    if await db.get(ServiceRenewalEvent, event_id):
+        raise HTTPException(409, "回调编号已用于其他通知")
     previous_event = await db.get(SalesStripeEvent, event_id)
     payload_digest = hashlib.sha256(body).hexdigest()
     if previous_event:
