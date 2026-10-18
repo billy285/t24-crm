@@ -295,6 +295,12 @@ def invoice_subscription(raw):
     return None if legacy and modern and legacy != modern else legacy or modern
 
 
+def charge_identifier(value):
+    # Stripe Charge IDs can use ch_ or py_; neither proves payment success.
+    # Refund IDs (including pyr_) and unknown prefixes are never Charge IDs.
+    return _id(value, "ch_") or _id(value, "py_")
+
+
 def invoice_snapshot(raw, binding):
     """Persist selected evidence only; lack of any cash proof holds the draft."""
     codes = []
@@ -359,9 +365,9 @@ def invoice_snapshot(raw, binding):
         codes.append("payment_date")
     intent = raw.get("payment_intent") if isinstance(raw.get("payment_intent"), dict) else {}
     charge = intent.get("latest_charge") if isinstance(intent.get("latest_charge"), dict) else {}
-    intent_id, charge_id = _id(intent.get("id"), "pi_"), _id(charge.get("id"), "ch_")
+    intent_id, charge_id = _id(intent.get("id"), "pi_"), charge_identifier(charge.get("id"))
     if (not intent_id or intent.get("livemode") is not True or intent.get("status") != "succeeded" or intent.get("amount_received") != gross
-            or text(intent.get("currency"), 3).upper() != currency or not charge_id or charge.get("livemode") is not True
+            or text(intent.get("currency"), 3).upper() != currency or not charge_id or charge.get("object") != "charge" or charge.get("livemode") is not True
             or charge.get("paid") is not True or charge.get("captured") is not True or charge.get("amount") != gross
             or charge.get("amount_captured") != gross or text(charge.get("currency"), 3).upper() != currency
             or _id(charge.get("payment_intent"), "pi_") != intent_id or _id(charge.get("invoice"), "in_") != invoice_id
@@ -372,11 +378,12 @@ def invoice_snapshot(raw, binding):
     balance = charge.get("balance_transaction") if isinstance(charge.get("balance_transaction"), dict) else {}
     fee, net = _minor(balance.get("fee")), _minor(balance.get("net"))
     balance_id = _id(balance.get("id"), "txn_")
+    source_id = charge_identifier(balance.get("source"))
     # Stripe uses `payment` for successful local-payment charges. It is also
     # used while asynchronous payments are pending, so this type alone is never
     # cash proof: the invoice, succeeded intent and captured charge checks above
     # still apply, as do the exact source, gross, currency, fee and net checks.
-    if (not balance_id or balance.get("type") not in {"charge", "payment"} or _id(balance.get("source"), "ch_") != charge_id
+    if (not balance_id or not charge_id or not source_id or balance.get("type") not in {"charge", "payment"} or source_id != charge_id
             or balance.get("amount") != gross or text(balance.get("currency"), 3).upper() != currency
             or fee is None or net is None or gross is None or fee > gross or net != gross - fee):
         codes.append("fee_unverified")
@@ -579,7 +586,7 @@ def accounting_payload(binding, snapshot, user):
 
 
 def reference_matches(value, identities):
-    parts = set(re.findall(r"(?:in_|pi_|ch_)[A-Za-z0-9_]+", str(value or "")))
+    parts = set(re.findall(r"(?:in_|pi_|ch_|py_)[A-Za-z0-9_]+", str(value or "")))
     return bool({part.casefold() for part in parts} & {part.casefold() for part in identities if part})
 
 

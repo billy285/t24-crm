@@ -49,7 +49,7 @@ def remote_invoice(identity=100):
         "lines": {"has_more": False, "data": [{"description": "Synthetic service", "amount": 19800, "currency": "usd", "type": "subscription",
             "proration": False, "quantity": 1, "price": {"id": f"price_history{identity}"}, "period": {"start": START, "end": END}}]},
         "payment_intent": {"id": intent_id, "livemode": True, "status": "succeeded", "amount_received": 21533, "currency": "usd",
-            "latest_charge": {"id": charge_id, "livemode": True, "payment_intent": intent_id, "invoice": invoice_id, "customer": f"cus_history{identity}",
+            "latest_charge": {"id": charge_id, "object": "charge", "livemode": True, "payment_intent": intent_id, "invoice": invoice_id, "customer": f"cus_history{identity}",
                 "paid": True, "captured": True, "amount": 21533, "amount_captured": 21533, "currency": "usd", "refunded": False,
                 "amount_refunded": 0, "disputed": False, "balance_transaction": {"id": f"txn_history{identity}", "type": "charge", "source": charge_id,
                     "currency": "usd", "amount": 21533, "fee": 650, "net": 20883}}}}
@@ -277,6 +277,63 @@ async def test_local_payment_type_never_bypasses_incomplete_cash_or_reversal_gua
     assert await snapshot(sessions) == before
 
 
+def ach_charge(raw):
+    charge = raw["payment_intent"]["latest_charge"]
+    charge["id"] = "py_history100"
+    charge["payment_method_details"] = {"type": "us_bank_account"}
+    charge["balance_transaction"]["type"] = "payment"
+    charge["balance_transaction"]["source"] = charge["id"]
+    return charge
+
+
+@pytest.mark.asyncio
+async def test_completed_ach_py_charge_and_exact_balance_source_are_supported_without_auto_posting(history_api):
+    client, sessions, fake = history_api
+    binding = await bind(client)
+    ach_charge(fake.invoice_rows["in_history100"])
+    before = await snapshot(sessions)
+    row = (await sync(client, binding))["items"][0]
+    assert row["status"] == "pending_review" and row["issues"] == []
+    detail = (await client.get(f"{API}/invoice-reviews/{row['id']}", headers=headers(1))).json()["review"]
+    assert detail["can_create_payment"]
+    assert detail["accounting_preview"]["stripe_fee_amount"] == 6.04
+    async with sessions() as db:
+        review = await db.get(StripeHistoryInvoiceReview, row["id"])
+        assert review.snapshot["stripe_charge_id"] == "py_history100"
+    assert await snapshot(sessions) == before
+
+
+@pytest.mark.parametrize("case", ["processing", "refunded", "disputed", "uncaptured", "partial_capture", "wrong_object", "missing_object", "source_missing", "source_mismatch", "both_missing", "unsupported_same_ids", "refund_same_ids"])
+@pytest.mark.asyncio
+async def test_ach_py_charge_retains_cash_guards_and_unknown_or_missing_ids_never_match(history_api, case):
+    client, sessions, fake = history_api
+    binding = await bind(client)
+    raw = fake.invoice_rows["in_history100"]
+    charge = ach_charge(raw)
+    balance = charge["balance_transaction"]
+    if case == "processing": raw["payment_intent"]["status"] = "processing"
+    if case == "refunded": charge["amount_refunded"] = 1
+    if case == "disputed": charge["disputed"] = True
+    if case == "uncaptured": charge["captured"] = False
+    if case == "partial_capture": charge["amount_captured"] = 1
+    if case == "wrong_object": charge["object"] = "refund"
+    if case == "missing_object": charge.pop("object")
+    if case == "source_missing": balance["source"] = None
+    if case == "source_mismatch": balance["source"] = "py_unrelated"
+    if case == "both_missing": charge["id"] = balance["source"] = None
+    if case == "unsupported_same_ids": charge["id"] = balance["source"] = "unknown_same123"
+    if case == "refund_same_ids": charge["id"] = balance["source"] = "pyr_same123"
+    before = await snapshot(sessions)
+    row = (await sync(client, binding))["items"][0]
+    assert row["status"] == "exception" and row["issues"]
+    if case in {"source_missing", "source_mismatch", "both_missing", "unsupported_same_ids", "refund_same_ids"}:
+        assert "fee_unverified" in {item["code"] for item in row["issues"]}
+    detail = (await client.get(f"{API}/invoice-reviews/{row['id']}", headers=headers(1))).json()["review"]
+    assert not detail["can_confirm"]
+    assert (await client.post(f"{API}/invoice-reviews/{row['id']}/confirm", headers=headers(1), json=confirmation(row["revision"]))).status_code == 409
+    assert await snapshot(sessions) == before
+
+
 @pytest.mark.asyncio
 async def test_cash_revalidated_at_confirmation_and_closed_month_rolls_back_everything(history_api):
     client, sessions, fake = history_api
@@ -339,6 +396,25 @@ async def test_global_manual_transaction_reference_and_scope_mismatch_never_dupl
     async with sessions() as db:
         existing = await db.scalar(select(Payments))
     assert (await client.post(f"{API}/invoice-reviews/{row['id']}/confirm", headers=headers(1), json=confirmation(action="link_existing", existing_payment_id=existing.id))).status_code == 409
+    assert await snapshot(sessions) == before
+
+
+@pytest.mark.asyncio
+async def test_existing_py_only_manual_reference_is_exact_duplicate_even_outside_fuzzy_match(history_api):
+    client, sessions, fake = history_api
+    # Another customer's record cannot hit the same-customer/amount/date guess.
+    # Its exact ACH charge reference must still block a duplicate everywhere.
+    payment_id = await manual_payment(sessions, customer_id=101, reference="Stripe py_history100 receipt")
+    binding = await bind(client)
+    ach_charge(fake.invoice_rows["in_history100"])
+    before = await snapshot(sessions)
+    row = (await sync(client, binding))["items"][0]
+    detail = (await client.get(f"{API}/invoice-reviews/{row['id']}", headers=headers(1))).json()["review"]
+    assert [item["id"] for item in detail["existing_payment_candidates"]] == [payment_id]
+    assert not detail["can_create_payment"]
+    assert (await client.post(f"{API}/invoice-reviews/{row['id']}/confirm", headers=headers(1), json=confirmation(row["revision"]))).status_code == 409
+    assert (await client.post(f"{API}/invoice-reviews/{row['id']}/confirm", headers=headers(1), json=confirmation(
+        row["revision"], action="link_existing", existing_payment_id=payment_id))).status_code == 409
     assert await snapshot(sessions) == before
 
 
