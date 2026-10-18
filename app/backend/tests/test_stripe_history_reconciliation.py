@@ -232,6 +232,52 @@ async def test_ambiguous_or_noncash_invoice_holds_pending_and_cannot_post(histor
 
 
 @pytest.mark.asyncio
+async def test_completed_local_payment_has_same_full_cash_proof_without_automatic_ledger_write(history_api):
+    client, sessions, fake = history_api
+    binding = await bind(client)
+    raw = fake.invoice_rows["in_history100"]
+    raw["payment_intent"]["latest_charge"]["balance_transaction"]["type"] = "payment"
+    before = await snapshot(sessions)
+    row = (await sync(client, binding))["items"][0]
+    assert row["status"] == "pending_review" and row["issues"] == []
+    detail = (await client.get(f"{API}/invoice-reviews/{row['id']}", headers=headers(1))).json()["review"]
+    assert detail["can_create_payment"] and detail["fee_amount"] == 6.5 and detail["net_amount"] == 208.83
+    assert detail["accounting_preview"]["stripe_fee_amount"] == 6.04
+    assert detail["accounting_preview"]["net_amount"] == 191.96
+    assert await snapshot(sessions) == before
+
+
+@pytest.mark.parametrize("case", ["processing", "uncaptured", "refunded", "disputed", "refund_type", "failure_refund_type", "reversal_type", "source", "currency", "net"])
+@pytest.mark.asyncio
+async def test_local_payment_type_never_bypasses_incomplete_cash_or_reversal_guards(history_api, case):
+    client, sessions, fake = history_api
+    binding = await bind(client)
+    raw = fake.invoice_rows["in_history100"]
+    intent = raw["payment_intent"]
+    charge = intent["latest_charge"]
+    balance = charge["balance_transaction"]
+    balance["type"] = "payment"
+    if case == "processing": intent["status"] = "processing"
+    if case == "uncaptured": charge["captured"] = False
+    if case == "refunded": charge["amount_refunded"] = 1
+    if case == "disputed": charge["disputed"] = True
+    if case == "refund_type": balance["type"] = "payment_refund"
+    if case == "failure_refund_type": balance["type"] = "payment_failure_refund"
+    if case == "reversal_type": balance["type"] = "payment_reversal"
+    if case == "source": balance["source"] = "ch_unrelated"
+    if case == "currency": balance["currency"] = "cad"
+    if case == "net": balance["net"] = 1
+    before = await snapshot(sessions)
+    row = (await sync(client, binding))["items"][0]
+    assert row["status"] == "exception" and row["issues"]
+    detail = (await client.get(f"{API}/invoice-reviews/{row['id']}", headers=headers(1))).json()["review"]
+    assert not detail["can_confirm"]
+    response = await client.post(f"{API}/invoice-reviews/{row['id']}/confirm", headers=headers(1), json=confirmation(row["revision"]))
+    assert response.status_code == 409
+    assert await snapshot(sessions) == before
+
+
+@pytest.mark.asyncio
 async def test_cash_revalidated_at_confirmation_and_closed_month_rolls_back_everything(history_api):
     client, sessions, fake = history_api
     binding = await bind(client)

@@ -372,7 +372,11 @@ def invoice_snapshot(raw, binding):
     balance = charge.get("balance_transaction") if isinstance(charge.get("balance_transaction"), dict) else {}
     fee, net = _minor(balance.get("fee")), _minor(balance.get("net"))
     balance_id = _id(balance.get("id"), "txn_")
-    if (not balance_id or balance.get("type") != "charge" or _id(balance.get("source"), "ch_") != charge_id
+    # Stripe uses `payment` for successful local-payment charges. It is also
+    # used while asynchronous payments are pending, so this type alone is never
+    # cash proof: the invoice, succeeded intent and captured charge checks above
+    # still apply, as do the exact source, gross, currency, fee and net checks.
+    if (not balance_id or balance.get("type") not in {"charge", "payment"} or _id(balance.get("source"), "ch_") != charge_id
             or balance.get("amount") != gross or text(balance.get("currency"), 3).upper() != currency
             or fee is None or net is None or gross is None or fee > gross or net != gross - fee):
         codes.append("fee_unverified")
