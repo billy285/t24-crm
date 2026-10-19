@@ -16,6 +16,13 @@ def private(response):
     response.headers["Cache-Control"] = "private, no-store"
 
 
+@router.get("/reminders")
+async def reminders(response: Response, user: UserResponse = Depends(get_owner_user), db: AsyncSession = Depends(get_db)):
+    from services.stripe_history_daily_scan import reminders as owner_reminders
+    private(response)
+    return await owner_reminders(db, user)
+
+
 @router.get("/overview")
 async def overview(response: Response, background_tasks: BackgroundTasks, user: UserResponse = Depends(get_owner_user), db: AsyncSession = Depends(get_db)):
     private(response)

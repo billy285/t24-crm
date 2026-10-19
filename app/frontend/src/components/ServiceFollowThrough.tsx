@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { buildReturnLink, getSafeInternalPath } from '@/lib/navigation-state';
 import { useRole } from '@/lib/role-context';
 import { useAutoRefresh } from '@/lib/use-auto-refresh';
+import StripeHistoryReminders from '@/components/StripeHistoryReminders';
 import { followThroughApi, followThroughAccessDenied, followThroughDate, kickoffLastServiceDate, followThroughError, followThroughHref, type FollowThroughCoverage, type KickoffDetail, type KickoffDraft, type KickoffItem, type KickoffList, type OwnerExceptionOverview, type RenewalObservations } from '@/lib/service-follow-through';
 import './service-follow-through.css';
 
@@ -44,6 +45,7 @@ export function OwnerExceptions() {
   const items = data?.items || [];
   return <section className="sf-owner sf-panel" aria-label="老板异常总览">
     <div className="sf-heading"><div><p className="sf-kicker">销售 → 收款 → 运营 → 续费</p><h2>老板异常总览 <span>{data ? data.counts.total_actions ?? items.length : '—'}</span></h2><p>先处理需要你推动的事情</p></div><Button size="sm" variant="outline" onClick={() => void load()} disabled={loading} aria-label="刷新老板异常总览"><RefreshCw className={loading ? 'animate-spin' : ''} size={14} />刷新</Button></div>
+    <StripeHistoryReminders compact />
     {error && <div className="sf-error" role="alert">{error}{data && ' 以下为上次读取结果，请刷新后再判断。'}</div>}
     {!data && loading && <p role="status" className="sf-empty">正在读取异常事项…</p>}
     {data && <>

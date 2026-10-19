@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useRole } from '@/lib/role-context';
 import { useAutoRefresh } from '@/lib/use-auto-refresh';
+import StripeHistoryReminders from '@/components/StripeHistoryReminders';
 import { buildReturnLink } from '@/lib/navigation-state';
 import { reconciliationCycles, reconciliationDateOffset, reconciliationMoney as money, reconciliationStates, reconciliationTime, reconciliationToday, stripeReconciliationApi as api, stripeReconciliationDenied, stripeReconciliationError, type CrmStripeService, type HistoricalBindingDraft, type HistoricalBindingPreview, type HistoricalInvoiceReview, type HistoricalInvoiceSummary, type HistoricalReconciliationOverview, type HistoricalStripeBinding, type HistoricalSyncResult, type StripeSubscriptionCandidate } from '@/lib/stripe-history-reconciliation';
 import './stripe-history-reconciliation.css';
@@ -50,6 +51,7 @@ export default function StripeHistoryReconciliation() {
   if (!isOwner) return <section className="shr-panel shr-empty" role="alert"><LockKeyhole size={22} /><strong>Stripe 对账仅老板可见</strong><p>当前账号不能读取或操作公司 Stripe 财务。</p></section>;
   return <div className="shr-page" aria-label="Stripe 历史对账">
     <div className="shr-heading"><div><p className="shr-kicker">公司财务 · 仅老板</p><h2>Stripe 对账</h2><p>关联现有客户服务，核对真实到账，再决定关联原账或手动记账。</p></div><Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />刷新概览</Button></div>
+    <StripeHistoryReminders />
     <nav className="shr-nav" aria-label="Stripe 对账视图">{([['overview', '对账总览'], ['mapping', '关联客户服务'], ['reviews', '收款核对']] as const).map(([key, label]) => <button key={key} type="button" aria-current={view === key ? 'page' : undefined} onClick={() => goView(key)}>{label}</button>)}<button type="button" onClick={() => navigate('/finance?tab=income')} className="shr-return"><ArrowLeft size={13} />收入管理</button></nav>
     {error && <div className="shr-error" role="alert">{error}{data && ' 当前保留上次读取的记录，请重新读取后再判断。'}</div>}
     {loading && !data && <div role="status" className="shr-empty">正在读取 Stripe 对账记录…</div>}
