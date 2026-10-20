@@ -183,29 +183,35 @@ async def run_batch(*, sessions=None, reader=None, clock=None, max_pages=MAX_BAT
     clock = clock or now
     reader = reader or provider.reader()
     processed = failed = 0
+
+    async def bounded_loop():
+        nonlocal processed, failed
+        for _ in range(min(max_pages, MAX_BATCH_PAGES)):
+            job = await claim_page(sessions, clock())
+            if job is None:
+                break
+            try:
+                if job["range_start"] >= job["range_end"]:
+                    rows, more = [], False
+                else:
+                    rows, more = await asyncio.wait_for(reader.invoices(job["subscription_id"], int(job["range_start"].timestamp()),
+                        int(job["range_end"].timestamp()), job["cursor"]), timeout=PAGE_TIMEOUT_SECONDS)
+                if await finish_page(sessions, job, rows, more, clock()):
+                    processed += 1
+            except asyncio.CancelledError:
+                raise  # Durable lease expires; the next process resumes the page.
+            except Exception as error:
+                code = str(error) if isinstance(error, ValueError) and str(error) in {
+                    "provider_page_invalid", "invoice_scope_invalid", "provider_cursor_invalid"} else (
+                    "provider_unavailable" if isinstance(error, (HTTPException, TimeoutError, asyncio.TimeoutError)) else "scan_failed")
+                await fail_page(sessions, job, clock(), code)
+                failed += 1
+
     try:
-        async with asyncio.timeout(BATCH_SECONDS):
-            for _ in range(min(max_pages, MAX_BATCH_PAGES)):
-                job = await claim_page(sessions, clock())
-                if job is None:
-                    break
-                try:
-                    if job["range_start"] >= job["range_end"]:
-                        rows, more = [], False
-                    else:
-                        rows, more = await asyncio.wait_for(reader.invoices(job["subscription_id"], int(job["range_start"].timestamp()),
-                            int(job["range_end"].timestamp()), job["cursor"]), timeout=PAGE_TIMEOUT_SECONDS)
-                    if await finish_page(sessions, job, rows, more, clock()):
-                        processed += 1
-                except asyncio.CancelledError:
-                    raise  # Durable lease expires; the next process resumes the page.
-                except Exception as error:
-                    code = str(error) if isinstance(error, ValueError) and str(error) in {
-                        "provider_page_invalid", "invoice_scope_invalid", "provider_cursor_invalid"} else (
-                        "provider_unavailable" if isinstance(error, (HTTPException, TimeoutError)) else "scan_failed")
-                    await fail_page(sessions, job, clock(), code)
-                    failed += 1
-    except TimeoutError:
+        # wait_for supports the production Python 3.10 runtime; cancellation
+        # still rolls back an interrupted page and leaves its lease recoverable.
+        await asyncio.wait_for(bounded_loop(), timeout=BATCH_SECONDS)
+    except (TimeoutError, asyncio.TimeoutError):
         return {"processed_pages": processed, "failed_pages": failed, "deferred": True}
     return {"processed_pages": processed, "failed_pages": failed, "deferred": False}
 

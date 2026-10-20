@@ -376,7 +376,8 @@ async def test_webhook_manual_sync_and_daily_page_converge_to_one_draft(history_
 
 
 @pytest.mark.asyncio
-async def test_started_worker_catches_up_without_owner_page_and_stops_cleanly(history_api, monkeypatch):
+@pytest.mark.parametrize("python310", [False, True])
+async def test_started_worker_catches_up_without_owner_page_and_stops_cleanly(history_api, monkeypatch, python310):
     client, sessions, fake = history_api
     binding = await bind(client)
     original = await snapshot(sessions)
@@ -384,6 +385,8 @@ async def test_started_worker_catches_up_without_owner_page_and_stops_cleanly(hi
     monkeypatch.setattr(daily, "now", lambda: AT)
     monkeypatch.setattr(daily, "STARTUP_DELAY_SECONDS", 0)
     monkeypatch.setenv("STRIPE_HISTORY_DAILY_SCAN_ENABLED", "true")
+    if python310:
+        monkeypatch.delattr(asyncio, "timeout", raising=False)
     done = asyncio.Event()
     real_finish = daily.finish_page
     async def finished(*args):
