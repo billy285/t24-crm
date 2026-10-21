@@ -250,11 +250,15 @@ async def reminders(db, user):
         .where(StripeHistoryBinding.account_id == STRIPE_ACCOUNT_ID, StripeHistoryBinding.livemode.is_(True),
             StripeHistoryInvoiceReview.account_id == STRIPE_ACCOUNT_ID, StripeHistoryInvoiceReview.livemode.is_(True))
         .order_by(StripeHistoryInvoiceReview.observed_at.desc(), StripeHistoryInvoiceReview.id.desc()))).all()
+    from services.stripe_auto_posting import review_evidence
     items = []
     for review, binding, posting in selected:
         changed = bool(posting and (posting.fingerprint != review.fingerprint or review.snapshot.get("issues") or review.needs_refresh))
         kind = "exception" if changed else "needs_refresh" if review.needs_refresh else review.status
         if kind not in {"pending_review", "needs_refresh", "exception"}:
+            continue
+        auto = await review_evidence(db, review.id)
+        if kind != "exception" and auto and auto["status"] in {"queued", "retry"}:
             continue
         items.append({"id": review.id, "kind": kind, "customer_name": binding.crm_snapshot["customer_name"],
             "package_name": binding.crm_snapshot["package_name"], "title": "已核账凭据发生变化，请核对原调整流程" if changed else {
@@ -276,8 +280,10 @@ async def reminders(db, user):
     is_enabled = enabled() and os.getenv("IS_LAMBDA") != "true"
     last_status = "disabled" if not is_enabled else "no_bindings" if not active else "running" if running else "retrying" if retries else "completed" if covered == len(active) else "partial" if attempted else "never"
     exceptions = [item for item in items if item["kind"] == "exception"]
-    return {"counts": counts, "items": items[:20], "exception_items": exceptions[:20],
-        "exception_has_more": len(exceptions) > 20, "auto_accounting": False, "daily_scan": {
+    from services.stripe_auto_posting import summary as automatic_summary
+    automatic = await automatic_summary(db)
+    return {"auto_posting": automatic, "manual_pending": counts["pending_review"] + counts["needs_refresh"], "counts": counts, "items": items[:20], "exception_items": exceptions[:20],
+        "exception_has_more": len(exceptions) > 20, "auto_accounting": automatic["enabled_count"] > 0, "daily_scan": {
         "enabled": is_enabled, "timezone": "Asia/Shanghai", "daily_time": "09:00",
         "next_scheduled_at": next_scheduled(at), "last_completed_at": max(completed_dates, default=None),
         "last_run_at": utc(latest.last_attempt_at) if latest else None, "last_run_status": last_status,
@@ -288,4 +294,4 @@ async def reminders(db, user):
         "window_start": utc(latest.range_start) if latest and latest.range_start else None,
         "window_end": utc(latest.range_end) if latest and latest.range_end else None,
         "covered_through": min(complete_coverage) if len(complete_coverage) == len(active) and active else None,
-        "note": "补查仅使用专用只读连接生成待核对记录；实际税费与手续费仍需逐笔核对，不自动记账。"}}
+        "note": "补查仅使用专用只读连接生成待核对记录；历史与异常税费凭据仍由老板核对，补查本身不直接记账，已授权新账单由独立自动流程核验。"}}

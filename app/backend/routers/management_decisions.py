@@ -32,6 +32,7 @@ from services.management_decision_workflow import (
 from services.automation_monitor import automation_overview, create_task_for_issue, run_automation_scan
 from services.owner_cockpit import build_owner_cockpit
 from services.business_intelligence import build_growth_dashboard
+from services.sales_workflow_locks import lock_sales_workflow
 
 
 router = APIRouter(prefix="/api/v1/management-decisions", tags=["management-decisions"], dependencies=[Depends(get_finance_user)])
@@ -346,6 +347,7 @@ async def update_monthly_profit_close(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="月份格式必须为 YYYY-MM") from exc
     month_end = month_start.replace(day=calendar.monthrange(month_start.year, month_start.month)[1])
+    await lock_sales_workflow(db)
     row = (await db.execute(select(MonthlyProfitClose).where(
         MonthlyProfitClose.year_month == year_month,
     ))).scalar_one_or_none()

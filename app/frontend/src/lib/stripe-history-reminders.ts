@@ -1,9 +1,10 @@
+import type { StripeAutoPostingSummary } from '@/lib/stripe-auto-posting';
 export type StripeReminderKind = 'pending_review' | 'needs_refresh' | 'exception';
 export type StripeDailyScanStatus = 'disabled' | 'no_bindings' | 'never' | 'running' | 'completed' | 'partial' | 'retrying';
 
 export type StripeHistoryReminder = { id: number; kind: StripeReminderKind; customer_name: string; package_name: string; title: string; href: string; observed_at: string | null };
 export type StripeHistoryReminders = {
-  counts: Record<StripeReminderKind | 'total', number>;
+  counts: Record<StripeReminderKind | 'total', number> & { manual_pending?: number };
   items: StripeHistoryReminder[];
   exception_items: StripeHistoryReminder[];
   exception_has_more: boolean;
@@ -27,7 +28,9 @@ export type StripeHistoryReminders = {
     covered_through: string | null;
     note?: string;
   };
-  auto_accounting: false;
+  auto_accounting: boolean;
+  auto_posting?: StripeAutoPostingSummary;
+  manual_pending?: number;
 };
 
 export function reminderCount(value: unknown): number | null {

@@ -4,8 +4,9 @@ import { ArrowRight, RefreshCw } from 'lucide-react';
 import { useRole } from '@/lib/role-context';
 import { useAutoRefresh } from '@/lib/use-auto-refresh';
 import { buildReturnLink } from '@/lib/navigation-state';
-import { reconciliationTime, stripeReconciliationApi, stripeReconciliationDenied, stripeReconciliationError } from '@/lib/stripe-history-reconciliation';
+import { reconciliationMoney as money, reconciliationTime, stripeReconciliationApi, stripeReconciliationDenied, stripeReconciliationError } from '@/lib/stripe-history-reconciliation';
 import { pendingStripeReminders, reminderCount, stripeDailyScanState, stripeReminderHref, type StripeHistoryReminders as ReminderData } from '@/lib/stripe-history-reminders';
+import { autoPostingCount, autoPostingTotalsCount, safeAutoPostingTotals } from '@/lib/stripe-auto-posting';
 import './stripe-history-reminders.css';
 
 export default function StripeHistoryReminders({ compact = false }: { compact?: boolean }) {
@@ -38,7 +39,13 @@ export default function StripeHistoryReminders({ compact = false }: { compact?: 
   if (!isOwner) return null;
 
   const open = (href: string) => navigate(buildReturnLink(href, `${location.pathname}${location.search}`));
-  const pending = pendingStripeReminders(data?.counts);
+  const manualPending = data?.manual_pending ?? data?.counts?.manual_pending;
+  const pending = manualPending === undefined ? pendingStripeReminders(data?.counts) : reminderCount(manualPending);
+  const automation = data?.auto_posting;
+  const automatedToday = safeAutoPostingTotals(automation?.today_totals);
+  const automatedTodayCount = autoPostingTotalsCount(automation?.today_totals);
+  const automaticAttention = autoPostingCount(automation?.counts?.manual_required);
+  const automaticEnabled = autoPostingCount(automation?.enabled_count);
   const exceptions = reminderCount(data?.counts.exception);
   const retries = reminderCount(data?.daily_scan.retry_bindings);
   const state = stripeDailyScanState(data?.daily_scan);
@@ -56,7 +63,8 @@ export default function StripeHistoryReminders({ compact = false }: { compact?: 
       <button type="button" className="shr-reminders-refresh" aria-label="刷新 Stripe 待核提醒" disabled={loading} onClick={() => void load()}><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /><span>刷新</span></button>
     </div>
     {error ? <p className="shr-reminders-error" role="status">{error}{data && ' 当前为上次读取结果，请重新读取后再判断。'}</p> : loading && !data ? <p role="status" className="shr-reminders-meta">正在读取提醒与补查结果…</p> : <div className="shr-reminders-meta"><span className={`shr-reminders-state shr-reminders-${state.tone}`}>{state.label}</span><span>每日 09:00（北京时间）补查</span>{scan?.last_run_at && <span>最近运行 {reconciliationTime(scan.last_run_at)}</span>}{scan && <span>{discovered === null ? '新账单数待确认' : `发现新账单 ${discovered} 笔`}</span>}</div>}
+    {data && <div className="shr-reminders-automation" aria-label="Stripe 自动入账摘要"><button type="button" onClick={() => open('/finance?tab=stripe_reconciliation&stripe_view=reviews&stripe_status=auto_posted')}><span>今日自动入账</span><strong>{countText(automatedTodayCount)}<small> 笔</small></strong><span>{automatedToday === null ? '服务收入待确认' : automatedToday.length ? `服务收入 ${automatedToday.map(item => money(item.amount, item.currency)).join(' · ')}` : '暂无新增'}</span></button><button type="button" className={automaticAttention ? 'shr-reminders-attention' : ''} onClick={() => open('/finance?tab=stripe_reconciliation&stripe_view=auto&stripe_auto_status=manual_required')}><span>自动记账待处理</span><strong>{countText(automaticAttention)}</strong></button><button type="button" className="shr-reminders-manage" onClick={() => open('/finance?tab=stripe_reconciliation&stripe_view=auto')}>{automaticEnabled === null ? '查看自动入账设置' : `${automaticEnabled} 项服务已开启`}<ArrowRight size={12} /></button></div>}
     {showExceptions && data && <div id={exceptionId} className="shr-reminders-exceptions" role="region" aria-label="Stripe 异常清单"><p>异常账单直接逐笔核对；已入账凭据变化需检查原账的调整流程。</p>{Array.isArray(data.exception_items) ? data.exception_items.length ? data.exception_items.map(item => { const href = stripeReminderHref(item.href); return <button type="button" className="shr-reminders-item" key={item.id} disabled={!href} onClick={() => href && open(href)}><span><strong>{item.customer_name || '客户待确认'}</strong><small>{item.package_name || '服务待确认'} · {item.title || '待老板核对'}</small></span><ArrowRight size={14} /></button>; }) : <p>{exceptions === 0 ? '当前已读取记录暂无异常。' : '异常清单待确认，请刷新后再核对。'}</p> : <p>异常清单待确认，请刷新后再核对。</p>}{data.exception_has_more && <p>先处理最近 20 条异常，其余事项仍保留。</p>}</div>}
-    {!compact && data && <details className="shr-reminders-details"><summary>查看补查进度与待核事项 <ArrowRight size={13} /></summary><div className="shr-reminders-details-body"><p>已补查 {countText(reminderCount(scan?.covered_bindings))}/{countText(reminderCount(scan?.active_bindings))} 个已关联服务{scan?.next_scheduled_at && ` · 下次 ${reconciliationTime(scan.next_scheduled_at)}`}</p>{scan?.covered_through ? <p>全部已关联服务共同覆盖至 {reconciliationTime(scan.covered_through)}（北京时间，按账单创建时间）</p> : <p>尚未确认全部已关联服务的完整补查范围。</p>}<p>补查只生成待核对账单；实际到账、税费和是否入账仍由你逐笔核对。</p>{data.items.slice(0, 3).map(item => { const href = stripeReminderHref(item.href); return <button type="button" className="shr-reminders-item" key={item.id} disabled={!href} onClick={() => href && open(href)}><span><strong>{item.customer_name || '客户待确认'}</strong><small>{item.package_name || '服务待确认'} · {item.title || '待老板核对'}</small></span><ArrowRight size={14} /></button>; })}</div></details>}
+    {!compact && data && <details className="shr-reminders-details"><summary>查看补查进度与待核事项 <ArrowRight size={13} /></summary><div className="shr-reminders-details-body"><p>已补查 {countText(reminderCount(scan?.covered_bindings))}/{countText(reminderCount(scan?.active_bindings))} 个已关联服务{scan?.next_scheduled_at && ` · 下次 ${reconciliationTime(scan.next_scheduled_at)}`}</p>{scan?.covered_through ? <p>全部已关联服务共同覆盖至 {reconciliationTime(scan.covered_through)}（北京时间，按账单创建时间）</p> : <p>尚未确认全部已关联服务的完整补查范围。</p>}<p>补查补齐账单证据。已授权服务的新账单通过原规则后可自动入账；历史账单、支票和异常仍由你确认。</p>{data.items.slice(0, 3).map(item => { const href = stripeReminderHref(item.href); return <button type="button" className="shr-reminders-item" key={item.id} disabled={!href} onClick={() => href && open(href)}><span><strong>{item.customer_name || '客户待确认'}</strong><small>{item.package_name || '服务待确认'} · {item.title || '待老板核对'}</small></span><ArrowRight size={14} /></button>; })}</div></details>}
   </section>;
 }

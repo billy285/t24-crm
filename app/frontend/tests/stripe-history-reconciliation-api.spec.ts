@@ -78,7 +78,7 @@ test('真实隔离 API：手选关联→同区间去重试点→老板开放批�
     await dialog.getByLabel('同步开始日期', { exact: true }).fill('2026-10-01');
     await dialog.getByLabel('同步结束日期（不含）', { exact: true }).fill('2026-10-19');
     await dialog.getByRole('button', { name: '读取本区间账单', exact: true }).click();
-    await expect(dialog.getByText('本页已读取 1 笔 · 尚未记账')).toBeVisible();
+    await expect(dialog.getByText('本页已读取 1 笔')).toBeVisible();
     await dialog.getByRole('button', { name: '再次同步本区间（去重核验）', exact: true }).click();
     await expect(dialog.getByRole('button', { name: '再次同步本区间（去重核验）', exact: true })).toBeEnabled();
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();

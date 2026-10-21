@@ -1,7 +1,8 @@
-"""Explicit historical bindings and owner-reviewed receipts, never auto-accounting.
+"""Explicit historical bindings and original financial receipt checks.
 
-Provider data is minimal, scoped by owner-approved identities, and kept separate
-from financial rows until a fresh cash check and explicit owner confirmation.
+Provider data is minimal and scoped by owner-approved identities. Historical
+receipts require owner confirmation; separately authorized new invoices share
+the same cash, duplicate, close and original financial checks.
 """
 import asyncio
 import hashlib
@@ -35,7 +36,7 @@ from services.service_follow_through import _effective_legacy_subscriptions, day
 PILOT_LIMIT = 5
 ACTIVE_CRM = {"active", "trialing", "past_due", "expiring_soon", "renewal_pending", "expired"}
 REVIEW_STATES = ("pending_review", "needs_refresh", "exception", "confirmed", "linked_existing")
-NOTE = "系统仅自动收集待核账。正式入账始终由老板确认；原财务服务费、手续费、关账和分润规则不变。历史付款不会自动补记。"
+NOTE = "历史付款保留老板核对；已单独授权服务的正常新账单可自动入账。原财务服务费、手续费、关账和分润规则不变。"
 ISSUES = {
     "subscription_identity": "订阅关联编号不完整或冲突", "customer_identity": "付款客户与绑定客户不一致", "currency_mismatch": "币种与绑定不一致",
     "not_paid": "账单尚未付清", "out_of_band": "账单含外部手工标记付款，无法证明实际扣款", "non_cash_credit": "账单含余额、抵扣或贷项，需单独核对",
@@ -430,6 +431,8 @@ async def save_invoice(db, binding, raw):
             row.status = "exception" if snapshot["issues"] else "pending_review"
     row.needs_refresh = False
     await db.flush()
+    from services.stripe_auto_posting import enqueue_review
+    await enqueue_review(db, row, binding)
     return row
 
 
@@ -530,7 +533,7 @@ async def observe_history_event(db, event, body):
         if row and row.binding_id != binding.id:
             raise HTTPException(409, "账单通知关联冲突")
         if not row:
-            snapshot = {"stripe_invoice_id": invoice_id, "issues": ["provider_verification_required"]}
+            snapshot = {"stripe_invoice_id": invoice_id, "invoice_created": created.isoformat(), "issues": ["provider_verification_required"]}
             db.add(StripeHistoryInvoiceReview(account_id=STRIPE_ACCOUNT_ID, livemode=True, stripe_invoice_id=invoice_id,
                 binding_id=binding.id, status="needs_refresh", snapshot=snapshot, fingerprint=digest(snapshot), revision=1, needs_refresh=True))
         else:
@@ -553,6 +556,11 @@ async def observe_history_event(db, event, body):
     db.add(StripeHistoryEvent(event_id=event["id"], binding_id=binding.id, event_type=event["type"], resource_key=resource_key,
         signal_status=signal_status, details=details, payload_digest=payload_digest, stripe_created_at=_instant(event["created"])))
     await db.flush()
+    if event["type"].startswith("invoice."):
+        queued = await db.scalar(select(StripeHistoryInvoiceReview).where(StripeHistoryInvoiceReview.stripe_invoice_id == resource_key, StripeHistoryInvoiceReview.binding_id == binding.id))
+        if queued:
+            from services.stripe_auto_posting import enqueue_review
+            await enqueue_review(db, queued, binding)
 
 
 def review_summary(row, binding):
@@ -638,6 +646,8 @@ async def detail(db, review_id, user):
     row, binding = await get_review(db, review_id, user)
     value = row.snapshot
     summary = review_summary(row, binding)
+    from services.stripe_auto_posting import review_evidence
+    summary["auto_posting"] = await review_evidence(db, row.id)
     candidate_rows = await existing_candidates(db, binding, value) if value.get("service_minor") is not None else []
     posting = await db.get(StripeHistoryPosting, row.id)
     reason = None
@@ -675,7 +685,22 @@ async def reviews(db, user, status="all"):
     bindings = {row.id: row for row in (await db.scalars(select(StripeHistoryBinding))).all()}
     counts = {"all": len(rows), **{state: sum(row.status == state for row in rows) for state in REVIEW_STATES}}
     selected = rows if status == "all" else [row for row in rows if row.status == status]
-    return {"items": [review_summary(row, bindings[row.binding_id]) for row in selected], "counts": counts, "total": len(selected)}
+    from services.stripe_auto_posting import review_evidence
+    items = []
+    automatic = 0
+    manual_pending = 0
+    for row in rows:
+        evidence = await review_evidence(db, row.id)
+        if evidence and evidence["status"] == "auto_posted":
+            automatic += 1
+        if row.status in {"pending_review", "needs_refresh"} and not (evidence and evidence["status"] in {"queued", "retry"}):
+            manual_pending += 1
+        if row in selected:
+            items.append({**review_summary(row, bindings[row.binding_id]), "auto_posting": evidence})
+    counts["auto_posted"] = automatic
+    counts["manual_confirmed"] = counts["confirmed"] - automatic
+    counts["manual_pending"] = manual_pending
+    return {"items": items, "counts": counts, "total": len(selected)}
 
 
 async def refresh_review(db, review_id, user):
@@ -723,9 +748,19 @@ async def confirm_invoice(db, review_id, payload, user):
         if existing_post.action != payload.action or (payload.action == "link_existing" and existing_post.payment_id != payload.existing_payment_id):
             raise HTTPException(409, "该账单已经确认，不能覆盖原核对结果")
         return {**await detail(db, row.id, user), "payment_id": existing_post.payment_id, "idempotent_replay": True}
+    return await apply_verified_invoice(db, row, binding, fresh, revision=payload.revision, action=payload.action,
+        existing_payment_id=payload.existing_payment_id, verification_note=payload.verification_note, user=user)
+
+
+async def apply_verified_invoice(db, row, binding, fresh, *, revision, action, existing_payment_id, verification_note, user, source="owner"):
+    """Shared original ledger transaction; caller holds workflow lock and authority.
+
+    No provider notification alone reaches this function. Both callers require
+    the same fresh cash evidence, collision, closing and original commission checks.
+    """
     if binding.status != "active" or not await binding_context_matches(db, binding):
         raise HTTPException(409, "绑定或 CRM 服务关联已变化，未记账")
-    if row.revision != payload.revision or digest(fresh) != row.fingerprint:
+    if row.revision != revision or digest(fresh) != row.fingerprint:
         raise HTTPException(409, "付款依据已变化，请先刷新账单并重新核对，未记账")
     if fresh["issues"] or row.status != "pending_review":
         raise HTTPException(409, "尚无一致的实际扣款、税费及净额证明，不能入账")
@@ -735,9 +770,12 @@ async def confirm_invoice(db, review_id, payload, user):
         raise HTTPException(409, "同一实际扣款已用于其他账单，未重复入账")
     candidates = await existing_candidates(db, binding, fresh)
     ledger = accounting_payload(binding, fresh, user)
+    if source == "system_auto":
+        ledger["recorded_by"] = "系统自动入账（授权：" + user.name + "）"
+        ledger["notes"] = "已授权订阅的新账单由系统核验实际扣款后自动入账；税及实际手续费独立留存，沿用原财务公式"
     await ensure_payment_writes_open(db, [ledger], action="确认历史 Stripe 收款")
-    if payload.action == "create_payment":
-        if payload.existing_payment_id is not None:
+    if action == "create_payment":
+        if existing_payment_id is not None:
             raise HTTPException(400, "新增收款不能同时指定原记录")
         if candidates:
             raise HTTPException(409, "已有可能对应的手工或系统收款，请先选择原记录核对，未重复新增")
@@ -758,7 +796,7 @@ async def confirm_invoice(db, review_id, payload, user):
                 raise HTTPException(409, "原分润流程识别的业务归属不同，未记账，请先核对")
         row.status = "confirmed"
     else:
-        payment = await db.get(Payments, payload.existing_payment_id, populate_existing=True) if payload.existing_payment_id else None
+        payment = await db.get(Payments, existing_payment_id, populate_existing=True) if existing_payment_id else None
         if not payment or payment.id not in {item.id for item in candidates}:
             raise HTTPException(409, "所选原收款不属于本次待核账候选，不能关联")
         validate_existing(payment, binding, fresh)
@@ -767,10 +805,17 @@ async def confirm_invoice(db, review_id, payload, user):
             raise HTTPException(409, "原收款已经关联另一张账单，不能重复使用")
         row.status = "linked_existing"
     db.add(StripeHistoryPosting(review_id=row.id, account_id=STRIPE_ACCOUNT_ID, livemode=True, stripe_charge_id=fresh["stripe_charge_id"],
-        payment_id=payment.id, action=payload.action, fingerprint=row.fingerprint, verified_by_id=int(user.id), verified_by_name=user.name,
-        verification_note=payload.verification_note))
-    audit(db, user, "invoice_confirmed", {"action": payload.action, "payment_id": payment.id, "fingerprint": row.fingerprint,
-        "verification_note": payload.verification_note}, binding.id, row.id)
+        payment_id=payment.id, action="auto_create_payment" if source == "system_auto" else action, fingerprint=row.fingerprint, verified_by_id=int(user.id), verified_by_name="系统自动（授权：" + user.name + "）" if source == "system_auto" else user.name,
+        verification_note=verification_note))
+    audit(db, user, "invoice_auto_posted" if source == "system_auto" else "invoice_confirmed", {"source": source, "authorized_by_id": int(user.id), "action": action, "payment_id": payment.id, "fingerprint": row.fingerprint,
+        "verification_note": verification_note}, binding.id, row.id)
+    if source == "owner":
+        from models.stripe_auto_posting import StripeAutoPostingJob
+        auto_job = await db.get(StripeAutoPostingJob, row.id)
+        if auto_job:
+            auto_job.status, auto_job.payment_id, auto_job.processed_at = "manual_completed", payment.id, now()
+            auto_job.reason_code, auto_job.reason = "owner_processed", "已由老板人工核对处理"
+            auto_job.retry_at = auto_job.lease_token = auto_job.lease_until = None
     row.revision += 1
     await db.flush()
     return {**await detail(db, row.id, user), "payment_id": payment.id, "idempotent_replay": False}
@@ -781,8 +826,10 @@ async def overview(db, user):
     bindings = (await db.scalars(select(StripeHistoryBinding).order_by(StripeHistoryBinding.id.desc()))).all()
     invoice_reviews = await reviews(db, user)
     configured = bool(provider.read_secret())
-    return {"configured": configured, "provider_status": "configured" if configured else "not_configured", "auto_accounting": False,
-        "pilot": await pilot(db), "counts": {"bindings": len(bindings), **{state: invoice_reviews["counts"][state] for state in REVIEW_STATES}},
+    from services.stripe_auto_posting import summary as automatic_summary
+    automatic = await automatic_summary(db)
+    return {"configured": configured, "provider_status": "configured" if configured else "not_configured", "auto_accounting": automatic["enabled_count"] > 0,
+        "pilot": await pilot(db), "counts": {"bindings": len(bindings), **invoice_reviews["counts"]},
         "bindings": [binding_data(row) for row in bindings], "invoice_reviews": invoice_reviews["items"][:100], "scope_note": NOTE}
 
 
