@@ -24,6 +24,17 @@ export type StripeAutoPostingJob = {
 export const stripeAutoPostingLabels: Record<StripeAutoPostingStatus, string> = {
   queued: '等待系统核验', retry: '凭据待重试', manual_required: '待你处理', auto_posted: '已自动入账', manual_completed: '已人工处理',
 };
+export function autoPostingTime(value?: string | null): string {
+  if (!value) return '尚无记录';
+  const timestamp = /^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?)(Z|[+-]\d{2}:\d{2})?$/.exec(value.trim());
+  if (!timestamp) return value;
+  // Auto-posting DB timestamps are UTC, including SQLite's timezone-less ISO values.
+  const datetime = timestamp[1].replace(' ', 'T').replace(/(\.\d{3})\d+$/, '$1');
+  const parsed = new Date(`${datetime}${timestamp[2] || 'Z'}`);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+}
 export function validAutoPostingSelection(ids: number[], policies: StripeAutoPostingPolicy[], limit = 5): boolean {
   if (!Number.isSafeInteger(limit) || limit < 3) return false;
   if (ids.length < 3 || ids.length > Math.min(limit, 5) || new Set(ids).size !== ids.length) return false;

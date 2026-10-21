@@ -1,12 +1,37 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import ts from 'typescript';
 
 const source = await readFile(new URL('../src/lib/stripe-auto-posting.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-const { validAutoPostingSelection, canEnableAutoPosting, safeAutoPostingTotals, autoPostingCount, autoPostingTotalsCount, isAutoPostedReview, isAwaitingAutoPosting } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const moduleUrl = `data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`;
+const { autoPostingTime, validAutoPostingSelection, canEnableAutoPosting, safeAutoPostingTotals, autoPostingCount, autoPostingTotalsCount, isAutoPostedReview, isAwaitingAutoPosting } = await import(moduleUrl);
 const policies = Array.from({ length: 7 }, (_, index) => ({ binding_id: index + 1, eligible: true, enabled: false, trial: { passed: true } }));
+
+test('自动入账 UTC 时间在不同时区浏览器均显示同一北京时间，已有偏移不重复换算', () => {
+  const values = [
+    '2026-10-21T00:58:00',
+    '2026-10-21 00:58:00.123456',
+    '2026-10-21T00:58:00Z',
+    '2026-10-21T00:58:00+00:00',
+    '2026-10-21T08:58:00+08:00',
+    '2026-10-20T17:58:00-07:00',
+    '2026-10-21T20:58:00',
+  ];
+  for (const timezone of ['UTC', 'Asia/Shanghai', 'America/Los_Angeles']) {
+    const script = `import { autoPostingTime } from ${JSON.stringify(moduleUrl)}; process.stdout.write(JSON.stringify(${JSON.stringify(values)}.map(autoPostingTime)));`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, TZ: timezone }, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), Array(6).fill('10/21 08:58').concat('10/22 04:58'), timezone);
+  }
+});
+
+test('自动入账缺失或不完整时间不会伪造为生效时间', () => {
+  for (const value of [undefined, null, '']) assert.equal(autoPostingTime(value), '尚无记录');
+  for (const value of ['待确认', '2026-10-21', '2026-13-21T00:58:00', '2026-10-21T25:58:00']) assert.equal(autoPostingTime(value), value);
+});
 
 test('模拟只允许三至五项有效且未启用的不同服务', () => {
   assert.equal(validAutoPostingSelection([1, 2, 3], policies), true);
