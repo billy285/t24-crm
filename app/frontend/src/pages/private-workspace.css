@@ -546,6 +546,7 @@
   .pw-mobile-crm-exit strong { color: var(--pw-text); font-size: 14px; }
   .pw-mobile-crm-exit small { font-size: 11px; }
 }
+@media (max-width: 767px) { .pw-mobile-crm-exit { margin-bottom: 24px; } }
 @media (pointer: coarse) { .pw-private-back { min-height: 44px; } }
 
 /* Action-first shell: concise chrome and source details on demand. */
