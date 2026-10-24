@@ -1,0 +1,42 @@
+{
+  "allowed_application_files": [
+    "app/frontend/src/components/homepage-refined.css",
+    "app/frontend/src/pages/private-workspace.css"
+  ],
+  "application_service_restarts": false,
+  "database_mutations": false,
+  "files": {
+    "baseline-command.sh": {
+      "bytes": 6034,
+      "sha256": "f2b1fadd18f456d45ab1fdc762b9d3a039042d239ea10f5132c79beab003125e"
+    },
+    "baseline.py": {
+      "bytes": 5969,
+      "sha256": "7065c19a87e1140c09818ab32361d009ac05611e4f62d74a8cd31f1aaec81db0"
+    },
+    "build_package.py": {
+      "bytes": 5738,
+      "sha256": "799076a55be9207531abeb37af770555a6708d42d46fed00d11c961e30fd624c"
+    },
+    "make_commands.py": {
+      "bytes": 4496,
+      "sha256": "120c72e8872c2adec3b8e6cd8eec2f25d8f00febaf243ca8187ba835feea2bb1"
+    },
+    "static_release.py": {
+      "bytes": 10854,
+      "sha256": "741df37272a287865ed28b6284a29cb0a7254770274167cc3b968dbe768980a0"
+    },
+    "test_tools.py": {
+      "bytes": 4939,
+      "sha256": "da570212d0013ca9a5b00f749049fee4b694c0d75ee141f61bf4eb1f3e7fa93e"
+    }
+  },
+  "financial_row_queries": false,
+  "fresh_production_baseline_required": true,
+  "guard_tests": {
+    "passed": 8,
+    "production_executed": false
+  },
+  "independent_review": "PASS; published baseline sourceVersion binding and recovery reload/public-version issues fixed; no remaining P1/P2 found",
+  "stage": "MOBILE_SPACING_STATIC_TOOL_FREEZE"
+}

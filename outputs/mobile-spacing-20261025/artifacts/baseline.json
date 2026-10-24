@@ -1,0 +1,77 @@
+{
+  "database_or_service_mutations": false,
+  "databases": {
+    "business": {
+      "identity": {
+        "device": 64515,
+        "gid": 0,
+        "inode": 262854,
+        "mode": 420,
+        "uid": 0
+      },
+      "revisions": [
+        "f3c7d1a9b456"
+      ],
+      "schema_sha256": "3633fa48c7b84ff585f600fa873e1c67bf4c80578715d9dd1d9cfcea709545d7",
+      "table_count": 114
+    },
+    "private": {
+      "identity": {
+        "device": 64515,
+        "gid": 0,
+        "inode": 282885,
+        "mode": 384,
+        "uid": 0
+      },
+      "revisions": [],
+      "schema_sha256": "1186db8bcb86c7a7914fe1c9a094bdf21d9d21721daa7c9fbcfce75d3c230175",
+      "table_count": 20
+    }
+  },
+  "environment_or_key_files_read": false,
+  "financial_rows_read": false,
+  "frontend_version": "c2c41687674b",
+  "host": "iZj6c4cj7edgnhdimts4l7Z",
+  "nginx_sha256": "3f3e8f63710c0075284c0fdc544ea4593eb1abfff5894bb4a1d6b549a564fa88",
+  "observed_at": "2026-10-24T18:34:31.243081+00:00",
+  "provider_requests": false,
+  "public_file_count": 3584,
+  "public_inventory_sha256": "a061ba1264285cd0874d3d68bbd2951d8f63dc1a8e626e6734d8826a04d1f7b0",
+  "public_root": "/var/www/t24-crm-public/stripe-auto-timezone-61a78a02508d-20261021",
+  "roles": {
+    "crm": {
+      "config_sha256": "d5752ec943a41f2bd0ed04f21bcb0cc5b89e44556e0784b92cb6621e2034d274",
+      "id": "f8466421608347758844f0d427aa1b6ace3f3ef3cf25fd1f2661fcc522b36cf8",
+      "image": "sha256:a7c5a0c1e968142694eb27ab4c26e6fead20a72faa0bd919ae699bf2e98c182b",
+      "restart": 0,
+      "source_labels": {
+        "t24.release.scope": "stripe-autopost",
+        "t24.release.source": "515bd526f087891e4b2ca586508ed7a47c39956e"
+      },
+      "started": "2026-10-21T00:55:33.502677645Z"
+    },
+    "private_api": {
+      "config_sha256": "04160cf058e2e8b47b719e731a813af4bdb12144850680b50ed2ec00dd5491e2",
+      "id": "f8644b043b7f9d8e57190a8e7f411291ccb0814871428891e00e77cb74974d6b",
+      "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+      "restart": 0,
+      "source_labels": {
+        "t24.private.role": "api",
+        "t24.private.source.sha": "1a9232dcc04a6d09d0f4f60193c693bbb6243476"
+      },
+      "started": "2026-10-11T23:58:43.773320701Z"
+    },
+    "private_worker": {
+      "config_sha256": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+      "id": "7f7930d5ea468765c404a163ecb0cb4d2935b793ad4435efc8ca8aa782772cab",
+      "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+      "restart": 0,
+      "source_labels": {
+        "t24.private.role": "worker",
+        "t24.private.source.sha": "1a9232dcc04a6d09d0f4f60193c693bbb6243476"
+      },
+      "started": "2026-10-11T23:58:58.055948866Z"
+    }
+  },
+  "stage": "MOBILE_SPACING_FRESH_READONLY_BASELINE"
+}
