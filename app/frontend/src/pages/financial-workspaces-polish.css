@@ -142,3 +142,11 @@
 @media (prefers-reduced-motion: reduce) {
   .financial-workspace *, .financial-workspace-form * { scroll-behavior: auto; }
 }
+/* A fixed layer must not inherit vertical spacing from its page's stacked sections. */
+.t24-system.app-shell[data-crm-polish="20261026"] .payroll-dialog-layer {
+  margin: 0;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  box-sizing: border-box;
+}

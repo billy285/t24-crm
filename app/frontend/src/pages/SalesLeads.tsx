@@ -847,7 +847,7 @@ function SalesLeadWorkspace() {
       </Sheet>
 
       <Dialog open={showForm && !followUpOnly} onOpenChange={closeForm}>
-        <CrmFormDialogContent className="sales-center-ui slr-details-dialog crm-sales-dialog-polish">
+        <CrmFormDialogContent className="sales-center-ui slr-details-dialog max-w-3xl crm-sales-dialog-polish">
 <CrmFormDialogHeader><DialogTitle>{editing ? (canManage ? '编辑销售线索' : '记录跟进结果') : '新增销售线索'}</DialogTitle></CrmFormDialogHeader>
 <CrmFormDialogBody className="crm-sales-dialog-body"><fieldset disabled={saving || followUpSaving} className="grid min-w-0 gap-4 sm:grid-cols-2">
             {canManage && <>
