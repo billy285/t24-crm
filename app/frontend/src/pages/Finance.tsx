@@ -1,3 +1,4 @@
+import './financial-workspaces-polish.css';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { client } from '../lib/api';
@@ -10,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CrmFormDialogBody, CrmFormDialogContent, CrmFormDialogFooter, CrmFormDialogHeader, Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { CrmFormDialogBody, CrmFormDialogContent, CrmFormDialogFooter, CrmFormDialogHeader, Dialog, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
@@ -4430,7 +4431,7 @@ function FinanceWorkspace() {
   }
 
   return (
-    <div className={isMobile ? 'min-w-0' : `t24-command-page t24-finance-page calm-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
+    <div className={isMobile ? 'financial-workspace financial-workspace--finance min-w-0' : `financial-workspace financial-workspace--finance t24-command-page t24-finance-page calm-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
       {contextCustomerId && <div className="finance-context-bar"><span>客户：{customerMap[contextCustomerId]?.business_name || `#${contextCustomerId}`} · 原始收支</span><div>{contextReturnTo?.startsWith('/finance') && <Button variant="outline" onClick={() => navigate(contextReturnTo)}>返回客户利润</Button>}<Button variant="ghost" onClick={() => { const params = new URLSearchParams(searchParams); params.delete('customer_id'); params.delete('returnTo'); setSearchParams(params); }}>查看全部客户</Button></div></div>}
       {isMobile && !contextCustomerId && contextReturnTo?.startsWith('/finance') && <Button variant="outline" className="mb-3" onClick={() => navigate(contextReturnTo)}>返回月度检查</Button>}
       {isMobile && financeIssueFilter && <div className="finance-context-bar"><span>正在查看：{financeIssueCopy[financeIssueFilter]?.label || '待处理明细'}</span><Button variant="ghost" onClick={() => { setFinanceIssueFilter(null); const params = new URLSearchParams(searchParams); params.delete('issue'); setSearchParams(params, { replace: true }); }}>清除检查条件</Button></div>}
@@ -5896,11 +5897,9 @@ function FinanceWorkspace() {
           }
         }}
       >
-        <DialogContent className="mobile-finance-editor calm-renewal-confirm max-w-md">
-          <DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-md"><CrmFormDialogHeader>
             <DialogTitle>核对实际到账</DialogTitle>
-          </DialogHeader>
-          {subscriptionRenewalTarget && (() => {
+          </CrmFormDialogHeader>{subscriptionRenewalTarget && (() => {
             const isAutomaticRenewal = Boolean(subscriptionRenewalTarget.auto_renew);
             const plannedDate = getSubscriptionPlannedPaymentDate(subscriptionRenewalTarget);
             const serviceStartDate = toDateOnly(subscriptionRenewalTarget.end_date) || plannedDate;
@@ -5912,7 +5911,7 @@ function FinanceWorkspace() {
               : 0;
             const monthClosed = isFinanceMonthClosed(actualDate);
             return (
-              <div className="space-y-4">
+              <><CrmFormDialogBody><div className="space-y-4">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="font-semibold text-slate-800">{subscriptionRenewalTarget.customer_name || customerMap[subscriptionRenewalTarget.customer_id]?.business_name || '-'}</p>
                   <p className="mt-1 text-sm text-slate-600">{subscriptionRenewalTarget.package_name || '订阅套餐'} · {fmt(amount)}</p>
@@ -5976,7 +5975,7 @@ function FinanceWorkspace() {
                   </div>
                 )}
                 <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-6 text-blue-900">仅在核对实际到账后确认。登记会新增收款记录，并按原服务到期日衔接续费周期；本窗口不发起扣款。</div>
-                <div className="flex justify-end gap-2">
+                </div></CrmFormDialogBody><CrmFormDialogFooter>
                   <Button
                     type="button"
                     variant="outline"
@@ -6004,11 +6003,9 @@ function FinanceWorkspace() {
                       ? '确认中...'
                       : '确认已到账并登记'}
                   </Button>
-                </div>
-              </div>
+                </CrmFormDialogFooter></>
             );
-          })()}
-        </DialogContent>
+          })()}</CrmFormDialogContent>
       </Dialog>
 
       {/* Subscription Package Change */}
@@ -6022,12 +6019,10 @@ function FinanceWorkspace() {
           }
         }}
       >
-        <DialogContent className="mobile-finance-editor max-w-lg">
-          <DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader>
             <DialogTitle>套餐变更</DialogTitle>
-          </DialogHeader>
-          {subscriptionChangeTarget && (
-            <div className="space-y-4">
+          </CrmFormDialogHeader>{subscriptionChangeTarget && (
+            <><CrmFormDialogBody><div className="space-y-4">
               <div className="rounded-xl border border-violet-100 bg-violet-50/70 p-4">
                 <p className="text-xs font-medium text-violet-600">即将归档的旧套餐</p>
                 <p className="mt-1 font-semibold text-slate-800">
@@ -6101,7 +6096,7 @@ function FinanceWorkspace() {
                 确认后，旧套餐会标记为“已升级结束”并停止未来续费；所选新套餐保持现有金额、周期和到期日，不会重复生成收款。
               </div>
 
-              <div className="flex justify-end gap-2">
+              </div></CrmFormDialogBody><CrmFormDialogFooter>
                 <Button
                   type="button"
                   variant="outline"
@@ -6119,21 +6114,17 @@ function FinanceWorkspace() {
                   <ArrowRightLeft className="mr-1.5 h-4 w-4" />
                   {changingSubscriptionPackage ? '处理中...' : '确认套餐变更'}
                 </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
+              </CrmFormDialogFooter></>
+          )}</CrmFormDialogContent>
       </Dialog>
 
       </>
 
       {/* Customer Profit Detail */}
       <Dialog open={!!profitDetailTarget} onOpenChange={(v) => { if (!v) setProfitDetailTarget(null); }}>
-        <DialogContent className="mobile-finance-editor max-w-6xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-6xl"><CrmFormDialogHeader>
             <DialogTitle>客户利润详情</DialogTitle>
-          </DialogHeader>
-          {selectedProfitDetail && (
+          </CrmFormDialogHeader><CrmFormDialogBody>{selectedProfitDetail && (
             <div className="space-y-4">
               <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -6311,8 +6302,7 @@ function FinanceWorkspace() {
                 </CardContent>
               </Card>
             </div>
-          )}
-        </DialogContent>
+          )}</CrmFormDialogBody></CrmFormDialogContent>
       </Dialog>
 
       <>
@@ -6562,8 +6552,7 @@ function FinanceWorkspace() {
       </Dialog>
 
       <Dialog open={showIncomeTypeManager} onOpenChange={(v) => { if (!v && !allowFinanceClose('incomeTypes')) return; setShowIncomeTypeManager(v); if (!v) setNewIncomeTypeName(''); }}>
-        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>管理收入类型</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>管理收入类型</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Input
@@ -6613,18 +6602,16 @@ function FinanceWorkspace() {
               管理费会参与管理费扣点；投流充值属于客户资金，不直接算公司收入。「管理费+投流费」用于一笔收款同时包含两类金额，月底在投流月结里确认实际支出、结余和差价。
             </p>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          </CrmFormDialogBody><CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (allowFinanceClose('incomeTypes')) setShowIncomeTypeManager(false); }}>取消</Button>
             <Button onClick={handleSaveIncomeTypes} disabled={savingIncomeTypes} className="bg-blue-600 hover:bg-blue-700">
               {savingIncomeTypes ? '保存中...' : '保存类型'}
             </Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={showPaymentPackageManager} onOpenChange={(v) => { if (!v && !allowFinanceClose('packages')) return; setShowPaymentPackageManager(v); if (!v) setNewPaymentPackageName(''); }}>
-        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>管理收款套餐</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>管理收款套餐</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Input
@@ -6657,18 +6644,16 @@ function FinanceWorkspace() {
             </div>
             <p className="text-xs text-slate-500">这里维护的套餐会同步用于客户意向套餐、成交录入和财务收款选择。</p>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          </CrmFormDialogBody><CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (allowFinanceClose('packages')) setShowPaymentPackageManager(false); }}>取消</Button>
             <Button onClick={handleSavePaymentPackages} disabled={savingPaymentPackages} className="bg-blue-600 hover:bg-blue-700">
               {savingPaymentPackages ? '保存中...' : '保存套餐'}
             </Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={showCustomerExpenseTypeManager} onOpenChange={(v) => { if (!v && !allowFinanceClose('expenseTypes')) return; setShowCustomerExpenseTypeManager(v); if (!v) setNewCustomerExpenseTypeName(''); }}>
-        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>管理客户支出类型</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>管理客户支出类型</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Input
@@ -6705,19 +6690,17 @@ function FinanceWorkspace() {
             </div>
             <p className="text-xs text-slate-500">客户支出类型用于绑定网站、域名、主机/服务器、设计制作等客户专属成本。投流成本统一在「投流月结」处理。</p>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          </CrmFormDialogBody><CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (allowFinanceClose('expenseTypes')) setShowCustomerExpenseTypeManager(false); }}>取消</Button>
             <Button onClick={handleSaveCustomerExpenseTypes} disabled={savingCustomerExpenseTypes} className="bg-blue-600 hover:bg-blue-700">
               {savingCustomerExpenseTypes ? '保存中...' : '保存'}
             </Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       {/* Customer Expense Form */}
       <Dialog open={showExpenseForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowExpenseForm(v); if (!v) { setEditingExpenseId(null); setExpenseForm(emptyExpenseForm); } }}>
-        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingExpenseId ? '编辑客户支出' : '录入客户支出'}</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>{editingExpenseId ? '编辑客户支出' : '录入客户支出'}</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div>
               <Label>选择客户 *</Label>
@@ -6776,17 +6759,15 @@ function FinanceWorkspace() {
             </div>
             <div><Label>备注</Label><Textarea value={expenseForm.notes} onChange={e => setExpenseForm({ ...expenseForm, notes: e.target.value })} rows={2} /></div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          </CrmFormDialogBody><CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowExpenseForm(false); }}>取消</Button>
             <Button onClick={handleSaveExpense} disabled={savingExpense} className="bg-blue-600 hover:bg-blue-700">{savingExpense ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       {/* Company Expense Form */}
       <Dialog open={showCompanyExpenseForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowCompanyExpenseForm(v); if (!v) { setEditingCompanyExpenseId(null); setCompanyExpenseForm(emptyCompanyExpenseForm); } }}>
-        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingCompanyExpenseId ? '编辑运营支出' : '录入运营支出'}</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>{editingCompanyExpenseId ? '编辑运营支出' : '录入运营支出'}</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div>
               <Label>支出类型 *</Label>
@@ -6832,16 +6813,14 @@ function FinanceWorkspace() {
             </div>
             <div><Label>备注</Label><Textarea value={companyExpenseForm.notes} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, notes: e.target.value })} rows={2} /></div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          </CrmFormDialogBody><CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowCompanyExpenseForm(false); }}>取消</Button>
             <Button onClick={handleSaveCompanyExpense} disabled={savingCompanyExpense} className="bg-blue-600 hover:bg-blue-700">{savingCompanyExpense ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={showCompanyExpenseTypeManager} onOpenChange={(v) => { if (!v && !allowFinanceClose('companyTypes')) return; setShowCompanyExpenseTypeManager(v); if (!v) setNewCompanyExpenseTypeName(''); }}>
-        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>管理运营支出类型</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>管理运营支出类型</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Input
@@ -6873,18 +6852,16 @@ function FinanceWorkspace() {
               ))}
             </div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          </CrmFormDialogBody><CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (allowFinanceClose('companyTypes')) setShowCompanyExpenseTypeManager(false); }}>取消</Button>
             <Button onClick={handleSaveCompanyExpenseTypes} disabled={savingCompanyExpenseTypes} className="bg-blue-600 hover:bg-blue-700">
               {savingCompanyExpenseTypes ? '保存中...' : '保存'}
             </Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={!!refundTarget} onOpenChange={(open) => { if (!open && allowFinanceClose()) setRefundTarget(null); }}>
-        <DialogContent className="mobile-finance-editor max-w-lg">
-          <DialogHeader><DialogTitle>记录退款</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>记录退款</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
               <p className="font-medium text-slate-800">{refundTarget?.customer_name || '-'}</p>
@@ -6896,13 +6873,11 @@ function FinanceWorkspace() {
             <div><Label>退款原因</Label><Input value={refundForm.reason} onChange={e => setRefundForm({ ...refundForm, reason: e.target.value })} /></div>
             <div><Label>备注</Label><Textarea value={refundForm.notes} onChange={e => setRefundForm({ ...refundForm, notes: e.target.value })} rows={2} /></div>
           </div>
-          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => { if (allowFinanceClose()) setRefundTarget(null); }}>取消</Button><Button onClick={handleSaveRefund} disabled={savingRefund} className="bg-red-600 hover:bg-red-700">{savingRefund ? '保存中...' : '确认退款入账'}</Button></div>
-        </DialogContent>
+          </CrmFormDialogBody><CrmFormDialogFooter><Button variant="outline" onClick={() => { if (allowFinanceClose()) setRefundTarget(null); }}>取消</Button><Button onClick={handleSaveRefund} disabled={savingRefund} className="bg-red-600 hover:bg-red-700">{savingRefund ? '保存中...' : '确认退款入账'}</Button></CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={showAdSettlementForm} onOpenChange={(open) => { if (!open && !allowFinanceClose()) return; setShowAdSettlementForm(open); if (!open) setEditingAdSettlementId(null); }}>
-        <DialogContent className="mobile-finance-editor max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingAdSettlementId ? '编辑投流月结' : '新增投流月结'}</DialogTitle><p className="finance-editor-context">{customerMap[Number(adSettlementForm.customer_id)]?.business_name || '请选择客户'} · {adSettlementForm.year_month || '月份待填写'} · {adSettlementForm.currency}</p></DialogHeader>
+        <CrmFormDialogContent className="financial-workspace-form max-w-xl"><CrmFormDialogHeader><DialogTitle>{editingAdSettlementId ? '编辑投流月结' : '新增投流月结'}</DialogTitle><p className="finance-editor-context">{customerMap[Number(adSettlementForm.customer_id)]?.business_name || '请选择客户'} · {adSettlementForm.year_month || '月份待填写'} · {adSettlementForm.currency}</p></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4"><div><Label>客户 *</Label><select disabled={!!editingAdSettlementId} value={adSettlementForm.customer_id} onChange={e => setAdSettlementForm({ ...adSettlementForm, customer_id: e.target.value })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"><option value="">请选择客户</option>{customerOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div><div><Label>结算月份 *</Label><Input disabled={!!editingAdSettlementId} type="month" value={adSettlementForm.year_month} onChange={e => setAdSettlementForm({ ...adSettlementForm, year_month: e.target.value })} /></div></div>
             <h3 className="finance-form-section">资金来源</h3><div className="grid grid-cols-2 gap-4"><div><Label>币种</Label><NativeSelect disabled={!!editingAdSettlementId} value={adSettlementForm.currency} onChange={value => setAdSettlementForm({ ...adSettlementForm, currency: normalizeCurrency(value, 'USD') })} options={Object.entries(currencyLabels).map(([value, label]) => ({ value, label }))} /></div><div><Label>期初结余（自动结转）</Label><Input disabled type="number" min="0" step="0.01" value={adSettlementForm.opening_balance} /><p className="mt-1 text-xs text-slate-500">{adSettlementCarrySource ? `自动承接 ${adSettlementCarrySource.year_month} 结余 ${formatMoney(automaticAdOpeningBalance, adSettlementForm.currency)}` : '没有更早的月结，从 0 开始；首次导入余额可填写调整金额。'}</p></div></div>
@@ -6912,8 +6887,7 @@ function FinanceWorkspace() {
             <div><Label>状态</Label><NativeSelect value={adSettlementForm.status} onChange={value => setAdSettlementForm({ ...adSettlementForm, status: value })} options={[{ value: 'draft', label: '草稿（可继续核对）' }, { value: 'closed', label: '已结算（差价计入收入）' }]} /></div>
             <div><Label>备注</Label><Textarea value={adSettlementForm.notes} onChange={e => setAdSettlementForm({ ...adSettlementForm, notes: e.target.value })} rows={2} /></div>
           </div>
-          <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowAdSettlementForm(false); }}>取消</Button><Button onClick={handleSaveAdSettlement} disabled={savingAdSettlement} className="bg-blue-600 hover:bg-blue-700">{savingAdSettlement ? '保存中...' : '保存月结'}</Button></div>
-        </DialogContent>
+          </CrmFormDialogBody><CrmFormDialogFooter><Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowAdSettlementForm(false); }}>取消</Button><Button onClick={handleSaveAdSettlement} disabled={savingAdSettlement} className="bg-blue-600 hover:bg-blue-700">{savingAdSettlement ? '保存中...' : '保存月结'}</Button></CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       {/* Confirm Dialogs */}

@@ -11,16 +11,18 @@ import { client } from '../lib/api';
 import { useRole } from '../lib/role-context';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   Plus, Search, Edit, Trash2, ExternalLink, Clock,
   CheckCircle2, AlertCircle, CalendarClock, PhoneCall, PhoneOff,
-  Filter
+  Filter,
+  MoreHorizontal,
 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -819,7 +821,7 @@ export default function Callbacks() {
                           <Badge className="text-xs bg-amber-100 text-amber-700">今日</Badge>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="dc-callback-row-actions flex flex-wrap items-center gap-2">
                         <Badge className={`text-xs flex items-center gap-1 ${callbackStatusColors[cb.status]}`}>
                           {callbackStatusIcons[cb.status]}
                           {callbackStatusLabels[cb.status] || cb.status}
@@ -832,46 +834,47 @@ export default function Callbacks() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-11 min-w-11 px-2 text-xs text-green-600 hover:bg-green-50 hover:text-green-800 md:h-7 md:min-w-0 md:px-1.5"
+                              className="dc-callback-action-primary h-11 min-w-11 gap-1.5 px-3 text-xs text-blue-700 hover:bg-blue-50 hover:text-blue-800 md:h-8 md:min-w-0 md:px-2.5"
                               onClick={() => handleQuickComplete(cb)}
                               title="标记完成"
                               aria-label={`完成回访：${cust?.business_name || `客户${cb.customer_id}`}`}
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span className="hidden md:inline">记录结果</span>
+                              <span>记录结果</span>
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-11 min-w-11 px-2 text-xs text-orange-600 hover:bg-orange-50 hover:text-orange-800 md:h-7 md:min-w-0 md:px-1.5"
+                              className="h-11 min-w-11 gap-1.5 px-3 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-800 md:h-8 md:min-w-0 md:px-2.5"
                               disabled={quickNoAnswerBusyIds.has(Number(cb.id))}
                               onClick={() => handleQuickNoAnswer(cb)}
                               title="未接通"
                               aria-label={`标记未接：${cust?.business_name || `客户${cb.customer_id}`}`}
                             >
                               <PhoneOff className="w-3.5 h-3.5" />
-                              <span className="hidden md:inline">未接通</span>
+                              <span>未接通</span>
                             </Button>
                           </>
                         )}
-                        {canEditCallback && <Button
+                        {(canEditCallback || canDeleteCallback) && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" className="dc-admin-menu-trigger h-11 w-11 shrink-0 px-0 md:h-8 md:w-8" aria-label={`更多回访操作 #${cb.id}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-44">{canEditCallback && <DropdownMenuItem asChild><Button
                           size="sm"
                           variant="ghost"
-                          className="h-11 w-11 p-0 text-slate-500 hover:text-blue-600 md:h-7 md:w-7"
+                          className="min-h-11 w-full justify-start gap-2 rounded-lg px-3 text-sm text-slate-700"
                           onClick={() => openEdit(cb)}
                           aria-label={`编辑回访：${cust?.business_name || `客户${cb.customer_id}`}`}
                         >
                           <Edit className="w-3 h-3" />
-                        </Button>}
-                        {canDeleteCallback && <Button
+                          <span>编辑回访</span>
+                        </Button></DropdownMenuItem>}{canDeleteCallback && <DropdownMenuItem asChild><Button
                           size="sm"
                           variant="ghost"
-                          className="h-11 w-11 p-0 text-slate-500 hover:text-red-600 md:h-7 md:w-7"
+                          className="min-h-11 w-full justify-start gap-2 rounded-lg px-3 text-sm text-rose-600 hover:bg-rose-50"
                           onClick={() => setDeleteTarget(cb)}
                           aria-label={`删除回访：${cust?.business_name || `客户${cb.customer_id}`}`}
                         >
                           <Trash2 className="w-3 h-3" />
-                        </Button>}
+                          <span>删除回访</span>
+                        </Button></DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}
                       </div>
                     </div>
                     {cb.content && (
@@ -915,10 +918,11 @@ export default function Callbacks() {
 
       {/* Add/Edit Dialog */}
       {(canCreateCallback || canEditCallback) && <Dialog open={showForm} onOpenChange={(v) => { if (!v && (saving || !formDraft.confirmDiscard())) return; setShowForm(v); if (!v) { setEditingId(null); setForm(emptyForm); } }}>
-        <DialogContent className="delivery-dialog max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto sm:max-h-[85vh]">
-          <DialogHeader>
+        <CrmFormDialogContent className="max-w-lg">
+          <CrmFormDialogHeader>
             <DialogTitle>{editingId ? '编辑回访记录' : '新增回访记录'}</DialogTitle>
-          </DialogHeader>
+          </CrmFormDialogHeader>
+          <CrmFormDialogBody>
           <fieldset disabled={saving || Boolean(pendingArrangement)} className="space-y-4">
             <div>
               <Label>选择客户（已成交） *</Label>
@@ -1021,7 +1025,9 @@ export default function Callbacks() {
             </div>
           </fieldset>
           {pendingArrangement && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">回访 #{pendingArrangement.record.id} 已保存。后续安排未完成：{pendingArrangement.error}</div>}
-          <div className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-4 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
+
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" className="flex-1 sm:flex-none" disabled={saving} onClick={() => { if (formDraft.confirmDiscard()) setShowForm(false); }}>关闭</Button>
             <Button
               onClick={handleSave}
@@ -1030,8 +1036,8 @@ export default function Callbacks() {
             >
               {saving ? '保存中...' : pendingArrangement ? '重试后续安排' : '保存'}
             </Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>}
     </div>
   );

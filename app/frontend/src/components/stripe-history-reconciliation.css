@@ -26,3 +26,73 @@
   .shr-review-guidance{font-size:11px}
   .shr-invoice-row .shr-payment-state{font-size:10px}
 }
+
+/* Readable owner workflows at laptop and phone widths. Only Stripe UI opts in. */
+.shr-page { color:#334b69; }
+.shr-page :is(.shr-note,.shr-scope,.shr-binding-meta,.shr-binding-meta small,.shr-section-title p,.shr-heading p) { color:#64748b; }
+.shr-page .shr-panel { border-color:#e1e8f1; box-shadow:none; }
+.shr-page .shr-heading { align-items:center; gap:12px; }
+.shr-page .shr-heading h2 { color:#1e334f; letter-spacing:-.02em; }
+.shr-page .shr-heading p { font-size:12px; line-height:1.8; }
+.shr-page .shr-nav { gap:4px; padding-bottom:8px; border-bottom-color:#e2e8f0; }
+.shr-page .shr-nav button { min-height:38px; padding:8px 12px; font-size:13px; }
+.shr-page .shr-section-title { gap:12px; }
+.shr-page .shr-section-title h3 { color:#253e5e; font-size:14px; }
+.shr-page .shr-section-title p { font-size:12px; line-height:1.7; }
+.shr-page :is(.shr-note,.shr-review-guidance,.shr-warning,.shr-error,.shr-success,.shr-scope) { font-size:12px; line-height:1.8; }
+.shr-page .shr-invoice-row { gap:16px; padding:14px 16px; border-color:#e1e8f1; }
+.shr-page .shr-invoice-row strong { font-size:14px; line-height:1.55; color:#243c5b; }
+.shr-page .shr-invoice-row small { font-size:12px; color:#64748b; line-height:1.7; }
+.shr-page .shr-invoice-row .shr-link { font-size:12px; }
+.shr-page .shr-invoice-row .shr-payment-state { font-size:12px; }
+.shr-page .shr-actions button { font-size:13px; min-height:36px; }
+.shr-page .shr-candidates :is(strong,small) { font-size:12px; line-height:1.75; }
+.shr-page .shr-candidates small { color:#64748b; }
+.shr-page .shr-binding-meta { font-size:12px; line-height:1.75; }
+.shr-page .shr-selected { font-size:13px; }
+.shr-page .shr-selected small { font-size:12px; color:#64748b; }
+.shr-page .shr-check { font-size:12px; }
+.shr-page .shr-icon-button { min-height:36px; min-width:36px; }
+.shr-form-dialog.t24-crm-form-dialog { padding:0!important; }
+.shr-form-dialog > .t24-crm-form-dialog-body { display:grid; align-content:start; gap:12px; }
+.shr-form-dialog > .t24-crm-form-dialog-body .shr-note { margin:0; }
+.shr-form-dialog label { font-size:13px; color:#536a86; }
+.shr-form-dialog :is(.shr-note,.shr-warning,.shr-error,.shr-review-source,.shr-disclosure,.shr-ledger-candidate small,.shr-check) { font-size:12px; color:#61758f; }
+.shr-form-dialog :is(.shr-error,.shr-warning) { color:#9b5d23; }
+.shr-form-dialog .shr-evidence-grid dt { font-size:12px; color:#64748b; }
+.shr-form-dialog .shr-evidence-grid dd { font-size:16px; color:#2f4a6c; font-variant-numeric:tabular-nums; }
+.shr-form-dialog .shr-review-source strong,.shr-form-dialog .shr-ledger-candidate strong { font-size:13px; }
+.shr-form-dialog .shr-disclosure summary { font-size:13px; }
+.shr-form-dialog .shr-disclosure small { font-size:12px; }
+.shr-form-dialog > .shr-actions { margin:0; gap:8px; }
+.shr-form-dialog .shr-actions button { font-size:13px; }
+@media(max-width:639px) {
+  .shr-page .shr-heading { flex-wrap:wrap; align-items:flex-start; }
+  .shr-page .shr-heading > div { min-width:0; flex:1 1 190px; }
+  .shr-page .shr-heading > button { font-size:13px; min-height:44px; }
+  .shr-page .shr-nav { display:flex; flex-wrap:wrap; gap:4px; }
+  .shr-page .shr-nav button { flex:1 1 calc(50% - 4px); min-height:44px; font-size:13px; text-align:center; }
+  .shr-page .shr-nav .shr-return { flex-basis:100%; justify-content:flex-start; font-size:12px; }
+  .shr-page .shr-section-title { flex-wrap:wrap; align-items:flex-start; }
+  .shr-page .shr-section-title > div { flex:1 1 170px; min-width:0; }
+  .shr-page .shr-section-title > button { min-height:44px; font-size:13px; }
+  .shr-page .shr-panel { padding:14px; }
+  .shr-page .shr-review-groups > button { font-size:13px; min-height:48px; }
+  .shr-page .shr-detail-filters > button { min-height:44px; font-size:12px; }
+  .shr-page .shr-invoice-row { flex-wrap:wrap; gap:10px; padding:14px; }
+  .shr-page .shr-invoice-row > span:first-child { flex:1 1 180px; }
+  .shr-page .shr-invoice-row > span:last-child { max-width:none; flex:1 1 150px; flex-direction:row; flex-wrap:wrap; align-items:center; justify-content:space-between; text-align:left; gap:8px; }
+  .shr-page .shr-invoice-row strong { font-size:14px; }
+  .shr-page .shr-actions button { min-height:44px; font-size:13px; white-space:normal; }
+  .shr-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea),
+  .shr-form-dialog :is(input:not([type=checkbox]):not([type=radio]),select,textarea) { min-height:44px; font-size:16px; }
+  .shr-page .shr-search > button { min-height:44px; font-size:13px; padding-inline:12px; }
+  .shr-page .shr-candidates button { padding:12px; gap:10px; }
+  .shr-page .shr-icon-button { min-height:44px; min-width:44px; }
+  .shr-page .shr-binding .shr-heading > div { min-width:0; }
+  .shr-form-dialog .shr-detail-toolbar { flex-wrap:wrap; font-size:12px; }
+  .shr-form-dialog .shr-detail-toolbar > button { min-height:44px; }
+  .shr-form-dialog .shr-evidence-grid dd { font-size:15px; }
+  .shr-form-dialog .shr-actions button { min-height:44px; font-size:13px; white-space:normal; }
+  .shr-form-dialog > .shr-actions > button { flex:1 1 140px; }
+}

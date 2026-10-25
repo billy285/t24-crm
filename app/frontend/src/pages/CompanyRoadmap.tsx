@@ -33,7 +33,7 @@ import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -1052,7 +1052,7 @@ export default function CompanyRoadmap() {
       </Tabs>
 
       <Dialog open={settingsOpen} onOpenChange={open => { if (open || (!saving && targetDraft.confirmDiscard())) setSettingsOpen(open); }}>
-        <DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>公司目标与现金安全参数</DialogTitle></DialogHeader>{settingsForm ? <div className="grid gap-4 py-2 sm:grid-cols-2">
+        <CrmFormDialogContent className="max-w-2xl"><CrmFormDialogHeader><DialogTitle>公司目标与现金安全参数</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>{settingsForm ? <div className="grid gap-4 py-2 sm:grid-cols-2">
           <div><Label>目标开始日期</Label><Input className="mt-1" type="date" value={settingsForm.target_start_date} onChange={event => setSettingsForm(current => current ? { ...current, target_start_date: event.target.value } : current)} /></div>
           <div><Label>目标结束日期</Label><Input className="mt-1" type="date" value={settingsForm.target_end_date} onChange={event => setSettingsForm(current => current ? { ...current, target_end_date: event.target.value } : current)} /></div>
           <div><Label>累计净利润目标（CNY）</Label><Input className="mt-1" type="number" min="1" value={settingsForm.five_year_profit_target_cny} onChange={event => setSettingsForm(current => current ? { ...current, five_year_profit_target_cny: event.target.value } : current)} /></div>
@@ -1061,18 +1061,18 @@ export default function CompanyRoadmap() {
           <div><Label>缺失月份默认预估汇率</Label><Input className="mt-1" type="number" min="0.1" max="20" step="0.0001" value={settingsForm.default_usd_cny_rate} onChange={event => setSettingsForm(current => current ? { ...current, default_usd_cny_rate: event.target.value } : current)} /></div>
           <div className="sm:col-span-2"><Label>老板补充边界（可选）</Label><Input className="mt-1" value={settingsForm.current_focus} onChange={event => setSettingsForm(current => current ? { ...current, current_focus: event.target.value } : current)} placeholder="例如：现金安全线达标前，不新增固定人力" /><p className="mt-1 text-xs text-slate-500">系统建议仍是唯一经营焦点；这里只记录老板确认的约束条件。</p></div>
           <p className="sm:col-span-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">月固定支出用于安全线和现金跑道，不会自动写入财务支出。正式利润仍沿用现有财务数据。</p>
-        </div> : null}<DialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (targetDraft.confirmDiscard()) setSettingsOpen(false); }}>取消</Button><Button onClick={() => void saveSettings()} disabled={saving}>保存设置</Button></DialogFooter></DialogContent>
+        </div> : null}</CrmFormDialogBody><CrmFormDialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (targetDraft.confirmDiscard()) setSettingsOpen(false); }}>取消</Button><Button onClick={() => void saveSettings()} disabled={saving}>保存设置</Button></CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={restrictionOpen} onOpenChange={open => { if (open || (restrictionFormDraft.confirmDiscard())) setRestrictionOpen(open); }}>
-        <DialogContent><DialogHeader><DialogTitle>新增受限资金</DialogTitle></DialogHeader><div className="grid gap-4 py-2 sm:grid-cols-2">
+        <CrmFormDialogContent><CrmFormDialogHeader><DialogTitle>新增受限资金</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody><div className="grid gap-4 py-2 sm:grid-cols-2">
           <div><Label>类别</Label><NativeSelect className="mt-1" value={restrictionDraft.category} onChange={value => setRestrictionDraft(current => ({ ...current, category: value }))} options={overview.restriction_categories} /></div>
           <div><Label>币种</Label><NativeSelect className="mt-1" value={restrictionDraft.currency} onChange={value => setRestrictionDraft(current => ({ ...current, currency: value as 'USD' | 'CNY' }))} options={[{ value: 'CNY', label: 'CNY' }, { value: 'USD', label: 'USD' }]} /></div>
           <div className="sm:col-span-2"><Label>说明 *</Label><Input className="mt-1" value={restrictionDraft.description} onChange={event => setRestrictionDraft(current => ({ ...current, description: event.target.value }))} placeholder="例如：2026 年企业所得税预留" /></div>
           <div><Label>金额 *</Label><Input className="mt-1" type="number" min="0.01" step="0.01" value={restrictionDraft.amount || ''} onChange={event => setRestrictionDraft(current => ({ ...current, amount: Number(event.target.value) }))} /></div>
           <div><Label>折合人民币</Label><Input className="mt-1" disabled value={cny(Number(restrictionDraft.amount || 0) * (restrictionDraft.currency === 'USD' ? numericRate : 1))} /></div>
           <div className="sm:col-span-2"><Label>备注</Label><Input className="mt-1" value={restrictionDraft.notes || ''} onChange={event => setRestrictionDraft(current => ({ ...current, notes: event.target.value }))} /></div>
-        </div><DialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (restrictionFormDraft.confirmDiscard()) setRestrictionOpen(false); }}>取消</Button><Button onClick={saveRestriction}>加入待核对</Button></DialogFooter></DialogContent>
+        </div></CrmFormDialogBody><CrmFormDialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (restrictionFormDraft.confirmDiscard()) setRestrictionOpen(false); }}>取消</Button><Button onClick={saveRestriction}>加入待核对</Button></CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={reopenOpen} onOpenChange={open => { if (open || (!saving && reopenDraft.confirmDiscard())) setReopenOpen(open); }}>
@@ -1080,13 +1080,13 @@ export default function CompanyRoadmap() {
       </Dialog>
 
       <Dialog open={decisionOpen} onOpenChange={open => { if (open || (!saving && decisionDraft.confirmDiscard())) setDecisionOpen(open); }}>
-        <DialogContent className="max-w-xl"><DialogHeader><DialogTitle>记录老板经营决策</DialogTitle></DialogHeader><div className="space-y-4 py-2">
+        <CrmFormDialogContent className="max-w-xl"><CrmFormDialogHeader><DialogTitle>记录老板经营决策</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody><div className="space-y-4 py-2">
           <div className="rounded-xl bg-slate-50 p-4"><p className="font-semibold text-slate-900">{recommendation.title}</p><p className="mt-2 text-xs leading-5 text-slate-600">{recommendation.action}</p></div>
           <div><Label>决定</Label><NativeSelect className="mt-1" value={decisionStatus} onChange={value => setDecisionStatus(value as typeof decisionStatus)} options={[{ value: 'accepted', label: '采纳并执行' }, { value: 'deferred', label: '暂缓' }, { value: 'rejected', label: '不采纳' }, { value: 'completed', label: '已完成' }]} /></div>
           <div><Label>决定说明{decisionStatus === 'deferred' || decisionStatus === 'rejected' ? ' *' : ''}</Label><Textarea className="mt-1" value={decisionNote} onChange={event => setDecisionNote(event.target.value)} placeholder="为什么这样决定，后续复盘时可追溯" /></div>
           <div><Label>下次复盘日期</Label><Input className="mt-1" type="date" value={nextReviewDate} onChange={event => setNextReviewDate(event.target.value)} /></div>
           {decisionStatus === 'accepted' ? <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={createTask} onChange={event => setCreateTask(event.target.checked)} />同时生成一条任务，进入任务协作闭环</label> : null}
-        </div><DialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (decisionDraft.confirmDiscard()) setDecisionOpen(false); }}>取消</Button><Button onClick={() => void saveDecision()} disabled={saving}>保存决定</Button></DialogFooter></DialogContent>
+        </div></CrmFormDialogBody><CrmFormDialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (decisionDraft.confirmDiscard()) setDecisionOpen(false); }}>取消</Button><Button onClick={() => void saveDecision()} disabled={saving}>保存决定</Button></CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={auditOpen} onOpenChange={setAuditOpen}>

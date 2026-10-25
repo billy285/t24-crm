@@ -3,6 +3,7 @@ import './mobile-sales-layout.css';
 import './crm-desktop-layout.css';
 import './crm-desktop-refined-type.css';
 import './crm-desktop-compact.css';
+import './crm-visual-polish.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
@@ -289,7 +290,7 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}`} onKeyDown={isSalesWorkspace ? event => {
+    <div data-crm-polish="20261026" className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}`} onKeyDown={isSalesWorkspace ? event => {
       if (navigationCollapsed || !window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches) return;
       if (event.key === 'Escape') {
         event.preventDefault();

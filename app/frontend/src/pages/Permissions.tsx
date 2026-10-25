@@ -1,4 +1,5 @@
 import './crm-org-compact.css';
+import './crm-org-visual-polish.css';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import './admin-workspace.css';
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -108,7 +109,7 @@ export default function Permissions() {
   }
 
   const currentPerms = config[selectedRole];
-  if (isMobile) return <div className="app-page space-y-4" data-testid="mobile-permission-summary">
+  if (isMobile) return <div className="crm-org-polish app-page space-y-4" data-testid="mobile-permission-summary">
     <div className="flex items-center justify-between gap-3"><h2 className="app-page-heading">权限管理</h2><Badge variant="secondary">只读摘要</Badge></div>
     {configLoadError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">当前为缓存摘要，尚未核实最新权限。<Button variant="outline" className="mt-2" onClick={() => setReloadVersion(value => value + 1)}>重新读取</Button></div>}
     <p className="text-sm text-slate-500">按角色查看访问范围；权限调整在电脑端完成。</p>
@@ -176,7 +177,7 @@ export default function Permissions() {
 
   return (
     <>
-      <div className="crm-org-compact t24-settings-page calm-admin-page calm-permissions-page app-page space-y-5">
+      <div className="crm-org-polish crm-org-compact t24-settings-page calm-admin-page calm-permissions-page app-page space-y-5">
       <div className="app-page-title"><div>
         <p className="app-page-kicker">T24 Marketing · Access Control</p>
         <h2 className="app-page-heading flex items-center gap-2">

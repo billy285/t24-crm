@@ -1,4 +1,4 @@
-/* Desktop customer and delivery workspaces. Existing mobile layouts and private routes are untouched. */
+/* Presentation-only refinements scoped to customer and delivery workspaces. */
 @media (min-width: 1024px) {
   .t24-system.app-shell .crm-desktop-main :is(.calm-customer-page, .customer-detail-page, .calm-delivery-page, .calm-operations-page) {
     --t24-table-cell-y: 7px;
@@ -125,4 +125,127 @@
   .customer-detail-page .customer-detail-desktop-tools { display: none; }
   .customer-detail-page .customer-detail-mobile-tools { display: inline-flex; width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; }
   .customer-detail-page .customer-detail-actions.has-no-primary .customer-detail-mobile-tools { grid-column: 2; }
+}
+
+/* Shared visual rhythm for these pages only; roles, values and state transitions are unchanged. */
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) {
+  --dc-border: #e2e8f0;
+  --dc-ink: #172b4d;
+  --dc-muted: #64748b;
+  min-width: 0;
+}
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) :is(.dc-heading, .dc-panel-heading, .dc-list-heading) { align-items: center; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) :is(.dc-heading h2, .dc-panel-heading h3, .dc-list-heading h3) { color: var(--dc-ink); }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric { transition: background-color 140ms ease, box-shadow 140ms ease; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric.is-active {
+  background: #eff6ff;
+  box-shadow: inset 0 -2px 0 #2563eb;
+}
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric.is-active :is(.dc-metric-label, strong) { color: #1d4ed8; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) :is(.dc-task-row, .dc-callback-row, .dc-action-card) { scroll-margin-top: 88px; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-status { font-weight: 500; line-height: 1.5; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-status-blue { color: #1d4ed8; background: #eff6ff; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-status-green { color: #047857; background: #ecfdf5; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-status-amber { color: #a16207; background: #fffbeb; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-status-rose { color: #be123c; background: #fff1f2; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks) .dc-admin-menu-trigger { color: #64748b; border-color: #dbe3ed; background: #fff; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks) .dc-admin-menu-trigger:is(:hover, [data-state="open"]) { color: #1d4ed8; border-color: #bfdbfe; background: #eff6ff; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-guidance summary { gap: 8px; line-height: 20px; }
+.t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-guidance summary > span { min-width: 0; white-space: normal; }
+.t24-system.app-shell .crm-desktop-main .calm-operations-page .calm-action-selected { background: #eff6ff; box-shadow: inset 3px 0 0 #2563eb; }
+.t24-system.app-shell .crm-desktop-main .calm-operations-page .calm-current-action h3 { overflow-wrap: anywhere; }
+.t24-system.app-shell .crm-desktop-main .dc-callbacks .dc-callback-action-primary { background: #eff6ff; border: 1px solid #dbeafe; }
+.customer-detail-page .customer-detail-summary-fields > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: start; gap: 12px; }
+.customer-detail-page .customer-detail-summary-fields > div > :first-child { white-space: nowrap; }
+.customer-detail-page .customer-detail-summary-fields > div > :last-child { text-align: right; overflow-wrap: anywhere; }
+.customer-detail-page .customer-detail-basic-fields > div { min-width: 0; overflow-wrap: anywhere; }
+.customer-lifecycle-timeline-dialog :is(h2, h3, p) { overflow-wrap: anywhere; }
+.customer-lifecycle-timeline-dialog .t24-crm-form-dialog-body { overscroll-behavior: contain; }
+.dc-service-detail .dc-service-detail-heading h2 { min-width: 0; overflow-wrap: anywhere; }
+.dc-service-detail .dc-service-detail-actions > button { gap: 4px; }
+
+@media (min-width: 768px) {
+  .customer-detail-page .customer-detail-finance-ledger { width: 100%; min-width: 0; table-layout: fixed; font-size: 12px; line-height: 19px; }
+  .customer-detail-page .customer-detail-finance-ledger :is(th, td) { padding: 10px 6px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+  .customer-detail-page .customer-detail-finance-ledger th { font-size: 11px; font-weight: 500; color: #64748b; background: #f8fafc; }
+  .customer-detail-page .customer-detail-finance-ledger th:nth-child(1) { width: 14%; }
+  .customer-detail-page .customer-detail-finance-ledger th:nth-child(2) { width: 9%; }
+  .customer-detail-page .customer-detail-finance-ledger th:nth-child(3) { width: 10%; }
+  .customer-detail-page .customer-detail-finance-ledger th:nth-child(4) { width: 15%; }
+  .customer-detail-page .customer-detail-finance-ledger th:nth-child(5) { width: 18%; }
+  .customer-detail-page .customer-detail-finance-ledger th:nth-child(6) { width: 10%; }
+  .customer-detail-page .customer-detail-finance-ledger th:nth-child(7) { width: 7%; }
+  .customer-detail-page .customer-detail-finance-ledger th:nth-child(8) { width: 9%; }
+  .customer-detail-page .customer-detail-finance-ledger th:nth-child(9) { width: 8%; }
+  .customer-detail-page .customer-detail-finance-ledger td { max-width: none; font-variant-numeric: tabular-nums; }
+  .customer-detail-page .customer-detail-finance-ledger tbody tr:hover { background: #f8fafc; }
+  .t24-system.app-shell .crm-desktop-main .dc-callbacks .dc-callback-row-actions { flex: 0 1 auto; justify-content: flex-end; }
+}
+
+@media (min-width: 1024px) {
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page).delivery-center-ui { gap: 16px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-heading button { min-height: 36px; height: 36px; padding-inline: 12px; font-size: 13px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric { padding: 8px 12px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric:first-child { padding-left: 12px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric-label { font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) :is(.dc-panel-heading, .dc-list-heading) { padding: 12px 16px; min-height: 44px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) :is(.dc-panel-heading, .dc-list-heading) h3 { font-size: 14px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-callbacks) :is(.dc-task-row, .dc-callback-row) { padding: 16px; }
+  .t24-system.app-shell .crm-desktop-main .dc-tasks .dc-task-desktop { grid-template-columns: minmax(0, 1fr) minmax(190px, 230px); gap: 20px; }
+  .t24-system.app-shell .crm-desktop-main .dc-tasks .dc-task-desktop > div:first-child > div:first-child > span:first-child { font-size: 14px; line-height: 22px; }
+  .t24-system.app-shell .crm-desktop-main .dc-tasks .dc-task-desktop > div:last-child { max-width: none; align-content: start; gap: 6px; }
+  .t24-system.app-shell .crm-desktop-main .dc-tasks .dc-task-desktop > div:last-child button { min-height: 32px; height: 32px; padding-inline: 10px; }
+  .t24-system.app-shell .crm-desktop-main .dc-tasks .dc-task-desktop > div:last-child .dc-admin-menu-trigger { width: 32px; min-width: 32px; padding: 0; }
+  .t24-system.app-shell .crm-desktop-main .dc-callbacks .dc-callback-row > div:first-child > div:first-child > button { font-size: 14px; line-height: 22px; }
+  .t24-system.app-shell .crm-desktop-main .calm-operations-page .dc-action-main h4 { font-size: 14px; line-height: 22px; }
+  .t24-system.app-shell .crm-desktop-main .calm-operations-page .dc-action-card > div { padding: 14px 16px; }
+  .t24-system.app-shell .crm-desktop-main .calm-operations-page .dc-row-actions button { min-height: 32px; height: 32px; padding-inline: 10px; }
+  .t24-system.app-shell .crm-desktop-main .calm-lifecycle-page .calm-lifecycle-metrics > button[aria-pressed="true"] { box-shadow: inset 0 -2px 0 #2563eb; background: #eff6ff; }
+  .t24-system.app-shell .crm-desktop-main .calm-lifecycle-page .crm-lifecycle-ledger :is(th, td) { padding: 10px; line-height: 20px; }
+}
+
+@media (max-width: 767px) {
+  .mobile-app-layout .customer-detail-page .customer-detail-hero > div:first-child > button { color: #334155; background: #fff; border: 1px solid #dbe3ed; border-radius: 12px; }
+  .customer-detail-page .customer-detail-name { flex-basis: 100%; font-size: 20px; line-height: 28px; }
+  .customer-detail-page .customer-detail-hero > div:first-child > div > p:last-child { line-height: 19px; overflow-wrap: anywhere; }
+  .customer-detail-page .customer-detail-summary-fields { line-height: 21px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0; overflow: visible; border: 0; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric { width: auto; min-width: 0; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric.is-active { border-color: #bfdbfe; background: #eff6ff; box-shadow: inset 0 -2px 0 #2563eb; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric-label { font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric strong { margin-block: 4px; font-size: 22px; line-height: 28px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-metric small { min-height: 0; font-size: 11px; line-height: 17px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-guidance summary { flex-wrap: wrap; padding: 12px; }
+  .t24-system.app-shell .crm-desktop-main :is(.dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) .dc-guidance summary > span { flex-basis: 100%; margin-left: 23px; }
+  .t24-system.app-shell .crm-desktop-main .dc-callbacks .dc-callback-row { padding: 14px; }
+  .t24-system.app-shell .crm-desktop-main .dc-callbacks .dc-callback-row > div:first-child > div:first-child > button { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+  .t24-system.app-shell .crm-desktop-main .dc-callbacks .dc-callback-row-actions { gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .dc-callbacks .dc-callback-row-actions > button { min-height: 44px; }
+  .t24-system.app-shell .crm-desktop-main .dc-callbacks .dc-callback-row > p { line-height: 22px; overflow-wrap: anywhere; }
+  .t24-system.app-shell .crm-desktop-main .dc-callbacks .dc-callback-row > div:last-child { gap: 8px 12px; line-height: 19px; overflow-wrap: anywhere; }
+  .dc-service-detail .dc-service-detail-heading { gap: 8px; }
+  .dc-service-detail .dc-service-detail-heading > button { flex-basis: 100%; justify-content: flex-start; min-height: 44px; padding-inline: 0; }
+  .dc-service-detail .dc-service-detail-heading h2 { flex-basis: 100%; font-size: 20px; line-height: 28px; }
+  .dc-service-detail .dc-service-detail-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .dc-service-detail .dc-service-detail-actions > button { width: 100%; min-width: 0; min-height: 44px; height: auto; margin-left: 0; padding: 9px; white-space: normal; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .calm-lifecycle-page .calm-lifecycle-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .calm-lifecycle-page .calm-lifecycle-metrics > button { min-width: 0; }
+}
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-customer-page .customer-360-directory {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-customer-page .customer-360-directory > .t24-card-content > .grid {
+    padding: 0;
+    gap: 12px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .customer-mobile-identity { flex: 1; }
+  .t24-system.app-shell[data-crm-polish="20261026"] .customer-mobile-card {
+    box-shadow: 0 2px 6px rgb(23 43 77 / 2%);
+    border-radius: 14px;
+    padding: 14px;
+  }
 }

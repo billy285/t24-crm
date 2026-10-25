@@ -1,0 +1,311 @@
+/* Explicit employee/settings/permission page opt-in; no route or permission changes. */
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish {
+  --t24-body-size: 14px;
+  --t24-body-line: 21px;
+  --t24-aux-size: 12px;
+  --t24-aux-line: 18px;
+  --t24-section-size: 16px;
+  --t24-section-line: 24px;
+  --t24-control-height: 38px;
+  --t24-control-compact: 36px;
+  --t24-control-radius: 9px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish .app-page-title {
+  gap: 16px;
+  margin-bottom: 16px;
+  padding-bottom: 0;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish :is(.t24-card, .t24-directory-results) {
+  border-radius: 14px;
+  border-color: var(--crm-border);
+  box-shadow: 0 1px 2px rgb(23 43 77 / 3%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish .t24-card-header {
+  padding: 16px 18px 12px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish .t24-card-content:not(.p-0) {
+  padding: 0 18px 18px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish .t24-card-content:is(.p-3, .p-5) {
+  padding: 16px 18px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish .t24-section-title {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 650;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish :is(.text-sm, .t24-body) {
+  font-size: 14px;
+  line-height: 21px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish .app-page-title :is(h1, h2) {
+  font-size: 24px;
+  line-height: 32px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish :is(.t24-input, .t24-native-select, .t24-select-trigger) {
+  min-height: 38px;
+  height: 38px;
+  border-radius: 9px;
+  font-size: 14px;
+  line-height: 21px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish .t24-button:not(.t24-button-link) {
+  min-height: 36px;
+  border-radius: 9px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* Directory: one quiet summary, one filter line, and a readable compact ledger. */
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .calm-employee-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  padding: 16px 0;
+  border: 1px solid var(--crm-border);
+  border-radius: 14px;
+  background: #fff;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .calm-employee-summary > .t24-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .calm-employee-summary > .t24-card + .t24-card {
+  border-left: 1px solid var(--crm-border);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .calm-employee-summary .t24-card-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 0 20px;
+  text-align: left;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .calm-employee-summary .text-xl {
+  font-size: 24px;
+  line-height: 30px;
+  font-variant-numeric: tabular-nums;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-toolbar .t24-card-content {
+  padding: 12px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-toolbar .t24-card-content > div {
+  gap: 10px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-results {
+  overflow: hidden;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-results th {
+  height: 38px;
+  padding: 8px 12px;
+  color: var(--crm-muted);
+  background: #f8fafc;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-results td {
+  height: 48px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 20px;
+  border-color: #edf1f6;
+  overflow-wrap: anywhere;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-results tbody tr:hover {
+  background: #f5f8ff;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-results td:nth-child(2) {
+  color: var(--crm-blue);
+  font-weight: 600;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employee-detail .crm-employee-detail-heading {
+  padding: 0 0 8px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employee-detail .crm-employee-detail-heading h2 {
+  margin-right: 4px;
+  color: var(--crm-ink);
+  font-size: 22px;
+  line-height: 30px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-employee-detail .crm-employee-facts > div:not(.md\:col-span-2) {
+  min-height: 36px;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #edf1f6;
+  overflow-wrap: anywhere;
+}
+body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-crm-form-dialog.crm-employee-form {
+  width: min(640px, calc(100vw - 32px));
+  max-width: 640px;
+}
+body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-employee-form .t24-label {
+  display: inline-block;
+  margin-bottom: 6px;
+  color: #334155;
+}
+
+/* Settings navigation is visually distinct from editable content. */
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-system-settings .calm-settings-tabs {
+  grid-template-columns: 184px minmax(0, 1fr);
+  gap: 16px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-system-settings .calm-settings-navigation {
+  gap: 20px;
+  padding: 16px 10px;
+  border-radius: 14px;
+  border-color: var(--crm-border);
+  background: #fff;
+  top: 0;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-system-settings .calm-settings-group {
+  gap: 4px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-system-settings .calm-settings-group > p {
+  padding-inline: 12px;
+  margin-bottom: 4px;
+  color: var(--crm-muted);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-system-settings .calm-settings-group [role="tab"] {
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--crm-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-system-settings .calm-settings-group [role="tab"][data-state="active"] {
+  background: var(--crm-blue-soft);
+  color: var(--crm-blue);
+  box-shadow: none;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-system-settings .calm-settings-tabs > [role="tabpanel"] {
+  margin-top: 0;
+  min-width: 0;
+}
+
+/* Permission choices remain explicit, with a persistent action area. */
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-permissions-page .calm-permission-role {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--crm-border);
+  border-radius: 14px;
+  background: #fff;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-permissions-page .calm-permission-role > p {
+  flex: 1 1 200px;
+  color: var(--crm-muted);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-permissions-page .calm-admin-tab-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  height: auto;
+  margin: 16px 0;
+  padding: 4px;
+  border: 1px solid var(--crm-border);
+  border-radius: 11px;
+  background: #fff;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-permissions-page .calm-admin-tab-navigation [role="tab"] {
+  min-height: 36px;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--crm-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-permissions-page .calm-admin-tab-navigation [role="tab"][data-state="active"] {
+  background: var(--crm-blue-soft);
+  color: var(--crm-blue);
+  box-shadow: none;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-permissions-page :is(.calm-page-permissions, .calm-button-permissions) {
+  gap: 10px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-permissions-page .calm-page-permissions > div {
+  min-height: 48px;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #edf1f6;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-permissions-page .calm-permission-group {
+  border-radius: 10px;
+  border-color: var(--crm-border);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-permissions-page .calm-permission-group > summary {
+  min-height: 48px;
+  gap: 12px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 21px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-permissions-page .calm-permission-savebar {
+  position: sticky;
+  z-index: 20;
+  bottom: 12px;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--crm-border-strong);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 98%);
+  box-shadow: 0 8px 24px rgb(23 43 77 / 8%);
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-toolbar .t24-card-content > div {
+    flex-wrap: wrap;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-toolbar .t24-card-content > div > .relative {
+    flex: 1 1 200px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-toolbar .t24-card-content > div > .relative:first-child {
+    flex-basis: 100%;
+  }
+}
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish {
+    --t24-control-height: 44px;
+    --t24-control-compact: 44px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish :is(.t24-button:not(.t24-button-link), .t24-input, .t24-native-select, .t24-select-trigger) {
+    min-height: 44px;
+    height: auto;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish :is(.t24-input, .t24-native-select, .t24-select-trigger) {
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .calm-employee-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 0;
+    padding: 16px 0;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .calm-employee-summary > .t24-card:nth-child(3) {
+    border-left: 0;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .calm-employee-summary .t24-card-content {
+    padding: 0 16px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish :is(.t24-card-header, .t24-card-content:not(.p-0)) {
+    padding-inline: 16px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-employee-facts > div {
+    min-width: 0;
+  }
+  body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-crm-form-dialog.crm-employee-form {
+    width: calc(100vw - 16px);
+  }
+}

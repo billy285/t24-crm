@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import PageLoadState from '@/components/PageLoadState';
 import { client } from '@/lib/api';
@@ -473,16 +473,12 @@ export default function OperationsWorkbench() {
       </div>
 
       <Dialog open={!!completeTarget} onOpenChange={open => { if (!open && !saving && workDraft.confirmDiscard()) setCompleteTarget(null); }}>
-        <DialogContent className="delivery-dialog">
-          <DialogHeader><DialogTitle>{completeTarget?.kind === 'issue' ? '解决服务问题' : '完成任务'}</DialogTitle></DialogHeader>
-          <div className="space-y-4">
+        <CrmFormDialogContent><CrmFormDialogHeader><DialogTitle>{completeTarget?.kind === 'issue' ? '解决服务问题' : '完成任务'}</DialogTitle></CrmFormDialogHeader><><CrmFormDialogBody className="space-y-4">
             <div className="rounded-lg bg-slate-50 p-3"><p className="font-medium text-slate-900">{completeTarget?.customerName}</p><p className="mt-1 text-sm text-slate-600">{completeTarget?.title}</p></div>
             <div><p className="mb-2 text-sm font-medium text-slate-700">处理结果 *</p><Textarea rows={4} disabled={saving || Boolean(arrangementError)} value={completionNote} onChange={event => setCompletionNote(event.target.value)} placeholder="写清楚做了什么、结果是什么、是否还需要下一步" /></div>
             {canCreateNextTask && <fieldset disabled={saving || Boolean(arrangementError)} className="space-y-3 rounded-xl border border-slate-200 p-3"><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={createNextTask} onChange={event => setCreateNextTask(event.target.checked)} />安排下一步任务</label>{createNextTask && <><label className="block text-sm">下一步事项<Input value={nextTaskTitle} onChange={event => setNextTaskTitle(event.target.value)} placeholder="下一步要完成什么" /></label><label className="block text-sm">截止日期 · 北京时间<Input type="date" value={nextTaskDate} onChange={event => setNextTaskDate(event.target.value)} /></label><p className="text-sm text-slate-500">负责人沿用当前事项的负责人。</p></>}</fieldset>}
             {arrangementError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{arrangementError}</p>}
-            <div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => { if (workDraft.confirmDiscard()) setCompleteTarget(null); }}>关闭</Button><Button disabled={saving} onClick={() => void completeAction()}>{saving ? '保存中…' : arrangementError ? '重试下一步安排' : '完成并记录'}</Button></div>
-          </div>
-        </DialogContent>
+            </CrmFormDialogBody><CrmFormDialogFooter><Button variant="outline" disabled={saving} onClick={() => { if (workDraft.confirmDiscard()) setCompleteTarget(null); }}>关闭</Button><Button disabled={saving} onClick={() => void completeAction()}>{saving ? '保存中…' : arrangementError ? '重试下一步安排' : '完成并记录'}</Button></CrmFormDialogFooter></></CrmFormDialogContent>
       </Dialog>
     </div>
   );

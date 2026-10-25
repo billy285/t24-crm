@@ -1,3 +1,4 @@
+import '@/pages/crm-command-visual-polish.css';
 import type { LucideIcon } from 'lucide-react';
 import {
   ArrowRight,

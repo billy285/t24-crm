@@ -1,3 +1,5 @@
+import '@/pages/crm-sales-visual-polish.css';
+import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Download, FileUp, History, RefreshCw, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -122,9 +124,9 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
   const previewing = batch?.status === 'preview';
 
   return <Dialog open={open} onOpenChange={value => !busy && onOpenChange(value)}>
-    <DialogContent className="mi-import-dialog max-h-[90dvh] max-w-4xl overflow-y-auto">
-      <DialogHeader><DialogTitle>按固定模板导入商家</DialogTitle></DialogHeader>
-      <div className="space-y-5">
+    <CrmFormDialogContent className="mi-import-dialog max-w-4xl crm-sales-dialog-polish">
+<CrmFormDialogHeader><DialogTitle>按固定模板导入商家</DialogTitle></CrmFormDialogHeader>
+<CrmFormDialogBody className="crm-sales-dialog-body"><div className="space-y-5">
         <ol aria-label="商家导入步骤" className="grid grid-cols-3 gap-2 text-sm">
           {['选择文件', '预检确认', '入池结果'].map((label, index) => <li key={label} className={`rounded-lg border px-3 py-2 ${index === (!batch ? 0 : previewing ? 1 : 2) ? 'border-blue-200 bg-blue-50 font-semibold text-blue-800' : 'border-slate-200 text-slate-500'}`}>{index + 1}. {label}</li>)}
         </ol>
@@ -158,10 +160,12 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
           })}</tbody></table>{!rows.length && <p className="p-5 text-center text-sm text-slate-500">没有此类记录</p>}</div>
           {previewing && batch.summary.errors + batch.summary.isolated > 0 && <p className="text-xs leading-5 text-slate-500">按原行号修正原文件后重新预检。问题行下载含结果说明，重新上传时只保留模板五列。</p>}
           {rows.length > visibleCount && <Button variant="outline" onClick={() => setVisibleCount(count => count + 100)}>显示更多行（已显示 {visibleCount}/{rows.length}）</Button>}
-          <div className="mi-import-actions flex flex-wrap justify-end gap-2">{previewing && <Button disabled={busy || !batch.summary.importable} onClick={() => void perform('confirm')}>确认入池 {batch.summary.importable} 条</Button>}{batch.status === 'committed' && onAssignBatch && <Button disabled={busy} onClick={() => onAssignBatch({ id: batch.id, filename: batch.filename })}>分配本批商家</Button>}{batch.status === 'committed' && <Button variant="outline" disabled={busy} onClick={() => void perform('revert')}><Undo2 className="mr-2 h-4 w-4" />撤销本批导入</Button>}</div>
+
         </section>}
         <details className="rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer text-sm font-semibold text-slate-700"><History className="mr-2 inline h-4 w-4" />最近导入批次</summary><div className="mt-3 space-y-2">{historyError ? <div role="alert" className="text-sm text-amber-800">批次历史暂时未能读取。<Button size="sm" variant="ghost" onClick={() => void loadHistory()}><RefreshCw className="mr-1 h-4 w-4" />重试</Button></div> : history.length ? history.map(item => <Button key={item.id} variant="ghost" className="h-auto w-full justify-between gap-3 whitespace-normal border px-3 py-3 text-left" disabled={busy} onClick={() => void openBatch(item.id)}><span className="min-w-0 break-words">{item.filename}<small className="mt-1 block font-normal text-slate-500">{item.row_count} 行 · {item.created_at?.slice(0, 16).replace('T', ' ')}</small></span><Badge>{statusNames[item.status] || '处理中'}</Badge></Button>) : <p className="text-sm text-slate-500">暂无导入批次</p>}</div></details>
-      </div>
-    </DialogContent>
+      </div></CrmFormDialogBody>
+{batch && <CrmFormDialogFooter><div className="mi-import-actions flex flex-wrap justify-end gap-2">{previewing && <Button disabled={busy || !batch.summary.importable} onClick={() => void perform('confirm')}>确认入池 {batch.summary.importable} 条</Button>}{batch.status === 'committed' && onAssignBatch && <Button disabled={busy} onClick={() => onAssignBatch({ id: batch.id, filename: batch.filename })}>分配本批商家</Button>}{batch.status === 'committed' && <Button variant="outline" disabled={busy} onClick={() => void perform('revert')}><Undo2 className="mr-2 h-4 w-4" />撤销本批导入</Button>}</div></CrmFormDialogFooter>}
+
+</CrmFormDialogContent>
   </Dialog>;
 }

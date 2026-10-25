@@ -1,4 +1,5 @@
 import './crm-org-compact.css';
+import './crm-org-visual-polish.css';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import './admin-workspace.css';
 import { useState, useEffect, useRef } from 'react';
@@ -438,7 +439,7 @@ export default function Settings() {
     const exportRoles = Array.isArray(exportConfig.exportRoles) ? exportConfig.exportRoles : [];
     const prefixRows = Array.isArray(codeSettings.industryPrefixes) ? codeSettings.industryPrefixes : [];
     const codePreview = typeof codeSettings.defaultPrefix === 'string' ? previewCode({ ...defaultSettings, ...codeSettings, industryPrefixes: prefixRows }, 'other') : '未设置';
-    return <div className="app-page space-y-4" data-testid="mobile-settings-summary">
+    return <div className="crm-org-polish app-page space-y-4" data-testid="mobile-settings-summary">
       <div className="flex items-center justify-between gap-3"><h2 className="app-page-heading">系统设置</h2><Badge variant="secondary">只读摘要</Badge></div>
       {settingsLoadError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">当前为缓存摘要，尚未核实最新配置。<Button variant="outline" className="mt-2" onClick={() => setSettingsReload(value => value + 1)}>重新读取</Button></div>}
       <p className="text-sm text-slate-500">手机可查看业务规则；全局配置在电脑端调整。</p>
@@ -453,7 +454,7 @@ export default function Settings() {
 
   return (
     <>
-      <div className="crm-org-compact t24-settings-page calm-admin-page calm-system-settings app-page hidden space-y-5 md:block">
+      <div className="crm-org-polish crm-org-compact t24-settings-page calm-admin-page calm-system-settings app-page hidden space-y-5 md:block">
       <div className="app-page-title"><div><p className="app-page-kicker">T24 Marketing · System</p><h2 className="app-page-heading flex items-center gap-2"><SettingsIcon className="h-5 w-5 text-blue-600" />系统设置</h2><p className="app-page-description">配置公司资料、业务规则、产品套餐、提醒、安全与导出规则。</p></div><Button asChild variant="outline"><a href="/settings/deduction">月度扣点比例设置</a></Button></div>
 
       {settingsLoadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>当前显示缓存配置，重新读取成功后才能保存。</span><Button variant="outline" onClick={() => setSettingsReload(value => value + 1)}>重新读取</Button></div>}

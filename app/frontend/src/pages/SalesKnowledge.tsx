@@ -1,3 +1,5 @@
+import '@/pages/crm-sales-visual-polish.css';
+import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, CircleHelp, Copy, MessageSquareText, Pencil, Plus, Search, Send, ShieldAlert, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -453,9 +455,9 @@ export default function SalesKnowledge() {
       ) : null}
 
       <Dialog open={editorOpen} onOpenChange={open => { if (!open && !saving && editorGuard.confirmDiscard()) setEditorOpen(false); }}>
-        <DialogContent className="knowledge-refined-portal sk-editor-dialog sales-center-ui max-h-[88dvh] max-w-3xl">
-          <DialogHeader><DialogTitle>{editorArticle ? '编辑知识卡' : '新建知识卡'}</DialogTitle></DialogHeader>
-          <fieldset disabled={saving} className="sk-editor-fields grid gap-4 sm:grid-cols-2">
+        <CrmFormDialogContent className="knowledge-refined-portal sk-editor-dialog sales-center-ui max-w-3xl crm-sales-dialog-polish">
+<CrmFormDialogHeader><DialogTitle>{editorArticle ? '编辑知识卡' : '新建知识卡'}</DialogTitle></CrmFormDialogHeader>
+<CrmFormDialogBody className="crm-sales-dialog-body"><fieldset disabled={saving} className="sk-editor-fields grid gap-4 sm:grid-cols-2">
             <div><Label htmlFor="knowledge-category">销售过程分类</Label><select id="knowledge-category" className="t24-native-select w-full rounded-lg border border-input bg-white px-3 py-2" value={articleForm.category} onChange={event => { setArticleForm(current => ({ ...current, category: event.target.value })); setCustomCategory(''); }}>{allCategories.map(item => <option key={item} value={item}>{item}</option>)}</select></div>
             <div><Label htmlFor="knowledge-new-category">新分类名称（选填）</Label><Input id="knowledge-new-category" value={customCategory} onChange={event => setCustomCategory(event.target.value)} placeholder="没有合适分类时直接输入" /></div>
             <div><Label htmlFor="knowledge-sort-order">排序数字</Label><Input id="knowledge-sort-order" type="number" value={articleForm.sort_order} onChange={event => setArticleForm(current => ({ ...current, sort_order: event.target.value }))} /></div>
@@ -468,21 +470,22 @@ export default function SalesKnowledge() {
             <div><Label htmlFor="knowledge-tags">标签（用逗号分隔）</Label><Input id="knowledge-tags" value={articleForm.tags} onChange={event => setArticleForm(current => ({ ...current, tags: event.target.value }))} placeholder="付款，Stripe，收款" /></div>
             <label className="mt-6 flex min-h-11 items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={articleForm.is_sensitive} onChange={event => setArticleForm(current => ({ ...current, is_sensitive: event.target.checked }))} />内部敏感信息</label>
             <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700 sm:col-span-2"><input type="checkbox" checked={publishNow} onChange={event => setPublishNow(event.target.checked)} />保存后立即发布给销售查看</label>
-          </fieldset>
-          <DialogFooter className="sk-editor-actions"><Button variant="outline" onClick={() => { if (!saving && editorGuard.confirmDiscard()) setEditorOpen(false); }}>取消</Button><Button disabled={saving} onClick={() => void saveArticle()}>{saving ? '保存中...' : '保存知识卡'}</Button></DialogFooter>
-        </DialogContent>
+          </fieldset></CrmFormDialogBody>
+<CrmFormDialogFooter className="sk-editor-actions"><Button variant="outline" onClick={() => { if (!saving && editorGuard.confirmDiscard()) setEditorOpen(false); }}>取消</Button><Button disabled={saving} onClick={() => void saveArticle()}>{saving ? '保存中...' : '保存知识卡'}</Button></CrmFormDialogFooter>
+</CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={questionOpen} onOpenChange={open => { if (!open && !saving && questionGuard.confirmDiscard()) setQuestionOpen(false); }}>
-        <DialogContent className="knowledge-refined-portal sk-question-dialog sales-center-ui">
-          <DialogHeader><DialogTitle>提交销售新问题</DialogTitle></DialogHeader>
-          <fieldset disabled={saving} className="sk-editor-fields space-y-4">
+        <CrmFormDialogContent className="knowledge-refined-portal sk-question-dialog sales-center-ui crm-sales-dialog-polish">
+<CrmFormDialogHeader><DialogTitle>提交销售新问题</DialogTitle></CrmFormDialogHeader>
+<CrmFormDialogBody className="crm-sales-dialog-body"><fieldset disabled={saving} className="sk-editor-fields space-y-4">
             <p className="text-sm text-slate-500">把客户的原话和具体场景留下来，销售主管会整理为统一的标准答复。</p>
             <div><Label htmlFor="knowledge-question">客户问了什么？</Label><Textarea id="knowledge-question" rows={4} value={questionForm.question} onChange={event => setQuestionForm(current => ({ ...current, question: event.target.value }))} placeholder="例如：客户问广告费是否包含在代运营套餐中？" /></div>
             <div><Label htmlFor="knowledge-question-context">补充场景（可选）</Label><Textarea id="knowledge-question-context" rows={3} value={questionForm.context} onChange={event => setQuestionForm(current => ({ ...current, context: event.target.value }))} placeholder="客户行业、正在讨论的套餐、已承诺内容等" /></div>
             {questionError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{questionError}</p>}
-          </fieldset><DialogFooter className="sk-editor-actions"><Button variant="outline" disabled={saving} onClick={() => { if (!saving && questionGuard.confirmDiscard()) setQuestionOpen(false); }}>取消</Button><Button disabled={saving} onClick={() => void submitQuestion()}><Send className="mr-1.5 h-4 w-4" />提交问题</Button></DialogFooter>
-        </DialogContent>
+          </fieldset></CrmFormDialogBody>
+<CrmFormDialogFooter className="sk-editor-actions"><Button variant="outline" disabled={saving} onClick={() => { if (!saving && questionGuard.confirmDiscard()) setQuestionOpen(false); }}>取消</Button><Button disabled={saving} onClick={() => void submitQuestion()}><Send className="mr-1.5 h-4 w-4" />提交问题</Button></CrmFormDialogFooter>
+</CrmFormDialogContent>
       </Dialog>
     </div>
   );

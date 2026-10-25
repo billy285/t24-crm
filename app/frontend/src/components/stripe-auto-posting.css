@@ -1,2 +1,28 @@
 .sap-page{min-width:0}.sap-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}.sap-summary>div,.sap-summary>button{background:#fff;border:1px solid #dfe6f0;border-radius:9px;padding:11px 12px;min-width:0;text-align:left}.sap-summary span{font-size:11px;color:#7286a1;display:block;line-height:1.8}.sap-summary strong{display:block;font-size:22px;font-weight:650;color:#254c71;line-height:1.7;font-variant-numeric:tabular-nums}.sap-summary strong small{font-size:11px;font-weight:450;color:#7e91aa}.sap-summary p{font-size:10px;color:#7d91ac;line-height:1.8;overflow-wrap:anywhere}.sap-guide{display:flex;gap:8px;background:#f1f6ff;border:1px solid #dfe8f8;border-radius:9px;padding:11px 12px;font-size:11px;line-height:1.9;color:#7087a7}.sap-guide>svg{flex:none;margin-top:3px}.sap-guide strong{font-weight:600;color:#416c9c}.sap-policy-toolbar{display:flex;gap:10px;justify-content:space-between;align-items:center;margin:14px 0 8px;font-size:11px;color:#7b8faa}.sap-policy-toolbar button{font-size:11px}.sap-policies,.sap-jobs{display:grid;gap:8px}.sap-policy-main{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.sap-select{display:flex!important;align-items:flex-start!important;gap:8px!important;min-width:0}.sap-select input{width:14px;height:14px;accent-color:#2869eb;margin-top:4px;flex:none}.sap-select span{min-width:0}.sap-select strong{font-size:13px;font-weight:600;color:#2f4e73;display:block;overflow-wrap:anywhere}.sap-select small{font-size:11px;color:#8194af;line-height:1.8;display:block;overflow-wrap:anywhere}.sap-policy-meta{display:flex;gap:4px 16px;flex-wrap:wrap;margin:8px 0;font-size:10px;color:#7d93ae;line-height:1.8}.sap-policy-reasons{font-size:11px;line-height:1.8;color:#a77435;background:#fffbef;padding:7px 9px;border-radius:6px;overflow-wrap:anywhere}.sap-evidence{font-size:10px;color:#859ab4;line-height:1.9;margin-top:7px;overflow-wrap:anywhere}.sap-evidence summary{cursor:pointer;color:#6582a5}.sap-policy .shr-actions{margin-top:5px}.sap-job{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;text-align:left}.sap-job>span{min-width:0}.sap-job>span:last-child{max-width:42%;flex:none;text-align:right}.sap-job strong{display:block;font-size:12px;font-weight:600;overflow-wrap:anywhere}.sap-job small{display:block;font-size:10px;color:#7a90ad;line-height:1.8;overflow-wrap:anywhere;margin-top:3px}.sap-job .shr-status{display:inline-block}.sap-job .shr-link{display:flex;justify-content:flex-end;color:#3774d7}.sap-job:disabled{cursor:default}.sap-job:hover:not(:disabled){border-color:#bfd1f2}.sap-page button:focus-visible,.sap-page summary:focus-visible{outline:2px solid #2563eb;outline-offset:3px}.sap-confirm label{display:grid;gap:5px;font-size:12px;color:#5e7798}.sap-confirm .shr-check{display:flex;align-items:flex-start;gap:8px;font-size:11px;line-height:1.8}.sap-confirm .shr-check input{flex:none;margin-top:4px}.sap-confirm .shr-actions{justify-content:flex-end}
 @media(max-width:800px){.sap-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.sap-summary>div,.sap-summary>button{padding:9px 10px}.sap-summary strong{font-size:20px}.sap-policy-main{flex-wrap:wrap;gap:6px}.sap-policy-main>.shr-status{margin-left:22px}.sap-policy-toolbar{align-items:flex-start}.sap-policy-toolbar span{line-height:1.8}.sap-policy-toolbar button{white-space:normal;height:auto;min-height:32px;max-width:65%;font-size:10px}.sap-select strong{font-size:12px}.sap-select small{font-size:10px}.sap-policy-meta{gap:2px 8px}.sap-job{padding:10px}.sap-job strong{font-size:11px}.sap-job small{font-size:9px}}
+
+/* Legible policy summaries and handling records without changing processing behavior. */
+.shr-page .sap-summary :is(span,p,small) { font-size:12px; color:#64748b; line-height:1.7; }
+.shr-page .sap-summary strong { font-size:24px; color:#284766; }
+.shr-page .sap-guide { font-size:12px; line-height:1.8; color:#5d728e; }
+.shr-page .sap-policy-toolbar { gap:12px; font-size:12px; color:#64748b; }
+.shr-page .sap-policy-toolbar button { font-size:13px; }
+.shr-page .sap-select strong { font-size:14px; line-height:1.6; color:#243c5b; }
+.shr-page .sap-select small { font-size:12px; color:#64748b; }
+.shr-page :is(.sap-policy-meta,.sap-policy-reasons,.sap-evidence) { font-size:12px; line-height:1.8; }
+.shr-page :is(.sap-policy-meta,.sap-evidence) { color:#64748b; }
+.shr-page .sap-job { padding:14px 16px; }
+.shr-page .sap-job strong { font-size:14px; line-height:1.6; color:#2a4564; }
+.shr-page .sap-job small { font-size:12px; line-height:1.75; color:#64748b; }
+@media(max-width:639px) {
+  .shr-page .sap-policy-toolbar { align-items:stretch; flex-direction:column; }
+  .shr-page .sap-policy-toolbar button { min-height:44px; }
+  .shr-page .sap-policy-main { flex-wrap:wrap; gap:8px; }
+  .shr-page .sap-policy-main .sap-select { flex:1 1 180px; }
+  .shr-page .sap-policy-main > .shr-status { margin-left:22px; }
+  .shr-page .sap-job { flex-wrap:wrap; gap:10px; padding:14px; }
+  .shr-page .sap-job > span:first-child { flex:1 1 180px; }
+  .shr-page .sap-job > span:last-child { max-width:none; flex:1 1 150px; display:flex; gap:8px 12px; flex-wrap:wrap; align-items:center; justify-content:space-between; text-align:left; }
+  .shr-page .sap-job small { font-size:12px; }
+  .shr-page .sap-page .shr-filters button { min-height:44px; font-size:12px; }
+}

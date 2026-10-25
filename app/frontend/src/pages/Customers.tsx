@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1989,10 +1989,8 @@ export default function Customers() {
       {canDeleteContacts && <ConfirmDialog open={!!deleteContactTarget} onOpenChange={v => { if (!v) setDeleteContactTarget(null); }} title="确认删除联系人" description={`确定要删除联系人「${deleteContactTarget?.contact_name}」吗？`} onConfirm={handleDeleteContact} loading={deletingContact} />}
 
       <Dialog open={showAssignDialog} onOpenChange={v => { if (!v) { setShowAssignDialog(false); setAssignTarget(null); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>设置客户负责人</DialogTitle></DialogHeader>
-          {assignTarget && (
-            <div className="space-y-4">
+        <CrmFormDialogContent className="max-w-md"><CrmFormDialogHeader><DialogTitle>设置客户负责人</DialogTitle></CrmFormDialogHeader>{assignTarget && (
+            <><CrmFormDialogBody className="space-y-4">
               <div className="p-3 bg-slate-50 rounded-lg">
                 <p className="text-sm font-medium">{assignTarget.business_name}</p>
                 <p className="text-xs text-slate-500 mt-1">当前负责人: {assignTarget.sales_person || '未分配'}</p>
@@ -2005,13 +2003,11 @@ export default function Customers() {
                   options={[{ value: '', label: '请选择员工' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}${e.role ? ' (' + e.role + ')' : ''}` }))]}
                 />
               </div>
-              <div className="flex justify-end gap-2">
+              </CrmFormDialogBody><CrmFormDialogFooter>
                 <Button variant="outline" onClick={() => { setShowAssignDialog(false); setAssignTarget(null); }}>取消</Button>
-                <Button onClick={handleAssign} disabled={assigning || !assignEmployeeId} className="bg-indigo-600 hover:bg-indigo-700">{assigning ? '分配中...' : '确认分配'}</Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
+                <Button onClick={handleAssign} disabled={assigning || !assignEmployeeId} className="bg-blue-600 hover:bg-blue-700">{assigning ? '分配中...' : '确认分配'}</Button>
+              </CrmFormDialogFooter></>
+          )}</CrmFormDialogContent>
       </Dialog>
 
       <CustomerFinanceAccessPanel customer={financeAccessTarget} open={Boolean(financeAccessTarget)} onClose={() => setFinanceAccessTarget(null)} onSaved={async () => { await loadCustomers(); if (selectedCustomer) await loadCustomerDetail(selectedCustomer.id); }} />
@@ -2606,7 +2602,7 @@ export default function Customers() {
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-blue-600">客户详情</p>
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-              <h2 className="min-w-0 flex-1 truncate text-xl font-bold text-slate-900">{c.business_name}</h2>
+              <h2 className="customer-detail-name min-w-0 flex-1 break-words text-xl font-bold text-slate-900">{c.business_name}</h2>
               <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
               <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
             </div>
@@ -2720,7 +2716,7 @@ export default function Customers() {
               <div className="space-y-4">
                 {effective.modules.basic.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <h3 className="text-base font-semibold text-slate-900">客户摘要</h3>
-                  <div className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{formatPhoneNumber(c.phone, c.country)}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
+                  <div className="customer-detail-summary-fields mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{formatPhoneNumber(c.phone, c.country)}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
                   <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}{effective.modules.opportunities.read && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>查看商机</Button>}</div>
                 </CardContent></Card>)}
 
@@ -2770,7 +2766,7 @@ export default function Customers() {
                 {canEditBasic(c) && <Button size="sm" variant="outline" onClick={() => openEdit(c)}><Edit className="w-3 h-3 mr-1" /> 编辑</Button>}
                 {canDeleteCustomer(c) && <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => setDeleteTarget(c)}><Trash2 className="w-3 h-3 mr-1" /> 删除</Button>}
               </div>
-              <div className="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+              <div className="customer-detail-basic-fields grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">客户编号:</span><span>{c.customer_code}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">行业类型:</span><span>{industryLabels[c.industry] || c.industry}</span></div>
                 <div className="flex gap-2 items-center"><Phone className="w-3 h-3 text-slate-400" /><span>{formatPhoneNumber(c.phone, c.country)}</span></div>
@@ -3089,7 +3085,7 @@ export default function Customers() {
                             })}
                           </div>
                           <div className="hidden overflow-x-auto md:block">
-                          <table className="w-full min-w-[1040px] text-sm">
+                          <table className="customer-detail-finance-ledger w-full min-w-[1040px] text-sm">
                             <thead>
                               <tr className="border-b text-left text-slate-500">
                                 <th className="pb-2 font-medium">产品</th>
@@ -3354,10 +3350,10 @@ export default function Customers() {
           <>
           <div className="grid gap-2.5 p-3 md:hidden">
             {paginatedCustomers.items.map(c => (
-              <div key={c.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div key={c.id} className="customer-mobile-card rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
-                  <button type="button" className="min-w-0 text-left" onClick={() => openDetail(c)}>
-                    <p className="truncate text-[15px] font-semibold text-blue-700">{c.business_name || '-'}</p>
+                  <button type="button" className="customer-mobile-identity min-w-0 text-left" onClick={() => openDetail(c)}>
+                    <p className="line-clamp-2 break-words text-[15px] font-semibold text-blue-700">{c.business_name || '-'}</p>
                     <p className="mt-0.5 text-[11px] text-slate-400">{c.customer_code || `客户#${c.id}`}</p>
                   </button>
                   <div className="flex shrink-0 flex-wrap justify-end gap-1">
@@ -3372,7 +3368,7 @@ export default function Customers() {
                 </div>
                 <div className="mt-2.5 flex items-center gap-2 border-t border-slate-100 pt-2.5">
                   <div className="min-w-0 flex-1">{c.phone ? <CustomerPhoneDial phone={c.phone} country={c.country} label={formatPhoneNumber(c.phone, c.country)} variant="outline" className="w-full min-w-0" buttonClassName="min-w-0 flex-1 justify-start px-3" /> : <span className="flex min-h-11 items-center px-3 text-xs text-slate-400">电话未填写</span>}</div>
-                  <Button size="sm" className="min-h-11 w-24 shrink-0 bg-blue-600 hover:bg-blue-700 md:min-h-0" onClick={() => openDetail(c)}>查看</Button>
+                  <Button size="sm" variant="outline" className="min-h-11 w-24 shrink-0 text-blue-700 hover:bg-blue-50 md:min-h-0" onClick={() => openDetail(c)}>查看</Button>
                   {(canManageCustomerAccess(c) || canAssignCustomer(c) || canEditBasic(c) || canDeleteCustomer(c)) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

@@ -1,0 +1,101 @@
+/* Owner CRM and app directory, independent of the private workspace. */
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-owner {
+  border: 1px solid #e0e7f0;
+  border-radius: 14px;
+  padding: 20px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgb(23 43 77 / 2%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-heading h2 {
+  font-size: 18px;
+  line-height: 26px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-kicker {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-owner-counts {
+  gap: 8px;
+  margin-block: 14px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-owner-counts button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f8fafc;
+  border-color: #e7ecf4;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-owner-counts button span {
+  color: #475b78;
+  font-size: 12px;
+  line-height: 18px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-owner-counts button strong {
+  margin: 0;
+  color: #172b4d;
+  font-size: 20px;
+  line-height: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-exception {
+  padding: 12px;
+  gap: 12px;
+  border-radius: 10px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-exception-copy strong {
+  font-size: 14px;
+  line-height: 21px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .owner-desktop-hero {
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgb(15 27 52 / 8%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .owner-desktop-hero .text-slate-500 {
+  color: #a4b3ce;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .t24-command-metric {
+  border-radius: 10px;
+  min-width: 0;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .t24-command-metric > div:first-child {
+  margin-bottom: 8px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .homepage-refined :is(.home-panel, .home-app-tile) {
+  border-color: #e0e7f0;
+  box-shadow: 0 2px 6px rgb(23 43 77 / 2%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .homepage-refined :is(.home-page-heading h1, .home-panel h2, .home-apps-section h2) {
+  color: #172b4d;
+  letter-spacing: -.02em;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .homepage-refined .home-app-tile:hover {
+  background: #f8faff;
+  border-color: #b7cdf9;
+  box-shadow: 0 4px 12px rgb(36 92 232 / 6%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .homepage-refined :is(.home-primary-button, .home-more-entry) {
+  border-radius: 12px;
+}
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-owner {
+    padding: 16px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-owner-counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-owner-counts button {
+    min-height: 48px;
+    gap: 6px;
+    padding: 10px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-admin-dashboard .sf-heading {
+    gap: 12px;
+  }
+}

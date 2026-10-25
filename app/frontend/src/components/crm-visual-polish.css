@@ -1,0 +1,274 @@
+/* CRM chrome and shared visual primitives. The private route never mounts this opt-in shell. */
+.t24-system.app-shell[data-crm-polish="20261026"],
+body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface {
+  --crm-canvas: #f5f7fb;
+  --crm-surface: #fff;
+  --crm-surface-soft: #f8fafc;
+  --crm-ink: #172b4d;
+  --crm-secondary: #475b78;
+  --crm-muted: #64748b;
+  --crm-border: #e0e7f0;
+  --crm-border-strong: #cbd5e1;
+  --crm-blue: #245ce8;
+  --crm-blue-hover: #1e4fc7;
+  --crm-blue-soft: #edf3ff;
+  --crm-success: #047857;
+  --crm-warning: #a16207;
+  --crm-danger: #be123c;
+  --crm-radius: 14px;
+  --crm-radius-control: 9px;
+  --t24-body-size: 14px;
+  --t24-body-line: 21px;
+  --t24-aux-size: 12px;
+  --t24-aux-line: 18px;
+  --t24-section-size: 16px;
+  --t24-section-line: 24px;
+  --t24-detail-size: 18px;
+  --t24-detail-line: 26px;
+  --t24-title-size: 24px;
+  --t24-title-line: 32px;
+  --t24-control-radius: var(--crm-radius-control);
+  --t24-dialog-radius: 18px;
+  color: var(--crm-ink);
+  font-size: var(--t24-body-size);
+  line-height: var(--t24-body-line);
+}
+
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main {
+  --t24-body-size: 14px;
+  --t24-body-line: 21px;
+  --t24-aux-size: 12px;
+  --t24-aux-line: 18px;
+  background: var(--crm-canvas);
+}
+
+/* Navigation retains its existing dimensions, hierarchy and access rules. */
+.t24-system.app-shell[data-crm-polish="20261026"] .app-primary-rail {
+  background: linear-gradient(180deg, #0e1b34 0%, #12213c 100%);
+  border-right: 1px solid rgb(255 255 255 / 6%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-primary-link {
+  border-radius: 13px;
+  color: #c1ccdf;
+  transition: background-color .16s ease, color .16s ease;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-primary-link:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 7%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-primary-link.is-active {
+  color: #fff;
+  background: var(--crm-blue);
+  box-shadow: 0 5px 16px rgb(16 48 126 / 22%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-secondary-panel {
+  background: #fff;
+  border-color: var(--crm-border);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-secondary-heading h2 {
+  color: var(--crm-ink);
+  font-size: 19px;
+  line-height: 28px;
+  letter-spacing: -.02em;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] :is(.app-secondary-eyebrow, .app-navigation-group-label) {
+  color: var(--crm-muted);
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: .02em;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-secondary-description {
+  color: var(--crm-muted);
+  line-height: 20px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-navigation-search {
+  min-height: 38px;
+  border-color: var(--crm-border);
+  border-radius: 9px;
+  background: var(--crm-surface-soft);
+  color: var(--crm-muted);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-navigation-search:focus-within {
+  border-color: #9bb8ff;
+  box-shadow: 0 0 0 3px rgb(36 92 232 / 9%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-secondary-link {
+  min-height: 40px;
+  border-radius: 9px;
+  color: var(--crm-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-secondary-link:hover {
+  background: var(--crm-surface-soft);
+  color: var(--crm-ink);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-secondary-link.is-active {
+  background: var(--crm-blue-soft);
+  color: var(--crm-blue);
+  font-weight: 600;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-secondary-footer {
+  border-color: var(--crm-border);
+  color: var(--crm-secondary);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-topbar {
+  background: rgb(255 255 255 / 97%);
+  border-color: var(--crm-border);
+  box-shadow: 0 1px 0 rgb(23 43 77 / 2%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-page-title {
+  gap: 16px;
+  align-items: flex-start;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] :is(.app-page-heading, .app-page-title h1, .app-page-title h2) {
+  color: var(--crm-ink);
+  letter-spacing: -.025em;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 650;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .app-page-description {
+  margin-top: 4px;
+  color: var(--crm-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .t24-card {
+  border-radius: var(--crm-radius);
+  box-shadow: 0 1px 2px rgb(23 43 77 / 3%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .t24-card[class*="border-slate-200"] {
+  border-color: var(--crm-border);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .t24-section-title {
+  color: var(--crm-ink);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 650;
+}
+
+/* The same visual treatment applies to CRM portals, without changing Dialog behavior. */
+:is(.t24-system.app-shell[data-crm-polish="20261026"], body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface) .t24-button {
+  border-radius: var(--crm-radius-control);
+  letter-spacing: 0;
+  font-weight: 600;
+  box-shadow: none;
+}
+:is(.t24-system.app-shell[data-crm-polish="20261026"], body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface) .t24-button:is(.bg-primary, .bg-blue-600) {
+  background: var(--crm-blue);
+  color: #fff;
+}
+:is(.t24-system.app-shell[data-crm-polish="20261026"], body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface) .t24-button:is(.bg-primary, .bg-blue-600):hover:not(:disabled) {
+  background: var(--crm-blue-hover);
+  box-shadow: 0 2px 4px rgb(30 79 199 / 12%);
+}
+:is(.t24-system.app-shell[data-crm-polish="20261026"], body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface) :is(.t24-button, .t24-input, .t24-native-select, .t24-textarea, .t24-select-trigger):focus-visible {
+  outline: 2px solid #739af5;
+  outline-offset: 2px;
+}
+:is(.t24-system.app-shell[data-crm-polish="20261026"], body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface) :is(.t24-input, .t24-native-select, .t24-textarea, .t24-select-trigger):not([aria-invalid="true"]):not([class*="border-red"]):not([class*="border-rose"]):not([class*="border-amber"]) {
+  border-color: var(--crm-border-strong);
+  border-radius: var(--crm-radius-control);
+  background-color: #fff;
+  color: var(--crm-ink);
+  box-shadow: 0 1px 2px rgb(23 43 77 / 2%);
+}
+:is(.t24-system.app-shell[data-crm-polish="20261026"], body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface) :is(.t24-input, .t24-textarea)::placeholder {
+  color: #7b8ca7;
+}
+:is(.t24-system.app-shell[data-crm-polish="20261026"], body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface) :is(.t24-input, .t24-native-select, .t24-textarea, .t24-select-trigger):disabled {
+  background-color: #f1f4f8;
+  color: var(--crm-muted);
+}
+body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface:is([role="menu"], [role="listbox"]) {
+  padding: 6px;
+  border-color: var(--crm-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 32px rgb(23 43 77 / 13%), 0 2px 6px rgb(23 43 77 / 4%);
+}
+body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-menu-item {
+  min-height: 36px;
+  border-radius: 7px;
+  padding-block: 8px;
+  line-height: 20px;
+}
+body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-menu-item:not([data-disabled]):is(:focus, [data-highlighted]) {
+  background: var(--crm-blue-soft, #edf3ff);
+}
+body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-dialog-content {
+  border-color: var(--crm-border);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgb(15 23 42 / 20%);
+}
+body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-crm-form-dialog-header {
+  background: #fff;
+  border-color: var(--crm-border, #e0e7f0);
+}
+body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-crm-form-dialog-footer {
+  border-color: var(--crm-border, #e0e7f0);
+  background: #f8fafc;
+}
+
+@media (min-width: 768px) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .app-page .t24-button:not(.t24-button-link):not(.t24-button-icon) {
+    min-height: 36px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .t24-card :is(table, .t24-table) {
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .t24-card thead {
+    color: var(--crm-muted);
+    background: #f8fafc;
+  }
+}
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main {
+    --t24-control-height: 44px;
+    --t24-control-compact: 44px;
+    --t24-control-large: 48px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] :is(.app-page-heading, .app-page-title h1, .app-page-title h2) {
+    font-size: 22px;
+    line-height: 30px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .app-page-title {
+    gap: 12px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .app-page .t24-button:not(.t24-button-link),
+  body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-menu-item {
+    min-height: 44px;
+  }
+  body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface {
+    --t24-control-height: 44px;
+    --t24-control-compact: 44px;
+    --t24-input-size: 16px;
+    --t24-input-line: 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .t24-system.app-shell[data-crm-polish="20261026"] :is(.app-primary-link, .app-secondary-link, .t24-button) {
+    transition: none;
+  }
+}
+/* Auxiliary copy remains readable on compact screens. Icons and charts keep their own sizes. */
+.t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main :is([class~="text-[9px]"], [class~="text-[10px]"], [class~="text-[11px]"], .text-\[0\.65rem\]),
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface :is([class~="text-[9px]"], [class~="text-[10px]"], [class~="text-[11px]"]) {
+  font-size: 12px;
+  line-height: 18px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .customer-detail-hero > div:first-child > button {
+  color: #475569;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .shr-page .shr-kicker {
+  font-size: 12px !important;
+  color: #64748b !important;
+  line-height: 18px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .shr-reminders-automation strong small {
+  font-size: 12px;
+  line-height: 18px;
+}

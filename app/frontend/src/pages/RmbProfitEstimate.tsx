@@ -1,3 +1,4 @@
+import './financial-workspaces-polish.css';
 import CompactFinanceTable from '@/components/CompactFinanceTable';
 import './crm-org-compact.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -187,10 +188,10 @@ export default function RmbProfitEstimate() {
     : 0;
 
   return (
-    <div className="crm-org-compact t24-command-page calm-report-page app-page space-y-5">
+    <div className="financial-workspace financial-workspace--rmb crm-org-compact t24-command-page calm-report-page app-page space-y-5">
       <div className="app-page-title flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">T24 Marketing · RMB Profit Estimate</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">经营预估 · 人民币</p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">人民币利润预估</h1>
           <p className="mt-1 text-sm text-slate-500">先核算美元经营结余，再按月均汇率折算，最后扣除财务中已录入的人民币实际支出。</p>
         </div>

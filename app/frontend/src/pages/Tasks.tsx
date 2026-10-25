@@ -7,15 +7,16 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   Plus, Search, CheckCircle2, Edit, Trash2, ArrowLeft, Bot,
-  ClipboardList, UserCheck, Users, ExternalLink, ChevronDown,
+  ClipboardList, UserCheck, Users, ExternalLink, ChevronDown, MoreHorizontal,
 } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -890,7 +891,7 @@ export default function Tasks() {
                             <Button className="min-h-12 w-full rounded-2xl bg-blue-600 font-bold hover:bg-blue-700" disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'in_progress')}>开始处理</Button>
                           )}
                           {canEditTask && !completed && !['pending', 'waiting_client'].includes(t.status) && (
-                            <Button className="min-h-12 w-full rounded-2xl bg-emerald-600 font-bold hover:bg-emerald-700" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
+                            <Button className="min-h-12 w-full rounded-2xl bg-blue-600 font-bold hover:bg-blue-700" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
                               <CheckCircle2 className="mr-1.5 h-4 w-4" />完成并记录
                             </Button>
                           )}
@@ -907,8 +908,7 @@ export default function Tasks() {
                                 <ExternalLink className="mr-1 h-3.5 w-3.5" />客户
                               </Button>
                             )}
-                            {canEditTask && <Button aria-label="编辑任务" size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs" onClick={() => openEditTask(t)}><Edit className="mr-1 h-3.5 w-3.5" />编辑</Button>}
-                            {canDeleteTask && !t.automation_issue_id && <Button aria-label="删除任务" size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs text-rose-600" onClick={() => setDeleteTarget(t)}><Trash2 className="mr-1 h-3.5 w-3.5" />删除</Button>}
+                            {(canEditTask || (canDeleteTask && !t.automation_issue_id)) && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" className="dc-admin-menu-trigger h-11 w-11 shrink-0 px-0 md:h-8 md:w-8" aria-label={`更多任务操作：${t.title}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-44">{canEditTask && <DropdownMenuItem asChild><Button aria-label="编辑任务" size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 rounded-lg px-3 text-sm text-slate-700" onClick={() => openEditTask(t)}><Edit className="mr-1 h-3.5 w-3.5" />编辑</Button></DropdownMenuItem>}{canDeleteTask && !t.automation_issue_id && <DropdownMenuItem asChild><Button aria-label="删除任务" size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 rounded-lg px-3 text-sm text-rose-600 hover:bg-rose-50" onClick={() => setDeleteTarget(t)}><Trash2 className="mr-1 h-3.5 w-3.5" />删除</Button></DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}
                           </div>
                         </div>
                       </div>
@@ -950,7 +950,7 @@ export default function Tasks() {
                           </Button>
                         )}
                         {canEditTask && !completed && t.status !== 'pending' && (
-                          <Button size="sm" className="min-h-11 w-full bg-green-600 px-3 text-xs hover:bg-green-700 md:h-8 md:min-h-0 md:w-auto" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
+                          <Button size="sm" className="min-h-11 w-full bg-blue-600 px-3 text-xs hover:bg-blue-700 md:h-8 md:min-h-0 md:w-auto" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
                             <CheckCircle2 className="mr-1 h-4 w-4" />完成并记录
                           </Button>
                         )}
@@ -969,8 +969,7 @@ export default function Tasks() {
                             <ExternalLink className="mr-1 h-3.5 w-3.5" />打开客户
                           </Button>
                         )}
-                        {canEditTask && <Button aria-label="编辑任务" title="编辑任务" size="sm" variant="ghost" className="min-h-11 w-full p-0 text-slate-500 hover:text-blue-600 md:h-8 md:min-h-0 md:w-8" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /><span className="md:hidden">编辑</span></Button>}
-                        {canDeleteTask && !t.automation_issue_id && <Button aria-label="删除任务" title="删除任务" size="sm" variant="ghost" className="min-h-11 w-full p-0 text-slate-500 hover:text-red-600 md:h-8 md:min-h-0 md:w-8" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /><span className="md:hidden">删除</span></Button>}
+                        {(canEditTask || (canDeleteTask && !t.automation_issue_id)) && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" className="dc-admin-menu-trigger h-11 w-11 shrink-0 px-0 md:h-8 md:w-8" aria-label={`更多任务操作：${t.title}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-44">{canEditTask && <DropdownMenuItem asChild><Button aria-label="编辑任务" title="编辑任务" size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 rounded-lg px-3 text-sm text-slate-700" onClick={() => openEditTask(t)}><Edit className="w-3.5 h-3.5" /><span>编辑</span></Button></DropdownMenuItem>}{canDeleteTask && !t.automation_issue_id && <DropdownMenuItem asChild><Button aria-label="删除任务" title="删除任务" size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 rounded-lg px-3 text-sm text-rose-600 hover:bg-rose-50" onClick={() => setDeleteTarget(t)}><Trash2 className="w-3.5 h-3.5" /><span>删除</span></Button></DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}
                       </div>
                     </div>}
                   </div>
@@ -994,8 +993,9 @@ export default function Tasks() {
       )}
 
       {canEditTask && <Dialog open={!!completeTarget} onOpenChange={(v) => { if (!v && !completing && completeDraft.confirmDiscard()) { setCompleteTarget(null); setCompletionNote(''); } }}>
-        <DialogContent className="delivery-dialog max-w-md">
-          <DialogHeader><DialogTitle>填写处理结果并完成</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="max-w-md">
+          <CrmFormDialogHeader><DialogTitle>填写处理结果并完成</DialogTitle></CrmFormDialogHeader>
+          <CrmFormDialogBody>
           <div className="space-y-3">
             <div className="rounded-lg bg-slate-50 px-3 py-2">
               <p className="text-sm font-medium text-slate-800">{completeTarget?.title}</p>
@@ -1012,19 +1012,22 @@ export default function Tasks() {
               <p className="mt-1 text-xs text-slate-400">结果会写入任务记录；系统问题会据此继续追踪是否真正解决。</p>
             </div>
           </div>
-          <div className="mt-4 flex gap-2 sm:justify-end">
+
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" className="flex-1 sm:flex-none" disabled={completing} onClick={() => { if (completeDraft.confirmDiscard()) { setCompleteTarget(null); setCompletionNote(''); } }}>取消</Button>
-            <Button onClick={handleCompleteTask} disabled={completing} className="flex-1 bg-green-600 hover:bg-green-700 sm:flex-none">
+            <Button onClick={handleCompleteTask} disabled={completing} className="flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none">
               {completing ? '提交中...' : '确认完成'}
             </Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>}
 
       {/* Add/Edit task dialog */}
       {(canCreateTask || (canEditTask && editingId !== null)) && <Dialog open={showForm} onOpenChange={(v) => { if (!v && (saving || !taskDraft.confirmDiscard())) return; setShowForm(v); if (!v) { setEditingId(null); setForm(emptyTaskForm); } }}>
-        <DialogContent className="delivery-dialog max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto sm:max-h-[85vh]">
-          <DialogHeader><DialogTitle>{editingId ? '编辑任务' : '新建任务'}</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="max-w-lg">
+          <CrmFormDialogHeader><DialogTitle>{editingId ? '编辑任务' : '新建任务'}</DialogTitle></CrmFormDialogHeader>
+          <CrmFormDialogBody>
           <div className="space-y-4">
             <div><Label>任务名称 *</Label><Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></div>
             <div>
@@ -1112,11 +1115,13 @@ export default function Tasks() {
             <div><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
             <div><Label>附件链接</Label><Input value={form.attachment_link} onChange={e => setForm({ ...form, attachment_link: e.target.value })} placeholder="https://..." /></div>
           </div>
-          <div className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-4 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
+
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" className="flex-1 sm:flex-none" disabled={saving} onClick={() => { if (taskDraft.confirmDiscard()) setShowForm(false); }}>取消</Button>
             <Button onClick={handleSave} disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none">{saving ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>}
     </div>
   );

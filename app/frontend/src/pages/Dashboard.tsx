@@ -1,3 +1,4 @@
+import '@/pages/crm-command-visual-polish.css';
 import CompactFinanceTable from '@/components/CompactFinanceTable';
 import { CRM_COMMAND_TABLES } from '@/components/crm-command-tables';
 import './crm-command-compact.css';

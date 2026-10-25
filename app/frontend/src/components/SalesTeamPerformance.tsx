@@ -1,3 +1,5 @@
+import '@/pages/crm-sales-visual-polish.css';
+import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, Plus, Target } from "lucide-react";
@@ -557,11 +559,11 @@ export default function SalesTeamPerformance({
         open={!!evidence}
         onOpenChange={(open) => !open && setEvidence(null)}
       >
-        <DialogContent className="sales-center-ui max-h-[85dvh] max-w-3xl overflow-y-auto">
-          <DialogHeader>
+        <CrmFormDialogContent className="sales-center-ui max-w-3xl crm-sales-dialog-polish">
+<CrmFormDialogHeader>
             <DialogTitle>{evidence?.name}</DialogTitle>
-          </DialogHeader>
-          {evidenceError ? (
+          </CrmFormDialogHeader>
+<CrmFormDialogBody className="crm-sales-dialog-body">{evidenceError ? (
             <p role="alert" className="si-error">
               {evidenceError}
             </p>
@@ -594,17 +596,18 @@ export default function SalesTeamPerformance({
                 <p className="si-empty">该月份尚无此项记录。</p>
               )}
             </div>
-          )}
-        </DialogContent>
+          )}</CrmFormDialogBody>
+
+</CrmFormDialogContent>
       </Dialog>
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="sales-center-ui">
-          <DialogHeader>
+        <CrmFormDialogContent className="sales-center-ui crm-sales-dialog-polish">
+<CrmFormDialogHeader>
             <DialogTitle>
               {editing?.name} · {month} 目标
             </DialogTitle>
-          </DialogHeader>
-          <div className="si-form">
+          </CrmFormDialogHeader>
+<CrmFormDialogBody className="crm-sales-dialog-body"><div className="si-form">
             <label>
               岗位模板
               <NativeSelect
@@ -646,18 +649,20 @@ export default function SalesTeamPerformance({
                 }
               />
             </label>
-            <Button disabled={saving} onClick={() => void saveTarget()}>
+
+          </div></CrmFormDialogBody>
+<CrmFormDialogFooter><Button disabled={saving} onClick={() => void saveTarget()}>
               保存目标版本
-            </Button>
-          </div>
-        </DialogContent>
+            </Button></CrmFormDialogFooter>
+
+</CrmFormDialogContent>
       </Dialog>
       <Dialog open={coachOpen} onOpenChange={setCoachOpen}>
-        <DialogContent className="sales-center-ui">
-          <DialogHeader>
+        <CrmFormDialogContent className="sales-center-ui crm-sales-dialog-polish">
+<CrmFormDialogHeader>
             <DialogTitle>安排辅导</DialogTitle>
-          </DialogHeader>
-          <div className="si-form">
+          </CrmFormDialogHeader>
+<CrmFormDialogBody className="crm-sales-dialog-body"><div className="si-form">
             <label>
               销售员工
               <NativeSelect
@@ -688,34 +693,36 @@ export default function SalesTeamPerformance({
                 onChange={(e) => setCoachDate(e.target.value)}
               />
             </label>
-            <Button
+
+          </div></CrmFormDialogBody>
+<CrmFormDialogFooter><Button
               disabled={saving || !coachEmployee}
               onClick={() => void saveCoach()}
             >
               创建辅导行动
-            </Button>
-          </div>
-        </DialogContent>
+            </Button></CrmFormDialogFooter>
+
+</CrmFormDialogContent>
       </Dialog>
       <Dialog
         open={!!completing}
         onOpenChange={(o) => !o && setCompleting(null)}
       >
-        <DialogContent className="sales-center-ui">
-          <DialogHeader>
+        <CrmFormDialogContent className="sales-center-ui crm-sales-dialog-polish">
+<CrmFormDialogHeader>
             <DialogTitle>记录复查结果</DialogTitle>
-          </DialogHeader>
-          <p>{completing?.action}</p>
-          <Textarea
+          </CrmFormDialogHeader>
+<CrmFormDialogBody className="crm-sales-dialog-body"><p>{completing?.action}</p>
+<Textarea
             aria-label="复查结果"
             value={completionNote}
             onChange={(e) => setCompletionNote(e.target.value)}
             placeholder="完成了什么，有什么变化，后续还需要什么帮助"
-          />
-          <Button disabled={saving} onClick={() => void finishCoach()}>
+          /></CrmFormDialogBody>
+<CrmFormDialogFooter><Button disabled={saving} onClick={() => void finishCoach()}>
             保存复查结果
-          </Button>
-        </DialogContent>
+          </Button></CrmFormDialogFooter>
+</CrmFormDialogContent>
       </Dialog>
     </div>
   );

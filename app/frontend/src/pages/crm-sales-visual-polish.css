@@ -1,0 +1,243 @@
+/* Sales surfaces: presentation only, mounted inside the opted-in CRM shell. */
+.t24-system.app-shell[data-crm-polish="20261026"] .sales-center-ui {
+  --sc-border: #e0e7f0;
+  --sc-muted: #64748b;
+  --sc-ink: #172b4d;
+  color: var(--sc-ink);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sales-center-ui :is(.sc-page-heading, .sc-section-heading, .slr-page-heading) {
+  align-items: center;
+  gap: 12px 16px;
+  margin-bottom: 16px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sales-center-ui :is(.sc-page-heading h1, .sc-section-heading h2) {
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -.025em;
+  color: #172b4d;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-view-context {
+  gap: 6px 10px;
+  margin: 2px 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #e3eaf4;
+  border-radius: 10px;
+  background: #fff;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-view-context-mode {
+  border-radius: 5px;
+  background: #edf3ff;
+  color: #2458b5;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sc-call-layout {
+  gap: 16px;
+  align-items: start;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined :is(.sc-queue, .sc-call-center) {
+  border: 1px solid #e0e7f0;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgb(23 43 77 / 2%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sc-queue {
+  overflow: hidden;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sc-queue-head {
+  padding: 14px 12px 10px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sc-panel-heading h3 {
+  font-size: 16px;
+  line-height: 24px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sc-queue-item {
+  min-height: 64px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sc-queue-item[aria-pressed="true"] {
+  border-color: #b7cdf9;
+  background: #edf3ff;
+  box-shadow: inset 3px 0 #245ce8;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sc-queue-copy strong {
+  color: #172b4d;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 550;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sc-queue-footer {
+  padding: 10px 12px;
+  border-top: 1px solid #edf1f7;
+  background: #f8fafc;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sc-customer {
+  padding: 18px 20px;
+  border-bottom: 1px solid #e5ebf3;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-customer-heading h2 {
+  margin: 7px 0 4px;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 650;
+  letter-spacing: -.02em;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-phone strong {
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -.025em;
+  font-variant-numeric: tabular-nums;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-provider-status {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 18px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-record {
+  padding: 16px 20px 0;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-record textarea {
+  border-color: #cbd5e1;
+  border-radius: 10px;
+  background: #fcfdff;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-record :is(.sw-record-actions, .sw-record-footer) {
+  border-top: 1px solid #e5ebf3;
+  background: #fff;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page :is(.mp-search-toolbar, .mp-industry-toolbar) {
+  gap: 8px 12px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-expanded-filters {
+  padding: 16px;
+  border: 1px solid #e0e7f0;
+  border-radius: 12px;
+  background: #fff;
+  margin-bottom: 16px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-queue-table {
+  table-layout: fixed;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-merchant-name {
+  color: #2458b5;
+  font-weight: 550;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-queue-table td {
+  padding-block: 12px;
+  vertical-align: middle;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-review-panel {
+  border-radius: 14px;
+  border-color: #e0e7f0;
+  box-shadow: 0 2px 6px rgb(23 43 77 / 2%);
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-review-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #edf1f7;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-review-panel dt {
+  color: #64748b;
+  font-size: 12px;
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-list-pagination {
+  padding: 12px 16px;
+}
+/* Portals use explicit class plus CRM shell presence; private portals cannot match. */
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-sales-dialog-polish {
+  gap: 0;
+  padding: 0;
+  border-radius: 18px;
+  color: #172b4d;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-sales-dialog-polish .crm-sales-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-sales-dialog-polish .t24-crm-form-dialog-footer > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  position: static;
+  background: transparent;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-sales-dialog-polish fieldset {
+  min-width: 0;
+}
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .sales-center-ui :is(.sc-page-heading h1, .sc-section-heading h2) {
+    font-size: 22px;
+    line-height: 30px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .sw-refined :is(.sc-customer, .sw-record) {
+    padding-inline: 14px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-customer-heading h2 {
+    font-size: 20px;
+    line-height: 28px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-view-context-account {
+    font-size: 12px;
+    line-height: 18px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-merchant-card {
+    padding: 14px;
+    gap: 8px;
+    background: #fff;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-merchant-name {
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .merchant-pool-page .mp-card-phone {
+    font-size: 14px;
+    line-height: 22px;
+    font-variant-numeric: tabular-nums;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-sales-dialog-polish .crm-sales-dialog-body {
+    padding: 16px;
+    gap: 16px;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-sales-dialog-polish .t24-crm-form-dialog-footer > div > button {
+    flex: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .sales-center-ui * {
+    scroll-behavior: auto;
+    transition-duration: 0s;
+    animation-duration: 0s;
+  }
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-sales-dialog-polish .sk-editor-fields {
+  overflow: visible;
+  max-height: none;
+  flex: initial;
+}
+@media (max-width: 767px) {
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-sales-dialog-polish:is(.mi-import-dialog, .mp-edit-dialog) {
+    padding: 0 !important;
+    height: auto !important;
+    max-height: calc(100dvh - 16px) !important;
+    width: calc(100vw - 16px) !important;
+    border-radius: 16px !important;
+  }
+}
+.t24-system.app-shell[data-crm-polish="20261026"] .sw-refined .sw-filter-context {
+  margin: 12px 14px 0;
+  padding: 9px 12px;
+  border: 1px solid #dbe7fa;
+  border-radius: 9px;
+  background: #f3f7ff;
+  color: #475b78;
+  font-size: 12px;
+  line-height: 20px;
+}

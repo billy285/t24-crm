@@ -1,0 +1,144 @@
+/* Financial and management surfaces only. Existing ledgers and business states stay intact. */
+.financial-workspace {
+  --financial-divider: #e3e9f1;
+  --financial-muted: #64748b;
+  min-width: 0;
+  color: #24334b;
+}
+.financial-workspace :is(h1, h2, h3) { text-wrap: balance; }
+.financial-workspace :is(td, dd, [role="status"]) { font-variant-numeric: tabular-nums; }
+.financial-workspace :is(.text-slate-400, .text-gray-400) { color: var(--financial-muted); }
+.financial-workspace :is(.app-page-title, .commission-heading, .mgt-page-header) > div { min-width: 0; }
+.financial-workspace :is(.app-page-title, .commission-heading, .mgt-page-header) :is(h1, h2) { letter-spacing: -.025em; }
+.financial-workspace :is(.app-page-title, .commission-heading) > div > p:first-child { letter-spacing: .04em; }
+.financial-workspace :is(.commission-heading, .mgt-page-header) { gap: 12px 20px; }
+.financial-workspace :is(.commission-filters, .commission-toolbar, .mgt-header-actions, .mgt-tools-links) { gap: 8px; }
+.financial-workspace .commission-status-filter { max-width: 240px; }
+.financial-workspace .commission-status-filter select { width: 100%; }
+.financial-workspace .commission-login-row { align-items: flex-start; }
+.financial-workspace .commission-login-row > :first-child { min-width: 0; }
+.financial-workspace .commission-mobile-card summary strong { overflow-wrap: anywhere; }
+.financial-workspace :is(.rmb-query-panel, .rmb-calculation-details) > summary {
+  gap: 12px;
+  justify-content: space-between;
+  color: #455873;
+  border-color: var(--financial-divider);
+  font-weight: 500;
+  line-height: 1.6;
+}
+.financial-workspace :is(.rmb-query-panel, .rmb-calculation-details) > summary::after {
+  content: '+';
+  flex: 0 0 auto;
+  color: #7b8ca5;
+  font-size: 18px;
+  font-weight: 400;
+}
+.financial-workspace :is(.rmb-query-panel, .rmb-calculation-details)[open] > summary::after { content: '−'; }
+.financial-workspace :is(.rmb-query-panel, .rmb-calculation-details) > summary:focus-visible {
+  outline: 2px solid #93b4f5;
+  outline-offset: 3px;
+}
+.financial-workspace .payroll-view-tabs { max-width: 100%; }
+.financial-workspace .payroll-view-tabs [role="tab"] { min-height: 36px; }
+
+/* Opt-in fixed form shells: all controls retain their original handlers and guards. */
+.financial-workspace-form.t24-crm-form-dialog { width: calc(100vw - 32px); }
+.financial-workspace-form .t24-crm-form-dialog-body { display: grid; align-content: start; gap: 16px; }
+.financial-workspace-form .t24-crm-form-dialog-body > :is(.space-y-3, .space-y-4) { min-width: 0; }
+.financial-workspace-form .t24-crm-form-dialog-header h2 { line-height: 1.5; overflow-wrap: anywhere; }
+.financial-workspace-form .t24-crm-form-dialog-body :is(label, p) { line-height: 1.65; }
+.financial-workspace-form .t24-crm-form-dialog-body :is(.text-slate-400, .text-gray-400) { color: #64748b; }
+.financial-workspace-form .t24-crm-form-dialog-body :is(input, select, textarea) { min-width: 0; max-width: 100%; }
+.financial-workspace-form .t24-crm-form-dialog-body input[type="checkbox"],
+.financial-workspace-form .t24-crm-form-dialog-body input[type="radio"] { flex: 0 0 auto; }
+.financial-workspace-form > .t24-crm-form-dialog-footer { flex-wrap: wrap; }
+.financial-workspace-form > .t24-crm-form-dialog-footer > button { white-space: normal; line-height: 1.4; }
+
+/* The large payroll editor has an existing custom dialog and keeps its focus/dirty behavior. */
+.payroll-dialog-layer .payroll-editor-dialog {
+  display: flex;
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  border-radius: 14px;
+  background: #fff;
+}
+.payroll-dialog-layer .payroll-editor-dialog > .payroll-editor-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+.payroll-editor-shell > .payroll-form-header,
+.payroll-editor-shell > .payroll-form-footer {
+  flex: 0 0 auto;
+  gap: 12px;
+  padding: 18px 24px;
+  background: #fff;
+}
+.payroll-editor-shell > .payroll-form-header { border-bottom: 1px solid #e3e9f1; }
+.payroll-editor-shell > .payroll-form-footer {
+  flex-wrap: wrap;
+  border-top: 1px solid #e3e9f1;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+.payroll-editor-shell > .payroll-form-header > div { min-width: 0; }
+.payroll-editor-shell > .payroll-form-header > button { flex: 0 0 auto; }
+.payroll-editor-shell > .payroll-form-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 20px 24px 24px;
+}
+.payroll-editor-shell .payroll-editor-grid > div { min-width: 0; }
+.payroll-editor-shell .payroll-form-section { padding-top: 16px; }
+
+@media (min-width: 1024px) {
+  .t24-system .crm-desktop-main .financial-workspace :is(.commission-heading, .mgt-page-header) { margin-bottom: 16px; }
+  .t24-system .crm-desktop-main .financial-workspace .commission-toolbar { padding: 10px 0 12px; }
+  .t24-system .crm-desktop-main .financial-workspace .commission-filters { margin-bottom: 12px; }
+  .t24-system .crm-desktop-main .financial-workspace .commission-priority {
+    border-color: #f2dfb0;
+    background: #fffcf4;
+    box-shadow: none;
+  }
+  .t24-system .crm-desktop-main .financial-workspace .commission-priority h2 { margin-top: 4px; font-size: 16px; line-height: 1.5; }
+  .t24-system .crm-desktop-main .financial-workspace .commission-priority p { margin-top: 4px; }
+  .t24-system .crm-desktop-main .financial-workspace .commission-status-filter { margin-bottom: 10px; }
+  .t24-system .crm-desktop-main .financial-workspace :is(.app-page-title, .finance-desktop-heading, .commission-heading) { padding-bottom: 0; }
+  .t24-system .crm-desktop-main .financial-workspace table tbody tr:hover { background-color: #f8faff; }
+}
+
+@media (max-width: 767px) {
+  .financial-workspace :is(.app-page-title, .commission-heading, .mgt-page-header) { align-items: stretch; gap: 12px; }
+  .financial-workspace :is(.app-page-title, .commission-heading) :is(h1, h2) { font-size: 22px; line-height: 1.4; }
+  .financial-workspace :is(.app-page-title, .commission-heading) p { line-height: 1.7; }
+  .financial-workspace :is(button, [role="tab"]) { min-height: 44px; }
+  .financial-workspace input:not([type="checkbox"]):not([type="radio"]),
+  .financial-workspace :is(select, textarea) { min-height: 44px; font-size: 16px; }
+  .financial-workspace .commission-status-filter { max-width: none; }
+  .financial-workspace .commission-mobile-tabs { margin-block: 4px 8px; }
+  .financial-workspace .commission-mobile-card summary { gap: 8px 12px; }
+  .financial-workspace :is(.rmb-query-panel, .rmb-calculation-details) > summary { padding: 12px 14px; }
+  .financial-workspace .payroll-view-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; }
+  .financial-workspace .payroll-view-tabs [role="tab"] { gap: 5px; padding-inline: 6px; font-size: 13px; }
+  .financial-workspace .payroll-view-tabs [role="tab"] svg { width: 15px; height: 15px; }
+  .financial-workspace-form.t24-crm-form-dialog { width: calc(100vw - 16px); }
+  .financial-workspace-form .t24-crm-form-dialog-body { gap: 16px; }
+  .financial-workspace-form .t24-crm-form-dialog-body :is(.grid-cols-2, .grid-cols-3, .grid-cols-4) { grid-template-columns: minmax(0, 1fr); }
+  .financial-workspace-form .t24-crm-form-dialog-body :is(.col-span-2, .col-span-3, .col-span-4) { grid-column: auto; }
+  .financial-workspace-form .t24-crm-form-dialog-body :is(.flex, .inline-flex) { max-width: 100%; }
+  .financial-workspace-form .t24-crm-form-dialog-body .items-end { flex-wrap: wrap; }
+  .financial-workspace-form > .t24-crm-form-dialog-footer > button { flex: 1 1 110px; }
+  .payroll-dialog-layer .payroll-editor-dialog { max-height: calc(100dvh - 16px); }
+  .payroll-editor-shell > :is(.payroll-form-header, .payroll-form-footer) { padding: 16px; }
+  .payroll-editor-shell > .payroll-form-body { padding: 16px; }
+  .payroll-editor-shell :is(input, select, textarea) { min-height: 44px; font-size: 16px; }
+  .payroll-editor-shell > .payroll-form-footer > button { flex: 1 1 110px; min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .financial-workspace *, .financial-workspace-form * { scroll-behavior: auto; }
+}

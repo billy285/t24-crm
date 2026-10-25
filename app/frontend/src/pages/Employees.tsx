@@ -1,4 +1,5 @@
 import './crm-org-compact.css';
+import './crm-org-visual-polish.css';
 import EmployeeHandoffDialog, { readAllHandoffRows } from '@/components/EmployeeHandoffDialog';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import './admin-workspace.css';
@@ -445,7 +446,7 @@ export default function Employees() {
       {partnerAccountRequest && <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 text-sm"><Link className="text-blue-700" to="/commissions">← 返回渠道与分润</Link>{partnerOptionsError && <p className="mt-2 text-amber-700">渠道资料读取失败，未创建账号。请刷新后重试。</p>}</div>}
       {/* Add/Edit Dialog */}
       <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && employeeDraft.confirmDiscard())) setShowForm(open); }}>
-        <CrmFormDialogContent className="max-w-lg">
+        <CrmFormDialogContent className="crm-employee-form max-w-lg">
           <CrmFormDialogHeader><DialogTitle>{editingId ? '编辑员工' : pendingCreatedId ? '补齐初始密码' : '添加员工'}</DialogTitle></CrmFormDialogHeader>
           <CrmFormDialogBody>
           {passwordSetupError && <div role="alert" className="space-y-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800"><p>{passwordSetupError}</p><label className="block">初始密码<Input type="password" disabled={saving} value={form.initial_password} onChange={event => setForm({ ...form, initial_password: event.target.value })} /></label></div>}
@@ -482,8 +483,8 @@ export default function Employees() {
   if (selectedEmp) {
     const e = selectedEmp;
     return (
-      <div className="crm-org-compact t24-detail-page calm-admin-page calm-employee-detail app-page space-y-4">
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="crm-org-polish crm-org-compact t24-detail-page calm-admin-page calm-employee-detail app-page space-y-4">
+        <div className="crm-employee-detail-heading flex items-center gap-3 flex-wrap">
           <Button variant="ghost" size="sm" onClick={() => { detailSequence.current++; setSelectedEmp(null); }}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
           <h2 className="text-lg font-semibold">{e.name}</h2>
           <Badge variant="secondary">{getRoleDisplay(e.role)}</Badge>
@@ -510,7 +511,7 @@ export default function Employees() {
                 {canResetPwd && <Button size="sm" variant="outline" onClick={() => setResetPwdTarget(e)}><KeyRound className="w-3 h-3 mr-1" /> 重置密码</Button>}
                 {e.status !== 'resigned' && canDisable && <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => setResignTarget(e)}><UserX className="w-3 h-3 mr-1" /> 办理离职</Button>}
               </div>}
-              <div className="grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+              <div className="crm-employee-facts grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">工号:</span><span>{e.employee_code || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">角色:</span><span>{getRoleDisplay(e.role)}</span></div>
                 {!isMobile && <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">登录用户名:</span><span>{e.login_username || '-'}</span></div>}
@@ -617,7 +618,7 @@ export default function Employees() {
 
   // ========== LIST VIEW ==========
   return (
-    <div className="crm-org-compact t24-directory-page t24-employee-directory calm-admin-page calm-employees-page app-page space-y-5">
+    <div className="crm-org-polish crm-org-compact t24-directory-page t24-employee-directory calm-admin-page calm-employees-page app-page space-y-5">
       <div className="app-page-title flex items-start justify-between">
         <div>
           <p className="app-page-kicker">T24 Marketing · Team</p>

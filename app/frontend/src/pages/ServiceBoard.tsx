@@ -24,18 +24,19 @@ import {
 } from '../lib/service-board-config';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
 import { toast } from 'sonner';
 import {
   Search, Plus, Edit, Trash2, ArrowLeft, LayoutList, Kanban, Users,
   AlertTriangle, Clock, CheckCircle2, XCircle, BarChart3, Filter, RefreshCw, Info,
-  ChevronRight, Copy, FileImage, Sparkles, ShieldCheck, ClipboardCheck,
+  ChevronRight, Copy, FileImage, Sparkles, ShieldCheck, ClipboardCheck, MoreHorizontal,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ExportButton from '@/components/ExportButton';
@@ -1770,11 +1771,12 @@ export default function ServiceBoard() {
 
   const renderProgressActionDialogs = () => (
     <>
-      <Dialog open={Boolean(advanceTarget)} onOpenChange={open => { if (!open && !advancing) setAdvanceTarget(null); }}><DialogContent className="delivery-dialog"><DialogHeader><DialogTitle>确认推进服务阶段</DialogTitle></DialogHeader>{advanceTarget && <div className="space-y-4"><p className="font-semibold">{advanceTarget.customer_name}</p><div className="rounded-xl bg-slate-50 p-4 text-sm">{allStageLabels[advanceTarget.service_stage]} → {allStageLabels[getNextStage(advanceTarget.service_type, advanceTarget.service_stage) || '']}</div><p className="text-sm text-slate-600">当前仍有 {allTasks.filter(task => task.service_progress_id === advanceTarget.id && !['completed', 'cancelled'].includes(task.status)).length} 项未完成任务。推进阶段会更新服务阶段和默认进度，任务保持原状态。</p>{hasIssue(advanceTarget) && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">这项服务仍有未解决卡点：{advanceTarget.issue_description || issueStatusLabels[advanceTarget.issue_status]}</p>}<div className="flex justify-end gap-2"><Button variant="outline" disabled={advancing} onClick={() => setAdvanceTarget(null)}>取消</Button><Button disabled={advancing} onClick={() => void confirmAdvanceStage(advanceTarget)}>{advancing ? '推进中…' : '确认推进'}</Button></div></div>}</DialogContent></Dialog>
+      <Dialog open={Boolean(advanceTarget)} onOpenChange={open => { if (!open && !advancing) setAdvanceTarget(null); }}><CrmFormDialogContent><CrmFormDialogHeader><DialogTitle>确认推进服务阶段</DialogTitle></CrmFormDialogHeader>{advanceTarget && <><CrmFormDialogBody className="space-y-4"><p className="font-semibold">{advanceTarget.customer_name}</p><div className="rounded-xl bg-slate-50 p-4 text-sm">{allStageLabels[advanceTarget.service_stage]} → {allStageLabels[getNextStage(advanceTarget.service_type, advanceTarget.service_stage) || '']}</div><p className="text-sm text-slate-600">当前仍有 {allTasks.filter(task => task.service_progress_id === advanceTarget.id && !['completed', 'cancelled'].includes(task.status)).length} 项未完成任务。推进阶段会更新服务阶段和默认进度，任务保持原状态。</p>{hasIssue(advanceTarget) && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">这项服务仍有未解决卡点：{advanceTarget.issue_description || issueStatusLabels[advanceTarget.issue_status]}</p>}</CrmFormDialogBody><CrmFormDialogFooter><Button variant="outline" disabled={advancing} onClick={() => setAdvanceTarget(null)}>取消</Button><Button disabled={advancing} onClick={() => void confirmAdvanceStage(advanceTarget)}>{advancing ? '推进中…' : '确认推进'}</Button></CrmFormDialogFooter></>}</CrmFormDialogContent></Dialog>
       {/* Quick Update Work Summary Dialog */}
       <Dialog open={showQuickUpdate} onOpenChange={v => { if (!v && !savingQuickUpdate && summaryDraft.confirmDiscard()) setShowQuickUpdate(false); }}>
-        <DialogContent className="delivery-dialog max-w-md">
-          <DialogHeader><DialogTitle>更新工作摘要 - {quickUpdateSp?.customer_name}</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="max-w-md">
+          <CrmFormDialogHeader><DialogTitle>更新工作摘要 - {quickUpdateSp?.customer_name}</DialogTitle></CrmFormDialogHeader>
+          <CrmFormDialogBody>
           <div className="space-y-3">
             <div>
               <Label>最近工作摘要</Label>
@@ -1786,17 +1788,20 @@ export default function ServiceBoard() {
               />
             </div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" disabled={savingQuickUpdate} onClick={() => { if (summaryDraft.confirmDiscard()) setShowQuickUpdate(false); }}>取消</Button>
             <Button onClick={handleQuickUpdateSave} disabled={savingQuickUpdate} className="bg-blue-600 hover:bg-blue-700">{savingQuickUpdate ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>
 
       {/* ==================== SMART Progress Form Dialog ==================== */}
       <Dialog open={showProgressForm} onOpenChange={open => { if (open || (!savingProgress && progressDraft.confirmDiscard())) setShowProgressForm(open); }}>
-        <DialogContent className="delivery-dialog max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingProgressId ? '编辑服务进度' : '新增服务进度'}</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="max-w-2xl">
+          <CrmFormDialogHeader><DialogTitle>{editingProgressId ? '编辑服务进度' : '新增服务进度'}</DialogTitle></CrmFormDialogHeader>
+          <CrmFormDialogBody>
 
           {/* Section 1: Customer Selection */}
           <div className="space-y-4">
@@ -2021,11 +2026,13 @@ export default function ServiceBoard() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 mt-4">
+
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" disabled={savingProgress} onClick={() => { if (progressDraft.confirmDiscard()) setShowProgressForm(false); }}>取消</Button>
             <Button onClick={handleSaveProgress} disabled={savingProgress} className="bg-blue-600 hover:bg-blue-700">{savingProgress ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>
 
       {/* Task Form Dialog */}
@@ -2048,10 +2055,11 @@ export default function ServiceBoard() {
       />
 
       <Dialog open={!!completeTaskTarget} onOpenChange={v => { if (!v) closeCompleteTaskDialog(); }}>
-        <DialogContent className="delivery-dialog max-w-xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        <CrmFormDialogContent className="max-w-xl">
+          <CrmFormDialogHeader>
             <DialogTitle>完成任务 - {completeTaskTarget?.task_name}</DialogTitle>
-          </DialogHeader>
+          </CrmFormDialogHeader>
+          <CrmFormDialogBody>
           {loadingCompletionRefs ? (
             <div className="py-8 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
@@ -2174,18 +2182,21 @@ export default function ServiceBoard() {
               )}
             </div>
           )}
-          <div className="flex justify-end gap-2 mt-4">
+
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" onClick={() => closeCompleteTaskDialog()}>取消</Button>
-            <Button onClick={handleCompleteTask} disabled={savingCompletion || loadingCompletionRefs} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={handleCompleteTask} disabled={savingCompletion || loadingCompletionRefs} className="bg-blue-600 hover:bg-blue-700">
               {savingCompletion ? '保存中...' : '确认完成'}
             </Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={showTaskForm} onOpenChange={open => { if (open || (!savingTask && taskDraft.confirmDiscard())) setShowTaskForm(open); }}>
-        <DialogContent className="delivery-dialog max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingTaskId ? '编辑任务' : '新增任务'} - {taskForm.customer_name}</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="max-w-lg">
+          <CrmFormDialogHeader><DialogTitle>{editingTaskId ? '编辑任务' : '新增任务'} - {taskForm.customer_name}</DialogTitle></CrmFormDialogHeader>
+          <CrmFormDialogBody>
           <div className="space-y-4">
             <div><Label>任务名称 *</Label><Input value={taskForm.task_name} onChange={e => setTaskForm({ ...taskForm, task_name: e.target.value })} placeholder="例如：收集菜单图片" /></div>
             <div className="grid grid-cols-2 gap-4">
@@ -2225,11 +2236,13 @@ export default function ServiceBoard() {
             <div><Label>截止日期</Label><Input type="date" value={taskForm.due_date} onChange={e => setTaskForm({ ...taskForm, due_date: e.target.value })} /></div>
             <div><Label>备注</Label><Textarea value={taskForm.notes} onChange={e => setTaskForm({ ...taskForm, notes: e.target.value })} rows={2} placeholder="补充说明..." /></div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" disabled={savingTask} onClick={() => { if (taskDraft.confirmDiscard()) setShowTaskForm(false); }}>取消</Button>
             <Button onClick={handleSaveTask} disabled={savingTask} className="bg-blue-600 hover:bg-blue-700">{savingTask ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>
     </>
   );
@@ -2313,7 +2326,7 @@ export default function ServiceBoard() {
 
     return (
       <div className="delivery-center-ui dc-service dc-service-detail calm-delivery-page">
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="dc-service-detail-heading flex items-center gap-3 flex-wrap">
           <Button variant="ghost" size="sm" onClick={closeProgressDetail}><ArrowLeft className="w-4 h-4 mr-1" /> {sourceReturnPath ? getReturnLabel(sourceReturnPath) : '返回服务列表'}</Button>
           <h2 className="text-lg font-semibold">{sp.customer_name}</h2>
           <Badge className="bg-blue-100 text-blue-700">{serviceTypeLabels[sp.service_type]}</Badge>
@@ -2324,21 +2337,21 @@ export default function ServiceBoard() {
 
         {/* Quick action bar */}
         {canEdit && (
-          <div className="flex gap-2 flex-wrap">
+          <div className="dc-service-detail-actions flex gap-2 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => openEditProgress(sp)}><Edit className="w-3.5 h-3.5 mr-1" /> 编辑进度</Button>
             <Button size="sm" variant="outline" onClick={() => openQuickUpdate(sp)}><Copy className="w-3.5 h-3.5 mr-1" /> 更新摘要</Button>
             {nextStage && (
-              <Button size="sm" variant="outline" className="text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => handleAdvanceStage(sp)}>
+              <Button size="sm" variant="outline" className="text-blue-700 hover:text-blue-800 hover:bg-blue-50" onClick={() => handleAdvanceStage(sp)}>
                 <ChevronRight className="w-3.5 h-3.5 mr-1" /> 推进到: {allStageLabels[nextStage]}
               </Button>
             )}
             {isWaitingForClientMaterial(sp) && (
-              <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100" disabled={materialBusyIds.has(sp.id)} onClick={() => handleClientMaterialReceived(sp)}>
+              <Button size="sm" variant="outline" className="text-blue-700 border-blue-200 bg-blue-50 hover:bg-blue-100" disabled={materialBusyIds.has(sp.id)} onClick={() => handleClientMaterialReceived(sp)}>
                 <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> 资料已收到并继续
               </Button>
             )}
             {weeklyTaskPlan.totalRemainingToCreate > 0 && (
-              <Button size="sm" variant="outline" className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" onClick={() => handleGenerateWeeklyTasks([sp])} disabled={generatingWeeklyTasks}>
+              <Button size="sm" variant="outline" className="text-blue-700 hover:text-blue-800 hover:bg-blue-50" onClick={() => handleGenerateWeeklyTasks([sp])} disabled={generatingWeeklyTasks}>
                 <ClipboardCheck className="w-3.5 h-3.5 mr-1" /> 生成本周任务 ({weeklyTaskPlan.totalRemainingToCreate})
               </Button>
             )}
@@ -2935,7 +2948,7 @@ export default function ServiceBoard() {
                   size="sm"
                   onClick={() => handleGenerateWeeklyTasks()}
                   disabled={generatingWeeklyTasks || filteredWeeklyActionItems.every(item => item.plan.totalRemainingToCreate === 0)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
                   {generatingWeeklyTasks ? '生成中...' : '一键生成本周任务'}
@@ -3075,7 +3088,7 @@ export default function ServiceBoard() {
               <td><div className="dc-stage-line"><span>{allStageLabels[sp.service_stage] || sp.service_stage}</span><b>{sp.progress_percent}%</b></div><div className="dc-progress-track"><i style={{ width: `${Math.max(0, Math.min(sp.progress_percent, 100))}%` }} /></div><small>{ts.total ? `${ts.completed} / ${ts.total} 任务完成` : '尚无交付任务'}{ts.overdue > 0 ? ` · ${ts.overdue} 项逾期` : ''}</small></td>
               <td><span className="dc-person"><i>{(sp.ops_person || '待')[0]}</i>{sp.ops_person || '待分配运营'}</span><small>销售 · {sp.sales_person || '未分配'}</small>{sp.design_person && <small>设计 · {sp.design_person}</small>}</td>
               <td>{issue ? <span className="dc-status dc-status-rose">{issueStatusLabels[sp.issue_status] || '有问题卡点'}</span> : <span className={`dc-status ${sp.service_stage === 'ended' ? 'dc-status-green' : isOverdue(sp) ? 'dc-status-rose' : 'dc-status-blue'}`}>{sp.service_stage === 'ended' ? '服务已结束' : isOverdue(sp) ? '交付已逾期' : isExpiringSoon(sp) ? '即将到期' : '按阶段推进'}</span>}<p className="dc-summary-text" title={issue ? sp.issue_description : sp.last_work_summary}>{issue ? sp.issue_description || '待补充问题说明' : onboarding.nextStep && !onboarding.isComplete ? `下一步：${onboarding.nextStep.label}` : sp.last_work_summary || '暂无工作摘要'}</p><small>更新于 {sp.last_update_time?.slice(0, 10) || '尚未更新'}</small></td>
-              <td><div className="dc-row-actions"><Button size="sm" variant="outline" onClick={() => openDetail(sp)}>查看详情</Button>{canEdit && <><Button size="sm" variant="ghost" onClick={() => openQuickUpdate(sp)}>更新摘要</Button><Button size="sm" variant="ghost" aria-label={`编辑服务进度：${sp.customer_name}`} onClick={() => openEditProgress(sp)}><Edit size={14} /></Button>{nextStage && <Button size="sm" variant="ghost" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</>}{canEdit && canDelete && <Button size="sm" variant="ghost" aria-label={`删除服务进度：${sp.customer_name}`} onClick={() => setDeleteTarget({ type: 'progress', item: sp })}><Trash2 size={14} /></Button>}</div></td>
+              <td><div className="dc-row-actions"><Button size="sm" variant="outline" onClick={() => openDetail(sp)}>查看详情</Button>{canEdit && <><Button size="sm" variant="ghost" onClick={() => openQuickUpdate(sp)}>更新摘要</Button>{nextStage && <Button size="sm" variant="ghost" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</>}{canEdit && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" className="dc-admin-menu-trigger h-8 w-8 shrink-0 px-0" aria-label={`更多服务操作：${sp.customer_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-44"><DropdownMenuItem asChild><Button size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 px-3 text-slate-700" aria-label={`编辑服务进度：${sp.customer_name}`} onClick={() => openEditProgress(sp)}><Edit size={14} /><span>编辑进度</span></Button></DropdownMenuItem>{canEdit && canDelete && <DropdownMenuItem asChild><Button size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 px-3 text-rose-600 hover:bg-rose-50" aria-label={`删除服务进度：${sp.customer_name}`} onClick={() => setDeleteTarget({ type: 'progress', item: sp })}><Trash2 size={14} /><span>删除服务</span></Button></DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}</div></td>
             </tr>;
           })}</tbody></CompactFinanceTable></div>}
           {isMobile && <div className="dc-mobile-progress md:hidden">{paginatedProgresses.items.map(sp => <ProgressCard key={sp.id} sp={sp} />)}</div>}
@@ -3174,10 +3187,11 @@ export default function ServiceBoard() {
 
       {/* Complete Task Dialog */}
       <Dialog open={!!completeTaskTarget} onOpenChange={v => { if (!v) closeCompleteTaskDialog(); }}>
-        <DialogContent className="delivery-dialog max-w-xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        <CrmFormDialogContent className="max-w-xl">
+          <CrmFormDialogHeader>
             <DialogTitle>完成任务 - {completeTaskTarget?.task_name}</DialogTitle>
-          </DialogHeader>
+          </CrmFormDialogHeader>
+          <CrmFormDialogBody>
           {loadingCompletionRefs ? (
             <div className="py-8 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
@@ -3300,18 +3314,21 @@ export default function ServiceBoard() {
               )}
             </div>
           )}
-          <div className="flex justify-end gap-2 mt-4">
+
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" onClick={() => closeCompleteTaskDialog()}>取消</Button>
-            <Button onClick={handleCompleteTask} disabled={savingCompletion || loadingCompletionRefs} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={handleCompleteTask} disabled={savingCompletion || loadingCompletionRefs} className="bg-blue-600 hover:bg-blue-700">
               {savingCompletion ? '保存中...' : '确认完成'}
             </Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={showTaskForm} onOpenChange={open => { if (open || (!savingTask && taskDraft.confirmDiscard())) setShowTaskForm(open); }}>
-        <DialogContent className="delivery-dialog max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingTaskId ? '编辑任务' : '新增任务'} - {taskForm.customer_name}</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="max-w-lg">
+          <CrmFormDialogHeader><DialogTitle>{editingTaskId ? '编辑任务' : '新增任务'} - {taskForm.customer_name}</DialogTitle></CrmFormDialogHeader>
+          <CrmFormDialogBody>
           <div className="space-y-4">
             <div><Label>任务名称 *</Label><Input value={taskForm.task_name} onChange={e => setTaskForm({ ...taskForm, task_name: e.target.value })} placeholder="例如：收集菜单图片" /></div>
             <div className="grid grid-cols-2 gap-4">
@@ -3351,11 +3368,13 @@ export default function ServiceBoard() {
             <div><Label>截止日期</Label><Input type="date" value={taskForm.due_date} onChange={e => setTaskForm({ ...taskForm, due_date: e.target.value })} /></div>
             <div><Label>备注</Label><Textarea value={taskForm.notes} onChange={e => setTaskForm({ ...taskForm, notes: e.target.value })} rows={2} placeholder="补充说明..." /></div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" disabled={savingTask} onClick={() => { if (taskDraft.confirmDiscard()) setShowTaskForm(false); }}>取消</Button>
             <Button onClick={handleSaveTask} disabled={savingTask} className="bg-blue-600 hover:bg-blue-700">{savingTask ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>
     </div>
   );
