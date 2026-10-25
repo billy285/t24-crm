@@ -1,0 +1,14 @@
+[
+  "app/frontend/src/components/SalesDataScopeHint.tsx",
+  "app/frontend/src/components/StripeHistoryReconciliation.tsx",
+  "app/frontend/src/components/stripe-history-reconciliation.css",
+  "app/frontend/src/components/ui/crm-form-dialog.css",
+  "app/frontend/src/components/ui/dialog.tsx",
+  "app/frontend/src/pages/Customers.tsx",
+  "app/frontend/src/pages/Employees.tsx",
+  "app/frontend/src/pages/Finance.tsx",
+  "app/frontend/src/pages/SalesWorkbench.tsx",
+  "app/frontend/src/pages/crm-customer-delivery-compact.css",
+  "app/frontend/src/pages/mobile-finance-editor.css",
+  "app/frontend/src/pages/sales-workbench-refined.css"
+]

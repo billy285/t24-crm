@@ -1,0 +1,43 @@
+{
+  "application_service_restarts": false,
+  "database_mutations": false,
+  "files": {
+    "baseline-command.sh": {
+      "bytes": 6032,
+      "sha256": "a6322c3230328f8f81828f00d775a11ee50dc7dc3436128a1a6c870cf22b819d"
+    },
+    "baseline.py": {
+      "bytes": 5967,
+      "sha256": "21d08c42e990cfbe32a69c1425afb41e2d2539fe4873e9e6721727c1da576026"
+    },
+    "build_package.py": {
+      "bytes": 7476,
+      "sha256": "71783876d84d8ab5848a822425be913d5b17e4f8903c410625ecd69c48136439"
+    },
+    "make_commands.py": {
+      "bytes": 4679,
+      "sha256": "e232d885c9b4ab49104ec9983a6d8d83c837af89a41e30be8997217c5dfc3312"
+    },
+    "static_release.py": {
+      "bytes": 11877,
+      "sha256": "a632a450b451cfc13fcab4dc5c96d3a2dbe2d556fb153ff1c81b388f3fa720c4"
+    },
+    "test_tools.py": {
+      "bytes": 7334,
+      "sha256": "63f843653f5d4ae30fa4b62804f794647707e69e5d890d32efe61eebb9a2ed5a"
+    },
+    "verify_ui_scope.cjs": {
+      "bytes": 4202,
+      "sha256": "4cc893e1f8656199876fc2a169450bb2a6dba3d86484afc80bbb9d443790ed55"
+    }
+  },
+  "financial_row_queries": false,
+  "fresh_production_baseline_required": true,
+  "guard_tests": {
+    "passed": 11,
+    "production_executed": false
+  },
+  "protected_behavior_check": "Existing financial save/confirm handlers, permission expressions and mutation calls including invokeWithAuth object method arguments; GET read filters require root review",
+  "source_allowlist": "Explicit root-reviewed relative path array; copied into pinned artifacts/source-allowlist.json",
+  "stage": "CRM_UI_BATCH1_STATIC_TOOL_FREEZE"
+}
