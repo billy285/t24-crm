@@ -1,0 +1,9 @@
+{
+  "baseline-command.sh": "c38ef1de9e7eb4b94d5532a726bd12ef973f9af192d51e0fe8994e5f7720910b",
+  "baseline.py": "4e4cf09efbd11cc78e3c1a9a9fc49c29fc8c628005b27db469ab69275a000552",
+  "build_package.py": "5bc67ff75660c2daf9031db985aca0d4d671945ee795eef4b5fb560d76d26ab1",
+  "make_commands.py": "38b6d7185d2a02f8ded0d56fd2f5cda047f34330d51267e570da2747d8400f87",
+  "static_release.py": "6af547b28ea704c1340bc855ab0cf2c7c244c8e5f3c76c0f1661e4402d1b8ade",
+  "test_tools.py": "e7c472a3ea09c68483e9121065a85c5a6c03d1075d1f353a8b7908f344382654",
+  "verify_ui_scope.cjs": "b9375a8aeba3fb1f89e2d916bfaab3689e6795d311ba98112adc2063a39f1d6b"
+}
