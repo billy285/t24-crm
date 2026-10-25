@@ -111,3 +111,18 @@
   .t24-system.app-shell .crm-desktop-main .calm-lifecycle-page .crm-lifecycle-ledger th:last-child { width: 96px; }
   .t24-system.app-shell .crm-desktop-main .calm-lifecycle-page table:not(.cft-table) :is(th, td) { height: 40px; padding: 7px 8px; font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
 }
+
+/* Keep mobile customer actions usable without changing their authorization rules. */
+.customer-detail-page .customer-detail-primary-actions,
+.customer-detail-page .customer-detail-desktop-tools { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.customer-detail-page .customer-detail-mobile-tools { display: none; }
+@media (max-width: 767px) {
+  .customer-detail-page .customer-detail-actions { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: start; gap: 8px; }
+  .customer-detail-page .customer-detail-primary-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .customer-detail-page .customer-detail-primary-actions.has-single-action { grid-template-columns: minmax(0, 1fr); }
+  .customer-detail-page .customer-detail-primary-actions > :is(button, div) { width: 100%; min-width: 0; }
+  .customer-detail-page .customer-detail-primary-actions button { width: 100%; min-height: 44px; height: 44px; padding-inline: 10px; }
+  .customer-detail-page .customer-detail-desktop-tools { display: none; }
+  .customer-detail-page .customer-detail-mobile-tools { display: inline-flex; width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; }
+  .customer-detail-page .customer-detail-actions.has-no-primary .customer-detail-mobile-tools { grid-column: 2; }
+}

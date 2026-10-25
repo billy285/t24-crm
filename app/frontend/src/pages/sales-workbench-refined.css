@@ -6,6 +6,11 @@
 .sw-scope-controls .sc-date-control { min-width: 0; max-width: 185px; }
 .sw-scope-controls .sc-date-control input, .sw-scope-controls .sc-date-control select { height: var(--t24-control-height); min-height: var(--t24-control-height); font-size: var(--t24-aux-size); }
 .sw-salesperson { color: #64748b; font-size: var(--t24-aux-size); white-space: nowrap; }
+.sw-view-context { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; padding: 3px 0 7px; color: #64748b; font-size: 12px; line-height: 20px; }
+.sw-view-context-mode { padding: 1px 7px; border-radius: 6px; background: #edf3ff; color: #2458b5; white-space: nowrap; }
+.sw-view-context > strong { min-width: 0; color: #24354e; font-weight: 500; overflow-wrap: anywhere; }
+.sw-view-context-account { margin-left: auto; overflow-wrap: anywhere; }
+@media (max-width: 767px) { .sw-view-context { gap: 3px 8px; padding-bottom: 5px; } .sw-view-context-account { flex-basis: 100%; margin-left: 0; } }
 .sw-progress-row { display: flex; align-items: center; gap: 16px; min-height: 26px; }
 .sw-progress-value { font-size: var(--t24-aux-size); color: #64748b; white-space: nowrap; }
 .sw-progress-value strong { color: #182942; font-size: 17px; font-weight: 500; margin-left: 6px; }

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { CrmFormDialogBody, CrmFormDialogContent, CrmFormDialogFooter, CrmFormDialogHeader, Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
@@ -4450,7 +4450,7 @@ function FinanceWorkspace() {
         </div>
         {!isMobile && <div className="ml-auto flex flex-wrap gap-2">
           <Button size="sm" variant="outline" className="whitespace-nowrap shadow-sm" onClick={() => doExport('csv')} disabled={exporting}>导出 CSV</Button>
-          <Button size="sm" onClick={() => doExport('xlsx')} disabled={exporting} className="whitespace-nowrap bg-blue-600 shadow-sm hover:bg-blue-700">导出 Excel</Button>
+          <Button size="sm" variant="outline" onClick={() => doExport('xlsx')} disabled={exporting} className="whitespace-nowrap">导出 Excel</Button>
         </div>}
         {loadError && hasFinanceData && (
           <div role="alert" className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -6318,9 +6318,9 @@ function FinanceWorkspace() {
       <>
       {/* Payment Form */}
       <Dialog open={showPaymentForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowPaymentForm(v); if (!v) { setEditingPayId(null); setPayForm(emptyPayForm); } }}>
-        <DialogContent className="mobile-finance-editor max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingPayId ? '编辑收款记录' : '录入收款'}</DialogTitle><p className="finance-editor-context">{customerMap[Number(payForm.customer_id)]?.business_name || '请选择客户'} · {paymentFormCurrency} · {payForm.payment_date || '到账日期待填写'}</p></DialogHeader>
-          <div className="space-y-4">
+        <CrmFormDialogContent className="crm-finance-payment-form max-w-lg">
+          <CrmFormDialogHeader><DialogTitle>{editingPayId ? '编辑收款记录' : '录入收款'}</DialogTitle><p className="finance-editor-context">{customerMap[Number(payForm.customer_id)]?.business_name || '请选择客户'} · {paymentFormCurrency} · {payForm.payment_date || '到账日期待填写'}</p></CrmFormDialogHeader>
+          <CrmFormDialogBody><div className="space-y-4">
             <h3 className="finance-form-section">收款信息</h3><p className="text-sm text-slate-500">本笔币种：{paymentFormCurrency === 'CNY' ? '人民币 CNY' : '美元 USD'}</p>
             <div>
               <Label>选择客户 *</Label>
@@ -6553,12 +6553,12 @@ function FinanceWorkspace() {
               <div><Label>覆盖结束</Label><Input type="date" value={payForm.coverage_end} onChange={e => setPayForm({ ...payForm, coverage_end: e.target.value })} /></div>
             </div>
             <h3 className="finance-form-section">备注</h3><div><Label>备注</Label><Textarea value={payForm.notes} onChange={e => setPayForm({ ...payForm, notes: e.target.value })} rows={2} /></div>
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
+          </div></CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowPaymentForm(false); }}>取消</Button>
             <Button onClick={handleSavePayment} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>
 
       <Dialog open={showIncomeTypeManager} onOpenChange={(v) => { if (!v && !allowFinanceClose('incomeTypes')) return; setShowIncomeTypeManager(v); if (!v) setNewIncomeTypeName(''); }}>

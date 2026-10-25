@@ -11,11 +11,12 @@ import { systemRoleLabels } from '../lib/permissions';
 import { actionTypeLabels, logOperation } from '../lib/operation-log-helper';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import SalesDataScopeHint from '@/components/SalesDataScopeHint';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -444,8 +445,9 @@ export default function Employees() {
       {partnerAccountRequest && <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 text-sm"><Link className="text-blue-700" to="/commissions">← 返回渠道与分润</Link>{partnerOptionsError && <p className="mt-2 text-amber-700">渠道资料读取失败，未创建账号。请刷新后重试。</p>}</div>}
       {/* Add/Edit Dialog */}
       <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && employeeDraft.confirmDiscard())) setShowForm(open); }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingId ? '编辑员工' : pendingCreatedId ? '补齐初始密码' : '添加员工'}</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="max-w-lg">
+          <CrmFormDialogHeader><DialogTitle>{editingId ? '编辑员工' : pendingCreatedId ? '补齐初始密码' : '添加员工'}</DialogTitle></CrmFormDialogHeader>
+          <CrmFormDialogBody>
           {passwordSetupError && <div role="alert" className="space-y-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800"><p>{passwordSetupError}</p><label className="block">初始密码<Input type="password" disabled={saving} value={form.initial_password} onChange={event => setForm({ ...form, initial_password: event.target.value })} /></label></div>}
           {!pendingCreatedId && <fieldset disabled={saving} className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div><Label>工号</Label><Input value={form.employee_code} onChange={e => setForm({ ...form, employee_code: e.target.value })} placeholder="如 EMP001" className="font-mono" /></div>
@@ -453,6 +455,7 @@ export default function Employees() {
             <div><Label>角色 *</Label><NativeSelect value={form.role} onChange={v => setForm({ ...form, role: v, existing_partner_id: v === 'sales_partner' ? form.existing_partner_id : '' })} options={allRoleOptions} /></div>
             {!editingId && form.role === 'sales_partner' && <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3"><Label>渠道档案</Label><NativeSelect aria-label="新账号绑定渠道" value={form.existing_partner_id} onChange={value => setForm({ ...form, existing_partner_id: value })} options={[{ value: '', label: '新渠道：同时建立新的合作档案' }, ...unboundPartners.map(partner => ({ value: String(partner.id), label: `${partner.name} · ${partner.partner_code}` }))]} /><p className="mt-2 text-xs text-slate-600">{form.existing_partner_id ? '本次仅创建登录账号并绑定所选渠道，保留原有协议、客户归属和佣金。该账号只能查看此渠道的数据。' : '若代理档案已存在，请明确选择该档案，避免重复建立渠道。'}</p>{partnerOptionsError && <p role="alert" className="mt-2 text-xs text-amber-700">已有渠道列表未读取成功，请刷新后再绑定。</p>}</div>}
             <div><Label>部门</Label><NativeSelect value={form.department} onChange={v => setForm({ ...form, department: v })} options={Object.entries(departmentLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+            <div className="md:col-span-2"><SalesDataScopeHint role={form.role} /></div>
             <div><Label>岗位</Label><NativeSelect value={form.position} onChange={v => setForm({ ...form, position: v })} options={Object.entries(positionLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
             <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(empStatusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
             <div><Label>登录用户名</Label><Input value={form.login_username} onChange={e => setForm({ ...form, login_username: e.target.value })} placeholder="用于系统登录" /></div>
@@ -466,11 +469,12 @@ export default function Employees() {
             <div className="md:col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
           </fieldset>}
           {!editingId && <p className="text-xs text-slate-500 mt-3">建议不在此填写，由员工本人在安全环境下设置；第一阶段尚未开放邮件邀请流程。</p>}
-          <div className="flex justify-end gap-2 mt-4">
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (!saving && employeeDraft.confirmDiscard()) setShowForm(false); }}>取消</Button>
             <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : pendingCreatedId ? '重试设置密码' : '保存'}</Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>
   </> : null;
 
@@ -520,6 +524,7 @@ export default function Employees() {
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">创建时间:</span><span>{e.created_at?.slice(0, 10) || '-'}</span></div>
                 {e.notes && <div className="md:col-span-2 mt-2 p-3 bg-slate-50 rounded text-slate-600">{e.notes}</div>}
               </div>
+              <div className="mt-4"><SalesDataScopeHint role={e.role} /></div>
               {!isMobile && e.status !== 'resigned' && canDisable && (
                 <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4">
                   <span className="text-sm text-slate-500">快速操作:</span>

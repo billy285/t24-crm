@@ -31,6 +31,7 @@ import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useRole } from '@/lib/role-context';
+import { systemRoleLabels } from '@/lib/permissions';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { useAutoRefresh } from '@/lib/use-auto-refresh';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -688,7 +689,10 @@ function SalesWorkspace() {
   </>;
   const managerModes = canManage && <nav className="sw-mode-switch" aria-label="主管任务视角"><button type="button" aria-pressed={teamView} disabled={saving} onClick={() => setTeamView(true)}>团队</button><button type="button" aria-pressed={!teamView} disabled={saving} onClick={() => setTeamView(false)}>客户任务</button></nav>;
   const workbenchMenu = <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多工作台功能"><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu">{!teamView && <DropdownMenuItem disabled={preparing || saving || date !== today() || Boolean(loadError) || (canManage && !selectedSalesId)} onSelect={() => void prepareWorkbench()}>生成今日任务</DropdownMenuItem>}<DropdownMenuItem onSelect={() => window.location.assign('/sales-leads?view=intelligence')}>经营中心</DropdownMenuItem>{!teamView && <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>拨号与任务设置</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>;
-  const currentSalesName = canManage ? teamView ? '全部销售' : assignees.find(item => String(item.id) === selectedSalesId)?.name || '选择销售' : employee?.name || '当前销售';
+  const currentSalesName = canManage ? teamView ? isAdmin ? '全部销售' : '直属销售' : assignees.find(item => String(item.id) === selectedSalesId)?.name || '选择销售' : employee?.name || '当前销售';
+  const viewingScope = teamView
+    ? isAdmin ? '全部销售的团队任务' : '直属销售的团队任务'
+    : canManage && !selectedSalesId ? '请选择要查看的销售' : `${currentSalesName} 的任务`;
 
   return <div className="sales-center-ui sc-workbench calm-sales-page calm-sales-workbench sw-refined app-page crm-sales-compact" data-testid={isMobile ? 'sales-workbench-mobile' : 'sales-workbench-desktop'}>
     <div className="sw-workspace-heading">
@@ -696,6 +700,11 @@ function SalesWorkspace() {
       <div>{safeReturn && <Button variant="ghost" size="sm" onClick={() => window.location.assign(safeReturn)}>返回联系进展</Button>}<h1>{teamView ? date === today() ? '团队今日任务' : '团队任务' : date === today() ? '今日拨打' : '拨打记录'}</h1></div>
       {isMobile ? <div className="sw-phone-scope-controls"><Sheet open={scopeOpen} onOpenChange={setScopeOpen}><SheetTrigger asChild><Button type="button" variant="ghost" className="sw-scope-trigger" aria-label="调整任务范围" disabled={saving}><span><time dateTime={date}>{date}</time><strong>{currentSalesName}</strong></span><ChevronDown size={14} /></Button></SheetTrigger><SheetContent side="bottom" className="sales-center-ui sw-mobile-sheet sw-scope-sheet"><SheetHeader><SheetTitle>任务范围</SheetTitle><SheetDescription className="sr-only">选择北京时间日期及销售人员，不会自动生成或完成任务。</SheetDescription></SheetHeader><div className="sw-phone-scope-fields">{scopeControls}</div>{managerModes}{!teamView && <div className="sw-scope-review"><span>有意向 <strong>{workbench?.performance.interested ?? '—'}</strong></span><span>已预约 <strong>{workbench?.performance.appointments ?? '—'}</strong></span><span>逾期 <strong>{overdueFollowUpCount}</strong></span></div>}<Button type="button" onClick={() => setScopeOpen(false)}>返回工作台</Button></SheetContent></Sheet>{workbenchMenu}</div> : <div className="sw-scope-controls">{scopeControls}{workbenchMenu}</div>}
     </header>
+    <div className="sw-view-context" aria-label="当前查看范围">
+      <span className="sw-view-context-mode">{canManage ? isAdmin ? '管理视角' : '主管视角' : '我的任务'}</span>
+      <strong>{viewingScope}</strong>
+      <span className="sw-view-context-account">当前登录：{employee?.name || '正在读取账号'} · {systemRoleLabels[role as keyof typeof systemRoleLabels] || role}</span>
+    </div>
     {!isMobile && managerModes}
     {!teamView && <section className="sw-progress-row" aria-label="今日执行进度"><div className="sw-progress-value">今日已记录 <strong>{loading ? '—' : workbench?.completed_count ?? '—'}</strong><span> / {loading ? '—' : workbench?.quota ?? '—'}</span></div><div className="sc-progress-track" role="progressbar" aria-label="任务完成进度" aria-valuemin={0} aria-valuemax={workbench?.quota || 100} aria-valuenow={workbench?.completed_count || 0}><span style={{ width: `${workbench ? Math.min(100, workbench.completed_count / Math.max(workbench.quota, 1) * 100) : 0}%` }} /></div>{refreshing && <span className="sw-refresh-status" role="status">更新中</span>}
       {!isMobile && <details className="sw-review"><summary>今日复盘</summary><div><span>有意向 <strong>{workbench?.performance.interested ?? '—'}</strong></span><span>已预约 <strong>{workbench?.performance.appointments ?? '—'}</strong></span><span>逾期 <strong>{overdueFollowUpCount}</strong></span></div></details>}

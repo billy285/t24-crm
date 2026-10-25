@@ -69,3 +69,12 @@
  .mobile-finance-editor>div.flex:last-of-type { position:fixed; bottom:0; left:0; right:0; z-index:4; display:flex; gap:10px; margin:0; padding:12px 20px calc(12px + env(safe-area-inset-bottom)); background:white; box-shadow:0 -3px 16px #15233e08; }
  .mobile-finance-editor>div.flex:last-of-type>button { flex:1; min-width:0; }
 }
+
+/* Migrated receipt forms retain the mobile field layout without the legacy full-screen shell. */
+@media (max-width: 767px) {
+  .crm-finance-payment-form .t24-crm-form-dialog-body label { font-size:14px; line-height:1.6; }
+  .crm-finance-payment-form .t24-crm-form-dialog-body button { min-height:44px; white-space:normal; }
+  .crm-finance-payment-form .t24-crm-form-dialog-body :is(.grid-cols-2,.grid-cols-3,.grid-cols-4) { grid-template-columns:minmax(0,1fr); }
+  .crm-finance-payment-form .t24-crm-form-dialog-body .flex { flex-wrap:wrap; }
+  .crm-finance-payment-form :is(p,dd,dt,h2,span) { overflow-wrap:anywhere; }
+}

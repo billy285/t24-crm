@@ -1,0 +1,75 @@
+/* Explicit CRM form layout. Ordinary dialogs and the private workspace do not opt in. */
+.t24-dialog-content.t24-crm-form-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  padding: 0;
+}
+
+.t24-crm-form-dialog > .t24-crm-form-dialog-header {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 20px 72px 18px 24px;
+  border-bottom: 1px solid #e8edf4;
+  text-align: left;
+}
+
+.t24-crm-form-dialog > .t24-crm-form-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 24px;
+  scroll-padding-block: 20px;
+  scrollbar-gutter: stable;
+}
+
+.t24-crm-form-dialog > .t24-crm-form-dialog-footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0;
+  padding: 14px 24px max(14px, env(safe-area-inset-bottom));
+  border-top: 1px solid #e8edf4;
+  background: inherit;
+}
+
+.t24-crm-form-dialog > .t24-crm-form-dialog-footer > button {
+  min-height: 44px;
+}
+
+.t24-crm-form-dialog > button:last-child {
+  z-index: 2;
+}
+
+@media (max-width: 767px) {
+  .t24-dialog-content.t24-crm-form-dialog {
+    max-height: calc(100dvh - 16px);
+    border-radius: 16px;
+  }
+  .t24-crm-form-dialog > .t24-crm-form-dialog-header {
+    padding: 18px 60px 16px 16px;
+  }
+  .t24-crm-form-dialog > .t24-crm-form-dialog-body {
+    padding: 16px;
+    scroll-padding-block: 16px;
+  }
+  .t24-crm-form-dialog > .t24-crm-form-dialog-footer {
+    padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  }
+  .t24-crm-form-dialog > .t24-crm-form-dialog-footer > button {
+    flex: 1;
+    min-width: 0;
+  }
+  .t24-crm-form-dialog-body :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+  }
+}

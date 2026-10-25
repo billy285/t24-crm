@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -2018,8 +2018,9 @@ export default function Customers() {
       <CustomerAccessPanel customer={accessTarget} customerIds={bulkAccessMode ? selectedCustomerIds : []} open={showAccessDialog} onClose={() => { setShowAccessDialog(false); setAccessTarget(null); setBulkAccessMode(false); }} onSaved={async () => { setSelectedCustomerIds([]); await loadCustomers(); if (selectedCustomer) await loadCustomerDetail(selectedCustomer.id); }} />
 
       <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && customerDraft.confirmDiscard())) setShowForm(open); }}>
-        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl overflow-y-auto sm:max-h-[90vh] [&>button]:z-30">
-          <DialogHeader className="sticky top-0 z-20 -mx-6 -mt-6 border-b border-slate-200 bg-white px-6 py-4 sm:static sm:m-0 sm:border-0 sm:bg-transparent sm:p-0"><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle></DialogHeader>
+        <CrmFormDialogContent className="max-w-4xl">
+          <CrmFormDialogHeader><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle></CrmFormDialogHeader>
+          <CrmFormDialogBody className="space-y-4">
           {duplicateWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><AlertCircle className="w-4 h-4 flex-shrink-0" />{duplicateWarning}</div>}
           <div data-testid="customer-form-grid" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-2">
@@ -2350,11 +2351,12 @@ export default function Customers() {
             </div>
             {isOwner && <div className="sm:col-span-2"><Label>历史备注 · 仅老板</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>}
           </div>
-          <div data-testid="customer-form-actions" className="sticky bottom-0 z-20 -mx-6 -mb-6 mt-5 flex gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:static sm:m-0 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
+          </CrmFormDialogBody>
+          <CrmFormDialogFooter data-testid="customer-form-actions">
             <Button variant="outline" disabled={saving} onClick={() => { if (customerDraft.confirmDiscard()) setShowForm(false); }} className="min-h-11 flex-1 sm:flex-none">取消</Button>
             <Button onClick={handleSave} disabled={saving} className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 sm:flex-none">{saving ? '保存中...' : '保存'}</Button>
-          </div>
-        </DialogContent>
+          </CrmFormDialogFooter>
+        </CrmFormDialogContent>
       </Dialog>
     </>
   );
@@ -2611,13 +2613,28 @@ export default function Customers() {
             <p className="mt-1 text-xs text-slate-500">编号 {c.customer_code || '-'} · 负责人 {c.sales_person || '-'} · 数据更新 {formatCustomerTimestamp(detailLoadedAt)}</p>
           </div>
           </div>
-          <div className="customer-detail-actions flex w-full items-center gap-2 md:w-auto md:justify-end">
-            {c.phone && <CustomerPhoneDial phone={c.phone} country={c.country} label="网页拨号" className="min-w-0 flex-[1.15] md:flex-none" buttonClassName="px-3" />}
-            {canCreateFollowUp && <Button size="sm" className="min-h-11 flex-1 bg-blue-600 hover:bg-blue-700 md:min-h-0 md:flex-none" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
-            {canManageCustomerAccess(c) && <><Button variant="outline" size="sm" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 协作成员</Button><Button variant="outline" size="sm" onClick={() => setFinanceAccessTarget(c)}>财务授权</Button></>}
-            <Button aria-label="刷新客户数据" variant="outline" size="sm" className="h-11 w-11 shrink-0 px-0 md:h-8 md:w-auto md:px-3" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
-              <RefreshCw className={`h-3.5 w-3.5 md:mr-1 ${detailLoading ? 'animate-spin' : ''}`} /> <span className="hidden md:inline">刷新数据</span>
-            </Button>
+          <div className={`customer-detail-actions flex w-full items-center gap-2 md:w-auto md:justify-end ${!c.phone && !canCreateFollowUp ? 'has-no-primary' : ''}`}>
+            {(c.phone || canCreateFollowUp) && <div className={`customer-detail-primary-actions ${!c.phone || !canCreateFollowUp ? 'has-single-action' : ''}`}>
+              {c.phone && <CustomerPhoneDial phone={c.phone} country={c.country} label="网页拨号" className="min-w-0" buttonClassName="px-3" />}
+              {canCreateFollowUp && <Button size="sm" className="min-h-11 bg-blue-600 hover:bg-blue-700 md:min-h-0" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
+            </div>}
+            <div className="customer-detail-desktop-tools">
+              {canManageCustomerAccess(c) && <><Button variant="outline" size="sm" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 协作成员</Button><Button variant="outline" size="sm" onClick={() => setFinanceAccessTarget(c)}>财务授权</Button></>}
+              <Button aria-label="刷新客户数据" variant="outline" size="sm" className="h-8 px-3" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
+                <RefreshCw className={`mr-1 h-3.5 w-3.5 ${detailLoading ? 'animate-spin' : ''}`} /> 刷新数据
+              </Button>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><Button aria-label="更多客户操作" title="更多客户操作" variant="outline" size="sm" className="customer-detail-mobile-tools"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {canManageCustomerAccess(c) && <>
+                  <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />协作成员</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setFinanceAccessTarget(c)}><ShieldCheck className="mr-2 h-4 w-4" />财务授权</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>}
+                <DropdownMenuItem disabled={detailLoading} onSelect={() => { void loadCustomerDetail(c.id, c); }}><RefreshCw className={`mr-2 h-4 w-4 ${detailLoading ? 'animate-spin' : ''}`} />刷新数据</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
         {activeReminderMessage && customerCanReadTab(c, reminderActionTab) && (

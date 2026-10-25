@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import './crm-form-dialog.css';
 
 const Dialog = DialogPrimitive.Root;
 
@@ -59,6 +60,15 @@ const DialogContent = React.forwardRef<
 ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
+// CRM forms opt into a fixed header/footer without changing ordinary dialogs.
+const CrmFormDialogContent = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, ...props }, ref) => (
+  <DialogContent ref={ref} className={cn('t24-crm-form-dialog', className)} {...props} />
+));
+CrmFormDialogContent.displayName = 'CrmFormDialogContent';
+
 const DialogHeader = ({
   className,
   ...props
@@ -86,6 +96,23 @@ const DialogFooter = ({
   />
 );
 DialogFooter.displayName = 'DialogFooter';
+
+const CrmFormDialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <DialogHeader className={cn('t24-crm-form-dialog-header', className)} {...props} />
+);
+CrmFormDialogHeader.displayName = 'CrmFormDialogHeader';
+
+const CrmFormDialogBody = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} tabIndex={0} className={cn('t24-crm-form-dialog-body', className)} {...props} />
+  )
+);
+CrmFormDialogBody.displayName = 'CrmFormDialogBody';
+
+const CrmFormDialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <DialogFooter className={cn('t24-crm-form-dialog-footer', className)} {...props} />
+);
+CrmFormDialogFooter.displayName = 'CrmFormDialogFooter';
 
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
@@ -125,4 +152,8 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  CrmFormDialogContent,
+  CrmFormDialogHeader,
+  CrmFormDialogBody,
+  CrmFormDialogFooter,
 };
