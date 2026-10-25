@@ -241,3 +241,50 @@ body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-she
   font-size: 12px;
   line-height: 20px;
 }
+/* Laptop height: keep the task scope and mode on one row so the call record starts earlier. */
+@media (min-width: 1024px) and (max-height: 900px) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main .sw-refined .sw-workspace-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 0 0 10px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main .sw-refined .sc-page-heading {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main .sw-refined .sw-view-context {
+    grid-column: 1;
+    margin: 0;
+    padding: 6px 10px;
+    min-height: 34px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main .sw-refined .sw-mode-switch {
+    grid-column: 2;
+    align-self: center;
+    margin: 0;
+    min-height: 34px;
+    padding: 3px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main .sw-refined .sw-mode-switch button {
+    min-height: 28px;
+    height: 28px;
+    padding: 4px 14px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main .sw-refined .sw-progress-row {
+    grid-column: 1 / -1;
+    min-height: 22px;
+    margin: 0;
+    padding: 0;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main .sw-refined .sc-customer {
+    padding: 12px 16px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main .sw-refined .sw-record {
+    padding: 12px 16px 0;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-desktop-main .sw-refined .sw-record .sw-notes {
+    height: 96px;
+    min-height: 96px;
+  }
+}
