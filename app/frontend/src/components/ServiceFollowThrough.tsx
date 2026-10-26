@@ -11,6 +11,8 @@ import { useAutoRefresh } from '@/lib/use-auto-refresh';
 import StripeHistoryReminders from '@/components/StripeHistoryReminders';
 import { followThroughApi, followThroughAccessDenied, followThroughDate, kickoffLastServiceDate, followThroughError, followThroughHref, type FollowThroughCoverage, type KickoffDetail, type KickoffDraft, type KickoffItem, type KickoffList, type OwnerExceptionOverview, type RenewalObservations } from '@/lib/service-follow-through';
 import './service-follow-through.css';
+import { ownerExceptionTaskHref } from './sales-handoff-navigation';
+import './owner-handoff-entry.css';
 
 const kickoffLabels: Record<string, string> = { missing: '待建清单', in_progress: '进行中', overdue: '已逾期', completed: '已完成' };
 const itemLabels: Record<string, string> = { pending: '待完成', blocked: '有卡点', completed: '已完成' };
@@ -43,17 +45,24 @@ export function OwnerExceptions() {
   if (role !== 'super_admin') return null;
   const navigateTo = (href?: string) => { const safe = followThroughHref(href); if (safe) navigate(buildReturnLink(safe, `${location.pathname}${location.search}`)); };
   const items = data?.items || [];
-  const activeStatusFilters = ownerFilters.filter(([key]) => (data?.counts[key] ?? 0) !== 0);
-  const quietStatusFilters = ownerFilters.filter(([key]) => (data?.counts[key] ?? 0) === 0);
+  const ownerActionFilters = ownerFilters.filter(([key]) => ['pending_receipt', 'pending_access'].includes(key));
+  const teamActionFilters = ownerFilters.filter(([key]) => key === 'pending_operations');
+  const activeStatusFilters = ownerFilters.filter(([key]) => !['pending_receipt', 'pending_access', 'pending_operations'].includes(key) && (data?.counts[key] ?? 0) !== 0);
+  const quietStatusFilters = ownerFilters.filter(([key]) => !['pending_receipt', 'pending_access', 'pending_operations'].includes(key) && (data?.counts[key] ?? 0) === 0);
   const renderStatusFilter = ([key, label]: string[]) => <button key={key} type="button" onClick={() => navigateTo(key.startsWith('renewal') ? `/operations-workbench?view=renewals&status=${key === 'renewal_unconnected' ? 'unconnected' : 'attention'}` : key.startsWith('kickoff') ? `/operations-workbench?view=kickoffs&status=${key === 'kickoff_missing' ? 'missing' : key === 'kickoff_blocked' ? 'blocked' : 'overdue'}` : `/sales-leads?view=handoffs&status=${key === 'pending_receipt' ? 'pending_payment' : key}`)}><span>{label}</span><strong>{data.counts[key] ?? 0}</strong></button>;
   return <section className="sf-owner sf-panel" aria-label="老板异常总览">
-    <div className="sf-heading"><div><p className="sf-kicker">老板工作台</p><h2>优先处理事项 <span>{data ? data.counts.total_actions ?? items.length : '—'}</span></h2><p>先核款，再推动接收、交付与续费</p></div><Button size="sm" variant="outline" onClick={() => void load()} disabled={loading} aria-label="刷新老板异常总览"><RefreshCw className={loading ? 'animate-spin' : ''} size={14} />刷新</Button></div>
+    <div className="sf-heading"><div><p className="sf-kicker">老板工作台</p><h2>成交与交付待办 <span>{data ? data.counts.total_actions ?? items.length : '—'}</span></h2><p>自己的核对与授权集中处理，团队接收单独跟进</p></div><Button size="sm" variant="outline" onClick={() => void load()} disabled={loading} aria-label="刷新老板异常总览"><RefreshCw className={loading ? 'animate-spin' : ''} size={14} />刷新</Button></div>
     <StripeHistoryReminders compact />
     {error && <div className="sf-error" role="alert">{error}{data && ' 以下为上次读取结果，请刷新后再判断。'}</div>}
     {!data && loading && <p role="status" className="sf-empty">正在读取异常事项…</p>}
     {data && <>
-      {items.length > 0 ? <div className="sf-exception-list">{(expanded ? items : items.slice(0, 3)).map((item, index) => <button className={`sf-exception sf-tone-${item.severity || 'medium'}`} type="button" key={item.id} onClick={() => navigateTo(item.href)} disabled={!followThroughHref(item.href)}><span className="sf-rank">{index === 0 ? '先处理' : String(index + 1).padStart(2, '0')}</span><span className="sf-exception-copy"><strong title={item.title}>{item.title}</strong><small><span className="sf-exception-business-name" title={item.business_name || '待核对事项'}>{item.business_name || '待核对事项'}</span><span className="sf-exception-waiting-days">{Number(item.waiting_days) > 0 && ` · 已等待 ${item.waiting_days} 天`}</span></small></span><ChevronRight size={16} /></button>)}</div> : <p className="sf-empty"><CheckCircle2 size={17} />当前已覆盖记录暂无待处理事项，通知覆盖仍需单独核对。</p>}
-      {activeStatusFilters.length > 0 && <div className="sf-owner-status-summary" aria-label="有待办的状态"><span className="sf-owner-status-label">按类型查看</span><div className="sf-owner-counts sf-owner-counts-active">{activeStatusFilters.map(renderStatusFilter)}</div></div>}
+      <div className="sf-work-lanes">
+        <section className="sf-work-lane sf-work-lane-owner" aria-label="待我处理"><div className="sf-work-lane-heading"><h3>待我处理</h3><p>收款逐笔核对 · 客户按需邀请</p></div><div className="sf-owner-counts sf-work-lane-counts">{ownerActionFilters.map(renderStatusFilter)}</div></section>
+        <section className="sf-work-lane" aria-label="待团队接收"><div className="sf-work-lane-heading"><h3>待团队接收</h3><p>指定运营获权后，由本人接收</p></div><div className="sf-owner-counts sf-work-lane-counts">{teamActionFilters.map(renderStatusFilter)}</div></section>
+      </div>
+      <p className="sf-work-count-note">按待办事项分别计数，同一成交可同时待核款、授权和接收。</p>
+      {items.length > 0 ? <div className="sf-exception-list">{(expanded ? items : items.slice(0, 3)).map((item, index) => <button className={`sf-exception sf-tone-${item.severity || 'medium'}`} type="button" key={item.id} onClick={() => navigateTo(ownerExceptionTaskHref(item))} disabled={!followThroughHref(item.href)}><span className="sf-rank">{index === 0 ? '先处理' : String(index + 1).padStart(2, '0')}</span><span className="sf-exception-copy"><strong title={item.title}>{item.title}</strong><small><span className="sf-exception-business-name" title={item.business_name || '待核对事项'}>{item.business_name || '待核对事项'}</span><span className="sf-exception-waiting-days">{Number(item.waiting_days) > 0 && ` · 已等待 ${item.waiting_days} 天`}</span></small></span><ChevronRight size={16} /></button>)}</div> : <p className="sf-empty"><CheckCircle2 size={17} />当前已覆盖记录暂无待处理事项，通知覆盖仍需单独核对。</p>}
+      {activeStatusFilters.length > 0 && <div className="sf-owner-status-summary" aria-label="有待办的状态"><span className="sf-owner-status-label">交付与续费</span><div className="sf-owner-counts sf-owner-counts-active">{activeStatusFilters.map(renderStatusFilter)}</div></div>}
       {quietStatusFilters.length > 0 && <details className="sf-owner-quiet-statuses"><summary><span>更多状态</span><small>{quietStatusFilters.length} 项为 0</small><ChevronRight size={14} aria-hidden="true" /></summary><div className="sf-owner-counts">{quietStatusFilters.map(renderStatusFilter)}</div></details>}
       <div className="sf-footer"><span>更新 {followThroughDate(data.generated_at)}（北京时间）</span>{items.length > 3 && <button type="button" onClick={() => setExpanded(!expanded)}>{expanded ? '收起事项' : `查看全部 ${items.length} 项`}</button>}<button type="button" onClick={() => navigateTo('/operations-workbench?view=renewals')}>查看续费覆盖 <ArrowRight size={13} /></button></div>
     </>}

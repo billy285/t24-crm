@@ -5,3 +5,22 @@
 .sd-change-detail{font-size:11px;color:#70829d;margin-top:5px}.sd-change-detail summary{cursor:pointer}.sd-change-detail dl>div{border-left:2px solid #dbe5f5;padding-left:9px;margin:9px 0}.sd-change-detail dt{font-weight:600;color:#556d92}.sd-change-detail dd{margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere;color:#607899}.sd-change-detail dd small{display:inline-block;margin-right:6px;color:#8b9ab0}
 /* The sales-only quick editor may open above the dossier dialog. */
 .sales-lead-quick-edit{z-index:92}.sle-overlay{z-index:91}
+
+/* Follow-through presentation stays inside the sales dossier. */
+.sales-dossier-dialog .sd-primary-owner strong{display:flex;align-items:flex-start;gap:6px;color:#213f6a;font-size:15px}
+.sales-dossier-dialog .sd-primary-owner strong svg{flex:0 0 auto;margin-top:4px}
+.sales-dossier-dialog .sd-source-label{display:block;font-size:10px;color:#7b8da8;line-height:1.6;margin-top:4px;font-weight:400;overflow-wrap:anywhere}
+.sales-dossier-dialog .sd-follow-through{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;margin:0 0 8px;border:1px solid #dfe7f3;border-radius:10px;overflow:hidden;background:#f8faff}
+.sales-dossier-dialog .sd-follow-through>div{min-width:0;padding:12px 14px}
+.sales-dossier-dialog .sd-follow-through p{font-size:13px;font-weight:550;color:#2d4263;white-space:pre-wrap;overflow-wrap:anywhere}
+.sales-dossier-dialog .sd-follow-through .sd-next-step{border-left:1px solid #dfe7f3;background:#eff5ff}
+.sales-dossier-dialog .sd-next-step>.sd-label{color:#3366b8}
+.sales-dossier-dialog .sd-quality{border:1px solid #e7ebf2;border-radius:8px;padding:9px 11px;margin:0 0 10px;background:#fcfdff}
+.sales-dossier-dialog .sd-quality-items{display:flex;flex-wrap:wrap;gap:6px}
+.sales-dossier-dialog .sd-quality-hint{display:inline-flex;align-items:center;border-radius:4px;padding:2px 6px;color:#657b98;background:#eff3f8;font-size:11px;line-height:1.6;overflow-wrap:anywhere;min-width:0}
+.sales-dossier-dialog .sd-quality-hint.is-missing{color:#986017;background:#fff5e5}
+.sales-dossier-dialog .sd-quality-hint.is-to_arrange{color:#365e9d;background:#edf3ff}
+.sales-dossier-dialog .sd-quality>p{font-size:10px;line-height:1.7;color:#7a8ca6;margin-top:5px;overflow-wrap:anywhere}
+.sales-dossier-dialog .sd-ack:first-child{margin-top:0;border-color:#adc8f7;box-shadow:0 2px 8px #1d5de308}
+@media(max-width:767px){.sales-dossier-dialog .sd-follow-through{grid-template-columns:minmax(0,1fr)}.sales-dossier-dialog .sd-follow-through .sd-next-step{border-left:0;border-top:1px solid #dfe7f3}.sales-dossier-dialog .sd-follow-through>div{padding:11px 12px}.sales-dossier-dialog .sd-primary-owner strong{font-size:14px}.sales-dossier-dialog .sd-ack>button{width:100%;min-height:44px}}
+@media(max-width:767px){.sales-dossier-dialog .sd-heading-tools:has(>button:only-child){width:auto;margin-left:auto}.sales-dossier-dialog .sd-heading-tools>button:only-child{flex:0 0 44px;width:44px;min-height:44px;padding:0}}

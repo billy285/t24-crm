@@ -1800,6 +1800,18 @@ export default function Customers() {
     if (!canManageCustomerAccess(customer)) return;
     setAccessTarget(customer); setBulkAccessMode(false); setShowAccessDialog(true);
   };
+  // A handoff can point to this existing panel, but only after the customer
+  // detail has been re-read under the current account's original permissions.
+  useEffect(() => {
+    if (searchParams.get('access') !== 'invite' || detailLoading || !detailLoadedAt) return;
+    const targetId = Number(searchParams.get('detail'));
+    if (!selectedCustomer || selectedCustomer.id !== targetId || activeDetailCustomerIdRef.current !== targetId) return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('access');
+    setSearchParams(nextParams, { replace: true });
+    if (!customerPermissions(selectedCustomer).can_manage_access) return;
+    setAccessTarget(selectedCustomer); setBulkAccessMode(false); setShowAccessDialog(true);
+  }, [searchParams, selectedCustomer, detailLoading, detailLoadedAt, setSearchParams]);
   const openBulkAccessManager = () => {
     if (!isOwner || !selectedCustomerIds.length) return;
     setAccessTarget(null); setBulkAccessMode(true); setShowAccessDialog(true);
@@ -1923,6 +1935,7 @@ export default function Customers() {
     if (searchParams.get('detail') || searchParams.get('tab') || searchParams.get('reminder') || searchParams.get('from') || searchParams.get('financeTab') || searchParams.get('returnTo')) {
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('detail');
+      nextParams.delete('access');
       nextParams.delete('tab');
       nextParams.delete('reminder');
       nextParams.delete('from');
