@@ -1,0 +1,3413 @@
+{
+  "unchanged": true,
+  "mutation_calls_unchanged": true,
+  "original_api_requests_unchanged": true,
+  "authorization_gates_unchanged": true,
+  "private_and_ordinary_dialog_unchanged": true,
+  "registered_read_and_ui_changes_only": true,
+  "unknown_semantic_drift": false,
+  "baseline_source_sha": "69666997496e57189e6e2f32f33467a584fe37c5",
+  "approved_deltas_sha256": "1dfc636ce335e0d89acee1f5601f1f1c839af0f88479ada1d72c99fc18d889e2",
+  "hard_protected_counts": {
+    "mutations": 44,
+    "requests": 54,
+    "gates": 17,
+    "routes": 0,
+    "private_branches": 0,
+    "ordinary_dialog": 0,
+    "deduction_block": 0,
+    "mutation_handlers": 52,
+    "pure_functions": 164
+  },
+  "registered_delta_count": 375,
+  "registered_deltas": [
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "1908fda64ed5515974b2723aff96a2d453c6fe6030f48c74ba8026a0c3b2036b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-imports",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "28b08335ccb5d2a200d641949e09a29d90daedc458bad48d35fd416988a9fd9e",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-imports",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffDialog/<anonymous>",
+      "sha256": "07cf791cf8f7c67380bb783cbc58a6d98927be301b4e1cfcbb8fc69ecb0fa2c4",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-declarations",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffDialog/<anonymous>",
+      "sha256": "0885c6e6950a89736b0e828ecdd274caa1e6be8b7ebd928f2ba47083479fb73f",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-declarations",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffDialog/<anonymous>",
+      "sha256": "19be0b43d652bae7bffbe899cceea708edb0f9d4fae62ccd81bb8610fd87a9bd",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-declarations",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffDialog",
+      "sha256": "2ae964d6d48c4cd16fdd04d1926410f2c5d36bbd50eca0f97643cd21a0da54dd",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-view_expressions",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffDialog",
+      "sha256": "a9b8dbf7c7b4a4a3df909ea9ad4ed041b81135132e4f3871de581128e6440863",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-view_expressions",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffDialog",
+      "sha256": "d1beac0e5ee864b4fba2039785905fb7d08705db8a18ceb8989fc53a46719a94",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-view_expressions",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "f6d9f09559dc2e84f00475df00920bbfcaf7b8861e7ef7a1988aeed5eb2c752e",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "disabled",
+      "sha256": "eb8cba22694d14aa0d0d13654cf3551b0cfdbfb657d25567a4049d605bfdb92d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "disabled",
+      "sha256": "eb8cba22694d14aa0d0d13654cf3551b0cfdbfb657d25567a4049d605bfdb92d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "disabled",
+      "sha256": "eb8cba22694d14aa0d0d13654cf3551b0cfdbfb657d25567a4049d605bfdb92d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "19c1418f4da7f31e2dfeed6e085526395dd85d012415b5bbff7d0c9934a427c1",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "ea0786839dec55310fcf3f70a712963d0f947af43e808dc5b738ddc8b661328b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "f430c0e2310399f776d4f10d8f56548ec271c700fcdc4ec1270b46eb44c71185",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "type",
+      "sha256": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "type",
+      "sha256": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "type",
+      "sha256": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "891fd2cc6964c9d3263b7b9d57f8abb1c5bb7090e234804964f3b52f422aba7a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "891fd2cc6964c9d3263b7b9d57f8abb1c5bb7090e234804964f3b52f422aba7a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "891fd2cc6964c9d3263b7b9d57f8abb1c5bb7090e234804964f3b52f422aba7a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-props",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "057a6a4114cf82da5ca4e931def9abc8e1878adcb93f0dc3763fd840d108f0c3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-event_contexts",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "8d19d1bcf2c993fe025d17704ba9c21c1d91978a9c4c28dc243a8af269f4452d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-event_contexts",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "e22e071cca15edecf57f2c802ef424ccc81aba8122012960ad8aea89e7fb8269",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffDialog.tsx-event_contexts",
+      "reason": "Registered receipt exposes existing guarded queue actions with source return path; no submission or financial change"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "28b08335ccb5d2a200d641949e09a29d90daedc458bad48d35fd416988a9fd9e",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-imports",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "37124dfb7f059289c533c3cde32b6437b0cde542674e52f7b9449a2ff61471b1",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-imports",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "1ca1c4ab92dff30100b0fc5fe648b3e66499bf3cfa9c3953730e7362c790a824",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "5f144a466a2149a8c9cc311138d6722d3b17aa20030f449dead4ac884c561c0b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "ea69fe0bd7a451108b4e7686e8a0e644fb3aa4136da4913b248025479e3860f5",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "2007694a218c8bcee7f8b5d18682fc0ca3bbc55bdd82df397c598e71c819e84c",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "2f02fa8913a299e1eb1f39efcc324fe37c905fafe09588374e6817f136563662",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "659334c6fd878ebed970987e702d468ad5e667199bae4625ceeafed6c787cddb",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "81d90665b56aca06aaa86960ea373e7fb7e84d411284f23e5d8c5a1887d04387",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "e0ab345eec6a81ec07a56f9f36d83f636a829c55e4f48e6552fa0b74e8eed423",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "e463f617f08969b51bc16a66bc2344cde5a31890d405214fd675947604889acb",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "f65dd46eff07f635e37930d7f654df531ea300662575641be5495840d15dd660",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesDealHandoffQueue/<anonymous>",
+      "sha256": "f65dd46eff07f635e37930d7f654df531ea300662575641be5495840d15dd660",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesDealHandoffQueue/requestedAction",
+      "sha256": "8cd10b4fff70cd7f8ba37aad555419bbc62e4b04c2b462e1cfc003c0611a9c2f",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-declarations",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "removed",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "24b26c8736dcd8d6ee24e0659ebd8a8d6494e6abf0e4a5c0071accb095ee2c08",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "removed",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "e1e58491d006aba7a83eaa7c5ffb8730f80d3c9aa378541776b8a47fc73f204a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "490ac721705f432a2dcfced4ebda3e58d0839b6486841e9ba3bef1b39f62fe22",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "490ac721705f432a2dcfced4ebda3e58d0839b6486841e9ba3bef1b39f62fe22",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "63912dba78a2fc4aff261783ddbb13d3fe732dfe342c43567edc29e8020c9dad",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "63912dba78a2fc4aff261783ddbb13d3fe732dfe342c43567edc29e8020c9dad",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "759737a2f3c7b36af0ee7935354f77092730c3b28a44f707eda1ccafc5904e3e",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "7fffcdf652a40545956bba3b90dda748a3e854d7ed257560af976b18ee5a73f2",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "93a2ede5387ef723cb8c80ee1c12d30a53096637f9eec6db35749d4dfa445813",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "b3336755367b0e353df94c75c31c409e44fa41941f73cb13b6bab8ada9b2af90",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "c4a2695bf87ce4b7c970672a983190016d6dd15424e87cfbca5a5560e774f787",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesDealHandoffQueue",
+      "sha256": "dcc0d97a347c21a6b1d8ccc4dbb80f3618bdd6c6c7145e4f8af8e0579c545c61",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-view_expressions",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "removed",
+      "key": "aria-disabled",
+      "sha256": "8f6c9169fe23a50caea83c49ba9d90fac49c962d6dcce495568ee49290e07a7d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "removed",
+      "key": "aria-label",
+      "sha256": "0bc11502cc3915f511f55de55306195e65dd97cbac8b33e019d50713957b6f55",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "removed",
+      "key": "asChild",
+      "sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "removed",
+      "key": "asChild",
+      "sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "removed",
+      "key": "href",
+      "sha256": "1950f7f322f108dc2e139963b274d34919a303355d4e801f0a56e824e4d286e9",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "removed",
+      "key": "href",
+      "sha256": "250bd372d2693701c0789d2d08af4c9e43b013dcf92eeec18b407ae46e10bb58",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "c89c1e9c974e1db7485999a12141fc81110e5e51a022aa264a6f86f71f1812b2",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "2256845a3bade15d21e93f3a8ffff0f176312a0f957e03f6bf34383ad3593933",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "48478908eeeda1d5ad9f44396c543d6739cbccbc4c4273a0f86be167b65e99dd",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "57ddb06bc3e75444106117072442c32ab8d973d7fe20bf19ae1690e96ca4b113",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "667422776e1fbd2656169482938d6ff56c476b0af5a1d6d42f76a7c3fafc8d4a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "f24fb0e0daa50af7bf8902b735796d0a6d1b6e3eb99e55963790841f8cb6547b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-pressed",
+      "sha256": "c995e13a94cc71a06d4c1701f99ba7c11077c2cacb1e50bf3b9e5bd1bf6d6d15",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-pressed",
+      "sha256": "c995e13a94cc71a06d4c1701f99ba7c11077c2cacb1e50bf3b9e5bd1bf6d6d15",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "key",
+      "sha256": "696e0d39914ed230b801552672477a95be5b89e8c1ba9401d7de859f6a2c6713",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "key",
+      "sha256": "696e0d39914ed230b801552672477a95be5b89e8c1ba9401d7de859f6a2c6713",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "8e85c33d2cb8fcc2dd4a52bf1bc3a9fe85cc40dbc6ac19d44f84ebaaeecd5145",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "8e85c33d2cb8fcc2dd4a52bf1bc3a9fe85cc40dbc6ac19d44f84ebaaeecd5145",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "a641b740dacd1b4c6dd76d3d4af69abb644805362ac7ee8d11ae52a30f175e3d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "fd3ac74c8d8c6feadd8594e755f0a600e10625d5eef614dec93d2af3cb54e676",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "size",
+      "sha256": "db094942953765e213e3023a6f75f535a6225487121fc9bb7f8b53c6a6460f6b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "size",
+      "sha256": "db094942953765e213e3023a6f75f535a6225487121fc9bb7f8b53c6a6460f6b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "type",
+      "sha256": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "type",
+      "sha256": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "type",
+      "sha256": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "type",
+      "sha256": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "4e5542a19f4f20b4ac34ce61795cebe6d5d6e6e24e7d321e37abb8510cf9e245",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "4e5542a19f4f20b4ac34ce61795cebe6d5d6e6e24e7d321e37abb8510cf9e245",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-props",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "cf5260e9aa57f48ff05065982724b60faa9953392606603bf859e09950c31598",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-event_contexts",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "d009d4a5f5887b961b74f406b5897ff07cda8dd345a6e0aa06c09137739ca53e",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-event_contexts",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "04f7f74b0e7a4343799016ad8e3a995f851ac41da85ca5ac96a0c7799805871c",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-event_contexts",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "a3855de597471bd40f0c25eabc672e2ba2ff4bbd97c5afea3730dc909f984bd5",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-event_contexts",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "ae753e5271db8766827a0bc358e9a7cc62e3fc768fe223bfe1e56f51efa1efe9",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-event_contexts",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "d2e9ede16bcbfdfeab7f0e425d01727b21ad162570342844438217db66c84fa3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-event_contexts",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "f1247fb4bed964ae8c57b5a8e84e86837a7d83dedf2e1016aab506500b542ec7",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesDealHandoffQueue.tsx-event_contexts",
+      "reason": "Owner/team grouping; exact selected handoff and filter return path; existing guarded forms only"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "e705fec8f6d5ca9bbab10c995c433a417c31457a4004a83a49487f25299ead8a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-imports",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesLeadDossier/<anonymous>",
+      "sha256": "7db9fa5dc07a7d4edd4b0f7c5c4909c98f81fee6c4c4a49d1e11bafcb77acd5d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-declarations",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesLeadDossier/<anonymous>",
+      "sha256": "27aacaef971d158acada4c704a1d6631ee0d87c5f0eec88fa6e3d7b2e26b635a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-declarations",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesLeadDossier/qualityHints",
+      "sha256": "be2d6ecb46c387bf1aa18d3acffb695b78e30b6c9925cfacfd825a552b84cf31",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-declarations",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "removed",
+      "key": "SalesLeadDossier",
+      "sha256": "226ea4f496756c00582bac3a76515616fc92ddda4539db7267ae0ddeae3288e9",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "removed",
+      "key": "SalesLeadDossier",
+      "sha256": "5a51af05e49ea2664eab0e0995d9b36c73ba1480cc7191210bd67f01a6eebc91",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "removed",
+      "key": "SalesLeadDossier",
+      "sha256": "b52f9454a86cf40f7d4390f5e54fee0b9b656d8336b9f8675b60ac76d49ff1c0",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "removed",
+      "key": "SalesLeadDossier",
+      "sha256": "b70a933d4d5c66ff9102ec9961f01c47c789ab4ba9a6c7ae7bbf6f8d9c3a9b5b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "removed",
+      "key": "SalesLeadDossier",
+      "sha256": "eb7b297796b8a24389711cd7c1a011847a8b691948059e9d44fd6667cbda626c",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "removed",
+      "key": "SalesLeadDossier",
+      "sha256": "ed3873cfb0484ce46e4582388037db7f259773b56525a3f93102da9d3d70a361",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesLeadDossier",
+      "sha256": "091a8e0f86de7ae1b5cb9515b701be14e25ef877b1f44fe1d65e35bc2da05983",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesLeadDossier",
+      "sha256": "12465f66384f0a0410110208bbea5330d4642f89908da3ace55723ea230fc582",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesLeadDossier",
+      "sha256": "148db5bd1d14818a1f42ee5534e8469db2912aa4f0df12c00a0b4dec2a47452a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesLeadDossier",
+      "sha256": "236a9e2d5b188e9d717e7b3d0137ddbf33c6e63e3587be32d4dfe6928195e74d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesLeadDossier",
+      "sha256": "29b390272a9bf14670a89841d6bf98647a8e0c5d0a4ce2266dfe72dbf9b1cee2",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesLeadDossier",
+      "sha256": "93e788b12c7b4a0f622ed02d05efe5e1d374b2dbb4ba92db34233b5351e0b1a4",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesLeadDossier",
+      "sha256": "9d826a3a8f9c6ca19ea9856b1b0d5aa41d2cc3aa64f2c5ab4b99ab8d38bb92be",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesLeadDossier",
+      "sha256": "a1e97bff1cf4e1b7a4f53b7c82c69dff38276e97add89f8ce836fa346593d5aa",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesLeadDossier",
+      "sha256": "d88e04d3f0642d200e635616a283c42d74afbef0ab473b19fac7b8ecf478b4c0",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-view_expressions",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "61b47cc13130541e7bb239cac98d539d2c9f9be57b4d2416d5fd3ec3a3bb0ad6",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-props",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "efa061bd5848855796d650feeb01a1e3ce0e7c4aa844726bb4a2985048d8a16d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-props",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "key",
+      "sha256": "a9bc63be95b83995a3f92034d57370a12387fb1e182dfb36c3ffffc1af69250f",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-props",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "size",
+      "sha256": "d20243cacfd27f90bbde4991f7e00da8ce293f792a5916af4eb21f474351c005",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-props",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/SalesLeadDossier.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "title",
+      "sha256": "119ad90e8e19d3870f04f37a07d3015246e4f1e9d806050cf49f639df9e9e56c",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesLeadDossier.tsx-props",
+      "reason": "Current authorized context and quality hints; original data, event handlers, protection and writes unchanged"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "28b08335ccb5d2a200d641949e09a29d90daedc458bad48d35fd416988a9fd9e",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-imports",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "6f061e1c0a8056746e5ee512127f4334d672e7e8624f6dd4e1af5d44816d1a3b",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-imports",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:OwnerExceptions/<anonymous>",
+      "sha256": "130ca341d72bfe0adae24f799a5f4fcae0bc716e26f96aaa6470370a24dba04b",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:OwnerExceptions/<anonymous>",
+      "sha256": "83827e78e4decb2de8876b23777c8f17de8600f5674865f3e4028d3d57ee196c",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:OwnerExceptions/<anonymous>",
+      "sha256": "d88df63e4e7c3c53078de2b9ee4504c9eb29b52761639e461bbd180fda37048c",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:OwnerExceptions/activeStatusFilters",
+      "sha256": "15ba22006b5e420ec65e799aa229ddbc2f1e1ba7efc29c5f3d04bfb96077a547",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:OwnerExceptions/quietStatusFilters",
+      "sha256": "30bca9ab48844452b3644f7a44d261f365dca779245f4fe0c810135727e44b0d",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:OwnerExceptions/<anonymous>",
+      "sha256": "40c6425636dc77be6c9d5256f131378b6fd1a70dc970b32aadbb361eced24baf",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:OwnerExceptions/<anonymous>",
+      "sha256": "904853d9f3ff632c6ccba78271921901b6a4874eda5226923a5fa07ed067817a",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:OwnerExceptions/<anonymous>",
+      "sha256": "bb28b7ff35cb159c2a7c55222767174d36d4e718c0d6165ffd1349ad7dec58fb",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:OwnerExceptions/<anonymous>",
+      "sha256": "d7055feda4c16b5c41420b670203eb9cdebe2c21112b8a47e9b47396ea68528a",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:OwnerExceptions/<anonymous>",
+      "sha256": "e781b76c9178d193c05e43ed25e24ae1e2f8d70ac3cd1f45f807bd9d51d64de2",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:OwnerExceptions/activeStatusFilters",
+      "sha256": "14cc84b914074e68c44fa8cee12701ee0451f5f2afb6900638515cc05e2709e7",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:OwnerExceptions/ownerActionFilters",
+      "sha256": "f4a69c773796a135499d0452b53006aee7bb316317c04b80519b8c6fedc3f7ca",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:OwnerExceptions/quietStatusFilters",
+      "sha256": "8276d42ed658e9743cf0f2c6e4ab661ca6939ad33fc0e6c9189d2b773be173a0",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:OwnerExceptions/teamActionFilters",
+      "sha256": "c049d115152690de84e49989e0c14d4c15c3cc18c834dc401f9a2efc83df11c3",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-declarations",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "OwnerExceptions",
+      "sha256": "7b2a11570761854a5776ebf67aa4d074c00ecac9e4e02039b44bb15d063e2add",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-view_expressions",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "OwnerExceptions",
+      "sha256": "b82517db282d70362e8e6ec0a205c7c6f0a71cac1cb638e6c4a90b5b16a9977a",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-view_expressions",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "props",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "b413616e2c7aa3e9dcce45a9adcee9a07934d7cf06bdc368e0b28fd4b97d86a2",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-props",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "2256845a3bade15d21e93f3a8ffff0f176312a0f957e03f6bf34383ad3593933",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-props",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "443ae7980a6f015971b3c181ca4206c32f133e8727790a3d0aa55f22bcb7953f",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-props",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "e440305bff73d37b4527a16df551911dacd43c5d03c41507ae154b4dae4456fc",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-props",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "35bca4e0d974252e2d40e0fe2a58a7ac0ac34e773f59fd288fec8fb93a3c0a7f",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-event_contexts",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/ServiceFollowThrough.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "3259e5a63e023139e82c6a03c79274b7744657d27548c58e4d9b5c46e09f1867",
+      "review_id": "CRM-MANAGEMENT-FLOW-ServiceFollowThrough.tsx-event_contexts",
+      "reason": "Separate owner receipt and invitation work from team reception, preserving server counts and original action gates"
+    },
+    {
+      "file": "app/frontend/src/components/owner-handoff-entry.css",
+      "category": "styles",
+      "direction": "added",
+      "key": "stylesheet",
+      "sha256": "988c8166493ac8ab46c5c0be3fb504e4891f8948ae742fc6868707d6e0f7e61b",
+      "review_id": "CRM-MANAGEMENT-FLOW-owner-handoff-entry.css-styles",
+      "reason": "Scoped owner queue visual hierarchy and responsive layout"
+    },
+    {
+      "file": "app/frontend/src/components/sales-dossier-quality.ts",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "413202f22cb9770332dda2e16419beb9c58b9bae908b6aaa034e677406d78066",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-dossier-quality.ts-imports",
+      "reason": "Pure missing-data hints from current enrichment and summary; no historical substitution or data updates"
+    },
+    {
+      "file": "app/frontend/src/components/sales-dossier-quality.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:/dossierQualityHints",
+      "sha256": "34d4cc9e7e63112002be23bbe9892735f51cac80a1259af0a2ed6b60419460bb",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-dossier-quality.ts-declarations",
+      "reason": "Pure missing-data hints from current enrichment and summary; no historical substitution or data updates"
+    },
+    {
+      "file": "app/frontend/src/components/sales-dossier-quality.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:/hasText",
+      "sha256": "66f5f4b7d514c652895bc7ca70937ef40e4b921944671bd22151c86c6a3dd301",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-dossier-quality.ts-declarations",
+      "reason": "Pure missing-data hints from current enrichment and summary; no historical substitution or data updates"
+    },
+    {
+      "file": "app/frontend/src/components/sales-dossier-quality.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:dossierQualityHints/<anonymous>",
+      "sha256": "03124beafffdcbb5cf85bb0b1c9d92dbb93c3820847d7a59168d836c2cced128",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-dossier-quality.ts-declarations",
+      "reason": "Pure missing-data hints from current enrichment and summary; no historical substitution or data updates"
+    },
+    {
+      "file": "app/frontend/src/components/sales-dossier-quality.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:dossierQualityHints/<anonymous>",
+      "sha256": "2ad4f2c45e7861bba84c47e09753015684a0bdb6e69d5a0829c6dea157e8ea82",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-dossier-quality.ts-declarations",
+      "reason": "Pure missing-data hints from current enrichment and summary; no historical substitution or data updates"
+    },
+    {
+      "file": "app/frontend/src/components/sales-dossier-quality.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:/hasText",
+      "sha256": "66f5f4b7d514c652895bc7ca70937ef40e4b921944671bd22151c86c6a3dd301",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-dossier-quality.ts-declarations",
+      "reason": "Pure missing-data hints from current enrichment and summary; no historical substitution or data updates"
+    },
+    {
+      "file": "app/frontend/src/components/sales-dossier-quality.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:dossierQualityHints/{ enrichment, summary, insight }",
+      "sha256": "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-dossier-quality.ts-declarations",
+      "reason": "Pure missing-data hints from current enrichment and summary; no historical substitution or data updates"
+    },
+    {
+      "file": "app/frontend/src/components/sales-dossier-quality.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:dossierQualityHints/hints",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-dossier-quality.ts-declarations",
+      "reason": "Pure missing-data hints from current enrichment and summary; no historical substitution or data updates"
+    },
+    {
+      "file": "app/frontend/src/components/sales-dossier-quality.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:dossierQualityHints/missingStep",
+      "sha256": "4bb16d82fe0dd464f343f42c8a054e160150ff583a3cd84b411fe75698462b8b",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-dossier-quality.ts-declarations",
+      "reason": "Pure missing-data hints from current enrichment and summary; no historical substitution or data updates"
+    },
+    {
+      "file": "app/frontend/src/components/sales-dossier-quality.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:dossierQualityHints/missingTime",
+      "sha256": "0ba61c82c9f182b59849b92d8588a0d0060599c7654bfef9ef2308b0972c2d0b",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-dossier-quality.ts-declarations",
+      "reason": "Pure missing-data hints from current enrichment and summary; no historical substitution or data updates"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "82bc3b65f08094d8054ca97724af7578b8bc45d6ccd648330adb1b1c64379047",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-imports",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "8c806a2d21656b077a18194963bcc9ebfc97f09419aa4762cad1f17bb4c831a9",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-imports",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:/ownerExceptionTaskHref",
+      "sha256": "cb896fec2b6bfc04a7620047a55670d08fc222069f417e0efdc4279497cd2d40",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-declarations",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:/positiveId",
+      "sha256": "b987ee8e6bde4b67402dc25fa710c9225d167651455e15393d385d082b5b6879",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-declarations",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:/salesHandoffCustomerHref",
+      "sha256": "08ac2390f78384b54ebb0a1c59782540dc18b3d3f6d8a93094a2491af07a3ea2",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-declarations",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:/salesHandoffQueueHref",
+      "sha256": "b183aa2b1880ab1ba971be420662c301b0a2af514e7d812467ac5f0192119eb6",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-declarations",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:/salesHandoffReturnPath",
+      "sha256": "dca124628f29bc5e3d65be031a7ce05c91d3b7bc2d0a0a3f98b5c51909c569c8",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-declarations",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:/positiveId",
+      "sha256": "b987ee8e6bde4b67402dc25fa710c9225d167651455e15393d385d082b5b6879",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-declarations",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:ownerExceptionTaskHref/safe",
+      "sha256": "9b92aebc9b5d964eea5eb1767d53bd097513351b63bbfcc5d6b3d67f931ca42f",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-declarations",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:salesHandoffReturnPath/safe",
+      "sha256": "dafe360ff3f9cc3f2c4ab1acbf156a251c08afc4ed830ad6d109e1f8b1aee9fc",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-declarations",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-handoff-navigation.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:salesHandoffReturnPath/target",
+      "sha256": "d1453a4824195fa31c40f665f5252815bc792d0201dd9abf6ce8c4edc28c31da",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-handoff-navigation.ts-declarations",
+      "reason": "Pure safe internal navigation to existing authorized forms; no permissions or writes"
+    },
+    {
+      "file": "app/frontend/src/components/sales-lead-dossier.css",
+      "category": "styles",
+      "direction": "removed",
+      "key": "stylesheet",
+      "sha256": "649f20ae8b4b213ace093cc72aaaeed7ee00c1586e53f4f21cc0c44ebd486b58",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-lead-dossier.css-styles",
+      "reason": "Dossier-scoped responsive context and quality styles"
+    },
+    {
+      "file": "app/frontend/src/components/sales-lead-dossier.css",
+      "category": "styles",
+      "direction": "added",
+      "key": "stylesheet",
+      "sha256": "7a6315c0c2aead68790c7a827c5887a02dbc938df55f64765acc199250732289",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-lead-dossier.css-styles",
+      "reason": "Dossier-scoped responsive context and quality styles"
+    },
+    {
+      "file": "app/frontend/src/pages/Customers.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:Customers/closeDetail",
+      "sha256": "567b91db22f5246a84508ae2465f6f041c38c234d8dae13adb1279c913df41ac",
+      "review_id": "CRM-MANAGEMENT-FLOW-Customers.tsx-declarations",
+      "reason": "Consume invite UI deep link only after freshly verified customer detail and original can_manage_access; no invitation saved by navigation"
+    },
+    {
+      "file": "app/frontend/src/pages/Customers.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:Customers/closeDetail",
+      "sha256": "567b91db22f5246a84508ae2465f6f041c38c234d8dae13adb1279c913df41ac",
+      "review_id": "CRM-MANAGEMENT-FLOW-Customers.tsx-declarations",
+      "reason": "Consume invite UI deep link only after freshly verified customer detail and original can_manage_access; no invitation saved by navigation"
+    },
+    {
+      "file": "app/frontend/src/pages/Customers.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:Customers/<anonymous>",
+      "sha256": "81c95de9f0075cb7405ef8be72077d5e6be56a47951bd4dc64fb8e01eebb43db",
+      "review_id": "CRM-MANAGEMENT-FLOW-Customers.tsx-declarations",
+      "reason": "Consume invite UI deep link only after freshly verified customer detail and original can_manage_access; no invitation saved by navigation"
+    },
+    {
+      "file": "app/frontend/src/pages/Customers.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:Customers/closeDetail",
+      "sha256": "a9a5a96233ce0e6cf43e21c0671834b528a289382f459af426028e2bb31ba6b0",
+      "review_id": "CRM-MANAGEMENT-FLOW-Customers.tsx-declarations",
+      "reason": "Consume invite UI deep link only after freshly verified customer detail and original can_manage_access; no invitation saved by navigation"
+    },
+    {
+      "file": "app/frontend/src/pages/Customers.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:Customers/closeDetail",
+      "sha256": "a9a5a96233ce0e6cf43e21c0671834b528a289382f459af426028e2bb31ba6b0",
+      "review_id": "CRM-MANAGEMENT-FLOW-Customers.tsx-declarations",
+      "reason": "Consume invite UI deep link only after freshly verified customer detail and original can_manage_access; no invitation saved by navigation"
+    },
+    {
+      "file": "app/frontend/src/pages/Customers.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:Customers/nextParams",
+      "sha256": "da0419d0645a615d7ecae8dbaf7f8ef68c19d674a47e823fd2e31250e099eb4e",
+      "review_id": "CRM-MANAGEMENT-FLOW-Customers.tsx-declarations",
+      "reason": "Consume invite UI deep link only after freshly verified customer detail and original can_manage_access; no invitation saved by navigation"
+    },
+    {
+      "file": "app/frontend/src/pages/Customers.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:Customers/targetId",
+      "sha256": "4c80f35b590bc10cdac009e79337a590901c20cf526e854f14e1497b92b5d3dc",
+      "review_id": "CRM-MANAGEMENT-FLOW-Customers.tsx-declarations",
+      "reason": "Consume invite UI deep link only after freshly verified customer detail and original can_manage_access; no invitation saved by navigation"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "imports",
+      "direction": "removed",
+      "key": "import",
+      "sha256": "7d51bbacee6187e218310fe8dd35b8426e216419fab7a94027f809aaa2f26911",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-imports",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "17b246eb77e11c85109f83f14f8cc0dd5941f87e1ba41e48d44e230286c51b0b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-imports",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "imports",
+      "direction": "added",
+      "key": "import",
+      "sha256": "304e7e5f91d20e6ea40d779df0644f848011c08adad8566f67fc1b88a04e2459",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-imports",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "35d77b1666f7f5f44a201180e3df791baa881c732740e206b92f2533efd439d9",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "7c983d9dc07b23adb062b3cf0efbd5ed38f9aa4654441dc9d43acee4d5d938af",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "97376d4622ce87c381154cff5f1d8efd4af70a32e7e0e1b329163dedf8d8c60f",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "9d465b4f15bc84e3cade6798e85ba69b80ab9710fe45ee38eb59dff009b31b97",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "fbdfb580c233e01954a723216cbc9ddc5ed1c18b636e9c83dfb98c479f68aba3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/chooseTask",
+      "sha256": "2abf427f7e8948c9fc991238e0966c964e5b3ebfeb5fd54cd18df1e7e828098a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/loadPersonalPerformance",
+      "sha256": "fb71a12c558cbfe7b85d1d35d9f41d0f0567a09db129ef32d192e202cdb8bc2b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/loadRecoveryAlerts",
+      "sha256": "7050652b9a39e7d9d2b85e0a0c9d48ba511d9ab300b63c453e7b30f0092478d3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/loadWorkbench",
+      "sha256": "852f45267053529f5fe027ea2190a3c3fca10d786ce5cc59250612eb3585cadb",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/markDialStarted",
+      "sha256": "b887e9153bcff490187ae44999bfca7901ce3ab6c4d809238bd096a7a3cf315c",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/openCall",
+      "sha256": "a884608d91290e03c372e3ed63febe408f77234bb6b275ae91104b2dcdc540b3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/openSupplementalFollowUp",
+      "sha256": "2788f286abf267ee6cfec692136647f9e81a09df2388e0499c738eb4ec238325",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/prepareDial",
+      "sha256": "503e87b7fedc769845a6272dbcfc81cf6243995a574bd6e0692d057c35182ab3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/resetDesktopScope",
+      "sha256": "4536a90438de8b233605958f21b6463c48020d1e4dd2c9aec3622a20d5204ace",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/submitResult/<anonymous>",
+      "sha256": "329ea0c93e0d05d94a02e7b6cc0b757f3770660932dafbd9c104312a948e2461",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/submitResult/<anonymous>",
+      "sha256": "d254cde25233031c97d7babff35bd0e838f063f5458bf8299ea583f10baccb5c",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "function:SalesWorkspace/submitResult",
+      "sha256": "8a649fb95ddf6bcc15c6271922db79c47bcb0cebf1b5c9996e86d0eb3d608aca",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/chooseTask",
+      "sha256": "2abf427f7e8948c9fc991238e0966c964e5b3ebfeb5fd54cd18df1e7e828098a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/disabledReason",
+      "sha256": "f98100e985457383d97f1c19c18fe3c6ed8705527da97b7367bcf8671a7b2282",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/loadPersonalPerformance",
+      "sha256": "fb71a12c558cbfe7b85d1d35d9f41d0f0567a09db129ef32d192e202cdb8bc2b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/loadRecoveryAlerts",
+      "sha256": "7050652b9a39e7d9d2b85e0a0c9d48ba511d9ab300b63c453e7b30f0092478d3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/loadWorkbench",
+      "sha256": "852f45267053529f5fe027ea2190a3c3fca10d786ce5cc59250612eb3585cadb",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/markDialStarted",
+      "sha256": "b887e9153bcff490187ae44999bfca7901ce3ab6c4d809238bd096a7a3cf315c",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/openCall",
+      "sha256": "a884608d91290e03c372e3ed63febe408f77234bb6b275ae91104b2dcdc540b3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/openSupplementalFollowUp",
+      "sha256": "2788f286abf267ee6cfec692136647f9e81a09df2388e0499c738eb4ec238325",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/prepareDial",
+      "sha256": "503e87b7fedc769845a6272dbcfc81cf6243995a574bd6e0692d057c35182ab3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/requestedLeadRef",
+      "sha256": "71fd57f85a5181dd772f414385c4c5ba73c2503708a81fddaed233ceba46d0ab",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/requestedTask",
+      "sha256": "ca5ea7eb1322f0432a84206e00b2c625b7d27ea10f4a94e2d1935f14c1bd0a25",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/resetDesktopScope",
+      "sha256": "4536a90438de8b233605958f21b6463c48020d1e4dd2c9aec3622a20d5204ace",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/submitResult/position",
+      "sha256": "7d3f5f4e6f8a727705cbfc5fed7da3a90826333fa421a9a44bc5639cbd409257",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/submitResult/remaining",
+      "sha256": "fd92fff58a432bc10f374ae092b1558cda6070f6fd712bc1c3ca651efe79ea1d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/submitResult/responseMatches",
+      "sha256": "bb307f5c7d81003e2a266c62b8a3a45aa6c1ed55bd5001edd5e495e877cbe4fc",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "removed",
+      "key": "variable:SalesWorkspace/submitResult",
+      "sha256": "8a649fb95ddf6bcc15c6271922db79c47bcb0cebf1b5c9996e86d0eb3d608aca",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "0540133be713f678d5647454243e96a8640d88de563d230a997e4ef565b41679",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "0703a3d237453781e4645f489706dbffac5c032307c99dc8dc9ae0bb0a9ba16d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "1b4181fa008886c58561292ed4c2ad2a64ef2d1d4f891f0e3855f728eead3d06",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "2a3aa44ba1b831d9425c65d55fb6e018d8e440c8f911fe7a76ac136416c136f7",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "3c6135f8e314b9fbb8aefcc717fa7abcefe40c7be1ca9f33783c52feaccc8da4",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "4177838b71ccc82f1667b9d1679128b87a9c58194c480fa4599559dfe146188b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "560d1b561b6f211bd7f45bd68fcdc44f94dc382cc4f9df253a8690992457c75c",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "6c89f8d326eb154db4ae5bb7a1f5916653aff86901488cf8e3b0e612fd96caad",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "892969c4079ad12a314cf64d7c0b06bba270ee906ce1abcfee4e9350484b4bdc",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "892969c4079ad12a314cf64d7c0b06bba270ee906ce1abcfee4e9350484b4bdc",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "93cbbfea9e020b1fc028c1debacc38f053b95e979d5b5bd0b59baf8cff20743e",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "b06dd0434f60cbbe20406159f792490f9614acd7e4f18fecf747ddbef98b9f3d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "c04f742648e41d14135d72a275218bf93cfc2edcfcd62b6a3a2047f56fdf00b6",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "ca810c3be67f554874eaa793fe2f8b5ef2bcd520a497ba5fe04830d630bdf2f3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/<anonymous>",
+      "sha256": "e4e002024da4bf0a28a6be1a9904d10c8fd7be766b4454f56b7c36a8138854c9",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/canUseTask/<anonymous>",
+      "sha256": "49b563b5c46819bebd4662d9fcdd635d1ec0702e0ee16f3ffc2f362c27ad3b75",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/canUseTask",
+      "sha256": "e112e45eedb02e656ea1d68bd537a7c98aaeb99e522a51698fa64cf3f058a3b7",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/chooseTask",
+      "sha256": "d039ce6c15f2fbe88bd692e9a2e743d1e4820cd4897cda34b43f7a7ec44ad587",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/clearQueueFilters/<anonymous>",
+      "sha256": "746500d4f90500174f3695d29941508946b1d151e2ab8996ec5f2ad168b3c527",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/clearQueueFilters",
+      "sha256": "c3dcb4f0ce4379be6eaee7bc1664dcdd420e64539f2f2fe9d1ee4d9fa072b3f1",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/loadPersonalPerformance/isCurrent",
+      "sha256": "78c47a2a339a102c130558921fd077dab57e8b8034e1c61cef1723a2e80aa420",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/loadPersonalPerformance",
+      "sha256": "380f264a3ac02b75e38aeaa4b82c9b77234f2ca2bef595aa31ae9d4ef5ee2828",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/loadRecoveryAlerts/isCurrent",
+      "sha256": "2d8578137b5ce568b58001f1a7a63b7a24cd02bf7c8a17e882601c535ce65b27",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/loadRecoveryAlerts",
+      "sha256": "8ae25fca3f30c2dcdedd3494119b9a60c89f0c963578e28d0df738039de4ea6a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/loadWorkbench/<anonymous>",
+      "sha256": "2a2b48da9f0a407700047f8dcadacceaf7f747294b309d9243efb142b85a671e",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/loadWorkbench/<anonymous>",
+      "sha256": "801f10dbeee2a9d7e163d5aa50f8cea5abc520cd20f65cc0675829d2f82bab8d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/loadWorkbench/isCurrent",
+      "sha256": "c6ba77a146d48e469749b3010b357b96df7c93afeff163fb8e7439b86762d2cc",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/loadWorkbench",
+      "sha256": "1feaab71fa6e7f8fb5dee993ef4525f7c0c340e517447dc3a3880d351626cd29",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/markDialStarted",
+      "sha256": "f8101dffa3b037fe51c9a05f17ea6e94ce246a3cf29e2c5294ec80e71653aef1",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/openCall",
+      "sha256": "02719f548fa9ac44cf615c3d8bc567a815b12f29bbba44b03716f6b9cc58d472",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/openSupplementalFollowUp",
+      "sha256": "eb225f08cf54bb06b17ca041a1863c4bf1792af675cfc79efbe0a988dbd85ec2",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/prepareDial",
+      "sha256": "982c8292e190406fd44432028c6077f341b4cba894b5e386840da23e6940a20a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/resetDesktopScope",
+      "sha256": "31614adfad8b86aff275c1cc2f4875f19d941ea73abc9d0dc6f67c28f547a1d8",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/submitResult/isCurrent",
+      "sha256": "00fc80884a616acaaa6f844393b35c177a1a2e45a4e9e98b733a15d0c2ea0f90",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:SalesWorkspace/submitResult",
+      "sha256": "ddd43512817935d7a9f95533332435e55782eff18b0697cd473d1cc542f87da1",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/[queueResetKey, setQueueResetKey]",
+      "sha256": "b3d7b5909950743bb6f274ae6e9d5e17b04a03ef1146dcc86a0791ce3bfa59c5",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/[requestedLeadState, setRequestedLead]",
+      "sha256": "6470a0d588d5fb8ae65e9d63d862c544b527d40147af26846b6a9202ec7b76d8",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/[saveReviewTaskId, setSaveReviewTaskId]",
+      "sha256": "135f46efc6b5cb0635b29063045c23b6826db260242c351a659f9ce4d7c06fc1",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/callSubmissionRef",
+      "sha256": "3b30cbc8e57e1511e207cb1de67cafeb085c0d4693f33afb1cc62eb2af8f66c6",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/canShowFocusedTask",
+      "sha256": "47177bb8d4b783ba90b90ed15220995c7efb71ee0ed8ff5bc745902398c57ab5",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/canUseTask",
+      "sha256": "e112e45eedb02e656ea1d68bd537a7c98aaeb99e522a51698fa64cf3f058a3b7",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/chooseTask",
+      "sha256": "d039ce6c15f2fbe88bd692e9a2e743d1e4820cd4897cda34b43f7a7ec44ad587",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/clearQueueFilters",
+      "sha256": "c3dcb4f0ce4379be6eaee7bc1664dcdd420e64539f2f2fe9d1ee4d9fa072b3f1",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/currentRequestedLeadRaw",
+      "sha256": "723f15f683e5437dcd884ec6819838a5074b1b30b1531ecd074a38eecd7c3baa",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/disabledReason",
+      "sha256": "684301a7488405925dfd665e513e509d18e36fe14eb2834a31649739518ba2bd",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadPersonalPerformance/isCurrent",
+      "sha256": "78c47a2a339a102c130558921fd077dab57e8b8034e1c61cef1723a2e80aa420",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadPersonalPerformance/requestId",
+      "sha256": "65bcaea344a5ef621c486a08b46e0f399252bc1e00beaacc026e1437ed4dae7e",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadPersonalPerformance/requestScope",
+      "sha256": "7bd942ea1801c86b6eda8c92718af33e94c3d8b40a31de644151ce7440a9c336",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadPersonalPerformance",
+      "sha256": "380f264a3ac02b75e38aeaa4b82c9b77234f2ca2bef595aa31ae9d4ef5ee2828",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadRecoveryAlerts/isCurrent",
+      "sha256": "2d8578137b5ce568b58001f1a7a63b7a24cd02bf7c8a17e882601c535ce65b27",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadRecoveryAlerts/requestId",
+      "sha256": "41f5f76a9ff253bf1ec6d07d86b313340d3ab0db094482d46681856fde412060",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadRecoveryAlerts/requestScope",
+      "sha256": "7bd942ea1801c86b6eda8c92718af33e94c3d8b40a31de644151ce7440a9c336",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadRecoveryAlerts",
+      "sha256": "8ae25fca3f30c2dcdedd3494119b9a60c89f0c963578e28d0df738039de4ea6a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadWorkbench/isCurrent",
+      "sha256": "c6ba77a146d48e469749b3010b357b96df7c93afeff163fb8e7439b86762d2cc",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadWorkbench/requestScope",
+      "sha256": "7bd942ea1801c86b6eda8c92718af33e94c3d8b40a31de644151ce7440a9c336",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/loadWorkbench",
+      "sha256": "1feaab71fa6e7f8fb5dee993ef4525f7c0c340e517447dc3a3880d351626cd29",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/location",
+      "sha256": "988bc06aec29217f23778f7659db1733a6a6495897588e7a0add9d1efd50680a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/markDialStarted",
+      "sha256": "f8101dffa3b037fe51c9a05f17ea6e94ce246a3cf29e2c5294ec80e71653aef1",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/mountedRef",
+      "sha256": "507225c7de4c5c43117ed725c564c70de922d6c140692c3a24cb03a4a7f0f2f2",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/openCall",
+      "sha256": "02719f548fa9ac44cf615c3d8bc567a815b12f29bbba44b03716f6b9cc58d472",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/openSupplementalFollowUp",
+      "sha256": "eb225f08cf54bb06b17ca041a1863c4bf1792af675cfc79efbe0a988dbd85ec2",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/performanceRequestRef",
+      "sha256": "a74da398b0445099d9730a5f5094e5b226d7cc2ff6fea6faba0acc139f83881a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/prepareDial",
+      "sha256": "982c8292e190406fd44432028c6077f341b4cba894b5e386840da23e6940a20a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/raw",
+      "sha256": "723f15f683e5437dcd884ec6819838a5074b1b30b1531ecd074a38eecd7c3baa",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/recoveryRequestRef",
+      "sha256": "a74da398b0445099d9730a5f5094e5b226d7cc2ff6fea6faba0acc139f83881a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/requestedLead",
+      "sha256": "751319fc79f391965a0b4ff8bcac5cbd1bfd230c85de9ac6a0b7f66e6becb16a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/requestedLeadRawRef",
+      "sha256": "60499678f92a005eec69d35778dff7183c073ed5aa1617fdbe5d06ce58365990",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/requestedSelection",
+      "sha256": "60ea3e43cc33e16d368c22d966c846a027c2ac009fd4cd5ada93c490323c01ce",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/resetDesktopScope",
+      "sha256": "31614adfad8b86aff275c1cc2f4875f19d941ea73abc9d0dc6f67c28f547a1d8",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/submitResult/isCurrent",
+      "sha256": "00fc80884a616acaaa6f844393b35c177a1a2e45a4e9e98b733a15d0c2ea0f90",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/submitResult/latest",
+      "sha256": "e200d6efcc69e33cc828c8d9c5cecb8eacd2c04d50bd1e22c11522047b526e84",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/submitResult/requestScope",
+      "sha256": "7bd942ea1801c86b6eda8c92718af33e94c3d8b40a31de644151ce7440a9c336",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/submitResult/responseMatches",
+      "sha256": "5b0fe4ae5cc9b8e1ce7f7cf45c36387514cc1aac65469e263642c995225aa765",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/submitResult",
+      "sha256": "ddd43512817935d7a9f95533332435e55782eff18b0697cd473d1cc542f87da1",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/task",
+      "sha256": "7b0a1c99b2ed13c30396c7bbb11de97c07446310a24604d807175a16786f5156",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/workspaceScope",
+      "sha256": "8a1b6d4029a1cd8a90209325e19c850e9c2824b878bfee8e9abf70ee738d8d9f",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:SalesWorkspace/workspaceScopeRef",
+      "sha256": "52d510ffadd03ec3b358b3904cfec7ed877d54519c1d936b04cba0b7d8797578",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-declarations",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "removed",
+      "key": "SalesWorkspace",
+      "sha256": "53c7d88da449e17054523a8eed9f5b9713320c8e9c14bd0007f7dab74d7291e1",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "removed",
+      "key": "SalesWorkspace",
+      "sha256": "aadc0494f46de5011c704af26ec1b3218d15adc99298d676066b8a2f225aeab4",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesWorkspace",
+      "sha256": "15e22e6132b6a969548ffc9dfac59b92cdc211a13cc7b6a9c7973f3256f13547",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesWorkspace",
+      "sha256": "2bb44818d6e87b8514ecdaf266b2070174f545d86b2e58acd884d22f95af8328",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesWorkspace",
+      "sha256": "2db4e0abc1bdf518c5e29729bd2393ce25eaf53e1379c5e3c84b9b2c845e685d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesWorkspace",
+      "sha256": "48febf1c3010cdd6e89828b61c6e89ff2759ab948438a69fd8fbe4e8aa793828",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesWorkspace",
+      "sha256": "7fc43d0c8970e7874454910c0a080cfb8cc354faafc4979348fc2ccf0a550675",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesWorkspace",
+      "sha256": "9fd82b899bc305a006a8cef44054fddc674f2b9877dabdf55a8d6ceb5fb7cb3e",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesWorkspace",
+      "sha256": "aa96d39f8ef1b3cb57ca4d4f11f1ae8a3298152ab23af572f71c0aaff5178ed3",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesWorkspace",
+      "sha256": "b3bc2bd98f2176b109504b88282e24c3d274c2fc0659ec498f2282e48f3bb26b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "view_expressions",
+      "direction": "added",
+      "key": "SalesWorkspace",
+      "sha256": "cb3407c5e1ee47e8d90a2f73288f22bff003ac9a31e37da18a84c60322240989",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-view_expressions",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "removed",
+      "key": "key",
+      "sha256": "beb44410be130bf2bb23f62136d3dfeea17b42d7fb4b091ff9c6c065398e72aa",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "aria-label",
+      "sha256": "e056dbf486b8a94753dc1ecf2093783f019c5c2f5b16de65a5e122189fcf6d3d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "disabled",
+      "sha256": "4a3e01f6065fa12377100731004ef5683a9f13d44902b7cccb304137442e6b1c",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "disabled",
+      "sha256": "eb8cba22694d14aa0d0d13654cf3551b0cfdbfb657d25567a4049d605bfdb92d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "disabled",
+      "sha256": "eb8cba22694d14aa0d0d13654cf3551b0cfdbfb657d25567a4049d605bfdb92d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "disabled",
+      "sha256": "eb8cba22694d14aa0d0d13654cf3551b0cfdbfb657d25567a4049d605bfdb92d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "disabled",
+      "sha256": "eb8cba22694d14aa0d0d13654cf3551b0cfdbfb657d25567a4049d605bfdb92d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "disabled",
+      "sha256": "eb8cba22694d14aa0d0d13654cf3551b0cfdbfb657d25567a4049d605bfdb92d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "key",
+      "sha256": "c977df562c65abb7206a025002a1fef1b088cd5f788800cc3a243d2a30faf2f6",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "2ff7686bc0da86a06819b82527e5242eef75f1fc1de53720a8263d36089a7cc9",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "3f4e40c9555e9c5f55b63e93dbf942108f8191c0bfb25f0534208581d787e848",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "4c94beac4f19aee6fca5f60a983376277debfaa60de4e07ca82478cf88c2c886",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "aeb2cd503f39623ac2eead8c1afff385d238b1b83e63baf1bf2097e3ab579166",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "dad1a9c50540a0910227d4860470d6076df86c2beb1b8f5524d1170c5e2b6116",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "dad1a9c50540a0910227d4860470d6076df86c2beb1b8f5524d1170c5e2b6116",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "role",
+      "sha256": "cf170110abc5849f756d7abf9a6131f853d2f68ba1ca7a10497850f973dc7ef0",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "role",
+      "sha256": "cfc31bcc34ed7f4cc7895026ae8a54f0494f73757e9f914d0f6ed90f9bc34f51",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "size",
+      "sha256": "db094942953765e213e3023a6f75f535a6225487121fc9bb7f8b53c6a6460f6b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "size",
+      "sha256": "db094942953765e213e3023a6f75f535a6225487121fc9bb7f8b53c6a6460f6b",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "891fd2cc6964c9d3263b7b9d57f8abb1c5bb7090e234804964f3b52f422aba7a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "891fd2cc6964c9d3263b7b9d57f8abb1c5bb7090e234804964f3b52f422aba7a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "891fd2cc6964c9d3263b7b9d57f8abb1c5bb7090e234804964f3b52f422aba7a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "891fd2cc6964c9d3263b7b9d57f8abb1c5bb7090e234804964f3b52f422aba7a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "891fd2cc6964c9d3263b7b9d57f8abb1c5bb7090e234804964f3b52f422aba7a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "props",
+      "direction": "added",
+      "key": "variant",
+      "sha256": "ea67482d0c7febc852e082c5f60ee92ba45606e024e25a152b37814cf0f18438",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-props",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onBusyChange",
+      "sha256": "c1d232b7aeee5ab649c42110a52b217903aecab8f0d6ea4fe5b5f4d295f20391",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onChange",
+      "sha256": "942db022cbe80f9a2ea16af92286e049d9feafaebbffea612d048edb57ecbe67",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "0073deebe1551b01133ee5dfa2b0813943e4f01fab3234056243dfe029238976",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "0073deebe1551b01133ee5dfa2b0813943e4f01fab3234056243dfe029238976",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "0073deebe1551b01133ee5dfa2b0813943e4f01fab3234056243dfe029238976",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "0f65e7f447dcbc105b1d39086c84d9fc5b4477d5dbd68f0467b7d717d58014cc",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "42c5076337de5ce5999fa11cc06f6fa06d93c19fbb0470afeaa4c916cf4fc171",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "4d30927d4a9a58c521873cac2288817496cf68efde39384f988574512f4bcf24",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "55b562e34ad2ba924f00924e8959854f8ebaa6addbd89428035a14cb9388e0ec",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "807cb22f733aaaacff87c4a8afaa1cecec77ed8465d3b7b5e9b96f473907d55d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "8e1c9c8ddc4996eecf22ad2f4af826d98dcd9bd5cd1e5d196454d1228dec8f0d",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "9c816f5b75e271e78181d7584b0a0bfb1cc795a015c0761d043000245a9b90cd",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onClick",
+      "sha256": "b350a7daafd085ff13e779a84680ae4933ad2b5c3e81edc287e1123c2dea42b5",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onLaunched",
+      "sha256": "4700113160b77e499bae8e9182956f2c708fede661097733612e1ba0e74d35a5",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onOpenAll",
+      "sha256": "4f19e8398b47170bfff33e24c07694b54146fe560d1c165ce072762d5266d85a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onOpenKnowledge",
+      "sha256": "59ca7164f624372f7ce75dd806c7cec50d6279228d5ac10112e250b877766e23",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onPrepare",
+      "sha256": "91dcce96d5fd85f70189cad4338032a016836f970d0b9d3d9fb3b57768de8902",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onSave",
+      "sha256": "c2c0eaaaa33e55bec25210d10236524ebac16cb7554e8a31bf27305c607107ca",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onSelect",
+      "sha256": "12d7b968b780eae874be106c011f73f200a30414b371734ffd97068c564f9dfb",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onSelect",
+      "sha256": "4f19e8398b47170bfff33e24c07694b54146fe560d1c165ce072762d5266d85a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onSelect",
+      "sha256": "5d35a2a7c5470050df233026e874983467c2bdae5c361cc0579c559f8d526ea5",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "removed",
+      "key": "onSelect",
+      "sha256": "b2d3a20d8f48923babe4bfefe7a26f2b1e94c707287968492228d9177b1f09c8",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onBusyChange",
+      "sha256": "4b10e8dd60e248bd57b3d939adc01b7b6c3bdf36d9c74bb483d5a3b25f5ca719",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onChange",
+      "sha256": "88117cce8961065013271bce47fb60e92ba55a9d82782b0f3bb324beedf02722",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "1906ba3f0dd7fbac13e6cac183226349bfcf2fc76af494f061283b9abd446ab2",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "2559df655b1479ceef67fa0213c1828309a1531976e230487c1a78a4c1e98e6f",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "401c374eaea8d34cb393199e0263c2a63c9da399ab689540c9f8534ebdc01706",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "884935920d2bcef5dcb855b786251f919c7594af336a2bc29e37d9551903f0ef",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "884935920d2bcef5dcb855b786251f919c7594af336a2bc29e37d9551903f0ef",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "884935920d2bcef5dcb855b786251f919c7594af336a2bc29e37d9551903f0ef",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "8d23597fd2fc3571d3c910f51843ea8273bb206c89ccd921bdd86e5292a4bed9",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "996748f0c8f14170cc77c3c9ab180a65c49ff9465dda9698785d73d43d944bca",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "af725e2ae79b29f238e95af938634c5d17802969a7115ba75cce04c4f66fdef4",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "b23da27e97bc31b7d42c19f87d2da04454a144da903ee544d5f576aba7af0273",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "b2af9c9cd808d1d1606057032aa276d2e051b37d8d5f3b4f5636d2ee06a05351",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "b6da6e3a5ed989e15c0acff67d1ceb491ef64965992536393ef2b35d8e629b00",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "d0491b0d6585fd9034b6a04cf29d17a19f090336eef6087b31673944b9b75eeb",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "d81a31fdab088cdac6905a0a089f75dbe7f0852ccf5287d0a96e9362cc9c9706",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "f47d83c4bf7caf32998b65f00c49684cbbc23e860c6b007d19c4e844a5fa5e61",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "f9b77cac4bc308242d62ba1250d75145a4b9f89e21a2b5e09ae81e1804ecde0c",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onClick",
+      "sha256": "faab64e586f00a29afdcc4f75c476a591d8892cd38c51dda1dcbb3d7387ded5a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onLaunched",
+      "sha256": "675a9c8c026fdbfc355d4752b01a39dc7ade26985eafec34221a4234e5985504",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onOpenAll",
+      "sha256": "48df803fa5d35e069374a43c4834fde86dfbe374490aadd1bf5ad59382f7838a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onOpenKnowledge",
+      "sha256": "38bf52f5da5b66f04f7c518aeba0a13e805874cbe6c29997816024a6d0e6017e",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onPrepare",
+      "sha256": "c36d05b7ea42168fcd43ecaa46010a064bb97d834428447ecac794154bbfafba",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onSave",
+      "sha256": "484e99b0465991e3310393a1375b1ee28f63f06a5c4b699f635f952f7eb9cfab",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onSelect",
+      "sha256": "48df803fa5d35e069374a43c4834fde86dfbe374490aadd1bf5ad59382f7838a",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onSelect",
+      "sha256": "984649b069a21ce5960928fbdc00d052fc5b5a22065e254da6e1aeb698619417",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onSelect",
+      "sha256": "98e6cd97cb7ec18855b329775a2375b962a1de8312d4e21b4cc4b830fda671e5",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/SalesWorkbench.tsx",
+      "category": "event_contexts",
+      "direction": "added",
+      "key": "onSelect",
+      "sha256": "fc134ff78a56f18436d4a199ffc69a8cf5732d0de92825eb34003876370b0e58",
+      "review_id": "CRM-MANAGEMENT-FLOW-SalesWorkbench.tsx-event_contexts",
+      "reason": "Exact requested merchant selection; existing result payload and protection unchanged; synchronous submit lock, response identity checks and independent auxiliary refresh with scope protection"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:/nextSalesWorkbenchTask",
+      "sha256": "9af43f3eccaaa3d605c5a29ca4f330035d2b87d74237c98d8cf2f77e57a276e8",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:/parseRequestedSalesLead",
+      "sha256": "58f6aa8f963a6273562e16c35afe99e132171c12916d5141dc261c87eac99cb0",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:/resolveRequestedSalesLead",
+      "sha256": "2c073211df38b61b60f7d8e953d0f52fb07183ba2abf39ba2076fbd8268ef760",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:nextSalesWorkbenchTask/<anonymous>",
+      "sha256": "1603d602072458530d1f736162fca9cd4c12c6afd1e20d8d5c25317274ad14d9",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:nextSalesWorkbenchTask/<anonymous>",
+      "sha256": "d1020a05c0ac240b9d43c8f6d35c318d6dd60195d3e7373d95c27077209f612e",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:resolveRequestedSalesLead/<anonymous>",
+      "sha256": "1ce4deccd50589c20b1c8cc4aaa28092ce79cf867b3682f93894d3dba3078ae8",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "function:resolveRequestedSalesLead/<anonymous>",
+      "sha256": "62664ecda033da644231aa3093da01a9dc444287349e3d540eb15b36bc0a91da",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:nextSalesWorkbenchTask/current",
+      "sha256": "3521de685f83931ae92e8ef4079a1ae3353ce70c0ecb1cff890d3298404a04a4",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:nextSalesWorkbenchTask/ordered",
+      "sha256": "0d903bcb07aec3ece9eb11914e80e3cbf0d11490d75b748b174b276564afc1f8",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:nextSalesWorkbenchTask/position",
+      "sha256": "022b0d242e41e7c810815b90791f2e5798ef818805b9749a6dbbdd9cd1280dd9",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:parseRequestedSalesLead/id",
+      "sha256": "0fcaaf3731ca0cb59b841b6e9cf08d50912bb431393aee90406db1a1c86cccad",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    },
+    {
+      "file": "app/frontend/src/pages/sales-workbench-flow.ts",
+      "category": "declarations",
+      "direction": "added",
+      "key": "variable:resolveRequestedSalesLead/task",
+      "sha256": "0f648db6590a24fc7d5cf8a9cef21f6f0946d1d0db9ac49d0b7f9488e62eb26e",
+      "review_id": "CRM-MANAGEMENT-FLOW-sales-workbench-flow.ts-declarations",
+      "reason": "Pure selection of tasks from an already authorized queue; no transport or writes"
+    }
+  ],
+  "ui_read_filters_require_review": [
+    "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+    "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+    "app/frontend/src/components/SalesLeadDossier.tsx",
+    "app/frontend/src/components/ServiceFollowThrough.tsx",
+    "app/frontend/src/components/owner-handoff-entry.css",
+    "app/frontend/src/components/sales-dossier-quality.ts",
+    "app/frontend/src/components/sales-handoff-navigation.ts",
+    "app/frontend/src/components/sales-lead-dossier.css",
+    "app/frontend/src/pages/Customers.tsx",
+    "app/frontend/src/pages/SalesWorkbench.tsx",
+    "app/frontend/src/pages/sales-workbench-flow.ts"
+  ]
+}

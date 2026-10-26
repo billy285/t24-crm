@@ -1,0 +1,18 @@
+{
+  "baseline_sha256": "aa4155fe58a22f60f8b6a5e8acc985fd6a9381e5861e83c43b0449848fbcff22",
+  "files": {
+    "approved-deltas.json": "1dfc636ce335e0d89acee1f5601f1f1c839af0f88479ada1d72c99fc18d889e2",
+    "baseline-command.sh": "c38ef1de9e7eb4b94d5532a726bd12ef973f9af192d51e0fe8994e5f7720910b",
+    "baseline.py": "4e4cf09efbd11cc78e3c1a9a9fc49c29fc8c628005b27db469ab69275a000552",
+    "build_package.py": "0046de1b1857f715e0c1384e645823e50921fd15f24c5f5286f7f5890c26e18b",
+    "make_commands.py": "fa1d6d6253031eeb0742b99a1d0e549c937cc5775584ddc8d12b040374ed16a7",
+    "register-reviewed-ui.cjs": "b7e64e84eef5d3b6f08a71c7d8e022d8f930a8eccb4354c2bf2e0918b77eb67b",
+    "review-prepared-independent.py": "aed6007a1bab6770477d0d2c6ed6abf4f782669075f0da8d3ec251a0511bcb09",
+    "source-allowlist.json": "089cbe247d2192aa714ebf35dbac66d4106df2b977afc45ffd131d13bf0ca09c",
+    "static_release.py": "568eee9b040744358bbe3c218c4ccdc0881e2d543084c5e472b6ab897da9a64e",
+    "test_tools.py": "6ab10996422d3c2cbe9d4cbf40da34513c5565cc354b8e767c9468827d10c3ee",
+    "verify_ui_scope.cjs": "4065c80152b0144dacdb9ffd388eec819beede080ed82ff6213fdd28bb4d2e31"
+  },
+  "frontend_version": "aba87c858ca3",
+  "source_sha": "94b53fec3f498871920d61741e4d4d3f05d1af05"
+}

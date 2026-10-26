@@ -1,0 +1,13 @@
+[
+  "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+  "app/frontend/src/components/SalesDealHandoffQueue.tsx",
+  "app/frontend/src/components/SalesLeadDossier.tsx",
+  "app/frontend/src/components/ServiceFollowThrough.tsx",
+  "app/frontend/src/components/owner-handoff-entry.css",
+  "app/frontend/src/components/sales-dossier-quality.ts",
+  "app/frontend/src/components/sales-handoff-navigation.ts",
+  "app/frontend/src/components/sales-lead-dossier.css",
+  "app/frontend/src/pages/Customers.tsx",
+  "app/frontend/src/pages/SalesWorkbench.tsx",
+  "app/frontend/src/pages/sales-workbench-flow.ts"
+]
