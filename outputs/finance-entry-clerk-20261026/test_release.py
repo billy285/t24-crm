@@ -113,17 +113,40 @@ def test_frontend_artifact_source_cannot_include_uncommitted_helpers():
  assert 'actual_frontend_source == expected_frontend_source' in text
  assert 'UNCOMMITTED_FRONTEND_SOURCE_REJECTED' in text
 
-@pytest.mark.parametrize('fault',[None,'missing_route','duplicate_route','unknown_route','wrong_method'])
+@pytest.mark.parametrize('fault',[None,'missing_route','duplicate_route','unknown_route','wrong_method','wrong_module'])
 def test_actual_image_probe_requires_all_thirteen_new_registered_route_methods(monkeypatch,fault):
  import sys,types
- routes=[SimpleNamespace(path=path,methods={method}) for path,method in sorted(r.DRAFT_ROUTES)]
+ from fastapi import APIRouter,FastAPI
+ app=FastAPI();routers={name:APIRouter() for name in ('routers.finance_entry_drafts','routers.finance_entry_attachments')}
+ routes=sorted(r.DRAFT_ROUTES)
  if fault=='missing_route':routes.pop()
  if fault=='duplicate_route':routes.append(routes[0])
- if fault=='unknown_route':routes.append(SimpleNamespace(path='/api/v1/finance-entry-drafts/unreviewed',methods={'POST'}))
- if fault=='wrong_method':routes[0]=SimpleNamespace(path=routes[0].path,methods={'PATCH'})
- fake=types.ModuleType('main');fake.app=SimpleNamespace(routes=routes);monkeypatch.setitem(sys.modules,'main',fake)
+ if fault=='unknown_route':routes.append(('/api/v1/finance-entry-drafts/unreviewed','POST'))
+ if fault=='wrong_method':routes[0]=(routes[0][0],'PATCH')
+ for number,(path,method) in enumerate(routes):
+  module='routers.finance_entry_attachments' if '/attachments' in path else 'routers.finance_entry_drafts'
+  def endpoint():return None
+  endpoint.__name__='synthetic_route_'+str(number);endpoint.__module__='routers.unapproved' if fault=='wrong_module' else module
+  routers[module].add_api_route(path,endpoint,methods=[method])
+ included=APIRouter()
+ for router in routers.values():included.include_router(router)
+ app.include_router(included)
+ fake=types.ModuleType('main');fake.app=app;monkeypatch.setitem(sys.modules,'main',fake)
  assert len(r.DRAFT_ROUTES)==13
  if fault:
-  with pytest.raises(AssertionError,match='EXACT_DRAFT_ROUTES_NOT_REGISTERED'):exec(r.route_registration_probe(),{})
+  with pytest.raises(AssertionError):exec(r.route_registration_probe(),{})
  else:exec(r.route_registration_probe(),{})
  assert 'offline_draft_routes_registered' in (ROOT/'release.py').read_text()
+
+def test_actual_main_probe_supports_lazy_routers_without_startup_database_or_network():
+ import os,subprocess,sys
+ code="""import socket,sqlalchemy as sa
+from sqlalchemy.engine import Engine
+def forbidden(*args,**kwargs):raise AssertionError('PROBE_MUST_NOT_CONNECT_DATABASE_OR_NETWORK')
+sa.event.listen(Engine,'do_connect',forbidden)
+socket.socket.connect=forbidden
+"""+r.route_registration_probe()
+ env={**os.environ,'APP_ENV':'test','ENVIRONMENT':'test','ENV':'test','IS_LAMBDA':'true','DATABASE_URL':'sqlite+aiosqlite:///:memory:','PRIVATE_DATABASE_URL':'sqlite+aiosqlite:///:memory:','JWT_SECRET_KEY':'synthetic-readonly-route-gate-test','ENFORCE_EMPLOYEE_STATUS':'false','ENFORCE_EMPLOYEE_SESSIONS':'false','STRIPE_HISTORY_DAILY_SCAN_ENABLED':'false','STRIPE_AUTO_POSTING_ENABLED':'false','PYTHONDONTWRITEBYTECODE':'1','PYTHONPATH':'.:..:tests'}
+ result=subprocess.run([sys.executable,'-B','-c',code],cwd=ROOT.parents[1]/'app/backend',env=env,capture_output=True,timeout=60)
+ assert result.returncode==0, 'REAL_MAIN_PROBE_FAILED_'+str(result.returncode)
+ assert b'EXACT_DRAFT_AND_ATTACHMENT_ROUTES_REGISTERED' in result.stdout

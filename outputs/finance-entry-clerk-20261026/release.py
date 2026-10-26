@@ -163,11 +163,18 @@ DRAFT_ROUTES = {
 
 
 def route_registration_probe():
-    # Import only; never run ASGI lifespan, make HTTP calls or invoke any endpoint.
-    return ("from main import app\n"
+    # OpenAPI expands FastAPI 0.143 lazy included routers. Resolved route contexts
+    # additionally preserve multiplicity, so duplicate mounts cannot be masked.
+    return ("from main import app\nimport fastapi.routing\n"
         + "expected=" + repr(DRAFT_ROUTES) + "\n"
-        + "registered=[(route.path,method) for route in app.routes if getattr(route,'path','').startswith('/api/v1/finance-entry-drafts') for method in getattr(route,'methods',set())]\n"
-        + "assert len(registered)==len(expected) and set(registered)==expected,'EXACT_DRAFT_ROUTES_NOT_REGISTERED'\n"
+        + "prefix='/api/v1/finance-entry-drafts'\n"
+        + "schema=app.openapi()\n"
+        + "documented={(path,method.upper()) for path,operations in schema.get('paths',{}).items() if path.startswith(prefix) for method in operations if method.lower() in {'get','post','put','patch','delete','head','options','trace'}}\n"
+        + "assert documented==expected,'EXACT_DRAFT_OPENAPI_PATHS_REQUIRED'\n"
+        + "contexts=fastapi.routing.iter_route_contexts(app.routes) if hasattr(fastapi.routing,'iter_route_contexts') else app.routes\n"
+        + "registered=[(route.path,method,getattr(getattr(route,'endpoint',None),'__module__','')) for route in contexts if getattr(route,'path','').startswith(prefix) for method in (getattr(route,'methods',set()) or set())]\n"
+        + "assert len(registered)==len(expected) and {(path,method) for path,method,module in registered}==expected,'EXACT_DRAFT_ROUTES_NOT_REGISTERED'\n"
+        + "assert all(module==('routers.finance_entry_attachments' if '/attachments' in path else 'routers.finance_entry_drafts') for path,method,module in registered),'EXACT_DRAFT_ROUTER_MODULES_REQUIRED'\n"
         + "print('EXACT_DRAFT_AND_ATTACHMENT_ROUTES_REGISTERED')\n")
 
 
