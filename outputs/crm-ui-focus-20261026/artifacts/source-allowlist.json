@@ -1,0 +1,11 @@
+[
+  "app/frontend/src/components/CustomerFormSection.tsx",
+  "app/frontend/src/components/MobileOwnerDashboard.tsx",
+  "app/frontend/src/components/ServiceFollowThrough.tsx",
+  "app/frontend/src/components/customer-form-progressive.css",
+  "app/frontend/src/pages/Customers.tsx",
+  "app/frontend/src/pages/Dashboard.tsx",
+  "app/frontend/src/pages/Finance.tsx",
+  "app/frontend/src/pages/crm-owner-home.css",
+  "app/frontend/src/pages/finance-progressive.css"
+]

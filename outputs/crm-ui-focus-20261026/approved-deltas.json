@@ -1,0 +1,1910 @@
+{
+  "baseline_source_sha": "22a72649f369f57bdc44a8c33b1e837396dc1e79",
+  "scope": "Presentation only; no data reads, writes, calculations or authorization changes",
+  "files": {
+    "app/frontend/src/components/CustomerFormSection.tsx": {
+      "imports": {
+        "removed": [],
+        "added": [
+          {
+            "key": "import",
+            "hash": "19c5e7b104371c8ded001e88630ea407582cd576eb25f1f2950acf0ceb844678",
+            "code": "import { useState, type ReactNode } from 'react';",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-imports",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "import",
+            "hash": "1c81e5fd05dd1401cb54f0e48239ca267fba93544db8f250bffc915568c1cb3d",
+            "code": "import { ChevronDown } from 'lucide-react';",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-imports",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          }
+        ]
+      },
+      "declarations": {
+        "removed": [],
+        "added": [
+          {
+            "key": "function:CustomerFormSection/<anonymous>",
+            "hash": "7200fd10169a2f69002a994c343fc3400c29fd5fe63c6ab758793ebb5e7d6119",
+            "code": "event => {\n    if (forceOpen) {\n        if (!event.currentTarget.open)\n            event.currentTarget.open = true;\n        return;\n    }\n    setExpanded(event.currentTarget.open);\n}",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-declarations",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "function:CustomerFormSection/<anonymous>",
+            "hash": "b3e4ba05550fee3d384ac050c02b4a3168a604f9c6b7320f2264af39de2e2b13",
+            "code": "event => { if (forceOpen)\n    event.preventDefault(); }",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-declarations",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "variable:CustomerFormSection/[expanded, setExpanded]",
+            "hash": "b8b47b82958cd36a1f1b63dd5f46f716aa8396de149abdfcc3a666ab8343e302",
+            "code": "useState(defaultOpen)",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-declarations",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          }
+        ]
+      },
+      "view_expressions": {
+        "removed": [],
+        "added": [
+          {
+            "key": "CustomerFormSection",
+            "hash": "10910087de24bfcabe854fda62b5023a61fe531705043b9979fdf00f12c4c0ec",
+            "code": "children",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-view_expressions",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "CustomerFormSection",
+            "hash": "1342ede36f5c5007e4efef2187deba38df2ae844ab15ccfa53436ffadb65bb63",
+            "code": "!forceOpen && __VIEW__",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-view_expressions",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "CustomerFormSection",
+            "hash": "aaf2320646108059a87ab5017a86aee454f5378ed95003dbb2e12f4ca5266e0e",
+            "code": "title",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-view_expressions",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "CustomerFormSection",
+            "hash": "c0f45b9d3617c4243e8eba16b2927935d298af121ca6e82fcdeb4e3411a95d76",
+            "code": "statusLabel || (filled ? '已填' : '未填')",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-view_expressions",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "CustomerFormSection",
+            "hash": "c9046f7a37ad0ea7cee73355984fa5428982f8b37c8f7bcec91f7ac71a7cd104",
+            "code": "description",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-view_expressions",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          }
+        ]
+      },
+      "props": {
+        "removed": [],
+        "added": [
+          {
+            "key": "aria-disabled",
+            "hash": "81bc1284d8f50dca1440b0472a147c9811d9b138b368963496f6804c9e720a73",
+            "code": "{forceOpen || undefined}",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-props",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "aria-hidden",
+            "hash": "18d10c7d2b4b04aaf04254d1ae5d655a5dc0407cbcdd5a8c3986e985370f36ee",
+            "code": "\"true\"",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-props",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "data-force-open",
+            "hash": "81bc1284d8f50dca1440b0472a147c9811d9b138b368963496f6804c9e720a73",
+            "code": "{forceOpen || undefined}",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-props",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "id",
+            "hash": "c1ee52471fbdd7db91afbd364c7b986ff2cd9bf7b0fbbfc7d811a87be7fb65c8",
+            "code": "{id}",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-props",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "onClick",
+            "hash": "ffb16c892519481b9178d5a631a6eac921374d83ac4d4f96e981b547d9ef761b",
+            "code": "{event => { if (forceOpen)\n    event.preventDefault(); }}",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-props",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "onToggle",
+            "hash": "501e469c5a2dd4efab06fbe8786f0495b1c9b1875f3bb87c70d97d2bb4a464cb",
+            "code": "    {event => {\n        if (forceOpen) {\n            if (!event.currentTarget.open)\n                event.currentTarget.open = true;\n            return;\n        }\n        setExpanded(event.currentTarget.open);\n    }}",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-props",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "open",
+            "hash": "6aedc8d4bd61bce7a5c075f562911017d2f03606bac583b43f2466f594adb033",
+            "code": "{forceOpen || expanded}",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-props",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          }
+        ]
+      },
+      "event_contexts": {
+        "removed": [],
+        "added": [
+          {
+            "key": "onClick",
+            "hash": "637568ba3e43326b7a865d2509ea4848484fed058e481288a4a9cd6456ec1344",
+            "code": "{\"value\":\"{event => { if (forceOpen)\\n    event.preventDefault(); }}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-event_contexts",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          },
+          {
+            "key": "onToggle",
+            "hash": "f9af6997a825736efd3035bc5e25bb361f4180c1640f8a29daeedee93ce0ccbd",
+            "code": "{\"value\":\"    {event => {\\n        if (forceOpen) {\\n            if (!event.currentTarget.open)\\n                event.currentTarget.open = true;\\n            return;\\n        }\\n        setExpanded(event.currentTarget.open);\\n    }}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-CustomerFormSection.tsx-event_contexts",
+            "reason": "UI-only native disclosure with local state; project rows remain visible; no data or transport"
+          }
+        ]
+      },
+      "styles": {
+        "removed": [],
+        "added": []
+      }
+    },
+    "app/frontend/src/components/MobileOwnerDashboard.tsx": {
+      "imports": {
+        "removed": [],
+        "added": []
+      },
+      "declarations": {
+        "removed": [],
+        "added": []
+      },
+      "view_expressions": {
+        "removed": [],
+        "added": [
+          {
+            "key": "MobileOwnerDashboard",
+            "hash": "1579a7e41d23c49851f7a2fc51d3e054f178e715c6b526cc9815003be860b5fc",
+            "code": "cockpit.decisions[0].count",
+            "review_id": "CRM-UI-FOCUS-MobileOwnerDashboard.tsx-view_expressions",
+            "reason": "Fold supplementary owner attention with native disclosure; original content and controls retained"
+          },
+          {
+            "key": "MobileOwnerDashboard",
+            "hash": "c6231bb5ad2e80cffbb783487d7717aa2536db69d124c22160f1ed2afc295651",
+            "code": "cockpit.decisions[0].title",
+            "review_id": "CRM-UI-FOCUS-MobileOwnerDashboard.tsx-view_expressions",
+            "reason": "Fold supplementary owner attention with native disclosure; original content and controls retained"
+          },
+          {
+            "key": "MobileOwnerDashboard",
+            "hash": "c70e84b7ba79be2b76b72b29782d79fe3be76d87d2061186c9947a74b2b7b2f8",
+            "code": "cockpit.decisions.length",
+            "review_id": "CRM-UI-FOCUS-MobileOwnerDashboard.tsx-view_expressions",
+            "reason": "Fold supplementary owner attention with native disclosure; original content and controls retained"
+          },
+          {
+            "key": "MobileOwnerDashboard",
+            "hash": "ef5f608dc01a1fff828881a415c7877107283f09b5f2dcc5bf588d7555c916de",
+            "code": "cockpit.decisions[0] && __VIEW__",
+            "review_id": "CRM-UI-FOCUS-MobileOwnerDashboard.tsx-view_expressions",
+            "reason": "Fold supplementary owner attention with native disclosure; original content and controls retained"
+          }
+        ]
+      },
+      "props": {
+        "removed": [],
+        "added": [
+          {
+            "key": "aria-hidden",
+            "hash": "18d10c7d2b4b04aaf04254d1ae5d655a5dc0407cbcdd5a8c3986e985370f36ee",
+            "code": "\"true\"",
+            "review_id": "CRM-UI-FOCUS-MobileOwnerDashboard.tsx-props",
+            "reason": "Fold supplementary owner attention with native disclosure; original content and controls retained"
+          }
+        ]
+      },
+      "event_contexts": {
+        "removed": [],
+        "added": []
+      },
+      "styles": {
+        "removed": [],
+        "added": []
+      }
+    },
+    "app/frontend/src/components/ServiceFollowThrough.tsx": {
+      "imports": {
+        "removed": [],
+        "added": []
+      },
+      "declarations": {
+        "removed": [
+          {
+            "key": "function:OwnerExceptions/<anonymous>",
+            "hash": "320dfdd97d08251c7ff4594abf18fc979a4c50c75da3c22fae1756b3d0dfd94a",
+            "code": "() => navigateTo(key.startsWith('renewal') ? `/operations-workbench?view=renewals&status=${key === 'renewal_unconnected' ? 'unconnected' : 'attention'}` : key.startsWith('kickoff') ? `/operations-workbench?view=kickoffs&status=${key === 'kickoff_missing' ? 'missing' : key === 'kickoff_blocked' ? 'blocked' : 'overdue'}` : `/sales-leads?view=handoffs&status=${key === 'pending_receipt' ? 'pending_payment' : key}`)",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-declarations",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          }
+        ],
+        "added": [
+          {
+            "key": "function:OwnerExceptions/<anonymous>",
+            "hash": "130ca341d72bfe0adae24f799a5f4fcae0bc716e26f96aaa6470370a24dba04b",
+            "code": "([key]) => (data?.counts[key] ?? 0) === 0",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-declarations",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "function:OwnerExceptions/<anonymous>",
+            "hash": "83827e78e4decb2de8876b23777c8f17de8600f5674865f3e4028d3d57ee196c",
+            "code": "([key]) => (data?.counts[key] ?? 0) !== 0",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-declarations",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "function:OwnerExceptions/renderStatusFilter/<anonymous>",
+            "hash": "320dfdd97d08251c7ff4594abf18fc979a4c50c75da3c22fae1756b3d0dfd94a",
+            "code": "() => navigateTo(key.startsWith('renewal') ? `/operations-workbench?view=renewals&status=${key === 'renewal_unconnected' ? 'unconnected' : 'attention'}` : key.startsWith('kickoff') ? `/operations-workbench?view=kickoffs&status=${key === 'kickoff_missing' ? 'missing' : key === 'kickoff_blocked' ? 'blocked' : 'overdue'}` : `/sales-leads?view=handoffs&status=${key === 'pending_receipt' ? 'pending_payment' : key}`)",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-declarations",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "variable:OwnerExceptions/activeStatusFilters",
+            "hash": "15ba22006b5e420ec65e799aa229ddbc2f1e1ba7efc29c5f3d04bfb96077a547",
+            "code": "ownerFilters.filter(([key]) => (data?.counts[key] ?? 0) !== 0)",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-declarations",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "variable:OwnerExceptions/quietStatusFilters",
+            "hash": "30bca9ab48844452b3644f7a44d261f365dca779245f4fe0c810135727e44b0d",
+            "code": "ownerFilters.filter(([key]) => (data?.counts[key] ?? 0) === 0)",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-declarations",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "variable:OwnerExceptions/renderStatusFilter",
+            "hash": "49e1d3c44205c7985518686ec650563af3529fb52693cdda9fec48735915bddb",
+            "code": "([key, label]: string[]) => __VIEW__",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-declarations",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          }
+        ]
+      },
+      "view_expressions": {
+        "removed": [
+          {
+            "key": "OwnerExceptions",
+            "hash": "1aca80e8b55c802f7b43740da2990e1b5735bbb323d93eb5ebda8395b04025e2",
+            "code": "label",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-view_expressions",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "OwnerExceptions",
+            "hash": "47edcc148e9b65bec3b444cec84ea8ee397c270e9d2d09b4193384d98f7f9b51",
+            "code": "ownerFilters.map(([key, label]) => __VIEW__)",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-view_expressions",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "OwnerExceptions",
+            "hash": "7e14dbf5cd4640077f37c0a847f24b5632b046e36d1d13598638fc3c98844c9c",
+            "code": "data.counts[key] ?? 0",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-view_expressions",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          }
+        ],
+        "added": [
+          {
+            "key": "OwnerExceptions/renderStatusFilter",
+            "hash": "1aca80e8b55c802f7b43740da2990e1b5735bbb323d93eb5ebda8395b04025e2",
+            "code": "label",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-view_expressions",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "OwnerExceptions/renderStatusFilter",
+            "hash": "7e14dbf5cd4640077f37c0a847f24b5632b046e36d1d13598638fc3c98844c9c",
+            "code": "data.counts[key] ?? 0",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-view_expressions",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "OwnerExceptions",
+            "hash": "2042dcc8e2049fafb40d23d380e8b3bc4eb08d4e310d1eec977bf49f0c3887f1",
+            "code": "activeStatusFilters.length > 0 && __VIEW__",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-view_expressions",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "OwnerExceptions",
+            "hash": "28d4509e1b340f6172629414a72801a1bd907ceec557d64200cd039c7e582cc5",
+            "code": "quietStatusFilters.map(renderStatusFilter)",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-view_expressions",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "OwnerExceptions",
+            "hash": "97191d4aacd4316741d876ee66fae7f7cd4a658c27593f16fad03617ddfe2989",
+            "code": "activeStatusFilters.map(renderStatusFilter)",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-view_expressions",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "OwnerExceptions",
+            "hash": "a3b13ffead618c40df17894ea5e1152ae50091b8d90bc4fda0ac0a05f7678db0",
+            "code": "quietStatusFilters.length",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-view_expressions",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "OwnerExceptions",
+            "hash": "c8f02fd3fe7d8c579d42d3165d0bdc5bc839d37434980292b9fc5090b7c21b5b",
+            "code": "quietStatusFilters.length > 0 && __VIEW__",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-view_expressions",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          }
+        ]
+      },
+      "props": {
+        "removed": [],
+        "added": [
+          {
+            "key": "aria-hidden",
+            "hash": "18d10c7d2b4b04aaf04254d1ae5d655a5dc0407cbcdd5a8c3986e985370f36ee",
+            "code": "\"true\"",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-props",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "aria-label",
+            "hash": "0940db5946f200ba4827160c185e7cb3e0c6d8a5a04ab8ad28915e6048b1751d",
+            "code": "\"有待办的状态\"",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-props",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "size",
+            "hash": "d20243cacfd27f90bbde4991f7e00da8ce293f792a5916af4eb21f474351c005",
+            "code": "{14}",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-props",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "title",
+            "hash": "1ebaef3ef5695e452282833a499a1b54d2e3c685deb5831f7060eddfd9770fe6",
+            "code": "{item.business_name || '待核对事项'}",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-props",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          },
+          {
+            "key": "title",
+            "hash": "21b8263f512c2fc60ba58bdea2deb7419b8753d9120f054a0eb1f39c8dd762c7",
+            "code": "{item.title}",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-props",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          }
+        ]
+      },
+      "event_contexts": {
+        "removed": [
+          {
+            "key": "onClick",
+            "hash": "51ff3824b3e3431d8fdb2aa558138cdccb5f3d99b7731ebf7ae0d7d042bdbaa4",
+            "code": "{\"value\":\"{() => navigateTo(key.startsWith('renewal') ? `/operations-workbench?view=renewals&status=${key === 'renewal_unconnected' ? 'unconnected' : 'attention'}` : key.startsWith('kickoff') ? `/operations-workbench?view=kickoffs&status=${key === 'kickoff_missing' ? 'missing' : key === 'kickoff_blocked' ? 'blocked' : 'overdue'}` : `/sales-leads?view=handoffs&status=${key === 'pending_receipt' ? 'pending_payment' : key}`)}\",\"contexts\":[\"condition:data && __VIEW__\",\"condition:ownerFilters.map(([key, label]) => __VIEW__)\"]}",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-event_contexts",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          }
+        ],
+        "added": [
+          {
+            "key": "onClick",
+            "hash": "32a56702e1d3a3089531ea60b1161d05686fe80da79eabc364d74c8aff7c29a9",
+            "code": "{\"value\":\"{() => navigateTo(key.startsWith('renewal') ? `/operations-workbench?view=renewals&status=${key === 'renewal_unconnected' ? 'unconnected' : 'attention'}` : key.startsWith('kickoff') ? `/operations-workbench?view=kickoffs&status=${key === 'kickoff_missing' ? 'missing' : key === 'kickoff_blocked' ? 'blocked' : 'overdue'}` : `/sales-leads?view=handoffs&status=${key === 'pending_receipt' ? 'pending_payment' : key}`)}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-ServiceFollowThrough.tsx-event_contexts",
+            "reason": "Owner exceptions only; original eight status actions grouped by zero and nonzero counts"
+          }
+        ]
+      },
+      "styles": {
+        "removed": [],
+        "added": []
+      }
+    },
+    "app/frontend/src/components/customer-form-progressive.css": {
+      "imports": {
+        "removed": [],
+        "added": []
+      },
+      "declarations": {
+        "removed": [],
+        "added": []
+      },
+      "view_expressions": {
+        "removed": [],
+        "added": []
+      },
+      "props": {
+        "removed": [],
+        "added": []
+      },
+      "event_contexts": {
+        "removed": [],
+        "added": []
+      },
+      "styles": {
+        "removed": [],
+        "added": [
+          {
+            "key": "stylesheet",
+            "hash": "c637953f9c7e2ee9bbc7b313cfe6f1a21f843d01c6b7618d9817dc875a2affc2",
+            "code": "/* Customer editor only; no default dialog or private workspace selectors. */\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .t24-crm-form-dialog-header {\n  padding: 18px 20px 14px;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .t24-crm-form-dialog-header .t24-dialog-title {\n  padding-right: 48px;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-nav {\n  display: flex;\n  gap: 6px;\n  margin-top: 12px;\n  padding: 4px;\n  border: 1px solid #e0e7f0;\n  border-radius: 10px;\n  background: #f8fafc;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-nav button {\n  flex: 1;\n  min-width: 0;\n  min-height: 36px;\n  padding: 7px 4px;\n  border: 0;\n  border-radius: 7px;\n  background: transparent;\n  color: #475b78;\n  font-size: 12px;\n  font-weight: 500;\n  line-height: 18px;\n  white-space: nowrap;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-nav button:hover {\n  background: #edf3ff;\n  color: #245ce8;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form :is(.crm-form-section, .crm-form-optional) {\n  min-width: 0;\n  scroll-margin-top: 12px;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section {\n  padding: 16px;\n  border: 1px solid #e0e7f0;\n  border-radius: 12px;\n  background: #fff;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-heading {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: baseline;\n  justify-content: space-between;\n  gap: 4px 12px;\n  margin-bottom: 14px;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-heading h3 {\n  margin: 0;\n  color: #172b4d;\n  font-size: 15px;\n  font-weight: 600;\n  line-height: 22px;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-heading p {\n  margin: 0;\n  color: #64748b;\n  font-size: 12px;\n  line-height: 18px;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional {\n  margin-top: 14px;\n  border: 1px solid #e0e7f0;\n  border-radius: 10px;\n  background: #fff;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional > summary {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  min-height: 56px;\n  padding: 12px 14px;\n  cursor: pointer;\n  list-style: none;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional > summary::-webkit-details-marker { display: none; }\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional[data-force-open] > summary { cursor: default; }\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-heading { flex: 1; min-width: 0; }\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-heading strong {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px;\n  color: #334155;\n  font-size: 14px;\n  font-weight: 600;\n  line-height: 21px;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-heading :is(small, span) {\n  color: #64748b;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 18px;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-heading > span { display: block; margin-top: 3px; }\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-status {\n  flex-shrink: 0;\n  color: #64748b;\n  font-size: 12px;\n  line-height: 18px;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-status.is-filled { color: #245ce8; }\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-chevron { width: 16px; height: 16px; flex-shrink: 0; color: #64748b; }\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional[open] > summary .crm-form-optional-chevron { transform: rotate(180deg); }\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-content {\n  padding: 14px;\n  border-top: 1px solid #edf1f6;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form #customer-form-platforms .crm-form-optional-content > .grid > div:first-child {\n  margin-top: 0;\n  padding: 0;\n  border: 0;\n  background: transparent;\n}\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form #customer-form-platforms .crm-form-optional-content > .grid > div:first-child > .mb-3 { display: none; }\nbody:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form :is(.crm-form-section-nav button, .crm-form-optional > summary):focus-visible {\n  outline: 2px solid #739af5;\n  outline-offset: 2px;\n}\n@media (max-width: 767px) {\n  body:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .t24-crm-form-dialog-header { padding: 16px 16px 12px; }\n  body:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-nav button { min-height: 44px; }\n  body:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section { padding: 14px; }\n  body:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional > summary { padding: 12px; }\n  body:has(.app-shell[data-crm-polish=\"20261026\"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-content { padding: 12px; }\n}\n",
+            "review_id": "CRM-UI-FOCUS-customer-form-progressive.css-styles",
+            "reason": "Customer form-only navigation and disclosure styling"
+          }
+        ]
+      }
+    },
+    "app/frontend/src/pages/Customers.tsx": {
+      "imports": {
+        "removed": [],
+        "added": [
+          {
+            "key": "import",
+            "hash": "7c896909c7eb733a5b9e432491f2767c3c46869e896ff35aef9565fa97100848",
+            "code": "import CustomerFormSection from '@/components/CustomerFormSection';",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-imports",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "import",
+            "hash": "bbeee121974ee6040ef3153b920c8e8d894fda169e5c25ef44450e2a7e8bea4a",
+            "code": "import '@/components/customer-form-progressive.css';",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-imports",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          }
+        ]
+      },
+      "declarations": {
+        "removed": [],
+        "added": [
+          {
+            "key": "function:Customers/<anonymous>",
+            "hash": "4cd6e12e54ca96085d6a9603687f3d2eb8c459efb3d629857605fc4d93611d7c",
+            "code": "() => scrollCustomerFormSection('customer-form-basic')",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-declarations",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "function:Customers/<anonymous>",
+            "hash": "74499f0f03c852dae1383edafbe1693ea05b7b196f72ed1df4afac02751861cd",
+            "code": "() => scrollCustomerFormSection('customer-form-classification')",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-declarations",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "function:Customers/<anonymous>",
+            "hash": "7bd6f958d9458e2696b5e8505d8b682276c08f21490f02580ddd816efaf44723",
+            "code": "() => scrollCustomerFormSection('customer-form-extra')",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-declarations",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "function:Customers/<anonymous>",
+            "hash": "80937dec5b7351b432999ae3aae6764c1fad041f30b218997cb8cd5025fcbad1",
+            "code": "() => scrollCustomerFormSection('customer-form-projects')",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-declarations",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "function:Customers/scrollCustomerFormSection",
+            "hash": "626aa60320f43c5f87ec6b533d7d3c32ec650cbf0f43aed7f1545b03b50406b8",
+            "code": "(id: string) => {\n    const body = customerFormRef.current?.querySelector<HTMLElement>('.t24-crm-form-dialog-body');\n    const section = body?.querySelector<HTMLElement>(`#${id}`);\n    if (!body || !section)\n        return;\n    if (section instanceof HTMLDetailsElement)\n        section.open = true;\n    const top = body.scrollTop + section.getBoundingClientRect().top - body.getBoundingClientRect().top - 12;\n    body.scrollTo({ top: Math.max(0, top), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });\n}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-declarations",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "variable:Customers/customerFormRef",
+            "hash": "f10be9aa01b2971a8fefa626a9642c641da70f11b63aa2f9fd827833fef46881",
+            "code": "useRef<HTMLDivElement | null>(null)",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-declarations",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "variable:Customers/scrollCustomerFormSection/body",
+            "hash": "74872682de2067b1b24e418fb60e97e1ee1afed79a38c84fd3d5c6c348458fae",
+            "code": "customerFormRef.current?.querySelector<HTMLElement>('.t24-crm-form-dialog-body')",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-declarations",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "variable:Customers/scrollCustomerFormSection/section",
+            "hash": "5199db08ca679aeca7d7faf5cd07d4ecc464989a1d4e53ce444072d15a38a8ab",
+            "code": "body?.querySelector<HTMLElement>(`#${id}`)",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-declarations",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "variable:Customers/scrollCustomerFormSection/top",
+            "hash": "b5577e93564e3c380a25bedaa636c290e3af7efce6e50782d4a59b2579727ed6",
+            "code": "body.scrollTop + section.getBoundingClientRect().top - body.getBoundingClientRect().top - 12",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-declarations",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "variable:Customers/scrollCustomerFormSection",
+            "hash": "626aa60320f43c5f87ec6b533d7d3c32ec650cbf0f43aed7f1545b03b50406b8",
+            "code": "(id: string) => {\n    const body = customerFormRef.current?.querySelector<HTMLElement>('.t24-crm-form-dialog-body');\n    const section = body?.querySelector<HTMLElement>(`#${id}`);\n    if (!body || !section)\n        return;\n    if (section instanceof HTMLDetailsElement)\n        section.open = true;\n    const top = body.scrollTop + section.getBoundingClientRect().top - body.getBoundingClientRect().top - 12;\n    body.scrollTo({ top: Math.max(0, top), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });\n}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-declarations",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          }
+        ]
+      },
+      "view_expressions": {
+        "removed": [],
+        "added": [
+          {
+            "key": "Customers",
+            "hash": "4fe2e7e62bdf81aeee07a90d3736822a551d90216605f6c4a3efe0ca3f8fc5ea",
+            "code": "canEditProjects && __VIEW__",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-view_expressions",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          }
+        ]
+      },
+      "props": {
+        "removed": [],
+        "added": [
+          {
+            "key": "aria-controls",
+            "hash": "4eb6e7ce81c5046e0e8375d91b984a67f6afe5803953fa7997da8decbc3244b4",
+            "code": "\"customer-form-basic\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "6e4db11df827e77b45e20bfa11a7628a27183309732df8c464fdab220a2468a2",
+            "code": "\"customer-form-projects\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "89abce2b5624e8ecaaacfcbcceafb2d0db361353bbefcf3fbe422ed6abc07d60",
+            "code": "\"customer-form-extra\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "c5a6bd2c94285186295c4cd6c5c28ee371852dd13d3399c7c2910535115c8055",
+            "code": "\"customer-form-classification\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "aria-label",
+            "hash": "0e931e26af49988b1b88b42d5b7f006c0d8b6e4cba7d3d1c8deffc5dd3152853",
+            "code": "\"客户表单分区定位\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "defaultOpen",
+            "hash": "295043e5ef01795749f0ac153840c8a985446ae1b3612e95bff89bfe891f0be6",
+            "code": "{Boolean(editingId && Boolean(form.customer_code || form.wechat || form.email))}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "defaultOpen",
+            "hash": "88b542b3637a3d15e751938c43970e54c4f0325fc856ce402524b2ae664ffece",
+            "code": "{Boolean(editingId && Boolean(form.selected_platforms.length || (form.current_platform && form.current_platform !== '无') || (isOwner && form.notes)))}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "defaultOpen",
+            "hash": "9529c79318e58510a0cfa573eaae1d1437ff4c0b5062288d0cd6f728505d6f8b",
+            "code": "{Boolean(editingId && customerProjectForms.length)}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "defaultOpen",
+            "hash": "e18a7ea6213d97ae3b3e72566e737100331b0ccdd9d5f200d63147779f0c1bc2",
+            "code": "{Boolean(editingId && form.interested_packages.length > 0)}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "defaultOpen",
+            "hash": "e5f8f80f125099e44ea7f6231ec6df74173366557c33ee7cb728c4366c6427d0",
+            "code": "{Boolean(editingId && Boolean(form.city || form.address))}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "defaultOpen",
+            "hash": "eae14d0ee553bd875e5ac63c2bb2f5532f2c624d24263393b4c906e6a68647f6",
+            "code": "{Boolean(editingId && Boolean(form.website || form.facebook_link || form.instagram_link || form.google_business_link || form.yelp_link || form.tiktok_link))}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "description",
+            "hash": "1c2081be2d4d3285f479bdbbb3139dfe4907573803da4f8cf515231ae9f4a90b",
+            "code": "\"兼容已有意向记录；新需求仍在客户商机中确认\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "description",
+            "hash": "32b4be3663fb52fc5b535205fce380305a3a16d44077b12d4b6c48c35957cb5a",
+            "code": "\"尚未合作可暂不添加；已添加的项目保持展开，便于核对必填资料。\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "description",
+            "hash": "4259c8b6d1cf50fa6badcc7a6bc2abd58c6aead7ebe72270a51d20a10dbc7672",
+            "code": "\"客户编号、微信 / WhatsApp 与邮箱\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "description",
+            "hash": "89a34dcb155a8cf06a8ad3bb203ba9aa8dfa0c5078de714793330691adc6d7a4",
+            "code": "\"官网、Facebook、Instagram 等可选链接\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "description",
+            "hash": "b082d7b7e03e201910a14906e2bfb9a907fe44f81093d761a8770f64f5392329",
+            "code": "\"州 / 省、城市与地址\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "description",
+            "hash": "f4c2541252404225f343dd0ed70fd9007302231ca0d11b28b3fceca993946c00",
+            "code": "\"客户现有平台、平台现状与当前授权范围内的备注\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "filled",
+            "hash": "4846b1c8b098b7b3cc796955afbd255ab43c45efd5c10ee2d07c4bbdd6b246aa",
+            "code": "{form.interested_packages.length > 0}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "filled",
+            "hash": "7747d24a207372b6b7e38b9e4f18cbf720c799497f6d23c922edf8a194f84c47",
+            "code": "{Boolean(form.customer_code || form.wechat || form.email)}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "filled",
+            "hash": "7ab805c3fdf9dc2f5c8b036889757500000e256c1805573378ee6081403fc6c9",
+            "code": "{Boolean(form.website || form.facebook_link || form.instagram_link || form.google_business_link || form.yelp_link || form.tiktok_link)}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "filled",
+            "hash": "a5197fdb9190256af8bdf64fbabdd6e8fb3c23c2092a368fdef112b6d2330df1",
+            "code": "{Boolean(form.city || form.address)}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "filled",
+            "hash": "ca8efaa9532c77c8119d2a4a34eecdf7cfd19aff0ea1b0551ba6bd59304a0ab2",
+            "code": "{Boolean(form.selected_platforms.length || (form.current_platform && form.current_platform !== '无') || (isOwner && form.notes))}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "filled",
+            "hash": "edd91ad1f50ab74b2290e94a8c93ddead44f901876e78caefc2cb1e00fae8935",
+            "code": "{customerProjectForms.length > 0}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "forceOpen",
+            "hash": "331148557d1cd65afbe23a40c76c41d25008e74b498aee216e87a92fcac394d3",
+            "code": "{customerProjectsLoading || customerProjectForms.length > 0}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "id",
+            "hash": "3bb069ce2f6073949e609ab9fb0a406dfaa0fc5e52d402f523c31e904efa46c0",
+            "code": "\"customer-form-contacts\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "id",
+            "hash": "447a4ae58b69e1401e9e5ce573e9b137b1e2e43850853e2e537da3b9624b6f18",
+            "code": "\"customer-form-legacy\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "id",
+            "hash": "4782412a202ae3951aae30a1e7fb3a06622882c144608fd18fa1f0736f4a01a2",
+            "code": "\"customer-form-platforms\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "id",
+            "hash": "4eb6e7ce81c5046e0e8375d91b984a67f6afe5803953fa7997da8decbc3244b4",
+            "code": "\"customer-form-basic\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "id",
+            "hash": "6e4db11df827e77b45e20bfa11a7628a27183309732df8c464fdab220a2468a2",
+            "code": "\"customer-form-projects\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "id",
+            "hash": "89abce2b5624e8ecaaacfcbcceafb2d0db361353bbefcf3fbe422ed6abc07d60",
+            "code": "\"customer-form-extra\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "id",
+            "hash": "b650b7d14400fc58b6d44ade4cf612d7ff86a87b9ece4cfb942e643444191690",
+            "code": "\"customer-form-address\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "id",
+            "hash": "c5a6bd2c94285186295c4cd6c5c28ee371852dd13d3399c7c2910535115c8055",
+            "code": "\"customer-form-classification\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "id",
+            "hash": "db1f91907136717e60bbcdc64a4c5d06c4fa04f03938470fd1d37f67cc71cecd",
+            "code": "\"customer-form-links\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "onClick",
+            "hash": "1b6d5d2c374616fff82329b0e4c16f21d3d1021bb349a215eb63900a063e3a4d",
+            "code": "{() => scrollCustomerFormSection('customer-form-projects')}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "onClick",
+            "hash": "2c792400602e3317bc455c1de33f62fbbbc3f2ed33d661823b7ed29d58d3365d",
+            "code": "{() => scrollCustomerFormSection('customer-form-extra')}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "onClick",
+            "hash": "9b25c3a0be87d55ebba2e7fe1a20eadc9186348abb3e5ed860a2102ca05c62f4",
+            "code": "{() => scrollCustomerFormSection('customer-form-basic')}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "onClick",
+            "hash": "ba4142ab1d364507eaefc042d0b9fba430cb0432bda256a65ecbe5992707f81a",
+            "code": "{() => scrollCustomerFormSection('customer-form-classification')}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "ref",
+            "hash": "4620fcb0cc6ca849482bf20c81281e6af5928c5326d50dec1a6143878bc2ef39",
+            "code": "{customerFormRef}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "statusLabel",
+            "hash": "72920c00c4a7ace8438dbe1b30d0819596c8814f5a17f043cb47a5fdc3c98c73",
+            "code": "{customerProjectsLoading ? '读取中' : customerProjectForms.length ? `已添加 ${customerProjectForms.length} 项` : '未添加'}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "title",
+            "hash": "2781999543fda704011ea0e9c7a07189176eab442e1d6a158a621c8103dee601",
+            "code": "\"更多联系资料\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "title",
+            "hash": "4c85e3486b431760338b706decf16dfa188849a18bbabf226fa91d5bbaafa61c",
+            "code": "\"合作项目\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "title",
+            "hash": "71f7ea362adb896ee34e1560a9c5d1868ea7d71bef75df99e02e294448d9e27a",
+            "code": "\"官网与社交链接\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "title",
+            "hash": "a653fa19c6f9781af217939a49c82d229921ba25cd0a5c87b250041c98877bf3",
+            "code": "\"平台与备注\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "title",
+            "hash": "cbf5b12fe357c037036a45a9d25258bf6308081c82fcb649018afc7fb8590234",
+            "code": "\"详细地址\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "title",
+            "hash": "cfd46ca96cc37d898ed170e4fff69009f4ae2d4efe3f3fa87fda3e7d8090fcb8",
+            "code": "\"历史意向套餐\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-props",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          }
+        ]
+      },
+      "event_contexts": {
+        "removed": [],
+        "added": [
+          {
+            "key": "onClick",
+            "hash": "2dbb6ed6c048720fda0a88e76f006236cb837a854f321912f80b1b8681a3d125",
+            "code": "{\"value\":\"{() => scrollCustomerFormSection('customer-form-classification')}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-event_contexts",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "onClick",
+            "hash": "7030437bffad3bcb20d46b3ecaf19872d06d2ee68ce9775851aa0068e55db9c2",
+            "code": "{\"value\":\"{() => scrollCustomerFormSection('customer-form-basic')}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-event_contexts",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "onClick",
+            "hash": "83537bff3c6cbcc5ce1e92639aa96e9791d37090222384d1b91ff77c4cc46b04",
+            "code": "{\"value\":\"{() => scrollCustomerFormSection('customer-form-projects')}\",\"contexts\":[\"condition:canEditProjects && __VIEW__\"]}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-event_contexts",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          },
+          {
+            "key": "onClick",
+            "hash": "a337e9f0ddfcef8468cddcf3e2d2b7f05e7027589b8455705d78aaae9b49d5cf",
+            "code": "{\"value\":\"{() => scrollCustomerFormSection('customer-form-extra')}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Customers.tsx-event_contexts",
+            "reason": "Customer form fields regrouped; required fields visible, optional sections and body-only jump navigation"
+          }
+        ]
+      },
+      "styles": {
+        "removed": [],
+        "added": []
+      }
+    },
+    "app/frontend/src/pages/Dashboard.tsx": {
+      "imports": {
+        "removed": [],
+        "added": [
+          {
+            "key": "import",
+            "hash": "3d47596c1cdb1b02864a882c24ba9bba319d124ea15d4d5bc3e542dc117353d1",
+            "code": "import './crm-owner-home.css';",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-imports",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          }
+        ]
+      },
+      "declarations": {
+        "removed": [],
+        "added": []
+      },
+      "view_expressions": {
+        "removed": [
+          {
+            "key": "Dashboard/renderOwnerCommandCenter",
+            "hash": "dfd0876d57797c98938aa2367a330e6b67085bfbeb289acc736c20ce2b33e929",
+            "code": "showOwnerOperationalDetails ? '收起业务与团队明细' : '业务与团队明细'",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-view_expressions",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          }
+        ],
+        "added": [
+          {
+            "key": "Dashboard/renderOwnerCommandCenter",
+            "hash": "6253cf4425a94e50972c2881811e85bdbbaace01bd03c90c943ab0dfda757bb5",
+            "code": "ownerCockpit.decisions[0].title",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-view_expressions",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          },
+          {
+            "key": "Dashboard/renderOwnerCommandCenter",
+            "hash": "b8feafb761057255cfc16200c31002d797b465e52ed93f2f088e9e87f2fec849",
+            "code": "ownerCockpit.decisions[0].count",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-view_expressions",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          },
+          {
+            "key": "Dashboard/renderOwnerCommandCenter",
+            "hash": "dc16672a9797e8c869d2ab754a651efd4c93cdab1b967734556d1fe86f1bec87",
+            "code": "showOwnerOperationalDetails ? '收起经营判断与团队明细' : '经营判断与团队明细'",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-view_expressions",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          },
+          {
+            "key": "Dashboard/renderOwnerCommandCenter",
+            "hash": "f1d84b13e22ebe19dd2cea20df6a839fbd60a717101dc8bb10246356cb25aab5",
+            "code": "ownerCockpit.decisions[0] && __VIEW__",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-view_expressions",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          },
+          {
+            "key": "Dashboard",
+            "hash": "78e28c31f4a0723ecbf40b1d00b7772eda32da3aec3a35e452e7e98bdd809560",
+            "code": "reminders.length",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-view_expressions",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          },
+          {
+            "key": "Dashboard",
+            "hash": "f386f89109bc5140f13abcc224e3b35f77ba1b2f04ea025432d3d34627f14f3a",
+            "code": "reminders.length > 0 && __VIEW__",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-view_expressions",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          }
+        ]
+      },
+      "props": {
+        "removed": [
+          {
+            "key": "aria-controls",
+            "hash": "bbf96f5286cc18d0f8bc1eb4611cc958c24b73de55411828233c4385caebd629",
+            "code": "\"owner-operational-details owner-additional-details\"",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-props",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          }
+        ],
+        "added": [
+          {
+            "key": "aria-controls",
+            "hash": "8fabd53279669b6f6b5de9c9eb5f8796ccd34d8cbfa61a88640392e91ba8bc67",
+            "code": "\"owner-operational-details\"",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-props",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          },
+          {
+            "key": "aria-hidden",
+            "hash": "18d10c7d2b4b04aaf04254d1ae5d655a5dc0407cbcdd5a8c3986e985370f36ee",
+            "code": "\"true\"",
+            "review_id": "CRM-UI-FOCUS-Dashboard.tsx-props",
+            "reason": "Owner home visual hierarchy; existing accounting, conditions and actions retained"
+          }
+        ]
+      },
+      "event_contexts": {
+        "removed": [],
+        "added": []
+      },
+      "styles": {
+        "removed": [],
+        "added": []
+      }
+    },
+    "app/frontend/src/pages/Finance.tsx": {
+      "imports": {
+        "removed": [],
+        "added": [
+          {
+            "key": "import",
+            "hash": "273ca0ab047dac494dca4e8f3bed5da4d23516435d298ee770878a8338c03205",
+            "code": "import './finance-progressive.css';",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-imports",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          }
+        ]
+      },
+      "declarations": {
+        "removed": [],
+        "added": [
+          {
+            "key": "function:/scrollFinanceFormSection",
+            "hash": "d496492770582f584a5a76b9d428a1e93f0a6b50548bb143a5a634814824c763",
+            "code": "function scrollFinanceFormSection(id: string) {\n    const section = document.getElementById(id);\n    if (!section)\n        return;\n    if (section instanceof HTMLDetailsElement)\n        section.open = true;\n    const body = section.closest<HTMLElement>('.t24-crm-form-dialog-body');\n    if (!body)\n        return;\n    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';\n    body.scrollTo({ top: body.scrollTop + section.getBoundingClientRect().top - body.getBoundingClientRect().top - 12, behavior });\n}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "function:FinanceOptionalSection/<anonymous>",
+            "hash": "ef8c1cba19d70f9d5c1e1097b74bc1bb1b0de52e29c0f881910bbf332b94a873",
+            "code": "event => setOpen(event.currentTarget.open)",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "function:FinanceWorkspace/<anonymous>",
+            "hash": "2d3cc9075cfeb1fd0a7693547df074f8c433ffd01cf0f54344c1fa415308a0e8",
+            "code": "() => scrollFinanceFormSection(\"finance-payment-money\")",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "function:FinanceWorkspace/<anonymous>",
+            "hash": "309b4863e5e1ea58b90771facc5c3a5018c37f41d60a659b8ca0449f65170b1d",
+            "code": "() => scrollFinanceFormSection(\"finance-refund-optional\")",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "function:FinanceWorkspace/<anonymous>",
+            "hash": "3dee2612a08631677f1e641c9380df7681cfd8bf70cd580dcc45c6411c463a2a",
+            "code": "() => scrollFinanceFormSection(\"finance-expense-optional\")",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "function:FinanceWorkspace/<anonymous>",
+            "hash": "6c634ac6d8e7c557e765941c4c216c7795662db73b1a86df97619be5ddb992ed",
+            "code": "() => scrollFinanceFormSection(\"finance-refund-core\")",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "function:FinanceWorkspace/<anonymous>",
+            "hash": "71e04a4b2ba6d8e706b5c225559d509c610f8aab869f934e8d9570b8eb03ae85",
+            "code": "() => scrollFinanceFormSection(\"finance-company-expense-optional\")",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "function:FinanceWorkspace/<anonymous>",
+            "hash": "d1d4532f8e22b4cb47b72bcd607db9f2facd2cad01258fc0118c36f7acb764d2",
+            "code": "() => scrollFinanceFormSection(\"finance-payment-service\")",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "function:FinanceWorkspace/<anonymous>",
+            "hash": "f81f43c63ac3c0e190080b42f84e368a7a315943577f353c936fa97ef97c67fc",
+            "code": "() => scrollFinanceFormSection(\"finance-company-expense-core\")",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "function:FinanceWorkspace/<anonymous>",
+            "hash": "f8e912b73ab13a376894c3a6278981269a971c6836573057f9e566bb66d00e61",
+            "code": "() => scrollFinanceFormSection(\"finance-payment-customer\")",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "function:FinanceWorkspace/<anonymous>",
+            "hash": "fe21ede555f986d3917a5fd68ccccd5f532a9b08affa34d2b0d09c6eff083f71",
+            "code": "() => scrollFinanceFormSection(\"finance-expense-core\")",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "variable:FinanceOptionalSection/[open, setOpen]",
+            "hash": "8c52508499a5b5922bc525a991e8bb6a7c4f0e0a840da9aef0e57325da488bca",
+            "code": "useState(initiallyOpen)",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "variable:scrollFinanceFormSection/behavior",
+            "hash": "e477c0692159087a1bad0556bc85a02ed2ab0a75970797ebeeb4ca6237a76874",
+            "code": "window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "variable:scrollFinanceFormSection/body",
+            "hash": "81ffde9b4134383727a0d26cca1dcce47b4d0affec6e53e26545807ca52077ce",
+            "code": "section.closest<HTMLElement>('.t24-crm-form-dialog-body')",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "variable:scrollFinanceFormSection/section",
+            "hash": "ac189006c3a0bf70ccbd02c19dff891682a4555b0405290d101dcec725cbf478",
+            "code": "document.getElementById(id)",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-declarations",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          }
+        ]
+      },
+      "view_expressions": {
+        "removed": [],
+        "added": [
+          {
+            "key": "FinanceOptionalSection",
+            "hash": "10910087de24bfcabe854fda62b5023a61fe531705043b9979fdf00f12c4c0ec",
+            "code": "children",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceOptionalSection",
+            "hash": "936220cecff5eb22faccc48362080445d761f276403f0413682c9fbca18e230b",
+            "code": "hasContent ? '已填' : '未填'",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceOptionalSection",
+            "hash": "aaf2320646108059a87ab5017a86aee454f5378ed95003dbb2e12f4ca5266e0e",
+            "code": "title",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "2ca382ed57b231177d5921fddfae14d288074a275d0affc4bca9201e71f64ba9",
+            "code": "\"客户/类型\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "2db4c748b68611c02e18a249fa7d219f7c037f4d5883b74b3b7bdc669bfb337d",
+            "code": "fmt(summaryNetReceiptsUsd)",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "3edfe95c772106ca0953ee0d25fecc1425a17e1560503bc02f62f8827e99424c",
+            "code": "\"支出信息\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "3edfe95c772106ca0953ee0d25fecc1425a17e1560503bc02f62f8827e99424c",
+            "code": "\"支出信息\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "4983d16ad38df895b204d36d5c6d4648a0ea2ad4cf6bfcc7cd5cf32ce00a98d6",
+            "code": "fmt(summaryProfitRevenueUsd)",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "4d46a2219a3063a1760275d06219beed1da2eb9add081ebda0a5df7030f20d5b",
+            "code": "\"退款信息\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "54824283b36466d2b8b43bd2b386058bf487d1e2c50a4359e7421f0eb3833ea6",
+            "code": "\"补充备注\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "54824283b36466d2b8b43bd2b386058bf487d1e2c50a4359e7421f0eb3833ea6",
+            "code": "\"补充备注\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "5766ea63992e169ce58f01470c0fbec9e90b6238aabd67de7d4c69453084d066",
+            "code": "activeFinanceTab === \"income\" && !snapshotExpanded && !contextCustomerId && __VIEW__",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "8a0e87f844aff017d236e808dba577dbdb8c7ba02dbc0055aa2082b6f2a0e902",
+            "code": "fmt(summaryProfitUsd)",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "cbc818734b80081aa8cf9302ac99d56663bcf96b64fc3ae65cc00132ab497cc1",
+            "code": "\"服务/补充\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "cbf437e05660d51ff7aa6dfeeb3602fac9c71f8b298f885d6bdd78e8edc9aab6",
+            "code": "\"凭据/备注\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "FinanceWorkspace",
+            "hash": "da5164d999a37478504f62a759e688b4146af02908164b64778169ee5d0fe857",
+            "code": "\"金额/方式\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-view_expressions",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          }
+        ]
+      },
+      "props": {
+        "removed": [],
+        "added": [
+          {
+            "key": "aria-controls",
+            "hash": "14a5e6449abb56f1242bb2304c6315431e0e329c5c319c4a979ce863bc1d785a",
+            "code": "\"finance-company-expense-optional\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "49eca9d88ab2c30d3582333af24d1ddbc0396328b6f20ee74a6b693ba79acd2c",
+            "code": "\"finance-refund-optional\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "618aee24ba0fe4536bdae74cf3bda3c2dafe20e7e2ea977fb5fa04ef1ab71e8c",
+            "code": "\"finance-payment-customer\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "6ca529cbb4151273657053ea391ed4b8bf48b28f03c4c04f5f604f417aed64d3",
+            "code": "\"finance-payment-service\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "70a188aceb2e68a74eeab0ae75cdf4b28bec63fb48b03eec99a498a3fb70ea75",
+            "code": "\"finance-expense-optional\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "83ee3b6f63d7a94b72cb7fd7ec2374900fa24c3d34f1cb224aa979acfd31fa68",
+            "code": "\"finance-payment-money\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "a31b6968dfa47d245aa9ce03ab54aa928efa2000257d1bd3a597a28529e18227",
+            "code": "\"finance-refund-core\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "ad97f399c72b404a1b9702c02c0481b01df0f76ef88d5871058da13b89ecc9e2",
+            "code": "\"finance-company-expense-core\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-controls",
+            "hash": "ccee826276955c4048996ad617d40ba1a63f8e69df94e0c4c191ffe3ed254df4",
+            "code": "\"finance-expense-core\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-label",
+            "hash": "15fa8f4988436ed91ecbed1a6dff7121785744ad606ee85ea55eacf43053d214",
+            "code": "\"当前账目摘要\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-label",
+            "hash": "995eeee33174a1ef895a2a41c84f067d86a174f985bbe3cd5f263ddfc60314e3",
+            "code": "\"财务录入分区\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-label",
+            "hash": "995eeee33174a1ef895a2a41c84f067d86a174f985bbe3cd5f263ddfc60314e3",
+            "code": "\"财务录入分区\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-label",
+            "hash": "995eeee33174a1ef895a2a41c84f067d86a174f985bbe3cd5f263ddfc60314e3",
+            "code": "\"财务录入分区\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "aria-label",
+            "hash": "995eeee33174a1ef895a2a41c84f067d86a174f985bbe3cd5f263ddfc60314e3",
+            "code": "\"财务录入分区\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "hasContent",
+            "hash": "1276f692cc99c4a4ac35f84bf703b67556a29076683e8422e8608952b799362a",
+            "code": "{Boolean(companyExpenseForm.notes)}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "hasContent",
+            "hash": "20ac4b13de1567f15e8910d11dbc52c7eb9c7f4c986bf14d2762d5a6ebcae217",
+            "code": "{Boolean(expenseForm.notes)}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "hasContent",
+            "hash": "7cefb993e9c4d79c3c674498bc33f8a69eb628fafe42ad1b2b8a04c2160ab30f",
+            "code": "{Boolean(refundForm.provider_refund_id || refundForm.notes)}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "hasContent",
+            "hash": "f32cd96711fb952c3110bc112e7173b9f49544f5fd9984a311735f8c0432b988",
+            "code": "{Boolean(payForm.transaction_reference || payForm.notes)}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "14a5e6449abb56f1242bb2304c6315431e0e329c5c319c4a979ce863bc1d785a",
+            "code": "\"finance-company-expense-optional\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "49eca9d88ab2c30d3582333af24d1ddbc0396328b6f20ee74a6b693ba79acd2c",
+            "code": "\"finance-refund-optional\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "618aee24ba0fe4536bdae74cf3bda3c2dafe20e7e2ea977fb5fa04ef1ab71e8c",
+            "code": "\"finance-payment-customer\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "6ca529cbb4151273657053ea391ed4b8bf48b28f03c4c04f5f604f417aed64d3",
+            "code": "\"finance-payment-service\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "70a188aceb2e68a74eeab0ae75cdf4b28bec63fb48b03eec99a498a3fb70ea75",
+            "code": "\"finance-expense-optional\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "83ee3b6f63d7a94b72cb7fd7ec2374900fa24c3d34f1cb224aa979acfd31fa68",
+            "code": "\"finance-payment-money\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "980fb494d0a9bfa4910ebd64326741d6e96ce95b219583329cf7881b8feb583c",
+            "code": "\"finance-payment-optional\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "a31b6968dfa47d245aa9ce03ab54aa928efa2000257d1bd3a597a28529e18227",
+            "code": "\"finance-refund-core\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "ad97f399c72b404a1b9702c02c0481b01df0f76ef88d5871058da13b89ecc9e2",
+            "code": "\"finance-company-expense-core\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "c1ee52471fbdd7db91afbd364c7b986ff2cd9bf7b0fbbfc7d811a87be7fb65c8",
+            "code": "{id}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "id",
+            "hash": "ccee826276955c4048996ad617d40ba1a63f8e69df94e0c4c191ffe3ed254df4",
+            "code": "\"finance-expense-core\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "initiallyOpen",
+            "hash": "46172eb97630e76ef26facb5f1fa988b9db0e72b04a8d52607cfb30e259c0f21",
+            "code": "{Boolean(editingExpenseId || expenseForm.notes)}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "initiallyOpen",
+            "hash": "7cefb993e9c4d79c3c674498bc33f8a69eb628fafe42ad1b2b8a04c2160ab30f",
+            "code": "{Boolean(refundForm.provider_refund_id || refundForm.notes)}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "initiallyOpen",
+            "hash": "f5636dafaba879275c6b717f7952b770efcd81c879047fd5d9dbeb2b4ca5a7f0",
+            "code": "{Boolean(editingPayId || payForm.transaction_reference || payForm.notes)}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "initiallyOpen",
+            "hash": "f74be901f1c3342e7b34f107e2d8d8febfc0b59577d1e4b0b4f4cbd23f32634e",
+            "code": "{Boolean(editingCompanyExpenseId || companyExpenseForm.notes)}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "key",
+            "hash": "1020591fdedddc8b0d54a581cded7e42529b0c33a444424c4a95e11ad61406a3",
+            "code": "{\"company-\" + (editingCompanyExpenseId || \"new\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "key",
+            "hash": "3c6b9827934910ad7f5b345df0ec8bf947a270f69396e65d4c75a077494cdab6",
+            "code": "{\"expense-\" + (editingExpenseId || \"new\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "key",
+            "hash": "4daabef3b171ee096dcc72d636aaa08097f17a601c56d1b4c96bd971aab6c619",
+            "code": "{\"payment-\" + (editingPayId || \"new\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "0c2275ead4aa6c800de83fedf5952e2f95467ebbbfc4a032213c82db08e5015d",
+            "code": "{() => scrollFinanceFormSection(\"finance-company-expense-core\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "68ce46e058b1a2f7e3de8e9feee672522d456299e8a3f84dfd38a20c269fc103",
+            "code": "{() => scrollFinanceFormSection(\"finance-payment-service\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "8eb2599e3dcb47e47a7f5c1669e850b1d54e646bec02de63bcd4be38dfcabb76",
+            "code": "{() => scrollFinanceFormSection(\"finance-refund-core\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "96c6432b311ed827f818065f4ed459503469cd0413efce18a05344561ccf8113",
+            "code": "{() => scrollFinanceFormSection(\"finance-payment-customer\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "a0a66c8cc968b182ee3adeaba2924aa1393e0759949ed40fab6c212a13d926e1",
+            "code": "{() => scrollFinanceFormSection(\"finance-company-expense-optional\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "b8a765d6c4425fafc35dcc1dea3887fc45c551ffd96b0056b0b3dd8a1b71f897",
+            "code": "{() => scrollFinanceFormSection(\"finance-expense-optional\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "ce0a5bf56b2f82c8b5cfe5211d64af5994a0786dbed9c71f32de57ef7131e00f",
+            "code": "{() => scrollFinanceFormSection(\"finance-payment-money\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "d0907b52be87c3f9337d9f441a1f54539faf7d5d8e64edfed8b2aba5d8166315",
+            "code": "{() => scrollFinanceFormSection(\"finance-refund-optional\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "ff633626430f33cd833177a5264549ec68f40c3cc92841cfc63a75a404376e41",
+            "code": "{() => scrollFinanceFormSection(\"finance-expense-core\")}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onToggle",
+            "hash": "1f863ad7f0298c60bfaf79b0ec5487b0f6972e3228dd5255f90a8cd47836334a",
+            "code": "{event => setOpen(event.currentTarget.open)}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "open",
+            "hash": "2cb1a40fcf0d4332e661c510b85d0a1731c4a00b27200e1e6fe169f37235b7af",
+            "code": "{open}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "title",
+            "hash": "0dca45f5b67d97694df8c3a0720f658761bc22fe0d1b18905e2324d42a10b6f5",
+            "code": "\"凭证与备注\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "title",
+            "hash": "1fac234c8852f6760200162dafbc181eb72e1b4d04a49f1147e5d4f629543089",
+            "code": "{customerMap[Number(expenseForm.customer_id)]?.business_name || \"请选择客户\"}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "title",
+            "hash": "54824283b36466d2b8b43bd2b386058bf487d1e2c50a4359e7421f0eb3833ea6",
+            "code": "\"补充备注\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "title",
+            "hash": "54824283b36466d2b8b43bd2b386058bf487d1e2c50a4359e7421f0eb3833ea6",
+            "code": "\"补充备注\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "title",
+            "hash": "56946fd349232c8dc56a2aeda844b1da7bfd80e4f8b7d48a0d8e7e0b89271faf",
+            "code": "\"平台凭据与备注\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "title",
+            "hash": "692316bdec097b224b72298c34cc6c69840650996262b8126920dada01766308",
+            "code": "{refundTarget?.customer_name || \"客户待确认\"}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "title",
+            "hash": "85d97f5e6a84d3283ad575f9a088a2fb6b441fc08a6270e70e69eeaaea052abe",
+            "code": "{customerMap[Number(payForm.customer_id)]?.business_name || '请选择客户'}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "title",
+            "hash": "f474cf05ca714db3280c5f4c43d907fb6a313cb78c93a2688e5da991c41eb9e7",
+            "code": "\"公司运营支出\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "type",
+            "hash": "a7b7924d4eee5c9f3142a5dfe41a0d842c388bd1168967fdb19228eb0b43fe78",
+            "code": "\"button\"",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-props",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          }
+        ]
+      },
+      "event_contexts": {
+        "removed": [],
+        "added": [
+          {
+            "key": "onClick",
+            "hash": "081d63020b419975874e750602449d1a58c5ea677c672dca2522adaf26960137",
+            "code": "{\"value\":\"{() => scrollFinanceFormSection(\\\"finance-company-expense-core\\\")}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-event_contexts",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "10c29797553751d516c3a56cb6db17d7b9de1b59cb5ed06501e699ae0b439a0c",
+            "code": "{\"value\":\"{() => scrollFinanceFormSection(\\\"finance-refund-optional\\\")}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-event_contexts",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "3b9142b6413e54c67193c75603d4143f44c8905fd353359df199c0a2ab2a075d",
+            "code": "{\"value\":\"{() => scrollFinanceFormSection(\\\"finance-refund-core\\\")}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-event_contexts",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "56d88d90b577d44511055af2e8aee52621d9654ffbc53cdf6bd7327b83023c6c",
+            "code": "{\"value\":\"{() => scrollFinanceFormSection(\\\"finance-expense-optional\\\")}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-event_contexts",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "6010c6120e949b3c30de451996ab23abf53e241a064500fff9ff6ef39ed32c88",
+            "code": "{\"value\":\"{() => scrollFinanceFormSection(\\\"finance-expense-core\\\")}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-event_contexts",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "a9b1d817159ccf3a27626be903c877a10fcefab46518f2f62ed902315a468ac5",
+            "code": "{\"value\":\"{() => scrollFinanceFormSection(\\\"finance-payment-service\\\")}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-event_contexts",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "be2a931889df102f36491705f4c73722d5e387f59db5536b1164003dbc92d321",
+            "code": "{\"value\":\"{() => scrollFinanceFormSection(\\\"finance-payment-customer\\\")}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-event_contexts",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "c1a9b0450cfa5f9c34c5365231b3122564e5b7c7c64dbe35326f3d52ea1bf4d0",
+            "code": "{\"value\":\"{() => scrollFinanceFormSection(\\\"finance-payment-money\\\")}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-event_contexts",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onClick",
+            "hash": "d7ce77fd93a8051a32b96f22c8f3015f0c2a3f2a89e727136ea0a7329960b61e",
+            "code": "{\"value\":\"{() => scrollFinanceFormSection(\\\"finance-company-expense-optional\\\")}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-event_contexts",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          },
+          {
+            "key": "onToggle",
+            "hash": "085eca58b684432c16d3c757cdbbeab4441569c6e39e6168e1eb88e9f47f5fc2",
+            "code": "{\"value\":\"{event => setOpen(event.currentTarget.open)}\",\"contexts\":[]}",
+            "review_id": "CRM-UI-FOCUS-Finance.tsx-event_contexts",
+            "reason": "Finance form grouping and body-only navigation; actual fees and conditional financial fields remain visible"
+          }
+        ]
+      },
+      "styles": {
+        "removed": [],
+        "added": []
+      }
+    },
+    "app/frontend/src/pages/crm-owner-home.css": {
+      "imports": {
+        "removed": [],
+        "added": []
+      },
+      "declarations": {
+        "removed": [],
+        "added": []
+      },
+      "view_expressions": {
+        "removed": [],
+        "added": []
+      },
+      "props": {
+        "removed": [],
+        "added": []
+      },
+      "event_contexts": {
+        "removed": [],
+        "added": []
+      },
+      "styles": {
+        "removed": [],
+        "added": [
+          {
+            "key": "stylesheet",
+            "hash": "a03c147a7564a6fb7e735695b0d73f6588b6ea18b6482e50ae461be120a6fed3",
+            "code": "/* Owner home presentation only. This namespace is absent from private and operational workspaces. */\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home > :not([hidden]) ~ :not([hidden]) { margin-top: 16px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner { padding: 18px; border-radius: 14px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-heading { align-items: center; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-heading h2 { font-size: 20px; line-height: 28px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-heading h2 > span { font-size: 14px; font-weight: 600; color: #1d4ed8; background: #eff6ff; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-kicker { margin-bottom: 2px; font-size: 11px; line-height: 16px; color: #64748b; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner > .shr-reminders { margin: 14px 0; padding: 10px 12px; background: #f8faff; border-color: #dbeafe; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts { gap: 10px 20px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts button { min-height: 36px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts button:first-child { gap: 10px; font-size: 13px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts button:first-child strong { font-size: 23px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-meta { line-height: 17px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-automation { gap: 6px 18px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 10px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception { min-height: 74px; align-items: flex-start; gap: 10px; padding: 12px; background: #fff; border-color: #e2e8f0; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception:first-child { background: #fffbf2; border-color: #efd8aa; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-rank { padding-top: 2px; min-width: 28px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-copy strong { font-size: 14px; line-height: 21px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-copy strong,\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-business-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-waiting-days { display: block; margin-top: 3px; color: #8a5b26; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-waiting-days:empty { display: none; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-copy small { line-height: 18px; color: #64748b; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception > svg { margin-top: 3px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-empty { justify-content: flex-start; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; text-align: left; line-height: 21px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-status-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 14px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-status-label { font-size: 12px; color: #64748b; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-owner-counts { gap: 8px; margin: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-owner-counts-active { display: flex; flex-wrap: wrap; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-counts button { min-height: 36px; padding: 6px 10px; gap: 10px; border-radius: 8px; background: #f8fafc; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-counts button strong { font-size: 16px; line-height: 22px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-counts-active button { background: #eff6ff; border-color: #dbeafe; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-counts-active button :is(span, strong) { color: #1d4ed8; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses { margin-top: 12px; border-top: 1px solid #edf1f6; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses > summary { display: flex; align-items: center; gap: 8px; min-height: 38px; padding-block: 8px; color: #64748b; font-size: 12px; cursor: pointer; list-style: none; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses > summary::-webkit-details-marker { display: none; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses > summary small { font-size: 11px; color: #94a3b8; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses > summary svg { margin-left: auto; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses[open] > summary svg { transform: rotate(90deg); }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses[open] .sf-owner-counts { padding-bottom: 8px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-footer { margin-top: 8px; padding-top: 8px; border-top: 1px solid #edf1f6; line-height: 19px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-desktop-hero { border-radius: 14px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-hero-content { padding: 16px 18px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-hero-content > div:first-child { align-items: center; gap: 12px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-desktop-hero h2 { margin-top: 0; font-size: 17px; line-height: 24px; letter-spacing: 0; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-desktop-hero .crm-owner-hero-content > div:first-child > div:first-child > div:first-child { display: none; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-desktop-hero :is(.text-slate-300, .text-slate-400, .text-slate-500) { color: #64748b; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-desktop-hero .crm-owner-accounting-note { margin-top: 3px; font-size: 11px; line-height: 18px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-hero-content > div:first-child > div:last-child { padding: 8px 10px; border-color: #e2e8f0; background: #f8fafc; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-hero-content > div:first-child > div:last-child > div > p:first-child { font-size: 12px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-metrics { margin-top: 12px; gap: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric { min-height: 94px; padding: 12px; border-radius: 0; border-right: 1px solid #edf1f6; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric:last-child { border-right: 0; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric > div { display: none; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric > p:first-of-type { padding-right: 0; font-size: 12px; line-height: 18px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric > p:nth-of-type(2) { margin-top: 4px; font-size: 24px; line-height: 30px; color: #172b4d; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric > p:last-child { line-height: 17px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-shortcuts { gap: 8px; padding-top: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-shortcuts button { min-height: 36px; padding: 7px 10px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-shortcuts button > span > span:first-child { font-size: 12px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-detail-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; gap: 12px; padding: 11px 14px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; color: #475569; font-size: 13px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-detail-toggle svg { width: 16px; height: 16px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-decision-summary-copy { display: grid; gap: 4px; min-width: 0; text-align: left; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-decision-summary-copy small { font-size: 12px; line-height: 18px; color: #8a5b26; white-space: normal; overflow-wrap: anywhere; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-detail-toggle > svg { flex-shrink: 0; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-detail-toggle[aria-expanded=\"true\"] svg { transform: rotate(180deg); }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-operational-details:not(.is-expanded) { display: none; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-secondary-details { display: block; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure { min-width: 0; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: space-between; min-height: 48px; padding: 12px 14px; list-style: none; color: #475569; font-size: 13px; cursor: pointer; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > summary::-webkit-details-marker { display: none; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure summary strong { margin-left: 6px; color: #1d4ed8; font-variant-numeric: tabular-nums; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-summary-note { display: flex; align-items: center; gap: 12px; font-size: 12px; color: #64748b; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-summary-note svg { width: 15px; height: 15px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure[open] .crm-owner-reminder-summary-note svg { transform: rotate(180deg); }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > .t24-card { border: 0; border-top: 1px solid #edf1f6; border-radius: 0 0 10px 10px; box-shadow: none; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card { border-style: solid; background: #fff; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div { padding: 12px 14px; gap: 10px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div > div > p:last-child { font-size: 11px; line-height: 17px; }\n.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home :is(.sf-owner-quiet-statuses, .crm-owner-reminder-disclosure) > summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }\n\n@media (max-width: 1023px) and (min-width: 768px) {\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric:nth-child(2) { border-right: 0; }\n}\n@media (max-width: 767px) {\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner { padding: 16px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-heading h2 { font-size: 18px; line-height: 26px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-list { grid-template-columns: minmax(0, 1fr); gap: 8px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-counts button { min-height: 44px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-owner-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-owner-counts-active { display: grid; width: 100%; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses > summary { min-height: 44px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts { gap: 6px 14px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts button { min-height: 44px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-refresh { min-height: 44px; min-width: 32px; justify-content: flex-end; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-automation button { min-height: 36px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-dashboard { gap: 16px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 11px 13px; list-style: none; color: #64748b; font-size: 13px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure > summary::-webkit-details-marker { display: none; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure[open] > summary svg { transform: rotate(180deg); }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure .owner-mobile-attention { border: 0; border-top: 1px solid #edf1f6; border-radius: 0 0 12px 12px; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-summary-note { width: 100%; justify-content: space-between; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div { flex-direction: row; align-items: center; }\n  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div > div > p:last-child { display: none; }\n}\n",
+            "review_id": "CRM-UI-FOCUS-crm-owner-home.css-styles",
+            "reason": "Styles scoped to CRM owner home; no private workspace selector or global overrides"
+          }
+        ]
+      }
+    },
+    "app/frontend/src/pages/finance-progressive.css": {
+      "imports": {
+        "removed": [],
+        "added": []
+      },
+      "declarations": {
+        "removed": [],
+        "added": []
+      },
+      "view_expressions": {
+        "removed": [],
+        "added": []
+      },
+      "props": {
+        "removed": [],
+        "added": []
+      },
+      "event_contexts": {
+        "removed": [],
+        "added": []
+      },
+      "styles": {
+        "removed": [],
+        "added": [
+          {
+            "key": "stylesheet",
+            "hash": "19ebd62ccd373eaea1e86068215072d373edb6020059f44a17ae6e839d1e00dc",
+            "code": "/* Finance presentation only. Inputs, values, checks and accounting actions remain in Finance.tsx. */\n.financial-workspace--finance .finance-export-tools { position: relative; margin-left: auto; font-size: 13px; }\n.financial-workspace--finance .finance-export-tools > summary {\n  display: flex; align-items: center; justify-content: center; min-height: 36px;\n  padding: 7px 12px; border: 1px solid #dce4ef; border-radius: 9px;\n  background: #fff; color: #596c86; cursor: pointer; list-style: none;\n}\n.financial-workspace--finance .finance-export-tools > summary::after { content: '⌄'; margin-left: 9px; color: #7a8aa2; }\n.financial-workspace--finance .finance-export-tools > summary::-webkit-details-marker,\n.financial-workspace--finance .finance-snapshot-meta > summary::-webkit-details-marker { display: none; }\n.financial-workspace--finance .finance-export-menu {\n  position: absolute; z-index: 45; top: calc(100% + 7px); right: 0; display: grid; gap: 6px;\n  min-width: 170px; padding: 8px; border: 1px solid #dce4ef; border-radius: 11px;\n  background: #fff; box-shadow: 0 10px 28px #172b4d16;\n}\n.financial-workspace--finance .finance-export-menu > button { width: 100%; justify-content: flex-start; }\n.financial-workspace--finance .finance-snapshot-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 12px; }\n.financial-workspace--finance .finance-snapshot-meta { position: relative; font-size: 12px; color: #64748b; }\n.financial-workspace--finance .finance-snapshot-meta > summary { padding: 7px 0; list-style: none; cursor: pointer; }\n.financial-workspace--finance .finance-snapshot-meta > summary::after { content: '⌄'; margin-left: 6px; }\n.financial-workspace--finance .finance-snapshot-meta > div {\n  position: absolute; z-index: 42; right: 0; top: calc(100% + 5px);\n  display: flex; flex-direction: column; align-items: flex-start; gap: 9px;\n  width: 280px; max-width: calc(100vw - 48px); padding: 14px; border: 1px solid #dce4ef;\n  border-radius: 11px; background: #fff; box-shadow: 0 10px 28px #172b4d12;\n}\n.financial-workspace--finance .finance-ledger-key-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin-top: 4px; padding: 12px 0; border-block: 1px solid #e5ebf3; }\n.financial-workspace--finance .finance-ledger-key-metrics > div { min-width: 0; padding: 0 18px; border-left: 1px solid #e5ebf3; }\n.financial-workspace--finance .finance-ledger-key-metrics > div:first-child { padding-left: 0; border: 0; }\n.financial-workspace--finance .finance-ledger-key-metrics span { display: block; color: #64748b; font-size: 12px; line-height: 18px; }\n.financial-workspace--finance .finance-ledger-key-metrics strong { display: block; margin-top: 3px; color: #243c5b; font-size: 22px; line-height: 30px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }\n.financial-workspace--finance .finance-inline-guide { margin-bottom: 14px; font-size: 13px; color: #64748b; }\n.financial-workspace--finance .finance-inline-guide > summary { width: fit-content; cursor: pointer; padding: 5px 0; }\n.financial-workspace--finance .finance-inline-guide[open] > div { margin-top: 8px; }\n.financial-workspace--finance :is(.finance-export-tools, .finance-snapshot-meta, .finance-inline-guide) > summary:focus-visible { outline: 2px solid #739af5; outline-offset: 3px; border-radius: 4px; }\n\n.finance-progressive-form.t24-crm-form-dialog > .t24-crm-form-dialog-header { padding-bottom: 12px; }\n.finance-progressive-form .finance-editor-context { display: grid; gap: 2px; min-width: 0; }\n.finance-progressive-form .finance-editor-customer-name {\n  display: -webkit-box; min-width: 0; overflow: hidden; overflow-wrap: anywhere;\n  -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 18px; max-height: 36px;\n}\n.finance-progressive-form .finance-editor-metadata { display: block; min-width: 0; line-height: 18px; overflow-wrap: anywhere; }\n.finance-progressive-form .crm-form-section-nav {\n  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; margin-top: 12px;\n  padding: 4px; border: 1px solid #e0e7f0; border-radius: 10px; background: #f8fafc;\n}\n.finance-progressive-form .crm-form-section-nav > button {\n  display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 40px;\n  padding: 6px 4px; border: 0; border-radius: 7px; background: transparent; color: #4d6583;\n  font-size: 13px; line-height: 1.4; font-weight: 500; white-space: normal; text-align: center;\n}\n.finance-progressive-form .crm-form-section-nav > button:hover { background: #edf3ff; color: #245ce8; }\n.finance-progressive-form .crm-form-section-nav > button:focus-visible { outline: 2px solid #739af5; outline-offset: 1px; background: #edf3ff; }\n.finance-progressive-form .finance-progressive-sections { display: grid; gap: 24px; min-width: 0; }\n.finance-progressive-form .finance-core-section { min-width: 0; scroll-margin-block-start: 12px; }\n.finance-progressive-form .finance-core-section > h3 {\n  margin: 0 0 14px; padding: 0 0 10px; border-bottom: 1px solid #e6ebf2;\n  color: #203b5c; font-size: 15px; line-height: 23px; font-weight: 650;\n}\n.finance-progressive-form .finance-section-fields { display: grid; gap: 14px; min-width: 0; }\n.finance-progressive-form .finance-section-fields > .finance-form-section { margin: 2px 0 -3px; padding: 10px 0 0; font-size: 13px; color: #536a86; }\n.finance-progressive-form .finance-section-fields > div { min-width: 0; }\n.finance-progressive-form .finance-section-fields label { line-height: 1.55; }\n.finance-progressive-form .finance-section-fields .grid > div { min-width: 0; }\n.finance-progressive-form .finance-optional-section {\n  min-width: 0; border: 1px solid #e0e7f0; border-radius: 11px; background: #fff; scroll-margin-block-start: 12px;\n}\n.finance-progressive-form .finance-optional-section > summary {\n  display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px;\n  padding: 12px 14px; color: #455d7b; font-size: 14px; line-height: 1.6; cursor: pointer; list-style: none;\n}\n.finance-progressive-form .finance-optional-section > summary::-webkit-details-marker { display: none; }\n.finance-progressive-form .finance-optional-section > summary > span:first-child { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; min-width: 0; }\n.finance-progressive-form .finance-optional-section small { color: #7a8aa1; font-size: 12px; font-weight: 400; }\n.finance-progressive-form .finance-optional-status { flex: 0 0 auto; color: #7a8aa1; font-size: 12px; }\n.finance-progressive-form .finance-optional-status::after { content: '⌄'; margin-left: 8px; color: #71829a; }\n.finance-progressive-form .finance-optional-section[open] .finance-optional-status::after { content: '⌃'; }\n.finance-progressive-form .finance-optional-section > summary:focus-visible { outline: 2px solid #739af5; outline-offset: 3px; border-radius: 9px; }\n.finance-progressive-form .finance-optional-content { display: grid; gap: 14px; padding: 14px; border-top: 1px solid #e6ebf2; }\n.finance-progressive-form .finance-optional-content > div { min-width: 0; }\n\n@media (min-width: 1024px) {\n  .t24-system.app-shell .crm-desktop-main .financial-workspace--finance .finance-ledger-key-metrics { margin-top: 4px; padding-block: 10px; }\n  .t24-system.app-shell .crm-desktop-main .financial-workspace--finance .finance-ledger-key-metrics > div { padding-inline: 18px; }\n  .t24-system.app-shell .crm-desktop-main .financial-workspace--finance .finance-ledger-key-metrics > div:first-child { padding-left: 0; }\n  .t24-system.app-shell .crm-desktop-main .financial-workspace--finance .finance-snapshot-tools > .t24-button { min-height: 32px; }\n}\n@media (max-width: 767px) {\n  .finance-progressive-form .crm-form-section-nav { margin-right: -44px; }\n  .finance-progressive-form .crm-form-section-nav > button { min-height: 44px; }\n  .finance-progressive-form .finance-progressive-sections { gap: 22px; }\n  .finance-progressive-form .finance-core-section > h3 { margin-bottom: 14px; }\n  .finance-progressive-form .finance-optional-section > summary { min-height: 48px; padding: 12px; }\n  .finance-progressive-form .finance-optional-content { padding: 14px 12px; }\n  .finance-progressive-form.t24-crm-form-dialog .finance-section-fields .finance-amount-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }\n  .finance-progressive-form .finance-optional-content :is(input, textarea) { font-size: 16px; }\n}\n@media (max-width: 359px) {\n  .finance-progressive-form.t24-crm-form-dialog .finance-section-fields .finance-amount-pair { grid-template-columns: minmax(0, 1fr); }\n}\n",
+            "review_id": "CRM-UI-FOCUS-finance-progressive.css-styles",
+            "reason": "Finance-only form and ledger hierarchy styling"
+          }
+        ]
+      }
+    }
+  }
+}
