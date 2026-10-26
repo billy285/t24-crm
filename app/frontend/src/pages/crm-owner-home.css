@@ -1,0 +1,108 @@
+/* Owner home presentation only. This namespace is absent from private and operational workspaces. */
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home > :not([hidden]) ~ :not([hidden]) { margin-top: 16px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner { padding: 18px; border-radius: 14px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-heading { align-items: center; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-heading h2 { font-size: 20px; line-height: 28px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-heading h2 > span { font-size: 14px; font-weight: 600; color: #1d4ed8; background: #eff6ff; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-kicker { margin-bottom: 2px; font-size: 11px; line-height: 16px; color: #64748b; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner > .shr-reminders { margin: 14px 0; padding: 10px 12px; background: #f8faff; border-color: #dbeafe; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts { gap: 10px 20px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts button { min-height: 36px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts button:first-child { gap: 10px; font-size: 13px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts button:first-child strong { font-size: 23px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-meta { line-height: 17px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-automation { gap: 6px 18px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 10px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception { min-height: 74px; align-items: flex-start; gap: 10px; padding: 12px; background: #fff; border-color: #e2e8f0; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception:first-child { background: #fffbf2; border-color: #efd8aa; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-rank { padding-top: 2px; min-width: 28px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-copy strong { font-size: 14px; line-height: 21px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-copy strong,
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-business-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-waiting-days { display: block; margin-top: 3px; color: #8a5b26; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-waiting-days:empty { display: none; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-copy small { line-height: 18px; color: #64748b; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception > svg { margin-top: 3px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-empty { justify-content: flex-start; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; text-align: left; line-height: 21px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-status-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 14px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-status-label { font-size: 12px; color: #64748b; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-owner-counts { gap: 8px; margin: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-owner-counts-active { display: flex; flex-wrap: wrap; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-counts button { min-height: 36px; padding: 6px 10px; gap: 10px; border-radius: 8px; background: #f8fafc; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-counts button strong { font-size: 16px; line-height: 22px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-counts-active button { background: #eff6ff; border-color: #dbeafe; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-counts-active button :is(span, strong) { color: #1d4ed8; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses { margin-top: 12px; border-top: 1px solid #edf1f6; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses > summary { display: flex; align-items: center; gap: 8px; min-height: 38px; padding-block: 8px; color: #64748b; font-size: 12px; cursor: pointer; list-style: none; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses > summary::-webkit-details-marker { display: none; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses > summary small { font-size: 11px; color: #94a3b8; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses > summary svg { margin-left: auto; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses[open] > summary svg { transform: rotate(90deg); }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses[open] .sf-owner-counts { padding-bottom: 8px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-footer { margin-top: 8px; padding-top: 8px; border-top: 1px solid #edf1f6; line-height: 19px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-desktop-hero { border-radius: 14px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-hero-content { padding: 16px 18px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-hero-content > div:first-child { align-items: center; gap: 12px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-desktop-hero h2 { margin-top: 0; font-size: 17px; line-height: 24px; letter-spacing: 0; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-desktop-hero .crm-owner-hero-content > div:first-child > div:first-child > div:first-child { display: none; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-desktop-hero :is(.text-slate-300, .text-slate-400, .text-slate-500) { color: #64748b; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-desktop-hero .crm-owner-accounting-note { margin-top: 3px; font-size: 11px; line-height: 18px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-hero-content > div:first-child > div:last-child { padding: 8px 10px; border-color: #e2e8f0; background: #f8fafc; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-hero-content > div:first-child > div:last-child > div > p:first-child { font-size: 12px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-metrics { margin-top: 12px; gap: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric { min-height: 94px; padding: 12px; border-radius: 0; border-right: 1px solid #edf1f6; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric:last-child { border-right: 0; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric > div { display: none; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric > p:first-of-type { padding-right: 0; font-size: 12px; line-height: 18px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric > p:nth-of-type(2) { margin-top: 4px; font-size: 24px; line-height: 30px; color: #172b4d; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric > p:last-child { line-height: 17px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-shortcuts { gap: 8px; padding-top: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-shortcuts button { min-height: 36px; padding: 7px 10px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-shortcuts button > span > span:first-child { font-size: 12px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-detail-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; gap: 12px; padding: 11px 14px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; color: #475569; font-size: 13px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-detail-toggle svg { width: 16px; height: 16px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-decision-summary-copy { display: grid; gap: 4px; min-width: 0; text-align: left; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-decision-summary-copy small { font-size: 12px; line-height: 18px; color: #8a5b26; white-space: normal; overflow-wrap: anywhere; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-detail-toggle > svg { flex-shrink: 0; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-detail-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-operational-details:not(.is-expanded) { display: none; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-secondary-details { display: block; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure { min-width: 0; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: space-between; min-height: 48px; padding: 12px 14px; list-style: none; color: #475569; font-size: 13px; cursor: pointer; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > summary::-webkit-details-marker { display: none; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure summary strong { margin-left: 6px; color: #1d4ed8; font-variant-numeric: tabular-nums; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-summary-note { display: flex; align-items: center; gap: 12px; font-size: 12px; color: #64748b; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-summary-note svg { width: 15px; height: 15px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure[open] .crm-owner-reminder-summary-note svg { transform: rotate(180deg); }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > .t24-card { border: 0; border-top: 1px solid #edf1f6; border-radius: 0 0 10px 10px; box-shadow: none; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card { border-style: solid; background: #fff; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div { padding: 12px 14px; gap: 10px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div > div > p:last-child { font-size: 11px; line-height: 17px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home :is(.sf-owner-quiet-statuses, .crm-owner-reminder-disclosure) > summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+
+@media (max-width: 1023px) and (min-width: 768px) {
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .t24-command-metric:nth-child(2) { border-right: 0; }
+}
+@media (max-width: 767px) {
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner { padding: 16px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-heading h2 { font-size: 18px; line-height: 26px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-exception-list { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-counts button { min-height: 44px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-owner-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner .sf-owner-counts-active { display: grid; width: 100%; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .sf-owner-quiet-statuses > summary { min-height: 44px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts { gap: 6px 14px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-counts button { min-height: 44px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-refresh { min-height: 44px; min-width: 32px; justify-content: flex-end; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .shr-reminders-automation button { min-height: 36px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-dashboard { gap: 16px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 11px 13px; list-style: none; color: #64748b; font-size: 13px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure > summary::-webkit-details-marker { display: none; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure[open] > summary svg { transform: rotate(180deg); }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure .owner-mobile-attention { border: 0; border-top: 1px solid #edf1f6; border-radius: 0 0 12px 12px; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-summary-note { width: 100%; justify-content: space-between; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div { flex-direction: row; align-items: center; }
+  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div > div > p:last-child { display: none; }
+}

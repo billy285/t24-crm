@@ -57,6 +57,7 @@ export default function MobileOwnerDashboard({ cockpit }: MobileOwnerDashboardPr
         {monthParts && <span>{monthParts[1]} 年</span>}
       </div>
 
+      <details className="owner-mobile-attention-disclosure"><summary><span className="crm-owner-decision-summary-copy"><span>补充经营关注 · {cockpit.decisions.length} 类</span>{cockpit.decisions[0] && <small>{cockpit.decisions[0].title} · {cockpit.decisions[0].count}</small>}</span><ChevronDown aria-hidden="true" /></summary>
       <section className={`owner-mobile-attention${hasAttention ? '' : ' owner-mobile-healthy'}`} aria-labelledby="owner-attention-heading">
         <div className="owner-mobile-heading"><h2 id="owner-attention-heading">今天先关注</h2><span>{cockpit.decisions.length} 类事项</span></div>
         {hasAttention ? <>
@@ -77,6 +78,7 @@ export default function MobileOwnerDashboard({ cockpit }: MobileOwnerDashboardPr
           </details>
         </> : <p className="owner-mobile-no-attention"><CheckCircle2 aria-hidden="true" />当前没有需要推动的异常事项</p>}
       </section>
+      </details>
 
       <section aria-labelledby="owner-finance-heading">
         <div className="owner-mobile-heading"><h2 id="owner-finance-heading">本月经营</h2><span>USD</span></div>

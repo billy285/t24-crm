@@ -1,4 +1,6 @@
 import './crm-customer-delivery-compact.css';
+import '@/components/customer-form-progressive.css';
+import CustomerFormSection from '@/components/CustomerFormSection';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { confirmDiscardAllChanges } from '@/lib/use-unsaved-changes';
 import { useRetainedView } from '@/lib/use-retained-view';
@@ -742,6 +744,15 @@ export default function Customers() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const customerFormRef = useRef<HTMLDivElement | null>(null);
+  const scrollCustomerFormSection = (id: string) => {
+    const body = customerFormRef.current?.querySelector<HTMLElement>('.t24-crm-form-dialog-body');
+    const section = body?.querySelector<HTMLElement>(`#${id}`);
+    if (!body || !section) return;
+    if (section instanceof HTMLDetailsElement) section.open = true;
+    const top = body.scrollTop + section.getBoundingClientRect().top - body.getBoundingClientRect().top - 12;
+    body.scrollTo({ top: Math.max(0, top), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  };
   const [customerProjectForms, setCustomerProjectForms] = useState<CustomerProjectDraft[]>([]);
   const [customerProjectsLoading, setCustomerProjectsLoading] = useState(false);
   const [commissionPartners, setCommissionPartners] = useState<Array<{ id: number; partner_code: string; name: string; partner_type: string }>>([]);
@@ -2016,32 +2027,44 @@ export default function Customers() {
       <CustomerAccessPanel customer={accessTarget} customerIds={bulkAccessMode ? selectedCustomerIds : []} open={showAccessDialog} onClose={() => { setShowAccessDialog(false); setAccessTarget(null); setBulkAccessMode(false); }} onSaved={async () => { setSelectedCustomerIds([]); await loadCustomers(); if (selectedCustomer) await loadCustomerDetail(selectedCustomer.id); }} />
 
       <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && customerDraft.confirmDiscard())) setShowForm(open); }}>
-        <CrmFormDialogContent className="max-w-4xl">
-          <CrmFormDialogHeader><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle></CrmFormDialogHeader>
+        <CrmFormDialogContent ref={customerFormRef} className="crm-customer-progressive-form crm-progressive-form max-w-4xl">
+          <CrmFormDialogHeader><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle>
+            <nav className="crm-form-section-nav" aria-label="客户表单分区定位">
+              <button type="button" aria-controls="customer-form-basic" onClick={() => scrollCustomerFormSection('customer-form-basic')}>基本信息</button>
+              <button type="button" aria-controls="customer-form-classification" onClick={() => scrollCustomerFormSection('customer-form-classification')}>地区归类</button>
+              {canEditProjects && <button type="button" aria-controls="customer-form-projects" onClick={() => scrollCustomerFormSection('customer-form-projects')}>合作项目</button>}
+              <button type="button" aria-controls="customer-form-extra" onClick={() => scrollCustomerFormSection('customer-form-extra')}>补充资料</button>
+            </nav>
+          </CrmFormDialogHeader>
           <CrmFormDialogBody className="space-y-4">
           {duplicateWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><AlertCircle className="w-4 h-4 flex-shrink-0" />{duplicateWarning}</div>}
-          <div data-testid="customer-form-grid" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-2">
-              <p className="text-sm font-semibold text-slate-800">基本与联系信息</p>
-              <p className="mt-1 text-xs text-slate-500">先填写客户识别和日常联系所需信息。</p>
-            </div>
-            <div className="sm:col-span-2">
+          <div data-testid="customer-form-grid" className="space-y-4">
+<section id="customer-form-basic" className="crm-form-section">
+  <div className="crm-form-section-heading"><h3>基本信息</h3><p>先填 3 项必填资料，国家用于核对电话号码。</p></div>
+  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<div><Label>商家名称 *</Label><Input value={form.business_name} onChange={e => { setForm({ ...form, business_name: e.target.value }); checkDuplicate(e.target.value, form.phone); }} /></div>
+<div><Label>联系人 *</Label><Input value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })} /></div>
+<div><Label htmlFor="customer-form-phone">电话 *</Label><Input id="customer-form-phone" placeholder="本地号码或 + 国家码" value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
+<div><Label>国家</Label><NativeSelect value={form.country} onChange={v => { setManualCityInput(false); setForm({ ...form, country: v, state: getStatesForCountry(v)[0]?.code || '', city: '' }); }} options={[{ value: '', label: '待确认国家/地区' }, ...countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))]} /></div>
+</div>
+  <CustomerFormSection id="customer-form-contacts" title="更多联系资料" description="客户编号、微信 / WhatsApp 与邮箱" filled={Boolean(form.customer_code || form.wechat || form.email)} defaultOpen={Boolean(editingId && Boolean(form.customer_code || form.wechat || form.email))}>
+<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<div className="sm:col-span-2">
               <Label>客户编号</Label>
               <div className="flex gap-2 items-center">
                 <Input value={form.customer_code} onChange={e => setForm({ ...form, customer_code: e.target.value })} placeholder={editingId ? '修改编号' : `留空自动生成`} className="font-mono" />
                 {!editingId && <Button type="button" size="sm" variant="outline" className="shrink-0 text-xs" onClick={() => setForm({ ...form, customer_code: getNextAutoCode(form.industry) })}>自动生成</Button>}
               </div>
             </div>
-            <div><Label>商家名称 *</Label><Input value={form.business_name} onChange={e => { setForm({ ...form, business_name: e.target.value }); checkDuplicate(e.target.value, form.phone); }} /></div>
-            <div><Label>联系人 *</Label><Input value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })} /></div>
-            <div><Label htmlFor="customer-form-phone">电话 *</Label><Input id="customer-form-phone" placeholder="本地号码或 + 国家码" value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
-            <div><Label>微信/WhatsApp</Label><Input value={form.wechat} onChange={e => setForm({ ...form, wechat: e.target.value })} /></div>
-            <div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
-            <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-2">
-              <p className="text-sm font-semibold text-slate-800">地区与客户归类</p>
-              <p className="mt-1 text-xs text-slate-500">补充客户所在地区、来源、等级和当前状态。</p>
-            </div>
-            <div>
+<div><Label>微信/WhatsApp</Label><Input value={form.wechat} onChange={e => setForm({ ...form, wechat: e.target.value })} /></div>
+<div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+</div>
+</CustomerFormSection>
+</section>
+<section id="customer-form-classification" className="crm-form-section">
+  <div className="crm-form-section-heading"><h3>地区与客户归类</h3><p>核对行业、来源、状态与负责人。</p></div>
+  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<div>
               <Label>行业</Label>
               <div className="flex gap-1.5">
                 <NativeSelect value={form.industry} onChange={v => setForm({ ...form, industry: v })} options={Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))} className="flex-1" />
@@ -2058,40 +2081,8 @@ export default function Customers() {
                 </div>
               )}
             </div>
-            <div><Label>国家</Label><NativeSelect value={form.country} onChange={v => { setManualCityInput(false); setForm({ ...form, country: v, state: getStatesForCountry(v)[0]?.code || '', city: '' }); }} options={[{ value: '', label: '待确认国家/地区' }, ...countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))]} /></div>
-            <div><Label>州/省</Label><NativeSelect value={form.state} onChange={v => { setManualCityInput(false); setForm({ ...form, state: v, city: '' }); }} options={countryStates.length > 0 ? countryStates.map(s => ({ value: s.code, label: s.code })) : [{ value: '', label: '请先选择国家' }]} /></div>
-            <div>
-              <Label>城市</Label>
-              {formCities.length > 0 && (
-                <NativeSelect
-                  value={formCityLabels.has(form.city) && !manualCityInput ? form.city : ''}
-                  onChange={v => {
-                    if (v === '__manual__') {
-                      setManualCityInput(true);
-                      return;
-                    }
-                    setManualCityInput(false);
-                    setForm({ ...form, city: v });
-                  }}
-                  options={[
-                    { value: '', label: '请选择城市' },
-                    ...formCities.map(ct => ({ value: ct.label, label: ct.label })),
-                    { value: '__manual__', label: '列表没有，手动输入其他城市' },
-                  ]}
-                />
-              )}
-              {showManualCityField && (
-                <Input
-                  value={form.city}
-                  onChange={e => setForm({ ...form, city: e.target.value })}
-                  placeholder={formCities.length > 0 ? '输入其他城市名' : '输入城市名'}
-                  className={formCities.length > 0 ? 'mt-2' : ''}
-                />
-              )}
-            </div>
-            <div><Label>地址</Label><Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
-            <div><Label>来源</Label><NativeSelect value={form.source} onChange={v => setForm({ ...form, source: v })} options={Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            <div>
+<div><Label>来源</Label><NativeSelect value={form.source} onChange={v => setForm({ ...form, source: v })} options={Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+<div>
               <Label>等级</Label>
               <div className="flex gap-1.5">
                 <NativeSelect value={form.level} onChange={v => setForm({ ...form, level: v })} options={Object.entries(levelLabels).map(([k, v]) => ({ value: k, label: v }))} className="flex-1" />
@@ -2149,12 +2140,45 @@ export default function Customers() {
                 </div>
               )}
             </div>
-            <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-            <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-2">
-              <p className="text-sm font-semibold text-slate-800">合作项目与归属</p>
-              <p className="mt-1 text-xs text-slate-500">记录当前授权范围内的合作资料。</p>
+<div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+<div><Label>负责销售</Label><NativeSelect disabled={Boolean(editingId && !canAssignCustomer(editingCustomer))} value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
+</div>
+  <CustomerFormSection id="customer-form-address" title="详细地址" description="州 / 省、城市与地址" filled={Boolean(form.city || form.address)} defaultOpen={Boolean(editingId && Boolean(form.city || form.address))}>
+<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<div><Label>州/省</Label><NativeSelect value={form.state} onChange={v => { setManualCityInput(false); setForm({ ...form, state: v, city: '' }); }} options={countryStates.length > 0 ? countryStates.map(s => ({ value: s.code, label: s.code })) : [{ value: '', label: '请先选择国家' }]} /></div>
+<div>
+              <Label>城市</Label>
+              {formCities.length > 0 && (
+                <NativeSelect
+                  value={formCityLabels.has(form.city) && !manualCityInput ? form.city : ''}
+                  onChange={v => {
+                    if (v === '__manual__') {
+                      setManualCityInput(true);
+                      return;
+                    }
+                    setManualCityInput(false);
+                    setForm({ ...form, city: v });
+                  }}
+                  options={[
+                    { value: '', label: '请选择城市' },
+                    ...formCities.map(ct => ({ value: ct.label, label: ct.label })),
+                    { value: '__manual__', label: '列表没有，手动输入其他城市' },
+                  ]}
+                />
+              )}
+              {showManualCityField && (
+                <Input
+                  value={form.city}
+                  onChange={e => setForm({ ...form, city: e.target.value })}
+                  placeholder={formCities.length > 0 ? '输入其他城市名' : '输入城市名'}
+                  className={formCities.length > 0 ? 'mt-2' : ''}
+                />
+              )}
             </div>
-            {isOwner && !editingId && <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 sm:col-span-2">
+<div><Label>地址</Label><Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
+</div>
+</CustomerFormSection>
+  <div className="mt-4">{isOwner && !editingId && <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 sm:col-span-2">
               <div>
                 <Label className="text-sm font-semibold text-slate-800">客户来源与分润归属</Label>
                 <p className="mt-1 text-xs leading-5 text-slate-500">首次保存时建立归属。自动模式会优先匹配“负责销售”对应的内部销售渠道，未匹配时归为公司直营；以后变更请到“渠道与分润中心”保留历史。</p>
@@ -2163,9 +2187,11 @@ export default function Customers() {
                 <div><Label className="text-xs">归属渠道</Label><NativeSelect value={commissionPartnerId} onChange={setCommissionPartnerId} options={[{ value: 'auto', label: '系统自动：内部销售 / 公司直营' }, ...commissionPartners.map(item => ({ value: String(item.id), label: `${item.name} · ${item.partner_code}` }))]} /></div>
                 <div><Label className="text-xs">归属生效日期</Label><Input type="date" value={commissionEffectiveFrom} onChange={event => setCommissionEffectiveFrom(event.target.value)} /></div>
               </div>
-            </div>}
-            {canEditProjects && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 sm:col-span-2">
+            </div>}</div>
+</section>
+{canEditProjects && (
+<CustomerFormSection id="customer-form-projects" title="合作项目" description="尚未合作可暂不添加；已添加的项目保持展开，便于核对必填资料。" filled={customerProjectForms.length > 0} defaultOpen={Boolean(editingId && customerProjectForms.length)} forceOpen={customerProjectsLoading || customerProjectForms.length > 0} statusLabel={customerProjectsLoading ? '读取中' : customerProjectForms.length ? `已添加 ${customerProjectForms.length} 项` : '未添加'}>
+<div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 sm:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <Label className="text-sm font-semibold text-slate-800">合作项目（可多选）</Label>
@@ -2216,8 +2242,63 @@ export default function Customers() {
                 </div>
               )}
             </div>
-            )}
-            <div className="sm:col-span-2">
+</CustomerFormSection>
+)}
+<section id="customer-form-extra" className="crm-form-section">
+  <div className="crm-form-section-heading"><h3>补充资料</h3><p>可按实际情况补充，编辑已有内容会默认展开。</p></div>
+  <CustomerFormSection id="customer-form-platforms" title="平台与备注" description="客户现有平台、平台现状与当前授权范围内的备注" filled={Boolean(form.selected_platforms.length || (form.current_platform && form.current_platform !== '无') || (isOwner && form.notes))} defaultOpen={Boolean(editingId && Boolean(form.selected_platforms.length || (form.current_platform && form.current_platform !== '无') || (isOwner && form.notes)))}>
+<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+              <div className="mb-3">
+                <p className="text-sm font-semibold text-slate-800">平台与补充资料</p>
+                <p className="mt-1 text-xs text-slate-500">记录客户现有平台、负责人和可选链接。</p>
+              </div>
+              <Label>客户现有平台（基础资料）</Label>
+              <div className="mt-1 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {platformOptionsForForm.map(({ key, label }) => {
+                    const checked = form.selected_platforms.includes(key);
+                    return (
+                      <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={e => toggleSelectedPlatform(key, e.target.checked)}
+                          className="rounded"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-slate-500 mt-3">
+                  已选: {formatSelectedPlatforms(form.selected_platforms)}
+                </p>
+                <p className="mt-1 text-xs text-blue-600">这里只记录客户目前已有的平台，不代表 T24 实际代运营范围；实际运营平台随每个商机/订阅单独确认。</p>
+              </div>
+            </div>
+<div><Label>客户平台现状备注</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} placeholder="如：客户自营 Facebook，Google 暂未维护" /></div>
+{isOwner && <div className="sm:col-span-2"><Label>历史备注 · 仅老板</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>}
+</div>
+</CustomerFormSection>
+  <CustomerFormSection id="customer-form-links" title="官网与社交链接" description="官网、Facebook、Instagram 等可选链接" filled={Boolean(form.website || form.facebook_link || form.instagram_link || form.google_business_link || form.yelp_link || form.tiktok_link)} defaultOpen={Boolean(editingId && Boolean(form.website || form.facebook_link || form.instagram_link || form.google_business_link || form.yelp_link || form.tiktok_link))}>
+<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<div><Label>官网</Label><Input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
+<div className="mt-1 border-t border-slate-200 pt-3 sm:col-span-2">
+              <h4 className="text-sm font-medium text-slate-600 mb-3">社交媒体链接</h4>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div><Label className="text-xs">Facebook</Label><Input value={form.facebook_link} onChange={e => setForm({ ...form, facebook_link: e.target.value })} placeholder="https://facebook.com/..." /></div>
+                <div><Label className="text-xs">Instagram</Label><Input value={form.instagram_link} onChange={e => setForm({ ...form, instagram_link: e.target.value })} placeholder="https://instagram.com/..." /></div>
+                <div><Label className="text-xs">Google Business</Label><Input value={form.google_business_link} onChange={e => setForm({ ...form, google_business_link: e.target.value })} placeholder="https://business.google.com/..." /></div>
+                <div><Label className="text-xs">Yelp</Label><Input value={form.yelp_link} onChange={e => setForm({ ...form, yelp_link: e.target.value })} placeholder="https://yelp.com/biz/..." /></div>
+                <div><Label className="text-xs">TikTok</Label><Input value={form.tiktok_link} onChange={e => setForm({ ...form, tiktok_link: e.target.value })} placeholder="https://tiktok.com/@..." /></div>
+              </div>
+            </div>
+</div>
+</CustomerFormSection>
+  <CustomerFormSection id="customer-form-legacy" title="历史意向套餐" description="兼容已有意向记录；新需求仍在客户商机中确认" filled={form.interested_packages.length > 0} defaultOpen={Boolean(editingId && form.interested_packages.length > 0)}>
+<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<div className="sm:col-span-2">
               <Label>历史意向套餐（兼容旧资料）</Label>
               <div className="mt-1 space-y-2">
                 <div className="flex items-start gap-1.5">
@@ -2305,50 +2386,10 @@ export default function Customers() {
                 )}
               </div>
             </div>
-            <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
-              <div className="mb-3">
-                <p className="text-sm font-semibold text-slate-800">平台与补充资料</p>
-                <p className="mt-1 text-xs text-slate-500">记录客户现有平台、负责人和可选链接。</p>
-              </div>
-              <Label>客户现有平台（基础资料）</Label>
-              <div className="mt-1 rounded-md border border-slate-200 bg-slate-50 p-3">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {platformOptionsForForm.map(({ key, label }) => {
-                    const checked = form.selected_platforms.includes(key);
-                    return (
-                      <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={e => toggleSelectedPlatform(key, e.target.checked)}
-                          className="rounded"
-                        />
-                        <span>{label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-slate-500 mt-3">
-                  已选: {formatSelectedPlatforms(form.selected_platforms)}
-                </p>
-                <p className="mt-1 text-xs text-blue-600">这里只记录客户目前已有的平台，不代表 T24 实际代运营范围；实际运营平台随每个商机/订阅单独确认。</p>
-              </div>
-            </div>
-            <div><Label>负责销售</Label><NativeSelect disabled={Boolean(editingId && !canAssignCustomer(editingCustomer))} value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
-            <div><Label>官网</Label><Input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
-            <div><Label>客户平台现状备注</Label><Input value={form.current_platform} onChange={e => setForm({ ...form, current_platform: e.target.value })} placeholder="如：客户自营 Facebook，Google 暂未维护" /></div>
-            <div className="mt-1 border-t border-slate-200 pt-3 sm:col-span-2">
-              <h4 className="text-sm font-medium text-slate-600 mb-3">社交媒体链接</h4>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div><Label className="text-xs">Facebook</Label><Input value={form.facebook_link} onChange={e => setForm({ ...form, facebook_link: e.target.value })} placeholder="https://facebook.com/..." /></div>
-                <div><Label className="text-xs">Instagram</Label><Input value={form.instagram_link} onChange={e => setForm({ ...form, instagram_link: e.target.value })} placeholder="https://instagram.com/..." /></div>
-                <div><Label className="text-xs">Google Business</Label><Input value={form.google_business_link} onChange={e => setForm({ ...form, google_business_link: e.target.value })} placeholder="https://business.google.com/..." /></div>
-                <div><Label className="text-xs">Yelp</Label><Input value={form.yelp_link} onChange={e => setForm({ ...form, yelp_link: e.target.value })} placeholder="https://yelp.com/biz/..." /></div>
-                <div><Label className="text-xs">TikTok</Label><Input value={form.tiktok_link} onChange={e => setForm({ ...form, tiktok_link: e.target.value })} placeholder="https://tiktok.com/@..." /></div>
-              </div>
-            </div>
-            {isOwner && <div className="sm:col-span-2"><Label>历史备注 · 仅老板</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>}
-          </div>
+</div>
+</CustomerFormSection>
+</section>
+</div>
           </CrmFormDialogBody>
           <CrmFormDialogFooter data-testid="customer-form-actions">
             <Button variant="outline" disabled={saving} onClick={() => { if (customerDraft.confirmDiscard()) setShowForm(false); }} className="min-h-11 flex-1 sm:flex-none">取消</Button>

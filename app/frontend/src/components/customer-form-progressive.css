@@ -1,0 +1,131 @@
+/* Customer editor only; no default dialog or private workspace selectors. */
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .t24-crm-form-dialog-header {
+  padding: 18px 20px 14px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .t24-crm-form-dialog-header .t24-dialog-title {
+  padding-right: 48px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-nav {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 4px;
+  border: 1px solid #e0e7f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-nav button {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 4px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #475b78;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-nav button:hover {
+  background: #edf3ff;
+  color: #245ce8;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form :is(.crm-form-section, .crm-form-optional) {
+  min-width: 0;
+  scroll-margin-top: 12px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section {
+  padding: 16px;
+  border: 1px solid #e0e7f0;
+  border-radius: 12px;
+  background: #fff;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 14px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-heading h3 {
+  margin: 0;
+  color: #172b4d;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-heading p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 18px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional {
+  margin-top: 14px;
+  border: 1px solid #e0e7f0;
+  border-radius: 10px;
+  background: #fff;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional > summary::-webkit-details-marker { display: none; }
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional[data-force-open] > summary { cursor: default; }
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-heading { flex: 1; min-width: 0; }
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-heading strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 21px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-heading :is(small, span) {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-heading > span { display: block; margin-top: 3px; }
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-status {
+  flex-shrink: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 18px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-status.is-filled { color: #245ce8; }
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-chevron { width: 16px; height: 16px; flex-shrink: 0; color: #64748b; }
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional[open] > summary .crm-form-optional-chevron { transform: rotate(180deg); }
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-content {
+  padding: 14px;
+  border-top: 1px solid #edf1f6;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form #customer-form-platforms .crm-form-optional-content > .grid > div:first-child {
+  margin-top: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form #customer-form-platforms .crm-form-optional-content > .grid > div:first-child > .mb-3 { display: none; }
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form :is(.crm-form-section-nav button, .crm-form-optional > summary):focus-visible {
+  outline: 2px solid #739af5;
+  outline-offset: 2px;
+}
+@media (max-width: 767px) {
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .t24-crm-form-dialog-header { padding: 16px 16px 12px; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section-nav button { min-height: 44px; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-section { padding: 14px; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional > summary { padding: 12px; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-progressive-form .crm-form-optional-content { padding: 12px; }
+}

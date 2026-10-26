@@ -28,6 +28,7 @@ import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage } from '../lib/load-utils';
 import MobileOwnerDashboard from '@/components/MobileOwnerDashboard';
 import { OwnerExceptions } from '@/components/ServiceFollowThrough';
+import './crm-owner-home.css';
 
 interface Reminder {
   id: string;
@@ -680,7 +681,7 @@ export default function Dashboard() {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
                 <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-300"><Gauge className="h-4 w-4" />T24 Owner Command Center</div>
-                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.02em]">今日经营</h2>
+                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.02em]">经营快照</h2>
                 <p className="crm-owner-accounting-plain mt-2 max-w-3xl text-sm leading-6 text-slate-300">{ownerCockpit.finance.currency_policy}</p>
                 <details className="crm-owner-accounting-note mt-2 text-sm leading-6 text-slate-300"><summary>统计口径</summary><p className="mt-2 max-w-3xl">{ownerCockpit.finance.currency_policy}</p></details>
               </div>
@@ -689,7 +690,6 @@ export default function Dashboard() {
                 <div><p className="text-sm font-semibold">{ownerCockpit.decision_state === 'healthy' ? '当前经营闭环正常' : `${ownerCockpit.decisions.length} 类事项需要关注`}</p><p className="mt-0.5 text-[11px] text-slate-300">数据截至 {new Date(ownerCockpit.as_of).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) + '（北京时间）'}</p></div>
               </div>
             </div>
-            {ownerCockpit.decisions[0] && <button type="button" className="calm-owner-priority" onClick={() => navigate(ownerCockpit.decisions[0].link)}><span><small>优先推动</small><strong>{ownerCockpit.decisions[0].title} · {ownerCockpit.decisions[0].count}</strong></span><span>查看事项 <ArrowRight aria-hidden="true" /></span></button>}
             <div className="calm-owner-metrics mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
               {topMetrics.map(item => {
                 const Icon = item.icon;
@@ -707,8 +707,9 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <button type="button" className="owner-mobile-detail-toggle" aria-expanded={showOwnerOperationalDetails} aria-controls="owner-operational-details owner-additional-details" onClick={() => setShowOwnerOperationalDetails(value => !value)}><span>{showOwnerOperationalDetails ? '收起业务与团队明细' : '业务与团队明细'}</span><ChevronDown aria-hidden="true" /></button>
+        <button type="button" className="owner-mobile-detail-toggle" aria-expanded={showOwnerOperationalDetails} aria-controls="owner-operational-details" onClick={() => setShowOwnerOperationalDetails(value => !value)}><span className="crm-owner-decision-summary-copy"><span>{showOwnerOperationalDetails ? '收起经营判断与团队明细' : '经营判断与团队明细'}</span>{ownerCockpit.decisions[0] && <small>{ownerCockpit.decisions[0].title} · {ownerCockpit.decisions[0].count}</small>}</span><ChevronDown aria-hidden="true" /></button>
         <div id="owner-operational-details" className={`owner-mobile-operational-details space-y-4${showOwnerOperationalDetails ? ' is-expanded' : ''}`}>
+        {ownerCockpit.decisions[0] && <button type="button" className="calm-owner-priority" onClick={() => navigate(ownerCockpit.decisions[0].link)}><span><small>优先推动</small><strong>{ownerCockpit.decisions[0].title} · {ownerCockpit.decisions[0].count}</strong></span><span>查看事项 <ArrowRight aria-hidden="true" /></span></button>}
         <div className="crm-owner-work-panels grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
           <Card className="border-slate-200">
             <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-4 w-4 text-rose-500" />老板今天需要推动</CardTitle><p className="mt-1 text-xs text-slate-500">按影响程度排序，点击直接进入处理页面。</p></div><Button size="sm" variant="outline" onClick={() => navigate('/tasks?source=system')}>查看系统任务</Button></div></CardHeader>
@@ -984,12 +985,12 @@ export default function Dashboard() {
   const upcomingTasks = (data.tasks || []).filter((t: any) => t.status !== 'completed').slice(0, 5);
 
   return (
-    <div className="t24-command-center calm-admin-page calm-admin-dashboard app-page space-y-6">
+    <div className="t24-command-center calm-admin-page calm-admin-dashboard crm-owner-home app-page space-y-6">
       <OwnerExceptions />
       {renderOwnerCommandCenter()}
-      <div id="owner-additional-details" className={`owner-mobile-additional-details space-y-6${showOwnerOperationalDetails ? ' is-expanded' : ''}${!ownerCockpit ? ' owner-detail-fallback' : ''}`}>
-      {renderReminders()}
-      <Collapsible open={showMoreOwnerDetails} onOpenChange={setShowMoreOwnerDetails} className="space-y-6">
+      <div id="owner-additional-details" className={`owner-mobile-additional-details crm-owner-secondary-details space-y-4${showOwnerOperationalDetails ? ' is-expanded' : ''}${!ownerCockpit ? ' owner-detail-fallback' : ''}`}>
+      {reminders.length > 0 && <details className="crm-owner-reminder-disclosure"><summary><span>其他系统提醒 <strong>{reminders.length}</strong></span><span className="crm-owner-reminder-summary-note">跟进、回访与到期事项 <ChevronDown aria-hidden="true" /></span></summary>{renderReminders()}</details>}
+      <Collapsible open={showMoreOwnerDetails} onOpenChange={setShowMoreOwnerDetails} className="crm-owner-extra-details space-y-6">
         <Card className="border-dashed border-slate-300 bg-slate-50/70">
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>

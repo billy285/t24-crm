@@ -1,4 +1,5 @@
 import './financial-workspaces-polish.css';
+import './finance-progressive.css';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { client } from '../lib/api';
@@ -623,6 +624,24 @@ const safeQuery = async (queryFn: () => Promise<any>): Promise<any[]> => {
   const res = await loadWithRetry(queryFn);
   return res?.data?.items || [];
 };
+
+function scrollFinanceFormSection(id: string) {
+  const section = document.getElementById(id);
+  if (!section) return;
+  if (section instanceof HTMLDetailsElement) section.open = true;
+  const body = section.closest<HTMLElement>('.t24-crm-form-dialog-body');
+  if (!body) return;
+  const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+  body.scrollTo({ top: body.scrollTop + section.getBoundingClientRect().top - body.getBoundingClientRect().top - 12, behavior });
+}
+
+function FinanceOptionalSection({ id, title, hasContent, initiallyOpen, children }: { id: string; title: string; hasContent: boolean; initiallyOpen: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(initiallyOpen);
+  return <details id={id} className="crm-form-optional finance-optional-section" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary><span>{title}<small>选填</small></span><span className="finance-optional-status">{hasContent ? '已填' : '未填'}</span></summary>
+    <div className="finance-optional-content">{children}</div>
+  </details>;
+}
 
 export default function Finance() {
   const [params] = useSearchParams();
@@ -4454,10 +4473,10 @@ function FinanceWorkspace() {
             </div>
           </details>
         </div>
-        {!isMobile && <div className="ml-auto flex flex-wrap gap-2">
+        {!isMobile && <details className="finance-export-tools"><summary>导出账本</summary><div className="finance-export-menu">
           <Button size="sm" variant="outline" className="whitespace-nowrap shadow-sm" onClick={() => doExport('csv')} disabled={exporting}>导出 CSV</Button>
           <Button size="sm" variant="outline" onClick={() => doExport('xlsx')} disabled={exporting} className="whitespace-nowrap">导出 Excel</Button>
-        </div>}
+        </div></details>}
         {loadError && hasFinanceData && (
           <div role="alert" className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -4486,19 +4505,14 @@ function FinanceWorkspace() {
             <h3 id="finance-snapshot-title" className="text-sm font-semibold text-slate-900">经营快照</h3>
             <details className="finance-desktop-explainer text-xs text-slate-500"><summary>说明</summary><div className="finance-desktop-explainer-content"><p>先判断利润与现金风险，再进入明细处理。</p></div></details>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Button variant="ghost" size="sm" aria-expanded={snapshotExpanded} aria-controls="finance-snapshot-cards" onClick={() => setSnapshotExpanded(value => !value)}>{snapshotExpanded ? '收起经营快照' : '展开经营快照'}<ChevronDown className={`ml-1 h-4 w-4 ${snapshotExpanded ? 'rotate-180' : ''}`} /></Button>
-            <span className={auditedSummary ? 'rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700' : 'rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'}>
+          <div className="finance-snapshot-tools"><Button variant="ghost" size="sm" aria-expanded={snapshotExpanded} aria-controls="finance-snapshot-cards" onClick={() => setSnapshotExpanded(value => !value)}>{snapshotExpanded ? '收起经营快照' : '展开经营快照'}<ChevronDown className={`ml-1 h-4 w-4 ${snapshotExpanded ? 'rotate-180' : ''}`} /></Button><details className="finance-snapshot-meta"><summary>口径与关账</summary><div><span className={auditedSummary ? 'rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700' : 'rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'}>
               {summaryProfitBasisLabel}
-            </span>
-            <span className={closedFinanceMonths.has(currentMonthKey) ? 'rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700' : 'rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'}>
+            </span><span className={closedFinanceMonths.has(currentMonthKey) ? 'rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700' : 'rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'}>
               本月关账 {currentMonthKey} · {closedFinanceMonths.has(currentMonthKey) ? '已关账' : '未关账'}
-            </span>
-            <button type="button" onClick={() => handleFinanceTabChange('monthly_detail')} className="hidden font-medium text-blue-600 hover:underline md:inline">
+            </span><button type="button" onClick={() => handleFinanceTabChange('monthly_detail')} className="hidden font-medium text-blue-600 hover:underline md:inline">
               查看月度明细
-            </button>
-          </div>
-        </div>
+            </button></div></details></div>
+        </div>{activeFinanceTab === "income" && !snapshotExpanded && !contextCustomerId && <div className="finance-ledger-key-metrics" aria-label="当前账目摘要"><div><span>净收款 USD</span><strong>{fmt(summaryNetReceiptsUsd)}</strong></div><div><span>服务收入 USD</span><strong>{fmt(summaryProfitRevenueUsd)}</strong></div><div><span>经营利润 USD</span><strong>{fmt(summaryProfitUsd)}</strong></div></div>}
 
         <div id="finance-snapshot-cards" className={snapshotExpanded ? "grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6" : "hidden"}>
           <Card className="border-emerald-100 bg-gradient-to-br from-emerald-50/90 to-white shadow-sm">
@@ -5013,7 +5027,7 @@ function FinanceWorkspace() {
         <TabsContent value="customer_expense">
           <Card className="border-slate-200">
             <CardContent className="p-4">
-              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
+              <details className="finance-inline-guide"><summary>客户成本与投流的录入范围</summary><div className="mb-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-semibold text-blue-900">这里只记录客户专属的非投流成本</p>
                   <p className="mt-1 text-xs text-slate-600">网站、域名、服务器、设计制作等费用在这里逐笔录入；广告实际支出统一在投流月结按月确认。</p>
@@ -5021,7 +5035,7 @@ function FinanceWorkspace() {
                 <Button type="button" variant="outline" size="sm" className="shrink-0 border-blue-200 bg-white text-blue-700 hover:bg-blue-100" onClick={() => handleFinanceTabChange('ad_funds')}>
                   前往投流月结
                 </Button>
-              </div>
+              </div></details>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
@@ -6313,11 +6327,10 @@ function FinanceWorkspace() {
       <>
       {/* Payment Form */}
       <Dialog open={showPaymentForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowPaymentForm(v); if (!v) { setEditingPayId(null); setPayForm(emptyPayForm); } }}>
-        <CrmFormDialogContent className="crm-finance-payment-form max-w-lg">
-          <CrmFormDialogHeader><DialogTitle>{editingPayId ? '编辑收款记录' : '录入收款'}</DialogTitle><p className="finance-editor-context">{customerMap[Number(payForm.customer_id)]?.business_name || '请选择客户'} · {paymentFormCurrency} · {payForm.payment_date || '到账日期待填写'}</p></CrmFormDialogHeader>
-          <CrmFormDialogBody><div className="space-y-4">
-            <h3 className="finance-form-section">收款信息</h3><p className="text-sm text-slate-500">本笔币种：{paymentFormCurrency === 'CNY' ? '人民币 CNY' : '美元 USD'}</p>
-            <div>
+        <CrmFormDialogContent className="crm-finance-payment-form max-w-lg crm-progressive-form finance-progressive-form">
+          <CrmFormDialogHeader><DialogTitle>{editingPayId ? '编辑收款记录' : '录入收款'}</DialogTitle><p className="finance-editor-context"><span className="finance-editor-customer-name" title={customerMap[Number(payForm.customer_id)]?.business_name || '请选择客户'}>{customerMap[Number(payForm.customer_id)]?.business_name || '请选择客户'}</span><span className="finance-editor-metadata">{paymentFormCurrency} · {payForm.payment_date || '到账日期待填写'}</span></p><nav className="crm-form-section-nav" aria-label="财务录入分区"><button type="button" aria-controls="finance-payment-customer" onClick={() => scrollFinanceFormSection("finance-payment-customer")}>{"客户/类型"}</button><button type="button" aria-controls="finance-payment-money" onClick={() => scrollFinanceFormSection("finance-payment-money")}>{"金额/方式"}</button><button type="button" aria-controls="finance-payment-service" onClick={() => scrollFinanceFormSection("finance-payment-service")}>{"服务/补充"}</button></nav></CrmFormDialogHeader>
+          <CrmFormDialogBody><div className="finance-progressive-sections"><section id="finance-payment-customer" className="crm-form-section finance-core-section"><h3>客户与收入类型</h3><div className="finance-section-fields"><p className="text-sm text-slate-500">本笔币种：{paymentFormCurrency === 'CNY' ? '人民币 CNY' : '美元 USD'}</p>
+<div>
               <Label>选择客户 *</Label>
               {customers.length === 0 ? (
                 <p className="text-sm text-amber-600 mt-1">暂无客户数据，请先在「客户管理」中添加客户</p>
@@ -6336,7 +6349,7 @@ function FinanceWorkspace() {
                 </div>
               )}
             </div>
-            <div>
+<div>
               <Label>收款结构 *</Label>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {[
@@ -6361,7 +6374,7 @@ function FinanceWorkspace() {
                 ))}
               </div>
             </div>
-            <div>
+<div>
               <div className="flex items-center justify-between gap-2">
                 <Label>收入细分类型 *</Label>
                 {canManageIncomeTypes && (
@@ -6376,7 +6389,7 @@ function FinanceWorkspace() {
                 options={paymentIncomeTypeOptions}
               />
             </div>
-            <div>
+<div>
               <div className="flex items-center justify-between gap-2">
                 <Label>产品名称 *（可多选）</Label>
                 {canManageCustomerPackages && (
@@ -6408,12 +6421,11 @@ function FinanceWorkspace() {
                   多个套餐会作为一条组合续费记录处理。若各套餐金额、周期或到期日不同，请拆分为多笔收款，避免续费提醒混在一起。
                 </p>
               )}
-            </div>
-            <h3 className="finance-form-section">金额与到账日期</h3><div className="grid grid-cols-2 gap-4">
+            </div></div></section><section id="finance-payment-money" className="crm-form-section finance-core-section"><h3>金额与收款方式</h3><div className="finance-section-fields"><div className="finance-amount-pair grid grid-cols-2 gap-4">
               <div><Label>应收金额 *</Label><Input type="number" value={payForm.amount_due} onChange={e => setPayForm({ ...payForm, amount_due: e.target.value })} placeholder="0.00" /></div>
               <div><Label>实收金额 *</Label><Input type="number" value={payForm.amount_paid} onChange={e => setPayForm({ ...payForm, amount_paid: e.target.value })} placeholder="0.00" /></div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+<div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>收款日期 *</Label>
                 <Input
@@ -6426,7 +6438,7 @@ function FinanceWorkspace() {
                 财务收入按收款日期归属月份；服务覆盖期只用于续费和客户服务时间，不改变收入月份。
               </div>
             </div>
-            <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+<div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <Label className="text-sm font-medium text-blue-900">收入拆分</Label>
@@ -6468,7 +6480,8 @@ function FinanceWorkspace() {
                 );
               })()}
             </div>
-            <h3 className="finance-form-section">收款方式</h3><div className="grid grid-cols-2 gap-4">
+<h3 className="finance-form-section">收款方式</h3>
+<div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>收款模式</Label>
                 <div className="mb-2 rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2">
@@ -6508,20 +6521,11 @@ function FinanceWorkspace() {
                 />
               </div>
             </div>
-            <h3 className="finance-form-section">凭证</h3><div>
-              <Label>流水 / 支票 / Stripe 编号</Label>
-              <Input
-                value={payForm.transaction_reference}
-                onChange={e => setPayForm({ ...payForm, transaction_reference: e.target.value })}
-                placeholder="可选，例如 Stripe invoice、支票号、转账备注"
-              />
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+<div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
               {payForm.payment_mode === 'subscription_auto'
                 ? '自动订阅适合 Stripe 每月主动扣款客户，系统会将这类收入单独归类。'
                 : '手动收款适合支票、Zelle、Apple Cash、Venmo 等线下或手机转账客户。'}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+            </div></div></section><section id="finance-payment-service" className="crm-form-section finance-core-section"><h3>服务与成交</h3><div className="finance-section-fields"><div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>计费周期</Label>
                 <NativeSelect value={payForm.billing_cycle} onChange={v => setPayForm({ ...payForm, billing_cycle: v })}
@@ -6529,7 +6533,12 @@ function FinanceWorkspace() {
               </div>
               <div className="flex items-center gap-2 pt-6"><Switch checked={payForm.has_invoice} onCheckedChange={v => setPayForm({ ...payForm, has_invoice: v })} /><Label>已开票</Label></div>
             </div>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+<h3 className="finance-form-section">服务周期</h3>
+<div className="grid grid-cols-2 gap-4">
+              <div><Label>覆盖开始</Label><Input type="date" value={payForm.coverage_start} onChange={e => setPayForm({ ...payForm, coverage_start: e.target.value })} /></div>
+              <div><Label>覆盖结束</Label><Input type="date" value={payForm.coverage_end} onChange={e => setPayForm({ ...payForm, coverage_end: e.target.value })} /></div>
+            </div>
+<div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <Label className="text-sm font-medium text-amber-900">同步为成交记录</Label>
@@ -6542,13 +6551,15 @@ function FinanceWorkspace() {
                   onCheckedChange={v => setPayForm({ ...payForm, sync_to_deal: v })}
                 />
               </div>
+            </div></div></section><FinanceOptionalSection key={"payment-"+(editingPayId || "new")} id="finance-payment-optional" title="凭证与备注" hasContent={Boolean(payForm.transaction_reference || payForm.notes)} initiallyOpen={Boolean(editingPayId || payForm.transaction_reference || payForm.notes)}><div>
+              <Label>流水 / 支票 / Stripe 编号</Label>
+              <Input
+                value={payForm.transaction_reference}
+                onChange={e => setPayForm({ ...payForm, transaction_reference: e.target.value })}
+                placeholder="可选，例如 Stripe invoice、支票号、转账备注"
+              />
             </div>
-            <h3 className="finance-form-section">服务周期</h3><div className="grid grid-cols-2 gap-4">
-              <div><Label>覆盖开始</Label><Input type="date" value={payForm.coverage_start} onChange={e => setPayForm({ ...payForm, coverage_start: e.target.value })} /></div>
-              <div><Label>覆盖结束</Label><Input type="date" value={payForm.coverage_end} onChange={e => setPayForm({ ...payForm, coverage_end: e.target.value })} /></div>
-            </div>
-            <h3 className="finance-form-section">备注</h3><div><Label>备注</Label><Textarea value={payForm.notes} onChange={e => setPayForm({ ...payForm, notes: e.target.value })} rows={2} /></div>
-          </div></CrmFormDialogBody>
+<div><Label>备注</Label><Textarea value={payForm.notes} onChange={e => setPayForm({ ...payForm, notes: e.target.value })} rows={2} /></div></FinanceOptionalSection></div></CrmFormDialogBody>
           <CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowPaymentForm(false); }}>取消</Button>
             <Button onClick={handleSavePayment} disabled={saving} className="bg-blue-600 hover:bg-blue-700">{saving ? '保存中...' : '保存'}</Button>
@@ -6705,9 +6716,8 @@ function FinanceWorkspace() {
 
       {/* Customer Expense Form */}
       <Dialog open={showExpenseForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowExpenseForm(v); if (!v) { setEditingExpenseId(null); setExpenseForm(emptyExpenseForm); } }}>
-        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>{editingExpenseId ? '编辑客户支出' : '录入客户支出'}</DialogTitle><p className="finance-editor-context">{customerMap[Number(expenseForm.customer_id)]?.business_name || "请选择客户"} · {expenseForm.currency} · {expenseForm.expense_month || "月份待填写"}</p></CrmFormDialogHeader><CrmFormDialogBody>
-          <div className="space-y-4">
-            <div>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg crm-progressive-form finance-progressive-form"><CrmFormDialogHeader><DialogTitle>{editingExpenseId ? '编辑客户支出' : '录入客户支出'}</DialogTitle><p className="finance-editor-context"><span className="finance-editor-customer-name" title={customerMap[Number(expenseForm.customer_id)]?.business_name || "请选择客户"}>{customerMap[Number(expenseForm.customer_id)]?.business_name || "请选择客户"}</span><span className="finance-editor-metadata">{expenseForm.currency} · {expenseForm.expense_month || "月份待填写"}</span></p><nav className="crm-form-section-nav" aria-label="财务录入分区"><button type="button" aria-controls="finance-expense-core" onClick={() => scrollFinanceFormSection("finance-expense-core")}>{"支出信息"}</button><button type="button" aria-controls="finance-expense-optional" onClick={() => scrollFinanceFormSection("finance-expense-optional")}>{"补充备注"}</button></nav></CrmFormDialogHeader><CrmFormDialogBody>
+          <div className="finance-progressive-sections"><section id="finance-expense-core" className="crm-form-section finance-core-section"><h3>客户支出信息</h3><div className="finance-section-fields"><div>
               <Label>选择客户 *</Label>
               {customers.length === 0 ? (
                 <p className="text-sm text-amber-600 mt-1">暂无客户数据，请先在「客户管理」中添加客户</p>
@@ -6726,7 +6736,7 @@ function FinanceWorkspace() {
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+<div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <Label>费用类型 *</Label>
@@ -6749,7 +6759,7 @@ function FinanceWorkspace() {
                 <Input type="number" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="0.00" />
               </div>
             </div>
-            <div>
+<div>
               <Label>币种</Label>
               <NativeSelect
                 value={expenseForm.currency}
@@ -6758,12 +6768,10 @@ function FinanceWorkspace() {
               />
               <p className="mt-1 text-xs text-slate-500">客户成本默认按 USD 进入利润；如选择 CNY，会保留记录但不混入 USD 利润。</p>
             </div>
-            <div>
+<div>
               <Label>费用月份</Label>
               <Input type="month" value={expenseForm.expense_month} onChange={e => setExpenseForm({ ...expenseForm, expense_month: e.target.value })} />
-            </div>
-            <div><Label>备注</Label><Textarea value={expenseForm.notes} onChange={e => setExpenseForm({ ...expenseForm, notes: e.target.value })} rows={2} /></div>
-          </div>
+            </div></div></section><FinanceOptionalSection key={"expense-"+(editingExpenseId || "new")} id="finance-expense-optional" title="补充备注" hasContent={Boolean(expenseForm.notes)} initiallyOpen={Boolean(editingExpenseId || expenseForm.notes)}><div><Label>备注</Label><Textarea value={expenseForm.notes} onChange={e => setExpenseForm({ ...expenseForm, notes: e.target.value })} rows={2} /></div></FinanceOptionalSection></div>
           </CrmFormDialogBody><CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowExpenseForm(false); }}>取消</Button>
             <Button onClick={handleSaveExpense} disabled={savingExpense} className="bg-blue-600 hover:bg-blue-700">{savingExpense ? '保存中...' : '保存'}</Button>
@@ -6772,9 +6780,8 @@ function FinanceWorkspace() {
 
       {/* Company Expense Form */}
       <Dialog open={showCompanyExpenseForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowCompanyExpenseForm(v); if (!v) { setEditingCompanyExpenseId(null); setCompanyExpenseForm(emptyCompanyExpenseForm); } }}>
-        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>{editingCompanyExpenseId ? '编辑运营支出' : '录入运营支出'}</DialogTitle><p className="finance-editor-context">公司运营支出 · {companyExpenseForm.currency} · {companyExpenseForm.expense_month || "月份待填写"}</p></CrmFormDialogHeader><CrmFormDialogBody>
-          <div className="space-y-4">
-            <div>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg crm-progressive-form finance-progressive-form"><CrmFormDialogHeader><DialogTitle>{editingCompanyExpenseId ? '编辑运营支出' : '录入运营支出'}</DialogTitle><p className="finance-editor-context"><span className="finance-editor-customer-name" title="公司运营支出">公司运营支出</span><span className="finance-editor-metadata">{companyExpenseForm.currency} · {companyExpenseForm.expense_month || "月份待填写"}</span></p><nav className="crm-form-section-nav" aria-label="财务录入分区"><button type="button" aria-controls="finance-company-expense-core" onClick={() => scrollFinanceFormSection("finance-company-expense-core")}>{"支出信息"}</button><button type="button" aria-controls="finance-company-expense-optional" onClick={() => scrollFinanceFormSection("finance-company-expense-optional")}>{"补充备注"}</button></nav></CrmFormDialogHeader><CrmFormDialogBody>
+          <div className="finance-progressive-sections"><section id="finance-company-expense-core" className="crm-form-section finance-core-section"><h3>运营支出信息</h3><div className="finance-section-fields"><div>
               <Label>支出类型 *</Label>
               <div className="flex items-center gap-2">
                 <NativeSelect
@@ -6789,7 +6796,7 @@ function FinanceWorkspace() {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+<div className="finance-amount-pair grid grid-cols-2 gap-4">
               <div>
                 <Label>金额 *</Label>
                 <Input type="number" value={companyExpenseForm.amount} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, amount: e.target.value })} placeholder="0.00" />
@@ -6803,7 +6810,7 @@ function FinanceWorkspace() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+<div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>支出日期</Label>
                 <Input type="date" value={companyExpenseForm.expense_date} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, expense_date: e.target.value })} />
@@ -6813,11 +6820,9 @@ function FinanceWorkspace() {
                 <Input type="month" value={companyExpenseForm.expense_month} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, expense_month: e.target.value })} />
               </div>
             </div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+<div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
               USD 运营支出会计入美元利润；CNY 支出会单独统计，暂不和美元利润混算。
-            </div>
-            <div><Label>备注</Label><Textarea value={companyExpenseForm.notes} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, notes: e.target.value })} rows={2} /></div>
-          </div>
+            </div></div></section><FinanceOptionalSection key={"company-"+(editingCompanyExpenseId || "new")} id="finance-company-expense-optional" title="补充备注" hasContent={Boolean(companyExpenseForm.notes)} initiallyOpen={Boolean(editingCompanyExpenseId || companyExpenseForm.notes)}><div><Label>备注</Label><Textarea value={companyExpenseForm.notes} onChange={e => setCompanyExpenseForm({ ...companyExpenseForm, notes: e.target.value })} rows={2} /></div></FinanceOptionalSection></div>
           </CrmFormDialogBody><CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (allowFinanceClose()) setShowCompanyExpenseForm(false); }}>取消</Button>
             <Button onClick={handleSaveCompanyExpense} disabled={savingCompanyExpense} className="bg-blue-600 hover:bg-blue-700">{savingCompanyExpense ? '保存中...' : '保存'}</Button>
@@ -6866,18 +6871,16 @@ function FinanceWorkspace() {
       </Dialog>
 
       <Dialog open={!!refundTarget} onOpenChange={(open) => { if (!open && allowFinanceClose()) setRefundTarget(null); }}>
-        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>记录退款</DialogTitle><p className="finance-editor-context">{refundTarget?.customer_name || "客户待确认"} · 收款 #{refundTarget?.id || "—"} · {refundTarget?.currency || "币种待确认"}</p></CrmFormDialogHeader><CrmFormDialogBody>
-          <div className="space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg crm-progressive-form finance-progressive-form"><CrmFormDialogHeader><DialogTitle>记录退款</DialogTitle><p className="finance-editor-context"><span className="finance-editor-customer-name" title={refundTarget?.customer_name || "客户待确认"}>{refundTarget?.customer_name || "客户待确认"}</span><span className="finance-editor-metadata">收款 #{refundTarget?.id || "—"} · {refundTarget?.currency || "币种待确认"}</span></p><nav className="crm-form-section-nav" aria-label="财务录入分区"><button type="button" aria-controls="finance-refund-core" onClick={() => scrollFinanceFormSection("finance-refund-core")}>{"退款信息"}</button><button type="button" aria-controls="finance-refund-optional" onClick={() => scrollFinanceFormSection("finance-refund-optional")}>{"凭据/备注"}</button></nav></CrmFormDialogHeader><CrmFormDialogBody>
+          <div className="finance-progressive-sections"><section id="finance-refund-core" className="crm-form-section finance-core-section"><h3>核对退款信息</h3><div className="finance-section-fields"><div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
               <p className="font-medium text-slate-800">{refundTarget?.customer_name || '-'}</p>
               <p className="mt-1 text-xs text-slate-500">原收款 {formatMoney(toMoneyNumber(refundTarget?.amount_paid), normalizeCurrency(refundTarget?.currency, 'USD'))} · {normalizeCurrency(refundTarget?.currency, 'USD')} · {refundTarget?.payment_date?.slice(0, 10) || '-'}</p>
             </div>
-            <div className="grid grid-cols-2 gap-4"><div><Label>退款金额 *</Label><Input type="number" min="0" step="0.01" value={refundForm.refund_amount} onChange={e => setRefundForm({ ...refundForm, refund_amount: e.target.value })} /></div><div><Label>退款日期 *</Label><Input type="date" value={refundForm.refund_date} onChange={e => setRefundForm({ ...refundForm, refund_date: e.target.value })} /></div></div>
-            <div><Label>Stripe 退款编号</Label><Input value={refundForm.provider_refund_id} onChange={e => setRefundForm({ ...refundForm, provider_refund_id: e.target.value })} placeholder="re_...（可后补）" /></div>
-            <div><Label>Stripe 实际退回的手续费</Label><Input type="number" min="0" step="0.01" value={refundForm.stripe_fee_refunded_amount} onChange={e => setRefundForm({ ...refundForm, stripe_fee_refunded_amount: e.target.value })} /><p className="mt-1 text-xs text-amber-600">当前业务规则是公司承担手续费，Stripe 没有退手续费时保持 0。</p></div>
-            <div><Label>退款原因</Label><Input value={refundForm.reason} onChange={e => setRefundForm({ ...refundForm, reason: e.target.value })} /></div>
-            <div><Label>备注</Label><Textarea value={refundForm.notes} onChange={e => setRefundForm({ ...refundForm, notes: e.target.value })} rows={2} /></div>
-          </div>
+<div className="grid grid-cols-2 gap-4"><div><Label>退款金额 *</Label><Input type="number" min="0" step="0.01" value={refundForm.refund_amount} onChange={e => setRefundForm({ ...refundForm, refund_amount: e.target.value })} /></div><div><Label>退款日期 *</Label><Input type="date" value={refundForm.refund_date} onChange={e => setRefundForm({ ...refundForm, refund_date: e.target.value })} /></div></div>
+<div><Label>Stripe 实际退回的手续费</Label><Input type="number" min="0" step="0.01" value={refundForm.stripe_fee_refunded_amount} onChange={e => setRefundForm({ ...refundForm, stripe_fee_refunded_amount: e.target.value })} /><p className="mt-1 text-xs text-amber-600">当前业务规则是公司承担手续费，Stripe 没有退手续费时保持 0。</p></div>
+<div><Label>退款原因</Label><Input value={refundForm.reason} onChange={e => setRefundForm({ ...refundForm, reason: e.target.value })} /></div></div></section><FinanceOptionalSection id="finance-refund-optional" title="平台凭据与备注" hasContent={Boolean(refundForm.provider_refund_id || refundForm.notes)} initiallyOpen={Boolean(refundForm.provider_refund_id || refundForm.notes)}><div><Label>Stripe 退款编号</Label><Input value={refundForm.provider_refund_id} onChange={e => setRefundForm({ ...refundForm, provider_refund_id: e.target.value })} placeholder="re_...（可后补）" /></div>
+
+<div><Label>备注</Label><Textarea value={refundForm.notes} onChange={e => setRefundForm({ ...refundForm, notes: e.target.value })} rows={2} /></div></FinanceOptionalSection></div>
           </CrmFormDialogBody><CrmFormDialogFooter><Button variant="outline" onClick={() => { if (allowFinanceClose()) setRefundTarget(null); }}>取消</Button><Button onClick={handleSaveRefund} disabled={savingRefund} className="bg-red-600 hover:bg-red-700">{savingRefund ? '保存中...' : '确认退款入账'}</Button></CrmFormDialogFooter></CrmFormDialogContent>
       </Dialog>
 
