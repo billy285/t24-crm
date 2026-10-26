@@ -75,7 +75,7 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
 
     const canReadTasks = canAccess('/tasks');
     const canReadCustomers = canAccess('/customers');
-    const canReadFinance = ['super_admin', 'admin', 'finance'].includes(role);
+    const canReadFinance = canAccess('/finance');
     const isPartner = role === 'sales_partner';
     const isSales = role === 'sales';
     const isSalesManager = role === 'sales_manager';
@@ -253,17 +253,13 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
         tone: !readUsable || renewalAttention > 0 ? 'warning' : 'success',
       });
     } else if (role === 'finance') {
-      const readUsable = fulfilled(subscriptionsResult) && fulfilled(paymentsResult);
-      const riskCount = financeRiskSubscriptions.length + overduePayments.length;
-      appBadges.finance = riskCount;
-      notificationCount = riskCount;
       todayItems.push({
         id: 'finance-today',
-        title: riskCount > 0 ? `${riskCount} 项财务事项需要核对` : !readUsable ? '财务事项数据待更新' : '收款与续费状态正常',
-        description: `${fulfilled(paymentsResult) ? `${overduePayments.length} 笔待收款` : '待收款待更新'} · ${fulfilled(subscriptionsResult) ? `${financeRiskSubscriptions.length} 个续费风险` : '续费风险待更新'}`,
-        path: '/finance?tab=receivables',
-        actionLabel: '查看财务待办',
-        tone: overduePayments.length > 0 ? 'critical' : riskCount > 0 || !readUsable ? 'warning' : 'success',
+        title: '继续财务登记',
+        description: '保存本人草稿、处理退回事项，提交后由老板核对。',
+        path: '/finance-entry',
+        actionLabel: '打开登记台',
+        tone: 'success',
       });
     } else if (role === 'ops' || role === 'design') {
       const readUsable = fulfilled(tasksResult);

@@ -95,7 +95,7 @@ export const roleNavAccess: Record<string, string[]> = {
   sales_partner: ['/partner-portal'],
   ops: ['/operations-workbench', '/customers', '/tasks', '/service-board', '/callbacks'],
   design: ['/', '/tasks'],
-  finance: ['/', '/company-roadmap', '/finance', '/customers', '/settings/deduction'],
+  finance: ['/finance-entry', '/customers', '/service-board'],
 };
 
 export function RoleProvider({ children }: { children: ReactNode }) {
@@ -339,7 +339,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   // Keep this precedence identical to the backend reveal endpoint: the modern
   // sensitive field is authoritative (including false), followed only by the
   // legacy button/security settings and finally checked-in role defaults.
-  const cvp = !role || isDisabled
+  const cvp = !role || isDisabled || sysRole === 'finance'
     ? false
     : hasExplicitPasswordDecision
       ? configuredSensitiveFields?.viewPassword === true

@@ -26,6 +26,26 @@ def test_phone_sales_cannot_update_application_config():
         assert exc_info.value.status_code == 403
 
 
+def test_finance_clerk_cannot_edit_global_business_dictionary():
+    with pytest.raises(HTTPException) as exc_info:
+        ensure_can_update_config("dict_config", type("User", (), {"role": "finance"})())
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_finance_clerk_ignores_stale_company_role_configuration():
+    from services.role_permissions import load_role_permission_config
+    # This must never query or honor an old all-data/payment-edit override.
+    class ForbiddenDatabase:
+        async def execute(self, *_args, **_kwargs):
+            raise AssertionError("finance must use its restricted registration contract")
+    user = type("User", (), {"role": "finance"})()
+    config = await load_role_permission_config(ForbiddenDatabase(), user)
+    assert config["dataScope"] == "self"
+    assert "/finance-entry" in config["pages"] and "/finance" not in config["pages"]
+    assert set(config["buttons"]) == {"finance_draft_create", "finance_draft_edit", "finance_draft_submit"}
+
+
 @pytest.mark.asyncio
 async def test_expense_category_write_endpoints_require_finance_role():
     transport = ASGITransport(app=app)

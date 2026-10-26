@@ -39,6 +39,14 @@ async def load_role_permission_config(db: AsyncSession, user: UserResponse) -> d
     """Load the configured role contract without creating or repairing schema."""
     role = normalized_role(user)
     defaults = DEFAULT_APP_CONFIGS["role_permissions"].get(role) or {}
+    # A registration clerk never inherits legacy company-wide finance buttons.
+    # Customer visibility continues to require the owner's row/module invitation.
+    if role == "finance":
+        return {
+            "pages": list(defaults.get("pages", [])),
+            "buttons": list(defaults.get("buttons", [])),
+            "dataScope": "self",
+        }
     stored_role: dict[str, Any] = {}
     try:
         row = (await db.execute(

@@ -30,6 +30,7 @@ const buttonGroups: { label: string; buttons: ButtonPermission[] }[] = [
   { label: '跟进记录', buttons: ['follow_up_create', 'follow_up_edit', 'follow_up_delete'] },
   { label: '成交管理', buttons: ['deal_create', 'deal_edit'] },
   { label: '财务管理', buttons: ['payment_create', 'payment_edit'] },
+  { label: '财务登记台', buttons: ['finance_draft_create', 'finance_draft_edit', 'finance_draft_submit', 'finance_draft_review'] },
   { label: '任务管理', buttons: ['task_create', 'task_edit', 'task_delete'] },
   { label: '媒体账号', buttons: ['media_account_create', 'media_account_edit', 'media_account_delete'] },
   { label: '员工管理', buttons: ['employee_create', 'employee_edit', 'employee_disable', 'employee_reset_password'] },

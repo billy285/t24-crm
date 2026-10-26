@@ -75,6 +75,7 @@ export const appNavigationItems: AppNavigationItem[] = [
   { path: '/customer-lifecycle', label: '客户生命周期', icon: Activity },
   { path: '/management-decisions', label: '经营健康与决策', icon: BadgeDollarSign },
   { path: '/finance', label: '财务管理', icon: DollarSign },
+  { path: '/finance-entry', label: '财务登记台', icon: ClipboardList },
   { path: '/rmb-profit', label: '人民币利润预估', icon: TrendingUp },
   { path: '/commissions', label: '渠道与分润', icon: BadgeDollarSign },
   { path: '/settings/deduction', label: '月度扣点比例', icon: Settings },
@@ -99,7 +100,7 @@ export const appNavigationSections: AppNavigationSection[] = [
   },
   { label: '客户中心', railLabel: '客户中心', description: '客户关系与成交进展', paths: ['/customers', '/sales', '/deals', '/customer-lifecycle'], icon: Users },
   { label: '任务与交付', railLabel: '任务交付', description: '任务协作、服务与回访', paths: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'], icon: ListTodo },
-  { label: '财务与结算', railLabel: '财务结算', description: '收款、续费与账目管理', paths: ['/finance', '/rmb-profit', '/management-decisions', '/settings/deduction', '/payroll'], icon: DollarSign },
+  { label: '财务与结算', railLabel: '财务结算', description: '收款、续费与账目管理', paths: ['/finance-entry', '/finance', '/rmb-profit', '/management-decisions', '/settings/deduction', '/payroll'], icon: DollarSign },
   { label: '渠道与分润', railLabel: '渠道分润', description: '渠道合作与分润进展', paths: ['/commissions', '/partner-portal'], icon: BadgeDollarSign },
   { label: '组织与设置', railLabel: '组织设置', description: '员工、权限与系统配置', paths: ['/employees', '/settings', '/permissions'], icon: Settings },
 ];
@@ -167,7 +168,7 @@ export const mobileBusinessApps: MobileBusinessAppDefinition[] = [
     label: '财务结算',
     description: '收款、续费与分润',
     icon: DollarSign,
-    paths: ['/finance', '/rmb-profit', '/commissions', '/settings/deduction', '/payroll'],
+    paths: ['/finance-entry', '/finance', '/rmb-profit', '/commissions', '/settings/deduction', '/payroll'],
     tone: 'emerald',
   },
   {
@@ -197,7 +198,7 @@ const mobileRoleAppPaths: Record<string, Partial<Record<MobileBusinessAppKey, st
     sales: ['/sales-workbench', '/merchant-pool', '/sales-leads', '/sales-knowledge'],
     customers: ['/customers', '/deals', '/customer-lifecycle'],
     delivery: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'],
-    finance: ['/finance', '/rmb-profit', '/payroll'],
+    finance: ['/finance-entry', '/finance', '/rmb-profit', '/payroll'],
     organization: ['/employees'],
   },
   admin: {
@@ -227,9 +228,9 @@ const mobileRoleAppPaths: Record<string, Partial<Record<MobileBusinessAppKey, st
     customers: ['/customers'],
   },
   finance: {
-    finance: ['/finance', '/rmb-profit', '/payroll'],
+    finance: ['/finance-entry'],
     customers: ['/customers'],
-    strategy: ['/'],
+    delivery: ['/service-board'],
   },
 };
 
@@ -252,13 +253,14 @@ export function getRoleTodayPath(role?: string | null): string {
   if (role === 'sales_partner') return '/partner-portal';
   if (role === 'sales' || role === 'sales_manager') return '/sales-workbench';
   if (role === 'ops') return '/operations-workbench';
-  if (role === 'admin' || role === 'finance') return '/customers';
+  if (role === 'finance') return '/finance-entry';
+  if (role === 'admin') return '/customers';
   if (role === 'design') return '/tasks?view=mine';
   return '/';
 }
 
 export function getRolePendingPath(role?: string | null): string {
-  if (role === 'finance') return '/customers';
+  if (role === 'finance') return '/finance-entry';
   if (role === 'sales_partner') return '/partner-portal';
   if (role === 'sales' || role === 'sales_manager') return '/sales-leads';
   if (role === 'ops' || role === 'design') return '/tasks?view=mine';
@@ -269,7 +271,8 @@ export function getDesktopLoginPath(role?: string | null): string {
   if (role === 'sales_partner') return '/partner-portal';
   if (role === 'sales' || role === 'sales_manager') return '/sales-leads';
   if (role === 'ops') return '/operations-workbench';
-  if (role === 'admin' || role === 'finance') return '/customers';
+  if (role === 'finance') return '/finance-entry';
+  if (role === 'admin') return '/customers';
   if (role === 'design') return '/tasks?view=mine';
   return '/';
 }

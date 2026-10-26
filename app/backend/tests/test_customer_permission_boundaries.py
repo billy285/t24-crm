@@ -221,14 +221,25 @@ async def test_regular_admin_cannot_configure_financial_project_or_commission_so
 @pytest.mark.asyncio
 async def test_export_checks_all_ids_and_records_server_audit(env):
     db,customer,client,identity=env
-    db.add(active_grant(customer_id=1,employee_id=6,access_level="read_only",can_export=True))
+    db.add(active_grant(customer_id=1,employee_id=5,access_level="read_only",can_export=True))
     await db.commit()
-    identity["user"]=user(6,"finance")
+    identity["user"]=user(5,"admin")
+    assert (await client.post("/api/v1/entities/customers/access/export",json={"ids":[1,999]})).status_code==404
     response=await client.post("/api/v1/entities/customers/access/export",json={"ids":[1]})
     assert response.status_code==200,response.text
     assert "owner secret" not in response.text
     logs=(await db.execute(select(Operation_logs).where(Operation_logs.action_type=="export_data"))).scalars().all()
-    assert len(logs)==1 and logs[0].user_id=="6"
+    assert len(logs)==1 and logs[0].user_id=="5"
+
+
+@pytest.mark.asyncio
+async def test_finance_clerk_cannot_export_customer_database_even_with_old_export_grant(env):
+    db,_,client,identity=env
+    db.add(active_grant(customer_id=1,employee_id=6,access_level="read_only",can_export=True))
+    await db.commit()
+    identity["user"]=user(6,"finance")
+    assert (await client.post("/api/v1/entities/customers/access/export",json={"ids":[1]})).status_code==403
+    assert not (await db.scalars(select(Operation_logs).where(Operation_logs.action_type=="export_data"))).all()
 
 
 def test_new_assignment_defaults_to_read_only_without_finance_or_dangerous_actions():

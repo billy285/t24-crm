@@ -32,6 +32,7 @@ export const PAGE_PATHS = {
   customer_lifecycle: '/customer-lifecycle',
   management_decisions: '/management-decisions',
   finance: '/finance',
+  finance_entry: '/finance-entry',
   rmb_profit: '/rmb-profit',
   commissions: '/commissions',
   partner_portal: '/partner-portal',
@@ -60,6 +61,7 @@ export const pageLabels: Record<string, string> = {
   '/customer-lifecycle': '客户生命周期',
   '/management-decisions': '经营分类与项目',
   '/finance': '财务管理',
+  '/finance-entry': '财务登记台',
   '/rmb-profit': '人民币利润预估',
   '/commissions': '渠道与分润',
   '/partner-portal': '我的客户与分润',
@@ -81,6 +83,7 @@ export type ButtonPermission =
   | 'employee_create' | 'employee_edit' | 'employee_disable' | 'employee_reset_password'
   | 'deal_create' | 'deal_edit'
   | 'payment_create' | 'payment_edit'
+  | 'finance_draft_create' | 'finance_draft_edit' | 'finance_draft_submit' | 'finance_draft_review'
   | 'task_create' | 'task_edit' | 'task_delete'
   | 'follow_up_create' | 'follow_up_edit' | 'follow_up_delete'
   | 'media_account_create' | 'media_account_edit' | 'media_account_delete'
@@ -103,6 +106,10 @@ export const buttonPermissionLabels: Record<ButtonPermission, string> = {
   deal_edit: '编辑成交',
   payment_create: '录入收款',
   payment_edit: '编辑收款',
+  finance_draft_create: '新增财务草稿',
+  finance_draft_edit: '编辑本人财务草稿',
+  finance_draft_submit: '提交财务草稿核对',
+  finance_draft_review: '核对财务登记',
   task_create: '新增任务',
   task_edit: '编辑任务',
   task_delete: '删除任务',
@@ -140,7 +147,7 @@ export interface RolePermissionConfig {
 // 默认角色权限配置
 export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = {
   super_admin: {
-    pages: ['/', '/company-roadmap', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/operations-workbench', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/rmb-profit', '/commissions', '/partner-portal', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/settings/deduction', '/permissions'],
+    pages: ['/', '/company-roadmap', '/merchant-pool', '/sales-leads', '/sales-workbench', '/sales-knowledge', '/operations-workbench', '/customers', '/sales', '/deals', '/customer-lifecycle', '/management-decisions', '/finance', '/finance-entry', '/rmb-profit', '/commissions', '/partner-portal', '/payroll', '/tasks', '/service-board', '/callbacks', '/employees', '/settings', '/settings/deduction', '/permissions'],
     buttons: [
       'customer_create', 'customer_edit', 'customer_delete', 'customer_export',
       'customer_assign', 'customer_transfer',
@@ -148,6 +155,7 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
       'employee_create', 'employee_edit', 'employee_disable', 'employee_reset_password',
       'deal_create', 'deal_edit',
       'payment_create', 'payment_edit',
+      'finance_draft_review',
       'task_create', 'task_edit', 'task_delete',
       'follow_up_create', 'follow_up_edit', 'follow_up_delete',
       'media_account_create', 'media_account_edit', 'media_account_delete',
@@ -211,13 +219,12 @@ export const defaultRolePermissions: Record<SystemRole, RolePermissionConfig> = 
     sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
   },
   finance: {
-    pages: ['/', '/company-roadmap', '/finance', '/rmb-profit', '/commissions', '/payroll', '/customers', '/customer-lifecycle', '/management-decisions', '/service-board', '/settings/deduction'],
+    pages: ['/finance-entry', '/customers', '/service-board'],
     buttons: [
-      'payment_create', 'payment_edit',
-      'customer_export',
+      'finance_draft_create', 'finance_draft_edit', 'finance_draft_submit',
     ],
-    dataScope: 'all',
-    sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: true },
+    dataScope: 'self',
+    sensitiveFields: { viewPassword: false, copyPassword: false, viewFinance: false },
   },
 };
 
@@ -228,7 +235,7 @@ const OWNER_COMPANY_PAGES = ['/', '/finance', '/rmb-profit', '/commissions', '/p
 const PERMISSIONS_STORAGE_KEY = 'crm_role_permissions';
 const PERMISSIONS_VERSION_KEY = 'crm_role_permissions_version';
 // Bump this version whenever default permissions change (e.g., new pages added)
-const CURRENT_PERMISSIONS_VERSION = 16;
+const CURRENT_PERMISSIONS_VERSION = 17;
 
 function uniq<T>(items: T[]): T[] {
   return Array.from(new Set(items));
@@ -278,6 +285,13 @@ export function normalizeRolePermissions(
     normalized[role].pages = normalized[role].pages.filter(path => !OWNER_COMPANY_PAGES.includes(path));
     if (role !== 'sales_partner' && !normalized[role].pages.includes('/customers')) normalized[role].pages.push('/customers');
   }
+  // A registration account cannot inherit the old company-ledger editor flags.
+  normalized.finance.pages = [...defaultRolePermissions.finance.pages];
+  normalized.finance.buttons = [...defaultRolePermissions.finance.buttons];
+  normalized.finance.dataScope = 'self';
+  normalized.finance.sensitiveFields = { viewPassword: false, copyPassword: false, viewFinance: false };
+  if (!normalized.super_admin.pages.includes('/finance-entry')) normalized.super_admin.pages.push('/finance-entry');
+  if (!normalized.super_admin.buttons.includes('finance_draft_review')) normalized.super_admin.buttons.push('finance_draft_review');
   for (const role of ['super_admin'] as SystemRole[]) {
     if (!normalized[role].pages.includes('/settings/deduction')) {
       normalized[role].pages.push('/settings/deduction');
@@ -383,6 +397,7 @@ export function getPermissions(role: string): RolePermissionConfig {
 
 export function canAccessPage(role: string, path: string): boolean {
   if (!role) return false;
+  if (path === '/finance-entry') return ['super_admin', 'finance'].includes(mapToSystemRole(role));
   if (OWNER_COMPANY_PAGES.includes(path)) return mapToSystemRole(role) === 'super_admin';
   // /apps and /more are authenticated navigation shells. It never grants access to a
   // business page; every visible app and destination is filtered separately.

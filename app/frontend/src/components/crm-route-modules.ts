@@ -6,6 +6,7 @@ const crmRouteImporters = {
   '/sales': () => import('../pages/Sales'),
   '/deals': () => import('../pages/Deals'),
   '/finance': () => import('../pages/Finance'),
+  '/finance-entry': () => import('../pages/FinanceEntry'),
   '/rmb-profit': () => import('../pages/RmbProfitEstimate'),
   '/tasks': () => import('../pages/Tasks'),
   '/employees': () => import('../pages/Employees'),

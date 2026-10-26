@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(prefix="/api/v1/app-config", tags=["app-config"])
 
 ADMIN_CONFIG_ROLES = {"admin", "super_admin"}
-BUSINESS_DICT_CONFIG_ROLES = {"admin", "super_admin", "ops", "operations", "finance"}
+BUSINESS_DICT_CONFIG_ROLES = {"admin", "super_admin", "ops", "operations"}
 SENSITIVE_CONFIG_KEYS = {"payroll_sheets_v1"}
 
 
@@ -33,6 +33,7 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
                 "/sales",
                 "/deals",
                 "/finance",
+                "/finance-entry",
                 "/rmb-profit",
                 "/partner-portal",
                 "/tasks",
@@ -164,10 +165,10 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
             "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": False},
         },
         "finance": {
-            "pages": ["/", "/finance", "/rmb-profit", "/customers", "/service-board", "/settings/deduction"],
-            "buttons": ["payment_create", "payment_edit", "customer_export"],
-            "dataScope": "all",
-            "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": True},
+            "pages": ["/", "/finance-entry", "/customers", "/service-board"],
+            "buttons": ["finance_draft_create", "finance_draft_edit", "finance_draft_submit"],
+            "dataScope": "self",
+            "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": False},
         },
     },
     "customer_code_settings": {

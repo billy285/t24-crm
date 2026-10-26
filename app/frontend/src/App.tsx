@@ -18,6 +18,7 @@ const Customers = lazy(() => loadCrmRoute('/customers'));
 const Sales = lazy(() => loadCrmRoute('/sales'));
 const Deals = lazy(() => loadCrmRoute('/deals'));
 const Finance = lazy(() => loadCrmRoute('/finance'));
+const FinanceEntry = lazy(() => loadCrmRoute('/finance-entry'));
 const RmbProfitEstimate = lazy(() => loadCrmRoute('/rmb-profit'));
 const Tasks = lazy(() => loadCrmRoute('/tasks'));
 const Employees = lazy(() => loadCrmRoute('/employees'));
@@ -108,6 +109,7 @@ const router = createBrowserRouter(createRoutesFromElements(
               <Route path="/customer-lifecycle" element={<CustomerLifecycle />} />
               <Route path="/management-decisions" element={<ManagementDecisions />} />
               <Route path="/finance" element={<Finance />} />
+              <Route path="/finance-entry" element={<FinanceEntry />} />
               <Route path="/rmb-profit" element={<RmbProfitEstimate />} />
               <Route path="/commissions" element={<Commissions />} />
               <Route path="/partner-portal" element={<PartnerPortal />} />
