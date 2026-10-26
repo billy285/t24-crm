@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 import fs from 'node:fs';
@@ -22,6 +22,47 @@ const versionAsset = {
   generateBundle() { this.emitFile({ type: 'asset', fileName: 'app-version.json', source: JSON.stringify({ version: buildVersion }) }); },
   configureServer(server: any) { server.middlewares.use('/app-version.json', (_request: any, response: any) => { response.setHeader('Content-Type', 'application/json'); response.setHeader('Cache-Control', 'no-store'); response.end(JSON.stringify({ version: buildVersion })); }); },
 };
+let resolvedAssetBase = '/';
+const crmAppStaticPreload: Plugin = {
+  name: 't24-crm-app-static-preload',
+  apply: 'build',
+  configResolved(config) { resolvedAssetBase = config.base; },
+  transformIndexHtml: {
+    order: 'post',
+    handler(html, context) {
+      const bundle = context.bundle;
+      if (!bundle) return [];
+      const appFacade = path.resolve(__dirname, 'src/App.tsx').replace(/\\/g, '/');
+      const appChunks = Object.values(bundle).filter(item => item.type === 'chunk' && (
+        item.facadeModuleId?.replace(/\\/g, '/') === appFacade
+        // Rollup can omit the facade when this dynamic entry shares exports.
+        // Match the exact source module, never a chunk name or filename prefix.
+        || !item.facadeModuleId && item.isDynamicEntry && Object.keys(item.modules).some(id => id.replace(/\\/g, '/') === appFacade)
+      ));
+      const appChunk = appChunks[0];
+      if (appChunks.length !== 1 || appChunk.type !== 'chunk') throw new Error('CRM App chunk is missing or ambiguous in this build');
+      const staticChunks = new Set<string>();
+      const visit = (fileName: string) => {
+        if (staticChunks.has(fileName)) return;
+        const chunk = bundle[fileName];
+        if (!chunk || chunk.type !== 'chunk') return;
+        staticChunks.add(fileName);
+        // Dynamic imports include CRM/private/auth pages. Only the App's
+        // static code graph is needed during runtime-config retrieval.
+        chunk.imports.forEach(visit);
+      };
+      visit(appChunk.fileName);
+      const presentAssets = new Set([...html.matchAll(/\b(?:src|href)=["']([^"']+)["']/g)].map(match => match[1]));
+      const base = !resolvedAssetBase || resolvedAssetBase.endsWith('/') ? resolvedAssetBase : resolvedAssetBase + '/';
+      return [...staticChunks].flatMap(fileName => {
+        const href = base + fileName;
+        if (presentAssets.has(href)) return [];
+        presentAssets.add(href);
+        return [{ tag: 'link', attrs: { rel: 'modulepreload', crossorigin: '', href }, injectTo: 'head' as const }];
+      });
+    },
+  },
+};
 import { viteSourceLocator } from '@metagptx/vite-plugin-source-locator';
 import { atoms } from '@metagptx/web-sdk/plugins';
 
@@ -33,6 +74,7 @@ export default defineConfig(({ mode }) => ({
   define: { __T24_BUILD_VERSION__: JSON.stringify(buildVersion) },
   plugins: [
     versionAsset,
+    crmAppStaticPreload,
     viteSourceLocator({
       prefix: 'mgx', // 前缀用于标识源代码位置，不能修改
     }),

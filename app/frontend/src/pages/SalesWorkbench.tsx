@@ -3,6 +3,7 @@ import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDi
 import { formatBusinessDateTimeInput, parseBusinessDateTimeInput } from '@/lib/business-date';
 import { formatPhoneNumber, getPhoneCopyValue, phoneSearchMatches } from '@/lib/phone-format';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, ChevronDown, ChevronRight, Clipboard, MoreHorizontal, PencilLine } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -189,6 +190,7 @@ export default function SalesWorkbench() {
 }
 
 function SalesWorkspace() {
+  const navigate = useNavigate();
   const { role, isAdmin, employee } = useRole();
   const isMobile = useIsMobile();
   const [dossierId, setDossierId] = useState<number | null>(null);
@@ -690,7 +692,7 @@ function SalesWorkspace() {
     {canManage ? <label className="sc-date-control"><span className={isMobile ? '' : 'sr-only'}>当前销售</span><NativeSelect value={teamView ? '' : selectedSalesId} onChange={value => { if (value) openSalesTasks(Number(value)); else setTeamView(true); }} disabled={saving || !assigneesLoaded || Boolean(assigneeLoadError)} options={[{ value: '', label: teamView ? '全部销售' : '选择销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /></label> : <span className="sw-salesperson">{employee?.name}</span>}
   </>;
   const managerModes = canManage && <nav className="sw-mode-switch" aria-label="主管任务视角"><button type="button" aria-pressed={teamView} disabled={saving} onClick={() => setTeamView(true)}>团队</button><button type="button" aria-pressed={!teamView} disabled={saving} onClick={() => setTeamView(false)}>客户任务</button></nav>;
-  const workbenchMenu = <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多工作台功能"><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu">{!teamView && <DropdownMenuItem disabled={preparing || saving || date !== today() || Boolean(loadError) || (canManage && !selectedSalesId)} onSelect={() => void prepareWorkbench()}>生成今日任务</DropdownMenuItem>}<DropdownMenuItem onSelect={() => window.location.assign('/sales-leads?view=intelligence')}>经营中心</DropdownMenuItem>{!teamView && <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>拨号与任务设置</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>;
+  const workbenchMenu = <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多工作台功能"><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu">{!teamView && <DropdownMenuItem disabled={preparing || saving || date !== today() || Boolean(loadError) || (canManage && !selectedSalesId)} onSelect={() => void prepareWorkbench()}>生成今日任务</DropdownMenuItem>}<DropdownMenuItem onSelect={() => navigate('/sales-leads?view=intelligence')}>经营中心</DropdownMenuItem>{!teamView && <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>拨号与任务设置</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>;
   const currentSalesName = canManage ? teamView ? isAdmin ? '全部销售' : '直属销售' : assignees.find(item => String(item.id) === selectedSalesId)?.name || '选择销售' : employee?.name || '当前销售';
   const viewingScope = teamView
     ? isAdmin ? '全部销售的团队任务' : '直属销售的团队任务'
@@ -699,7 +701,7 @@ function SalesWorkspace() {
   return <div className="sales-center-ui sc-workbench calm-sales-page calm-sales-workbench sw-refined app-page crm-sales-compact" data-testid={isMobile ? 'sales-workbench-mobile' : 'sales-workbench-desktop'}>
     <div className="sw-workspace-heading">
     <header className="sc-page-heading">
-      <div>{safeReturn && <Button variant="ghost" size="sm" onClick={() => window.location.assign(safeReturn)}>返回联系进展</Button>}<h1>{teamView ? date === today() ? '团队今日任务' : '团队任务' : date === today() ? '今日拨打' : '拨打记录'}</h1></div>
+      <div>{safeReturn && <Button variant="ghost" size="sm" onClick={() => navigate(safeReturn)}>返回联系进展</Button>}<h1>{teamView ? date === today() ? '团队今日任务' : '团队任务' : date === today() ? '今日拨打' : '拨打记录'}</h1></div>
       {isMobile ? <div className="sw-phone-scope-controls"><Sheet open={scopeOpen} onOpenChange={setScopeOpen}><SheetTrigger asChild><Button type="button" variant="ghost" className="sw-scope-trigger" aria-label="调整任务范围" disabled={saving}><span><time dateTime={date}>{date}</time><strong>{currentSalesName}</strong></span><ChevronDown size={14} /></Button></SheetTrigger><SheetContent side="bottom" className="sales-center-ui sw-mobile-sheet sw-scope-sheet"><SheetHeader><SheetTitle>任务范围</SheetTitle><SheetDescription className="sr-only">选择北京时间日期及销售人员，不会自动生成或完成任务。</SheetDescription></SheetHeader><div className="sw-phone-scope-fields">{scopeControls}</div>{managerModes}{!teamView && <div className="sw-scope-review"><span>有意向 <strong>{workbench?.performance.interested ?? '—'}</strong></span><span>已预约 <strong>{workbench?.performance.appointments ?? '—'}</strong></span><span>逾期 <strong>{overdueFollowUpCount}</strong></span></div>}<Button type="button" onClick={() => setScopeOpen(false)}>返回工作台</Button></SheetContent></Sheet>{workbenchMenu}</div> : <div className="sw-scope-controls">{scopeControls}{workbenchMenu}</div>}
     </header>
     <div className="sw-view-context" aria-label="当前查看范围">
@@ -712,7 +714,7 @@ function SalesWorkspace() {
       {!isMobile && <details className="sw-review"><summary>今日复盘</summary><div><span>有意向 <strong>{workbench?.performance.interested ?? '—'}</strong></span><span>已预约 <strong>{workbench?.performance.appointments ?? '—'}</strong></span><span>逾期 <strong>{overdueFollowUpCount}</strong></span></div></details>}
     </section>}
     </div>
-    {!teamView && savedReceipt && <section className="sw-save-receipt" role="status" aria-label="上次保存结果"><CheckCircle2 size={17} /><span>已保存 · <strong>{savedReceipt.name}</strong>{savedReceipt.nextFollowUpAt && <time> · 回访 {formatDate(savedReceipt.nextFollowUpAt)}</time>}</span>{savedReceipt.action && <Button variant="outline" onClick={() => savedReceipt.action === 'quote' ? setDealLeadId(savedReceipt.leadId) : window.location.assign(`/sales-leads?lead_id=${savedReceipt.leadId}&action=followup&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>{savedReceipt.action === 'quote' ? '登记成交' : '查看跟进'}</Button>}</section>}
+    {!teamView && savedReceipt && <section className="sw-save-receipt" role="status" aria-label="上次保存结果"><CheckCircle2 size={17} /><span>已保存 · <strong>{savedReceipt.name}</strong>{savedReceipt.nextFollowUpAt && <time> · 回访 {formatDate(savedReceipt.nextFollowUpAt)}</time>}</span>{savedReceipt.action && <Button variant="outline" onClick={() => savedReceipt.action === 'quote' ? setDealLeadId(savedReceipt.leadId) : navigate(`/sales-leads?lead_id=${savedReceipt.leadId}&action=followup&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>{savedReceipt.action === 'quote' ? '登记成交' : '查看跟进'}</Button>}</section>}
     {assigneeLoadError && <div className="sales-v3-alert" role="alert">销售人员暂时无法读取<Button size="sm" variant="outline" onClick={() => void loadAssignees()}>重新加载</Button></div>}
     {!teamView && auxiliaryErrors.length > 0 && <div className="sales-v3-alert" role="status">{auxiliaryErrors.join('、')}暂时无法更新，已保留最近读取的数据。<Button size="sm" variant="outline" onClick={() => void Promise.all([loadRecoveryAlerts(), loadPersonalPerformance(), loadRingCentral()])}>重试更新</Button></div>}
     {!teamView && loadError && <div className="sales-v3-alert" role="alert">今日任务暂时无法更新{workbench ? '，保留上次读取的任务' : ''}<Button size="sm" variant="outline" onClick={() => void loadWorkbench()}>重新加载</Button></div>}

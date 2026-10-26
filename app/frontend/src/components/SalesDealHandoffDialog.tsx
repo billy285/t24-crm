@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, ChevronRight, ExternalLink, LockKeyhole } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import CustomerCombobox from '@/components/CustomerCombobox';
@@ -18,6 +19,7 @@ const newForm = () => ({ plan_id: '', selected_platforms: [] as string[], servic
 const quoteStatuses: Record<string, string> = { approved: '历史已批准', submitted: '历史待审批', rejected: '历史已驳回', superseded: '历史已失效' };
 
 export default function SalesDealHandoffDialog({ leadId, onClose, onRegistered, onOpenDossier }: Props) {
+  const navigate = useNavigate();
   const [state, setState] = useState<SalesDealLeadState | null>(null);
   const [catalog, setCatalog] = useState<SalesDealCatalog | null>(null);
   const [form, setForm] = useState(newForm);
@@ -163,7 +165,7 @@ export default function SalesDealHandoffDialog({ leadId, onClose, onRegistered, 
           <SalesDealPaymentLink item={{ ...registered, business_name: state?.lead.business_name }}/>
           {registered.operations_access_status !== 'authorized' && <p className="sdh-note sdh-warning mt-4">指定运营负责人不会自动开放客户资料。请老板在客户中心邀请并授予服务交付权限后，由负责人本人确认接收。</p>}
           <p className="mt-4 text-xs leading-5 text-slate-500">此条售前线索已完成登记；后续新增合作项目请在客户中心处理，避免重复转入。</p>
-          <div className="sdh-receipt-actions">{registered.can_view_customer === true && <Button type="button" variant="outline" onClick={() => window.location.assign(`/customers?detail=${registered.customer_id}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>查看客户与交接<ChevronRight size={14}/></Button>}{registered.can_view_customer !== true && <span className="sdh-note">客户资料待老板邀请；你仍可查看本次登记回执。</span>}</div>
+          <div className="sdh-receipt-actions">{registered.can_view_customer === true && <Button type="button" variant="outline" onClick={() => navigate(`/customers?detail=${registered.customer_id}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>查看客户与交接<ChevronRight size={14}/></Button>}{registered.can_view_customer !== true && <span className="sdh-note">客户资料待老板邀请；你仍可查看本次登记回执。</span>}</div>
         </> : ready && !editable ? <div className="sdh-note sdh-warning" role="status">{state?.read_only_reason || '当前账号不能登记此商家成交，请联系老板核对归属或客户关联。'}{onOpenDossier && <div className="mt-2"><Button type="button" variant="outline" size="sm" onClick={openDossier}>查看并完善商家档案</Button></div>}</div> : ready && editable ? <fieldset disabled={saving} className="min-w-0">
           {step === 0 && <div className="sdh-grid">
             {catalogError && <div className="sdh-note sdh-warning sdh-wide" role="alert">{catalogError}<Button type="button" size="sm" variant="ghost" onClick={() => void readCatalog()}>重新读取统一套餐</Button></div>}

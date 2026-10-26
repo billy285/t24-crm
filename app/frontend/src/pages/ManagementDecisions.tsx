@@ -10,7 +10,7 @@ import { getSafeInternalPath, getReturnLabel } from '@/lib/navigation-state';
 import { useNavigate } from 'react-router-dom';
 import './workflow-experience.css';
 import './admin-workspace.css';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Activity, AlertTriangle, ArrowLeft, BarChart3, BriefcaseBusiness, CheckCircle2, Clock3,
@@ -406,6 +406,10 @@ export default function ManagementDecisions() {
   const [rateDrafts, setRateDrafts] = useState<Record<string, { rate: string; source: string }>>({});
   const [rateSavingMonth, setRateSavingMonth] = useState('');
   const [growthLoading, setGrowthLoading] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [growthError, setGrowthError] = useState<string | null>(null);
+  const readSequence = useRef(0);
+  const growthSequence = useRef(0);
   const [profitCloseLoading, setProfitCloseLoading] = useState('');
   const [reopenProfitMonth, setReopenProfitMonth] = useState('');
   const [reopenReason, setReopenReason] = useState('');
@@ -454,7 +458,11 @@ export default function ManagementDecisions() {
 
 
   const loadData = async () => {
+    const request = ++readSequence.current;
+    const growthRequest = ++growthSequence.current;
     setLoading(true);
+    setReadError(null);
+    if (isAdmin) { setGrowthLoading(true); setGrowthError(null); }
     try {
       const [response, automationResponse, growthResponse] = await Promise.all([
         client.apiCall.invoke({
@@ -470,21 +478,27 @@ export default function ManagementDecisions() {
           method: 'GET', options: authOptions(),
         }) : Promise.resolve({ data: null }),
       ]);
+      if (request !== readSequence.current) return;
       setData(response.data);
       setAutomation(automationResponse.data);
-      setGrowth(growthResponse.data);
       setViewLoadedAt(new Date().toISOString());
-      if (growthResponse.data) setGrowthLoadedAt(new Date().toISOString());
-      if (growthResponse.data?.formal_monthly_profit?.rows) {
-        setRateDrafts(Object.fromEntries(growthResponse.data.formal_monthly_profit.rows.map((row: any) => [row.year_month, {
-          rate: row.exchange_rate == null ? '' : String(row.exchange_rate),
-          source: row.exchange_rate_source || '当月平均汇率（手动核对）',
-        }])));
+      if (growthRequest === growthSequence.current) {
+        setGrowth(growthResponse.data);
+        if (growthResponse.data) setGrowthLoadedAt(new Date().toISOString());
+        if (growthResponse.data?.formal_monthly_profit?.rows) {
+          setRateDrafts(Object.fromEntries(growthResponse.data.formal_monthly_profit.rows.map((row: any) => [row.year_month, {
+            rate: row.exchange_rate == null ? '' : String(row.exchange_rate),
+            source: row.exchange_rate_source || '当月平均汇率（手动核对）',
+          }])));
+        }
       }
     } catch (error: any) {
+      if (request !== readSequence.current) return;
+      setReadError(errorMessage(error, '经营分类数据加载失败'));
       toast.error(errorMessage(error, '经营分类数据加载失败'));
     } finally {
-      setLoading(false);
+      if (request === readSequence.current) setLoading(false);
+      if (growthRequest === growthSequence.current) setGrowthLoading(false);
     }
   };
 
@@ -494,12 +508,15 @@ export default function ManagementDecisions() {
       toast.error('利润开始日期不能晚于结束日期');
       return;
     }
+    const request = ++growthSequence.current;
     setGrowthLoading(true);
+    setGrowthError(null);
     try {
       const response = await client.apiCall.invoke({
         url: `/api/v1/management-decisions/growth-dashboard?start_date=${rangeStart}&end_date=${rangeEnd}&project_capacity_target=${projectCapacityTarget}`,
         method: 'GET', options: authOptions(),
       });
+      if (request !== growthSequence.current) return;
       setGrowth(response.data);
       setGrowthLoadedAt(new Date().toISOString());
       if (response.data?.formal_monthly_profit?.rows) {
@@ -509,13 +526,15 @@ export default function ManagementDecisions() {
         }])));
       }
     } catch (error: any) {
+      if (request !== growthSequence.current) return;
+      setGrowthError(errorMessage(error, '人民币利润数据加载失败'));
       toast.error(errorMessage(error, '人民币利润数据加载失败'));
     } finally {
-      setGrowthLoading(false);
+      if (request === growthSequence.current) setGrowthLoading(false);
     }
   };
 
-  useEffect(() => { void loadData(); }, []);
+  useEffect(() => { void loadData(); return () => { readSequence.current += 1; growthSequence.current += 1; }; }, []);
 
   useEffect(() => {
     const requestedSection = querySectionValues[searchParams.get('section') || ''];
@@ -869,6 +888,7 @@ export default function ManagementDecisions() {
           <Button variant="outline" onClick={() => void loadData()} disabled={loading}><RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />{loading ? '更新中' : '刷新'}</Button>
         </div>
       </div>
+      {readError && <div className="mgt-read-notice" role="alert"><div><strong>经营数据暂未读取成功</strong><p>{readError}{viewLoadedAt ? '，当前保留上次读取的内容。' : '，请重试读取。'}</p></div><Button variant="outline" disabled={loading} onClick={() => void loadData()}>重新读取经营数据</Button></div>}
       <div id="management-tools" className="mgt-tools-panel" hidden={!toolsOpen}>
         <div className="mgt-tools-links">
           <Button asChild variant="outline" size="sm"><Link to="/customer-lifecycle">客户生命周期</Link></Button>
@@ -982,7 +1002,9 @@ export default function ManagementDecisions() {
       />}
 
       {section === 'insights' && <div className="space-y-5">
-        {!growth && !loading && <Card className="border-amber-200 bg-amber-50"><CardContent className="p-6 text-sm text-amber-800">当前账号没有老板经营分析权限，或数据尚未加载。</CardContent></Card>}
+        {growthError && <div className="mgt-read-notice" role="alert"><div><strong>经营分析暂未读取成功</strong><p>{growthError}{growth ? '，当前结果仍为上次读取的期间。' : '，尚无可展示结果。'}</p></div><Button variant="outline" disabled={growthLoading} onClick={() => void loadGrowth()}>重新读取分析</Button></div>}
+        {!growth && growthLoading && <p className="mgt-empty" role="status">正在读取经营分析…</p>}
+        {!growth && !loading && !growthLoading && !growthError && !readError && <Card className="border-amber-200 bg-amber-50"><CardContent className="p-6 text-sm text-amber-800">{isAdmin ? '当前尚无已读取的经营分析，请选择期间后重新读取。' : '当前账号没有老板经营分析权限。'}</CardContent></Card>}
         {growth && <>
           <div className="mgt-analysis-toolbar">
             <div className="mgt-inbox-tabs" aria-label="经营分析内容">{[['economics', '项目效益'], ['health', '客户健康'], ['capacity', '团队产能']].map(([value, label]) => <button type="button" key={value} aria-pressed={analysisView === value} onClick={() => changeAnalysisView(value)}>{label}</button>)}</div>

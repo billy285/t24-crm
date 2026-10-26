@@ -163,6 +163,14 @@
 .customer-lifecycle-timeline-dialog .t24-crm-form-dialog-body { overscroll-behavior: contain; }
 .dc-service-detail .dc-service-detail-heading h2 { min-width: 0; overflow-wrap: anywhere; }
 .dc-service-detail .dc-service-detail-actions > button { gap: 4px; }
+.customer-detail-page .customer-contact-record-person { min-width: 0; flex: 1; }
+.customer-detail-page .customer-contact-record-person > div:last-child { min-width: 0; }
+.customer-detail-page .customer-contact-record-person > div:first-child { flex-shrink: 0; }
+.customer-detail-page .customer-contact-record-meta { flex-wrap: wrap; gap: 4px 12px; overflow-wrap: anywhere; line-height: 20px; }
+.customer-detail-page .customer-contact-record-person span.font-medium { overflow-wrap: anywhere; }
+.customer-detail-page .customer-followup-record-heading { flex-wrap: wrap; line-height: 20px; }
+.customer-detail-page .customer-followup-record > p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.customer-detail-page .customer-detail-inline-form { scroll-margin-top: 100px; }
 
 @media (min-width: 768px) {
   .customer-detail-page .customer-detail-finance-ledger { width: 100%; min-width: 0; table-layout: fixed; font-size: 12px; line-height: 19px; }
@@ -205,6 +213,17 @@
 }
 
 @media (max-width: 767px) {
+  .customer-detail-page :is(.customer-detail-contacts-card, .customer-detail-followups-card) > div { padding: 16px; }
+  .customer-detail-page :is(.customer-detail-contacts-card, .customer-detail-followups-card) > div > div:first-child { gap: 12px; align-items: flex-start; }
+  .customer-detail-page .customer-detail-inline-form { padding: 14px; }
+  .customer-detail-page .customer-detail-inline-form :is(input:not([type="range"]):not([type="checkbox"]), select, textarea) { min-height: 44px; font-size: 16px; max-width: 100%; }
+  .customer-detail-page .customer-detail-inline-form-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding-top: 8px; }
+  .customer-detail-page .customer-detail-inline-form-actions button { width: 100%; min-height: 44px; }
+  .customer-detail-page .customer-contact-record-heading { flex-wrap: wrap; gap: 8px; }
+  .customer-detail-page .customer-contact-record-person { flex-basis: 100%; align-items: flex-start; }
+  .customer-detail-page .customer-contact-record-person > div:last-child > div:first-child { flex-wrap: wrap; gap: 5px 8px; }
+  .customer-detail-page .customer-contact-record-heading > div:last-child { margin-left: auto; }
+  .customer-detail-page .customer-followup-record-heading > div:last-child { margin-left: auto; }
   .mobile-app-layout .customer-detail-page .customer-detail-hero > div:first-child > button { color: #334155; background: #fff; border: 1px solid #dbe3ed; border-radius: 12px; }
   .customer-detail-page .customer-detail-name { flex-basis: 100%; font-size: 20px; line-height: 28px; }
   .customer-detail-page .customer-detail-hero > div:first-child > div > p:last-child { line-height: 19px; overflow-wrap: anywhere; }

@@ -40,6 +40,7 @@ import { getFinanceNavigationItem } from '@/lib/finance-navigation';
 import SalesCenterNavigation, { salesWorkspacePaths } from '@/components/SalesCenterNavigation';
 import PrivateWorkspaceEntry from './PrivateWorkspaceEntry';
 import { getAuthSessionEpoch } from '@/lib/auth-storage';
+import { prefetchCrmRoute } from './crm-route-modules';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -66,6 +67,13 @@ export default function Layout({ children }: LayoutProps) {
   const navigationCollapsed = isSalesWorkspace || isFocusedWorkspace ? !expandedWorkRoutes[navigationScope] : sidebarCollapsed;
   const salesSecondaryOverlayOpen = isSalesWorkspace && salesSecondaryFloats && !navigationCollapsed;
   const { employee, role, loading, authError, retryAuth, isLoggedIn, isDisabled, logout, canAccess } = useRole();
+
+  const prefetchAllowedLink = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return;
+    const link = target.closest<HTMLAnchorElement>('a[href]');
+    if (!link || link.hasAttribute('download') || link.getAttribute('aria-disabled') === 'true') return;
+    void prefetchCrmRoute(link.getAttribute('href') || '', window.location.href, canAccess);
+  };
 
   useEffect(() => {
     const query = window.matchMedia('(min-width: 1024px) and (max-width: 1359px)');
@@ -290,7 +298,7 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div data-crm-polish="20261026" className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}`} onKeyDown={isSalesWorkspace ? event => {
+    <div data-crm-polish="20261026" onPointerOver={event => prefetchAllowedLink(event.target)} onFocusCapture={event => prefetchAllowedLink(event.target)} className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}`} onKeyDown={isSalesWorkspace ? event => {
       if (navigationCollapsed || !window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches) return;
       if (event.key === 'Escape') {
         event.preventDefault();

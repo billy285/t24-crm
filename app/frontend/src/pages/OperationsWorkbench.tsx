@@ -102,6 +102,8 @@ export default function OperationsWorkbench() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
+  const requestedView = new URLSearchParams(location.search).get('view');
+  const followThroughView = requestedView === 'kickoffs' || requestedView === 'renewals' ? requestedView : 'today';
   const { role, employee, isAdmin, hasPermission } = useRole();
   const canCreateNextTask = isAdmin || hasPermission('task_create');
   const [tasks, setTasks] = useState<WorkbenchTask[]>([]);
@@ -151,8 +153,11 @@ export default function OperationsWorkbench() {
     setLoading(false);
   };
 
-  useEffect(() => { void loadData(); return () => { loadSequence.current += 1; }; }, []);
-  useAutoRefresh(loadData, { intervalMs: 30000, enabled: !completeTarget });
+  useEffect(() => {
+    if (followThroughView === 'today') { setLoading(true); void loadData(); }
+    return () => { loadSequence.current += 1; };
+  }, [followThroughView]);
+  useAutoRefresh(loadData, { intervalMs: 30000, enabled: followThroughView === 'today' && !completeTarget });
 
   const customerMap = useMemo(
     () => Object.fromEntries(customers.map(customer => [customer.id, customer])),
@@ -328,8 +333,6 @@ export default function OperationsWorkbench() {
     }
   };
 
-  const requestedView = new URLSearchParams(location.search).get('view');
-  const followThroughView = requestedView === 'kickoffs' || requestedView === 'renewals' ? requestedView : 'today';
   const changeView = (view: string) => {
     const query = new URLSearchParams(location.search);
     if (view === 'today') query.delete('view'); else query.set('view', view);

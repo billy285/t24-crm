@@ -19,3 +19,36 @@
 .customer-access-picker{border:1px solid #bfdbfe;background:#f8fbff;border-radius:12px;padding:12px;display:grid;gap:12px}.customer-access-candidates{max-height:230px;overflow:auto;display:grid;gap:3px}.customer-access-candidates label,.customer-access-legacy label{display:flex;align-items:center;gap:10px;padding:9px 4px;font-size:13px}.customer-access-candidates small,.customer-access-legacy small{display:block;color:#64748b;font-size:11px}.customer-access-candidates input,.customer-access-module input,.customer-access-legacy input{width:16px;height:16px;accent-color:#2563eb;flex-shrink:0}.customer-access-picker-footer select{max-width:250px}
 .customer-access-module{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;border:1px solid #e2e8f0;border-radius:8px;background:white}.customer-access-module label{justify-content:flex-start}.customer-access-module select{max-width:87px}.customer-access-legacy{padding:12px;border:1px solid #e2e8f0;border-radius:10px}.customer-access-legacy summary{font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px}.customer-access-legacy>p{font-size:12px;color:#64748b;margin-top:8px;line-height:1.6}
 @media(max-width:540px){.customer-access-picker-footer{flex-wrap:wrap}.customer-access-picker-footer select{flex:1;min-width:180px}.customer-access-scope-summary{max-width:230px}.customer-access-member-head>div:first-child{min-width:0}.customer-access-member-head>button{padding:6px;min-height:40px}.customer-access-toolbar{flex-wrap:wrap}}
+
+/* Customer-only permission dialogs keep their existing grants and save flow. */
+.customer-access-dialog .customer-access-header{flex:0 0 auto;min-width:0;padding-right:44px;text-align:left}
+.customer-access-dialog .customer-access-header h2{overflow-wrap:anywhere;line-height:1.5}
+.customer-access-dialog .customer-access-body{flex:1 1 auto;scroll-padding-block:14px}
+.customer-access-dialog .customer-access-intro>strong{min-width:0;overflow-wrap:anywhere;line-height:1.6}
+.customer-access-dialog .customer-access-member-head>div:first-child{min-width:0}
+.customer-access-dialog .customer-access-member-head strong{overflow-wrap:anywhere;line-height:1.5}
+.customer-access-dialog .customer-access-member-head small{font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.customer-access-dialog .customer-access-footer{gap:10px;background:#fff}
+.customer-access-dialog .customer-access-footer button{min-height:44px;padding-inline:16px}
+.customer-access-dialog .customer-access-candidates label,.customer-access-dialog .customer-access-legacy label{min-height:44px}
+.customer-access-dialog .customer-access-candidates label>span{min-width:0;overflow-wrap:anywhere}
+.customer-access-finance-dialog .customer-finance-access-select{width:160px;flex:0 0 160px}
+.customer-access-finance-dialog .customer-finance-access-select select{max-width:none;width:100%;min-height:44px}
+.customer-access-dialog .customer-access-module-grid select{min-height:44px;min-width:96px;max-width:none}
+.customer-access-dialog .customer-access-module-grid .relative{flex:0 0 96px}
+@media(max-width:540px){
+  .customer-access-dialog{max-height:calc(100dvh - 24px);gap:12px}
+  .customer-access-dialog .customer-access-intro{flex-wrap:wrap;gap:6px}
+  .customer-access-dialog .customer-access-intro>strong{flex-basis:100%}
+  .customer-access-collaboration-dialog .customer-access-member-head{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px}
+  .customer-access-collaboration-dialog .customer-access-member-head>div:first-child{grid-column:1/-1}
+  .customer-access-collaboration-dialog .customer-access-member-head>button{min-height:44px;min-width:56px;padding-inline:10px}
+  .customer-access-collaboration-dialog .customer-access-member-head>button:first-of-type{grid-column:2}
+  .customer-access-dialog .customer-access-scope-summary{max-width:none;font-size:12px;line-height:1.7}
+  .customer-access-dialog .customer-access-module label{min-height:44px;flex:1;line-height:1.6}
+  .customer-access-dialog .customer-access-picker-footer>.relative{flex:1 1 100%;width:100%;min-width:0}
+  .customer-access-dialog .customer-access-picker-footer select{max-width:none;min-width:0;min-height:44px}
+  .customer-access-dialog .customer-access-picker-footer>button{width:100%;min-height:44px}
+  .customer-access-finance-dialog .customer-access-member-head{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+  .customer-access-finance-dialog .customer-finance-access-select{width:100%;min-width:0}
+}

@@ -150,3 +150,68 @@
   height: 100dvh;
   box-sizing: border-box;
 }
+
+/* Auxiliary forms load independently from the financial ledger. */
+.financial-workspace .commission-heading-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.commission-option-notice,
+.management-action-page .mgt-read-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 14px;
+  border: 1px solid #e1e8f1;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #52657f;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.commission-option-notice[role="alert"],
+.management-action-page .mgt-read-notice {
+  border-color: #f1dfb6;
+  background: #fffcf4;
+  color: #875b1c;
+}
+.commission-option-notice > span,
+.management-action-page .mgt-read-notice > div { min-width: 0; flex: 1 1 200px; overflow-wrap: anywhere; }
+.management-action-page .mgt-read-notice strong { font-weight: 600; }
+.management-action-page .mgt-read-notice p { margin-top: 3px; }
+.financial-workspace > .commission-option-notice { margin-bottom: 12px; }
+
+/* Payroll's original close buttons now live inside a focus-constrained CRM dialog. */
+.payroll-controlled-dialog.t24-crm-form-dialog > button:last-child,
+.payroll-copy-controlled.t24-crm-form-dialog > button:last-child { display: none !important; }
+.payroll-controlled-dialog .payroll-controlled-heading { min-width: 0; gap: 12px; }
+.payroll-controlled-dialog .payroll-controlled-heading > div { min-width: 0; flex: 1; }
+.payroll-controlled-dialog .payroll-controlled-heading > button { flex: 0 0 auto; min-height: 44px; }
+.payroll-controlled-dialog.t24-crm-form-dialog > .t24-crm-form-dialog-header,
+.payroll-copy-controlled.t24-crm-form-dialog > .t24-crm-form-dialog-header { padding-right: 24px; }
+.payroll-controlled-dialog .payroll-editor-grid > * { min-width: 0; }
+.payroll-controlled-dialog .t24-crm-form-dialog-header p { margin-top: 4px; color: #64748b; font-size: 13px; }
+
+.mgt-action-detail.t24-crm-form-dialog > .t24-crm-form-dialog-footer {
+  margin: 0;
+  padding: 14px 24px max(14px, env(safe-area-inset-bottom));
+  flex-wrap: wrap;
+}
+.mgt-action-detail.t24-crm-form-dialog .t24-crm-form-dialog-body { display: grid; align-content: start; gap: 14px; }
+
+@media (max-width: 767px) {
+  .financial-workspace .commission-heading-actions { justify-content: flex-start; }
+  .commission-option-notice > button,
+  .management-action-page .mgt-read-notice > button { min-height: 44px; white-space: normal; }
+  .payroll-controlled-dialog.t24-crm-form-dialog > .t24-crm-form-dialog-header,
+  .payroll-copy-controlled.t24-crm-form-dialog > .t24-crm-form-dialog-header { padding-right: 16px; }
+  .payroll-controlled-dialog .payroll-editor-grid { grid-template-columns: minmax(0, 1fr); }
+  .payroll-controlled-dialog .payroll-editor-grid > .col-span-2 { grid-column: auto; }
+  .mgt-action-detail.t24-crm-form-dialog > .t24-crm-form-dialog-footer { padding: 12px 16px max(12px, env(safe-area-inset-bottom)); }
+  .mgt-action-detail.t24-crm-form-dialog > .t24-crm-form-dialog-footer > :is(button, a) { flex: 1 1 100px; min-height: 44px; white-space: normal; }
+}

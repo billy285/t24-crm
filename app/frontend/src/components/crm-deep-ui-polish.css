@@ -1,0 +1,106 @@
+/* Deep CRM surfaces only. The owner's private workspace never matches this boundary. */
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface[role="dialog"] > button:last-child:has(> svg) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 9px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface[role="dialog"] > button:last-child:has(> svg):focus-visible {
+  outline: 2px solid #739af5;
+  outline-offset: 2px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .cft-drawer .cft-drawer-close {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  flex: 0 0 auto;
+  border-radius: 9px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .sales-lead-quick-edit .sle-header {
+  padding-right: 68px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .sales-lead-quick-edit :is(.sle-eyebrow, .sle-updated, .sle-footer > p, .sle-phone-hint, .sle-section h3 > span, .sle-history summary span, .sle-history details > p, .sle-history-change small) {
+  font-size: 12px;
+  line-height: 18px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-import-dialog > .t24-crm-form-dialog-footer > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-import-dialog .t24-crm-form-dialog-footer button {
+  min-height: 44px;
+}
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-import-dialog[data-import-busy="true"] > button:last-child {
+  opacity: .3;
+  cursor: wait;
+  pointer-events: none;
+}
+@media (max-width: 767px) {
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .sales-lead-quick-edit :is(input:not([type="radio"]):not([type="checkbox"]), select, textarea) {
+    min-height: 44px;
+    height: 44px;
+    font-size: 16px;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .sales-lead-quick-edit textarea { height: auto; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .sales-lead-quick-edit :is(.sle-icon-button, .sle-tabs > button, .sle-section-heading > button, .sle-contact-heading label, .sle-product-options label, .sle-more > summary, .sle-text-button, .sle-contact-bottom summary) {
+    min-height: 44px;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .sales-lead-quick-edit .sle-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .sales-lead-quick-edit .sle-tabs {
+    flex-wrap: wrap;
+    gap: 0 16px;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-import-dialog > .t24-crm-form-dialog-footer > div {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-import-dialog .t24-crm-form-dialog-footer > div > div {
+    display: flex;
+    flex: 1;
+    gap: 8px;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-import-dialog .t24-crm-form-dialog-footer button {
+    flex: 1;
+    white-space: normal;
+  }
+}
+@media (max-width: 540px) {
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table thead { display: none; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px 10px;
+    padding: 12px;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    overflow-wrap: anywhere;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table td:nth-child(n+3) { grid-column: 1 / -1; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table td::before {
+    display: inline-block;
+    width: 64px;
+    color: #64748b;
+  }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table td:nth-child(1)::before { content: '原行号'; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table td:nth-child(2)::before { content: '校验'; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table td:nth-child(3)::before { content: '商家'; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table td:nth-child(4)::before { content: '联系人'; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table td:nth-child(5)::before { content: '电话'; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table td:nth-child(6)::before { content: '城市'; }
+  body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-import-preview-table td:nth-child(7)::before { content: '提示'; }
+}
+
+body:has(.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .crm-customer-import-dialog > .t24-crm-form-dialog-footer > div:has(> button:only-child) {
+  justify-content: flex-end;
+}

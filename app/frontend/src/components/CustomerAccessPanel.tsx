@@ -126,7 +126,7 @@ export default function CustomerAccessPanel({customer,customerIds=[],open,onClos
   const available=candidates.filter(item=>bulk||!members.some(row=>row.employee_id===Number(item.employee_id||item.id)&&row.access_level!=='none')).filter(item=>!search||[item.name,item.email,systemRoleLabels[item.role as SystemRole]].some(value=>value?.toLowerCase().includes(search.toLowerCase())));
   const pending=legacy.filter(row=>!members.some(item=>item.employee_id===row.employee_id && item.invitation_status==='active' && (item.batch_requested || !baseline.some(previous=>previous.employee_id===item.employee_id))));
   const close=()=>{if(!saving&&(!changed.length||draft.confirmDiscard()))onClose();};
-  return <Dialog open={open} onOpenChange={value=>{if(!value)close();}}><DialogContent className="customer-access-dialog"><DialogHeader><DialogTitle>{bulk?`批量协作 · ${ids.length} 位客户`:'协作成员'}</DialogTitle></DialogHeader>
+  return <Dialog open={open} onOpenChange={value=>{if(!value)close();}}><DialogContent className="customer-access-dialog customer-access-collaboration-dialog"><DialogHeader className="customer-access-header"><DialogTitle>{bulk?`批量协作 · ${ids.length} 位客户`:'协作成员'}</DialogTitle></DialogHeader>
     <div className="customer-access-body" ref={bodyRef}>
       <div className="customer-access-intro"><strong>{bulk?'邀请或撤销所选客户的协作成员':customer?.business_name}</strong><span><ShieldCheck size={14}/>仅老板管理</span></div>
       {!preview && <>

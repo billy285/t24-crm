@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from 'react';
-import * as XLSX from 'xlsx';
+import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { client } from '../lib/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -72,9 +72,15 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [progress, setProgress] = useState(0);
   const [fileName, setFileName] = useState('');
+  const [readingFile, setReadingFile] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const fileReadSequence = useRef(0);
+  useEffect(() => () => { fileReadSequence.current += 1; }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
+    fileReadSequence.current += 1;
+    setReadingFile(false);
     setStep('upload');
     setParsedRows([]);
     setImportResult(null);
@@ -87,7 +93,11 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
     setOpen(true);
   };
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    if (templateLoading) return;
+    setTemplateLoading(true);
+    try {
+      const XLSX = await import('xlsx');
     const headers = Object.keys(HEADER_MAP);
     const exampleRow = [
       'ABC餐厅', '张三', '+1 202-555-0123', 'US', 'zhangsan_wx', 'zhang@email.com',
@@ -99,13 +109,25 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '客户导入模板');
     XLSX.writeFile(wb, '客户导入模板.xlsx');
+    } catch (error) {
+      console.error(error);
+      toast.error('模板暂时无法生成，请检查网络后重试');
+    } finally {
+      setTemplateLoading(false);
+    }
   };
 
   const parseFile = useCallback((file: File) => {
+    const sequence = ++fileReadSequence.current;
+    setReadingFile(true);
     setFileName(file.name);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
+      let parserReady = false;
       try {
+        const XLSX = await import('xlsx');
+        if (sequence !== fileReadSequence.current) return;
+        parserReady = true;
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
@@ -237,9 +259,17 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
         setParsedRows(rows);
         setStep('preview');
       } catch (err) {
+        if (sequence !== fileReadSequence.current) return;
         console.error(err);
-        toast.error('文件解析失败，请检查文件格式');
+        toast.error(parserReady ? '文件解析失败，请检查文件格式' : '导入工具加载失败，请检查网络后重新选择文件');
+      } finally {
+        if (sequence === fileReadSequence.current) setReadingFile(false);
       }
+    };
+    reader.onerror = () => {
+      if (sequence !== fileReadSequence.current) return;
+      setReadingFile(false);
+      toast.error('文件读取失败，请重新选择文件');
     };
     reader.readAsArrayBuffer(file);
   }, [existingCustomers]);
@@ -320,34 +350,34 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
         导入
       </Button>
 
-      <Dialog open={open} onOpenChange={(v) => { if (!v && step !== 'importing') { setOpen(false); } }}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+      <Dialog open={open} onOpenChange={(v) => { if (!v && step !== 'importing') { fileReadSequence.current += 1; setReadingFile(false); setOpen(false); } }}>
+        <CrmFormDialogContent className="crm-customer-import-dialog max-w-3xl" aria-busy={readingFile || step === 'importing'} data-import-busy={step === 'importing'}>
+<CrmFormDialogHeader>
             <DialogTitle>
               {step === 'upload' && '批量导入客户'}
               {step === 'preview' && '数据预览与校验'}
               {step === 'importing' && '正在导入...'}
               {step === 'result' && '导入完成'}
             </DialogTitle>
-          </DialogHeader>
-
-          {/* Step 1: Upload */}
-          {step === 'upload' && (
+          </CrmFormDialogHeader>
+<CrmFormDialogBody>{/* Step 1: Upload */}
+{step === 'upload' && (
             <div className="space-y-4">
               <div
                 className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => { if (!readingFile) fileInputRef.current?.click(); }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}
               >
                 <FileSpreadsheet className="w-12 h-12 mx-auto text-slate-400 mb-3" />
-                <p className="text-sm text-slate-600 mb-1">点击或拖拽文件到此处上传</p>
+                <p className="text-sm text-slate-600 mb-1">{readingFile ? '正在读取文件，请稍候…' : '点击或拖拽文件到此处上传'}</p>
                 <p className="text-xs text-slate-400">支持 .xlsx, .xls, .csv 格式</p>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept=".csv,.xlsx,.xls"
                   className="hidden"
+                  disabled={readingFile}
                   onChange={handleFileChange}
                 />
               </div>
@@ -365,15 +395,14 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
                 </ul>
               </div>
 
-              <Button variant="outline" size="sm" onClick={downloadTemplate} className="gap-1.5">
+              <Button variant="outline" size="sm" onClick={() => void downloadTemplate()} disabled={templateLoading} className="gap-1.5">
                 <Download className="w-4 h-4" />
-                下载导入模板
+                {templateLoading ? '正在准备模板…' : '下载导入模板'}
               </Button>
             </div>
           )}
-
-          {/* Step 2: Preview */}
-          {step === 'preview' && (
+{/* Step 2: Preview */}
+{step === 'preview' && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 <FileSpreadsheet className="w-4 h-4" />
@@ -404,7 +433,7 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
               {/* Data preview table */}
               <div className="border rounded-lg overflow-hidden">
                 <div className="max-h-[300px] overflow-y-auto">
-                  <table className="w-full text-xs">
+                  <table className="crm-import-preview-table w-full text-xs">
                     <thead className="sticky top-0 bg-slate-100">
                       <tr>
                         <th className="px-2 py-2 text-left font-medium text-slate-500">行</th>
@@ -456,29 +485,11 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
                 </div>
               </div>
 
-              <div className="flex justify-between items-center">
-                <Button variant="outline" size="sm" onClick={reset}>
-                  重新选择文件
-                </Button>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
-                    取消
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-blue-600 hover:bg-blue-700"
-                    disabled={validRows.length === 0}
-                    onClick={handleImport}
-                  >
-                    确认导入 {validRows.length} 条数据
-                  </Button>
-                </div>
-              </div>
+
             </div>
           )}
-
-          {/* Step 3: Importing */}
-          {step === 'importing' && (
+{/* Step 3: Importing */}
+{step === 'importing' && (
             <div className="space-y-4 py-4">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4" />
@@ -489,9 +500,8 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
               <p className="text-center text-xs text-slate-500">{progress}%</p>
             </div>
           )}
-
-          {/* Step 4: Result */}
-          {step === 'result' && importResult && (
+{/* Step 4: Result */}
+{step === 'result' && importResult && (
             <div className="space-y-4">
               <div className="text-center py-2">
                 {importResult.success > 0 ? (
@@ -528,14 +538,33 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
                 </div>
               )}
 
-              <div className="flex justify-end">
+
+            </div>
+          )}</CrmFormDialogBody>
+{step === 'preview' && <CrmFormDialogFooter><div className="flex justify-between items-center">
+                <Button variant="outline" size="sm" onClick={reset}>
+                  重新选择文件
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+                    取消
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700"
+                    disabled={validRows.length === 0}
+                    onClick={handleImport}
+                  >
+                    确认导入 {validRows.length} 条数据
+                  </Button>
+                </div>
+              </div></CrmFormDialogFooter>}
+{step === 'result' && importResult && <CrmFormDialogFooter><div className="flex justify-end">
                 <Button size="sm" onClick={() => { setOpen(false); reset(); }} className="bg-blue-600 hover:bg-blue-700">
                   完成
                 </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
+              </div></CrmFormDialogFooter>}
+</CrmFormDialogContent>
       </Dialog>
     </>
   );

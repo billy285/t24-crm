@@ -647,6 +647,8 @@ export default function Callbacks() {
         </div>
       </div>
 
+      {loadError && callbacks.length > 0 && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><span>回访资料刷新未完成，以下保留上次读取结果。{loadError}</span><Button type="button" variant="outline" size="sm" onClick={() => void loadData()}>重新读取回访</Button></div>}
+
       {activeReminderMessage && (
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="p-3">

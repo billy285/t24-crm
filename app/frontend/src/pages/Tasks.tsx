@@ -222,6 +222,7 @@ export default function Tasks() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [formOptionsLoading, setFormOptionsLoading] = useState(false);
   const [formOptionsLoaded, setFormOptionsLoaded] = useState(false);
+  const [formOptionsError, setFormOptionsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   useListScroll('tasks', !loading);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -378,6 +379,7 @@ export default function Tasks() {
   const loadTaskFormOptions = useCallback(async () => {
     if (formOptionsLoaded || formOptionsLoading) return;
     setFormOptionsLoading(true);
+    setFormOptionsError(null);
     try {
       const [assigneeResult, customerResult] = await Promise.allSettled([
         taskScope === 'self'
@@ -393,10 +395,16 @@ export default function Tasks() {
       if (customerResult.status === 'fulfilled' && customerResult.value) {
         setCustomers(customerResult.value?.data?.items || []);
       }
-      setFormOptionsLoaded(true);
+      const failed = [
+        assigneeResult.status === 'rejected' ? '负责人和协作人' : '',
+        customerResult.status === 'rejected' ? '客户' : '',
+      ].filter(Boolean);
+      setFormOptionsLoaded(failed.length === 0);
+      setFormOptionsError(failed.length ? `${failed.join('、')}选项暂时无法读取，请重新加载。` : null);
     } catch (err) {
       console.error(err);
-      toast.error('任务表单选项加载失败，请稍后重试');
+      setFormOptionsLoaded(false);
+      setFormOptionsError(getLoadErrorMessage(err, '任务表单选项加载失败，请重新加载。'));
     } finally {
       setFormOptionsLoading(false);
     }
@@ -734,6 +742,8 @@ export default function Tasks() {
         )}
       </div>
 
+      {loadError && tasks.length > 0 && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><span>任务刷新未完成，以下保留上次读取结果。{loadError}</span><Button type="button" variant="outline" size="sm" onClick={() => void loadData()}>重新读取任务</Button></div>}
+
       {activeReminderMessage && (
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="p-3">
@@ -1028,6 +1038,7 @@ export default function Tasks() {
         <CrmFormDialogContent className="max-w-lg">
           <CrmFormDialogHeader><DialogTitle>{editingId ? '编辑任务' : '新建任务'}</DialogTitle></CrmFormDialogHeader>
           <CrmFormDialogBody>
+          {formOptionsError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>{formOptionsError}</span><Button type="button" variant="outline" size="sm" disabled={formOptionsLoading} onClick={() => void loadTaskFormOptions()}>重新加载选项</Button></div>}
           <div className="space-y-4">
             <div><Label>任务名称 *</Label><Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></div>
             <div>

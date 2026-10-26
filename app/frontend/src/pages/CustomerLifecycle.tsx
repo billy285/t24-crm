@@ -430,6 +430,9 @@ export default function CustomerLifecycle() {
         </div>
       </div>
 
+      {loading && data && <p role="status" className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">正在核对最新期间，以下暂时保留上次读取结果。</p>}
+      {error && data && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><span>生命周期刷新未完成，以下保留上次读取结果。{error}</span><Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void loadData()}>重新读取周期</Button></div>}
+
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="客户生命周期视图">
         {[
           ['overview', '总览'],

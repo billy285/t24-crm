@@ -1,6 +1,7 @@
 import '@/pages/crm-sales-visual-polish.css';
 import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowRightLeft, Ban, BarChart3, CheckCircle2, ChevronDown, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, History, Link2, MessageSquarePlus, MoreHorizontal, Phone, PhoneCall, PhoneOff, Plus, Radio, Search, ShieldAlert, Timer, Trash2, Users,
 } from 'lucide-react';
@@ -148,6 +149,7 @@ export default function SalesLeads() {
 }
 
 function SalesLeadWorkspace() {
+  const navigate = useNavigate();
   const { role, isAdmin, employee } = useRole();
   const isMobile = useIsMobile();
   const canManage = isAdmin || role === 'sales_manager';
@@ -589,7 +591,7 @@ function SalesLeadWorkspace() {
     const protectedLead = lead.is_blacklisted || lead.do_not_contact;
     if (protectedLead) return <Button size="sm" variant="outline" onClick={() => openEdit(lead)}>查看保护</Button>;
     if (lead.converted_customer_id) return <Button size="sm" variant="outline" onClick={() => openDealControl(lead)}>查看成交</Button>;
-    if (lead.status === 'new') return <Button size="sm" variant="outline" onClick={() => window.location.assign(`/sales-workbench?lead_id=${lead.id}${lead.assigned_sales_id ? `&sales_employee_id=${lead.assigned_sales_id}` : ''}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>首次拨打</Button>;
+    if (lead.status === 'new') return <Button size="sm" variant="outline" onClick={() => navigate(`/sales-workbench?lead_id=${lead.id}${lead.assigned_sales_id ? `&sales_employee_id=${lead.assigned_sales_id}` : ''}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>首次拨打</Button>;
     if (['interested', 'appointment'].includes(lead.status)) return isMobile
       ? <Button size="sm" variant="outline" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}>继续跟进</Button>
       : <><Button size="sm" variant="outline" onClick={() => void openDealControl(lead)}>登记成交</Button><Button size="sm" variant="ghost" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}><MessageSquarePlus size={16} /></Button></>;
@@ -599,7 +601,7 @@ function SalesLeadWorkspace() {
   return (
     <div className={`t24-directory-page t24-sales-leads-page sales-center-ui sc-directory sl-clarity calm-sales-page calm-leads-page app-page crm-sales-compact slr-page slr-view-${view}`}>
       <div className="sc-section-heading slr-page-heading">
-        <div>{safeReturn && <Button size="sm" variant="ghost" onClick={() => window.location.assign(safeReturn)}>返回拨打位置</Button>}<h2>{view === 'leads' ? '联系进展' : view === 'calls' ? '通话数据' : view === 'intelligence' ? '经营中心' : view === 'shared' ? '协作档案' : view === 'handoffs' ? '成交与交接' : '历史跟进参考'}</h2></div>
+        <div>{safeReturn && <Button size="sm" variant="ghost" onClick={() => navigate(safeReturn)}>返回拨打位置</Button>}<h2>{view === 'leads' ? '联系进展' : view === 'calls' ? '通话数据' : view === 'intelligence' ? '经营中心' : view === 'shared' ? '协作档案' : view === 'handoffs' ? '成交与交接' : '历史跟进参考'}</h2></div>
         <div className="slr-heading-tools"><Button type="button" variant={view === 'shared' ? 'secondary' : 'outline'} onClick={() => setView('shared')}>协作档案</Button><span className="slr-scope">{scopeText}</span><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost">更多视图<ChevronDown size={15} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setView('leads')}>联系进展</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('calls')}>通话数据</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('shared')}>协作档案</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('handoffs')}>成交与交接</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => setView('performance')}>历史跟进参考</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>{canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新增线索</Button>}</div>
       </div>
 

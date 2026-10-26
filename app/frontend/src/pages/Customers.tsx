@@ -1268,16 +1268,15 @@ export default function Customers() {
       setSelectedCustomerTab(tab => customerCanReadTab(verified,tab) ? tab : customerDefaultTab(verified));
       const permitted = (key: CustomerModule) => permission.modules[key].read;
       const empty = () => Promise.resolve({data:{items:[]}});
-      const financeResponse = permission.finance_access !== 'none'
-        ? await invokeWithAuth({url:`/api/v1/entities/customers/${customerId}/finance-access-data`,method:'GET'})
-        : {data:{payments:[],expenses:[],deduction_rates:{},status:null}};
-      if (!isCurrentRequest()) return;
-      const settledResults = await Promise.allSettled([
+      const financeRequest = permission.finance_access !== 'none'
+        ? invokeWithAuth({url:`/api/v1/entities/customers/${customerId}/finance-access-data`,method:'GET'})
+        : Promise.resolve({data:{payments:[],expenses:[],deduction_rates:{},status:null}});
+      const detailRequests = Promise.allSettled([
         Promise.resolve(verifiedCustomer),
         permitted('followups') ? client.entities.follow_ups.query({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }) : empty(),
         permitted('deals') ? client.entities.deals.query({ query: { customer_id: customerId }, sort: '-deal_date', limit: 1000 }) : empty(),
-        Promise.resolve({data:{items:financeResponse.data?.payments || []}}),
-        Promise.resolve({data:{items:financeResponse.data?.expenses || []}}),
+        financeRequest.then(response => ({data:{items:response.data?.payments || []}})),
+        financeRequest.then(response => ({data:{items:response.data?.expenses || []}})),
         permitted('delivery') ? invokeWithAuth({url:'/api/v1/entities/subscriptions',method:'GET',data:{query:JSON.stringify({customer_id:customerId}),sort:'-created_at',limit:1000,access_module:'delivery'}}) : empty(),
         permitted('delivery') ? client.entities.service_progresses.queryAll({ query: { customer_id: customerId }, sort: '-last_update_time', limit: 1000 }) : empty(),
         permitted('delivery') ? client.entities.service_tasks.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 1000 }) : empty(),
@@ -1291,6 +1290,9 @@ export default function Customers() {
         permitted('contacts') ? client.entities.customer_contacts.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }).catch(() => ({ data: { items: [] } })) : empty(),
         permitted('renewals') ? invokeWithAuth({url:'/api/v1/entities/subscriptions',method:'GET',data:{query:JSON.stringify({customer_id:customerId}),sort:'-created_at',limit:1000,access_module:'renewals'}}) : empty(),
       ]);
+      // Permission verification still precedes every associated read. A finance
+      // failure rejects the whole load as before, rather than becoming an empty balance.
+      const [financeResponse, settledResults] = await Promise.all([financeRequest, detailRequests]);
 
       if (!isCurrentRequest()) return;
       const readSettled = (result: PromiseSettledResult<any>, fallback: any, label: string) => {
@@ -2694,6 +2696,7 @@ export default function Customers() {
 
 </> : <CustomerCollaborationTabs customer={c} />}
 
+          {detailLoading || detailLoadError ? <TabsContent value={selectedCustomerTab}><div role={detailLoading ? 'status' : 'alert'} aria-live="polite" className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm leading-6 text-slate-600">{detailLoading ? '正在读取已授权的客户资料，完成后会显示记录。' : '客户关联资料尚未读取完整，请点击上方“重新加载”后查看。'}</div></TabsContent> : <>
           {customerCanReadTab(c, 'overview') && <TabsContent value="overview">
             {detailLoading || detailLoadError ? <div role="status" className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">{detailLoading ? '正在核对客户的服务、收款与待办，完成后显示完整概览…' : '客户关联数据未完成核对，请重新加载后查看概览。'}</div> : <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
               <div className="space-y-4">
@@ -2803,13 +2806,13 @@ export default function Customers() {
           {/* ========== CONTACTS TAB ========== */}
           {customerCanReadTab(c, 'contacts') && (
           <TabsContent value="contacts">
-            <Card className="border-slate-200"><CardContent className="p-5">
+            <Card className="customer-detail-contacts-card border-slate-200"><CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium text-slate-600 flex items-center gap-2"><Users className="w-4 h-4" /> 联系人信息</span>
                 {canManageContacts && <Button size="sm" onClick={() => { setContactForm(emptyContactForm); setEditingContactId(null); setShowContactForm(true); }} className="bg-blue-600 hover:bg-blue-700"><UserPlus className="w-3.5 h-3.5 mr-1" /> 添加联系人</Button>}
               </div>
               {canManageContacts && showContactForm && (
-                <div className="mb-4 p-4 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
+                <div className="customer-detail-inline-form mb-4 p-4 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
                   <span className="text-sm font-medium text-blue-700">{editingContactId ? '编辑联系人' : '添加联系人'}</span>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div><Label className="text-xs">姓名 *</Label><Input value={contactForm.contact_name} onChange={e => setContactForm({ ...contactForm, contact_name: e.target.value })} placeholder="联系人姓名" /></div>
@@ -2817,7 +2820,7 @@ export default function Customers() {
                     <div><Label className="text-xs">角色</Label><NativeSelect value={contactForm.contact_role} onChange={v => setContactForm({ ...contactForm, contact_role: v })} options={Object.entries(contactRoleLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
                     <div><Label className="text-xs">备注</Label><Input value={contactForm.notes} onChange={e => setContactForm({ ...contactForm, notes: e.target.value })} placeholder="备注信息" /></div>
                   </div>
-                  <div className="flex justify-end gap-2">
+                  <div className="customer-detail-inline-form-actions flex justify-end gap-2">
                     <Button variant="outline" size="sm" disabled={savingContact} onClick={() => { if (contactDraft.confirmDiscard()) { setShowContactForm(false); setEditingContactId(null); } }}>取消</Button>
                     <Button size="sm" onClick={handleSaveContact} disabled={savingContact} className="bg-blue-600 hover:bg-blue-700">{savingContact ? '保存中...' : '保存'}</Button>
                   </div>
@@ -2825,16 +2828,16 @@ export default function Customers() {
               )}
               {contacts.length === 0 && !showContactForm ? <p className="text-sm text-slate-400 text-center py-8">{canManageContacts ? '暂无联系人信息，点击“添加联系人”开始添加' : '暂无联系人信息'}</p> : (
                 <div className="space-y-3">{contacts.map((ct: any) => (
-                  <div key={ct.id} className="p-3 bg-slate-50 rounded-lg group">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
+                  <div key={ct.id} className="customer-contact-record p-3 bg-slate-50 rounded-lg group">
+                    <div className="customer-contact-record-heading flex items-center justify-between">
+                      <div className="customer-contact-record-person flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-medium text-sm">{(ct.contact_name || '?')[0]}</div>
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-sm">{ct.contact_name}</span>
                             <Badge variant="secondary" className="text-xs">{contactRoleLabels[ct.contact_role] || ct.contact_role}</Badge>
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                          <div className="customer-contact-record-meta flex items-center gap-3 text-xs text-slate-500 mt-0.5">
                             {ct.contact_phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{formatPhoneNumber(ct.contact_phone, c.country)}</span>}
                             {ct.notes && <span>{ct.notes}</span>}
                           </div>
@@ -2854,13 +2857,13 @@ export default function Customers() {
 
           {customerCanReadTab(c, 'followups') && (
           <TabsContent value="followups">
-            <Card className="border-slate-200"><CardContent className="p-5">
+            <Card className="customer-detail-followups-card border-slate-200"><CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium text-slate-600">跟进记录</span>
                 {canCreateFollowUp && <Button size="sm" onClick={() => { setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }} className="bg-blue-600 hover:bg-blue-700"><MessageSquarePlus className="w-3.5 h-3.5 mr-1" /> 新增跟进</Button>}
               </div>
               {showFollowForm && (editingFollowId ? canEditFollowUp : canCreateFollowUp) && (
-                <div className="mb-4 p-4 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
+                <div className="customer-detail-inline-form mb-4 p-4 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
                   <span className="text-sm font-medium text-blue-700">{editingFollowId ? '编辑跟进' : '新增跟进'}</span>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div><Label className="text-xs">方式</Label><NativeSelect value={followForm.contact_method} onChange={v => setFollowForm({ ...followForm, contact_method: v })} options={Object.entries(methodLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
@@ -2881,7 +2884,7 @@ export default function Customers() {
                     {followForm.has_quoted && <Input placeholder="报价方案" value={followForm.quote_plan} onChange={e => setFollowForm({ ...followForm, quote_plan: e.target.value })} className="flex-1 h-8 text-sm" />}
                   </div>
 </div></details>
-                  <div className="flex justify-end gap-2">
+                  <div className="customer-detail-inline-form-actions flex justify-end gap-2">
                     <Button variant="outline" size="sm" disabled={savingFollow} onClick={() => { if (followDraft.confirmDiscard()) { setShowFollowForm(false); setEditingFollowId(null); } }}>取消</Button>
                     <Button size="sm" onClick={handleSaveFollow} disabled={savingFollow} className="bg-blue-600 hover:bg-blue-700">{savingFollow ? '保存中...' : '保存'}</Button>
                   </div>
@@ -2890,8 +2893,8 @@ export default function Customers() {
               {followUps.length === 0 && !showFollowForm ? <p className="text-sm text-slate-400 text-center py-8">暂无跟进记录</p> : (
                 <>
                   <div className="space-y-4">{paginatedFollowUps.items.map((f: any) => (
-                    <div key={f.id} className="border-l-2 border-blue-300 pl-4 py-2 group">
-                      <div className="flex items-center gap-2 mb-1">
+                    <div key={f.id} className="customer-followup-record border-l-2 border-blue-300 pl-4 py-2 group">
+                      <div className="customer-followup-record-heading flex items-center gap-2 mb-1">
                         <span className="text-xs text-slate-500">{formatCustomerTimestamp(f.created_at)} · 北京时间</span>
                         <Badge variant="secondary" className="text-xs">{stageLabels[f.stage] || f.stage}</Badge>
                         <span className="text-xs text-slate-400">{f.employee_name} · {methodLabels[f.contact_method] || f.contact_method}</span>
@@ -3221,6 +3224,7 @@ export default function Customers() {
             <Card className="border-slate-200"><CardContent className="p-5"><CustomerRecordHistory customerId={c.id} /><OperationLogsTab customerId={c.id} /></CardContent></Card>
           </TabsContent>
           )}
+          </>}
         </Tabs>
         {sharedCustomerDialogs}
       </div>

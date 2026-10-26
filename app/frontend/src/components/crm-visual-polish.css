@@ -1,3 +1,4 @@
+@import './crm-deep-ui-polish.css';
 /* CRM chrome and shared visual primitives. The private route never mounts this opt-in shell. */
 .t24-system.app-shell[data-crm-polish="20261026"],
 body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-ui-surface {

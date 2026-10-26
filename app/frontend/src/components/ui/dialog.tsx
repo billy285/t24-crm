@@ -65,7 +65,11 @@ const CrmFormDialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, ...props }, ref) => (
-  <DialogContent ref={ref} className={cn('t24-crm-form-dialog', className)} {...props} />
+  <DialogContent ref={ref} className={cn('t24-crm-form-dialog', className)} onOpenAutoFocus={(event) => {
+    // Keep keyboard focus inside CRM forms without opening the mobile keyboard.
+    event.preventDefault();
+    (event.target as HTMLElement).focus({ preventScroll: true });
+  }} {...props} />
 ));
 CrmFormDialogContent.displayName = 'CrmFormDialogContent';
 

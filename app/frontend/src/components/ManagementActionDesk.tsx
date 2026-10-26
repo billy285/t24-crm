@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { CrmFormDialogBody, CrmFormDialogContent, CrmFormDialogFooter, CrmFormDialogHeader, Dialog, DialogTitle } from '@/components/ui/dialog';
 import { buildReturnLink } from '@/lib/navigation-state';
 
 type Issue = {
@@ -105,9 +105,7 @@ export default function ManagementActionDesk<T extends Review>({ automation, ite
       <div className="mgt-board-footer"><span>{loadedAt ? rows.length : '—'} {tab === 'tasks' ? '个任务' : tab === 'history' ? '位客户' : '组事项'}</span>{!isMobile && <Button size="sm" variant="ghost" onClick={tab === 'history' ? onHistory : onQuality}>{tab === 'history' ? '查看全部历史记录' : '查看扫描与处理记录'}</Button>}</div>
     </div>
     <Dialog open={Boolean(selected)} onOpenChange={open => { if (!open) setSelectedKey(null); }}>
-      <DialogContent className="mgt-action-detail sm:max-w-xl">
-        <DialogHeader><p className="mgt-detail-kicker">{selected?.source}</p><DialogTitle>{selected?.name}</DialogTitle></DialogHeader>
-        {selected && <>
+      <CrmFormDialogContent className="mgt-action-detail sm:max-w-xl"><CrmFormDialogHeader><p className="mgt-detail-kicker">{selected?.source}</p><DialogTitle>{selected?.name}</DialogTitle></CrmFormDialogHeader>{selected && <><CrmFormDialogBody>
           <div className="mgt-detail-status"><span>{selected.status}</span><span>{selected.owner}</span></div>
           <div className="mgt-detail-evidence"><h4>处理依据</h4><ul>{selected.evidence.map((text, index) => <li key={index}>{text}</li>)}</ul></div>
           {selected.issue && <p className="mgt-source-note">最后检测：{managementSourceTime(selected.issue.last_detected_at)}{scanStale ? ' · 请先复核当前状态' : ''}</p>}
@@ -116,13 +114,11 @@ export default function ManagementActionDesk<T extends Review>({ automation, ite
           {selected.task && <p className="mgt-next-action">继续处理原任务 #{selected.task.id}，已有任务不会重复创建。</p>}
           {selected.review && <p className="mgt-next-action">先核对项目、首款和关联来源，保存前可查看具体影响。</p>}
           {isMobile && (selected.review || !selected.task) && <p className="mgt-source-note">手机可查看依据；分类写入与任务生成请在电脑端处理。</p>}
-          <div className="mgt-detail-actions">
+          </CrmFormDialogBody><CrmFormDialogFooter className="mgt-detail-actions">
             {selected.task ? <Button asChild><Link to={buildReturnLink(`/tasks?task_id=${selected.task.id}&view=system`, returnPath, 'management-decisions')}>查看已有任务</Link></Button> : selected.review ? <Button disabled={!isAdmin || isMobile} onClick={() => { const item = selected.review!; setSelectedKey(null); onReview(item); }}>核对分类与项目</Button> : selected.issue && !isMobile ? <Button disabled={!isAdmin || creating} onClick={async () => { setCreating(true); try { await onCreateTask(selected.issue!.id); } finally { setCreating(false); setSelectedKey(null); } }}>{creating ? '生成中…' : '生成处理任务'}</Button> : null}
             <Button asChild variant="outline"><Link to={buildReturnLink(`/customers?detail=${selected.customerId}`, returnPath, 'management-decisions')}>客户档案</Link></Button>
             <Button variant="ghost" disabled={!nextRow} onClick={() => setSelectedKey(nextRow!.key)}>下一项<ArrowRight className="ml-1 h-3.5 w-3.5" /></Button>
-          </div>
-        </>}
-      </DialogContent>
+          </CrmFormDialogFooter></>}</CrmFormDialogContent>
     </Dialog>
   </section>;
 }

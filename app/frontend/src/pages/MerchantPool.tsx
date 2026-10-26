@@ -2,6 +2,7 @@ import '@/pages/crm-sales-visual-polish.css';
 import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import SalesLeadDossier from '@/components/SalesLeadDossier';
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Archive, ArrowUpRight, CheckSquare, ChevronDown, Filter, MoreHorizontal, RefreshCw, Search, Send, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -123,6 +124,7 @@ function formatRegionCode(merchant: Merchant) {
 }
 
 export default function MerchantPool() {
+  const navigate = useNavigate();
   const { isAdmin, role } = useRole();
   const isMobile = useIsMobile();
   const [dossierId, setDossierId] = useState<number | null>(null);
@@ -543,7 +545,7 @@ export default function MerchantPool() {
 
       <div className="mp-list-tools">
         {batchScope && <div className="mp-batch-scope" role="status"><span>本批导入 · {batchScope.filename}</span><Button size="sm" variant="ghost" onClick={() => { setBatchScope(null); setSelectedMerchantIds([]); setPage(1); window.history.replaceState(window.history.state, '', '/merchant-pool'); }}>查看全部商家</Button></div>}
-        {assignmentReceipt && <div className="mp-batch-scope" role="status"><span>已分配 {assignmentReceipt.count} 家给 {assignmentReceipt.name}</span><Button size="sm" variant="ghost" onClick={() => window.location.assign(`/sales-workbench?sales_employee_id=${assignmentReceipt.id}`)}>查看销售任务</Button></div>}
+        {assignmentReceipt && <div className="mp-batch-scope" role="status"><span>已分配 {assignmentReceipt.count} 家给 {assignmentReceipt.name}</span><Button size="sm" variant="ghost" onClick={() => navigate(`/sales-workbench?sales_employee_id=${assignmentReceipt.id}`)}>查看销售任务</Button></div>}
         <nav className="mp-work-views" aria-label="商家工作视图">
           {[{ status: 'pending', label: '未分配', count: stats.pending }, { status: 'converted', label: '已转线索', count: stats.converted }, { status: '', label: '全部记录', count: stats.total }].map(view => <button type="button" key={view.label} aria-pressed={poolStatus === view.status} onClick={() => changeView(view.status)}>{view.label}{!batchScope && <span>{view.count}</span>}</button>)}
         </nav>

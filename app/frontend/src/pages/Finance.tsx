@@ -1031,6 +1031,10 @@ function FinanceWorkspace() {
     const requestSeq = ++loadRequestSeqRef.current;
     const isLatestRequest = () => loadRequestSeqRef.current === requestSeq;
     try {
+      // Catalog reads are independent of the agreed financial snapshot.
+      const catalogRequest = loadWithRetry(() => invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }))
+        .then(response => ({ response }))
+        .catch(error => ({ error }));
       // Keep the previous snapshot unless every required finance source succeeds.
       const [pItems, sItems, cItems, dItems, eItems, ceItems, refundItems, settlementItems, commissionData] = await Promise.all([
         safeQuery(() => client.entities.payments.queryAll({ limit: 1000, sort: '-payment_date' })),
@@ -1058,13 +1062,14 @@ function FinanceWorkspace() {
       setCommissionEntries(commissionData.entries || []);
       setLoadError(null);
       setLastSuccessfulLoadAt(new Date());
-      try {
-        const catalogRes = await loadWithRetry(() => invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }));
+      const catalogResult = await catalogRequest;
+      if ('response' in catalogResult) {
+        const catalogRes = catalogResult.response;
         if (isLatestRequest()) {
           setProductCatalog(catalogRes?.data || { business_lines: [], products: [], plans: [] });
         }
-      } catch (catalogError) {
-        console.warn('load product catalog failed; keeping finance records available', catalogError);
+      } else {
+        console.warn('load product catalog failed; keeping finance records available', catalogResult.error);
       }
       try {
         const months = new Set<string>();
@@ -6700,7 +6705,7 @@ function FinanceWorkspace() {
 
       {/* Customer Expense Form */}
       <Dialog open={showExpenseForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowExpenseForm(v); if (!v) { setEditingExpenseId(null); setExpenseForm(emptyExpenseForm); } }}>
-        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>{editingExpenseId ? '编辑客户支出' : '录入客户支出'}</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>{editingExpenseId ? '编辑客户支出' : '录入客户支出'}</DialogTitle><p className="finance-editor-context">{customerMap[Number(expenseForm.customer_id)]?.business_name || "请选择客户"} · {expenseForm.currency} · {expenseForm.expense_month || "月份待填写"}</p></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div>
               <Label>选择客户 *</Label>
@@ -6767,7 +6772,7 @@ function FinanceWorkspace() {
 
       {/* Company Expense Form */}
       <Dialog open={showCompanyExpenseForm} onOpenChange={(v) => { if (!v && !allowFinanceClose()) return; setShowCompanyExpenseForm(v); if (!v) { setEditingCompanyExpenseId(null); setCompanyExpenseForm(emptyCompanyExpenseForm); } }}>
-        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>{editingCompanyExpenseId ? '编辑运营支出' : '录入运营支出'}</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>{editingCompanyExpenseId ? '编辑运营支出' : '录入运营支出'}</DialogTitle><p className="finance-editor-context">公司运营支出 · {companyExpenseForm.currency} · {companyExpenseForm.expense_month || "月份待填写"}</p></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div>
               <Label>支出类型 *</Label>
@@ -6861,7 +6866,7 @@ function FinanceWorkspace() {
       </Dialog>
 
       <Dialog open={!!refundTarget} onOpenChange={(open) => { if (!open && allowFinanceClose()) setRefundTarget(null); }}>
-        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>记录退款</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody>
+        <CrmFormDialogContent className="financial-workspace-form max-w-lg"><CrmFormDialogHeader><DialogTitle>记录退款</DialogTitle><p className="finance-editor-context">{refundTarget?.customer_name || "客户待确认"} · 收款 #{refundTarget?.id || "—"} · {refundTarget?.currency || "币种待确认"}</p></CrmFormDialogHeader><CrmFormDialogBody>
           <div className="space-y-4">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
               <p className="font-medium text-slate-800">{refundTarget?.customer_name || '-'}</p>

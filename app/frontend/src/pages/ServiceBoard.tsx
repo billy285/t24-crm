@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ExportButton from '@/components/ExportButton';
+import PageLoadState from '@/components/PageLoadState';
 import { buildBusinessDicts, inferPackagePlatforms, platformLabels as configuredPlatformLabels } from '../lib/dict-config';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 
@@ -511,6 +512,9 @@ export default function ServiceBoard() {
   const [progresses, setProgresses] = useState<ServiceProgress[]>([]);
   const [allTasks, setAllTasks] = useState<ServiceTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [progressLoadFailed, setProgressLoadFailed] = useState(false);
 
   // Reference data for smart form
   const [allCustomers, setAllCustomers] = useState<CustomerRecord[]>([]);
@@ -533,6 +537,8 @@ export default function ServiceBoard() {
   // Detail
   const [selectedProgress, setSelectedProgress] = useState<ServiceProgress | null>(null);
   const [detailTasks, setDetailTasks] = useState<ServiceTask[]>([]);
+  const [detailTasksLoading, setDetailTasksLoading] = useState(false);
+  const [detailTasksError, setDetailTasksError] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState('overview');
   const detailRequestSeqRef = useRef(0);
   const activeDetailProgressIdRef = useRef<number | null>(null);
@@ -597,6 +603,7 @@ export default function ServiceBoard() {
 
   const loadData = async () => {
     const requestSeq = ++loadRequestSeqRef.current;
+    setRefreshing(true);
     try {
       const results = await Promise.allSettled([
         authedListEntity<ServiceProgress>('service_progresses', { limit: 1000, sort: '-last_update_time' }),
@@ -609,6 +616,10 @@ export default function ServiceBoard() {
       if (requestSeq !== loadRequestSeqRef.current) return;
 
       const [progressResult, taskResult, customerResult, employeeResult, subscriptionResult] = results;
+      const sectionNames = ['服务进度', '交付任务', '客户状态', '员工目录', '服务套餐'];
+      const failedSections = results.flatMap((result, index) => result.status === 'rejected' ? [sectionNames[index]] : []);
+      setProgressLoadFailed(progressResult.status === 'rejected');
+      setLoadError(failedSections.length ? `${failedSections.join('、')}暂时无法读取。已读取的资料会保留，请重试后再判断。` : null);
       const customerItems = customerResult.status === 'fulfilled' ? customerResult.value : null;
       if (customerItems) {
         allCustomersRef.current = customerItems;
@@ -634,7 +645,6 @@ export default function ServiceBoard() {
         setProgresses(items);
       } else {
         console.error('Load service progresses failed:', progressResult.reason);
-        if (progresses.length === 0) toast.error(getErrorMessage(progressResult.reason, '加载服务进度失败'));
       }
 
       results.forEach((result, index) => {
@@ -645,11 +655,14 @@ export default function ServiceBoard() {
     } catch (err) {
       if (requestSeq !== loadRequestSeqRef.current) return;
       console.error(err);
-      toast.error(getErrorMessage(err, '加载数据失败'));
+      setProgressLoadFailed(true);
+      setLoadError('服务交付资料暂时无法读取，请重新加载。');
     } finally {
-      if (requestSeq === loadRequestSeqRef.current) setLoading(false);
+      if (requestSeq === loadRequestSeqRef.current) { setLoading(false); setRefreshing(false); }
     }
   };
+
+  const loadFeedback = loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><span>{loadError}</span><Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void loadData()}>{refreshing ? '正在重新读取…' : '重试读取'}</Button></div>;
 
   useAutoRefresh(loadData, {
     intervalMs: 30000,
@@ -1136,15 +1149,23 @@ export default function ServiceBoard() {
 
   const refreshDetailTasks = async (progressId: number) => {
     const requestSeq = ++detailRequestSeqRef.current;
-    const items = await authedListEntity<ServiceTask>('service_tasks', { query: { service_progress_id: progressId }, sort: 'created_at', limit: 100 });
-    if (detailRequestSeqRef.current === requestSeq && activeDetailProgressIdRef.current === progressId) {
-      setDetailTasks(items);
+    const isCurrent = () => detailRequestSeqRef.current === requestSeq && activeDetailProgressIdRef.current === progressId;
+    setDetailTasksLoading(true); setDetailTasksError(null);
+    try {
+      const items = await authedListEntity<ServiceTask>('service_tasks', { query: { service_progress_id: progressId }, sort: 'created_at', limit: 100 });
+      if (isCurrent()) setDetailTasks(items);
+      return items;
+    } catch (err) {
+      if (isCurrent()) setDetailTasksError('服务任务暂时无法读取，请重试。');
+      throw err;
+    } finally {
+      if (isCurrent()) setDetailTasksLoading(false);
     }
-    return items;
   };
 
   const refreshProgressDetail = async (progressId: number) => {
     const requestSeq = ++detailRequestSeqRef.current;
+    setDetailTasksLoading(true); setDetailTasksError(null);
     const [progressResult, tasksResult] = await Promise.allSettled([
       authedGetEntity<ServiceProgress>('service_progresses', progressId),
       authedListEntity<ServiceTask>('service_tasks', { query: { service_progress_id: progressId }, sort: 'created_at', limit: 100 }),
@@ -1152,6 +1173,9 @@ export default function ServiceBoard() {
     if (detailRequestSeqRef.current !== requestSeq || activeDetailProgressIdRef.current !== progressId) return;
     if (progressResult.status === 'fulfilled' && progressResult.value) setSelectedProgress(progressResult.value);
     if (tasksResult.status === 'fulfilled') setDetailTasks(tasksResult.value);
+    const failed = [progressResult.status === 'rejected' ? '服务信息' : '', tasksResult.status === 'rejected' ? '任务清单' : ''].filter(Boolean);
+    setDetailTasksError(failed.length ? `${failed.join('、')}暂时无法读取，请重新加载。` : null);
+    setDetailTasksLoading(false);
   };
 
   const closeCompleteTaskDialog = (saved = false) => {
@@ -2296,6 +2320,10 @@ export default function ServiceBoard() {
     const onboarding = getOnboardingProgress(sp, detailTasks);
     const activeDetailTasks = detailTasks.filter(task => task.status !== 'completed');
     const completedDetailTasks = detailTasks.filter(task => task.status === 'completed');
+    const detailTasksReady = !detailTasksLoading && !detailTasksError;
+    const detailReadFeedback = detailTasksLoading
+      ? <div role="status" aria-live="polite" className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">正在读取该服务的任务与进展，完成后会显示数量和记录。</div>
+      : detailTasksError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><span>{detailTasksError} 已读取的资料不会被清空。</span><Button type="button" variant="outline" size="sm" onClick={() => void refreshProgressDetail(sp.id)}>重新读取详情</Button></div>;
 
     // Build richer timeline
     const timelineItems = [
@@ -2335,6 +2363,9 @@ export default function ServiceBoard() {
           {sp.service_stage !== 'ended' && isExpiringSoon(sp) && <Badge className="bg-yellow-100 text-yellow-700">即将到期</Badge>}
         </div>
 
+        {loadFeedback}
+        {detailReadFeedback}
+
         {/* Quick action bar */}
         {canEdit && (
           <div className="dc-service-detail-actions flex gap-2 flex-wrap">
@@ -2370,12 +2401,12 @@ export default function ServiceBoard() {
           <TabsList className="bg-slate-100 flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="overview" className="text-xs">服务概览</TabsTrigger>
             <TabsTrigger value="tasks" className="text-xs gap-1.5">
-              <span>任务清单 ({activeDetailTasks.length})</span>
+              <span>任务清单 ({detailTasksLoading ? '…' : detailTasksError ? '待读取' : activeDetailTasks.length})</span>
               <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
-                已完成 {completedDetailTasks.length}
+                已完成 {detailTasksLoading ? '…' : detailTasksError ? '待读取' : completedDetailTasks.length}
               </span>
             </TabsTrigger>
-            <TabsTrigger value="timeline" className="text-xs">时间线 ({timelineItems.length})</TabsTrigger>
+            <TabsTrigger value="timeline" className="text-xs">时间线 ({detailTasksLoading ? '…' : detailTasksError ? '待读取' : timelineItems.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -2445,7 +2476,7 @@ export default function ServiceBoard() {
                 </CardContent></Card>
               )}
 
-              {onboarding.total > 0 && (
+              {detailTasksReady && onboarding.total > 0 && (
                 <Card className="border-blue-100 bg-blue-50/40"><CardContent className="p-5">
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <h3 className="text-sm font-semibold text-blue-800">前期运营流程</h3>
@@ -2519,7 +2550,7 @@ export default function ServiceBoard() {
                 )}
               </CardContent></Card>
 
-              <Card className="border-slate-200"><CardContent className="p-5">
+              {detailTasksReady && <Card className="border-slate-200"><CardContent className="p-5">
                 <h3 className="text-sm font-semibold text-slate-700 mb-3">任务概况</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="text-center p-2 bg-slate-50 rounded"><div className="text-lg font-bold text-slate-700">{ts.total}</div><div className="text-xs text-slate-500">总任务</div></div>
@@ -2536,7 +2567,7 @@ export default function ServiceBoard() {
                     <p className="text-xs text-slate-500 mt-1 text-center">任务完成率: {ts.total > 0 ? Math.round(ts.completed / ts.total * 100) : 0}%</p>
                   </div>
                 )}
-              </CardContent></Card>
+              </CardContent></Card>}
             </div>
             {sp.notes && <Card className="border-slate-200"><CardContent className="p-4 text-sm text-slate-600"><span className="font-medium">备注:</span> {sp.notes}</CardContent></Card>}
           </TabsContent>
@@ -2556,7 +2587,7 @@ export default function ServiceBoard() {
                   </button>
                 )}
               </div>
-              {activeDetailTasks.length === 0 && completedDetailTasks.length === 0 ? (
+              {!detailTasksReady ? null : activeDetailTasks.length === 0 && completedDetailTasks.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-sm text-slate-400 mb-3">暂无任务</p>
                   {canAddServiceTask && (
@@ -2754,7 +2785,7 @@ export default function ServiceBoard() {
           <TabsContent value="timeline">
             <Card className="border-slate-200"><CardContent className="p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-4">服务时间线</h3>
-              {timelineItems.length === 0 ? (
+              {!detailTasksReady ? null : timelineItems.length === 0 ? (
                 <p className="text-sm text-slate-400 text-center py-4">暂无时间线记录</p>
               ) : (
                 <div className="space-y-0">
@@ -2789,7 +2820,12 @@ export default function ServiceBoard() {
 
   // ==================== MAIN VIEW ====================
   if (loading) {
-    return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>;
+    return <PageLoadState loading message="正在读取服务交付与关联任务…" />;
+  }
+  if (progressLoadFailed && progresses.length === 0) {
+    return refreshing
+      ? <PageLoadState loading message="正在重新读取服务交付资料…" />
+      : <PageLoadState error={loadError} onRetry={() => void loadData()} />;
   }
 
   return (
@@ -2811,10 +2847,12 @@ export default function ServiceBoard() {
             />
           </div>
           <Button variant="outline" size="sm" aria-expanded={showStats} aria-controls="delivery-operating-details" onClick={() => setShowStats(!showStats)} className="min-h-11 gap-1.5 md:min-h-0"><BarChart3 className="w-4 h-4" /> {showStats ? '收起运营详情' : '运营详情'}</Button>
-          <Button variant="outline" size="sm" onClick={loadData} className="min-h-11 gap-1.5 md:min-h-0"><RefreshCw className="w-4 h-4" /> 刷新</Button>
+          <Button variant="outline" size="sm" onClick={loadData} disabled={refreshing} className="min-h-11 gap-1.5 md:min-h-0"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> {refreshing ? '刷新中…' : '刷新'}</Button>
           {canCreate && <Button onClick={openCreateProgress} className="col-span-2 min-h-11 bg-blue-600 hover:bg-blue-700 sm:col-span-1 md:min-h-0"><Plus className="w-4 h-4 mr-1" /> 手动新增服务</Button>}
         </div>
       </div>
+
+      {loadFeedback}
 
       {(isAdmin || role === 'ops') && <DeliveryMetrics label="交付概览" items={[
         { key: 'total', label: '交付记录', value: stats.total, note: '当前可见范围；一位客户可有多项服务', onClick: () => setQuickFilter('all'), active: quickFilter === 'all' },
@@ -2825,7 +2863,7 @@ export default function ServiceBoard() {
 
       {(canCreate || archivedStoppedCount > 0) && <details className="dc-guidance">
         <summary><Info size={15} /><strong>交付规则与历史说明</strong><span>{archivedStoppedCount > 0 ? `已隐藏 ${archivedStoppedCount} 条停止合作的历史记录` : '从成交交接开始，避免重复建档'}</span><ChevronRight size={14} /></summary>
-        <div>{canCreate && <><p>本看板用于新客户首次交付。新成交需要交付时，请在成交管理开启“生成服务看板”，或点击成交列表中的“看板”；旧客户补录和长期运营客户无需重复生成。</p><Button size="sm" variant="outline" onClick={() => { window.location.href = '/deals'; }}>去成交管理生成</Button></>}{archivedStoppedCount > 0 && <p>停止合作客户的历史交付仍保留在客户生命周期与操作记录中。</p>}</div>
+        <div>{canCreate && <><p>本看板用于新客户首次交付。新成交需要交付时，请在成交管理开启“生成服务看板”，或点击成交列表中的“看板”；旧客户补录和长期运营客户无需重复生成。</p><Button size="sm" variant="outline" onClick={() => navigate('/deals')}>去成交管理生成</Button></>}{archivedStoppedCount > 0 && <p>停止合作客户的历史交付仍保留在客户生命周期与操作记录中。</p>}</div>
       </details>}
 
       <section id="delivery-operating-details" className="dc-operating-details" hidden={!showStats} aria-label="运营详细统计">
