@@ -1,0 +1,10 @@
+{
+  "approved-deltas.json": "daaf3b87e222ab20a1760b5383424e386d4d1fd02177d433f8bf969910b76b65",
+  "baseline-command.sh": "c38ef1de9e7eb4b94d5532a726bd12ef973f9af192d51e0fe8994e5f7720910b",
+  "baseline.py": "4e4cf09efbd11cc78e3c1a9a9fc49c29fc8c628005b27db469ab69275a000552",
+  "build_package.py": "c6baac66b0f84249eb6cadfccac3d59293c3fc1cd0a6ab89cb70efed8fcde1d4",
+  "make_commands.py": "6986e4983516550377e141fb7ec76f4737aedb647fd1ce5d5fef2057976a8895",
+  "static_release.py": "3dbc9e59059dd2785a022e4990e160f617f43bac38d8af1b21778a46ebe7ba73",
+  "test_tools.py": "98ffd18411c17338936a38292e3f2dde56c9d57d41b6319b480d41077eae1656",
+  "verify_ui_scope.cjs": "4f94f1ce8313ed961b11fa3cadba7bf9cd56a150edb98ddfa65b0296cdbd64e4"
+}

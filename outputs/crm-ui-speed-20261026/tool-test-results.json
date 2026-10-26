@@ -1,0 +1,30 @@
+{
+  "checks": [
+    "test_before_source_matches_actual_version",
+    "test_capture_rejects_concurrent_runtime_change",
+    "test_cas_will_not_overwrite_unknown_nginx",
+    "test_current_frozen_sources_match_explicit_registered_deltas",
+    "test_exact_extra_build_paths_do_not_open_general_lib_or_config",
+    "test_explicit_ui_allowlist_rejects_private_auth_and_backend",
+    "test_fresh_baseline_hash_and_expected_old_version_are_pinned",
+    "test_guard_freezes_create_update_and_remove_calls_and_parent_handlers",
+    "test_guard_rejects_moving_existing_action_outside_its_permission_condition",
+    "test_guard_rejects_private_auth_routes_and_ordinary_dialog_changes",
+    "test_guard_rejects_unregistered_reads_inline_finance_formula_and_new_logic",
+    "test_only_one_nginx_root_and_exact_before_hash",
+    "test_recover_always_reloads_original_on_disk",
+    "test_registry_rejects_one_unknown_change_inside_approved_read_function",
+    "test_runtime_hashes_configuration_without_exporting_secrets",
+    "test_schema_reads_ddl_not_financial_rows",
+    "test_scope_and_no_application_or_database_write_paths",
+    "test_ui_guard_rejects_added_unguarded_action_even_when_original_remains",
+    "test_ui_projection_preserves_conditions_controls_and_calculations",
+    "test_ui_scope_guard_allows_view_only_changes_but_not_mutations_or_gates",
+    "test_ui_scope_guard_rejects_object_method_mutation_arguments"
+  ],
+  "failed": 0,
+  "failures": [],
+  "passed": 21,
+  "server_commands_executed": false,
+  "synthetic_only": true
+}
