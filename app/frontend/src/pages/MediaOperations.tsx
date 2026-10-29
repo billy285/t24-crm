@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, FileText, Image, ListChecks, Loader2, LockKeyhole, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, FileText, Globe2, Image, ListChecks, Loader2, LockKeyhole, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { useRole } from '@/lib/role-context';
-import { useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
+import { confirmDiscardAllChanges, useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
+import GoogleBusinessWorkspace from '@/components/GoogleBusinessWorkspace';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,6 +29,7 @@ export default function MediaOperations() {
   const { employee, systemRole, loading: roleLoading } = useRole();
   const owner = systemRole === 'super_admin';
   const allowed = ['super_admin', 'admin', 'ops'].includes(systemRole || '');
+  const [workspace, setWorkspace] = useState<'tasks' | 'google'>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('google') ? 'google' : 'tasks');
   const scope = `${employee?.id || ''}:${systemRole || ''}`;
   const scopeRef = useRef(scope); scopeRef.current = scope;
   const [resolvedScope, setResolvedScope] = useState(scope);
@@ -124,7 +126,7 @@ export default function MediaOperations() {
   useEffect(() => { void loadOptions(); return () => { optionSeq.current++; }; }, [loadOptions]);
   useEffect(() => { const timer = window.setTimeout(() => { setQuery(search); setPage(1); }, 250); return () => window.clearTimeout(timer); }, [search]);
 
-  async function readDetail(id: number, preserveForm = false) {
+  async function readDetail(id: number, preserveForm = false, nextAction?: 'return') {
     activeTaskId.current = id;
     setCopiedTaskId(null); setCopyError('');
     const sequence = ++detailSeq.current, identity = scope;
@@ -134,6 +136,7 @@ export default function MediaOperations() {
       const result = verifiedMediaTask(await mediaOperationsApi<MediaTask>(`/${id}`), id);
       if (sequence !== detailSeq.current || scopeRef.current !== identity) return;
       setItem(result);
+      if (nextAction === 'return' && (result.permissions.can_return || result.permissions.can_review)) { setAction('return'); setNote(''); setProofUrl(''); setProofMaterial(''); setReviewConfirmed(false); }
     } catch (error) {
       if (sequence !== detailSeq.current || scopeRef.current !== identity) return;
       setItem(null); setDetailError(mediaError(error));
@@ -275,12 +278,19 @@ export default function MediaOperations() {
   const modalEditing = mode === 'create' || mode === 'edit';
   const readOnly = busy || unknownResult;
   const optionLabel = (value: string) => options.platforms.find(row => row.value === value)?.label || value;
+  function changeWorkspace(next: 'tasks' | 'google') {
+    if (next === workspace || busyRef.current || unknownResult || !confirmDiscardAllChanges()) return;
+    draftGuard.markSaved(); setMode(null); setItem(null); setAction(null); setLeaveChoice(false); setMutationError('');
+    setWorkspace(next);
+  }
 
   if (roleLoading || resolvedScope !== scope) return <div className="mo-loading"><Loader2 className="animate-spin" aria-hidden="true"/>正在确认访问范围…</div>;
   if (!allowed) return <section className="media-operations mo-denied"><LockKeyhole aria-hidden="true"/><h1>代运营中心尚未向此账号开放</h1><p>由老板邀请运营人员，并单独授权客户交付资料。</p></section>;
 
   return <main className="media-operations app-page" aria-label="代运营中心">
-    <header className="mo-page-header"><div><p className="mo-eyebrow">任务与交付 · 代运营</p><h1>代运营中心</h1><p className="mo-subtitle">准备内容、完成审核、发布后留下凭证。</p></div><div className="mo-header-actions"><Button variant="outline" onClick={() => { void loadList(); void loadOptions(); }} disabled={listLoading || busy} aria-label="刷新运营资料"><RefreshCw className={listLoading ? 'animate-spin' : ''} aria-hidden="true"/><span>刷新</span></Button><Button onClick={openCreate} disabled={!canCreate || busy || unknownResult}><Plus aria-hidden="true"/>新增任务</Button></div></header>
+    <header className="mo-page-header"><div><p className="mo-eyebrow">任务与交付 · 代运营</p><h1>代运营中心</h1><p className="mo-subtitle">{workspace === 'google' ? '在授权范围内处理 Google 评论和帖子。' : '准备内容、完成审核、发布后留下凭证。'}</p></div>{workspace === 'tasks' && <div className="mo-header-actions"><Button variant="outline" onClick={() => { void loadList(); void loadOptions(); }} disabled={listLoading || busy} aria-label="刷新运营资料"><RefreshCw className={listLoading ? 'animate-spin' : ''} aria-hidden="true"/><span>刷新</span></Button><Button onClick={openCreate} disabled={!canCreate || busy || unknownResult}><Plus aria-hidden="true"/>新增任务</Button></div>}</header>
+    <div className="mo-workspace-switch" role="group" aria-label="代运营工作区"><button className={workspace === 'tasks' ? 'active' : ''} aria-pressed={workspace === 'tasks'} onClick={() => changeWorkspace('tasks')}><ListChecks aria-hidden="true"/>运营任务</button><button className={workspace === 'google' ? 'active' : ''} aria-pressed={workspace === 'google'} onClick={() => changeWorkspace('google')}><Globe2 aria-hidden="true"/>Google 商家</button></div>
+    {workspace === 'google' ? <GoogleBusinessWorkspace scope={scope} isOwner={owner} onOpenTask={(id, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); void readDetail(id, false, nextAction); }}/> : <>
     <div className="mo-scope"><ShieldCheck aria-hidden="true"/><span>{owner ? '老板视角 · 查看全部运营交付，审核后进入发布' : '我的工作 · 仅显示本人负责且老板已授权的客户任务'}</span><span className="mo-manual-tag">人工发布 · 凭证留痕</span></div>
     <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
     {unknownResult && <div className="mo-alert mo-alert-warn" role="alert"><AlertCircle aria-hidden="true"/><div><strong>上次操作结果待确认</strong><p>请先确认结果，再继续修改或新增任务。</p></div><Button variant="outline" disabled={busy} onClick={() => void recoverUnknown()}>{busy ? '正在确认…' : '重新确认结果'}</Button></div>}
@@ -326,9 +336,10 @@ export default function MediaOperations() {
           {mutationError && <div className="mo-alert mo-alert-warn" role="alert"><AlertCircle aria-hidden="true"/><span>{mutationError}</span></div>}
         </CrmFormDialogBody>
         <CrmFormDialogFooter>
-          {unknownResult ? <><Button variant="outline" onClick={closeDialog} disabled={busy}>收起</Button><Button onClick={() => void recoverUnknown()} disabled={busy}>{busy && <Loader2 className="animate-spin" aria-hidden="true"/>}重新确认结果</Button></> : modalEditing ? <><Button variant="outline" onClick={closeDialog} disabled={busy}>取消</Button><Button onClick={saveForm} disabled={busy || detailLoading || optionsLoading || Boolean(optionsError)}>{busy ? <Loader2 className="animate-spin" aria-hidden="true"/> : <Check aria-hidden="true"/>}{busy ? '正在保存…' : '保存草稿'}</Button></> : action ? <><Button variant="outline" onClick={() => { setAction(null); setMutationError(''); }} disabled={busy}>取消</Button><Button onClick={performAction} disabled={busy || action === 'approve' && !reviewConfirmed}>{busy && <Loader2 className="animate-spin" aria-hidden="true"/>}{busy ? '正在保存…' : mediaActionLabels[action]}</Button></> : item ? <div className="mo-detail-actions">{item.permissions.can_block && <Button variant="ghost" onClick={() => beginAction('block')} disabled={busy}>记录异常</Button>}{item.permissions.can_edit && <Button variant="outline" onClick={openEdit} disabled={busy || Boolean(optionsError)}>编辑草稿</Button>}{item.permissions.can_review && <><Button variant="outline" onClick={() => beginAction('return')} disabled={busy}>退回修改</Button><Button onClick={() => beginAction('approve')} disabled={busy}><Check aria-hidden="true"/>审核通过</Button></>}{item.permissions.can_submit && <Button onClick={() => beginAction('submit')} disabled={busy}>提交审核<ArrowRight aria-hidden="true"/></Button>}{item.permissions.can_complete && <Button onClick={() => beginAction('complete')} disabled={busy}>提交发布凭证<ArrowRight aria-hidden="true"/></Button>}{item.permissions.can_resume && <Button onClick={() => beginAction('resume')} disabled={busy}>恢复处理</Button>}{!Object.values(item.permissions).some(Boolean) && <span className="mo-readonly"><LockKeyhole aria-hidden="true"/>当前为只读资料</span>}</div> : <Button variant="outline" onClick={closeDialog}>关闭</Button>}
+          {unknownResult ? <><Button variant="outline" onClick={closeDialog} disabled={busy}>收起</Button><Button onClick={() => void recoverUnknown()} disabled={busy}>{busy && <Loader2 className="animate-spin" aria-hidden="true"/>}重新确认结果</Button></> : modalEditing ? <><Button variant="outline" onClick={closeDialog} disabled={busy}>取消</Button><Button onClick={saveForm} disabled={busy || detailLoading || optionsLoading || Boolean(optionsError)}>{busy ? <Loader2 className="animate-spin" aria-hidden="true"/> : <Check aria-hidden="true"/>}{busy ? '正在保存…' : '保存草稿'}</Button></> : action ? <><Button variant="outline" onClick={() => { setAction(null); setMutationError(''); }} disabled={busy}>取消</Button><Button onClick={performAction} disabled={busy || action === 'approve' && !reviewConfirmed}>{busy && <Loader2 className="animate-spin" aria-hidden="true"/>}{busy ? '正在保存…' : mediaActionLabels[action]}</Button></> : item ? <div className="mo-detail-actions">{item.permissions.can_block && <Button variant="ghost" onClick={() => beginAction('block')} disabled={busy}>记录异常</Button>}{item.permissions.can_edit && <Button variant="outline" onClick={openEdit} disabled={busy || Boolean(optionsError)}>编辑草稿</Button>}{(item.permissions.can_review || item.permissions.can_return) && <Button variant="outline" onClick={() => beginAction('return')} disabled={busy}>退回修改</Button>}{item.permissions.can_review && <Button onClick={() => beginAction('approve')} disabled={busy}><Check aria-hidden="true"/>审核通过</Button>}{item.permissions.can_submit && <Button onClick={() => beginAction('submit')} disabled={busy}>提交审核<ArrowRight aria-hidden="true"/></Button>}{item.permissions.can_complete && <Button onClick={() => beginAction('complete')} disabled={busy}>提交发布凭证<ArrowRight aria-hidden="true"/></Button>}{item.permissions.can_resume && <Button onClick={() => beginAction('resume')} disabled={busy}>恢复处理</Button>}{!Object.values(item.permissions).some(Boolean) && <span className="mo-readonly"><LockKeyhole aria-hidden="true"/>当前为只读资料</span>}</div> : <Button variant="outline" onClick={closeDialog}>关闭</Button>}
         </CrmFormDialogFooter>
       </CrmFormDialogContent>
     </Dialog>
+    </>}
   </main>;
 }

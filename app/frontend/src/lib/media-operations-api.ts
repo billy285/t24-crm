@@ -12,7 +12,7 @@ export type MediaTask = {
   assignee_id: number; assignee_name: string; content: string; material_id?: number | null; material_title?: string | null;
   proof_url?: string | null; proof_material_id?: number | null; review_note?: string | null; block_reason?: string | null;
   revision: number; created_at: string; updated_at: string; completed_at?: string | null; events?: MediaEvent[];
-  permissions: { can_edit: boolean; can_submit: boolean; can_review: boolean; can_complete: boolean; can_block: boolean; can_resume: boolean };
+  permissions: { can_edit: boolean; can_submit: boolean; can_review: boolean; can_return?: boolean; can_complete: boolean; can_block: boolean; can_resume: boolean };
 };
 export type MediaSummary = Record<MediaStatus | 'overdue', number>;
 export type MediaList = { items: MediaTask[]; total: number; skip: number; limit: number; summary: MediaSummary; capabilities: { can_create: boolean; is_owner: boolean } };

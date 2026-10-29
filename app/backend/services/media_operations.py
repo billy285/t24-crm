@@ -28,7 +28,7 @@ from models.service_progresses import Service_progresses
 from services.customer_permissions import customer_permissions_for_rows, _role_config
 from services.customers import CustomersService
 from services.role_permissions import load_role_permission_config, normalized_role
-from services.schema_readiness import require_tables
+from services.schema_readiness import require_tables, tables_available
 
 TABLES = {"media_operation_tasks", "media_operation_events"}
 PLATFORMS = (("google_business", "Google Business"), ("facebook", "Facebook"), ("instagram", "Instagram"),
@@ -228,6 +228,7 @@ def _data(task, ctx, permissions):
         "can_edit": write and task.status == "draft",
         "can_submit": write and task.status == "draft",
         "can_review": ctx.owner and task.status == "in_review",
+        "can_return": ctx.owner and (task.status == "in_review" or (task.platform == "google_business" and task.status == "ready")),
         "can_complete": write and task.status == "ready",
         "can_block": write and task.status in {"draft", "in_review", "ready"},
         "can_resume": write and task.status == "blocked",
@@ -239,8 +240,23 @@ def _data(task, ctx, permissions):
     return data
 
 
+async def _google_return_permissions(db, rows):
+    candidates = [row for row in rows if row["platform"] == "google_business" and row["status"] == "ready" and row["permissions"].get("can_return")]
+    if not candidates: return
+    if not await tables_available(db, {"google_business_actions"}):
+        for row in candidates: row["permissions"]["can_return"] = False
+        return
+    from models.google_business import GoogleBusinessAction
+    blocked = set((await db.execute(select(GoogleBusinessAction.task_id).where(
+        GoogleBusinessAction.task_id.in_([row["id"] for row in candidates]), GoogleBusinessAction.kind == "post_publish",
+        GoogleBusinessAction.status.in_(("pending", "unknown", "accepted", "succeeded"))))).scalars())
+    for row in candidates:
+        if row["id"] in blocked: row["permissions"]["can_return"] = False
+
+
 async def _detail(db, ctx, task, permissions):
     data = _data(task, ctx, permissions)
+    await _google_return_permissions(db, [data])
     await _redact_material_references(db, [data])
     events = (await db.execute(select(MediaOperationEvent).where(MediaOperationEvent.task_id == task.id)
                              .order_by(MediaOperationEvent.revision.desc()).limit(100))).scalars().all()
@@ -336,6 +352,7 @@ async def list_tasks(db, user, *, status=None, customer_id=None, q=None, skip=0,
     customer_rows = (await db.execute(select(Customers).where(Customers.id.in_({r.customer_id for r in rows})))).scalars().all() if rows else []
     perms = await customer_permissions_for_rows(db, user, customer_rows, config=ctx.config)
     items = [_data(row, ctx, perms[row.customer_id]) for row in rows]
+    await _google_return_permissions(db, items)
     await _redact_material_references(db, items)
     return {"items": items, "total": total, "skip": skip, "limit": limit,
             "summary": summary, "capabilities": {"can_create": ctx.can_create, "is_owner": ctx.owner}}
@@ -369,12 +386,20 @@ async def _write(db):
 
 
 async def _event(db, ctx, task, action, before_status, *, request_id=None, fingerprint=None, note=None):
+    snapshot = {"title": task.title, "platform": task.platform, "content": task.content, "material_id": task.material_id,
+                "assignee_id": task.assignee_id, "due_at": _iso(task.due_at), "timezone": task.timezone,
+                "proof_url": task.proof_url, "proof_material_id": task.proof_material_id}
+    if action == "approve" and task.platform == "google_business" and task.material_id is not None:
+        # Freeze the approved asset reference, not its remote bytes. Google
+        # publishing must refuse a changed reference and require re-approval.
+        material = await db.get(Customer_materials, task.material_id, populate_existing=True)
+        if material and material.customer_id == task.customer_id and material.visibility == "team":
+            snapshot["google_material_fingerprint"] = _hash({"id": material.id, "customer_id": material.customer_id,
+                "file_url": material.file_url, "content_type": material.content_type, "updated_at": _iso(material.updated_at)})
     db.add(MediaOperationEvent(task_id=task.id, revision=task.revision, action=action, actor_id=ctx.identity,
            actor_name=ctx.user.name or str(ctx.identity), before_status=before_status, after_status=task.status,
            request_id=request_id, request_fingerprint=fingerprint, note=note,
-           snapshot={"title": task.title, "platform": task.platform, "content": task.content, "material_id": task.material_id,
-                     "assignee_id": task.assignee_id, "due_at": _iso(task.due_at), "timezone": task.timezone,
-                     "proof_url": task.proof_url, "proof_material_id": task.proof_material_id}, created_at=now()))
+           snapshot=snapshot, created_at=now()))
     await db.flush()
 
 
@@ -476,12 +501,27 @@ async def transition_task(db, user, task_id, *, expected_revision, request_id, a
                 # Revalidate referenced assets at the moment content enters review.
                 await _material(db, ctx, customer, task.material_id)
                 values = {"status": "in_review", "review_note": None}
-            elif action in {"approve", "return"} and before == "in_review":
+            elif action in {"approve", "return"} and (before == "in_review" or (action == "return" and before == "ready" and task.platform == "google_business")):
                 if not ctx.owner:
                     raise HTTPException(403, "第一阶段由老板审核内容")
                 if action == "return" and (not note or len(note) < 3):
                     raise HTTPException(422, "请填写至少 3 字的退回原因")
-                await _material(db, ctx, customer, task.material_id)
+                if before == "ready":
+                    # Serialize against GBP reservation/dispatch before checking
+                    # active publication. A sent/unknown task must never reopen.
+                    await db.execute(select(MediaOperationTask).where(MediaOperationTask.id == task.id).with_for_update())
+                    await db.refresh(task)
+                    if task.status != "ready" or task.revision != expected_revision:
+                        raise HTTPException(409, "任务状态已变化，请刷新后重试")
+                    await require_tables(db, {"google_business_actions"})
+                    from models.google_business import GoogleBusinessAction
+                    pending_publication = await db.scalar(select(GoogleBusinessAction.id).where(
+                        GoogleBusinessAction.task_id == task.id, GoogleBusinessAction.kind == "post_publish",
+                        GoogleBusinessAction.status.in_(("pending", "unknown", "accepted", "succeeded"))).limit(1))
+                    if pending_publication:
+                        raise HTTPException(409, "此任务已有 Google 发布请求，请先核对原结果；已发送或结果未明的任务不能退回重发")
+                else:
+                    await _material(db, ctx, customer, task.material_id)
                 values = {"status": "ready" if action == "approve" else "draft", "review_note": note}
             elif action == "complete" and before == "ready":
                 url = _proof_url(proof_url)
