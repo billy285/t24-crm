@@ -38,6 +38,7 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
                 "/partner-portal",
                 "/tasks",
                 "/service-board",
+                "/media-ops",
                 "/callbacks",
                 "/employees",
                 "/settings",
@@ -88,6 +89,7 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
                 "/rmb-profit",
                 "/tasks",
                 "/service-board",
+                "/media-ops",
                 "/callbacks",
                 "/employees",
                 "/settings",
@@ -145,7 +147,7 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
             "sensitiveFields": {"viewPassword": False, "copyPassword": False, "viewFinance": False},
         },
         "ops": {
-            "pages": ["/", "/customers", "/tasks", "/service-board"],
+            "pages": ["/", "/customers", "/tasks", "/service-board", "/media-ops"],
             "buttons": [
                 "customer_edit",
                 "task_create",

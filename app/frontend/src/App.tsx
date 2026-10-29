@@ -33,6 +33,7 @@ const SalesLeads = lazy(() => loadCrmRoute('/sales-leads'));
 const MerchantPool = lazy(() => loadCrmRoute('/merchant-pool'));
 const SalesWorkbench = lazy(() => loadCrmRoute('/sales-workbench'));
 const OperationsWorkbench = lazy(() => loadCrmRoute('/operations-workbench'));
+const MediaOperations = lazy(() => loadCrmRoute('/media-ops'));
 const SalesKnowledge = lazy(() => loadCrmRoute('/sales-knowledge'));
 const MonthlyDeduction = lazy(() => loadCrmRoute('/settings/deduction'));
 const CustomerLifecycle = lazy(() => loadCrmRoute('/customer-lifecycle'));
@@ -102,6 +103,7 @@ const router = createBrowserRouter(createRoutesFromElements(
               <Route path="/sales-leads" element={<SalesLeads />} />
               <Route path="/sales-workbench" element={<SalesWorkbench />} />
               <Route path="/operations-workbench" element={<OperationsWorkbench />} />
+              <Route path="/media-ops" element={<MediaOperations />} />
               <Route path="/sales-knowledge" element={<SalesKnowledge />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/sales" element={<Sales />} />

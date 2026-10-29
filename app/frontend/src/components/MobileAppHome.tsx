@@ -29,6 +29,7 @@ import {
 import { getSafeInternalPath } from '@/lib/navigation-state';
 import { roleLabels, useRole } from '@/lib/role-context';
 import './homepage-refined.css';
+import MediaOperationsEntry from '@/components/MediaOperationsEntry';
 
 export type { MobileBusinessAppKey } from '@/lib/app-navigation';
 
@@ -317,6 +318,7 @@ export default function MobileAppHome({
           </section> : null}
         </div>
 
+        <MediaOperationsEntry compact />
         {favorites.length > 0 && <section aria-label="个人常用功能" className="home-apps-section"><h2>常用功能</h2><div className="home-favorite-grid">{favorites.map(item => <button key={item.href} type="button" onClick={() => openPath(item.href)}>{item.label}<ArrowRight aria-hidden="true" /></button>)}</div></section>}
         <section aria-label="工作应用" className="home-apps-section">
           <h2 id="mobile-apps-heading">常用应用</h2>

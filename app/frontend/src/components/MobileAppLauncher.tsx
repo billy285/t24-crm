@@ -266,7 +266,7 @@ export default function MobileAppLauncher({ onOpenProfile }: { onOpenProfile: ()
       const priorityCount = overdueTasks.length + dueTodayTasks.length;
       appBadges.delivery = openTasks.length;
       notificationCount = priorityCount || openTasks.length;
-      const roleName = role === 'design' ? '设计' : '运营';
+      const roleName = role === 'design' ? '设计' : '协作';
       todayItems.push({
         id: `${role}-today`,
         title: !readUsable ? `${roleName}任务数据待更新` : overdueTasks.length > 0

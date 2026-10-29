@@ -19,6 +19,7 @@ const crmRouteImporters = {
   '/merchant-pool': () => import('../pages/MerchantPool'),
   '/sales-workbench': () => import('../pages/SalesWorkbench'),
   '/operations-workbench': () => import('../pages/OperationsWorkbench'),
+  '/media-ops': () => import('../pages/MediaOperations'),
   '/sales-knowledge': () => import('../pages/SalesKnowledge'),
   '/settings/deduction': () => import('../pages/MonthlyDeduction'),
   '/customer-lifecycle': () => import('../pages/CustomerLifecycle'),

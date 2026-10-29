@@ -25,6 +25,7 @@ export const PAGE_PATHS = {
   sales_leads: '/sales-leads',
   sales_workbench: '/sales-workbench',
   operations_workbench: '/operations-workbench',
+  media_operations: '/media-ops',
   sales_knowledge: '/sales-knowledge',
   customers: '/customers',
   sales: '/sales',
@@ -54,6 +55,7 @@ export const pageLabels: Record<string, string> = {
   '/sales-leads': '电话销售中心',
   '/sales-workbench': '销售今日工作台',
   '/operations-workbench': '运营今日工作台',
+  '/media-ops': '代运营中心',
   '/sales-knowledge': '销售知识库',
   '/customers': '客户管理',
   '/sales': '成交客户管理',
@@ -270,6 +272,14 @@ export function normalizeRolePermissions(
       if (!pages.includes('/sales-knowledge')) pages.push('/sales-knowledge');
       if (!pages.includes('/operations-workbench')) pages.push('/operations-workbench');
     }
+    // The new workspace reuses existing delivery scope; it grants no customer
+    // access and never enables company finance or private-space permissions.
+    if (role === 'super_admin' || (['admin', 'ops'].includes(role) && pages.includes('/service-board'))) {
+      if (!pages.includes('/media-ops')) pages.push('/media-ops');
+    } else {
+      const index = pages.indexOf('/media-ops');
+      if (index !== -1) pages.splice(index, 1);
+    }
     normalized[role] = {
       pages,
       buttons: uniq((merged.buttons || defaultRolePermissions[role].buttons) as ButtonPermission[]),
@@ -397,6 +407,7 @@ export function getPermissions(role: string): RolePermissionConfig {
 
 export function canAccessPage(role: string, path: string): boolean {
   if (!role) return false;
+  if (path === '/media-ops' && !['super_admin', 'admin', 'ops'].includes(mapToSystemRole(role))) return false;
   if (path === '/finance-entry') return ['super_admin', 'finance'].includes(mapToSystemRole(role));
   if (OWNER_COMPANY_PAGES.includes(path)) return mapToSystemRole(role) === 'super_admin';
   // /apps and /more are authenticated navigation shells. It never grants access to a

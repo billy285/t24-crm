@@ -27,6 +27,7 @@ import { client } from '@/lib/api';
 import { useAutoRefresh } from '@/lib/use-auto-refresh';
 import { useRole } from '@/lib/role-context';
 import { ServiceFollowThroughNav, ServiceFollowThroughWorkspace } from '@/components/ServiceFollowThrough';
+import MediaOperationsEntry from '@/components/MediaOperationsEntry';
 
 type WorkbenchTask = {
   id: number;
@@ -368,6 +369,7 @@ export default function OperationsWorkbench() {
         </Button>
       </div>
 
+      <MediaOperationsEntry />
       {loadError && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{loadError}</div>}
 
       <div className="calm-operations-metrics"><DeliveryMetrics label="今日事项概览" items={[

@@ -30,6 +30,7 @@ const labels: Record<string, string> = {
   '/management-decisions': '经营决策',
   '/customer-lifecycle': '客户周期',
   '/operations-workbench': '运营工作台',
+  '/media-ops': '代运营中心',
   '/service-board': '服务进度',
 };
 const navigationByPath = new Map(appNavigationItems.map(item => [item.path, item]));
@@ -62,7 +63,7 @@ const mobileMoreGroups: MobileMoreGroup[] = [
   },
   {
     key: 'delivery', label: '任务交付', icon: ClipboardCheck,
-    sections: [{ label: '交付工作', items: ['/operations-workbench', '/tasks', '/service-board', '/callbacks'].map(page) }],
+    sections: [{ label: '交付工作', items: ['/operations-workbench', '/media-ops', '/tasks', '/service-board', '/callbacks'].map(page) }],
   },
   {
     key: 'finance', label: '财务结算', icon: Wallet,
