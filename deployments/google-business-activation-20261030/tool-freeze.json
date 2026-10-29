@@ -1,0 +1,25 @@
+{
+  "actual_supplemental_metadata_sha256": "2bda1b6ce27c9b4dec54198e83be5abf5d6d89144da7b5b3330b407a6760e27a",
+  "commands": {
+    "diagnostics-command.sh": "d2c93dfca1aae88acd522cb5db3b48ae0b108cac22132ff8166ba2c590607018",
+    "plan-nginx-command.sh": "492142838b14b11f8935ad3ee21a966e2fba40662a6c0d9458ba313a71367a2c",
+    "preflight-command.sh": "2747d58cbf86f4628105a8c03ed8da0f989676e21273cc6c1ea4b41622151fe5",
+    "transport-init-command.sh": "8481b4f21bcee2ca316ff19f7f9b4bc92901544777f4b13464321bec78af2f17"
+  },
+  "credentials_included": false,
+  "independent_synthetic_tests": 15,
+  "local_synthetic_tests": 94,
+  "members": {
+    "README.md": "3a99653633b257bf9717f16a1d5c9688bf5d3f85fc0bf9b4d9d3ea0bdbd98548",
+    "activation.py": "933714872cc18a4694bb6697f2b3c53f24ddfcce93d0880dcb9859aaab528db1",
+    "core.py": "903081856fbdb042b9af74295cbebd6745b57e019e7039a7fce26c23bddde107",
+    "diagnostics.py": "05ab2bcdb1a00096b9a8df84b82e642109b5efb0b182300643c5155a80c384ca",
+    "encrypt-in-browser.js": "83ebcc0d2622d5aa7ba07c00fd077b82bb2fac9598c22dff59efd819c05bec44",
+    "make_commands.py": "70dae35f8c7afbf5ede695b02983c139423685d7ac2447a074e70c98be30cd31",
+    "preflight.py": "df6a02ab394c10ab81f4f6c2a6c153a370cfa91648961ccaf9392c8f9df02b8d",
+    "test_activation.py": "a8f70b8cd14541ffd6ac3fe2581149f1d50808a275275a9f020572d1dcc4e3d7",
+    "transport.py": "ac4042dd176fee6422543d563292ea24cc20e4773bdfab1c981c5d576c321e36"
+  },
+  "server_executed_by_tool_author": false,
+  "stage": "GBP_ACTIVATION_TOOLS_FROZEN_FOR_INDEPENDENT_REVIEW"
+}

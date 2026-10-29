@@ -1,0 +1,13 @@
+{
+  "local_synthetic_tests": 11,
+  "members": {
+    "collector-policy-command.sh": "369b47715a6e3630cc839a292d618c2b5d9adb29646e7fa790de0391ad281774",
+    "collector_policy.py": "d55b0f52f07c19367607bfc2f7c47a8aa611d4ae9f2599d6fc20aafb6c1d2b79",
+    "core.py": "903081856fbdb042b9af74295cbebd6745b57e019e7039a7fce26c23bddde107",
+    "diagnostics.py": "05ab2bcdb1a00096b9a8df84b82e642109b5efb0b182300643c5155a80c384ca",
+    "make_policy_command.py": "68c11edae4a0823d366a9fceafcc4459793d06de9b07751bdde59df061c1975a",
+    "test_collector_policy.py": "ee4be27e8bd9062a3a9e8764a22268949dcac9dff947230f8fca79ae09fb1952"
+  },
+  "server_executed_by_author": false,
+  "stage": "GBP_COLLECTOR_POLICY_READONLY_FROZEN_FOR_REVIEW"
+}

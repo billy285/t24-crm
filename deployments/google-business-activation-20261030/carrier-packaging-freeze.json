@@ -1,0 +1,22 @@
+{
+  "local_synthetic_tests": 37,
+  "maximum_tested_wrapper_bytes": 4216,
+  "members": {
+    "make_carrier_command.py": "cc8f2230cae0b670c75f618cfbd149c73b3b00caf73efa7223ee738c9c6d1fe5",
+    "test_carrier_command.py": "16d7b2c0a877887b649d184adb3803eef0a2495826591e25bc51ef7373a8c94e"
+  },
+  "reviewed_runtime_modules_unchanged": {
+    "activation.py": "933714872cc18a4694bb6697f2b3c53f24ddfcce93d0880dcb9859aaab528db1",
+    "core.py": "903081856fbdb042b9af74295cbebd6745b57e019e7039a7fce26c23bddde107",
+    "make_commands.py": "70dae35f8c7afbf5ede695b02983c139423685d7ac2447a074e70c98be30cd31",
+    "preflight.py": "df6a02ab394c10ab81f4f6c2a6c153a370cfa91648961ccaf9392c8f9df02b8d"
+  },
+  "server_executed": false,
+  "stage": "GBP_IMMUTABLE_CARRIER_PACKAGING_FROZEN_FOR_REVIEW",
+  "tested_wrapper_bytes": {
+    "enable": 4214,
+    "plan": 3049,
+    "protect": 4130,
+    "rollback": 4216
+  }
+}

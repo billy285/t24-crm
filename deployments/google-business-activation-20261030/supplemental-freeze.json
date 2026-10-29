@@ -1,0 +1,14 @@
+{
+  "local_synthetic_tests": 17,
+  "members": {
+    "core.py": "903081856fbdb042b9af74295cbebd6745b57e019e7039a7fce26c23bddde107",
+    "diagnostics.py": "05ab2bcdb1a00096b9a8df84b82e642109b5efb0b182300643c5155a80c384ca",
+    "make_supplemental_command.py": "24bff3c8c2113d1e5b40f30d641d866d023f4b92f7b6cebccae7fe89b9074414",
+    "supplemental-command.sh": "371e9b1e5375e677cba06e6a54322bf516a479661959dc22f1038f39e8f9a3a4",
+    "supplemental.py": "f9b3a2976e561d4deb7ab8fd46415430b3e369d0ba342808b74b07bd77d03751",
+    "test_supplemental.py": "f034352cfb73c1ce9e0ba6ca78129fd02f363c432094472281dcde4878df3b55"
+  },
+  "parent_activation_freeze_sha256": "4b6cf8301de231280fa29016430f60d0de4478796cabaee4a2ce81a7374a78c3",
+  "server_executed_by_author": false,
+  "stage": "GBP_SUPPLEMENTAL_READONLY_FROZEN_FOR_REVIEW"
+}
