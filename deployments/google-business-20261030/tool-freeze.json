@@ -1,0 +1,21 @@
+{
+  "baseline_frontend_version": "dcebcd11552a",
+  "baseline_source_sha": "d70c28dae860598229c7d81299d8a65db016f764",
+  "files": {
+    "README.md": "77e882ed6f487950548b64fb6366e4858e6394651991e631f50c97c6458cc3cb",
+    "build_payload.py": "d5780163c4c00ea1a40d292ed7c7aa90e7e132f086245d16446ec106a77213b5",
+    "generate_preflight_command.py": "b8ab76594062a7185423758774720b9093283e521c9fecab8e53632f307d87e5",
+    "make_commands.py": "7aee31cf3442de4a19aebc5455647c8785ed49f6fb16bacff34f5a8c80e5e39f",
+    "preflight.py": "7fe40c07f573a05fb277f22f0e735d3e52532da2fbdf28a605aea5885bfc5a2e",
+    "release.py": "52e64a074a7440d3561fb3115fb992c4b37cd96618bf97a6aa9803bc2a1d8dfa",
+    "test_release.py": "a28ae7e5393a3f924a6211d686d481bdd89d731532080d8ef9b4cecc115dd79e"
+  },
+  "frontend_version": "c648c284143e",
+  "gbp_disabled_only": true,
+  "prior_schema_revision": "b7c2d9e4a601",
+  "provider_requests": false,
+  "schema_revision": "c8d3e5f6a702",
+  "source_sha": "7431d1986b81328fcc822e3e13641e4d03b6b9bf",
+  "stage": "GOOGLE_BUSINESS_PUBLISHER_TOOLS_FROZEN",
+  "tests_passed": 67
+}
