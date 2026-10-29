@@ -1,0 +1,22 @@
+{
+  "baseline_source_sha": "3eac5daaf881bc5398cfa67223485cf12cf9ff2c",
+  "format_version": 1,
+  "local_test_result": {
+    "build_commit_deploy": false,
+    "failed": 0,
+    "passed": 50,
+    "production_access": false,
+    "synthetic_sqlite_or_inmemory_only": true
+  },
+  "members": {
+    "README.md": "bdc9c50b1d2ba33efd2adbe38cc9c424d36508737b84df1905d8f1f1ed63b545",
+    "build_payload.py": "bbfd9afdbdaf0a6ac4edee819173bfc22692e944a62fa987bc2e8bc3445440b5",
+    "generate_preflight_command.py": "1e87a3fdf9f5c919678eba9f8de01a507e14500e2a1865eee7c42529028bd869",
+    "make_commands.py": "83e4cad8130ab0ea7b5575a7e19c344ec9f2489867d5e91ce0375d3bb9ffb0d3",
+    "preflight.py": "e360fe61b829c85ea94078fe2b5133006c18d813f62c49e922b3b0a4507e85ff",
+    "release.py": "6fd909bb0d43e75d2f8d210955efe86cae9b632e06eb5e52d8a3f56d23cb931f",
+    "test_release.py": "3634503f4441632a8ab588468073fb80f90e2ad489580fc8c7a2c0a03261de53"
+  },
+  "scope": "media-operations-first-phase-20261030",
+  "source_sha": "d70c28dae860598229c7d81299d8a65db016f764"
+}
