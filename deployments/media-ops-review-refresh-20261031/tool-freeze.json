@@ -1,0 +1,58 @@
+{
+  "actual_preflight_sha256": "a6b79092ab47ede322196ea00514a489dfd89928f119b24253150c204bdea9a2",
+  "baseline_deployed_sha256": "17858808bd0ac0f825e8a51931bdf49cde6253f431a0ab7e8280b301fe3b9f37",
+  "database_migration": false,
+  "executed": false,
+  "frontend_version": "50347ba2c9da",
+  "members": {
+    "README.md": {
+      "sha256": "259362fbd3750f53d7d831863d901d64418e4a1ca10088c16234ec2e76d1f19a",
+      "size": 3707
+    },
+    "artifacts/manifest.json": {
+      "sha256": "abc77ae7e94cf5e73012eac6ec36e72fec1217533577fe44f13a59e2d31fc92a",
+      "size": 130852
+    },
+    "artifacts/payload.tar.gz": {
+      "sha256": "bb917957ebd304dfc0005b886f105980fdb65a9e371d1865f2dd6f07b06d8e4b",
+      "size": 2148358
+    },
+    "build_payload.py": {
+      "sha256": "f3d2f8fd589690b12bb62c91a8f27bceab8380f3164d4f0ca23ec58ef27a67d3",
+      "size": 6438
+    },
+    "generate_preflight_command.py": {
+      "sha256": "df7dbb98fbcb8bb95d00b3040107abe5691115c2c3cf95e6fae7b9e4a8b872f3",
+      "size": 1706
+    },
+    "make_commands.py": {
+      "sha256": "514b78381f784b080de258beaf3784b0edc368d8f1306b2f40f97e4c1d9715b5",
+      "size": 8334
+    },
+    "preflight.py": {
+      "sha256": "04cddd39318a0334f8cdd46d52c37e3f901c125af01f11286f5d48680da7a66f",
+      "size": 8194
+    },
+    "release.py": {
+      "sha256": "3102bfd36b973cfe603aeec9fa9a444fa4ee1819f11c69120e7e653ab2be20b6",
+      "size": 29583
+    },
+    "test_package.py": {
+      "sha256": "a7e7f090cb4b19d50150b4aa454236bb3ce444a3e68ad1a16ffc7c861c8a8eeb",
+      "size": 8008
+    },
+    "test_preflight.py": {
+      "sha256": "bc3219800014f40cc6af08575271b482dccf666b192f4ed13b45f30457b02529",
+      "size": 3486
+    },
+    "test_release.py": {
+      "sha256": "18350c20cb9a1b0960285f0fb4cdfc0c787e1d02951b51530ee6542254864bb2",
+      "size": 11756
+    }
+  },
+  "scheduler_disabled": true,
+  "schema_revision": "d9e4f6a7b803",
+  "source_sha": "5a52cdcf8e9560fcf5ec6e2b27f264f6f0fe1087",
+  "stage": "MEDIA_OPS_REVIEW_REFRESH_TOOL_REVIEW_READY",
+  "tests_passed": 113
+}
