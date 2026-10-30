@@ -1,16 +1,16 @@
 {
-  "actual_preflight_sha256": "19cd801ca5f2918d0704cde321a2c15f56be98b9a26975033ca907412e538315",
+  "actual_preflight_sha256": "b3518d7098bbc49366e041364fdc81cd1ede44085511244ae3bedefc0aadb40c",
   "baseline_deployed_sha256": "17858808bd0ac0f825e8a51931bdf49cde6253f431a0ab7e8280b301fe3b9f37",
   "database_migration": false,
   "executed": false,
   "frontend_version": "50347ba2c9da",
   "members": {
     "README.md": {
-      "sha256": "259362fbd3750f53d7d831863d901d64418e4a1ca10088c16234ec2e76d1f19a",
-      "size": 3707
+      "sha256": "c2f9368d693f1e4289053ed1bc04fd3a5fc9a1411b2d04eea177189f88ab62d5",
+      "size": 4319
     },
     "artifacts/manifest.json": {
-      "sha256": "66f263d378b912cda4ccfec0667d9ac025700b071eb73c48f55d15a21b9430a7",
+      "sha256": "89083bc990a2690deb824792145f5ae0f2f43096df02cbaaab60aacacf40f922",
       "size": 130852
     },
     "artifacts/payload.tar.gz": {
@@ -30,29 +30,30 @@
       "size": 8334
     },
     "preflight.py": {
-      "sha256": "04cddd39318a0334f8cdd46d52c37e3f901c125af01f11286f5d48680da7a66f",
-      "size": 8194
+      "sha256": "b35a7760f5f96c2c6177bd3bcfdc0715c7a1c42557c08d7397b9739b439d126b",
+      "size": 8447
     },
     "release.py": {
-      "sha256": "3102bfd36b973cfe603aeec9fa9a444fa4ee1819f11c69120e7e653ab2be20b6",
-      "size": 29583
+      "sha256": "0035faf92eae5b5d14fdfe998c1841421963d3f68b62e1842fd31977755d1e10",
+      "size": 31009
     },
     "test_package.py": {
       "sha256": "a7e7f090cb4b19d50150b4aa454236bb3ce444a3e68ad1a16ffc7c861c8a8eeb",
       "size": 8008
     },
     "test_preflight.py": {
-      "sha256": "bc3219800014f40cc6af08575271b482dccf666b192f4ed13b45f30457b02529",
-      "size": 3486
+      "sha256": "6e843824f38baa00db0648e5a3b58d028812f58e91f2f1a4d2a0d25c715f7291",
+      "size": 3695
     },
     "test_release.py": {
-      "sha256": "18350c20cb9a1b0960285f0fb4cdfc0c787e1d02951b51530ee6542254864bb2",
-      "size": 11756
+      "sha256": "2e85352bf46f45249b72e3ca37c61fb600d43765dae56b3e6a0ae3ad94d31d53",
+      "size": 15858
     }
   },
   "scheduler_disabled": true,
   "schema_revision": "d9e4f6a7b803",
+  "sequence_policy": "nondecreasing_same_keys_no_counter_writes",
   "source_sha": "5a52cdcf8e9560fcf5ec6e2b27f264f6f0fe1087",
-  "stage": "MEDIA_OPS_REVIEW_REFRESH_TOOL_REVIEW_READY",
-  "tests_passed": 114
+  "stage": "MEDIA_OPS_REVIEW_REFRESH_TOOL_V2_REVIEW_READY",
+  "tests_passed": 139
 }

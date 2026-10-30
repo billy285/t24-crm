@@ -62,7 +62,9 @@ def db_metadata(path):
         pragma=[con.execute('PRAGMA '+name).fetchone()[0] for name in ('user_version','application_id')]
         present=con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'").fetchone() is not None
         sequence=con.execute('SELECT name,seq FROM sqlite_sequence ORDER BY name').fetchall() if present else []
-        return {'pragma_sha256':digest(pragma),'sequence_exists':present,'sequence_sha256':digest(sequence)}
+        need(all(isinstance(name,str) and type(value) is int and value>=0 for name,value in sequence) and len({name for name,value in sequence})==len(sequence),'EXACT_VALID_SEQUENCE_ROWS_REQUIRED')
+        values=dict(sequence)
+        return {'pragma_sha256':digest(pragma),'sequence_exists':present,'sequence_sha256':digest(sequence),'sequence_values':values}
     finally:con.close()
 
 

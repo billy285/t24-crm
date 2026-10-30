@@ -22,7 +22,7 @@ BASE_FRONTEND='b06112728ac2'
 BASE_DEPLOYED_SHA='17858808bd0ac0f825e8a51931bdf49cde6253f431a0ab7e8280b301fe3b9f37'
 REVISION='d9e4f6a7b803'
 SCOPE='media-ops-review-refresh'
-PREFLIGHT_SHA='04cddd39318a0334f8cdd46d52c37e3f901c125af01f11286f5d48680da7a66f'
+PREFLIGHT_SHA='b35a7760f5f96c2c6177bd3bcfdc0715c7a1c42557c08d7397b9739b439d126b'
 BACKEND_FILES={'services/google_business.py','routers/google_business.py'}
 SOURCE_FILES={'app/backend/'+n for n in BACKEND_FILES}|{'app/frontend/src/components/GoogleBusinessWorkspace.tsx','app/backend/tests/test_google_business_review_refresh.py'}
 HOST='iZj6c4cj7edgnhdimts4l7Z'
@@ -47,6 +47,23 @@ def compare(candidate,original,m):
     need(left is right or left is None and right is False,'UNPROVEN_OOM_DEFAULT_DIRECTION')
     normalized['HostConfig']['OomKillDisable']=left
     need(m.runtime(normalized)['config']==m.runtime(original)['config'],'EXACT_RUNTIME_CONFIGURATION_REQUIRED')
+
+
+def sequence_boundary(before,current,*,forward=False,recovery=False):
+    # Protected proof stores values only to compare counters in memory; never
+    # print the map or write any counter/database value back.
+    for value in (before,current):
+        need(set(value)=={'pragma_sha256','sequence_exists','sequence_sha256','sequence_values'},'EXACT_SEQUENCE_VALUES_REQUIRED')
+        rows=value['sequence_values']
+        need(type(value['sequence_exists']) is bool and isinstance(rows,dict) and all(isinstance(name,str) and type(number) is int and number>=0 for name,number in rows.items()),'EXACT_VALID_SEQUENCE_MAP_REQUIRED')
+        need(value['sequence_exists'] or not rows,'SEQUENCE_EXISTENCE_MAP_CONFLICT')
+        need(value['sequence_sha256']==digest(sorted(rows.items())),'SEQUENCE_PROOF_HASH_VALUES_CONFLICT')
+    need(before['pragma_sha256']==current['pragma_sha256'] and before['sequence_exists'] is current['sequence_exists'],'EXACT_SCHEMA_PRAGMA_METADATA_REQUIRED')
+    if recovery:return  # Preserve valid current independent business counters.
+    if forward:
+        need(set(before['sequence_values'])==set(current['sequence_values']),'SEQUENCE_KEYSET_CHANGED')
+        need(all(current['sequence_values'][name]>=number for name,number in before['sequence_values'].items()),'SEQUENCE_COUNTER_REGRESSED')
+    else:need(before==current,'EXACT_UNCHANGED_SCHEMA_METADATA_REQUIRED')
 
 
 class Release:
@@ -97,11 +114,7 @@ class Release:
         self.private_boundary();need(m.credential_boundary()==p['credential_boundary'] and self.safe.protected_metadata(self.safe.GBP_ENV)==p['google_credential_metadata'],'CREDENTIAL_METADATA_DRIFT')
         row=m.BUSINESS.stat();need([row.st_dev,row.st_ino]==p['database_identity'],'DATABASE_INODE_DRIFT')
         metadata=self.pf.db_metadata(m.BUSINESS);expected=p['database_metadata']
-        if recovery:
-            # Same-schema independent INSERTs can advance AUTOINCREMENT. Keep
-            # their current value; no sequence or business row is ever restored.
-            need({k:v for k,v in metadata.items() if k!='sequence_sha256'}=={k:v for k,v in expected.items() if k!='sequence_sha256'},'RECOVERY_SCHEMA_PRAGMA_METADATA_REQUIRED')
-        else:need(metadata==expected,'EXACT_UNCHANGED_SCHEMA_METADATA_REQUIRED')
+        sequence_boundary(expected,metadata,forward=not recovery,recovery=recovery)
         need(m.schema_signature(m.BUSINESS,REVISION)==p['schema_sha256'],'EXACT_UNCHANGED_SCHEMA_METADATA_REQUIRED')
         need(digest(m.tree(m.PUBLIC))==p['public_inventory_sha256'],'ORIGINAL_STATIC_FILES_DRIFT');self.nginx(updated)
 
@@ -141,7 +154,8 @@ class Release:
         original_sha=m.write(a.release/'original-container.json',old);before_sha=m.write(a.release/'backend-original-inventory.json',before);after_sha=m.write(a.release/'backend-candidate-inventory.json',expected)
         image=self.image();data=a.release/'probe-data';data.mkdir(mode=0o700);(a.release/'probe-logs').mkdir(mode=0o700)
         m.backup(m.BUSINESS,data/'crm_prod.db');before_rows=self.pf.row_evidence(type('M',(),{'BUSINESS':data/'crm_prod.db','sql_snapshot':staticmethod(m.sql_snapshot)}))
-        need(before_rows==self.proof['rows'] and m.schema_signature(data/'crm_prod.db',REVISION)==self.proof['schema_sha256'] and self.pf.db_metadata(data/'crm_prod.db')==self.proof['database_metadata'],'OFFLINE_COPY_EXACT_REQUIRED')
+        offline_metadata=self.pf.db_metadata(data/'crm_prod.db');sequence_boundary(self.proof['database_metadata'],offline_metadata,forward=True)
+        need(before_rows==self.proof['rows'] and m.schema_signature(data/'crm_prod.db',REVISION)==self.proof['schema_sha256'],'OFFLINE_COPY_EXACT_REQUIRED')
         command=self.base.Release.offline_args(self,data,image);command[2:2]=['--name',self.offline_name,'-d']
         m.run(command,'OFFLINE_START_FAILED')
         try:
@@ -152,9 +166,9 @@ class Release:
                 output=m.run(['docker','exec',self.offline_name,'python','-B','-c',code],'OFFLINE_EXACT_PROBE_FAILED');need(marker in output,'OFFLINE_PROBE_MARKER_REQUIRED')
         finally:m.run(['docker','stop','--time','20',self.offline_name],'OFFLINE_STOP_FAILED',45)
         copy_module=type('M',(),{'BUSINESS':data/'crm_prod.db','sql_snapshot':staticmethod(m.sql_snapshot)})
-        need(self.pf.row_evidence(copy_module)==before_rows and m.schema_signature(data/'crm_prod.db',REVISION)==self.proof['schema_sha256'] and self.pf.db_metadata(data/'crm_prod.db')==self.proof['database_metadata'],'OFFLINE_STARTUP_CHANGED_DATABASE')
+        need(self.pf.row_evidence(copy_module)==before_rows and m.schema_signature(data/'crm_prod.db',REVISION)==self.proof['schema_sha256'] and self.pf.db_metadata(data/'crm_prod.db')==offline_metadata,'OFFLINE_STARTUP_CHANGED_DATABASE')
         root,static=m.stage_public(a.release,v);next_sha=H(m.next_nginx(m.NGINX.read_bytes()));self.current()
-        result={'stage':'MEDIA_OPS_REVIEW_REFRESH_PREPARED_OFFLINE_VERIFIED','source_sha':SOURCE_SHA,'frontend_version':FRONTEND,'schema_revision':REVISION,'schema_sha256':self.proof['schema_sha256'],'old_crm':m.runtime(old),'candidate_image':image,'preflight_sha256':a.preflight_sha256,'manifest_sha256':a.manifest_sha256,'payload_sha256':a.payload_sha256,'original_container_sha256':original_sha,'original_inventory_sha256':before_sha,'candidate_inventory_sha256':after_sha,'public_root':str(root),'public_inventory_sha256':static,'nginx_next_sha256':next_sha,'offline_rows_unchanged':True,'offline_schema_metadata_unchanged':True,'actual_python310_verified':True,'offline_network_none':True,'offline_credentials_absent':True,'offline_workers_off':True,'authoritative_route_registered':True,'database_migrated':False,'provider_requests':False,'original_table_count':129}
+        result={'stage':'MEDIA_OPS_REVIEW_REFRESH_PREPARED_OFFLINE_VERIFIED','source_sha':SOURCE_SHA,'frontend_version':FRONTEND,'schema_revision':REVISION,'schema_sha256':self.proof['schema_sha256'],'old_crm':m.runtime(old),'candidate_image':image,'preflight_sha256':a.preflight_sha256,'manifest_sha256':a.manifest_sha256,'payload_sha256':a.payload_sha256,'original_container_sha256':original_sha,'original_inventory_sha256':before_sha,'candidate_inventory_sha256':after_sha,'public_root':str(root),'public_inventory_sha256':static,'nginx_next_sha256':next_sha,'offline_rows_unchanged':True,'offline_schema_metadata_unchanged':True,'actual_python310_verified':True,'offline_network_none':True,'offline_credentials_absent':True,'offline_workers_off':True,'authoritative_route_registered':True,'database_migrated':False,'provider_requests':False,'original_table_count':129,'sequence_monotonic_progress_preserved':True,'sequence_written_by_tool':False,'offline_own_sequence_exact_before_after':True}
         sha=m.write(a.release/'prepared.json',result);return {**result,'receipt_sha256':sha}
 
     def reviewed(self):
@@ -162,7 +176,7 @@ class Release:
         r=json.loads(m.read(a.release/'prepared.json',a.review_sha256))
         need(r['stage']=='MEDIA_OPS_REVIEW_REFRESH_PREPARED_OFFLINE_VERIFIED' and r['source_sha']==SOURCE_SHA and r['frontend_version']==FRONTEND and r['schema_revision']==REVISION and r['schema_sha256']==self.proof['schema_sha256'] and r['original_table_count']==129,'EXACT_PREPARED_SCOPE_REQUIRED')
         need(r['manifest_sha256']==a.manifest_sha256 and r['payload_sha256']==a.payload_sha256 and r['preflight_sha256']==a.preflight_sha256,'PREPARED_IDENTITIES_DRIFT')
-        need(all(r[k] is True for k in ('offline_rows_unchanged','offline_schema_metadata_unchanged','actual_python310_verified','offline_network_none','offline_credentials_absent','offline_workers_off','authoritative_route_registered')) and r['database_migrated'] is False and r['provider_requests'] is False,'EXACT_OFFLINE_PROOF_REQUIRED')
+        need(all(r[k] is True for k in ('offline_rows_unchanged','offline_schema_metadata_unchanged','actual_python310_verified','offline_network_none','offline_credentials_absent','offline_workers_off','authoritative_route_registered','sequence_monotonic_progress_preserved','offline_own_sequence_exact_before_after')) and r['database_migrated'] is False and r['provider_requests'] is False and r['sequence_written_by_tool'] is False,'EXACT_OFFLINE_PROOF_REQUIRED')
         old=json.loads(m.read(a.release/'original-container.json',r['original_container_sha256']));before=json.loads(m.read(a.release/'backend-original-inventory.json',r['original_inventory_sha256']));expected=json.loads(m.read(a.release/'backend-candidate-inventory.json',r['candidate_inventory_sha256']))
         need(m.runtime(old)==r['old_crm']==self.proof['crm'] and digest(before)==self.proof['backend_inventory_sha256'] and expected=={**before,**self.manifest['backend_after']},'PREPARED_ORIGINAL_SOURCE_DRIFT')
         need(m.image_id(r['candidate_image'])==r['candidate_image'] and m.verify_public(self.public,self.manifest)==r['public_inventory_sha256'],'PREPARED_IMAGE_OR_STATIC_DRIFT')
@@ -236,7 +250,7 @@ class Release:
             need(m.verify_public(self.public,self.manifest)==r['public_inventory_sha256'],'FINAL_PUBLIC_DRIFT')
             self.public_check(FRONTEND)
             _,candidate=self.fresh(r,old,before,expected,state,live=True,updated=True)
-            result={'stage':'MEDIA_OPS_REVIEW_REFRESH_DEPLOYED_VERIFIED','deployed':True,'source_sha':SOURCE_SHA,'frontend_version':FRONTEND,'schema_revision':REVISION,'schema_sha256':self.proof['schema_sha256'],'crm':m.runtime(candidate),'original_id':old['Id'],'candidate_inventory_sha256':r['candidate_inventory_sha256'],'public_root':str(self.public),'public_inventory_sha256':r['public_inventory_sha256'],'nginx_sha256':H(m.NGINX.read_bytes()),'preflight_sha256':a.preflight_sha256,'prepared_sha256':a.review_sha256,'all_129_table_rows_unchanged':True,'database_migrated':False,'database_restored':False,'original_env_mounts_network_unchanged':True,'existing_google_environment_preserved':True,'scheduler_disabled':True,'private_runtime_unchanged':True,'nginx_only_public_root_changed':True,'provider_requests_by_deployment':False,'public_loopback_ready_and_version_verified':True}
+            result={'stage':'MEDIA_OPS_REVIEW_REFRESH_DEPLOYED_VERIFIED','deployed':True,'source_sha':SOURCE_SHA,'frontend_version':FRONTEND,'schema_revision':REVISION,'schema_sha256':self.proof['schema_sha256'],'crm':m.runtime(candidate),'original_id':old['Id'],'candidate_inventory_sha256':r['candidate_inventory_sha256'],'public_root':str(self.public),'public_inventory_sha256':r['public_inventory_sha256'],'nginx_sha256':H(m.NGINX.read_bytes()),'preflight_sha256':a.preflight_sha256,'prepared_sha256':a.review_sha256,'all_129_table_rows_unchanged':True,'database_migrated':False,'database_restored':False,'original_env_mounts_network_unchanged':True,'existing_google_environment_preserved':True,'scheduler_disabled':True,'private_runtime_unchanged':True,'nginx_only_public_root_changed':True,'provider_requests_by_deployment':False,'public_loopback_ready_and_version_verified':True,'sequence_monotonic_progress_preserved':True,'sequence_written_by_tool':False}
             sha=m.write(a.release/'deployed.json',result);return {**result,'receipt_sha256':sha}
         except BaseException:
             self.recover_internal(r,old,before,expected);raise

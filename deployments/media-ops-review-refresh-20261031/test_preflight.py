@@ -20,7 +20,7 @@ def test_db_metadata_is_readonly_and_includes_pragma_sequence(tmp_path):
     with sqlite3.connect(path) as con:
         con.executescript('CREATE TABLE example(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT);INSERT INTO example(name) VALUES(\'test\');PRAGMA user_version=9;PRAGMA application_id=123;')
     before=path.read_bytes();meta=p.db_metadata(path)
-    assert path.read_bytes()==before and meta['sequence_exists'] and set(meta)=={'pragma_sha256','sequence_sha256','sequence_exists'}
+    assert path.read_bytes()==before and meta['sequence_exists'] and set(meta)=={'pragma_sha256','sequence_sha256','sequence_exists','sequence_values'}
     assert 'test' not in json.dumps(meta)
     with sqlite3.connect(path) as con:con.execute('UPDATE sqlite_sequence SET seq=99')
     assert p.db_metadata(path)!=meta
@@ -70,3 +70,8 @@ def test_only_sql_selects_and_metadata_pragma_present():
     assert 'mode=ro' in source and 'PRAGMA query_only=ON' in source
     assert '.private_boundary(' not in source and '.safe_private_boundary(' in source
     assert 'UPDATE ' not in source and 'INSERT ' not in source and 'DELETE ' not in source
+
+
+def test_release_loader_pins_exact_current_prefight_source():
+    release=module('release')
+    assert release.PREFLIGHT_SHA==hashlib.sha256((HERE/'preflight.py').read_bytes()).hexdigest()

@@ -163,7 +163,7 @@
   "format_version": 1,
   "frontend_version": "50347ba2c9da",
   "payload_sha256": "bb917957ebd304dfc0005b886f105980fdb65a9e371d1865f2dd6f07b06d8e4b",
-  "preflight_sha256": "19cd801ca5f2918d0704cde321a2c15f56be98b9a26975033ca907412e538315",
+  "preflight_sha256": "b3518d7098bbc49366e041364fdc81cd1ede44085511244ae3bedefc0aadb40c",
   "production_seed_rows": false,
   "protected_source_inventory": {
     "app/.dockerignore": "00904b81cc471610bce2ea2881a3d8f85c31a05f863952f6917a9a8a09a7c8b4",

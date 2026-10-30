@@ -169,3 +169,58 @@ def test_exact_config_rejects_unrelated_changes(field):
 def test_only_oom_none_false_default_equivalence_and_objects_unchanged():
     m=SimpleNamespace(runtime=runtime,expected_labels=lambda old:old['Config']['Labels']);old=original();candidate=copy.deepcopy(old);candidate['HostConfig']['OomKillDisable']=False
     before=copy.deepcopy((candidate,old));r.compare(candidate,old,m);assert (candidate,old)==before
+
+
+def offline_prepare_fixture(w,tmp_path,*,startup_ignored_insert=False):
+    """Exercise actual prepare() copy/own-metadata flow on real SQLite."""
+    import sqlite3
+    spec=importlib.util.spec_from_file_location('refresh_offline_metadata',HERE/'preflight.py');pf=importlib.util.module_from_spec(spec);spec.loader.exec_module(pf)
+    source=tmp_path/'production-synthetic.db'
+    with sqlite3.connect(source) as db:
+        db.executescript("CREATE TABLE canary(id INTEGER PRIMARY KEY AUTOINCREMENT,value TEXT UNIQUE);INSERT INTO canary(value) VALUES('same');")
+    baseline=pf.db_metadata(source)
+    with sqlite3.connect(source) as db:db.execute("INSERT OR IGNORE INTO canary(value) VALUES('same')")
+    assert pf.db_metadata(source)['sequence_values']['canary']>baseline['sequence_values']['canary']
+    w.args.manifest_sha256='4'*64;w.args.payload_sha256='5'*64
+    w.m.BUSINESS=source
+    def snapshot(path):
+        with sqlite3.connect('file:'+str(path)+'?mode=ro',uri=True) as db:rows=db.execute('SELECT id,value FROM canary ORDER BY id').fetchall()
+        return {'canary':{'count':len(rows),'rows_sha256':r.digest(rows),'columns':['id','value'],'schema':{'id':'INTEGER','value':'TEXT'},'indexes':[]}}
+    w.m.sql_snapshot=snapshot;w.pf=pf;w.proof['rows']=pf.row_evidence(w.m);w.proof['database_metadata']=baseline
+    w.m.schema_signature=lambda path,revision:'same-schema';w.manifest={'backend_after':w.expected};w.offline_name='synthetic-offline'
+    for name in ('release.py','preflight.py','manifest.json','payload.tar.gz'):(w.args.release/name).write_bytes(b'synthetic-public')
+    def backup(src,dest):
+        with sqlite3.connect('file:'+str(src)+'?mode=ro',uri=True) as left,sqlite3.connect(dest) as right:left.backup(right)
+    w.m.backup=backup;w.m.extract=lambda *_:None;w.image=lambda:IMAGE
+    w.m.inventory=lambda key:copy.deepcopy(w.before if key==OLD else w.expected)
+    w.base.Release=SimpleNamespace(offline_args=lambda *args:['docker','run','--network=none'])
+    w.base.verify_disabled_environment=lambda _:None;w.base.gbp_disabled_probe=lambda:'no-provider-network'
+    w.route_probe=lambda:'route_probe';w.m.stage_public=lambda *args:(w.public,'static-hash')
+    run=w.m.run;injected=[False]
+    def offline_run(args,code,*timeouts):
+        if args[:2]==['docker','run']:
+            row=copy.deepcopy(original());row.update(Id='7'*64,Name='/'+w.offline_name);w.m.items[row['Id']]=row;return b''
+        if args[:2]==['docker','exec'] and args[2]==w.offline_name:
+            if startup_ignored_insert and not injected[0]:
+                injected[0]=True
+                with sqlite3.connect(w.args.release/'probe-data/crm_prod.db') as db:db.execute("INSERT OR IGNORE INTO canary(value) VALUES('same')")
+            return b'EXACT_PYTHON310 EXACT_AUTHORITATIVE_REVIEW_ROUTE_REGISTERED EXACT_GBP_DISABLED_UNCONFIGURED_NO_NETWORK'
+        if args[:2]==['docker','stop'] and args[-1]==w.offline_name:w.m.items['7'*64]['State']['Running']=False;return b''
+        return run(args,code,*timeouts)
+    w.m.run=offline_run
+    return source,pf
+
+
+def test_actual_prepare_accepts_copy_counter_forward_but_freezes_its_own_startup_metadata(publisher_fixture,tmp_path):
+    w=publisher_fixture;source,pf=offline_prepare_fixture(w,tmp_path);before=source.read_bytes()
+    result=w.prepare()
+    assert result['stage']=='MEDIA_OPS_REVIEW_REFRESH_PREPARED_OFFLINE_VERIFIED' and source.read_bytes()==before
+    assert pf.db_metadata(source)==pf.db_metadata(w.args.release/'probe-data/crm_prod.db')
+    assert pf.db_metadata(source)['sequence_values']['canary']>w.proof['database_metadata']['sequence_values']['canary']
+
+
+def test_actual_prepare_rejects_even_ignored_insert_during_offline_startup(publisher_fixture,tmp_path):
+    w=publisher_fixture;source,pf=offline_prepare_fixture(w,tmp_path,startup_ignored_insert=True);before=source.read_bytes()
+    with pytest.raises(RuntimeError,match='OFFLINE_STARTUP_CHANGED_DATABASE'):w.prepare()
+    assert source.read_bytes()==before and not (w.args.release/'prepared.json').exists()
+    assert pf.row_evidence(w.m)==w.proof['rows']
