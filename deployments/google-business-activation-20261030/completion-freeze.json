@@ -1,0 +1,24 @@
+{
+  "actual_server_executed_by_author": false,
+  "app_changed": false,
+  "credential_values_available_to_author": false,
+  "focused_authored_tests": 70,
+  "frozen_carrier": "b37565afba522e26b2f5ded47d8aafc24237b028",
+  "frozen_tools_changed": false,
+  "members": {
+    "COMPLETION.md": "d356526c47367317ec4945be6fef0f2382701e1a8d45ca78df2eefcbdcdd7336",
+    "completion.py": "15d9eef573bbd72e8fb73507e4acbe476894d91e78c8b5ab34a45464812a3152",
+    "make_completion_command.py": "c0c5f187e022882886cb07d723a22b261171c2b2a7f12a81b14e3d61be6642a7",
+    "test_completion.py": "9bbc082149c8e0516bcfa31d1057e6a625540b085fb0b71581e5b0e04f1a013b"
+  },
+  "new_container_creation_or_deletion": false,
+  "provider_requests": false,
+  "sizes": {
+    "COMPLETION.md": 4206,
+    "completion.py": 25042,
+    "make_completion_command.py": 5093,
+    "test_completion.py": 19150
+  },
+  "stage": "GBP_EXISTING_CANDIDATE_COMPLETION_FROZEN_FOR_REVIEW",
+  "tools_carrier_pending": true
+}
