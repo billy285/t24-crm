@@ -1,0 +1,37 @@
+{
+  "deployed_sha256": "17858808bd0ac0f825e8a51931bdf49cde6253f431a0ab7e8280b301fe3b9f37",
+  "executed": false,
+  "existing_frozen_files_changed": false,
+  "frontend_version": "b06112728ac2",
+  "members": {
+    "README.md": {
+      "sha256": "2078a0f004c7f328ab1aa15bd8cd738297bf56f8dc7a33aac811a4b74c385bb9",
+      "size": 4459
+    },
+    "core.py": {
+      "sha256": "d64de9e4880f141fbfa49f5fa35aeff3b71c45cca5b5ee737cf04f0d2a7b4f7e",
+      "size": 26791
+    },
+    "make_commands.py": {
+      "sha256": "7cb5d738232d98a3837f6fc457da2806e6fe8209ad39ab87b17b2884afc9e8e7",
+      "size": 5461
+    },
+    "test_commands.py": {
+      "sha256": "4c7f95216eecc8a26efb9a79f6f6880f44bee775cf17674c3d77a0f3cbae156d",
+      "size": 7073
+    },
+    "test_core.py": {
+      "sha256": "ff8f17c52aa2eee9a3480efc988174089b23ab2ebeca1ae8a484eceab76d6a30",
+      "size": 11352
+    },
+    "test_independent.py": {
+      "sha256": "f2633096dc2d17a335aedb266d3b8fe1d823c016430788844d03ba2b7a8c4d4b",
+      "size": 21202
+    }
+  },
+  "provider_requests": false,
+  "schema_revision": "d9e4f6a7b803",
+  "source_sha": "6b47aefa201fb5e4963e4cfa522b7a5776e5a2c4",
+  "stage": "SCHEDULER_CONFIG_TOOL_REVIEW_READY",
+  "tests_passed": 123
+}
