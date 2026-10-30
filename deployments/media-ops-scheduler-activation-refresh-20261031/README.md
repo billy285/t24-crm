@@ -1,0 +1,34 @@
+# Google 内容排期执行器：独立配置审查
+
+当前已固定实际RETRY上线基线。旧6b47及失败首个hotfix计划不可使用。尚未运行或启用。已上线应用仍将执行器保持关闭。
+
+本工具仅适用于 source `5a52cdcf8e9560fcf5ec6e2b27f264f6f0fe1087`、前端 `50347ba2c9da`、schema `d9e4f6a7b803`、已核实部署回执 `e9790ac0c05b14a79f0e72d7a6d11d2547d5bf9d8892c29b3d9703295f866c80` 及其精确容器和镜像。原应用/发布器不作更改。
+
+## 分阶段操作
+
+1. 先审查代码、合成测试和工具 freeze。由主代理提交/推送仅工具 carrier，生成器会核对完整40位 carrier 中所有工具文件和原 app 树，不接受本地未提交替换。
+2. 用新 UUID、实际老板员工 ID、上述回执哈希生成 `plan` 命令。它只检查运行时/业务库只读事实，保存 root 0700 目录中的 0600 审查计划；不创建容器、不启用执行器。需保持 Google 已配置，且该老板至少有一个有效、无需重连的连接。
+3. 老板已明确授权本次“空队列、仅新建并已审核的未来排期、不补历史”启用，不重复询问。仍须独立审查实际 plan 回执与哈希，确认精确基线后再生成 `activate --confirmed --plan-sha <实际哈希>`。禁止用模板哈希或跳过实际计划。
+4. 激活时固定 `ACTIVATION_FROM = 当时 UTC +120 秒`。必须在此时间之前完成所有核查/启用/验收；过期即关闭候选并恢复原 OFF 容器。不会将过去的排期悄悄补发。
+5. 验收只检查配置、来源、健康、空队列和未改变的行哈希；不创建测试排期、评论或公开帖子。首次启用要求 `google_business_schedules` **整表零行**，包括取消/失败历史也不可存在。工具不会清空任何记录。之后只由老板/主运营按原已审核流程明确创建未来排期。
+6. 需要关闭时使用同 carrier/attempt/plan 的 `rollback`。先停止已持久绑定的候选执行器，再检查安全边界恢复原容器 OFF；候选保留为停止状态，不删除容器、不回滚数据库、不恢复后来新增或修改的业务数据。若恢复安全前提已漂移，工具保持候选停止并拒绝启动不安全原容器，此时必须人工检查；不可声称服务已恢复。
+
+示例仅为本地生成，不能直接执行占位参数：
+
+```sh
+python3 deployments/media-ops-scheduler-activation-refresh-20261031/make_commands.py --carrier <已审查完整40位commit> --phase plan --attempt <新UUID> --deployed-sha e9790ac0c05b14a79f0e72d7a6d11d2547d5bf9d8892c29b3d9703295f866c80 --owner-id <老板ID> --out <新plan命令文件>
+```
+
+所有服务器阶段只允许固定主机 root，remote Python 使用 `-I -S -B`；执行器配置探针屏蔽 socket 后才加载应用。代码下载固定 GitHub raw 完整 commit、精确大小与 SHA，禁代理/重定向。命令小于8KB。
+
+## 明确保留与限制
+
+- 只改变 `T24_GBP_SCHEDULER_ENABLED=true`、`T24_GBP_SCHEDULER_ACTIVATION_FROM=<固定UTC秒>`。其他环境变量、镜像、启动命令、挂载、网络、业务来源和现有员工/财务/客户权限保持精确一致；绝不输出环境变量值。
+- SQLite 仅 URI `mode=ro`，不迁移/恢复/写入业务库。不读私人库内容或凭据文件内容，只核验固定 metadata、现有私容器身份和运行时哈希。保留完整 Nginx callback 日志脱敏及安全头，不写 Nginx。
+- 容器 inspect 包含环境变量，因此原始 inspect 只保存服务器 root 0600 文件，绝不作为输出或公开 carrier。摘要只含哈希/ID/安全布尔。
+- Docker OOM 默认字段只对**指定的** `OomKillDisable` 接受 exact `None`/`False` 比较等价；拒绝 `True`、数字0、缺失和其他变更。没有验证内核实际 OOM 行为。不支持含显式 IPAM 静态地址的网络，遇到此配置拒绝。
+- 候选 ID 必须成功持久化后才停止/启动任何服务。若 Docker create 已完成但响应/ID记录失败，原容器保持运行，可能留下从未启动的停止候选；工具不按名称猜测删除或接管，需人工检查后另开审查。
+- 所有已有服务仍共用业务库；计划和切换期间任何行/metadata变化都会拒绝激活，先重新取得新鲜计划，不能绕过。恢复 OFF 不要求业务行回退。
+- 工具自身不发 Google/LLM 请求。正常启动会保留原有后台任务；只证明此新排期队列为空及本工具没有创建公开动作，不宣称全系统没有网络流量。未来任务到期会由已批准的原应用执行真实 Google 发布，未知结果严格不盲重试。
+
+此版只绑定实际RETRY路径media-ops-review-refresh-retry-5a52cdcf8e95-20261031及RETRY_DEPLOYED_VERIFIED回执；继续使用原6b47审计过的管理helper/safe元数据函数，新库存与完整Nginx链从实际retry回执引用的01286只读事实取得。老板已授权；plan执行须在本次线上AI草稿/Google连接QA完成后取得当前业务行基线，再独立核对plan后启用，不复用QA前的行哈希。
