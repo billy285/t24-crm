@@ -1,0 +1,77 @@
+{
+  "application_source_files": 20,
+  "author_publisher_tests": 44,
+  "existing_google_environment_preserved": true,
+  "frontend_version": "b06112728ac2",
+  "independent_publisher_tests": 44,
+  "members": {
+    "README.md": {
+      "bytes": 4579,
+      "sha256": "9683136f738ed81dc87d3f273c8e3035750964983477d3bbf6640b74c709f7e3"
+    },
+    "artifacts/manifest.json": {
+      "bytes": 133519,
+      "sha256": "0fab7711bc6fb6ac77be6c89b3965e1c87f3b35381b7376df711bae66aa1d269"
+    },
+    "artifacts/payload.tar.gz": {
+      "bytes": 2168778,
+      "sha256": "8e05086a1c78e5bba2094764abc3658a2f8f5c0fc0e0e541386911ddebec8ce6"
+    },
+    "build_payload.py": {
+      "bytes": 9387,
+      "sha256": "5ab220366895e347b91593925e8104123bae4329daea188b31899dfccdcadfec"
+    },
+    "capture_preflight.py": {
+      "bytes": 8044,
+      "sha256": "02a0d4c3a4ec6f718c6bf3d90616c43f3b610a4c6a6afe072e9442cce8ddc9c8"
+    },
+    "generate_capture_commands.py": {
+      "bytes": 5505,
+      "sha256": "9baab27daa75df056d54c8f6306b969f6bc27b9dc6ffa5f6ba45ae64269d83a9"
+    },
+    "generate_preflight_command.py": {
+      "bytes": 1669,
+      "sha256": "e654bb02af25dacfef1f72c950720ce3a32ab18107f3a2768d5b37faf8b3d616"
+    },
+    "make_commands.py": {
+      "bytes": 14209,
+      "sha256": "0102299d2ee25eebd969ed41f9dfac201c065d81819fbdbfc2e0b2769e6376be"
+    },
+    "preflight.py": {
+      "bytes": 14810,
+      "sha256": "12a65720a072901bbeb55cdc91ca69a3430c06da178d8d6d0b80d46e8787d95b"
+    },
+    "release.py": {
+      "bytes": 61753,
+      "sha256": "ebe95b02fb337bd4d2c0cb10fed9e1f29ef7c71aececff2e94c40a7443acd27c"
+    },
+    "test_capture_preflight.py": {
+      "bytes": 13434,
+      "sha256": "602b427e17da8d4b2f86a9ff96ead94c80b67a0a967a01597d59627dafd13659"
+    },
+    "test_preflight.py": {
+      "bytes": 19243,
+      "sha256": "ee38c1607de943609b09b057ea3b2a466ce0231f2952f3ec0ed811ffb0af0cb9"
+    },
+    "test_release.py": {
+      "bytes": 23246,
+      "sha256": "437c01f0ef79fab215dab089d22e856469e0504fe26fcccef1820928ff5d8ee4"
+    }
+  },
+  "new_tables": [
+    "google_business_ai_consents",
+    "google_business_ai_drafts",
+    "google_business_assignment_previews",
+    "google_business_management_requests",
+    "google_business_schedules"
+  ],
+  "preflight_bytes": 74437,
+  "preflight_sha256": "92cf8b589defaffcc3a38837c46057fba82a7b82766ca12176bc5c323e9eb4f9",
+  "production_access_by_author": false,
+  "real_provider_requests": false,
+  "runtime_backend_files": 8,
+  "scheduler_enabled_by_release": false,
+  "source_edits_after_app_commit": false,
+  "source_sha": "6b47aefa201fb5e4963e4cfa522b7a5776e5a2c4",
+  "stage": "MEDIA_OPS_MANAGEMENT_PUBLISHER_FROZEN_FOR_REVIEW"
+}
