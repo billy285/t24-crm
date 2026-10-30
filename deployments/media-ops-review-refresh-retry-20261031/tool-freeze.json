@@ -1,0 +1,61 @@
+{
+  "actual_host_nanosecond_parser_verified": true,
+  "actual_preflight_sha256": "01286c0dfb8bba5d3e51bfca87befe1e4f6f56b66e8b5fb7f2988315de2de288",
+  "baseline_deployed_sha256": "17858808bd0ac0f825e8a51931bdf49cde6253f431a0ab7e8280b301fe3b9f37",
+  "database_migration": false,
+  "executed": false,
+  "frontend_version": "50347ba2c9da",
+  "members": {
+    "README.md": {
+      "sha256": "b9e33e8f5da29faa61ac66edc74a5676d6c14b78dab3cdaf96427d0db99fa850",
+      "size": 5041
+    },
+    "artifacts/manifest.json": {
+      "sha256": "776caa19124dcd3d23389ea8f2887f9946c54bbb3acd87870e2b8caa2f0d0e4c",
+      "size": 130852
+    },
+    "artifacts/payload.tar.gz": {
+      "sha256": "bb917957ebd304dfc0005b886f105980fdb65a9e371d1865f2dd6f07b06d8e4b",
+      "size": 2148358
+    },
+    "build_payload.py": {
+      "sha256": "dae4fe632d64868bd3192eb150bd1b5551c93d626c6e13f58ccaeb43b79fc88b",
+      "size": 6621
+    },
+    "generate_preflight_command.py": {
+      "sha256": "6820a8bc0944ad843ca38b4d7ee6939459149ec9716717c08eb6deb3de0eac07",
+      "size": 1712
+    },
+    "make_commands.py": {
+      "sha256": "c8d4676b3bddae4fd05e0eab1fa3007217722ebaa40351dcec876c7af20e251a",
+      "size": 8539
+    },
+    "preflight.py": {
+      "sha256": "8f22bbc8929a675ef51ca85061d2ffad4f94cc5eec1cad4a794498e5a64dc32d",
+      "size": 11461
+    },
+    "release.py": {
+      "sha256": "e932a4ad4b13ec356c4e7808bab4cbf98bbaec4a6e1573b4e13820d03d4fab5e",
+      "size": 31506
+    },
+    "test_package.py": {
+      "sha256": "79b6a1b2f0875715f328d4606b4898bce64ae4139877ba4654f8626c55655fc1",
+      "size": 8200
+    },
+    "test_preflight.py": {
+      "sha256": "ea97cd5dae71636696bc18ec5c5c3137da6b2acad15fbcbf87361a267d6f2241",
+      "size": 4100
+    },
+    "test_release.py": {
+      "sha256": "482726119abc6937551bc326e2d8ea4fe203fb6232064fc6172eaaa7ec4eed4e",
+      "size": 17008
+    }
+  },
+  "recovered_sha256": "9544b445b850c4265a3953e1ffd561c548ac142cb89f84527c807cb944584fe3",
+  "scheduler_disabled": true,
+  "schema_revision": "d9e4f6a7b803",
+  "sequence_policy": "nondecreasing_same_keys_no_counter_writes",
+  "source_sha": "5a52cdcf8e9560fcf5ec6e2b27f264f6f0fe1087",
+  "stage": "MEDIA_OPS_REVIEW_REFRESH_RETRY_TOOL_REVIEW_READY",
+  "tests_passed": 111
+}
