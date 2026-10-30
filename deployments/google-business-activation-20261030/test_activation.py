@@ -26,6 +26,10 @@ import diagnostics as d
 
 CLIENT = '58950527996-abcdefghijklmnopqrstuv.apps.googleusercontent.com'
 SECRET = 'synthetic_test_secret_1234567890'
+SECURITY_RESPONSE = (b'HTTP/1.1 303 See Other\r\nLocation: /media-ops?google=failed\r\nCache-Control: private, no-store\r\n'
+    b'Strict-Transport-Security: max-age=31536000; includeSubDomains\r\nContent-Security-Policy: default-src self\r\n'
+    b'X-Frame-Options: SAMEORIGIN\r\nX-Content-Type-Options: nosniff\r\nPermissions-Policy: camera=()\r\n'
+    b'Referrer-Policy: no-referrer\r\n\r\n')
 
 
 @pytest.fixture
@@ -363,12 +367,13 @@ def test_retained_loader_caches_but_rechecks_hash(store, monkeypatch):
 @pytest.fixture
 def switch_fixture(store, monkeypatch):
     c.mkdir(c.ROOT)
+    c.mkdir(a.attempt_root())
     original = synthetic_info()
     nginx = store / 'nginx.conf'
     next_body, _ = a.next_nginx(NGINX)
     nginx.write_bytes(next_body)
     values = synthetic_values()
-    c.write(c.ROOT / 'original-container.json', original)
+    c.write(a.attempt_root() / 'original-container.json', original)
     c.write(c.ROOT / 'credential-receipt.json', {'stage': 'GBP_ACTIVATION_CREDENTIALS_STORED_NOT_ENABLED',
         'project_id': c.PROJECT_ID, 'project_number': c.PROJECT_NUMBER, 'runtime_changed': False})
     containers = {original['Id']: copy.deepcopy(original)}
@@ -662,7 +667,8 @@ def test_sentinel_checks_new_nginx_and_both_container_streams(store, monkeypatch
             path = access if leak == 'access' else error
             with path.open('ab') as stream:
                 stream.write(('request ' + sentinel + '\n').encode())
-        return b'HTTP/1.1 303 See Other\r\nLocation: /media-ops?google=failed\r\nCache-Control: private, no-store\r\nReferrer-Policy: no-referrer\r\n\r\n'
+        assert args[:2] == ['curl', '-q'] and args[args.index('--noproxy') + 1] == '*'
+        return SECURITY_RESPONSE
 
     def logs(args, **kw):
         assert args[:3] == ['docker', 'logs', '--since'] and args[-1] == 't24-crm'
@@ -675,13 +681,15 @@ def test_sentinel_checks_new_nginx_and_both_container_streams(store, monkeypatch
     monkeypatch.setattr(a.subprocess, 'run', logs)
     monkeypatch.setattr(a.time, 'sleep', lambda seconds: None)
     if leak == 'none':
-        plan = {'nginx_log_paths': [str(access), str(error)], 'log_file_identities': {str(path): [path.stat().st_dev, path.stat().st_ino] for path in (access, error)}}
+        plan = {'nginx_log_paths': [str(access), str(error)], 'log_file_identities': {str(path): [path.stat().st_dev, path.stat().st_ino] for path in (access, error)},
+            'baseline_security_header_sha256': a.security_fingerprints(SECURITY_RESPONSE)}
         result = a.sentinel_probe(None, plan)
         assert result['callback_sentinel_verified'] is True
         assert observed['sentinel'] not in json.dumps(result)
     else:
         with pytest.raises(c.GuardError, match='CALLBACK_QUERY_PRESENT'):
-            a.sentinel_probe(None, {'nginx_log_paths': [str(access), str(error)], 'log_file_identities': {str(path): [path.stat().st_dev, path.stat().st_ino] for path in (access, error)}})
+            a.sentinel_probe(None, {'nginx_log_paths': [str(access), str(error)], 'log_file_identities': {str(path): [path.stat().st_dev, path.stat().st_ino] for path in (access, error)},
+                'baseline_security_header_sha256': a.security_fingerprints(SECURITY_RESPONSE)})
     for fd in opened:
         with pytest.raises(OSError):
             os.fstat(fd)
@@ -690,24 +698,27 @@ def test_sentinel_checks_new_nginx_and_both_container_streams(store, monkeypatch
 @pytest.fixture
 def callback_fixture(store, monkeypatch):
     c.mkdir(c.ROOT)
+    c.mkdir(a.attempt_root())
     nginx = store / 'nginx.conf'
     nginx.write_bytes(NGINX)
     updated, added = a.next_nginx(NGINX)
     active = b'error_log /var/log/nginx/error.log;\n' + NGINX
-    c.write(c.ROOT / 'nginx-before.conf', NGINX)
-    c.write(c.ROOT / 'nginx-next.conf', updated)
+    c.write(a.attempt_root() / 'nginx-before.conf', NGINX)
+    c.write(a.attempt_root() / 'nginx-next.conf', updated)
     plan = {'stage': 'GBP_ACTIVATION_NGINX_PLAN_ONLY', 'source_sha': c.SOURCE, 'image': c.IMAGE,
         'schema_revision': c.REVISION, 'frontend_version': c.FRONTEND, 'prior_deployed_sha256': c.PRIOR_SHA,
         'nginx_before_sha256': c.H(NGINX), 'nginx_next_sha256': c.H(updated), 'active_config_before_sha256': c.H(active),
         'tool_sha256': a.tool_hashes(), 'callback_block_safe_view': preflight.safe_nginx_view(added), 'nginx_log_paths': ['/var/log/nginx/error.log']}
     plan['log_metadata_evidence_sha256'] = a.LOG_METADATA_EVIDENCE_SHA
-    plan_sha = c.write(c.ROOT / 'nginx-plan.json', plan)
+    plan['attempt_namespace'] = a.ATTEMPT_NAMESPACE
+    plan['baseline_security_header_sha256'] = a.security_fingerprints(SECURITY_RESPONSE)
+    plan_sha = c.write(a.attempt_root() / 'nginx-plan.json', plan)
     review = review_fixture(plan_sha)
     arguments = {'plan_sha256': plan_sha, 'review': review, 'review_sha256': c.H(c.encoded(review))}
     monkeypatch.setattr(c, 'legacy', lambda: types.SimpleNamespace(NGINX=nginx))
-    monkeypatch.setattr(c, 'run', lambda *args, **kw: active)
-    monkeypatch.setattr(preflight, 'proof', lambda **kw: {'crm': {'id': 'same-disabled-container'}, 'active_nginx_config_sha256': c.H(active)})
-    monkeypatch.setattr(a, 'sentinel_probe', lambda *args: {'callback_sentinel_verified': True})
+    monkeypatch.setattr(c, 'run', lambda *args, **kw: b'error_log /var/log/nginx/error.log;\n' + nginx.read_bytes())
+    monkeypatch.setattr(preflight, 'proof', lambda **kw: {'crm': {'id': 'same-disabled-container'}, 'active_nginx_config_sha256': c.H(b'error_log /var/log/nginx/error.log;\n' + nginx.read_bytes())})
+    monkeypatch.setattr(a, 'sentinel_probe', lambda *args: {'callback_sentinel_verified': True, 'single_no_referrer_verified': True, 'other_security_header_fingerprints_unchanged': True})
     monkeypatch.setattr(a, 'verify_worker_identity', lambda active: {'uid': 33})
     monkeypatch.setattr(a, 'verify_log_identities', lambda plan: None)
     reloads = []
@@ -721,7 +732,7 @@ def test_callback_protection_applies_only_reviewed_insert_and_saves_proof(callba
     assert fixture.nginx.read_bytes() == fixture.updated
     assert result['stage'] == 'GBP_CALLBACK_LOGGING_PROTECTED' and result['callback_sentinel_verified'] is True
     assert fixture.reloads == ['reload']
-    assert c.read(c.ROOT / 'approved.json') == c.encoded(fixture.args['review'])
+    assert c.read(a.attempt_root() / 'approved.json') == c.encoded(fixture.args['review'])
 
 
 def test_callback_missing_manual_flag_cannot_change_config(callback_fixture):
@@ -745,7 +756,7 @@ def test_nginx_test_failure_restores_only_original_bytes(callback_fixture, monke
     with pytest.raises(c.GuardError, match='SYNTHETIC_NGINX_TEST_FAILED'):
         a.protect_callback(fixture.args)
     assert fixture.nginx.read_bytes() == NGINX and fixture.reloads == ['reload', 'reload']
-    assert not (c.ROOT / 'logging-protected.json').exists()
+    assert not (a.attempt_root() / 'logging-protected.json').exists()
 
 
 def test_sentinel_leak_restores_original_before_any_oauth(callback_fixture, monkeypatch):
@@ -758,7 +769,7 @@ def test_sentinel_leak_restores_original_before_any_oauth(callback_fixture, monk
     with pytest.raises(c.GuardError, match='CALLBACK_QUERY_PRESENT_IN_NGINX_LOG'):
         a.protect_callback(fixture.args)
     assert fixture.nginx.read_bytes() == NGINX and fixture.reloads == ['reload', 'reload']
-    assert not (c.ROOT / 'logging-protected.json').exists()
+    assert not (a.attempt_root() / 'logging-protected.json').exists()
 
 
 def test_full_global_nginx_drift_blocks_enable_before_any_container_change(switch_fixture, monkeypatch):
@@ -954,3 +965,112 @@ def test_plan_live_inode_pin_detects_rotation_after_approval(monkeypatch):
     identities['/var/log/nginx/access.log'][1] += 1
     with pytest.raises(c.GuardError, match='OBSERVED_LOG_FILE_IDENTITY_DRIFT'):
         a.verify_log_identities(plan)
+
+
+def test_v2_callback_only_referrer_override_preserves_existing_bytes_and_sibling_headers():
+    original = NGINX.replace(b'    location / { try_files $uri $uri/ /index.html; }',
+        b'    location / { add_header X-Frame-Options SAMEORIGIN always; try_files $uri $uri/ /index.html; }')
+    updated, added = a.next_nginx(original)
+    assert updated.replace(added, b'', 1) == original
+    assert added.count(b'proxy_hide_header Referrer-Policy;') == 1
+    assert added.count(b'add_header Referrer-Policy no-referrer always;') == 1
+    assert b'add_header X-Frame-Options' not in added
+    a.verify_header_inheritance(original)
+    a.verify_header_inheritance(updated, callback_present=True)
+
+
+@pytest.mark.parametrize('directive', [
+    b'add_header X-Frame-Options SAMEORIGIN always;',
+    b'proxy_hide_header X-Private-Upstream;',
+    b'proxy_pass_header Referrer-Policy;',
+])
+def test_v2_will_not_cancel_unknown_parent_or_include_header_protections(directive):
+    for original in (b'http { ' + directive + b' }\n' + NGINX, directive + b'\n' + NGINX,
+                     NGINX.replace(b'    root /var/', b'    ' + directive + b'\n    root /var/')):
+        with pytest.raises(c.GuardError, match='INHERITED_NGINX_HEADER_RULES_REQUIRE_REVIEW'):
+            a.verify_header_inheritance(original)
+
+
+@pytest.mark.parametrize('setting', ['on', 'off', 'merge'])
+def test_custom_header_inheritance_mode_requires_explicit_review(setting):
+    with pytest.raises(c.GuardError, match='CUSTOM_HEADER_INHERITANCE_REQUIRES_REVIEW'):
+        a.verify_header_inheritance(('http { add_header_inherit ' + setting + '; }\n').encode() + NGINX)
+
+
+@pytest.mark.parametrize('mutation', [
+    lambda value: value.replace(b'proxy_hide_header Referrer-Policy;', b''),
+    lambda value: value.replace(b'no-referrer always;', b'no-referrer;'),
+    lambda value: value.replace(b'no-referrer always;', b'strict-origin-when-cross-origin always;'),
+    lambda value: value.replace(b'add_header Referrer-Policy no-referrer always;', b'add_header Referrer-Policy no-referrer always; add_header X-Frame-Options DENY;'),
+])
+def test_v2_callback_override_must_be_exactly_the_reviewed_pair(mutation):
+    updated, _ = a.next_nginx(NGINX)
+    with pytest.raises(c.GuardError, match='EXACT_CALLBACK_REFERRER_OVERRIDE_REQUIRED'):
+        a.verify_header_inheritance(mutation(updated), callback_present=True)
+
+
+@pytest.mark.parametrize('response,expected', [
+    (SECURITY_RESPONSE, None),
+    (SECURITY_RESPONSE.replace(b'Referrer-Policy: no-referrer', b'Referrer-Policy: strict-origin-when-cross-origin'), 'CALLBACK_SENTINEL_RESPONSE_REJECTED'),
+    (SECURITY_RESPONSE.replace(b'Referrer-Policy: no-referrer', b'Referrer-Policy: no-referrer\r\nReferrer-Policy: strict-origin-when-cross-origin'), 'CALLBACK_SENTINEL_RESPONSE_REJECTED'),
+    (SECURITY_RESPONSE.replace(b'Content-Security-Policy: default-src self', b'Content-Security-Policy: default-src unsafe'), 'CALLBACK_OTHER_SECURITY_HEADERS_CHANGED'),
+    (SECURITY_RESPONSE.replace(b'X-Frame-Options: SAMEORIGIN\r\n', b''), 'BASELINE_SECURITY_HEADERS_REQUIRED'),
+])
+def test_v2_sentinel_rejects_conflicting_referrer_or_other_security_header_drift(monkeypatch, response, expected):
+    monkeypatch.setattr(c, 'run', lambda *args, **kwargs: response)
+    monkeypatch.setattr(a.subprocess, 'run', lambda *args, **kwargs: types.SimpleNamespace(returncode=0, stdout=b'', stderr=b''))
+    monkeypatch.setattr(a.time, 'sleep', lambda seconds: None)
+    plan = {'nginx_log_paths': [], 'log_file_identities': {}, 'baseline_security_header_sha256': a.security_fingerprints(SECURITY_RESPONSE)}
+    if expected:
+        with pytest.raises(c.GuardError, match=expected):
+            a.sentinel_probe(None, plan)
+    else:
+        proof = a.sentinel_probe(None, plan)
+        assert proof['single_no_referrer_verified'] is True and proof['other_security_header_fingerprints_unchanged'] is True
+
+
+def test_baseline_header_get_never_sends_query_cookie_auth_or_curlrc_defaults(monkeypatch):
+    calls = []
+
+    def run(args, code, **kwargs):
+        calls.append(args)
+        assert args[:2] == ['curl', '-q'] and args[args.index('--noproxy') + 1] == '*'
+        assert args[-1] == c.ORIGIN + c.CALLBACK
+        assert not any(value in args for value in ('--cookie', '-b', '--header', '-H'))
+        return SECURITY_RESPONSE.replace(b'Referrer-Policy: no-referrer', b'Referrer-Policy: strict-origin-when-cross-origin')
+
+    monkeypatch.setattr(c, 'run', run)
+    assert a.baseline_security_headers() == a.security_fingerprints(SECURITY_RESPONSE)
+    assert len(calls) == 1
+
+
+def test_v2_namespace_does_not_touch_v1_plan_review_or_dedicated_credential_receipt(switch_fixture):
+    fixture = switch_fixture
+    originals = {'nginx-plan.json': b'prior immutable plan', 'approved.json': b'prior immutable manual review',
+        'nginx-before.conf': b'prior original nginx snapshot', 'nginx-next.conf': b'prior failed-attempt proposal'}
+    for name, body in originals.items(): c.write(c.ROOT / name, body)
+    credential_before = c.read(c.ROOT / 'credential-receipt.json')
+    result = a.enable(fixture.args)
+    assert result['enabled'] is True
+    assert a.attempt_root().parent == c.ROOT and a.attempt_root().name == 'attempt-v2'
+    assert (a.attempt_root() / 'enabled.json').exists() and not (c.ROOT / 'enabled.json').exists()
+    for name, body in originals.items(): assert c.read(c.ROOT / name) == body
+    assert c.read(c.ROOT / 'credential-receipt.json') == credential_before
+
+
+def test_v2_new_plan_preserves_prior_attempt_artifacts_and_stores_only_header_hashes(store, monkeypatch):
+    c.mkdir(c.ROOT)
+    originals = {'nginx-plan.json': b'old plan', 'approved.json': b'old review', 'nginx-before.conf': b'old nginx'}
+    for name, body in originals.items(): c.write(c.ROOT / name, body)
+    original = synthetic_info()
+    active = b'user www-data;\nerror_log /var/log/nginx/access.log;\nerror_log /var/log/nginx/error.log;\nerror_log /var/log/nginx/t24-private-error.log;\n' + NGINX
+    monkeypatch.setattr(c, 'legacy', lambda: types.SimpleNamespace(NGINX=types.SimpleNamespace(read_bytes=lambda: NGINX), inspect=lambda name: original))
+    monkeypatch.setattr(c, 'run', lambda args, code, **kwargs: active if args == ['nginx', '-T'] else SECURITY_RESPONSE)
+    monkeypatch.setattr(a, 'verify_worker_identity', lambda value: {'configured_user': 'www-data', 'uid': 33, 'primary_gid': 33})
+    monkeypatch.setattr(a, 'capture_log_identities', lambda paths: {path: [1, index] for index, path in enumerate(paths)})
+    result = a.plan_nginx()
+    assert result['attempt_namespace'] == 'attempt-v2'
+    assert result['baseline_security_header_sha256'] == a.security_fingerprints(SECURITY_RESPONSE)
+    assert 'default-src self' not in json.dumps(result) and 'SAMEORIGIN' not in json.dumps(result)
+    for name, body in originals.items(): assert c.read(c.ROOT / name) == body
+    assert (a.attempt_root() / 'nginx-plan.json').exists()

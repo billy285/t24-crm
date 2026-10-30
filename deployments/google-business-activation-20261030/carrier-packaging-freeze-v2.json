@@ -1,0 +1,12 @@
+{
+  "activation_bytes": 37538,
+  "activation_sha256": "7adb2fee1ca255c6b91827cefe72cbbbd023c59dc24ff573d2526055a92edc70",
+  "carrier_tests": 37,
+  "max_command_bytes": 4216,
+  "members": {
+    "make_carrier_command.py": "8e114dc7887283a21977e6dc565053ee9c177b5918c020658638c96fb3232a4c",
+    "test_carrier_command.py": "16d7b2c0a877887b649d184adb3803eef0a2495826591e25bc51ef7373a8c94e"
+  },
+  "server_executed": false,
+  "stage": "GBP_CARRIER_PACKAGING_V2_FROZEN_FOR_REVIEW"
+}

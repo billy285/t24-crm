@@ -20,6 +20,9 @@ import preflight
 CANDIDATE_NAME = 't24-crm-gbp-activation-20261030'
 DISABLED_NAME = 't24-crm-gbp-disabled-20261030'
 SCOPE = 'https://www.googleapis.com/auth/business.manage'
+ATTEMPT_NAMESPACE = 'attempt-v2'
+SECURITY_HEADERS = frozenset(('cache-control', 'strict-transport-security', 'content-security-policy',
+    'x-frame-options', 'x-content-type-options', 'permissions-policy'))
 LOG_METADATA_EVIDENCE_SHA = '2bda1b6ce27c9b4dec54198e83be5abf5d6d89144da7b5b3330b407a6760e27a'
 EXPECTED_LOG_METADATA = {
     '/var/log/nginx/access.log': (33, 4, 0o640),
@@ -29,6 +32,12 @@ EXPECTED_LOG_METADATA = {
 REVIEW_FLAGS = {'independent_security_review_passed', 'approved_dedicated_client_project',
     'existing_consent_screen_and_clients_preserved', 'external_callback_logs_checked',
     'allow_exact_callback_logging_change', 'allow_exact_six_environment_additions'}
+
+
+def attempt_root():
+    # Credential receipt/env stay at their original fixed paths. Only this
+    # attempt's immutable plan/review/logging/switch artifacts use the new folder.
+    return c.ROOT / ATTEMPT_NAMESPACE
 
 
 def module_hash(name):
@@ -122,6 +131,7 @@ def next_nginx(blob):
     c.need(sum(item[0] == 'proxy_pass' for item in location['directives']) == 1, 'EXACT_ONE_API_UPSTREAM_REQUIRED')
     added = ('    # T24 CRM dedicated Google callback: never log code/state query strings.\n'
         '    location = ' + c.CALLBACK + ' {\n' + ''.join(copied) +
+        '        proxy_hide_header Referrer-Policy;\n        add_header Referrer-Policy no-referrer always;\n' +
         '        access_log off;\n        error_log /dev/null crit;\n    }\n\n')
     # Insert before the original proxy, preserving every existing byte verbatim.
     position = text.rfind('\n', 0, location['start']) + 1
@@ -161,9 +171,66 @@ def active_logging_boundary(plan, expected_hash=None):
     c.need(log_paths(active) == plan['nginx_log_paths'], 'NGINX_LOG_DESTINATIONS_DRIFT')
     digest = c.H(active)
     c.need(expected_hash is None or digest == expected_hash, 'FULL_ACTIVE_NGINX_CONFIGURATION_DRIFT')
+    verify_header_inheritance(active, callback_present=True)
     verify_worker_identity(active)
     verify_log_identities(plan)
     return digest
+
+
+def verify_header_inheritance(active, *, callback_present=False):
+    """Never cancel inherited Nginx header rules when adding the callback rule.
+
+    Current observed config has header rules only in sibling static locations.
+    Unknown include-level/http/server rules fail closed instead of guessing their
+    effective inheritance or copying arbitrary configuration into this location.
+    """
+    _, blocks = nginx_blocks(active)
+    callbacks = []
+    for row in blocks:
+        if row['header'] == ['location', '=', c.CALLBACK]: callbacks.append(row)
+        for item in row['directives']:
+            if item[0] == 'add_header_inherit':
+                raise c.GuardError('CUSTOM_HEADER_INHERITANCE_REQUIRES_REVIEW')
+            if item[0] not in {'add_header', 'proxy_hide_header', 'proxy_pass_header'}: continue
+            current, in_location = row, False
+            while current is not None:
+                if current['header'] and current['header'][0] == 'location': in_location = True
+                current = current['parent']
+            c.need(in_location, 'INHERITED_NGINX_HEADER_RULES_REQUIRE_REVIEW')
+    c.need(len(callbacks) == (1 if callback_present else 0), 'EXACT_CALLBACK_HEADER_CONTEXT_REQUIRED')
+    if callbacks:
+        actual = [item for item in callbacks[0]['directives'] if item[0] in {'add_header', 'proxy_hide_header', 'proxy_pass_header'}]
+        c.need(actual == [['proxy_hide_header', 'Referrer-Policy'], ['add_header', 'Referrer-Policy', 'no-referrer', 'always']],
+            'EXACT_CALLBACK_REFERRER_OVERRIDE_REQUIRED')
+
+
+def response_headers(blob):
+    c.need(isinstance(blob, bytes) and len(blob) <= 65536, 'CALLBACK_HEADERS_SIZE_REJECTED')
+    blocks = [item for item in re.split(rb'\r?\n\r?\n', blob) if item.lower().startswith(b'http/')]
+    c.need(bool(blocks), 'CALLBACK_HTTP_HEADERS_REQUIRED')
+    rows = blocks[-1].splitlines()
+    c.need(bool(re.match(rb'HTTP/[^\s]+\s+303(?:\s|$)', rows[0], re.I)), 'CALLBACK_303_REQUIRED')
+    headers = {}
+    for row in rows[1:]:
+        if b':' not in row: continue
+        name, value = row.split(b':', 1)
+        headers.setdefault(name.lower().strip(), []).append(value.strip())
+    c.need(headers.get(b'location') == [b'/media-ops?google=failed'] and
+        any(b'no-store' in value.lower() for value in headers.get(b'cache-control', [])), 'CALLBACK_FIXED_PRIVATE_REDIRECT_REQUIRED')
+    return headers
+
+
+def security_fingerprints(blob):
+    headers = response_headers(blob)
+    c.need(all(name.encode() in headers for name in SECURITY_HEADERS), 'BASELINE_SECURITY_HEADERS_REQUIRED')
+    return {name: c.H(b'\0'.join(headers[name.encode()])) for name in sorted(SECURITY_HEADERS)}
+
+
+def baseline_security_headers():
+    # No code/state/cookie/auth, no curlrc/proxy defaults and no Google request.
+    blob = c.run(['curl', '-q', '--silent', '--show-error', '--noproxy', '*', '--max-time', '20', '--max-redirs', '0',
+        '--resolve', 't24-crm.com:443:127.0.0.1', '-D', '-', '-o', '/dev/null', c.ORIGIN + c.CALLBACK], 'BASELINE_CALLBACK_HEADERS_FAILED')
+    return security_fingerprints(blob)
 
 
 def verify_worker_identity(active):
@@ -199,14 +266,17 @@ def plan_nginx():
     updated, added = next_nginx(original)
     active = c.run(['nginx', '-T'], 'NGINX_ACTIVE_PARSE_FAILED')
     verify_no_debug_logging(active)
+    verify_header_inheritance(active)
     logs = log_paths(active)
     worker = verify_worker_identity(active)
     identities = capture_log_identities(logs)
+    baseline_headers = baseline_security_headers()
     c.mkdir(c.ROOT)
-    c.write(c.ROOT / 'nginx-before.conf', original)
-    c.write(c.ROOT / 'nginx-next.conf', updated)
-    c.write(c.ROOT / 'original-container.json', m.inspect('t24-crm'))
-    preflight_sha = c.write(c.ROOT / 'preflight.json', before)
+    c.mkdir(attempt_root())
+    c.write(attempt_root() / 'nginx-before.conf', original)
+    c.write(attempt_root() / 'nginx-next.conf', updated)
+    c.write(attempt_root() / 'original-container.json', m.inspect('t24-crm'))
+    preflight_sha = c.write(attempt_root() / 'preflight.json', before)
     plan = {'stage': 'GBP_ACTIVATION_NGINX_PLAN_ONLY', 'preflight_sha256': preflight_sha,
         'prior_deployed_sha256': c.PRIOR_SHA, 'source_sha': c.SOURCE, 'frontend_version': c.FRONTEND,
         'schema_revision': c.REVISION, 'image': c.IMAGE, 'nginx_before_sha256': c.H(original),
@@ -216,16 +286,19 @@ def plan_nginx():
         'callback_block_safe_view': preflight.safe_nginx_view(added), 'nginx_log_paths': logs,
         'log_file_identities': identities, 'log_metadata_evidence_sha256': LOG_METADATA_EVIDENCE_SHA,
         'nginx_worker_identity': worker,
+        'attempt_namespace': ATTEMPT_NAMESPACE, 'baseline_security_header_sha256': baseline_headers,
+        'callback_referrer_override': {'hide_upstream': 'Referrer-Policy', 'add_always': 'no-referrer'},
+        'inherited_nginx_header_rules_absent_verified': True,
         'tool_sha256': tool_hashes(), 'runtime_changed': False, 'business_writes': False,
         'provider_requests': False}
-    digest = c.write(c.ROOT / 'nginx-plan.json', plan)
+    digest = c.write(attempt_root() / 'nginx-plan.json', plan)
     return {**plan, 'plan_sha256': digest, 'manual_review_required': True}
 
 
 def reviewed_plan(arguments):
     c.need(set(arguments) == {'plan_sha256', 'review', 'review_sha256'}, 'EXACT_REVIEW_ARGUMENTS_REQUIRED')
     c.need(all(isinstance(arguments[name], str) and re.fullmatch('[a-f0-9]{64}', arguments[name]) for name in ('plan_sha256', 'review_sha256')), 'REVIEW_HASH_REQUIRED')
-    plan = c.strict_json(c.read(c.ROOT / 'nginx-plan.json', arguments['plan_sha256']))
+    plan = c.strict_json(c.read(attempt_root() / 'nginx-plan.json', arguments['plan_sha256']))
     review = arguments['review']
     c.need(isinstance(review, dict) and c.H(c.encoded(review)) == arguments['review_sha256'], 'EXACT_MANUAL_REVIEW_HASH_REQUIRED')
     c.need(set(review) == REVIEW_FLAGS | {'stage', 'plan_sha256', 'project_id', 'callback', 'scope', 'tool_sha256', 'business_writes', 'provider_writes'}, 'EXACT_REVIEW_FIELDS_REQUIRED')
@@ -235,16 +308,19 @@ def reviewed_plan(arguments):
     c.need(all(review.get(name) is True for name in REVIEW_FLAGS) and review.get('business_writes') is False and review.get('provider_writes') is False, 'EXPLICIT_MANUAL_REVIEW_REQUIRED')
     c.need(plan['stage'] == 'GBP_ACTIVATION_NGINX_PLAN_ONLY' and plan['source_sha'] == c.SOURCE and plan['image'] == c.IMAGE and
         plan['schema_revision'] == c.REVISION and plan['frontend_version'] == c.FRONTEND and plan['prior_deployed_sha256'] == c.PRIOR_SHA and
-        plan.get('log_metadata_evidence_sha256') == LOG_METADATA_EVIDENCE_SHA, 'NGINX_PLAN_SCOPE_DRIFT')
-    before = c.read(c.ROOT / 'nginx-before.conf', plan['nginx_before_sha256'])
-    after = c.read(c.ROOT / 'nginx-next.conf', plan['nginx_next_sha256'])
+        plan.get('log_metadata_evidence_sha256') == LOG_METADATA_EVIDENCE_SHA and plan.get('attempt_namespace') == ATTEMPT_NAMESPACE,
+        'NGINX_PLAN_SCOPE_DRIFT')
+    c.need(set(plan.get('baseline_security_header_sha256', {})) == SECURITY_HEADERS and
+        all(isinstance(value, str) and re.fullmatch('[a-f0-9]{64}', value) for value in plan['baseline_security_header_sha256'].values()), 'REVIEWED_SECURITY_HEADER_BASELINE_REQUIRED')
+    before = c.read(attempt_root() / 'nginx-before.conf', plan['nginx_before_sha256'])
+    after = c.read(attempt_root() / 'nginx-next.conf', plan['nginx_next_sha256'])
     expected, added = next_nginx(before)
     c.need(after == expected and plan['callback_block_safe_view'] == preflight.safe_nginx_view(added), 'NGINX_PLAN_BODY_DRIFT')
     return plan, before, after, review
 
 
 def save_review(review):
-    path = c.ROOT / 'approved.json'
+    path = attempt_root() / 'approved.json'
     if path.exists() or path.is_symlink():
         c.need(c.read(path) == c.encoded(review), 'EXISTING_MANUAL_REVIEW_DRIFT')
     else:
@@ -304,11 +380,11 @@ def sentinel_probe(m, plan):
             c.need([info.st_dev, info.st_ino] == plan['log_file_identities'][path], 'OBSERVED_LOG_FILE_IDENTITY_DRIFT')
             os.lseek(fd, info.st_size, os.SEEK_SET)
         target = c.ORIGIN + c.CALLBACK + '?code=' + sentinel + '&state=' + sentinel
-        response = c.run(['curl', '--silent', '--show-error', '--max-time', '20', '--max-redirs', '0',
+        response = c.run(['curl', '-q', '--silent', '--show-error', '--noproxy', '*', '--max-time', '20', '--max-redirs', '0',
             '--resolve', 't24-crm.com:443:127.0.0.1', '-D', '-', '-o', '/dev/null', target], 'CALLBACK_SENTINEL_REQUEST_FAILED')
-        header = response.lower()
-        c.need(bool(re.search(rb'^http/[^\r\n ]+ 303(?:\s|$)', header)) and b'location: /media-ops?google=failed' in header and
-            b'referrer-policy: no-referrer' in header and b'no-store' in header, 'CALLBACK_SENTINEL_RESPONSE_REJECTED')
+        headers = response_headers(response)
+        c.need(headers.get(b'referrer-policy') == [b'no-referrer'], 'CALLBACK_SENTINEL_RESPONSE_REJECTED')
+        c.need(security_fingerprints(response) == plan['baseline_security_header_sha256'], 'CALLBACK_OTHER_SECURITY_HEADERS_CHANGED')
         # Give application/container log pipes a short bounded opportunity to flush.
         time.sleep(0.25)
         for path, (fd, before) in logs.items():
@@ -322,6 +398,7 @@ def sentinel_probe(m, plan):
         c.need(result.returncode == 0 and sentinel.encode() not in result.stdout + result.stderr, 'CALLBACK_QUERY_PRESENT_IN_CONTAINER_LOG')
         return {'callback_sentinel_verified': True, 'nginx_access_and_error_logs_checked': True,
             'container_stdout_and_stderr_checked': True, 'loopback_https_request_only': True,
+            'single_no_referrer_verified': True, 'other_security_header_fingerprints_unchanged': True,
             'actual_google_oauth_performed': False, 'provider_requests': False}
     finally:
         for fd, _ in logs.values():
@@ -334,6 +411,7 @@ def protect_callback(arguments):
     m = c.legacy()
     active_before = c.run(['nginx', '-T'], 'NGINX_ACTIVE_PARSE_FAILED')
     c.need(c.H(active_before) == plan['active_config_before_sha256'], 'ACTIVE_NGINX_CONFIGURATION_DRIFT')
+    verify_header_inheritance(active_before)
     verify_worker_identity(active_before)
     verify_log_identities(plan)
     save_review(review)
@@ -352,12 +430,13 @@ def protect_callback(arguments):
             reload_nginx()
         raise
     receipt = {'stage': 'GBP_CALLBACK_LOGGING_PROTECTED', 'plan_sha256': arguments['plan_sha256'],
+        'attempt_namespace': ATTEMPT_NAMESPACE,
         'review_sha256': arguments['review_sha256'], 'nginx_sha256': c.H(updated),
         'active_nginx_config_sha256': active_after, 'nginx_log_paths': plan['nginx_log_paths'],
         'full_active_config_and_no_debug_verified': True,
         'source_sha': c.SOURCE, 'crm': current['crm'], 'tool_sha256': tool_hashes(), **proof,
         'runtime_changed': False, 'business_writes': False}
-    digest = c.write(c.ROOT / 'logging-protected.json', receipt)
+    digest = c.write(attempt_root() / 'logging-protected.json', receipt)
     return {**receipt, 'receipt_sha256': digest}
 
 
@@ -388,16 +467,16 @@ def verify_clone(candidate, original, values, runtime):
 
 def _state(value):
     """Atomic state updates never contain environment values or credentials."""
-    path = c.ROOT / 'switch-state.json'
+    path = attempt_root() / 'switch-state.json'
     body = c.encoded(value)
     if not path.exists() and not path.is_symlink():
         c.write(path, body)
         return
     c.read(path)
-    temp = c.ROOT / 'switch-state.next'
+    temp = attempt_root() / 'switch-state.next'
     c.write(temp, body)
     os.replace(temp, path)
-    c.fsync_dir(c.ROOT)
+    c.fsync_dir(attempt_root())
 
 
 def _switch_requirements(arguments):
@@ -405,13 +484,15 @@ def _switch_requirements(arguments):
     base = {key: arguments[key] for key in ('plan_sha256', 'review', 'review_sha256')}
     plan, before, after, review = reviewed_plan(base)
     c.need(re.fullmatch('[a-f0-9]{64}', arguments['logging_receipt_sha256']), 'EXACT_LOGGING_RECEIPT_REQUIRED')
-    receipt = c.strict_json(c.read(c.ROOT / 'logging-protected.json', arguments['logging_receipt_sha256']))
+    receipt = c.strict_json(c.read(attempt_root() / 'logging-protected.json', arguments['logging_receipt_sha256']))
     c.need(receipt['stage'] == 'GBP_CALLBACK_LOGGING_PROTECTED' and receipt['plan_sha256'] == arguments['plan_sha256'] and
         receipt['review_sha256'] == arguments['review_sha256'] and receipt['nginx_sha256'] == plan['nginx_next_sha256'] and
         receipt['callback_sentinel_verified'] is True and receipt['tool_sha256'] == tool_hashes() and
+        receipt.get('attempt_namespace') == ATTEMPT_NAMESPACE and receipt.get('single_no_referrer_verified') is True and
+        receipt.get('other_security_header_fingerprints_unchanged') is True and
         receipt['full_active_config_and_no_debug_verified'] is True and receipt['nginx_log_paths'] == plan['nginx_log_paths'] and
         bool(re.fullmatch('[a-f0-9]{64}', receipt['active_nginx_config_sha256'])), 'REVIEWED_CALLBACK_PROTECTION_REQUIRED')
-    c.need(c.read(c.ROOT / 'approved.json') == c.encoded(review), 'STORED_MANUAL_REVIEW_DRIFT')
+    c.need(c.read(attempt_root() / 'approved.json') == c.encoded(review), 'STORED_MANUAL_REVIEW_DRIFT')
     return plan, receipt
 
 
@@ -451,7 +532,7 @@ def enable(arguments):
     c.need(current['active_nginx_config_sha256'] == active_hash, 'ACTIVE_NGINX_CHANGED_DURING_ENABLE_PREFLIGHT')
     c.need(current['crm'] == logging['crm'], 'REVIEWED_DISABLED_RUNTIME_DRIFT')
     m = c.legacy()
-    original = c.strict_json(c.read(c.ROOT / 'original-container.json'))
+    original = c.strict_json(c.read(attempt_root() / 'original-container.json'))
     c.need(m.runtime(original) == current['crm'], 'SAVED_ORIGINAL_RUNTIME_DRIFT')
     values = c.read_gbp_env()
     stored = c.strict_json(c.read(c.ROOT / 'credential-receipt.json'))
@@ -461,7 +542,7 @@ def enable(arguments):
     sentinel_probe(m, plan)
     active_logging_boundary(plan, active_hash)
     c.need(not m.inspect_optional(CANDIDATE_NAME) and not m.inspect_optional(DISABLED_NAME), 'EXISTING_SWITCH_CONTAINER_REQUIRES_RECOVERY')
-    c.need(not (c.ROOT / 'switch-state.json').exists(), 'EXISTING_SWITCH_REQUIRES_RECOVERY')
+    c.need(not (attempt_root() / 'switch-state.json').exists(), 'EXISTING_SWITCH_REQUIRES_RECOVERY')
     rows = m.sql_snapshot(m.BUSINESS)
     state = {'stage': 'GBP_CONFIG_SWITCH_INTENT', 'original_id': original['Id'], 'candidate_name': CANDIDATE_NAME,
         'image': c.IMAGE, 'plan_sha256': arguments['plan_sha256'], 'review_sha256': arguments['review_sha256']}
@@ -500,7 +581,7 @@ def enable(arguments):
             'schema_static_source_unchanged': True, 'callback_sentinel_verified': True,
             'google_oauth_performed': False, 'provider_requests': False, 'provider_writes': False,
             'business_writes': False, 'credentials_exported': False, 'enabled': True}
-        digest = c.write(c.ROOT / 'enabled.json', receipt)
+        digest = c.write(attempt_root() / 'enabled.json', receipt)
         return {**receipt, 'receipt_sha256': digest}
     except BaseException:
         # Same-image, configuration-only recovery; never roll back the database.
@@ -511,8 +592,8 @@ def enable(arguments):
 def rollback(arguments):
     plan, _ = _switch_requirements(arguments)
     m = c.legacy()
-    original = c.strict_json(c.read(c.ROOT / 'original-container.json'))
-    state = c.strict_json(c.read(c.ROOT / 'switch-state.json'))
+    original = c.strict_json(c.read(attempt_root() / 'original-container.json'))
+    state = c.strict_json(c.read(attempt_root() / 'switch-state.json'))
     c.need(state['original_id'] == original['Id'] and state['image'] == c.IMAGE and state['plan_sha256'] == arguments['plan_sha256'] and state['review_sha256'] == arguments['review_sha256'], 'SWITCH_RECOVERY_SCOPE_DRIFT')
     c.need(m.schema_signature(m.BUSINESS, c.REVISION) == json.loads(m.read(c.PRIOR / 'deployed.json', c.PRIOR_SHA))['schema_sha256'], 'RECOVERY_SCHEMA_DRIFT')
     c.need(c.H(m.NGINX.read_bytes()) == plan['nginx_next_sha256'], 'KEEP_CALLBACK_REDACTION_REQUIRED')
@@ -554,6 +635,7 @@ def dispatch(phase, arguments):
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     c.server_guard()
     c.mkdir(c.ROOT)
+    c.mkdir(attempt_root())
     lock_path = c.ROOT / 'activation.lock'
     fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:

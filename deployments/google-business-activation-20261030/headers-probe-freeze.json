@@ -1,0 +1,13 @@
+{
+  "command_bytes": 8286,
+  "local_synthetic_tests": 10,
+  "members": {
+    "callback-headers-command.sh": "6096469711b49a9c9f357221db81f5eb53d3681fd50e5676103003f23b9f8392",
+    "callback_headers_probe.py": "95563cdd0a599ed07dbd39990969876a03c3421d02730b28473f0d2c6bede552",
+    "core.py": "903081856fbdb042b9af74295cbebd6745b57e019e7039a7fce26c23bddde107",
+    "make_headers_probe_command.py": "c4d65f94add5f2e224c52e208350c44e893098de2096c2026a9a3c3551c8e114",
+    "test_headers_probe.py": "007f77505ffb9f64e784c20fdb4f0ff9fc6f46c4e9fd57b9bfe40a7e87e4b474"
+  },
+  "server_executed_by_author": false,
+  "stage": "GBP_CALLBACK_HEADERS_READONLY_FROZEN_FOR_REVIEW"
+}

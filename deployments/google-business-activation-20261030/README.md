@@ -63,6 +63,10 @@ Pinned disabled baseline:
    `error_log /dev/null crit` for this one route. Every existing Nginx byte remains.
    Both plain literal prefixes and the observed `location ^~ /api/` literal
    prefix are supported; regular-expression locations are never guessed/copied.
+   V2 artifacts are exclusively created inside the protected
+   `/opt/t24-crm/releases/google-business-activation-7431d1986b81-20261030/attempt-v2/`
+   folder. Prior root-level plan/review/attempt artifacts are retained. The
+   dedicated credential receipt and env file keep their original fixed paths.
 6. Obtain independent security review of the full frozen tooling, plan and
    deployment bounds. Fill the `GBP_ACTIVATION_MANUAL_REVIEW_APPROVED` object only
    after actually checking every flag below. No command generator invents that
@@ -85,6 +89,14 @@ Pinned disabled baseline:
    individual UID/GID/modes, root-owned parent metadata and one hard link.
    The plan also captures each log device/inode. Worker/owner/group/mode/link/
    symlink/rotation changes fail closed; the tool never changes log ownership.
+   The application middleware's Referrer-Policy is overridden only at this exact
+   callback: hide the upstream field and add exactly one `no-referrer` field.
+   The plan refuses HTTP/server/unknown-include `add_header` or proxy hide/pass
+   rules, or custom inheritance settings, rather than dropping their protections.
+   Sibling static-location headers remain byte-identical. A no-query baseline
+   stores only fingerprints of the other six security headers; every sentinel
+   requires those fingerprints unchanged and rejects duplicate Referrer-Policy.
+   All curl probes use first-option `-q`, `--noproxy '*'` and fixed loopback HTTPS.
 8. After independently reviewing `logging-protected.json`, generate/run `enable`
    with its exact receipt hash. The tool repeats disabled/private/source/schema/
    static checks and sentinel validation; creates a container from the **same

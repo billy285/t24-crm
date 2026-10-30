@@ -16,7 +16,7 @@ PHASES = {'plan': 'plan-nginx', 'protect': 'protect-callback', 'enable': 'enable
 PINS = {
     'core.py': ('903081856fbdb042b9af74295cbebd6745b57e019e7039a7fce26c23bddde107', 7521),
     'preflight.py': ('df6a02ab394c10ab81f4f6c2a6c153a370cfa91648961ccaf9392c8f9df02b8d', 5873),
-    'activation.py': ('933714872cc18a4694bb6697f2b3c53f24ddfcce93d0880dcb9859aaab528db1', 32509),
+    'activation.py': ('7adb2fee1ca255c6b91827cefe72cbbbd023c59dc24ff573d2526055a92edc70', 37538),
     'make_commands.py': ('70dae35f8c7afbf5ede695b02983c139423685d7ac2447a074e70c98be30cd31', 5956),
 }
 H = lambda body: hashlib.sha256(body).hexdigest()

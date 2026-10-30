@@ -1,0 +1,24 @@
+{
+  "activation_local_tests": 113,
+  "app_changed": false,
+  "attempt_namespace": "attempt-v2",
+  "carrier_tests": 37,
+  "credentials_changed": false,
+  "independent_activation_tests": 15,
+  "members": {
+    "README.md": "3bde084a227caf1c61b947ee583536662c0fa87ba9812e5ba796bdf56ebf5ff9",
+    "activation.py": "7adb2fee1ca255c6b91827cefe72cbbbd023c59dc24ff573d2526055a92edc70",
+    "core.py": "903081856fbdb042b9af74295cbebd6745b57e019e7039a7fce26c23bddde107",
+    "diagnostics.py": "05ab2bcdb1a00096b9a8df84b82e642109b5efb0b182300643c5155a80c384ca",
+    "encrypt-in-browser.js": "83ebcc0d2622d5aa7ba07c00fd077b82bb2fac9598c22dff59efd819c05bec44",
+    "make_carrier_command.py": "8e114dc7887283a21977e6dc565053ee9c177b5918c020658638c96fb3232a4c",
+    "make_commands.py": "70dae35f8c7afbf5ede695b02983c139423685d7ac2447a074e70c98be30cd31",
+    "preflight.py": "df6a02ab394c10ab81f4f6c2a6c153a370cfa91648961ccaf9392c8f9df02b8d",
+    "test_activation.py": "64e0aad0c5f1556f6d692d7708a10eae0f31c2be0f83e2d2725462fb78c0fce1",
+    "test_carrier_command.py": "16d7b2c0a877887b649d184adb3803eef0a2495826591e25bc51ef7373a8c94e",
+    "transport.py": "ac4042dd176fee6422543d563292ea24cc20e4773bdfab1c981c5d576c321e36"
+  },
+  "readonly_header_probe_tests": 10,
+  "server_executed_by_author": false,
+  "stage": "GBP_ACTIVATION_V2_FROZEN_FOR_REVIEW"
+}
