@@ -4,6 +4,7 @@ export type GbpConnection = { id: number; label: string; active: boolean; needs_
 export type GbpBinding = {
   id: number; customer_id: number; customer_name: string; connection_id: number; location_name: string;
   title: string; address: string; active: boolean; revision: number;
+  lifecycle?: 'active' | 'paused' | 'stopped'; primary_operator_id?: number | null; primary_operator_name?: string | null;
   permissions: { can_read: boolean; can_reply: boolean; can_publish: boolean; can_manage: boolean };
 };
 export type GbpStatus = { enabled: boolean; configured: boolean; setup_missing: string[]; is_owner: boolean; connections: GbpConnection[]; bindings: GbpBinding[] };
@@ -14,7 +15,7 @@ export type GbpGrant = { employee_id: number; name: string; eligible: boolean; c
 export type GbpGrants = { binding: GbpBinding; employees: GbpGrant[]; revision: number };
 export type GbpReview = {
   name: string; reviewer_name: string; rating: string; comment: string; created_at: string | null; updated_at: string | null;
-  reply: string | null; reply_updated_at: string | null; reply_state: string | null; version: string;
+  reply: string | null; reply_updated_at: string | null; reply_state: string | null; version: string; requires_owner_review?: boolean;
 };
 export type GbpReviews = { items: GbpReview[]; next_page_token: string | null; fetched_at: string };
 export type GbpReadyTask = { id: number; title: string; content: string; revision: number; material_id: number | null; material_title: string | null; has_public_image: boolean; can_return?: boolean; preview_image_url: string | null; publish_blocked_reason: string | null };

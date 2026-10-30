@@ -28,6 +28,7 @@ from services.customer_lifecycle import sync_lifecycle_from_payments
 from services.automation_monitor import start_automation_scheduler, stop_automation_scheduler
 from services.stripe_history_daily_scan import start_daily_scan, stop_daily_scan
 from services.stripe_auto_posting import start_auto_posting, stop_auto_posting
+from services.google_business_scheduler import start_scheduler as start_google_business_scheduler, stop_scheduler as stop_google_business_scheduler
 from core.database import db_manager, get_db
 from core.auth import decode_access_token as decode_platform_access_token
 from dependencies.auth import employee_status_enforcement_enabled, normalize_system_role
@@ -118,6 +119,7 @@ async def lifespan(app: FastAPI):
     automation_scheduler = start_automation_scheduler()
     stripe_history_daily_scan = start_daily_scan()
     stripe_automatic_posting = start_auto_posting()
+    google_business_scheduler = start_google_business_scheduler()
     # MODULE_STARTUP_END
 
     logger.info("=== Application startup completed successfully ===")
@@ -126,6 +128,7 @@ async def lifespan(app: FastAPI):
     await stop_automation_scheduler(automation_scheduler)
     await stop_daily_scan(stripe_history_daily_scan)
     await stop_auto_posting(stripe_automatic_posting)
+    await stop_google_business_scheduler(google_business_scheduler)
     await close_database()
     # MODULE_SHUTDOWN_END
 

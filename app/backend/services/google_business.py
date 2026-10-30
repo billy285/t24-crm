@@ -81,8 +81,9 @@ async def _connection(db, ctx, connection_id, *, lock=False):
 
 
 async def _permissions(db, ctx, binding, *, lock=False):
-    _, existing = await media._customer(db, ctx, binding.customer_id, write=False)
-    if ctx.owner: return {"can_read": True, "can_reply": True, "can_publish": True, "can_manage": True}
+    customer, existing = await media._customer(db, ctx, binding.customer_id, write=False)
+    public_allowed = binding.active and binding.lifecycle == "active" and customer.status == "closed"
+    if ctx.owner: return {"can_read": True, "can_reply": bool(public_allowed), "can_publish": bool(public_allowed), "can_manage": True}
     query = select(Grant).where(Grant.binding_id == binding.id, Grant.employee_id == ctx.identity).execution_options(populate_existing=True)
     if lock: query = query.with_for_update()
     grant = (await db.execute(query)).scalar_one_or_none()
@@ -90,7 +91,7 @@ async def _permissions(db, ctx, binding, *, lock=False):
     if lock:
         await db.execute(select(CustomerAccessGrant).where(CustomerAccessGrant.customer_id == binding.customer_id, CustomerAccessGrant.employee_id == ctx.identity).with_for_update().execution_options(populate_existing=True))
         _, existing = await media._customer(db, ctx, binding.customer_id, write=False)
-    allowed = bool(ctx.can_edit and existing["modules"]["delivery"]["write"])
+    allowed = bool(public_allowed and ctx.can_edit and existing["modules"]["delivery"]["write"])
     return {"can_read": True, "can_reply": bool(allowed and grant.can_reply), "can_publish": bool(allowed and grant.can_publish), "can_manage": False}
 
 
@@ -109,6 +110,10 @@ async def _binding(db, ctx, binding_id, *, action=None, lock=False):
     if not owner or owner.status not in {"active", "probation"} or normalized_role(SimpleNamespace(role=owner.role)) != "super_admin":
         raise HTTPException(404, "Google 门店连接需要老板重新确认")
     permissions = await _permissions(db, ctx, binding, lock=lock)
+    if action:
+        customer = await db.get(Customers, binding.customer_id, populate_existing=True)
+        if binding.lifecycle != "active" or not customer or customer.status != "closed":
+            raise HTTPException(409, "此商家已暂停、停止或当前并非合作状态，不能公开操作")
     if action and not permissions.get("can_" + action): raise HTTPException(403, "此门店尚未授权该项 Google 操作")
     return binding, connection, permissions
 
@@ -116,14 +121,15 @@ async def _binding(db, ctx, binding_id, *, action=None, lock=False):
 def binding_data(binding, permissions):
     return {"id": binding.id, "customer_id": binding.customer_id, "customer_name": binding.customer_name,
             "connection_id": binding.connection_id, "location_name": binding.location_name, "title": binding.title,
-            "address": binding.address, "active": binding.active, "revision": binding.revision, "permissions": permissions}
+            "address": binding.address, "active": binding.active, "revision": binding.revision, "permissions": permissions,
+            "lifecycle": binding.lifecycle if binding.active else "stopped", "primary_operator_id": binding.primary_operator_id, "primary_operator_name": binding.primary_operator_name}
 
 
 def action_data(action, ctx):
     return {"id": action.id, "binding_id": action.binding_id, "customer_id": action.customer_id, "kind": action.kind,
             "request_id": action.request_id, "task_id": action.task_id, "status": action.status, "actor_name": action.actor_name,
             "created_at": iso(action.created_at), "updated_at": iso(action.updated_at), "provider_state": action.provider_state,
-            "provider_url": provider.public_result_url(action.provider_url), "message": action.message,
+            "provider_url": provider.public_result_url(action.provider_url), "message": action.message, "confirmed_at": iso(action.confirmed_at),
             "can_reconcile": action.status in {"pending", "unknown", "accepted"},
             "content": ((action.payload or {}).get("comment") or (action.payload or {}).get("summary")) if action.payload and aware(action.created_at) >= now() - timedelta(days=30) else None}
 
@@ -134,6 +140,8 @@ async def _audit(db, ctx, binding, kind, payload):
 
 
 async def _expire_payloads(db):
+    from models.google_business import GoogleBusinessAIDraft
+    await db.execute(update(GoogleBusinessAIDraft).where(GoogleBusinessAIDraft.expires_at < now()).values(reply_text="", approved_reply_hash=None).execution_options(synchronize_session=False))
     # Retain only locally authored outbound text for 30 days; never cache review originals.
     await db.execute(update(Action).where(Action.created_at < now() - timedelta(days=30), Action.payload.is_not(None)).values(payload=None).execution_options(synchronize_session=False))
     await db.execute(update(OAuthState).where(OAuthState.expires_at < now(), OAuthState.verifier_encrypted != "").values(verifier_encrypted="", consumed=True).execution_options(synchronize_session=False))
@@ -164,15 +172,18 @@ async def options(db, user):
     return {"customers": [{"id": x["id"], "name": x["name"]} for x in old["customers"]], "assignees": old["assignees"]}
 
 
-async def oauth_start(db, user):
+async def oauth_start(db, user, reconnect_connection_id=None):
     ctx = await context(db, user, owner=True)
     provider.require_config()
     state, cookie, verifier = secrets.token_urlsafe(40), secrets.token_urlsafe(40), secrets.token_urlsafe(64)
     async with write(db):
         await _expire_payloads(db)
+        if reconnect_connection_id is not None:
+            target = await db.get(Connection, reconnect_connection_id, populate_existing=True)
+            if not target or target.owner_id != ctx.identity: raise HTTPException(404, "原 Google 连接不存在")
         active = await db.scalar(select(func.count()).select_from(Connection).where(Connection.owner_id == ctx.identity, Connection.active.is_(True)))
-        if active >= 20: raise HTTPException(409, "请先断开不再使用的 Google 连接")
-        db.add(OAuthState(state_hash=hash_text(state), cookie_hash=hash_text(cookie), owner_id=ctx.identity, verifier_encrypted=provider.encrypt({"verifier": verifier}), expires_at=now() + timedelta(minutes=10), consumed=False, created_at=now()))
+        if active >= 20 and reconnect_connection_id is None: raise HTTPException(409, "请先断开不再使用的 Google 连接")
+        db.add(OAuthState(state_hash=hash_text(state), cookie_hash=hash_text(cookie), owner_id=ctx.identity, verifier_encrypted=provider.encrypt({"verifier": verifier}), expires_at=now() + timedelta(minutes=10), consumed=False, created_at=now(), reconnect_connection_id=reconnect_connection_id))
     return {"authorization_url": provider.authorize_url(state, verifier), "expires_in": 600}, cookie
 
 
@@ -188,6 +199,7 @@ async def oauth_callback(db, state, cookie, code):
         if not owner or owner.status not in {"active", "probation"} or normalized_role(SimpleNamespace(role=owner.role)) != "super_admin":
             raise HTTPException(403, "老板账号状态已变更，请重新登录")
         owner_id = row.owner_id
+        reconnect_connection_id = row.reconnect_connection_id
         verifier = provider.decrypt(row.verifier_encrypted)["verifier"]
         row.consumed = True; row.verifier_encrypted = ""
     client = provider.GoogleClient()
@@ -195,9 +207,15 @@ async def oauth_callback(db, state, cookie, code):
     async with write(db):
         owner = await db.get(Employees, owner_id, populate_existing=True)
         if not owner or owner.status not in {"active", "probation"} or normalized_role(SimpleNamespace(role=owner.role)) != "super_admin": raise HTTPException(403, "老板账号已失效")
-        connection = Connection(owner_id=owner_id, label="Google 商家连接", token_encrypted=provider.encrypt(tokens), active=True, needs_reconnect=False, connected_at=now())
-        db.add(connection); await db.flush()
-        connection.label = "Google 商家连接 #" + str(connection.id)
+        if reconnect_connection_id is not None:
+            connection = await db.get(Connection, reconnect_connection_id, populate_existing=True)
+            if not connection or connection.owner_id != owner_id: raise HTTPException(404, "原 Google 连接已变化")
+            connection.token_encrypted = provider.encrypt(tokens); connection.active = True
+            connection.needs_reconnect = False; connection.last_error = None; connection.connected_at = now()
+        else:
+            connection = Connection(owner_id=owner_id, label="Google 商家连接", token_encrypted=provider.encrypt(tokens), active=True, needs_reconnect=False, connected_at=now())
+            db.add(connection); await db.flush()
+            connection.label = "Google 商家连接 #" + str(connection.id)
     return True
 
 
@@ -260,6 +278,7 @@ async def bind(db, user, *, request_id, customer_id, connection_id, location_nam
         ctx = await context(db, user, owner=True)
         customer, _ = await media._customer(db, ctx, customer_id, write=True)
         connection = await _connection(db, ctx, connection_id, lock=True)
+        if customer.status != "closed": raise HTTPException(409, "请先确认该客户仍处于合作已成交状态")
         prior = await db.scalar(select(Binding).where(Binding.request_id == request_id))
         if prior:
             if (prior.customer_id, prior.connection_id, prior.location_name, prior.created_by_id) != (customer_id, connection_id, location_name, ctx.identity): raise HTTPException(409, "同一请求编号对应了不同绑定")
@@ -270,7 +289,7 @@ async def bind(db, user, *, request_id, customer_id, connection_id, location_nam
         existing = existing_rows[0] if existing_rows else None
         if existing:
             if existing.active or existing.customer_id != customer_id or existing.location_name != location_name: raise HTTPException(409, "客户或 Google 门店已有绑定，请先核对归属")
-            existing.connection_id = connection_id; existing.active = True; existing.revision += 1; existing.request_id = request_id
+            existing.connection_id = connection_id; existing.active = True; existing.lifecycle = "active"; existing.primary_operator_id = None; existing.primary_operator_name = None; existing.revision += 1; existing.request_id = request_id
             existing.title = customer.business_name; existing.address = ""; existing.customer_name = customer.business_name
             row = existing
         else:
@@ -303,7 +322,9 @@ async def set_grant(db, user, binding_id, *, expected_revision, employee_id, can
         if binding.revision != expected_revision: raise HTTPException(409, "Google 授权已被更新，请刷新后重试")
         row = await db.scalar(select(Grant).where(Grant.binding_id == binding_id, Grant.employee_id == employee_id).with_for_update())
         if can_reply or can_publish:
+            if binding.lifecycle != "active": raise HTTPException(409, "请先恢复商家，再重新授权运营")
             customer, _ = await media._customer(db, ctx, binding.customer_id, write=True)
+            if customer.status != "closed": raise HTTPException(409, "请先确认客户仍在合作，再重新授权")
             await media._assignee(db, ctx, customer, employee_id)
             employee = await db.get(Employees, employee_id)
             if not employee or normalized_role(SimpleNamespace(role=employee.role)) == "super_admin": raise HTTPException(422, "老板已有完整权限，无需额外授权")
@@ -314,6 +335,13 @@ async def set_grant(db, user, binding_id, *, expected_revision, employee_id, can
             row = Grant(binding_id=binding_id, employee_id=employee_id, granted_by_id=ctx.identity); db.add(row)
         row.can_reply = can_reply; row.can_publish = can_publish; row.granted_by_id = ctx.identity; row.updated_at = now()
         binding.revision += 1
+        if not can_publish and binding.primary_operator_id == employee_id:
+            from services.google_business_management import cancel_binding_schedules
+            await cancel_binding_schedules(db, binding.id, message="主运营的发布权限已撤销，原排期已取消")
+        if not can_reply and not can_publish and binding.primary_operator_id == employee_id:
+            binding.primary_operator_id = None; binding.primary_operator_name = None
+            from services.google_business_management import cancel_binding_schedules
+            await cancel_binding_schedules(db, binding.id)
         await _audit(db, ctx, binding, "grant_updated", {"employee_id": employee_id, "before": before, "after": {"can_reply": can_reply, "can_publish": can_publish}})
     return await grants(db, user, binding_id)
 
@@ -323,8 +351,10 @@ async def disconnect_binding(db, user, binding_id, expected_revision):
     async with write(db):
         binding, _, _ = await _binding(db, ctx, binding_id, lock=True)
         if binding.revision != expected_revision: raise HTTPException(409, "门店配置已更新，请刷新后重试")
+        from services.google_business_management import cancel_binding_schedules
+        await cancel_binding_schedules(db, binding.id)
         await _audit(db, ctx, binding, "binding_disconnected", {"revision": binding.revision})
-        binding.active = False; binding.revision += 1
+        binding.active = False; binding.lifecycle = "stopped"; binding.primary_operator_id = None; binding.primary_operator_name = None; binding.revision += 1
         await db.execute(update(Grant).where(Grant.binding_id == binding.id).values(can_reply=False, can_publish=False, updated_at=now()))
     return {"disconnected": True}
 
@@ -336,7 +366,9 @@ async def disconnect_connection(db, user, connection_id):
         bindings = (await db.execute(select(Binding).where(Binding.connection_id == connection.id, Binding.active.is_(True)).with_for_update())).scalars().all()
         for binding in bindings:
             await _audit(db, ctx, binding, "connection_disconnected", {"connection_id": connection.id})
-            binding.active = False; binding.revision += 1
+            binding.active = False; binding.lifecycle = "stopped"; binding.primary_operator_id = None; binding.primary_operator_name = None; binding.revision += 1
+            from services.google_business_management import cancel_binding_schedules
+            await cancel_binding_schedules(db, binding.id)
             await db.execute(update(Grant).where(Grant.binding_id == binding.id).values(can_reply=False, can_publish=False, updated_at=now()))
         connection.active = False; connection.token_encrypted = None; connection.needs_reconnect = False
     return {"disconnected": True}
@@ -347,12 +379,13 @@ def review_version(row):
 
 
 def review_data(row, location):
+    from services.google_business_ai import risk_flags
     name = row.get("name", "")
     if not isinstance(name, str) or not name.startswith(location + "/reviews/") or not provider.REVIEW.fullmatch(name): return None
     reply = row.get("reviewReply") or {}
     return {"name": name, "reviewer_name": str((row.get("reviewer") or {}).get("displayName") or "Google 用户")[:255], "rating": str(row.get("starRating") or ""),
             "comment": str(row.get("comment") or "")[:20000], "created_at": row.get("createTime"), "updated_at": row.get("updateTime"),
-            "reply": str(reply.get("comment") or "")[:4096], "reply_updated_at": reply.get("updateTime"), "reply_state": reply.get("reviewReplyState") or None, "version": review_version(row)}
+            "reply": str(reply.get("comment") or "")[:4096], "reply_updated_at": reply.get("updateTime"), "reply_state": reply.get("reviewReplyState") or None, "requires_owner_review": bool(risk_flags(row)), "version": review_version(row)}
 
 
 async def reviews(db, user, binding_id, page_token=None):
@@ -436,9 +469,9 @@ def _post_result(action, data, location):
     else: action.status = "accepted"; action.message = "Google 已接收，尚未确认公开上线，请稍后查询"
 
 
-async def _reserve(db, ctx, binding_id, kind, request_id, payload, *, target_name=None, task_id=None, expected_revision=None, expected_version=None):
+async def _reserve(db, ctx, binding_id, kind, request_id, payload, *, target_name=None, task_id=None, expected_revision=None, expected_version=None, approval_id=None):
     request_id = media._key(request_id)
-    fingerprint = digest({"binding_id": binding_id, "kind": kind, "payload": payload, "target": target_name, "task_id": task_id, "expected_revision": expected_revision, "expected_version": expected_version})
+    fingerprint = digest({"binding_id": binding_id, "kind": kind, "payload": payload, "target": target_name, "task_id": task_id, "expected_revision": expected_revision, "expected_version": expected_version, "approval_id": approval_id})
     async with write(db):
         binding, _, _ = await _binding(db, ctx, binding_id, action="reply" if kind == "review_reply" else "publish", lock=True)
         old = await db.scalar(select(Action).where(Action.actor_id == ctx.identity, Action.request_id == request_id))
@@ -454,10 +487,19 @@ async def _reserve(db, ctx, binding_id, kind, request_id, payload, *, target_nam
             duplicate = await db.scalar(select(Action).where(Action.binding_id == binding_id, Action.target_name == target_name, Action.kind == kind, Action.status.in_(("pending", "unknown"))).limit(1))
             if duplicate: raise HTTPException(409, "此评论已有结果待确认的回复，请先查询，避免覆盖")
         row = Action(binding_id=binding_id, customer_id=binding.customer_id, kind=kind, request_id=request_id, fingerprint=fingerprint,
-                     actor_id=ctx.identity, actor_name=ctx.user.name or str(ctx.identity), task_id=task_id, target_name=target_name, payload=payload,
+                     actor_id=ctx.identity, actor_name=ctx.user.name or str(ctx.identity), task_id=task_id, target_name=target_name, approval_id=approval_id, payload=payload,
                      status="pending", message="已登记请求，正在向 Google 提交", created_at=now(), updated_at=now())
         db.add(row); await db.flush(); identity = row.id
     return identity, True
+
+
+async def _sync_schedule_result(db, action):
+    # The durable provider result is authoritative. A definite rejection may
+    # permit a new, explicitly reviewed schedule; unknown is never retried.
+    from models.google_business import GoogleBusinessSchedule as Schedule
+    await db.execute(update(Schedule).where(Schedule.action_id == action.id).values(
+        status=action.status, message=action.message, updated_at=now(), revision=Schedule.revision + 1)
+        .execution_options(synchronize_session=False))
 
 
 async def _not_dispatched(db, user, action_id, message):
@@ -468,7 +510,7 @@ async def _not_dispatched(db, user, action_id, message):
             row.status = "failed"; row.message = message; row.updated_at = now()
 
 
-async def _dispatch(db, user, action_id, *, expected_revision=None, expected_version=None):
+async def _dispatch(db, user, action_id, *, expected_revision=None, expected_version=None, schedule_id=None):
     # A durable reservation exists before this function. No replay enters here;
     # even a crashed process leaves a fenced action for GET-only reconciliation.
     try:
@@ -503,7 +545,17 @@ async def _dispatch(db, user, action_id, *, expected_revision=None, expected_ver
                     if row.kind == "review_reply":
                         if current_review is None or current_review.get("name") != row.target_name or review_version(current_review) != expected_version:
                             raise HTTPException(409, "评论或回复已被更新，请重新读取后编辑")
+                        from services.google_business_ai import ensure_reply_approval
+                        await ensure_reply_approval(db, ctx, binding, current_review, (row.payload or {}).get("comment", ""), approval_id=row.approval_id)
                     else:
+                        if schedule_id is not None:
+                            from services.google_business_scheduler import enabled
+                            if not enabled(): raise HTTPException(409, "自动发布调度已关闭，本次不会提交")
+                            from models.google_business import GoogleBusinessSchedule as Schedule
+                            scheduled = await db.get(Schedule, schedule_id, populate_existing=True)
+                            if (not scheduled or scheduled.status != "dispatching" or scheduled.action_id != row.id or scheduled.operator_id != ctx.identity or
+                                    binding.primary_operator_id != ctx.identity or scheduled.task_id != row.task_id or scheduled.task_revision != expected_revision or scheduled.payload_fingerprint != digest(row.payload)):
+                                raise HTTPException(409, "排期、主运营或内容版本已变化，本次不会发布")
                         _, current_payload, _ = await _post_payload(db, ctx, binding, row.task_id, expected_revision)
                         if current_payload != row.payload: raise HTTPException(409, "运营任务素材已更新，请重新审核")
                     # This short committed point defines an already-dispatched
@@ -551,6 +603,8 @@ async def _dispatch(db, user, action_id, *, expected_revision=None, expected_ver
             for field in ("status", "provider_name", "provider_state", "provider_url", "message"):
                 setattr(row, field, getattr(result_state, field))
             row.updated_at = now()
+            if row.status == "succeeded" and row.confirmed_at is None: row.confirmed_at = now()
+            await _sync_schedule_result(db, row)
         connection = await db.get(Connection, snapshot["connection_id"], populate_existing=True)
         if connection and connection.active and connection.token_encrypted == snapshot["original_token"]:
             if snapshot["connection"].token_encrypted != snapshot["original_token"]:
@@ -569,13 +623,13 @@ async def _dispatch(db, user, action_id, *, expected_revision=None, expected_ver
     return output
 
 
-async def reply(db, user, binding_id, *, request_id, review_name, expected_version, reply):
+async def reply(db, user, binding_id, *, request_id, review_name, expected_version, reply, approval_id=None):
     ctx = await context(db, user); provider.require_config()
     binding, _, _ = await _binding(db, ctx, binding_id, action="reply")
     if not provider.REVIEW.fullmatch(review_name) or not review_name.startswith(binding.location_name + "/reviews/"): raise HTTPException(422, "评论不属于此 Google 门店")
     value = reply.strip()
     if not value or len(value.encode("utf-8")) > 4096: raise HTTPException(422, "Google 回复最多 4096 UTF-8 字节，请缩短后提交")
-    identity, fresh = await _reserve(db, ctx, binding_id, "review_reply", request_id, {"comment": value}, target_name=review_name, expected_version=expected_version)
+    identity, fresh = await _reserve(db, ctx, binding_id, "review_reply", request_id, {"comment": value}, target_name=review_name, expected_version=expected_version, approval_id=approval_id)
     if not fresh: return await action(db, user, identity)
     return await _dispatch(db, user, identity, expected_version=expected_version)
 
@@ -661,5 +715,8 @@ async def reconcile(db, user, action_id):
             # idempotency token; a lost provider ID never permits a blind retry.
             row.status = "unknown"
             row.message = "发现相近的 Google 帖子，请老板在 Google 后台核对；系统不会自动认领或重复发布" if matches else "尚未找到可核实的 Google 帖子，请老板核对；系统不会重复发布"
-        row.updated_at = now(); output = action_data(row, ctx)
+        row.updated_at = now()
+        if row.status == "succeeded" and row.confirmed_at is None: row.confirmed_at = now()
+        await _sync_schedule_result(db, row)
+        output = action_data(row, ctx)
     return output

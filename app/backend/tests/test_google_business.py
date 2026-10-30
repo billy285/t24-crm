@@ -143,8 +143,8 @@ async def gbp_env(tmp_path, monkeypatch):
     async with sessions() as db:
         db.add_all([Employees(id=int(user.id), user_id=user.id, name=user.name, role=user.role, status="active", password="SECRET-EMPLOYEE-PASSWORD") for user in actors()])
         db.add_all([
-            Customers(id=10, business_name="Synthetic Invited Merchant", contact_name="Synthetic", phone="111", private_notes="SECRET-PRIVATE-NOTES"),
-            Customers(id=20, business_name="SECRET-HIDDEN-MERCHANT", contact_name="Hidden", phone="222", private_notes="SECRET-HIDDEN-NOTES"),
+            Customers(id=10, business_name="Synthetic Invited Merchant", contact_name="Synthetic", phone="111", private_notes="SECRET-PRIVATE-NOTES", status="closed"),
+            Customers(id=20, business_name="SECRET-HIDDEN-MERCHANT", contact_name="Hidden", phone="222", private_notes="SECRET-HIDDEN-NOTES", status="closed"),
         ])
         db.add_all([CustomerAccessGrant(customer_id=10, employee_id=i, access_level="read_write", invitation_source="owner_invitation", invitation_status="active", finance_access="none", scopes={"basic": "read_only", "delivery": "read_write", "materials": "read_only"}) for i in (2, 3, 4)])
         db.add_all([

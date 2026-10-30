@@ -23,6 +23,7 @@ class GoogleBusinessOAuthState(Base):
     owner_id = Column(Integer, nullable=False)
     verifier_encrypted = Column(Text, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    reconnect_connection_id = Column(Integer, nullable=True)
     consumed = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -44,6 +45,10 @@ class GoogleBusinessBinding(Base):
     revision = Column(Integer, nullable=False, default=1, server_default="1")
     created_by_id = Column(Integer, nullable=False)
     request_id = Column(String(36), nullable=False, unique=True)
+    lifecycle = Column(String(16), nullable=False, default="active", server_default="active")
+    primary_operator_id = Column(Integer, nullable=True)
+    primary_operator_name = Column(String(255), nullable=True)
+    lifecycle_reason = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
@@ -71,13 +76,92 @@ class GoogleBusinessAction(Base):
     actor_id = Column(Integer, nullable=False)
     actor_name = Column(String(255), nullable=False)
     task_id = Column(Integer, nullable=True, index=True)
+    approval_id = Column(String(36), nullable=True)
     target_name = Column(String(255), nullable=True)
     payload = Column(JSON, nullable=True)
     status = Column(String(16), nullable=False, default="pending", server_default="pending")
     dispatch_started_at = Column(DateTime(timezone=True), nullable=True)
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)
     provider_name = Column(String(255), nullable=True)
     provider_state = Column(String(32), nullable=True)
     provider_url = Column(Text, nullable=True)
     message = Column(String(255), nullable=False, default="", server_default="")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class GoogleBusinessManagementRequest(Base):
+    __tablename__ = "google_business_management_requests"
+    __table_args__ = (UniqueConstraint("owner_id", "request_id", name="uq_gbp_management_request"),)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_id = Column(Integer, nullable=False)
+    request_id = Column(String(36), nullable=False)
+    kind = Column(String(32), nullable=False)
+    fingerprint = Column(String(64), nullable=False)
+    result = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class GoogleBusinessAssignmentPreview(Base):
+    __tablename__ = "google_business_assignment_previews"
+    id = Column(String(36), primary_key=True)
+    owner_id = Column(Integer, nullable=False, index=True)
+    employee_id = Column(Integer, nullable=False)
+    can_reply = Column(Boolean, nullable=False)
+    can_publish = Column(Boolean, nullable=False)
+    snapshot = Column(JSON, nullable=False)
+    applied_request_id = Column(String(36), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class GoogleBusinessSchedule(Base):
+    __tablename__ = "google_business_schedules"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    binding_id = Column(Integer, ForeignKey("google_business_bindings.id", ondelete="RESTRICT"), nullable=False, index=True)
+    task_id = Column(Integer, nullable=False, index=True)
+    task_revision = Column(Integer, nullable=False)
+    payload_fingerprint = Column(String(64), nullable=False)
+    operator_id = Column(Integer, nullable=False)
+    owner_id = Column(Integer, nullable=False)
+    request_id = Column(String(36), nullable=False, unique=True)
+    planned_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    timezone = Column(String(80), nullable=False)
+    status = Column(String(16), nullable=False, default="scheduled", server_default="scheduled", index=True)
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
+    message = Column(String(255), nullable=False, default="", server_default="")
+    action_id = Column(Integer, ForeignKey("google_business_actions.id", ondelete="RESTRICT"), nullable=True)
+    created_by_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class GoogleBusinessAIConsent(Base):
+    __tablename__ = "google_business_ai_consents"
+    owner_id = Column(Integer, primary_key=True)
+    runtime_fingerprint = Column(String(64), nullable=False)
+    active = Column(Boolean, nullable=False, default=False, server_default="0")
+    consented_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class GoogleBusinessAIDraft(Base):
+    __tablename__ = "google_business_ai_drafts"
+    __table_args__ = (UniqueConstraint("actor_id", "request_id", name="uq_gbp_ai_draft_request"),)
+    id = Column(String(36), primary_key=True)
+    binding_id = Column(Integer, ForeignKey("google_business_bindings.id", ondelete="RESTRICT"), nullable=False, index=True)
+    actor_id = Column(Integer, nullable=False)
+    request_id = Column(String(36), nullable=False)
+    review_name = Column(String(255), nullable=False)
+    review_version = Column(String(64), nullable=False)
+    reply_text = Column(Text, nullable=False, default="", server_default="")
+    status = Column(String(16), nullable=False)
+    sensitive = Column(Boolean, nullable=False, default=False, server_default="0")
+    risk_flags = Column(JSON, nullable=False)
+    model = Column(String(255), nullable=False)
+    runtime_fingerprint = Column(String(64), nullable=False)
+    fingerprint = Column(String(64), nullable=False)
+    approved_reply_hash = Column(String(64), nullable=True)
+    approved_by_id = Column(Integer, nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, FileText, Globe2, Image, ListChecks, Loader2, LockKeyhole, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { useRole } from '@/lib/role-context';
 import { confirmDiscardAllChanges, useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
-import GoogleBusinessWorkspace from '@/components/GoogleBusinessWorkspace';
+import GoogleBusinessManagement from '@/components/GoogleBusinessManagement';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -287,10 +287,10 @@ export default function MediaOperations() {
   if (roleLoading || resolvedScope !== scope) return <div className="mo-loading"><Loader2 className="animate-spin" aria-hidden="true"/>正在确认访问范围…</div>;
   if (!allowed) return <section className="media-operations mo-denied"><LockKeyhole aria-hidden="true"/><h1>代运营中心尚未向此账号开放</h1><p>由老板邀请运营人员，并单独授权客户交付资料。</p></section>;
 
-  return <main className="media-operations app-page" aria-label="代运营中心">
+  return <main className={`media-operations app-page${workspace === 'google' ? ' mo-google-mode' : ''}`} aria-label="代运营中心">
     <header className="mo-page-header"><div><p className="mo-eyebrow">任务与交付 · 代运营</p><h1>代运营中心</h1><p className="mo-subtitle">{workspace === 'google' ? '在授权范围内处理 Google 评论和帖子。' : '准备内容、完成审核、发布后留下凭证。'}</p></div>{workspace === 'tasks' && <div className="mo-header-actions"><Button variant="outline" onClick={() => { void loadList(); void loadOptions(); }} disabled={listLoading || busy} aria-label="刷新运营资料"><RefreshCw className={listLoading ? 'animate-spin' : ''} aria-hidden="true"/><span>刷新</span></Button><Button onClick={openCreate} disabled={!canCreate || busy || unknownResult}><Plus aria-hidden="true"/>新增任务</Button></div>}</header>
     <div className="mo-workspace-switch" role="group" aria-label="代运营工作区"><button className={workspace === 'tasks' ? 'active' : ''} aria-pressed={workspace === 'tasks'} onClick={() => changeWorkspace('tasks')}><ListChecks aria-hidden="true"/>运营任务</button><button className={workspace === 'google' ? 'active' : ''} aria-pressed={workspace === 'google'} onClick={() => changeWorkspace('google')}><Globe2 aria-hidden="true"/>Google 商家</button></div>
-    {workspace === 'google' ? <GoogleBusinessWorkspace scope={scope} isOwner={owner} onOpenTask={(id, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); void readDetail(id, false, nextAction); }}/> : <>
+    {workspace === 'google' ? <GoogleBusinessManagement scope={scope} isOwner={owner} onCreateTask={() => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); openCreate(); }} onOpenTask={(id, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); void readDetail(id, false, nextAction); }}/> : <>
     <div className="mo-scope"><ShieldCheck aria-hidden="true"/><span>{owner ? '老板视角 · 查看全部运营交付，审核后进入发布' : '我的工作 · 仅显示本人负责且老板已授权的客户任务'}</span><span className="mo-manual-tag">人工发布 · 凭证留痕</span></div>
     <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
     {unknownResult && <div className="mo-alert mo-alert-warn" role="alert"><AlertCircle aria-hidden="true"/><div><strong>上次操作结果待确认</strong><p>请先确认结果，再继续修改或新增任务。</p></div><Button variant="outline" disabled={busy} onClick={() => void recoverUnknown()}>{busy ? '正在确认…' : '重新确认结果'}</Button></div>}
