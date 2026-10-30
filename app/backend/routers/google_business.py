@@ -166,6 +166,11 @@ async def reviews(binding_id: int = Path(ge=1), page_token: str | None = Query(N
     return await service.reviews(db, user, binding_id, page_token)
 
 
+@router.get("/bindings/{binding_id}/review")
+async def review(binding_id: int = Path(ge=1), review_name: str = Query(min_length=10, max_length=255), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await service.review(db, user, binding_id, review_name)
+
+
 @router.post("/bindings/{binding_id}/review-replies")
 async def reply(value: ReviewReply, binding_id: int = Path(ge=1), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     confirm(value)

@@ -397,6 +397,28 @@ async def reviews(db, user, binding_id, page_token=None):
     return {"items": items, "next_page_token": data.get("nextPageToken"), "fetched_at": iso(now())}
 
 
+async def review(db, user, binding_id, review_name):
+    # Google's list and single-review resources can expose different reply
+    # metadata. Prepare an edit from the authoritative GET representation;
+    # generation and dispatch still compare the complete unchanged version.
+    ctx = await context(db, user)
+    binding, connection, _ = await _binding(db, ctx, binding_id, action="reply")
+    if not isinstance(review_name, str) or not provider.REVIEW.fullmatch(review_name) or not review_name.startswith(binding.location_name + "/reviews/"):
+        raise HTTPException(422, "请选择当前门店的评论")
+    connection_id = connection.id
+    raw = await _read_provider(db, user, connection_id, "review", review_name, binding_id=binding_id)
+    # A read may outlive the employee's reply grant. Read-only access at the
+    # provider seam does not authorize delivering an editable reply context.
+    ctx = await context(db, user)
+    binding, connection, _ = await _binding(db, ctx, binding_id, action="reply")
+    if connection.id != connection_id or not isinstance(raw, dict) or raw.get("name") != review_name:
+        raise HTTPException(409, "评论或门店连接已变化，请重新读取后处理")
+    item = review_data(raw, binding.location_name)
+    if item is None:
+        raise HTTPException(409, "评论已不属于当前门店，请重新读取后处理")
+    return {"item": item, "fetched_at": iso(now())}
+
+
 async def _post_payload(db, ctx, binding, task_id, expected_revision=None):
     task, customer, _ = await media._get_task(db, ctx, task_id, write=True)
     await db.execute(select(MediaOperationTask).where(MediaOperationTask.id == task_id).with_for_update())

@@ -15,6 +15,7 @@ import '@/pages/google-management.css';
 type Props = { scope: string; isOwner: boolean; onOpenTask: (id: number, nextAction?: 'return') => void; entry?: { key: number; bindingId?: number; customerId?: number; kind?: 'bind' | 'grants' } };
 type Modal = { kind: 'connect'; connection?: GbpConnection } | { kind: 'bind' } | { kind: 'grants'; binding: GbpBinding } | { kind: 'reply'; binding: GbpBinding; review: GbpReview } | { kind: 'publish'; binding: GbpBinding; task: GbpReadyTask } | { kind: 'action'; action: GbpAction } | { kind: 'disconnect_connection'; connection: GbpConnection } | { kind: 'disconnect_binding'; binding: GbpBinding };
 type PendingWrite = { requestId: string; path: string; data: Record<string, unknown>; bindingId: number };
+type ReplySource = { scope: string; dialog: number; bindingId: number; name: string; version: string };
 const emptyOptions: GbpOptions = { customers: [], assignees: [] };
 const starValues: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 const ratingNumber = (value: string) => Math.min(5, Math.max(0, starValues[String(value).toUpperCase()] || Number(value) || 0));
@@ -55,6 +56,10 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
   const [modalError, setModalError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [reply, setReply] = useState('');
+  const [replySource, setReplySource] = useState<ReplySource | null>(null);
+  const [replyDetailLoading, setReplyDetailLoading] = useState(false);
+  const [replyDetailError, setReplyDetailError] = useState('');
+  const replySourceRef = useRef<ReplySource | null>(null), replyDetailSeq = useRef(0);
   const [aiApproval, setAiApproval] = useState<GbpAiDraft | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const aiBusyRef = useRef(false);
@@ -85,7 +90,8 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
   const canUse = state?.configured === true && state.enabled;
   const currentGrant = grants?.employees.find(row => String(row.employee_id) === employeeChoice);
   const grantDirty = modal?.kind === 'grants' && !!currentGrant && (grantReply !== currentGrant.can_reply || grantPublish !== currentGrant.can_publish);
-  const dirty = modal?.kind === 'reply' && reply !== (modal.review.reply || '') || modal?.kind === 'bind' && !!(customerChoice || locationChoice) || grantDirty;
+  const replyIsCurrent = modal?.kind === 'reply' && replySource?.scope === scope && replySource.dialog === modalSeq.current && replySource.bindingId === modal.binding.id && replySource.name === modal.review.name && replySource.version === modal.review.version && selectedId === modal.binding.id;
+  const dirty = replyIsCurrent && modal?.kind === 'reply' && reply !== (modal.review.reply || '') || modal?.kind === 'bind' && !!(customerChoice || locationChoice) || grantDirty;
   const draftGuard = useUnsavedChanges(dirty);
   const navigationHold = useHardNavigationBlock(busy || aiBusy || unknown || controlNeedsRefresh);
   const unusedLocations = useMemo(() => locations.items.filter(row => !state?.bindings.some(binding => binding.active && binding.location_name === row.location_name)), [locations.items, state?.bindings]);
@@ -146,11 +152,12 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
   }, [scope, loadStatus]);
 
   useEffect(() => {
-    statusSeq.current++; reviewsSeq.current++; tasksSeq.current++; actionsSeq.current++; modalSeq.current++; locationSeq.current++;
+    statusSeq.current++; reviewsSeq.current++; tasksSeq.current++; actionsSeq.current++; modalSeq.current++; locationSeq.current++; replyDetailSeq.current++;
     setState(null); setSelectedId(null); setReviews(null); setTasks([]); setActions([]); setModal(null); setOptions(emptyOptions); setGrants(null); setLocations({ items: [], truncated: false });
+    replySourceRef.current = null; setReplySource(null); setReplyDetailLoading(false); setReplyDetailError('');
     setUnknown(false); setControlNeedsRefresh(false); setBusy(false); busyRef.current = false; durableHold.current = false; pending.current = null; setNotice(''); draftGuard.markSaved(); navigationHold.release();
     void loadStatus();
-    return () => { statusSeq.current++; reviewsSeq.current++; tasksSeq.current++; actionsSeq.current++; modalSeq.current++; locationSeq.current++; };
+    return () => { statusSeq.current++; reviewsSeq.current++; tasksSeq.current++; actionsSeq.current++; modalSeq.current++; locationSeq.current++; replyDetailSeq.current++; };
   }, [scope, loadStatus]);
   useEffect(() => {
     reviewsSeq.current++; tasksSeq.current++; actionsSeq.current++;
@@ -174,8 +181,9 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
   function unlock() { busyRef.current = false; setBusy(false); if (!durableHold.current) navigationHold.release(); }
   function open(next: Modal) {
     if (busyRef.current || aiBusyRef.current || durableHold.current || unknown || controlNeedsRefresh) return;
-    modalSeq.current++; locationSeq.current++; setLocationsLoading(false); setModal(next); setModalError(''); setConfirmed(false); setLeaveChoice(false); setNotReserved(false);
-    setReply(next.kind === 'reply' ? next.review.reply || '' : ''); setAiApproval(null); setAiBusy(false); aiBusyRef.current = false; setGrants(null); setEmployeeChoice(''); setGrantReply(false); setGrantPublish(false);
+    modalSeq.current++; locationSeq.current++; replyDetailSeq.current++; replySourceRef.current = null; setReplySource(null); setReplyDetailLoading(false); setReplyDetailError(''); setLocationsLoading(false); setModal(next); setModalError(''); setConfirmed(false); setLeaveChoice(false); setNotReserved(false);
+    setReply(''); setAiApproval(null); setAiBusy(false); aiBusyRef.current = false; setGrants(null); setEmployeeChoice(''); setGrantReply(false); setGrantPublish(false);
+    if (next.kind === 'reply') void loadReplyDetail(next.binding, next.review.name);
     if (next.kind === 'bind') {
       bindRequestId.current = mediaRequestId(); setCustomerChoice(''); setConnectionChoice(''); setLocationChoice(''); setLocations({ items: [], truncated: false });
       const identity = scope, seq = modalSeq.current;
@@ -191,9 +199,26 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
   function close() {
     if (busyRef.current || aiBusyRef.current || durableHold.current || unknown || controlNeedsRefresh) return;
     if (dirty) { setLeaveChoice(true); return; }
-    modalSeq.current++; locationSeq.current++; setModal(null); setModalError(''); setConfirmed(false); draftGuard.markSaved();
+    modalSeq.current++; locationSeq.current++; replyDetailSeq.current++; replySourceRef.current = null; setReplySource(null); setReplyDetailLoading(false); setModal(null); setModalError(''); setConfirmed(false); draftGuard.markSaved();
   }
-  function discard() { if (busyRef.current || aiBusyRef.current || durableHold.current || unknown || controlNeedsRefresh) return; draftGuard.markSaved(); modalSeq.current++; locationSeq.current++; setModal(null); setLeaveChoice(false); setModalError(''); }
+  function discard() { if (busyRef.current || aiBusyRef.current || durableHold.current || unknown || controlNeedsRefresh) return; draftGuard.markSaved(); modalSeq.current++; locationSeq.current++; replyDetailSeq.current++; replySourceRef.current = null; setReplySource(null); setReplyDetailLoading(false); setModal(null); setLeaveChoice(false); setModalError(''); }
+
+  async function loadReplyDetail(binding: GbpBinding, reviewName: string) {
+    const identity = scope, dialog = modalSeq.current, seq = ++replyDetailSeq.current;
+    const current = () => seq === replyDetailSeq.current && dialog === modalSeq.current && scopeRef.current === identity && selectedRef.current === binding.id;
+    replySourceRef.current = null; setReplySource(null); setReplyDetailLoading(true); setReplyDetailError(''); setReply(''); setAiApproval(null); setConfirmed(false);
+    try {
+      const value = await googleBusinessApi<{ item: GbpReview; fetched_at: string }>(`/bindings/${binding.id}/review?review_name=${encodeURIComponent(reviewName)}`);
+      const item = value?.item;
+      if (!item || item.name !== reviewName || typeof item.version !== 'string' || !item.version || typeof item.comment !== 'string' || typeof item.reviewer_name !== 'string' || typeof item.rating !== 'string' || !(item.reply === null || typeof item.reply === 'string') || !(item.reply_updated_at === null || typeof item.reply_updated_at === 'string') || typeof value.fetched_at !== 'string' || !Number.isFinite(Date.parse(value.fetched_at)) || item.requires_owner_review !== undefined && typeof item.requires_owner_review !== 'boolean') throw new Error('当前评论返回不完整，请重新读取后核对。');
+      if (!current()) return;
+      const source = { scope: identity, dialog, bindingId: binding.id, name: item.name, version: item.version };
+      replySourceRef.current = source; setReplySource(source);
+      setModal(previous => previous?.kind === 'reply' && previous.binding.id === binding.id && previous.review.name === reviewName ? { ...previous, review: item } : previous);
+      setReply(item.reply || ''); setAiApproval(null); setConfirmed(false); draftGuard.markSaved();
+    } catch (cause) { if (current()) setReplyDetailError(mediaError(cause, cause instanceof Error ? cause.message : '暂时无法读取当前 Google 评论，请重试后核对。')); }
+    finally { if (current()) setReplyDetailLoading(false); }
+  }
 
   async function loadGrants(binding: GbpBinding) {
     const identity = scope, seq = modalSeq.current; setGrantsLoading(true);
@@ -331,6 +356,8 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
     if (modal.kind === 'disconnect_connection') { void controlWrite(`/connections/${modal.connection.id}/disconnect`, 'POST', { confirmed: true }); return; }
     if (modal.kind === 'disconnect_binding') { void controlWrite(`/bindings/${modal.binding.id}/disconnect`, 'POST', { confirmed: true, expected_revision: modal.binding.revision }); return; }
     if (modal.kind === 'reply') {
+      const source = replySourceRef.current;
+      if (!source || source.scope !== scope || source.dialog !== modalSeq.current || source.bindingId !== modal.binding.id || source.name !== modal.review.name || source.version !== modal.review.version || selectedRef.current !== modal.binding.id) { setModalError('请先读取并核对当前 Google 评论，再确认公开回复。'); return; }
       if (!reply.trim() || googleReplyBytes(reply.trim()) > 4096) { setModalError('回复不能为空，且长度不能超过 Google 的 4096 字节限制。'); return; }
       if (!owner && (modal.review.requires_owner_review || aiApproval?.sensitive || googleReviewNeedsOwner(modal.review.comment, reply)) && !(aiApproval?.approved && aiApproval.reply === reply.trim() && aiApproval.review_version === modal.review.version)) { setModalError('这条回复需老板批准当前文本后才能公开。'); return; }
       const requestId = mediaRequestId();
@@ -346,7 +373,7 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
   const confirmLabel = modal?.kind === 'connect' ? '我同意此连接读取我有权管理的门店和评论，并供已授权员工回复评论、发布帖子。' : modal?.kind === 'bind' ? '我已核对客户、门店名称和地址，确认对应同一家商家。' : modal?.kind === 'grants' ? '我已核对员工及门店，确认授予或撤销上面所列权限。' : modal?.kind === 'reply' ? '我已核对门店与回复内容，确认以商家身份公开回复。' : modal?.kind === 'publish' ? '我已核对门店、内容和素材，确认将这项已审核内容发布到 Google。' : '我确认停止此连接或门店的 CRM 操作授权。';
   const needsOwnerApproval = modal?.kind === 'reply' && !owner && (modal.review.requires_owner_review || aiApproval?.sensitive || googleReviewNeedsOwner(modal.review.comment, reply)) && !(aiApproval?.approved && aiApproval.reply === reply.trim() && aiApproval.review_version === modal.review.version);
   const visibleReviews = reviews?.items.filter(row => reviewFilter === 'all' || reviewFilter === 'unreplied' && !row.reply || reviewFilter === 'negative' && ratingNumber(row.rating) <= 2 || reviewFilter === 'replied' && !!row.reply) || [];
-  const saveDisabled = busy || aiBusy || needsOwnerApproval || unknown || controlNeedsRefresh || !confirmed || modal?.kind === 'grants' && (!currentGrant || !grantDirty || (!currentGrant.eligible && (grantReply || grantPublish))) || modal?.kind === 'bind' && (!customerChoice || !locationChoice || locationsLoading) || modal?.kind === 'reply' && (!reply.trim() || googleReplyBytes(reply.trim()) > 4096);
+  const saveDisabled = busy || aiBusy || needsOwnerApproval || unknown || controlNeedsRefresh || !confirmed || modal?.kind === 'grants' && (!currentGrant || !grantDirty || (!currentGrant.eligible && (grantReply || grantPublish))) || modal?.kind === 'bind' && (!customerChoice || !locationChoice || locationsLoading) || modal?.kind === 'reply' && (!replyIsCurrent || replyDetailLoading || !!replyDetailError || !reply.trim() || googleReplyBytes(reply.trim()) > 4096);
   const pickedLocation = locations.items.find(row => row.location_name === locationChoice);
 
   return <section className="gbp-workspace" aria-label="Google 商家运营">
@@ -376,12 +403,12 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
           {modal?.kind === 'connect' && <div className="gbp-dialog-copy"><Globe2 aria-hidden="true"/><h3>用你有权管理门店的 Google 账号授权</h3><p>Google 将请求商家管理权限。本系统将其用于读取门店及评论，并供你指定的员工回复评论、发布帖子。</p><p>下一步会前往 Google 官方授权页面。Google 密码不会交给运营员工；门店绑定和员工操作权限仍由你决定。</p><p className="gbp-help">授权被撤销或失效后，需要你重新连接。尚未获批的 Google API 项目不能通过连接绕过接入限制。</p></div>}
           {modal?.kind === 'bind' && <div className="gbp-form"><label>CRM 客户<NativeSelect aria-label="绑定的 CRM 客户" value={customerChoice} onChange={value => { setCustomerChoice(value); setConfirmed(false); }} disabled={busy || controlNeedsRefresh} options={[{ value: '', label: '选择对应客户' }, ...options.customers.filter(row => !state?.bindings.some(binding => binding.active && binding.customer_id === row.id)).map(row => ({ value: String(row.id), label: row.name }))]}/></label><label>Google 连接<NativeSelect aria-label="选择 Google 连接" value={connectionChoice} onChange={value => void chooseConnection(value)} disabled={busy || controlNeedsRefresh} options={[{ value: '', label: '选择已连接的 Google 账号' }, ...(state?.connections || []).filter(row => row.active && !row.needs_reconnect).map(row => ({ value: String(row.id), label: row.label || `连接 #${row.id}` }))]}/></label><label>Google 门店<NativeSelect aria-label="选择 Google 门店" value={locationChoice} onChange={value => { setLocationChoice(value); setConfirmed(false); }} disabled={busy || locationsLoading || !connectionChoice || controlNeedsRefresh} options={[{ value: '', label: locationsLoading ? '正在读取 Google 门店…' : '选择对应门店' }, ...unusedLocations.map(row => ({ value: row.location_name, label: `${row.title}${row.address ? ` · ${row.address}` : ''}` }))]}/></label>{pickedLocation && <div className="gbp-location-preview"><strong>{pickedLocation.title}</strong><span>{pickedLocation.address || 'Google 未返回地址，请进一步核对门店。'}</span><small>请确认与上面选定的 CRM 客户一致。</small></div>}{locations.truncated && <p className="gbp-help warning">本次门店列表未完整返回；未找到对应门店时先不要绑定。</p>}</div>}
           {modal?.kind === 'grants' && <div className="gbp-form">{grantsLoading && !grants ? <Loading label="正在读取当前授权…"/> : grants && <><p>仅可选择已获该客户交付协作授权的有效员工。内部任务编辑权不会自动获得下列权限。</p><label>员工<NativeSelect aria-label="Google 操作授权员工" value={employeeChoice} onChange={chooseEmployee} disabled={busy || controlNeedsRefresh} options={[{ value: '', label: '选择员工' }, ...grants.employees.filter(row => row.eligible || row.can_reply || row.can_publish).map(row => ({ value: String(row.employee_id), label: row.name + (row.eligible ? '' : ' · 原协作授权已失效') }))]}/></label>{currentGrant && <><label className="gbp-check"><input type="checkbox" checked={grantReply} onChange={event => { setGrantReply(event.target.checked); setConfirmed(false); }} disabled={busy || controlNeedsRefresh || !currentGrant.eligible && !grantReply}/><span><strong>回复 Google 评论</strong><small>可代表此门店直接提交和修改评论回复。</small></span></label><label className="gbp-check"><input type="checkbox" checked={grantPublish} onChange={event => { setGrantPublish(event.target.checked); setConfirmed(false); }} disabled={busy || controlNeedsRefresh || !currentGrant.eligible && !grantPublish}/><span><strong>发布 Google 帖子</strong><small>可将此客户已审核的 Google 任务发布到此门店。</small></span></label>{(currentGrant.can_reply && !grantReply || currentGrant.can_publish && !grantPublish) && <p className="gbp-help warning">撤销会阻止后续操作，已提交给 Google 的请求需等待结果。</p>}<div className="gbp-location-preview"><strong>{currentGrant.name} 的权限预览</strong><span>{[grantReply && '可回复评论', grantPublish && '可发布已审核帖子'].filter(Boolean).join(' · ') || '撤销此门店的 Google 操作授权'}</span><small>仅针对 {modal.binding.title}，不开放其他客户、财务或私人空间。</small></div></>}{!grants.employees.some(row => row.eligible) && <p className="gbp-help">暂无具备客户交付协作权限的员工。请先在客户中心完成原有邀请授权。</p>}<div className="gbp-grant-summary"><h4>当前已开放</h4>{grants.employees.filter(row => row.can_reply || row.can_publish).map(row => <p key={row.employee_id}><strong>{row.name}</strong><span>{[row.can_reply && '评论回复', row.can_publish && '帖子发布'].filter(Boolean).join(' · ')}</span></p>)}{!grants.employees.some(row => row.can_reply || row.can_publish) && <p>尚未向员工开放 Google 操作。</p>}</div></>}</div>}
-          {modal?.kind === 'reply' && <div className="gbp-form"><div className="gbp-original-review"><strong>{modal.review.reviewer_name || 'Google 用户'}<span>{ratingNumber(modal.review.rating)} 星</span></strong><p>{modal.review.comment || '这条评价没有文字内容。'}</p></div><GoogleReviewAssistant scope={scope} bindingId={modal.binding.id} customerName={modal.binding.customer_name} review={modal.review} reply={reply} isOwner={owner} onReply={value => { setReply(value); setAiApproval(null); setConfirmed(false); }} onApproval={setAiApproval} onBusy={changeAiBusy}/><label>公开回复内容<Textarea aria-label="Google 评论回复内容" value={reply} onChange={event => { setReply(event.target.value); setConfirmed(false); setModalError(''); }} rows={7} maxLength={4096} disabled={busy || aiBusy || unknown}/><span className={`gbp-help ${googleReplyBytes(reply.trim()) > 4096 ? 'warning' : ''}`}>已用 {googleReplyBytes(reply)} / 4096 字节 · 将以商家身份提交，公开展示以 Google 确认为准。</span></label>{needsOwnerApproval && <p className="gbp-help warning">需老板批准当前回复文本。可在上方保存并交老板复核。</p>}{modal.review.reply && <p className="gbp-help warning">该评论已有回复，本次确认将修改现有商家回复。</p>}</div>}
+          {modal?.kind === 'reply' && (replyDetailLoading ? <Loading label="正在读取当前 Google 评论和已有回复…"/> : replyDetailError ? <div className="gbp-inline-error" role="alert"><span>{replyDetailError}</span><Button variant="outline" onClick={() => void loadReplyDetail(modal.binding, modal.review.name)} disabled={busy || aiBusy || unknown}>重新读取当前评论</Button></div> : replyIsCurrent ? <div className="gbp-form"><div className="gbp-original-review"><strong>{modal.review.reviewer_name || 'Google 用户'}<span>{ratingNumber(modal.review.rating)} 星</span></strong><p>{modal.review.comment || '这条评价没有文字内容。'}</p></div><GoogleReviewAssistant scope={scope} bindingId={modal.binding.id} customerName={modal.binding.customer_name} review={modal.review} reply={reply} isOwner={owner} onReply={value => { setReply(value); setAiApproval(null); setConfirmed(false); }} onApproval={setAiApproval} onBusy={changeAiBusy}/><label>公开回复内容<Textarea aria-label="Google 评论回复内容" value={reply} onChange={event => { setReply(event.target.value); setConfirmed(false); setModalError(''); }} rows={7} maxLength={4096} disabled={busy || aiBusy || unknown}/><span className={`gbp-help ${googleReplyBytes(reply.trim()) > 4096 ? 'warning' : ''}`}>已用 {googleReplyBytes(reply)} / 4096 字节 · 将以商家身份提交，公开展示以 Google 确认为准。</span></label>{needsOwnerApproval && <p className="gbp-help warning">需老板批准当前回复文本。可在上方保存并交老板复核。</p>}{modal.review.reply && <p className="gbp-help warning">该评论已有回复，本次确认将修改现有商家回复。</p>}</div> : <Loading label="正在确认当前评论读取范围…"/>)}
           {modal?.kind === 'publish' && <div className="gbp-form"><div className="gbp-location-preview"><strong>发布到：{modal.binding.title}</strong><span>{modal.binding.address}</span></div><div className="gbp-publish-preview"><span className="gbp-pill gbp-pill-success">审核已通过 · 任务 #{modal.task.id}</span><h3>{modal.task.title}</h3><p>{modal.task.content}</p>{modal.task.preview_image_url && <ImagePreview src={modal.task.preview_image_url} title={modal.task.material_title || '已审核图片'}/>} {modal.task.publish_blocked_reason && <p className="gbp-help warning">{modal.task.publish_blocked_reason}</p>}{modal.task.material_id && <small>图片：{modal.task.material_title || '已审核素材'} · 使用老板审核的图片链接，外部来源仍可能更新图片内容。</small>}</div><p className="gbp-help">按已审核版本发布。Google 可能继续处理或审核内容，提交成功不等于已经公开展示。</p></div>}
           {modal?.kind === 'disconnect_connection' && <div className="gbp-dialog-copy"><Unplug aria-hidden="true"/><h3>{modal.connection.label}</h3><p>将停止这个连接下所有门店的 CRM 操作，并撤销员工的相关 Google 操作授权。</p><p>撤销会阻止后续操作，已提交给 Google 的请求需等待结果。</p><p>不会删除 Google 门店或已发布内容。再次使用需要重新连接、绑定并授权。</p></div>}
           {modal?.kind === 'disconnect_binding' && <div className="gbp-dialog-copy"><Unplug aria-hidden="true"/><h3>停止此门店的 Google 操作</h3><p>此门店的员工回复和发布授权将停止，不影响其他门店。</p><p>撤销会阻止后续操作，已提交给 Google 的请求需等待结果。</p><p>原客户资料、邀请权限和 Google 已发布内容保持原样。</p></div>}
           {modal?.kind === 'action' && <div className="gbp-action-detail"><span className={`gbp-pill gbp-result-${modal.action.status}`}>{gbpActionLabels[modal.action.status]}</span><h3>{modal.action.kind === 'review_reply' ? '评论回复结果' : '帖子发布结果'}</h3><p>{modal.action.message}</p>{modal.action.content && <section className="gbp-audit-content"><h4>本次提交内容</h4><p>{modal.action.content}</p></section>}<dl><div><dt>操作者</dt><dd>{modal.action.actor_name}</dd></div><div><dt>提交时间</dt><dd>{formatTime(modal.action.created_at)}（北京时间）</dd></div><div><dt>最近确认</dt><dd>{formatTime(modal.action.updated_at)}（北京时间）</dd></div>{modal.action.provider_state && <div><dt>Google 状态</dt><dd>{providerStateLabel(modal.action.provider_state)}</dd></div>}</dl>{googlePublicUrl(modal.action.provider_url) && <a className="gbp-external" href={googlePublicUrl(modal.action.provider_url)!} target="_blank" rel="noopener noreferrer">查看 Google 页面<ExternalLink aria-hidden="true"/></a>}{modal.action.can_reconcile && <p className="gbp-help">查询只读取 Google 结果，不会再次回复或发布。</p>}{modal.action.kind === 'post_publish' && modal.action.status === 'succeeded' && <p className="gbp-help">Google 已确认发布。对应运营任务仍可按原流程提交链接凭证后完成。</p>}</div>}
-          {modal && modal.kind !== 'action' && <label className="gbp-confirm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || unknown || controlNeedsRefresh}/><span>{confirmLabel}</span></label>}
+          {modal && modal.kind !== 'action' && <label className="gbp-confirm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy || unknown || controlNeedsRefresh || modal?.kind === 'reply' && !replyIsCurrent}/><span>{confirmLabel}</span></label>}
           {modalError && <div className="gbp-alert gbp-alert-warn" role="alert"><AlertCircle aria-hidden="true"/><span>{modalError}</span></div>}
           {unknown && <p className="gbp-help">原请求编号：{pending.current?.requestId}</p>}
         </CrmFormDialogBody>
