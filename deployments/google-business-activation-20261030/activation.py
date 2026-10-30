@@ -20,7 +20,7 @@ import preflight
 CANDIDATE_NAME = 't24-crm-gbp-activation-20261030'
 DISABLED_NAME = 't24-crm-gbp-disabled-20261030'
 SCOPE = 'https://www.googleapis.com/auth/business.manage'
-ATTEMPT_NAMESPACE = 'attempt-v2'
+ATTEMPT_NAMESPACE = 'attempt-v3'
 SECURITY_HEADERS = frozenset(('cache-control', 'strict-transport-security', 'content-security-policy',
     'x-frame-options', 'x-content-type-options', 'permissions-policy'))
 LOG_METADATA_EVIDENCE_SHA = '2bda1b6ce27c9b4dec54198e83be5abf5d6d89144da7b5b3330b407a6760e27a'
@@ -233,6 +233,89 @@ def baseline_security_headers():
     return security_fingerprints(blob)
 
 
+def sanitized_header_facts(blob, plan):
+    """Only numeric/enum/boolean facts; never raw URLs, policies, cookies or CSP."""
+    headers, status = {}, None
+    if isinstance(blob, bytes) and len(blob) <= 65536:
+        blocks = [item for item in re.split(rb'\r?\n\r?\n', blob) if item.lower().startswith(b'http/')]
+        if blocks:
+            rows = blocks[-1].splitlines()
+            match = re.match(rb'HTTP/[^\s]+\s+([0-9]{3})(?:\s|$)', rows[0], re.I)
+            if match: status = int(match[1])
+            for row in rows[1:]:
+                if b':' not in row: continue
+                name, value = row.split(b':', 1)
+                headers.setdefault(name.lower().strip(), []).append(value.strip())
+    referrers = headers.get(b'referrer-policy', [])
+    enums = {b'no-referrer', b'strict-origin-when-cross-origin', b'same-origin', b'strict-origin', b'origin', b'no-referrer-when-downgrade', b'unsafe-url'}
+    policies = sorted({value.lower().decode('ascii') if value.lower() in enums else 'OTHER_REDACTED' for value in referrers})
+    baseline = plan.get('baseline_security_header_sha256', {})
+    matches = {name: bool(name.encode() in headers and c.H(b'\0'.join(headers[name.encode()])) == baseline.get(name)) for name in sorted(SECURITY_HEADERS)}
+    return {'http_status': status, 'fixed_failed_redirect': headers.get(b'location') == [b'/media-ops?google=failed'],
+        'cache_no_store': any(b'no-store' in value.lower() for value in headers.get(b'cache-control', [])),
+        'referrer_policy_header_count': len(referrers), 'referrer_policy_enums': policies,
+        'security_header_fingerprint_matches': matches, 'all_other_security_headers_unchanged': all(matches.values())}
+
+
+def noquery_failure_diagnostic(plan):
+    """One diagnostic GET after a failed sentinel; never retry the query."""
+    try:
+        blob = c.run(['curl', '-q', '--silent', '--show-error', '--noproxy', '*', '--http1.1', '--header', 'Connection: close',
+            '--max-time', '1', '--max-redirs', '0', '--resolve', 't24-crm.com:443:127.0.0.1', '-D', '-', '-o', '/dev/null',
+            c.ORIGIN + c.CALLBACK], 'CALLBACK_FAILURE_NOQUERY_GET_FAILED', timeout=1.1)
+    except (c.GuardError, OSError, subprocess.TimeoutExpired):
+        return {'diagnostic_get_completed': False, 'safe_diagnostic_error_code': 'CALLBACK_FAILURE_NOQUERY_GET_FAILED',
+            **sanitized_header_facts(b'', plan)}
+    return {'diagnostic_get_completed': True, **sanitized_header_facts(blob, plan)}
+
+
+def record_header_failure(blob, plan, kind, reason, attempts, started, noquery_diagnostic=None):
+    c.need(kind in {'noquery-readiness', 'sentinel'} and isinstance(reason, str) and re.fullmatch('[A-Z][A-Z0-9_]{0,95}', reason), 'SANITIZED_FAILURE_CONTEXT_REQUIRED')
+    facts = {'stage': 'GBP_CALLBACK_HEADER_FAILURE_FACTS', 'attempt_namespace': ATTEMPT_NAMESPACE,
+        'request_kind': kind, 'safe_error_code': reason, 'attempts': attempts,
+        'elapsed_ms': max(0, int((time.monotonic() - started) * 1000)),
+        **sanitized_header_facts(blob, plan), 'raw_headers_or_query_or_cookie_values_exported': False,
+        'provider_requests': False, 'business_writes': False}
+    if noquery_diagnostic is not None: facts['post_failure_noquery_diagnostic'] = noquery_diagnostic
+    name = 'header-failure-facts-' + str(time.time_ns()) + '-' + secrets.token_hex(4) + '.json'
+    path = attempt_root() / name
+    digest = c.write(path, facts)
+    print(json.dumps({'stage': 'GBP_CALLBACK_HEADER_FAILURE_FACTS_SAVED', 'facts_file': str(path), 'facts_sha256': digest,
+        'sanitized_facts': facts}, sort_keys=True))
+    return facts
+
+
+def wait_callback_header_readiness(plan):
+    """Bounded no-query GETs only; two consecutive fresh connections must pass."""
+    started = time.monotonic()
+    deadline, attempts, consecutive, last = started + 5.0, 0, 0, b''
+    while attempts < 50:
+        remaining = deadline - time.monotonic()
+        if remaining < 0.05: break
+        attempts += 1
+        cap = min(1.0, remaining)
+        last = b''
+        try:
+            last = c.run(['curl', '-q', '--silent', '--show-error', '--noproxy', '*', '--http1.1',
+                '--header', 'Connection: close', '--max-time', format(cap, '.3f'), '--max-redirs', '0',
+                '--resolve', 't24-crm.com:443:127.0.0.1', '-D', '-', '-o', '/dev/null', c.ORIGIN + c.CALLBACK],
+                'CALLBACK_NOQUERY_READINESS_GET_FAILED', timeout=remaining)
+            headers = response_headers(last)
+            good = headers.get(b'referrer-policy') == [b'no-referrer'] and security_fingerprints(last) == plan['baseline_security_header_sha256']
+        except (c.GuardError, OSError, subprocess.TimeoutExpired):
+            good = False
+        consecutive = consecutive + 1 if good else 0
+        if consecutive >= 2 and time.monotonic() <= deadline:
+            return {'noquery_header_readiness_verified': True, 'noquery_header_readiness_attempts': attempts,
+                'noquery_header_readiness_consecutive_successes': consecutive,
+                'noquery_header_readiness_elapsed_ms': int((time.monotonic() - started) * 1000)}
+        remaining = deadline - time.monotonic()
+        if remaining <= 0: break
+        time.sleep(min(0.1, remaining))
+    record_header_failure(last, plan, 'noquery-readiness', 'CALLBACK_HEADER_READINESS_TIMEOUT', attempts, started)
+    raise c.GuardError('CALLBACK_HEADER_READINESS_TIMEOUT')
+
+
 def verify_worker_identity(active):
     rows = re.findall(rb'(?m)^\s*user\s+([A-Za-z_][A-Za-z0-9_.-]*)(?:\s+([A-Za-z_][A-Za-z0-9_.-]*))?\s*;', active)
     c.need(rows == [(b'www-data', b'')], 'OBSERVED_NGINX_WORKER_CONFIGURATION_DRIFT')
@@ -373,6 +456,7 @@ def sentinel_probe(m, plan):
     sentinel = 't24_gbp_nonsecret_' + secrets.token_hex(16)
     since = datetime.now(timezone.utc).isoformat()
     logs = {}
+    response, started = b'', time.monotonic()
     try:
         for path in plan['nginx_log_paths']:
             fd, info = _log_open(path)
@@ -380,7 +464,7 @@ def sentinel_probe(m, plan):
             c.need([info.st_dev, info.st_ino] == plan['log_file_identities'][path], 'OBSERVED_LOG_FILE_IDENTITY_DRIFT')
             os.lseek(fd, info.st_size, os.SEEK_SET)
         target = c.ORIGIN + c.CALLBACK + '?code=' + sentinel + '&state=' + sentinel
-        response = c.run(['curl', '-q', '--silent', '--show-error', '--noproxy', '*', '--max-time', '20', '--max-redirs', '0',
+        response = c.run(['curl', '-q', '--silent', '--show-error', '--noproxy', '*', '--http1.1', '--header', 'Connection: close', '--max-time', '20', '--max-redirs', '0',
             '--resolve', 't24-crm.com:443:127.0.0.1', '-D', '-', '-o', '/dev/null', target], 'CALLBACK_SENTINEL_REQUEST_FAILED')
         headers = response_headers(response)
         c.need(headers.get(b'referrer-policy') == [b'no-referrer'], 'CALLBACK_SENTINEL_RESPONSE_REJECTED')
@@ -400,6 +484,10 @@ def sentinel_probe(m, plan):
             'container_stdout_and_stderr_checked': True, 'loopback_https_request_only': True,
             'single_no_referrer_verified': True, 'other_security_header_fingerprints_unchanged': True,
             'actual_google_oauth_performed': False, 'provider_requests': False}
+    except BaseException as error:
+        diagnostic = noquery_failure_diagnostic(plan)
+        record_header_failure(response, plan, 'sentinel', c.safe_code(error), 1, started, diagnostic)
+        raise
     finally:
         for fd, _ in logs.values():
             os.close(fd)
@@ -419,6 +507,7 @@ def protect_callback(arguments):
     try:
         reload_nginx()
         active_after = active_logging_boundary(plan)
+        readiness = wait_callback_header_readiness(plan)
         proof = sentinel_probe(m, plan)
         current = preflight.proof(nginx_hash=plan['nginx_next_sha256'])
         c.need(current['active_nginx_config_sha256'] == active_after, 'ACTIVE_NGINX_CHANGED_DURING_LOGGING_PROBE')
@@ -434,7 +523,7 @@ def protect_callback(arguments):
         'review_sha256': arguments['review_sha256'], 'nginx_sha256': c.H(updated),
         'active_nginx_config_sha256': active_after, 'nginx_log_paths': plan['nginx_log_paths'],
         'full_active_config_and_no_debug_verified': True,
-        'source_sha': c.SOURCE, 'crm': current['crm'], 'tool_sha256': tool_hashes(), **proof,
+        'source_sha': c.SOURCE, 'crm': current['crm'], 'tool_sha256': tool_hashes(), **readiness, **proof,
         'runtime_changed': False, 'business_writes': False}
     digest = c.write(attempt_root() / 'logging-protected.json', receipt)
     return {**receipt, 'receipt_sha256': digest}
@@ -490,6 +579,7 @@ def _switch_requirements(arguments):
         receipt['callback_sentinel_verified'] is True and receipt['tool_sha256'] == tool_hashes() and
         receipt.get('attempt_namespace') == ATTEMPT_NAMESPACE and receipt.get('single_no_referrer_verified') is True and
         receipt.get('other_security_header_fingerprints_unchanged') is True and
+        receipt.get('noquery_header_readiness_verified') is True and receipt.get('noquery_header_readiness_consecutive_successes') == 2 and
         receipt['full_active_config_and_no_debug_verified'] is True and receipt['nginx_log_paths'] == plan['nginx_log_paths'] and
         bool(re.fullmatch('[a-f0-9]{64}', receipt['active_nginx_config_sha256'])), 'REVIEWED_CALLBACK_PROTECTION_REQUIRED')
     c.need(c.read(attempt_root() / 'approved.json') == c.encoded(review), 'STORED_MANUAL_REVIEW_DRIFT')

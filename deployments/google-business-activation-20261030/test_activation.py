@@ -648,6 +648,8 @@ def test_real_preflight_body_catches_concurrent_business_write(preflight_fixture
 
 @pytest.mark.parametrize('leak', ['none', 'access', 'error', 'stdout', 'stderr'])
 def test_sentinel_checks_new_nginx_and_both_container_streams(store, monkeypatch, leak):
+    c.mkdir(c.ROOT)
+    c.mkdir(a.attempt_root())
     access, error = store / 'access.log', store / 'error.log'
     access.write_bytes(b'old log content\n')
     error.write_bytes(b'old error content\n')
@@ -659,7 +661,10 @@ def test_sentinel_checks_new_nginx_and_both_container_streams(store, monkeypatch
         return fd, os.fstat(fd)
 
     def run(args, code, **kw):
-        assert args[0] == 'curl' and args[-1].startswith(c.ORIGIN + c.CALLBACK + '?code=')
+        assert args[0] == 'curl'
+        if args[-1] == c.ORIGIN + c.CALLBACK:
+            return SECURITY_RESPONSE
+        assert args[-1].startswith(c.ORIGIN + c.CALLBACK + '?code=')
         assert args[args.index('--resolve') + 1] == 't24-crm.com:443:127.0.0.1'
         sentinel = args[-1].split('?code=')[1].split('&')[0]
         observed['sentinel'] = sentinel
@@ -697,6 +702,7 @@ def test_sentinel_checks_new_nginx_and_both_container_streams(store, monkeypatch
 
 @pytest.fixture
 def callback_fixture(store, monkeypatch):
+    real_readiness, real_sentinel = a.wait_callback_header_readiness, a.sentinel_probe
     c.mkdir(c.ROOT)
     c.mkdir(a.attempt_root())
     nginx = store / 'nginx.conf'
@@ -719,11 +725,13 @@ def callback_fixture(store, monkeypatch):
     monkeypatch.setattr(c, 'run', lambda *args, **kw: b'error_log /var/log/nginx/error.log;\n' + nginx.read_bytes())
     monkeypatch.setattr(preflight, 'proof', lambda **kw: {'crm': {'id': 'same-disabled-container'}, 'active_nginx_config_sha256': c.H(b'error_log /var/log/nginx/error.log;\n' + nginx.read_bytes())})
     monkeypatch.setattr(a, 'sentinel_probe', lambda *args: {'callback_sentinel_verified': True, 'single_no_referrer_verified': True, 'other_security_header_fingerprints_unchanged': True})
+    monkeypatch.setattr(a, 'wait_callback_header_readiness', lambda plan: {'noquery_header_readiness_verified': True, 'noquery_header_readiness_consecutive_successes': 2})
     monkeypatch.setattr(a, 'verify_worker_identity', lambda active: {'uid': 33})
     monkeypatch.setattr(a, 'verify_log_identities', lambda plan: None)
     reloads = []
     monkeypatch.setattr(a, 'reload_nginx', lambda: reloads.append('reload'))
-    return types.SimpleNamespace(nginx=nginx, args=arguments, plan=plan, updated=updated, reloads=reloads)
+    return types.SimpleNamespace(nginx=nginx, args=arguments, plan=plan, updated=updated, reloads=reloads,
+        real_readiness=real_readiness, real_sentinel=real_sentinel)
 
 
 def test_callback_protection_applies_only_reviewed_insert_and_saves_proof(callback_fixture):
@@ -1016,7 +1024,9 @@ def test_v2_callback_override_must_be_exactly_the_reviewed_pair(mutation):
     (SECURITY_RESPONSE.replace(b'Content-Security-Policy: default-src self', b'Content-Security-Policy: default-src unsafe'), 'CALLBACK_OTHER_SECURITY_HEADERS_CHANGED'),
     (SECURITY_RESPONSE.replace(b'X-Frame-Options: SAMEORIGIN\r\n', b''), 'BASELINE_SECURITY_HEADERS_REQUIRED'),
 ])
-def test_v2_sentinel_rejects_conflicting_referrer_or_other_security_header_drift(monkeypatch, response, expected):
+def test_v2_sentinel_rejects_conflicting_referrer_or_other_security_header_drift(store, monkeypatch, response, expected):
+    c.mkdir(c.ROOT)
+    c.mkdir(a.attempt_root())
     monkeypatch.setattr(c, 'run', lambda *args, **kwargs: response)
     monkeypatch.setattr(a.subprocess, 'run', lambda *args, **kwargs: types.SimpleNamespace(returncode=0, stdout=b'', stderr=b''))
     monkeypatch.setattr(a.time, 'sleep', lambda seconds: None)
@@ -1049,12 +1059,16 @@ def test_v2_namespace_does_not_touch_v1_plan_review_or_dedicated_credential_rece
     originals = {'nginx-plan.json': b'prior immutable plan', 'approved.json': b'prior immutable manual review',
         'nginx-before.conf': b'prior original nginx snapshot', 'nginx-next.conf': b'prior failed-attempt proposal'}
     for name, body in originals.items(): c.write(c.ROOT / name, body)
+    v2_root = c.ROOT / 'attempt-v2'
+    c.mkdir(v2_root)
+    c.write(v2_root / 'approved.json', b'prior v2 immutable review')
     credential_before = c.read(c.ROOT / 'credential-receipt.json')
     result = a.enable(fixture.args)
     assert result['enabled'] is True
-    assert a.attempt_root().parent == c.ROOT and a.attempt_root().name == 'attempt-v2'
+    assert a.attempt_root().parent == c.ROOT and a.attempt_root().name == 'attempt-v3'
     assert (a.attempt_root() / 'enabled.json').exists() and not (c.ROOT / 'enabled.json').exists()
     for name, body in originals.items(): assert c.read(c.ROOT / name) == body
+    assert c.read(v2_root / 'approved.json') == b'prior v2 immutable review'
     assert c.read(c.ROOT / 'credential-receipt.json') == credential_before
 
 
@@ -1069,8 +1083,101 @@ def test_v2_new_plan_preserves_prior_attempt_artifacts_and_stores_only_header_ha
     monkeypatch.setattr(a, 'verify_worker_identity', lambda value: {'configured_user': 'www-data', 'uid': 33, 'primary_gid': 33})
     monkeypatch.setattr(a, 'capture_log_identities', lambda paths: {path: [1, index] for index, path in enumerate(paths)})
     result = a.plan_nginx()
-    assert result['attempt_namespace'] == 'attempt-v2'
+    assert result['attempt_namespace'] == 'attempt-v3'
     assert result['baseline_security_header_sha256'] == a.security_fingerprints(SECURITY_RESPONSE)
     assert 'default-src self' not in json.dumps(result) and 'SAMEORIGIN' not in json.dumps(result)
     for name, body in originals.items(): assert c.read(c.ROOT / name) == body
     assert (a.attempt_root() / 'nginx-plan.json').exists()
+
+
+def test_failure_facts_never_include_raw_header_or_query_values(store, capsys):
+    c.mkdir(c.ROOT); c.mkdir(a.attempt_root())
+    plan = {'baseline_security_header_sha256': a.security_fingerprints(SECURITY_RESPONSE)}
+    response = SECURITY_RESPONSE.replace(b'no-referrer', b'VERY_SECRET_POLICY').replace(b'default-src self', b'VERY_SECRET_CSP').replace(
+        b'/media-ops?google=failed', b'https://private.example/?code=VERY_SECRET_QUERY').replace(b'\r\n\r\n', b'\r\nSet-Cookie: VERY_SECRET_COOKIE\r\n\r\n')
+    facts = a.record_header_failure(response, plan, 'sentinel', 'CALLBACK_SENTINEL_RESPONSE_REJECTED', 1, a.time.monotonic())
+    paths = list(a.attempt_root().glob('header-failure-facts-*.json'))
+    assert len(paths) == 1 and paths[0].stat().st_mode & 0o777 == 0o600
+    assert facts['referrer_policy_enums'] == ['OTHER_REDACTED'] and facts['referrer_policy_header_count'] == 1
+    assert facts['http_status'] == 303 and facts['security_header_fingerprint_matches']['content-security-policy'] is False
+    assert 'VERY_SECRET' not in paths[0].read_text() and 'VERY_SECRET' not in capsys.readouterr().out
+
+
+def simulated_adoption(fixture, monkeypatch, *, always_old=False, query_old=False):
+    clock = types.SimpleNamespace(value=0.0)
+    events = []
+    old = SECURITY_RESPONSE.replace(b'Referrer-Policy: no-referrer', b'Referrer-Policy: strict-origin-when-cross-origin')
+    sequence = [old, SECURITY_RESPONSE, old, SECURITY_RESPONSE, SECURITY_RESPONSE]
+    current_run = c.run
+    monkeypatch.setattr(a.time, 'monotonic', lambda: clock.value)
+    monkeypatch.setattr(a.time, 'sleep', lambda seconds: setattr(clock, 'value', clock.value + seconds))
+
+    def run(args, code, **kwargs):
+        if args[0] != 'curl': return current_run(args, code, **kwargs)
+        assert args[:2] == ['curl', '-q'] and '--http1.1' in args
+        assert args[args.index('--noproxy') + 1] == '*'
+        assert args[args.index('--header') + 1] == 'Connection: close'
+        clock.value += 0.01
+        if '?code=' in args[-1]:
+            events.append('query')
+            assert events.count('noquery') >= 2
+            return old if query_old else SECURITY_RESPONSE
+        assert args[-1] == c.ORIGIN + c.CALLBACK
+        events.append('noquery')
+        assert float(args[args.index('--max-time') + 1]) <= 1.0
+        assert kwargs.get('timeout', 0) <= 5.0
+        if 'query' in events: return SECURITY_RESPONSE
+        return old if always_old else sequence[min(events.count('noquery') - 1, len(sequence) - 1)]
+
+    monkeypatch.setattr(c, 'run', run)
+    monkeypatch.setattr(a, 'wait_callback_header_readiness', fixture.real_readiness)
+    monkeypatch.setattr(a.subprocess, 'run', lambda *args, **kwargs: types.SimpleNamespace(returncode=0, stdout=b'', stderr=b''))
+
+    def sentinel(m, plan):
+        # Actual query/header logic, with log IO isolated in its separate tests.
+        return fixture.real_sentinel(m, {**plan, 'nginx_log_paths': [], 'log_file_identities': {}})
+
+    monkeypatch.setattr(a, 'sentinel_probe', sentinel)
+    return events, clock
+
+
+def test_async_reload_adoption_requires_two_consecutive_noquery_matches_before_one_sentinel(callback_fixture, monkeypatch):
+    fixture = callback_fixture
+    events, clock = simulated_adoption(fixture, monkeypatch)
+    result = a.protect_callback(fixture.args)
+    assert events == ['noquery'] * 5 + ['query']
+    assert result['noquery_header_readiness_attempts'] == 5
+    assert result['noquery_header_readiness_consecutive_successes'] == 2
+    assert result['single_no_referrer_verified'] is True and result['callback_sentinel_verified'] is True
+    assert clock.value < 5 and fixture.nginx.read_bytes() == fixture.updated
+
+
+def test_readiness_timeout_has_no_query_and_records_sanitized_facts_then_restores(callback_fixture, monkeypatch):
+    fixture = callback_fixture
+    events, clock = simulated_adoption(fixture, monkeypatch, always_old=True)
+    with pytest.raises(c.GuardError, match='CALLBACK_HEADER_READINESS_TIMEOUT'):
+        a.protect_callback(fixture.args)
+    assert 'query' not in events and 0 < len(events) <= 50
+    assert clock.value <= 5.05 and fixture.nginx.read_bytes() == NGINX
+    assert not (a.attempt_root() / 'logging-protected.json').exists()
+    paths = list(a.attempt_root().glob('header-failure-facts-*.json'))
+    assert len(paths) == 1
+    facts = json.loads(c.read(paths[0]))
+    assert facts['request_kind'] == 'noquery-readiness' and facts['http_status'] == 303
+    assert facts['referrer_policy_enums'] == ['strict-origin-when-cross-origin']
+    assert facts['referrer_policy_header_count'] == 1 and facts['all_other_security_headers_unchanged'] is True
+
+
+def test_final_query_failure_runs_one_diagnostic_noquery_get_never_retries_query(callback_fixture, monkeypatch):
+    fixture = callback_fixture
+    events, clock = simulated_adoption(fixture, monkeypatch, query_old=True)
+    with pytest.raises(c.GuardError, match='CALLBACK_SENTINEL_RESPONSE_REJECTED'):
+        a.protect_callback(fixture.args)
+    assert events == ['noquery'] * 5 + ['query', 'noquery']
+    assert events.count('query') == 1 and fixture.nginx.read_bytes() == NGINX
+    facts = json.loads(c.read(next(a.attempt_root().glob('header-failure-facts-*.json'))))
+    assert facts['request_kind'] == 'sentinel' and facts['referrer_policy_enums'] == ['strict-origin-when-cross-origin']
+    diagnostic = facts['post_failure_noquery_diagnostic']
+    assert diagnostic['diagnostic_get_completed'] is True and diagnostic['referrer_policy_enums'] == ['no-referrer']
+    assert diagnostic['referrer_policy_header_count'] == 1 and diagnostic['all_other_security_headers_unchanged'] is True
+    assert not (a.attempt_root() / 'logging-protected.json').exists()

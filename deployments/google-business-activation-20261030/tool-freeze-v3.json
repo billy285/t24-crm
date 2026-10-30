@@ -1,0 +1,27 @@
+{
+  "app_changed": false,
+  "attempt_namespace": "attempt-v3",
+  "carrier_tests": 37,
+  "credentials_changed": false,
+  "local_activation_tests": 117,
+  "members": {
+    "README.md": "7eaebad4b0cdbfd69e792be4ca262458236f33ffea06cb7f4bc38673d9416a64",
+    "activation.py": "4136a73ca9564f168d279d0ff344b7626c5747e20c533a98a930b67d519e0538",
+    "core.py": "903081856fbdb042b9af74295cbebd6745b57e019e7039a7fce26c23bddde107",
+    "make_carrier_command.py": "5295e029676f6b62dd3db1041bc47c02aceee1955cbeb1098ea6ce79efcb7e39",
+    "make_commands.py": "70dae35f8c7afbf5ede695b02983c139423685d7ac2447a074e70c98be30cd31",
+    "preflight.py": "df6a02ab394c10ab81f4f6c2a6c153a370cfa91648961ccaf9392c8f9df02b8d",
+    "test_activation.py": "453149181d6175860184d21b057cec939ff1237d02f0a02de15d8da54c3c5ec2",
+    "test_carrier_command.py": "16d7b2c0a877887b649d184adb3803eef0a2495826591e25bc51ef7373a8c94e",
+    "transport.py": "ac4042dd176fee6422543d563292ea24cc20e4773bdfab1c981c5d576c321e36"
+  },
+  "readiness": {
+    "per_get_curl_max_seconds": 1,
+    "query_sentinel_retried": false,
+    "required_consecutive_successes": 2,
+    "total_deadline_seconds": 5
+  },
+  "readonly_header_tests": 10,
+  "server_executed_by_author": false,
+  "stage": "GBP_ACTIVATION_V3_FROZEN_FOR_REVIEW"
+}

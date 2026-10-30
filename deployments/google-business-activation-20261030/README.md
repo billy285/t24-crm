@@ -63,9 +63,9 @@ Pinned disabled baseline:
    `error_log /dev/null crit` for this one route. Every existing Nginx byte remains.
    Both plain literal prefixes and the observed `location ^~ /api/` literal
    prefix are supported; regular-expression locations are never guessed/copied.
-   V2 artifacts are exclusively created inside the protected
-   `/opt/t24-crm/releases/google-business-activation-7431d1986b81-20261030/attempt-v2/`
-   folder. Prior root-level plan/review/attempt artifacts are retained. The
+   Current V3 artifacts are exclusively created inside the protected
+   `/opt/t24-crm/releases/google-business-activation-7431d1986b81-20261030/attempt-v3/`
+   folder. Prior root-level and `attempt-v2` plan/review/attempt artifacts are retained. The
    dedicated credential receipt and env file keep their original fixed paths.
 6. Obtain independent security review of the full frozen tooling, plan and
    deployment bounds. Fill the `GBP_ACTIVATION_MANUAL_REVIEW_APPROVED` object only
@@ -97,6 +97,15 @@ Pinned disabled baseline:
    stores only fingerprints of the other six security headers; every sentinel
    requires those fingerprints unchanged and rejects duplicate Referrer-Policy.
    All curl probes use first-option `-q`, `--noproxy '*'` and fixed loopback HTTPS.
+   After reload, only no-query GETs are retried: two consecutive exact private
+   redirects with the strict header contract must pass within one five-second
+   monotonic deadline (at most one second per GET). Each uses HTTP/1.1 and
+   `Connection: close`. Only then is the single query sentinel sent. The query
+   is never retried. A failed sentinel triggers one no-query diagnostic GET;
+   persistent failures save only status/policy enums/counts/fingerprint-match
+   booleans to fresh root-only failure-facts files, then restore original Nginx.
+   Readiness handles possible reload adoption delay; that remains a hypothesis
+   until the actual receipt demonstrates it. The final sentinel is not relaxed.
 8. After independently reviewing `logging-protected.json`, generate/run `enable`
    with its exact receipt hash. The tool repeats disabled/private/source/schema/
    static checks and sentinel validation; creates a container from the **same
