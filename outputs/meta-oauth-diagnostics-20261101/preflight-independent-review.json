@@ -1,0 +1,21 @@
+{
+  "actual_source_sha256": "f842386c5a9f4b9979324d81d5ef11d81a88e0518dee3dd0eeaa937c1b07b559",
+  "actual_wrapper_bytes": 5906,
+  "actual_wrapper_sha256": "f6c2632fe917897388d926893cd76061c1078178519c79a6012ca9f3d4af7db1",
+  "exact_source_and_wrapper_regeneration_and_ast": true,
+  "findings": [],
+  "freeze_sha256": "d25934907ac0e2ebea00a938d551e2e2ff0c299cf06484a6c1eff3e57386b5ab",
+  "production_browser_provider_git_actions": false,
+  "result": "PASS",
+  "reviewed": [
+    "Exact activated f6dad container and98ae image, active nine-key Meta runtime, independent existing key, unchanged Google ON/cutoff",
+    "Actual server receipt f2a877 pinned; local return envelope is not used as server receipt hash",
+    "All141 fresh table fingerprints with two legitimate OAuth flows preserved; no empty-Meta or disabled-Meta prerequisite",
+    "Two captures compare all schema,rows,runtime,private,credential metadata,static,Nginx,CSP boundaries; only previously observed monthly sequence monotonic exception",
+    "Existing Meta credential receipt SHA and env-file metadata preserved; no credential file content or values exported",
+    "No migrations, provider calls, runtime/config/static/Nginx changes; only root0600 fingerprint proof creation"
+  ],
+  "reviewer": "workflow_actual_release_review",
+  "stage": "META_OAUTH_DIAGNOSTICS_PREFLIGHT_INDEPENDENT_REVIEW",
+  "tests_independently_passed": 12
+}

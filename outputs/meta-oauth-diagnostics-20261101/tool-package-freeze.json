@@ -1,0 +1,75 @@
+{
+  "actual_preflight_sha256": "3ae9447b3242ff8173d9dd6be75966a12d571652779bbe89124e58930135d05a",
+  "all_current_141_rows_and_existing_meta_flows_preserved": true,
+  "application_freeze_sha256": "0963aadc922ba34873e89105d13373ef2a41dbaca1b4640228c4afcfcd4a9695",
+  "baseline_source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "database_migration_or_restore": false,
+  "deterministic_second_build_exact": true,
+  "files": {
+    "deployments/meta-oauth-diagnostics-20261101/README.md": {
+      "bytes": 4813,
+      "sha256": "b4ef2ccce081fb752b4b5330c07bff1ac12834b1f2019ce3d26ece9497aab3fb"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/artifacts/manifest.json": {
+      "bytes": 121410,
+      "sha256": "94aaaf94c1f72438e1e78cae0f4a9f5d694239bc4550da4397460da46cbe7eb7"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/artifacts/payload.tar.gz": {
+      "bytes": 7662,
+      "sha256": "578ed47ad4ab96be57c0ce6df7eaf11081ed5a6e0b839a862de24074ea59fc0f"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/build_payload.py": {
+      "bytes": 4912,
+      "sha256": "0e8ecc2791d238cddf56343c68842ef461843323cb916462ebdb88f3ec218987"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/generate_preflight_command.py": {
+      "bytes": 1532,
+      "sha256": "9b6cadb15cb815174539df63938531cb24444d429647e89afc22688b2f1333bb"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/make_commands.py": {
+      "bytes": 9270,
+      "sha256": "1e264607f2823ac57f2997eb4e41c2d7653b51562b0aa4a6f419d8ca6ae1630e"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/preflight-command.sh": {
+      "bytes": 5906,
+      "sha256": "f6c2632fe917897388d926893cd76061c1078178519c79a6012ca9f3d4af7db1"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/preflight.py": {
+      "bytes": 9073,
+      "sha256": "f842386c5a9f4b9979324d81d5ef11d81a88e0518dee3dd0eeaa937c1b07b559"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/release.py": {
+      "bytes": 27201,
+      "sha256": "cf9cb0d2d173cd4300b479c1baadd371881c0c870f37e9d9ca0f248415f974be"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/test_commands.py": {
+      "bytes": 3659,
+      "sha256": "612ff1803ae3a7801b08ae4c71aecea3ad0834cb7191242e3187b5ead32642ff"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/test_package.py": {
+      "bytes": 3546,
+      "sha256": "643b65c696ced538a39749a886be673e0cccab374f15084f422824242dbf8cd7"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/test_preflight.py": {
+      "bytes": 7761,
+      "sha256": "27f568e820855c7d39ace661c59998d19edf5660aa44957c10ba50e48a25d76b"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/test_release.py": {
+      "bytes": 17013,
+      "sha256": "508f2298956430b1b7818ccf75cfbdd012ea742df57f6948505203b3e8715a89"
+    }
+  },
+  "focused_tests_passed": 56,
+  "frontend_static_nginx_or_env_change": false,
+  "frontend_version": "58d2c585210f",
+  "new_secret_content_or_full_inspect_persisted": false,
+  "payload_members": 2,
+  "production_or_git_operations": false,
+  "protected_source_files": 993,
+  "review_refinement": "External recover validates receipts first, contains the durable candidate before old-runtime/private checks; never resumes unsafe original.",
+  "runtime_files": 2,
+  "schema_revision": "bde8da01f247",
+  "source_delta_files": 3,
+  "source_sha": "a03766539ef3430f350f467652511a43ee3c4abf",
+  "stage": "META_OAUTH_DIAGNOSTICS_ACTUAL_CODE_PACKAGE_FROZEN_AWAIT_INDEPENDENT_REVIEW"
+}

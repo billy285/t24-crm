@@ -1,0 +1,32 @@
+{
+  "actual_preflight_sha256": "3ae9447b3242ff8173d9dd6be75966a12d571652779bbe89124e58930135d05a",
+  "additional_safe_parser_tests": 57,
+  "all_993_protected_current_source_files_and_three_changed_files_verified": true,
+  "application_freeze_sha256": "0963aadc922ba34873e89105d13373ef2a41dbaca1b4640228c4afcfcd4a9695",
+  "exact_frozen_tool_members": 13,
+  "findings": [],
+  "frontend_version": "58d2c585210f",
+  "manifest_sha256": "94aaaf94c1f72438e1e78cae0f4a9f5d694239bc4550da4397460da46cbe7eb7",
+  "payload_members": 2,
+  "payload_sha256": "578ed47ad4ab96be57c0ce6df7eaf11081ed5a6e0b839a862de24074ea59fc0f",
+  "payload_tar_metadata_and_actual_runtime_bytes_verified": true,
+  "production_browser_provider_git_actions": false,
+  "publisher_tests_subset": 56,
+  "release_sha256": "cf9cb0d2d173cd4300b479c1baadd371881c0c870f37e9d9ca0f248415f974be",
+  "result": "PASS",
+  "reviewed": [
+    "Exact141 current rows/schema/private/credential metadata before and after isolated preparation and live switch; known monthly-only live counter exception",
+    "Offline copy uses network none, no real credentials or Env-file, workers disabled; rejects any own schema,row or counter mutation",
+    "Same retained Env9, Google ON/cutoff, labels/mounts/network/runtime options; only image/hostname and proven OOM default normalized",
+    "No original full inspect or credential journal is persisted; only source inventories and protected receipts",
+    "Durable candidate ID and directory fsync before original stop; all phases share protected release flock",
+    "External interrupted recovery now validates receipts only before containing exact recorded running candidate; rejects unsafe original config/private/source/role before resume",
+    "Known original resume never restores DB or overwrites independent rows; no Nginx/static/schema/environment or provider behavior changes"
+  ],
+  "reviewer": "workflow_actual_release_review",
+  "schema_revision": "bde8da01f247",
+  "source_sha": "a03766539ef3430f350f467652511a43ee3c4abf",
+  "stage": "META_OAUTH_DIAGNOSTIC_ACTUAL_TOOL_PACKAGE_INDEPENDENT_REVIEW",
+  "tests_independently_passed": 113,
+  "tool_package_freeze_sha256": "f3f48acf7b0a66dc1afaaf93726a0d63aa6157ba7bc5570e08f67c9dc1e6e055"
+}

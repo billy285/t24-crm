@@ -1,0 +1,25 @@
+{
+  "baseline_source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "company_finance_closing_commission_permissions_private_changes": false,
+  "database_migration": false,
+  "files": {
+    "app/backend/routers/meta_business.py": "ad33d86155cd325c28d4fedb98e4795b88180ec63b134ca03edcd1c8a3fd5404",
+    "app/backend/services/meta_business_provider.py": "0fc0fafd5ce906f962457e16a6458b50acefa5e33a156c372c1f9c9dfe7c3112",
+    "app/backend/tests/test_meta_business_callback_diagnostics.py": "b1363ef85ed013a5050c43dbe31bbc9932b4790f9b04d1d8278b321f4e7f2838"
+  },
+  "frontend_changed": false,
+  "frontend_version": "58d2c585210f",
+  "nginx_changed": false,
+  "production_seed_rows": false,
+  "runtime_environment_changed": false,
+  "runtime_files": [
+    "app/backend/services/meta_business_provider.py",
+    "app/backend/routers/meta_business.py"
+  ],
+  "schema_revision": "bde8da01f247",
+  "scope_guard_or_token_behavior_changed": false,
+  "source_freeze_sha256": "35c80bb0d036d9954709e4fe557102cae2d0f27be9ecf06960add0162a691bfa",
+  "source_sha": "a03766539ef3430f350f467652511a43ee3c4abf",
+  "stage": "META_OAUTH_DIAGNOSTICS_APPLICATION_FROZEN",
+  "tests_passed": 84
+}

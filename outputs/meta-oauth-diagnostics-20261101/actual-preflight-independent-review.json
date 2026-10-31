@@ -1,0 +1,18 @@
+{
+  "actual_server_proof_sha256": "3ae9447b3242ff8173d9dd6be75966a12d571652779bbe89124e58930135d05a",
+  "actual_summary_sha256": "0e88bededf6e6036499a58d18afe1871742dd3de8b349a0f66043574f2c184d6",
+  "actual_targeted_backend_original_hashes_match_released_tar": true,
+  "current_enabled_nine_meta_environment_and_root600_key_metadata_preserved": true,
+  "current_runtime_matches_actual_activation": true,
+  "findings": [],
+  "google_on_cutoff_preserved": true,
+  "production_actions_by_reviewer": false,
+  "result": "PASS",
+  "reviewed_command_sha256": "f6c2632fe917897388d926893cd76061c1078178519c79a6012ca9f3d4af7db1",
+  "reviewer": "workflow_actual_release_review",
+  "schema_141_and_existing_static_nginx_csp_match_deployed_receipt": true,
+  "scope": "Review of actual captured summary consistency with the reviewed collector and existing receipts; protected full fingerprint proof remains server-side.",
+  "secret_file_or_business_data_contents_read_by_reviewer": false,
+  "stage": "META_DIAGNOSTIC_ACTUAL_PREFLIGHT_INDEPENDENT_REVIEW",
+  "two_flow_rows_are_legitimate_current_baseline": true
+}

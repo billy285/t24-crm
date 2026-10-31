@@ -1,0 +1,31 @@
+{
+  "all_141_current_table_fingerprints_preserved": true,
+  "current_frontend_version": "58d2c585210f",
+  "current_source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "exact_current_meta_nine_environment_and_key_metadata_preserved": true,
+  "existing_meta_nonempty_rows_allowed": true,
+  "files": {
+    "deployments/meta-oauth-diagnostics-20261101/generate_preflight_command.py": {
+      "bytes": 1532,
+      "sha256": "9b6cadb15cb815174539df63938531cb24444d429647e89afc22688b2f1333bb"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/preflight-command.sh": {
+      "bytes": 5906,
+      "sha256": "f6c2632fe917897388d926893cd76061c1078178519c79a6012ca9f3d4af7db1"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/preflight.py": {
+      "bytes": 9073,
+      "sha256": "f842386c5a9f4b9979324d81d5ef11d81a88e0518dee3dd0eeaa937c1b07b559"
+    },
+    "deployments/meta-oauth-diagnostics-20261101/test_preflight.py": {
+      "bytes": 7761,
+      "sha256": "27f568e820855c7d39ace661c59998d19edf5660aa44957c10ba50e48a25d76b"
+    }
+  },
+  "focused_tests_passed": 12,
+  "no_provider_or_business_writes_or_runtime_changes": true,
+  "no_secret_file_content_read": true,
+  "production_executed": false,
+  "schema_revision": "bde8da01f247",
+  "stage": "META_OAUTH_DIAGNOSTICS_PREFLIGHT_FROZEN_AWAIT_REVIEW"
+}
