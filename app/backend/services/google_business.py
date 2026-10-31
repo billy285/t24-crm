@@ -125,13 +125,45 @@ def binding_data(binding, permissions):
             "lifecycle": binding.lifecycle if binding.active else "stopped", "primary_operator_id": binding.primary_operator_id, "primary_operator_name": binding.primary_operator_name}
 
 
+def _public_post_configuration(payload):
+    """Project frozen public fields only; dates remain Google's local wall time."""
+    if type(payload) is not dict or type(payload.get("topicType")) is not str or payload["topicType"] not in {"STANDARD", "EVENT", "OFFER"}:
+        return None
+    date = {"year": (int, 1, 9999), "month": (int, 1, 12), "day": (int, 1, 31)}
+    time = {"hours": (int, 0, 23), "minutes": (int, 0, 59), "seconds": (int, 0, 59), "nanos": (int, 0, 999999999)}
+    schema = {"topicType": (str, 16),
+              "event": {"title": (str, 200), "schedule": {"startDate": date, "startTime": time, "endDate": date, "endTime": time}},
+              "offer": {"couponCode": (str, 100), "redeemOnlineUrl": (str, 2048), "termsConditions": (str, 5000)},
+              "callToAction": {"actionType": (str, 16), "url": (str, 2048)}}
+
+    def project(value, fields):
+        if type(value) is not dict:
+            return {}
+        result = {}
+        for key, expected in fields.items():
+            item = value.get(key)
+            if type(expected) is dict:
+                if type(item) is dict:
+                    result[key] = project(item, expected)
+            elif type(item) is expected[0]:
+                if expected[0] is str and len(item) <= expected[1]:
+                    result[key] = item
+                elif expected[0] is int and expected[1] <= item <= expected[2]:
+                    result[key] = item
+        return result
+
+    return project(payload, schema)
+
+
 def action_data(action, ctx):
+    retained = type(action.payload) is dict and action.created_at is not None and aware(action.created_at) >= now() - timedelta(days=30)
     return {"id": action.id, "binding_id": action.binding_id, "customer_id": action.customer_id, "kind": action.kind,
             "request_id": action.request_id, "task_id": action.task_id, "status": action.status, "actor_name": action.actor_name,
             "created_at": iso(action.created_at), "updated_at": iso(action.updated_at), "provider_state": action.provider_state,
             "provider_url": provider.public_result_url(action.provider_url), "message": action.message, "confirmed_at": iso(action.confirmed_at),
             "can_reconcile": action.status in {"pending", "unknown", "accepted"},
-            "content": ((action.payload or {}).get("comment") or (action.payload or {}).get("summary")) if action.payload and aware(action.created_at) >= now() - timedelta(days=30) else None}
+            "content": (action.payload.get("comment") or action.payload.get("summary")) if retained else None,
+            "publication_payload": _public_post_configuration(action.payload) if retained and action.kind == "post_publish" else None}
 
 
 async def _audit(db, ctx, binding, kind, payload):

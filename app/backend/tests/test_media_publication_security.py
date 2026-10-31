@@ -435,6 +435,59 @@ async def test_slow_structured_publish_does_not_hold_company_database_write_lock
     assert result.status_code == 200 and result.json()["status"] == "succeeded", result.text
 
 
+@pytest.mark.asyncio
+async def test_history_http_uses_frozen_public_configuration_not_current_task(publication_env):
+    env = publication_env; row = await approved(env, offer_spec())
+    sent = await publish(env, row); assert sent.status_code == 200, sent.text
+    identity = sent.json()["id"]
+    async with env.sessions() as db:
+        action = await db.get(env.Action, identity)
+        payload = copy.deepcopy(action.payload)
+        payload.update(credential="SECRET-HISTORY-EXTRA", media=[{"sourceUrl": "https://private.example.com/SECRET-ASSET"}])
+        payload["event"]["schedule"]["internal"] = {"secret": "SECRET-HISTORY-NESTED"}
+        payload["offer"]["private"] = "SECRET-HISTORY-OFFER"
+        action.payload = payload
+        task = await db.get(MediaOperationTask, row["id"]); task.timezone = "Asia/Shanghai"
+        await db.commit()
+    await mutate_stored_spec(env, row["id"], lambda spec: spec["event"].update(title="DIFFERENT-CURRENT-TASK"))
+    env.user = OPS; reads, writes = len(env.fake.reads), len(env.fake.writes)
+    result = await env.client.get(PREFIX + f"/actions/{identity}")
+    assert result.status_code == 200 and result.headers["cache-control"] == "private, no-store", result.text
+    configuration = result.json()["publication_payload"]
+    assert configuration["topicType"] == "OFFER"
+    assert configuration["event"]["title"] == "Confirmed open house"
+    assert configuration["event"]["schedule"]["startTime"]["hours"] == 9
+    assert "timezone" not in configuration and "start_at" not in configuration["event"]
+    assert "media" not in configuration and "SECRET-" not in result.text and "DIFFERENT-CURRENT-TASK" not in result.text
+    assert (len(env.fake.reads), len(env.fake.writes)) == (reads, writes)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("actor", [OTHER, SECOND_OWNER])
+async def test_history_configuration_does_not_bypass_store_authorization(publication_env, actor):
+    env = publication_env; row = await approved(env, offer_spec()); sent = await publish(env, row)
+    assert sent.status_code == 200, sent.text
+    env.user = actor; result = await env.client.get(PREFIX + f"/actions/{sent.json()['id']}")
+    assert result.status_code in {403, 404}, result.text
+    assert "VISIT10" not in result.text and "Confirmed open house" not in result.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("age,retained", [(timedelta(days=30), True), (timedelta(days=30, microseconds=1), False)])
+async def test_history_http_expiry_does_not_depend_on_a_cleanup_job(publication_env, age, retained):
+    env = publication_env; row = await approved(env, offer_spec()); sent = await publish(env, row)
+    assert sent.status_code == 200, sent.text
+    identity = sent.json()["id"]
+    async with env.sessions() as db:
+        action = await db.get(env.Action, identity); action.created_at = env.clock - age
+        await db.commit()
+    result = await env.client.get(PREFIX + f"/actions/{identity}")
+    assert result.status_code == 200, result.text
+    assert (result.json()["publication_payload"] is not None) is retained
+    assert (result.json()["content"] is not None) is retained
+    if not retained: assert "VISIT10" not in result.text and "Confirmed open house" not in result.text
+
+
 def test_opt_in_migration_keeps_existing_rows_and_autoincrement_state(monkeypatch):
     path = Path(__file__).parents[1] / "alembic/versions/eaf5a7b8c914_media_publication_specs.py"
     module_spec = importlib.util.spec_from_file_location("independent_publication_migration", path)

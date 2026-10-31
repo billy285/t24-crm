@@ -20,11 +20,17 @@ export type GbpReview = {
 };
 export type GbpReviews = { items: GbpReview[]; next_page_token: string | null; fetched_at: string };
 export type GbpReadyTask = { publication?: MediaPublication | null; timezone?: string; id: number; title: string; content: string; revision: number; material_id: number | null; material_title: string | null; has_public_image: boolean; can_return?: boolean; preview_image_url: string | null; publish_blocked_reason: string | null };
+export type GbpPublicationPayload = {
+  topicType?: 'STANDARD' | 'EVENT' | 'OFFER';
+  event?: { title?: string; schedule?: { startDate?: { year?: number; month?: number; day?: number }; startTime?: { hours?: number; minutes?: number; seconds?: number; nanos?: number }; endDate?: { year?: number; month?: number; day?: number }; endTime?: { hours?: number; minutes?: number; seconds?: number; nanos?: number } } };
+  offer?: { couponCode?: string; redeemOnlineUrl?: string; termsConditions?: string };
+  callToAction?: { actionType?: 'BOOK' | 'ORDER' | 'SHOP' | 'LEARN_MORE' | 'SIGN_UP' | 'CALL'; url?: string };
+};
 export type GbpActionStatus = 'pending' | 'unknown' | 'accepted' | 'succeeded' | 'rejected' | 'failed';
 export type GbpAction = {
   id: number; request_id: string; binding_id: number; customer_id: number; kind: 'review_reply' | 'post_publish'; task_id: number | null;
   status: GbpActionStatus; actor_name: string; created_at: string; updated_at: string;
-  publication?: MediaPublication | null; timezone?: string | null; provider_state: string | null; provider_url: string | null; content: string | null; message: string; can_reconcile: boolean;
+  publication_payload?: GbpPublicationPayload | null; provider_state: string | null; provider_url: string | null; content: string | null; message: string; can_reconcile: boolean;
 };
 
 export const gbpActionLabels: Record<GbpActionStatus, string> = {
