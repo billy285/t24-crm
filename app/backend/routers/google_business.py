@@ -182,6 +182,13 @@ async def ready_tasks(binding_id: int = Path(ge=1), user: UserResponse = Depends
     return await service.ready_tasks(db, user, binding_id)
 
 
+@router.get("/bindings/{binding_id}/readiness")
+async def readiness(binding_id: int = Path(ge=1), task_id: int | None = Query(None, ge=1),
+                    user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from services.google_business_readiness import readiness as prepare_readiness
+    return await prepare_readiness(db, user, binding_id, task_id)
+
+
 @router.post("/bindings/{binding_id}/posts")
 async def publish(value: PublishPost, binding_id: int = Path(ge=1), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     confirm(value)
