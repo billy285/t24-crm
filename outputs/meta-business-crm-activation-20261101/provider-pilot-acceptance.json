@@ -1,0 +1,63 @@
+{
+  "actual_scope_guard_accepted": true,
+  "app_id": "1139445441758834",
+  "app_mode": "Development",
+  "business_verification": "Unverified",
+  "config_id": "1146714154579519",
+  "connection_screenshot": "outputs/meta-business-crm-activation-20261101/production-pokeco-meta-connected.png",
+  "connection_state_ui": "已连接",
+  "customer_binding_verified": [
+    {
+      "asset_name": "PokeCo",
+      "crm_customer": "Pokeco",
+      "platform": "facebook"
+    },
+    {
+      "asset_name": "PokeCo · Instagram",
+      "crm_customer": "Pokeco",
+      "platform": "instagram",
+      "provider_linked_page_name": "PokeCo"
+    }
+  ],
+  "evidence_screenshot": "outputs/meta-business-crm-activation-20261101/production-pokeco-meta-bindings.png",
+  "existing_google_and_financial_logic_changed": false,
+  "external_customer_eligibility_verified": false,
+  "fresh_oauth_callback_result": "connected",
+  "future_assets_selected": false,
+  "graph_version": "v26.0",
+  "merchant_count_verified": 1,
+  "meta_comments_implemented": false,
+  "meta_publishing_implemented": false,
+  "new_employee_access": false,
+  "not_returned_by_actual_asset_list": [
+    {
+      "crm_bound": false,
+      "instagram_selected": "haircode_color",
+      "page": "Hair Code Salon",
+      "reason": "Not established; no account-permission diagnosis claimed"
+    }
+  ],
+  "oauth_selected_current_instagram_accounts": [
+    "pokeco8",
+    "haircode_color"
+  ],
+  "oauth_selected_current_pages": [
+    "PokeCo",
+    "Hair Code Salon"
+  ],
+  "owner_approved_arbitrary_two_page_trial": true,
+  "platform_bindings_verified": 2,
+  "private_credentials_or_tokens_exported": false,
+  "provider_asset_list_observed": [
+    "Facebook 主页 · PokeCo",
+    "Instagram 专业账号 · PokeCo · Instagram"
+  ],
+  "reload_persistence_verified": true,
+  "required_read_scopes": [
+    "instagram_basic",
+    "pages_read_engagement",
+    "pages_show_list"
+  ],
+  "runtime_activation_receipt_sha256": "4e40cdd7de39fee3eb898c3b9f98059df586e59062326ae288b856241f67aba6",
+  "stage": "META_OWNER_READONLY_PILOT_LIVE_VERIFIED"
+}
