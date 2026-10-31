@@ -1,0 +1,158 @@
+{
+  "active_only_unique_indexes": {
+    "uq_meta_active_customer_platform": {
+      "postgresql": "CREATE UNIQUE INDEX uq_meta_active_customer_platform ON meta_business_bindings (customer_id, platform) WHERE active",
+      "sqlite": "CREATE UNIQUE INDEX uq_meta_active_customer_platform ON meta_business_bindings (customer_id, platform) WHERE active = 1"
+    },
+    "uq_meta_active_global_asset": {
+      "postgresql": "CREATE UNIQUE INDEX uq_meta_active_global_asset ON meta_business_bindings (platform, external_id) WHERE active",
+      "sqlite": "CREATE UNIQUE INDEX uq_meta_active_global_asset ON meta_business_bindings (platform, external_id) WHERE active = 1"
+    }
+  },
+  "automatic_scope_only_allowance": "public_profile",
+  "comments_implemented": false,
+  "contract_verification_note": "Official Business Login/manual/access-token pages read by root through browser; Meta verified Postman read by docs agent. No real Meta exchange or asset smoke by author.",
+  "credentials_read_or_changed": false,
+  "down_revision": "acd7c9d0e136",
+  "earlier_combined_regression": {
+    "passed": 334,
+    "scope": "Meta, Google connection/management, media tasks/planning and actual image middleware; before final sanitized exception-chain/format-string hardening. Final focused58 then passed."
+  },
+  "exact_callback": "https://t24-crm.com/api/v1/meta-business/oauth/callback",
+  "explicit_environment_keys": [
+    "T24_META_ENABLED",
+    "T24_META_APP_ID",
+    "T24_META_APP_SECRET",
+    "T24_META_TOKEN_KEY",
+    "T24_META_CONFIG_ID",
+    "T24_META_GRAPH_VERSION",
+    "T24_META_PUBLIC_URL",
+    "T24_META_EXPECTED_SCOPES",
+    "T24_META_LOGIN_CONFIG_REVIEWED"
+  ],
+  "external_provider_calls": false,
+  "files": {
+    "app/backend/alembic/versions/bde8da01f247_meta_business_connections.py": {
+      "bytes": 5610,
+      "sha256": "073e59297e5729e9ef0fc844f9eb1371c5af4b3a8c05fe212931082a90c3993e"
+    },
+    "app/backend/models/meta_business.py": {
+      "bytes": 5114,
+      "sha256": "e7483bc268c271f95655123fdcc5b1a9991e9610bd379cf9ee59dd121b896370"
+    },
+    "app/backend/routers/meta_business.py": {
+      "bytes": 6171,
+      "sha256": "ec36951ff5f4495bd189f59ac474c1b010de8b0062eadfc2f5da5ffd280f0e58"
+    },
+    "app/backend/services/meta_business.py": {
+      "bytes": 22158,
+      "sha256": "5123631918ceb1c7f1ed54b4a343856cdb3d412d1ff483b85058536ded2e0987"
+    },
+    "app/backend/services/meta_business_provider.py": {
+      "bytes": 15418,
+      "sha256": "97719865eba43fbf6ebaadca7029b54b1df66373f578f1faefcd5e01baf23847"
+    },
+    "app/backend/tests/test_meta_business.py": {
+      "bytes": 24532,
+      "sha256": "5c37715d840be460dfe6a5bb80f904be2489378b1f017d9fdf399e3b23eba198"
+    },
+    "app/backend/tests/test_meta_business_middleware.py": {
+      "bytes": 4473,
+      "sha256": "500a1919cda0367380af61a1ad7e79a12b7db761bb6ec4126bac6ae09f80a740"
+    },
+    "app/backend/tests/test_meta_business_provider.py": {
+      "bytes": 11792,
+      "sha256": "7e42b848c2ccc86cd30d4c6f1e5f6a152beec5ee2cc7b34bd219507e27d42e7a"
+    }
+  },
+  "final_focused_tests": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=..:. python -m pytest -q --disable-warnings tests/test_meta_business.py tests/test_meta_business_provider.py tests/test_meta_business_middleware.py",
+    "passed": 58
+  },
+  "google_finance_closing_commissions_customer_acl_private_sources_changed_by_author": false,
+  "migration_revision": "bde8da01f247",
+  "new_table_count": 5,
+  "new_tables": [
+    "meta_business_assets",
+    "meta_business_bindings",
+    "meta_business_connections",
+    "meta_business_oauth_states",
+    "meta_business_requests"
+  ],
+  "owned_runtime_files": [
+    "app/backend/models/meta_business.py",
+    "app/backend/services/meta_business_provider.py",
+    "app/backend/services/meta_business.py",
+    "app/backend/routers/meta_business.py",
+    "app/backend/alembic/versions/bde8da01f247_meta_business_connections.py"
+  ],
+  "owned_test_files": [
+    "app/backend/tests/test_meta_business.py",
+    "app/backend/tests/test_meta_business_provider.py",
+    "app/backend/tests/test_meta_business_middleware.py"
+  ],
+  "parent_owned_existing_main": {
+    "change": "Meta-only no-referrer response policy; owned and reviewed by root",
+    "path": "app/backend/main.py",
+    "sha256": "599d0b38dc0369b5e810ac41496c5b05862aba243fa2a82130fe582c75659524"
+  },
+  "phase": "connection",
+  "production_actions": false,
+  "publishing_implemented": false,
+  "read_scopes": [
+    "instagram_basic",
+    "pages_read_engagement",
+    "pages_show_list"
+  ],
+  "routes": [
+    [
+      "get",
+      "/api/v1/meta-business/connections/{connection_id}/assets"
+    ],
+    [
+      "get",
+      "/api/v1/meta-business/oauth/callback"
+    ],
+    [
+      "get",
+      "/api/v1/meta-business/oauth/requests/{request_id}"
+    ],
+    [
+      "get",
+      "/api/v1/meta-business/options"
+    ],
+    [
+      "get",
+      "/api/v1/meta-business/requests/{request_id}"
+    ],
+    [
+      "get",
+      "/api/v1/meta-business/status"
+    ],
+    [
+      "post",
+      "/api/v1/meta-business/bindings"
+    ],
+    [
+      "post",
+      "/api/v1/meta-business/bindings/{binding_id}/disconnect"
+    ],
+    [
+      "post",
+      "/api/v1/meta-business/connections/{connection_id}/disconnect"
+    ],
+    [
+      "post",
+      "/api/v1/meta-business/oauth/start"
+    ]
+  ],
+  "server_environment_defaults": "All T24_META_* absent => disabled/unconfigured. No environment or credential changes performed.",
+  "stage": "META_BUSINESS_BACKEND_CONNECTION_PHASE_FROZEN_AWAIT_INDEPENDENT_REVIEW",
+  "verified_primary_contracts": [
+    "https://developers.facebook.com/documentation/facebook-login/facebook-login-for-business",
+    "https://developers.facebook.com/documentation/facebook-login/guides/advanced/manual-flow",
+    "https://developers.facebook.com/documentation/facebook-login/guides/access-tokens/get-long-lived",
+    "https://developers.facebook.com/documentation/facebook-login/guides/access-tokens",
+    "https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api"
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "stage": "META_CONNECTION_PHASE_INDEPENDENT_BACKEND_REVIEW_PASS",
+  "reviewed_at_utc": "2026-10-31T16:09:24.745379+00:00",
+  "reviewer": "/root/google_pilot_frontend",
+  "backend_freeze_sha256": "3df6506dd93bd25854bbfd24d31ae662ddaea80baf9636b4707d44ff9b875714",
+  "files": {
+    "app/backend/alembic/versions/bde8da01f247_meta_business_connections.py": {
+      "sha256": "073e59297e5729e9ef0fc844f9eb1371c5af4b3a8c05fe212931082a90c3993e",
+      "matches_freeze": true
+    },
+    "app/backend/models/meta_business.py": {
+      "sha256": "e7483bc268c271f95655123fdcc5b1a9991e9610bd379cf9ee59dd121b896370",
+      "matches_freeze": true
+    },
+    "app/backend/routers/meta_business.py": {
+      "sha256": "ec36951ff5f4495bd189f59ac474c1b010de8b0062eadfc2f5da5ffd280f0e58",
+      "matches_freeze": true
+    },
+    "app/backend/services/meta_business.py": {
+      "sha256": "5123631918ceb1c7f1ed54b4a343856cdb3d412d1ff483b85058536ded2e0987",
+      "matches_freeze": true
+    },
+    "app/backend/services/meta_business_provider.py": {
+      "sha256": "97719865eba43fbf6ebaadca7029b54b1df66373f578f1faefcd5e01baf23847",
+      "matches_freeze": true
+    },
+    "app/backend/tests/test_meta_business.py": {
+      "sha256": "5c37715d840be460dfe6a5bb80f904be2489378b1f017d9fdf399e3b23eba198",
+      "matches_freeze": true
+    },
+    "app/backend/tests/test_meta_business_middleware.py": {
+      "sha256": "500a1919cda0367380af61a1ad7e79a12b7db761bb6ec4126bac6ae09f80a740",
+      "matches_freeze": true
+    },
+    "app/backend/tests/test_meta_business_provider.py": {
+      "sha256": "7e42b848c2ccc86cd30d4c6f1e5f6a152beec5ee2cc7b34bd219507e27d42e7a",
+      "matches_freeze": true
+    },
+    "app/backend/main.py": {
+      "sha256": "599d0b38dc0369b5e810ac41496c5b05862aba243fa2a82130fe582c75659524",
+      "matches_freeze": true
+    }
+  },
+  "all_frozen_hashes_matched": true,
+  "independently_executed_tests": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=..:. /Users/billyli/Documents/Codex/2026-10-07/sites-plugin-sites-openai-curated-remote-3/work/experience-python/bin/python -m pytest -q --disable-warnings tests/test_meta_business.py tests/test_meta_business_provider.py tests/test_meta_business_middleware.py",
+    "working_directory": "app/backend",
+    "exit_code": 0,
+    "passed": 58,
+    "warnings": 28,
+    "duration_seconds": 3.59,
+    "transport": "synthetic ASGI and MockTransport only, isolated test databases"
+  },
+  "reviewed_guards": [
+    "Fresh active owner role checks; staff cannot read owner Meta connections, assets or bindings, or mutate connection state.",
+    "No token, secret or external asset identifier in frontend projections; independent encrypted token storage.",
+    "OAuth exact reviewed Business Login URL/config; bounded one-use state plus secure HttpOnly SameSite cookie; state committed consumed before network.",
+    "Callback and discovery release DB transaction during network then revalidate owner/configuration/connection revision before persistence.",
+    "Only exact three read scopes plus automatic public_profile accepted; unconsented write and other extra grants rejected.",
+    "Provider URLs, paths, response sizes and pagination bounded; redirects and proxy environment disabled; credential-bearing transport errors/logs sanitized.",
+    "Actual main middleware preserves Meta no-referrer and no-store including 303/200/403/422; unrelated route Referrer-Policy and CSP unchanged.",
+    "Disconnect requires displayed revision; stale tabs cannot disconnect a reauthorized connection.",
+    "Active-only customer/platform and global asset uniqueness; explicit disconnect permits a new history row; original request replay remains inactive.",
+    "Migration only creates five empty Meta tables and their indexes; no existing-data backfill or schema edits.",
+    "No publish, comment reply, scheduling, or staff operational capabilities claimed or exposed by this phase."
+  ],
+  "audit_findings_resolved": [
+    {
+      "issue": "Extra token scopes could exceed consent summary",
+      "resolution": "Provider rejects debug/granted scopes outside exact read set plus public_profile; negative tests pass"
+    },
+    {
+      "issue": "Global middleware overwrote callback no-referrer",
+      "resolution": "Parent-owned Meta-only main policy preserves no-referrer; actual application middleware tests pass"
+    }
+  ],
+  "remaining_actionable_findings": [],
+  "limitations": [
+    "No real Meta authorization, token exchange or asset smoke; requires configured app and owner authorization.",
+    "No production database or server modified by reviewer.",
+    "Independent review applies to the frozen connect-only source and isolated tests, not future publishing capabilities."
+  ],
+  "reviewer_source_edits": false,
+  "browser_or_production_actions": false,
+  "frontend_freeze_unchanged": {
+    "manifest_sha256": "9d7f912dbfd4777a8bfb179d814dee2501ae59c0ebf9fe1e1a276c1b8d7a945a",
+    "fe_version": "58d2c585210f"
+  }
+}

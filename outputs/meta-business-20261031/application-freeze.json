@@ -1,0 +1,42 @@
+{
+  "baseline_source_sha": "04a42942ce128f74c77db9250f2e7a28485b5c32",
+  "comments_implemented": false,
+  "database_migration": true,
+  "existing_image_policies_and_data_preserved": true,
+  "files": {
+    "app/backend/alembic/versions/bde8da01f247_meta_business_connections.py": "073e59297e5729e9ef0fc844f9eb1371c5af4b3a8c05fe212931082a90c3993e",
+    "app/backend/main.py": "599d0b38dc0369b5e810ac41496c5b05862aba243fa2a82130fe582c75659524",
+    "app/backend/models/meta_business.py": "e7483bc268c271f95655123fdcc5b1a9991e9610bd379cf9ee59dd121b896370",
+    "app/backend/routers/meta_business.py": "ec36951ff5f4495bd189f59ac474c1b010de8b0062eadfc2f5da5ffd280f0e58",
+    "app/backend/services/meta_business.py": "5123631918ceb1c7f1ed54b4a343856cdb3d412d1ff483b85058536ded2e0987",
+    "app/backend/services/meta_business_provider.py": "97719865eba43fbf6ebaadca7029b54b1df66373f578f1faefcd5e01baf23847",
+    "app/backend/tests/test_meta_business.py": "5c37715d840be460dfe6a5bb80f904be2489378b1f017d9fdf399e3b23eba198",
+    "app/backend/tests/test_meta_business_middleware.py": "500a1919cda0367380af61a1ad7e79a12b7db761bb6ec4126bac6ae09f80a740",
+    "app/backend/tests/test_meta_business_provider.py": "7e42b848c2ccc86cd30d4c6f1e5f6a152beec5ee2cc7b34bd219507e27d42e7a",
+    "app/frontend/src/components/MediaPlatformCapabilities.tsx": "e02f5feb41f551d45f9ecb0974eb097160eef0d9d27a5c91d257f8bca5001a70",
+    "app/frontend/src/components/MetaBusinessWorkspace.tsx": "fb692113268ad32bf7d9d98b4c3729e0265a2dd3f3ee9d0d0c9ae6ea40ce51a2",
+    "app/frontend/src/components/meta-business.css": "ff75aa79ca73fc7d89a2833d2fa8e6abc0ab856a920694ff99a7fc8e641ae42e",
+    "app/frontend/src/lib/meta-business-api.ts": "5406452597151c8c4e6fcc755b6334f8604c893a2f7968b7f2584f035c201c46",
+    "app/frontend/src/pages/MediaOperations.tsx": "87a3bb2452d5c0cda7ea6740c04111ef677ecf1a020e4a434adf3e904b22fb41",
+    "app/frontend/tests/meta-business-workflow.test.mjs": "73e9532f06ed7a6dde60e01ecd667bd5582228254fffbe524eab1217c53b5d04"
+  },
+  "frontend_version": "58d2c585210f",
+  "meta_credentials_present": false,
+  "meta_feature_enabled": false,
+  "old_schema_revision": "acd7c9d0e136",
+  "phase": "connection",
+  "production_seed_rows": false,
+  "publishing_implemented": false,
+  "runtime_environment_changed": false,
+  "schema_revision": "bde8da01f247",
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_BUSINESS_REVIEWED_APPLICATION_FREEZE",
+  "verified": {
+    "frontend_workflow_tests": 56,
+    "meta_backend_tests": 58,
+    "protected_baseline_regression": 185,
+    "real_meta_oauth": "PENDING_PERSONAL_LOGIN",
+    "root_local_browser": "PASS_SYNTHETIC_ONLY",
+    "vite_build": "PASS"
+  }
+}

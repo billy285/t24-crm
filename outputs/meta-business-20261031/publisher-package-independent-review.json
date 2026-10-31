@@ -1,0 +1,49 @@
+{
+  "actual_package_rebuilt_independently_byte_exact": true,
+  "actual_preflight_sha256": "8f4995bb3e8a100869ba01a26c59f5d8f49ba78127cd82066279539adb20f71e",
+  "application_freeze_sha256": "f35e3c5682d594bf5bfbde1226fc8394f71e52f4605f213c4423cd00f15a82b8",
+  "backend_runtime_patches": 6,
+  "changed_application_source_files": 15,
+  "deployment_checks": [
+    "Atomic BEGIN IMMEDIATE additive migration and old row/schema/object/metadata guards",
+    "Offline network-none, no credentials, workers off; exact Python310/router provenance including hidden image GET/HEAD",
+    "Exact original/candidate source inventories and runtime env/mount/network boundary",
+    "Candidate identity durably recorded and fsynced before original stop; no guessing orphan IDs",
+    "Precommit failure resumes old code only on old schema; committed migration recovers forward without DB restoration",
+    "Nginx only exact new Meta callback copy plus literal static root; original Google callback/image logging and CSP retained",
+    "Loopback invalid Meta callback303 headers/log sentinel and invalid image GET/HEAD sentinel create no real provider actions"
+  ],
+  "frontend_version": "58d2c585210f",
+  "frozen_tool_files_verified": 13,
+  "independent_publisher_tests_passed": 143,
+  "limits": [
+    "Next exact immutable carrier and prepare wrapper require independent review before one server execution",
+    "Actual canonical prepared/deployed receipts required; this review does not approve OAuth credential activation or public actions",
+    "Real Meta OAuth and assets smoke remain pending personal login/configuration"
+  ],
+  "manifest_sha256": "9d8f26821cd42cd2816af4bcb7a1805e1b9879d103453445f0580da64002869d",
+  "only_three_public_pins_changed_from_reviewed_tool_code": true,
+  "payload_members": 146,
+  "payload_sha256": "2d499a18199822e807a67bf96cf4425fa36f7e6fedcfc701cabc0213c4b1948a",
+  "production_data_boundary": {
+    "existing_google_tables_policies_images_leases_may_be_nonempty": true,
+    "google_worker_on_and_exact_cutoff_retained": true,
+    "meta_environment_keys_absent": true,
+    "meta_feature_enabled": false,
+    "new_empty_meta_tables": 5,
+    "new_total_tables": 141,
+    "no_database_restore_or_counter_rewrites": true,
+    "offline_own_metadata_exact": true,
+    "old_rows_shapes_objects_preserved_except_alembic_head": true,
+    "old_tables": 136,
+    "only_observed_monthly_internal_counter_monotonic_exception_live": true
+  },
+  "protected_source_files_verified": 980,
+  "release_code_freeze_sha256": "affc40a6f145bc9a7aa6a6c3911325c38abdf6a9de0233a8e6300395240ad705",
+  "release_sha256": "a14f6d41eb6089e1a124c8326a27031280af4dbc9f58c5a73e797565d0135c98",
+  "result": "PASS_FOR_IMMUTABLE_CARRIER_PREPARATION_ONLY",
+  "review_scope": "Deployment tools and actual package only. Application backend was authored by this agent and independently reviewed/tested by root and frontend agent.",
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_BUSINESS_PUBLISHER_AND_ACTUAL_PACKAGE_INDEPENDENT_REVIEW",
+  "tool_package_freeze_sha256": "b6e52bd3cbe3458620050ad5789cd909aef23800a1fc49728ee04b68001c2022"
+}

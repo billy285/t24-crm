@@ -1,0 +1,76 @@
+{
+  "app_or_old_tools_edited": false,
+  "application_freeze_sha256": "f35e3c5682d594bf5bfbde1226fc8394f71e52f4605f213c4423cd00f15a82b8",
+  "backend_runtime_count": 6,
+  "changed_source_count": 15,
+  "deterministic_second_build_exact": true,
+  "files": {
+    "deployments/meta-business-20261031/README.md": {
+      "bytes": 5229,
+      "sha256": "519e76fe10c8a67d1dde6dd9e7100c2371eb9710f996282643a4245cac37e24c"
+    },
+    "deployments/meta-business-20261031/artifacts/manifest.json": {
+      "bytes": 137627,
+      "sha256": "9d8f26821cd42cd2816af4bcb7a1805e1b9879d103453445f0580da64002869d"
+    },
+    "deployments/meta-business-20261031/artifacts/payload.tar.gz": {
+      "bytes": 2190442,
+      "sha256": "2d499a18199822e807a67bf96cf4425fa36f7e6fedcfc701cabc0213c4b1948a"
+    },
+    "deployments/meta-business-20261031/build_payload.py": {
+      "bytes": 8051,
+      "sha256": "2393e857b09249f612a57470b3f06c2c78e98369a01ad66ac8f16c0dc4bcbf02"
+    },
+    "deployments/meta-business-20261031/generate_preflight_command.py": {
+      "bytes": 1759,
+      "sha256": "c3edd73a13cdd0518c9cb72400cace893a205c3c60ca30caf7929aa51e265728"
+    },
+    "deployments/meta-business-20261031/make_commands.py": {
+      "bytes": 9899,
+      "sha256": "bfc341776af28981cf526b89ca972490369a6128b9302e6a9790a9ec86794aea"
+    },
+    "deployments/meta-business-20261031/preflight-command.sh": {
+      "bytes": 7623,
+      "sha256": "37755ebb04b72bf380744b592f5f86b37575809394bdcb4769dc84c99f58bf7f"
+    },
+    "deployments/meta-business-20261031/preflight.py": {
+      "bytes": 13574,
+      "sha256": "b4f672ed78d5743027ad99dce0a95b222c3059bd8868866a8314bff7734a1483"
+    },
+    "deployments/meta-business-20261031/release.py": {
+      "bytes": 71910,
+      "sha256": "a14f6d41eb6089e1a124c8326a27031280af4dbc9f58c5a73e797565d0135c98"
+    },
+    "deployments/meta-business-20261031/test_commands.py": {
+      "bytes": 7236,
+      "sha256": "349fead753f29be4a9dbc833641cf677722ce9f0d078982115cf328c5a6169bc"
+    },
+    "deployments/meta-business-20261031/test_package.py": {
+      "bytes": 6709,
+      "sha256": "5bcce00ef046b923db35f619b17854cc7d88cd9e51045bc23f41fb95d201b22e"
+    },
+    "deployments/meta-business-20261031/test_preflight.py": {
+      "bytes": 12282,
+      "sha256": "bea1149d3068c9344fa78967337c25ad2c0b292eecdf5238691d0749563926a8"
+    },
+    "deployments/meta-business-20261031/test_release.py": {
+      "bytes": 38519,
+      "sha256": "597dfdef953d706aa672d815ab795d30175f84758253f36e847ec0eea15869bc"
+    }
+  },
+  "frontend_version": "58d2c585210f",
+  "meta_enabled": false,
+  "meta_environment_keys_absent": true,
+  "new_meta_tables_empty": 5,
+  "new_table_count": 141,
+  "old_table_count": 136,
+  "only_three_public_source_pins_changed": true,
+  "payload_member_count": 146,
+  "preflight_sha256": "8f4995bb3e8a100869ba01a26c59f5d8f49ba78127cd82066279539adb20f71e",
+  "production_executed": false,
+  "protected_source_count": 980,
+  "reviewed_code_freeze_sha256": "affc40a6f145bc9a7aa6a6c3911325c38abdf6a9de0233a8e6300395240ad705",
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_BUSINESS_ACTUAL_CODE_AND_PACKAGE_FROZEN_AWAIT_INDEPENDENT_REVIEW",
+  "tests_passed": 143
+}

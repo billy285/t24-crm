@@ -1,0 +1,48 @@
+{
+  "base_application_source": "04a42942ce128f74c77db9250f2e7a28485b5c32",
+  "comments_implemented": false,
+  "employee_meta_access": false,
+  "features": [
+    "owner-only Meta entry, actual runtime setup gates and explicit authorization scope/callback/storage summary",
+    "exact configured Facebook Business Login URL allowlist: 5 query fields with app/config/version binding; no scope or token override",
+    "server opaque asset discovery and explicit CRM customer/platform mapping preview without name matching",
+    "unknown OAuth/bind recover original request ID; explicit same-ID retry only after original lookup404; expired OAuth rechecks actual status",
+    "soft disconnect rereads actual status, no platform public-content write",
+    "customer/account scope fencing and separate Meta/Google capability reads; existing FB/IG tasks remain manual",
+    "connection disconnect carries displayed expected_revision; stale409 clears confirmation and rereads actual state rather than retrying against a newer reconnect"
+  ],
+  "frontend_version": "58d2c585210f",
+  "limits": [
+    "root browser acceptance pending",
+    "no real Meta credentials/OAuth/assets or provider writes used by this agent",
+    "connection does not enable posts/comments/scheduling/employee Meta grants"
+  ],
+  "phase": "connection",
+  "publishing_implemented": false,
+  "runtime_files": {
+    "app/frontend/src/components/MediaPlatformCapabilities.tsx": "e02f5feb41f551d45f9ecb0974eb097160eef0d9d27a5c91d257f8bca5001a70",
+    "app/frontend/src/components/MetaBusinessWorkspace.tsx": "fb692113268ad32bf7d9d98b4c3729e0265a2dd3f3ee9d0d0c9ae6ea40ce51a2",
+    "app/frontend/src/components/meta-business.css": "ff75aa79ca73fc7d89a2833d2fa8e6abc0ab856a920694ff99a7fc8e641ae42e",
+    "app/frontend/src/lib/meta-business-api.ts": "5406452597151c8c4e6fcc755b6334f8604c893a2f7968b7f2584f035c201c46",
+    "app/frontend/src/pages/MediaOperations.tsx": "87a3bb2452d5c0cda7ea6740c04111ef677ecf1a020e4a434adf3e904b22fb41"
+  },
+  "stage": "META_CONNECTION_ONLY_FRONTEND_FREEZE",
+  "test_files": {
+    "app/frontend/tests/meta-business-workflow.test.mjs": "73e9532f06ed7a6dde60e01ecd667bd5582228254fffbe524eab1217c53b5d04"
+  },
+  "unchanged": [
+    "Google workflow and image delivery policy",
+    "customer-center media account/password store",
+    "financial calculations/closing/commissions/customer ACL/private workspace",
+    "manual Facebook/Instagram task semantics"
+  ],
+  "verification": {
+    "existing_image_tests": 24,
+    "existing_pilot_tests": 15,
+    "meta_new_tests": 17,
+    "passed": 56,
+    "test_command": "node --test tests/meta-business-workflow.test.mjs tests/google-pilot-workflow.test.mjs tests/media-publication-images.test.mjs",
+    "typescript_app": "final tsc -p tsconfig.app.json: known Finance.tsx:5778 TS2322 only; no scoped errors",
+    "vite_build": "PASS"
+  }
+}

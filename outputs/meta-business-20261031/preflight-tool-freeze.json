@@ -1,0 +1,33 @@
+{
+  "baseline_application_source": "04a42942ce128f74c77db9250f2e7a28485b5c32",
+  "baseline_backend_source": "5931e430e629fb633f846ebc068a8fc12d4b9a0a",
+  "baseline_frontend_version": "f3e9e6f7bfa0",
+  "csp_captured_unchanged": true,
+  "existing_nonempty_google_actions_tasks_leases_policies_supported": true,
+  "files": {
+    "deployments/meta-business-20261031/generate_preflight_command.py": {
+      "bytes": 1759,
+      "sha256": "c3edd73a13cdd0518c9cb72400cace893a205c3c60ca30caf7929aa51e265728"
+    },
+    "deployments/meta-business-20261031/preflight-command.sh": {
+      "bytes": 7623,
+      "sha256": "37755ebb04b72bf380744b592f5f86b37575809394bdcb4769dc84c99f58bf7f"
+    },
+    "deployments/meta-business-20261031/preflight.py": {
+      "bytes": 13574,
+      "sha256": "b4f672ed78d5743027ad99dce0a95b222c3059bd8868866a8314bff7734a1483"
+    },
+    "deployments/meta-business-20261031/test_preflight.py": {
+      "bytes": 12282,
+      "sha256": "bea1149d3068c9344fa78967337c25ad2c0b292eecdf5238691d0749563926a8"
+    }
+  },
+  "meta_environment_keys_absent_disabled": true,
+  "meta_tables_absent": true,
+  "monthly_rate_counter_only_monotonic_compatibility_retained": true,
+  "production_executed": false,
+  "provider_requests": false,
+  "stage": "META_BUSINESS_PREFLIGHT_CODE_FROZEN_AWAIT_INDEPENDENT_REVIEW",
+  "table_count": 136,
+  "tests_passed": 31
+}
