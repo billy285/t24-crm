@@ -1,0 +1,30 @@
+{
+  "baseline_sha256": "7648d02a0c85a2ea8d094e02337c1edea08c7166d739f16413ab33cc0d3380e5",
+  "business_writes": false,
+  "carrier": "58b7c4a314b97390212add9dbd74cbebc645483c",
+  "config_id": "1146714154579519",
+  "configuration_freeze_sha256": "e60ab18e11e5efb3388a67d6fa4d21738a71d22d57622e555989c7b2b9fd6f5b",
+  "members": {
+    "activation.py": {
+      "bytes": 17536,
+      "sha256": "5ebf5bc5af2f9c2c5a4b0faa7e079a8299b716f0514b4c91c5916957fbb4e552"
+    },
+    "baseline.py": {
+      "bytes": 8389,
+      "sha256": "fc7af7f4d91440c9ec9b621c3d9086d3d679dcb94beb52b5b151e32b7ef50362"
+    },
+    "core.py": {
+      "bytes": 8721,
+      "sha256": "ae765a08c76438a3416ee67f78e3c0d77c71e5240bd77c938aa2476a328d3dc8"
+    },
+    "transport.py": {
+      "bytes": 7926,
+      "sha256": "8821eb1427b7c4587fca938abf70d00d892063f07142f10016e81cb73f2939dc"
+    }
+  },
+  "provider_requests": false,
+  "receipt_sha256": "f246a6d21d68ab481b682613855e9dcf304adabe1cf2e5ad3e6e03378afdc1fa",
+  "runtime_changed": false,
+  "source_sha": "a03766539ef3430f350f467652511a43ee3c4abf",
+  "stage": "META_CRM_ROTATION_TOOLS_STAGED"
+}

@@ -1,0 +1,31 @@
+{
+  "actual_privacy_sentinels_and_unchanged_nginx_csp_match_prior_receipt": true,
+  "actual_runtime": {
+    "config": "81ae2c6ccb2074531929aae8812a5d48806a19a185e515e7ed62b48148b01834",
+    "id": "4c4085ff201a88ad685ab69d7a85c8615567acdcb2225d529e23b95858997811",
+    "image": "sha256:e136fbc267e7bb81d069c597eb2c4ddab7e5f39bf183bbe6cd6cbccc7a19919d",
+    "restart": 0,
+    "started": "2026-10-31T19:34:06.907559214Z"
+  },
+  "actual_server_activated_sha256": "4e40cdd7de39fee3eb898c3b9f98059df586e59062326ae288b856241f67aba6",
+  "all141_business_rows_schema_private_and_google_cutoff_preservation_verified": true,
+  "app_id": "1139445441758834",
+  "baseline_sha256": "7648d02a0c85a2ea8d094e02337c1edea08c7166d739f16413ab33cc0d3380e5",
+  "canonical_body_hash_independently_verified": true,
+  "config_id": "1146714154579519",
+  "findings": [],
+  "future_reader_requires_this_server_receipt_and4c408_81ae_runtime": true,
+  "graph_version": "v26.0",
+  "installed_new_env_sha256": "9c7e30e80b7550b5b7a62a189059046e14dd215c56c601749d34d1bdc2d76a51",
+  "nine_meta_only_positional_replacement_and_legacy_key_untouched_acceptance_verified": true,
+  "no_database_restore_migration_provider_tool_calls_or_secret_exports": true,
+  "old_reader_expected96192_c0ce_a6bde_must_not_be_reused": true,
+  "owner_oauth_and_live_asset_discovery_still_unverified": true,
+  "production_browser_provider_git_actions_by_reviewer": false,
+  "public_review_sha256": "e60ab18e11e5efb3388a67d6fa4d21738a71d22d57622e555989c7b2b9fd6f5b",
+  "result": "PASS",
+  "return_envelope_sha256": "26044f42f415dacb6a2d57c9d4f8f5eedbb659d988a39db7d1f9e82d55161b1f",
+  "reviewer": "workflow_actual_release_review",
+  "same_image_and_source_no_app_change": true,
+  "stage": "ACTUAL_META_CRM_NEW_APP_ACTIVATION_INDEPENDENT_REVIEW"
+}

@@ -1,0 +1,30 @@
+{
+  "baseline_sha256": "7648d02a0c85a2ea8d094e02337c1edea08c7166d739f16413ab33cc0d3380e5",
+  "carrier": "58b7c4a314b97390212add9dbd74cbebc645483c",
+  "configuration_freeze_sha256": "e60ab18e11e5efb3388a67d6fa4d21738a71d22d57622e555989c7b2b9fd6f5b",
+  "executed": false,
+  "files": {
+    "outputs/meta-business-crm-activation-20261101/commands/activate-command.sh": {
+      "bytes": 3302,
+      "sha256": "354e39ef731689139d2f4408f4f7c0cb94c9a8f4cb8b24b12b3a70722a0760da"
+    },
+    "outputs/meta-business-crm-activation-20261101/commands/command-pins.json": {
+      "bytes": 1463,
+      "sha256": "46e57606c9c9442d92c95db91f8b052fb5c141242d883dd2d6b59c4d05264fd5"
+    },
+    "outputs/meta-business-crm-activation-20261101/commands/prepare-command.sh": {
+      "bytes": 3308,
+      "sha256": "c083e76b6cbc8a76c74622bb97a29b93d1a08cdbf422f60081c245f4c4ceceaa"
+    },
+    "outputs/meta-business-crm-activation-20261101/commands/recover-command.sh": {
+      "bytes": 3301,
+      "sha256": "29e9bf41e16261d26d49153761051284ddacd37ff41f7690efb6f85f1455b9db"
+    },
+    "outputs/meta-business-crm-activation-20261101/commands/stage-command.sh": {
+      "bytes": 4481,
+      "sha256": "0be9707cb0543ef0a571c7b65669720f904bb5604e0ad51e2dfa2a3f622a9cd7"
+    }
+  },
+  "source_sha": "a03766539ef3430f350f467652511a43ee3c4abf",
+  "stage": "ACTUAL_META_CRM_ROTATION_COMMANDS_FROZEN"
+}

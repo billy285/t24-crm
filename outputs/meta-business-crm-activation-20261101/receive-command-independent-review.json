@@ -1,0 +1,39 @@
+{
+  "actual_command_bytes": 3858,
+  "actual_command_sha256": "92bc3c08bfa7626896c0c6cd8599e892edf5039f9afcf8c146f7b56751f2f1c6",
+  "canonical_384_byte_ciphertext_bound_same_transfer_without_output": true,
+  "ciphertext_or_secret_values_exported_by_reviewer": false,
+  "context_public_facts": {
+    "algorithm": "RSA-OAEP-SHA256-3072",
+    "app_id": "1139445441758834",
+    "business_id": "1772407487098568",
+    "callback": "https://t24-crm.com/api/v1/meta-business/oauth/callback",
+    "config_id": "1146714154579519",
+    "configuration_freeze_sha256": "e60ab18e11e5efb3388a67d6fa4d21738a71d22d57622e555989c7b2b9fd6f5b",
+    "created_at": 1793475092,
+    "expires_at": 1793475992,
+    "graph_version": "v26.0",
+    "host": "iZj6c4cj7edgnhdimts4l7Z",
+    "payload_max_bytes": 318,
+    "public_sha256": "222e8d65ac794cafec4cd8cc546a09f4559ac4cd3e0e9749879183ce67a414e0",
+    "read_scopes": [
+      "instagram_basic",
+      "pages_read_engagement",
+      "pages_show_list"
+    ],
+    "source_sha": "a03766539ef3430f350f467652511a43ee3c4abf",
+    "token_type": "USER"
+  },
+  "exact_regeneration_ast_and_four_frozen_tool_pins": true,
+  "findings": [],
+  "install_only_new_root600_meta_business_crm_file_no_overwrite_or_runtime_switch": true,
+  "mandatory_live_141_rotation_gate_before_install_and_after_decrypt": true,
+  "production_browser_provider_git_actions_by_reviewer": false,
+  "public_rsa_key_3072_exponent65537_and_exact_hash_bound_oaep_domain_label_verified": true,
+  "result": "PASS",
+  "reviewer": "workflow_actual_release_review",
+  "sealed_file_root_task_mode600_singlelink_and_only_two_encrypted_fields": true,
+  "stage": "ACTUAL_META_CRM_RECEIVE_COMMAND_INDEPENDENT_REVIEW",
+  "staged_tools_server_receipt_sha256": "f246a6d21d68ab481b682613855e9dcf304adabe1cf2e5ad3e6e03378afdc1fa",
+  "transport_context_currently_unexpired": true
+}
