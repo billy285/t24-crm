@@ -23,7 +23,8 @@ BASE_SOURCE = '5931e430e629fb633f846ebc068a8fc12d4b9a0a'
 BASE_FRONTEND = '8cc54170ca26'
 BASE_DEPLOYED_SHA = 'c05397479169846fd2c5c62eccffb3880d4cb6d2b90c60e929ce9b9370340d4a'
 REVISION = 'acd7c9d0e136'
-SCOPE = 'google-photo-preview'
+SCOPE = 'google-photo-preview-retry'
+SEQUENCE_COMPATIBILITY = {'only_monotonic_counter': 'monthly_deduction_rates', 'all_other_metadata_exact': True, 'all_136_business_rows_exact': True}
 ACTIVATION_FROM = '2026-10-30T19:42:04Z'
 BACKEND_FILES = frozenset()
 FRONTEND_FILES = frozenset({'app/frontend/src/lib/media-publication-images.ts', 'app/frontend/src/components/MediaPublicationImage.tsx'})
@@ -62,6 +63,20 @@ def validate_summary(p):
     sha=p['sha256']; need(re.fullmatch('[a-f0-9]{64}',sha) and p['path']=='/opt/t24-crm/releases/google-photo-preview-preflight-'+sha[:12]+'.json','EXACT_SERVER_PROOF_PATH_REQUIRED')
 
 
+def static_sequence_boundary(before, current, guard):
+    """Normalize only the observed independent counter; never mutate inputs."""
+    guard(before, current, recovery=True)  # Real shape, hashes, PRAGMA, existence.
+    left, right = before['sequence_values'], current['sequence_values']
+    need(set(left) == set(right), 'EXACT_SEQUENCE_KEY_SET_REQUIRED')
+    key = SEQUENCE_COMPATIBILITY['only_monotonic_counter']
+    normalized = {**current, 'sequence_values': dict(right)}
+    if key in left:
+        need(right[key] >= left[key], 'OBSERVED_MONTHLY_RATE_COUNTER_MUST_NOT_REGRESS')
+        normalized['sequence_values'][key] = left[key]
+    normalized['sequence_sha256'] = digest(sorted(normalized['sequence_values'].items()))
+    guard(before, normalized)  # All other metadata/counters remain exact.
+
+
 def next_nginx(original, old, new):
     old, new = os.fsencode(str(old)), os.fsencode(str(new)); need(original.count(old)==1 and new not in original, 'EXACT_SINGLE_OLD_PUBLIC_ROOT_REQUIRED')
     updated=original.replace(old,new,1); need(updated.replace(new,old,1)==original,'NONROOT_NGINX_CHANGE_REJECTED'); return updated
@@ -83,7 +98,7 @@ class Release:
         need(p['stage']=='GOOGLE_PHOTO_PREVIEW_READONLY_PREFLIGHT' and p['host']==HOST and p['source_sha']==BASE_SOURCE and p['frontend_version']==BASE_FRONTEND and p['schema_revision']==REVISION and p['deployed_sha256']==BASE_DEPLOYED_SHA,'EXACT_CURRENT_DEPLOYED_BASELINE_REQUIRED')
         need(p['crm']['id']==self.pf.ORIGINAL_ID and p['crm']['image']==self.pf.IMAGE and p['scheduler_enabled'] is True and p['scheduler_activation_from']==ACTIVATION_FROM and len(p['rows'])==136 and all(p[k] is True for k in ('callback_logging_protection_retained','image_delivery_logging_protection_retained','existing_image_policies_and_data_preserved','host_docker_timestamp_parser_verified')),'EXACT_RUNTIME_AND_136_TABLE_BASELINE_REQUIRED')
         need(all(p[k] is False for k in ('provider_requests','business_writes','private_content_read','credential_content_read','container_or_configuration_changed')),'READONLY_PREFLIGHT_REQUIRED')
-        need(v['source_sha']==SOURCE_SHA and v['frontend_version']==FRONTEND and v['baseline_source_sha']==BASE_SOURCE and v['baseline_frontend_version']==BASE_FRONTEND and v['schema_revision']==REVISION and v['static_only'] is True and v['existing_image_policies_and_data_preserved'] is True and all(v[k] is False for k in ('backend_changes','database_migration','production_seed_rows','credentials_included','runtime_environment_changed','csp_changed')),'EXACT_STATIC_ONLY_SOURCE_SCOPE_REQUIRED')
+        need(v['release_scope']==SCOPE and v['sequence_metadata_compatibility']==SEQUENCE_COMPATIBILITY and v['source_sha']==SOURCE_SHA and v['frontend_version']==FRONTEND and v['baseline_source_sha']==BASE_SOURCE and v['baseline_frontend_version']==BASE_FRONTEND and v['schema_revision']==REVISION and v['static_only'] is True and v['existing_image_policies_and_data_preserved'] is True and all(v[k] is False for k in ('backend_changes','database_migration','production_seed_rows','credentials_included','runtime_environment_changed','csp_changed')),'EXACT_STATIC_ONLY_SOURCE_SCOPE_REQUIRED')
         need(set(v['changed_source_files'])==SOURCE_FILES and len(v['changed_source_files'])==3 and v['application_freeze_sha256']==APPLICATION_FREEZE_SHA and v['preflight_sha256']==a.preflight_sha256 and v['payload_sha256']==a.payload_sha256,'EXACT_STATIC_PAYLOAD_FREEZE_REQUIRED')
         need({'static/index.html','static/app-version.json'}<=set(v['files']) and all(name.startswith('static/') and self.m.static_path(name[7:]) and re.fullmatch('[a-f0-9]{64}',sha) for name,sha in v['files'].items()),'STATIC_MEMBERS_ONLY_REQUIRED')
 
@@ -100,7 +115,9 @@ class Release:
         m,p=self.m,self.proof;need(self.safe.safe_private_boundary(m,self.pins)==p['private_boundary'],'PRIVATE_RUNTIME_METADATA_DRIFT')
         need(m.credential_boundary()==p['credential_boundary'] and self.safe.protected_metadata(self.safe.GBP_ENV)==p['google_credential_metadata'],'CREDENTIAL_METADATA_DRIFT')
         row=m.BUSINESS.stat();need([row.st_dev,row.st_ino]==p['database_identity'],'DATABASE_INODE_DRIFT')
-        self.w.sequence_boundary(p['database_metadata'],self.helper.db_metadata(m.BUSINESS),recovery=recovery)
+        metadata=self.helper.db_metadata(m.BUSINESS)
+        if recovery:self.w.sequence_boundary(p['database_metadata'],metadata,recovery=True)
+        else:static_sequence_boundary(p['database_metadata'],metadata,self.w.sequence_boundary)
         need(m.schema_signature(m.BUSINESS,REVISION)==p['schema_sha256'],'EXACT_UNCHANGED_136_TABLE_SCHEMA_REQUIRED')
         if not recovery:need(self.w.evidence(self.rows())==p['rows'],'ALL_136_BUSINESS_ROW_FINGERPRINTS_MUST_REMAIN_EXACT')
         need(digest(m.tree(m.PUBLIC))==p['public_inventory_sha256'],'ORIGINAL_STATIC_DRIFT');self.nginx(updated)
@@ -118,12 +135,12 @@ class Release:
         m,a=self.m,self.args;self.helper.docker_timestamp_probe();self.boundary()
         need({p.name for p in a.release.iterdir()}=={'release.py','preflight.py','manifest.json','payload.tar.gz'},'FRESH_STATIC_STAGING_REQUIRED')
         m.extract(a.release,self.manifest);root,static=m.stage_public(a.release,self.manifest);body=m.NGINX.read_bytes();next_sha=H(next_nginx(body,self.proof['public_root'],root));self.boundary()
-        result={'stage':'GOOGLE_PHOTO_PREVIEW_PREPARED_STATIC_VERIFIED','source_sha':SOURCE_SHA,'frontend_version':FRONTEND,'schema_revision':REVISION,'table_count':136,'crm':self.proof['crm'],'preflight_sha256':a.preflight_sha256,'manifest_sha256':a.manifest_sha256,'payload_sha256':a.payload_sha256,'public_root':str(root),'public_inventory_sha256':static,'nginx_next_sha256':next_sha,'schema_sha256':self.proof['schema_sha256'],'content_security_policy_sha256':self.proof['content_security_policy_sha256'],'static_only':True,'all_136_rows_and_schema_unchanged':True,'existing_image_policies_and_data_preserved':True,'runtime_and_backend_unchanged':True,'callback_and_image_privacy_configuration_preserved':True,'database_migration':False,'container_changed_or_restarted':False,'csp_changed':False,'provider_requests':False,'business_writes':False}
+        result={'stage':'GOOGLE_PHOTO_PREVIEW_PREPARED_STATIC_VERIFIED','release_scope':SCOPE,'sequence_metadata_compatibility':SEQUENCE_COMPATIBILITY,'source_sha':SOURCE_SHA,'frontend_version':FRONTEND,'schema_revision':REVISION,'table_count':136,'crm':self.proof['crm'],'preflight_sha256':a.preflight_sha256,'manifest_sha256':a.manifest_sha256,'payload_sha256':a.payload_sha256,'public_root':str(root),'public_inventory_sha256':static,'nginx_next_sha256':next_sha,'schema_sha256':self.proof['schema_sha256'],'content_security_policy_sha256':self.proof['content_security_policy_sha256'],'static_only':True,'all_136_rows_and_schema_unchanged':True,'existing_image_policies_and_data_preserved':True,'runtime_and_backend_unchanged':True,'callback_and_image_privacy_configuration_preserved':True,'database_migration':False,'container_changed_or_restarted':False,'csp_changed':False,'provider_requests':False,'business_writes':False}
         sha=self.record('prepared.json',result);return {**result,'receipt_sha256':sha}
 
     def reviewed(self):
         a,m=self.args,self.m;need(re.fullmatch('[a-f0-9]{64}',a.review_sha256 or ''),'PREPARED_INDEPENDENT_REVIEW_REQUIRED');r=json.loads(m.read(a.release/'prepared.json',a.review_sha256))
-        need(r['stage']=='GOOGLE_PHOTO_PREVIEW_PREPARED_STATIC_VERIFIED' and r['source_sha']==SOURCE_SHA and r['frontend_version']==FRONTEND and r['schema_revision']==REVISION and r['table_count']==136 and r['crm']==self.proof['crm'] and r['schema_sha256']==self.proof['schema_sha256'] and r['content_security_policy_sha256']==self.proof['content_security_policy_sha256'],'EXACT_PREPARED_STATIC_SCOPE_REQUIRED')
+        need(r['stage']=='GOOGLE_PHOTO_PREVIEW_PREPARED_STATIC_VERIFIED' and r['release_scope']==SCOPE and r['sequence_metadata_compatibility']==SEQUENCE_COMPATIBILITY and r['source_sha']==SOURCE_SHA and r['frontend_version']==FRONTEND and r['schema_revision']==REVISION and r['table_count']==136 and r['crm']==self.proof['crm'] and r['schema_sha256']==self.proof['schema_sha256'] and r['content_security_policy_sha256']==self.proof['content_security_policy_sha256'],'EXACT_PREPARED_STATIC_SCOPE_REQUIRED')
         need(r['manifest_sha256']==a.manifest_sha256 and r['payload_sha256']==a.payload_sha256 and r['preflight_sha256']==a.preflight_sha256 and r['public_root']==str(self.public),'EXACT_PREPARED_IDENTITIES_REQUIRED')
         need(all(r[k] is True for k in ('static_only','all_136_rows_and_schema_unchanged','existing_image_policies_and_data_preserved','runtime_and_backend_unchanged','callback_and_image_privacy_configuration_preserved')) and all(r[k] is False for k in ('database_migration','container_changed_or_restarted','csp_changed','provider_requests','business_writes')),'EXACT_STATIC_PREPARATION_REQUIRED')
         need(m.verify_public(self.public,self.manifest)==r['public_inventory_sha256'],'PREPARED_PUBLIC_BYTES_DRIFT');return r
@@ -140,7 +157,7 @@ class Release:
         try:
             self.replace_nginx(original,updated);m.retained().reload_nginx();self.boundary(updated=True);self.public_check();self.boundary(updated=True)
             need(m.verify_public(self.public,self.manifest)==r['public_inventory_sha256'],'FINAL_STATIC_BYTES_DRIFT')
-            result={'stage':'GOOGLE_PHOTO_PREVIEW_DEPLOYED_STATIC_VERIFIED','deployed':True,'source_sha':SOURCE_SHA,'frontend_version':FRONTEND,'backend_source_sha':BASE_SOURCE,'schema_revision':REVISION,'table_count':136,'schema_sha256':self.proof['schema_sha256'],'crm':self.proof['crm'],'preflight_sha256':a.preflight_sha256,'prepared_sha256':a.review_sha256,'public_root':str(self.public),'public_inventory_sha256':r['public_inventory_sha256'],'nginx_sha256':H(m.NGINX.read_bytes()),'content_security_policy_sha256':self.proof['content_security_policy_sha256'],'all_136_rows_and_schema_unchanged':True,'existing_image_policies_and_data_preserved':True,'runtime_and_backend_unchanged':True,'callback_and_image_privacy_configuration_preserved':True,'scheduler_enabled':True,'scheduler_activation_from':ACTIVATION_FROM,'static_only':True,'database_migration':False,'database_restored':False,'container_changed_or_restarted':False,'csp_changed':False,'provider_requests':False,'business_writes':False,'no_task_lease_schedule_or_public_post_created_by_tool':True}
+            result={'stage':'GOOGLE_PHOTO_PREVIEW_DEPLOYED_STATIC_VERIFIED','release_scope':SCOPE,'sequence_metadata_compatibility':SEQUENCE_COMPATIBILITY,'sequence_values_written_by_tool':False,'deployed':True,'source_sha':SOURCE_SHA,'frontend_version':FRONTEND,'backend_source_sha':BASE_SOURCE,'schema_revision':REVISION,'table_count':136,'schema_sha256':self.proof['schema_sha256'],'crm':self.proof['crm'],'preflight_sha256':a.preflight_sha256,'prepared_sha256':a.review_sha256,'public_root':str(self.public),'public_inventory_sha256':r['public_inventory_sha256'],'nginx_sha256':H(m.NGINX.read_bytes()),'content_security_policy_sha256':self.proof['content_security_policy_sha256'],'all_136_rows_and_schema_unchanged':True,'existing_image_policies_and_data_preserved':True,'runtime_and_backend_unchanged':True,'callback_and_image_privacy_configuration_preserved':True,'scheduler_enabled':True,'scheduler_activation_from':ACTIVATION_FROM,'static_only':True,'database_migration':False,'database_restored':False,'container_changed_or_restarted':False,'csp_changed':False,'provider_requests':False,'business_writes':False,'no_task_lease_schedule_or_public_post_created_by_tool':True}
             sha=self.record('deployed.json',result);return {**result,'receipt_sha256':sha}
         except BaseException:self.recover_internal(r);raise
 
@@ -150,7 +167,7 @@ class Release:
         m.cleanup_nginx_temp(original,updated)
         if body==updated:self.replace_nginx(body,original)
         m.retained().reload_nginx();self.boundary(recovery=True)
-        result={'stage':'GOOGLE_PHOTO_PREVIEW_ORIGINAL_STATIC_RESUMED','source_sha':BASE_SOURCE,'frontend_version':BASE_FRONTEND,'crm':self.proof['crm'],'independent_business_rows_preserved':True,'database_restored':False,'container_changed_or_restarted':False,'csp_changed':False,'provider_requests':False};self.record('recovery-'+str(time.time_ns())+'.json',result);return result
+        result={'stage':'GOOGLE_PHOTO_PREVIEW_ORIGINAL_STATIC_RESUMED','release_scope':SCOPE,'source_sha':BASE_SOURCE,'frontend_version':BASE_FRONTEND,'crm':self.proof['crm'],'independent_business_rows_preserved':True,'database_restored':False,'container_changed_or_restarted':False,'csp_changed':False,'provider_requests':False};self.record('recovery-'+str(time.time_ns())+'.json',result);return result
 
     def recover(self):
         r=self.reviewed();a=self.args;need(not (a.release/'deployed.json').exists(),'SUCCESSFUL_DEPLOYMENT_REQUIRES_SEPARATE_RECOVERY_REVIEW')

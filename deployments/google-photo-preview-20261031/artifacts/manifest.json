@@ -1141,8 +1141,14 @@
     "app/start_app_v2.sh": "1ef8a7dc0170fbd250ddaffe082b72a61f8806f4b45b8506c2f8d3a2c1de28ab",
     "app/todo.md": "226c418545e884b4a51ce2b8fe384aa651b35323238249e0c9885fca0f24fb20"
   },
+  "release_scope": "google-photo-preview-retry",
   "runtime_environment_changed": false,
   "schema_revision": "acd7c9d0e136",
+  "sequence_metadata_compatibility": {
+    "all_136_business_rows_exact": true,
+    "all_other_metadata_exact": true,
+    "only_monotonic_counter": "monthly_deduction_rates"
+  },
   "source_sha": "04a42942ce128f74c77db9250f2e7a28485b5c32",
   "static_only": true
 }

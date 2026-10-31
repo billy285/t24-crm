@@ -1,0 +1,91 @@
+{
+  "actual_metadata_diagnostic_sha256": "082c4c7cafe5f2f46fd5175edf74b48fdaa9660362073fd59e104104fe11dfed",
+  "actual_preflight_sha256": "f5d4a2b49070ec4dd50b90db3d24a8a956d8272a64147ec10d6addaeb1838b68",
+  "all_136_business_rows_schema_pragma_and_other_counters_exact": true,
+  "application_freeze_sha256": "8928e4e59b3a65ac48731e39019fcf6f36bd33a912d1bf771fd0315616c6b2a5",
+  "backend_changes": false,
+  "container_changed_or_restarted": false,
+  "csp_changed": false,
+  "database_migration": false,
+  "database_or_sequence_values_written_by_tool": false,
+  "deterministic_identical_retry_builds": 2,
+  "existing_recovery_sequence_guard_unchanged": true,
+  "failed_attempt_carrier": "c0132c4644ef146a2fd69cc98fe465c78e70ebbb",
+  "failed_attempt_directory_retained_unchanged": "/opt/t24-crm/releases/google-photo-preview-04a42942ce12-20261031",
+  "failed_attempt_release_scope": "google-photo-preview",
+  "files": {
+    "deployments/google-photo-preview-20261031/README.md": {
+      "bytes": 5191,
+      "sha256": "a72a628763eeb33be7cd06a89abe6630deee91f4639b86027183b5d7035fee26"
+    },
+    "deployments/google-photo-preview-20261031/artifacts/manifest.json": {
+      "bytes": 135282,
+      "sha256": "85cc988b9d96c63f2c332988bf6316d41c0609031d63b1c41046efb34a22d119"
+    },
+    "deployments/google-photo-preview-20261031/artifacts/payload.tar.gz": {
+      "bytes": 2161318,
+      "sha256": "a258ff93b585f212c093c84d89eb875827cade850d636b37dc4f68d92614c42e"
+    },
+    "deployments/google-photo-preview-20261031/build_payload.py": {
+      "bytes": 7428,
+      "sha256": "6edc56aaa5c5674315732b1afe7d48d69030d31878d1f325751efd46a9b919f9"
+    },
+    "deployments/google-photo-preview-20261031/generate_preflight_command.py": {
+      "bytes": 1773,
+      "sha256": "0087a73ac252fbf38bf212b87017fb8e6f78d8711906e7d89d256f9014b247b9"
+    },
+    "deployments/google-photo-preview-20261031/make_commands.py": {
+      "bytes": 9776,
+      "sha256": "80b512b28b243fa8c159046326d672eca7c3dda45d3bd8ec618a0a4803eff7a0"
+    },
+    "deployments/google-photo-preview-20261031/preflight.py": {
+      "bytes": 11110,
+      "sha256": "a37a2a742ab97fac3194fb902b0e687bd847d2166ec82b09608947d437eccfbb"
+    },
+    "deployments/google-photo-preview-20261031/release.py": {
+      "bytes": 20307,
+      "sha256": "2b6213b00960ce4b8ec55baf2cb3d92eb029584bc49006a18441dfaa89552312"
+    },
+    "deployments/google-photo-preview-20261031/test_commands.py": {
+      "bytes": 6936,
+      "sha256": "ef97716b05db22810027724fcecc82cb6602f80d1d4d338c8e4e8b88b177f648"
+    },
+    "deployments/google-photo-preview-20261031/test_metadata_boundary.py": {
+      "bytes": 5811,
+      "sha256": "f11f9ba90fe02c6260762560879f8e58b57765feec69c0ab16e23e3a86e0db2a"
+    },
+    "deployments/google-photo-preview-20261031/test_package.py": {
+      "bytes": 6375,
+      "sha256": "daa9785531242f3196f69f252727d59f4715b84764a4df20ff60836ae97895fb"
+    },
+    "deployments/google-photo-preview-20261031/test_preflight.py": {
+      "bytes": 9721,
+      "sha256": "28780f764c29113dd5a70bd894b2d7196585e114aba04096af190b3c847904fe"
+    },
+    "deployments/google-photo-preview-20261031/test_release.py": {
+      "bytes": 11005,
+      "sha256": "82902a4d727a0be9e06e5f4d52b08f689745cb100f60b437cc62fedf4eea147a"
+    }
+  },
+  "frontend_version": "f3e9e6f7bfa0",
+  "manifest_only_added_retry_scope_and_observed_counter_declaration": true,
+  "normalizer_does_not_mutate_inputs": true,
+  "old_manifest_sha256": "0684397d20a269d493ef8c683410493aea9dfb9facaaecd1e0e583592e25b2e5",
+  "payload_unchanged_from_failed_attempt": true,
+  "production_executed": false,
+  "provider_requests": false,
+  "retry_release_scope": "google-photo-preview-retry",
+  "sequence_metadata_compatibility": {
+    "all_136_business_rows_exact": true,
+    "all_other_metadata_exact": true,
+    "only_monotonic_counter": "monthly_deduction_rates"
+  },
+  "source_sha": "04a42942ce128f74c77db9250f2e7a28485b5c32",
+  "stage": "GOOGLE_PHOTO_PREVIEW_RETRY_COMPATIBILITY_PACKAGE_FROZEN_AWAIT_INDEPENDENT_REVIEW",
+  "static_only": true,
+  "test_sequence_values_are_synthetic_not_live_diagnostic_records": true,
+  "tests": {
+    "command": "python -m pytest deployments/google-photo-preview-20261031 -q",
+    "passed": 89
+  }
+}

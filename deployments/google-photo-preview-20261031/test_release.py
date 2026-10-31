@@ -127,3 +127,19 @@ def test_unknown_nginx_change_after_reload_is_never_overwritten(publisher):
 def test_missing_final_pins_refuse_before_loading_helpers(monkeypatch):
     monkeypatch.setattr(r,'SOURCE_SHA',None);monkeypatch.setattr(r,'protected_read',lambda *_:pytest.fail('read before pins'))
     with pytest.raises(RuntimeError,match='ACTUAL_REVIEWED_SOURCE_FRONTEND_AND_FREEZE_REQUIRED'):r.Release(SimpleNamespace())
+
+
+def test_scoped_monthly_sequence_can_advance_while_all_136_business_rows_stay_exact(publisher):
+    v=publisher;before=copy.deepcopy(v.proof['database_metadata']);before['sequence_values']['monthly_deduction_rates']=42;before['sequence_sha256']=r.digest(sorted(before['sequence_values'].items()));v.proof['database_metadata']=copy.deepcopy(before)
+    current=copy.deepcopy(before);current['sequence_values']['monthly_deduction_rates']=90;current['sequence_sha256']=r.digest(sorted(current['sequence_values'].items()));v.helper.db_metadata=lambda _:copy.deepcopy(current)
+    old_rows=copy.deepcopy(v.m.rows);prepared(v);result=v.activate()
+    assert result['sequence_metadata_compatibility']==r.SEQUENCE_COMPATIBILITY and result['sequence_values_written_by_tool'] is False and v.m.rows==old_rows
+    assert v.proof['database_metadata']==before and current['sequence_values']['monthly_deduction_rates']==90
+
+
+def test_monthly_counter_exception_never_allows_finance_row_changes(publisher):
+    v=publisher;before=copy.deepcopy(v.proof['database_metadata']);before['sequence_values']['monthly_deduction_rates']=42;before['sequence_sha256']=r.digest(sorted(before['sequence_values'].items()));v.proof['database_metadata']=copy.deepcopy(before)
+    current=copy.deepcopy(before);v.helper.db_metadata=lambda _:copy.deepcopy(current);prepared(v)
+    current['sequence_values']['monthly_deduction_rates']+=1;current['sequence_sha256']=r.digest(sorted(current['sequence_values'].items()));v.m.rows['table_0']['rows_sha256']=r.H(b'UNAUTHORIZED_FINANCE_ROW_CHANGE')
+    with pytest.raises(RuntimeError,match='ALL_136_BUSINESS_ROW_FINGERPRINTS_MUST_REMAIN_EXACT'):v.activate()
+    assert b'/public/new' not in v.m.NGINX.read_bytes()

@@ -1,0 +1,34 @@
+{
+  "actual_diagnostic_sha256": "082c4c7cafe5f2f46fd5175edf74b48fdaa9660362073fd59e104104fe11dfed",
+  "actual_preflight_sha256": "f5d4a2b49070ec4dd50b90db3d24a8a956d8272a64147ec10d6addaeb1838b68",
+  "application_tree_unchanged_from_source": true,
+  "checks": [
+    "Observed monthly_deduction_rates counter alone may monotonically increase; original proof and current dictionaries remain unmodified",
+    "Original guard first validates metadata shape, counter hashes, PRAGMA and existence, then strict comparator receives a locally normalized copy",
+    "Different sequence keys, other counter changes, monthly regression, forged hashes, PRAGMA changes and any 136-table row/schema drift still reject",
+    "No DB/sequence writes, container changes, app changes, CSP/header changes or public Google actions introduced",
+    "Recovery uses existing reviewed metadata and independent-row-preservation behavior",
+    "New staging/static scope retains failed original directory; no blind rerun of prior wrapper"
+  ],
+  "code_freeze_sha256": "93b64760303729ca08b8279ca34ca92a052f145b332f578ffebf702597262171",
+  "frontend_version": "f3e9e6f7bfa0",
+  "frozen_files_verified": 13,
+  "independent_publisher_tests_passed": 89,
+  "limits": [
+    "Actual carrier membership/raw bytes and next exact wrapper must be independently reviewed before execution",
+    "Actual prepared and deployed receipts still required",
+    "This does not approve real Google posting or scheduling; draft content requires owner confirmation"
+  ],
+  "manifest_only_two_fields_added": true,
+  "manifest_sha256": "85cc988b9d96c63f2c332988bf6316d41c0609031d63b1c41046efb34a22d119",
+  "new_scope": "google-photo-preview-retry",
+  "payload_identical_to_immutable_failed_carrier": true,
+  "payload_sha256": "a258ff93b585f212c093c84d89eb875827cade850d636b37dc4f68d92614c42e",
+  "protected_source_files_verified": 980,
+  "release_sha256": "2b6213b00960ce4b8ec55baf2cb3d92eb029584bc49006a18441dfaa89552312",
+  "result": "PASS_FOR_IMMUTABLE_CARRIER_PREPARATION_ONLY",
+  "source_sha": "04a42942ce128f74c77db9250f2e7a28485b5c32",
+  "stage": "GOOGLE_PHOTO_PREVIEW_RETRY_CODE_AND_PACKAGE_INDEPENDENT_REVIEW",
+  "static_member_count": 140,
+  "tool_package_freeze_sha256": "b53f91d921433acd204090b5067889ac787d21935aea7a0050716b394220dc6a"
+}

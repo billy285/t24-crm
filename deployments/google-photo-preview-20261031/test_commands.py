@@ -24,7 +24,7 @@ def carrier(tmp_path, monkeypatch):
     directory = repo / m.DIRECTORY; (directory / 'artifacts').mkdir(parents=True)
     for name in ('release.py', 'preflight.py'): (directory / name).write_bytes((HERE / name).read_bytes())
     payload = b'SYNTHETIC_PAYLOAD'; (directory / 'artifacts/payload.tar.gz').write_bytes(payload)
-    manifest = {'source_sha': source, 'frontend_version': 'f' * 12, 'schema_revision': m.r.REVISION, 'preflight_sha256': 'a' * 64, 'database_migration': False, 'static_only':True, 'backend_changes':False, 'csp_changed':False, 'production_seed_rows': False, 'existing_image_policies_and_data_preserved': True, 'runtime_environment_changed': False, 'payload_sha256': m.H(payload), 'application_freeze_sha256': 'd' * 64}
+    manifest = {'release_scope': m.r.SCOPE, 'sequence_metadata_compatibility': m.r.SEQUENCE_COMPATIBILITY, 'source_sha': source, 'frontend_version': 'f' * 12, 'schema_revision': m.r.REVISION, 'preflight_sha256': 'a' * 64, 'database_migration': False, 'static_only':True, 'backend_changes':False, 'csp_changed':False, 'production_seed_rows': False, 'existing_image_policies_and_data_preserved': True, 'runtime_environment_changed': False, 'payload_sha256': m.H(payload), 'application_freeze_sha256': 'd' * 64}
     (directory / 'artifacts/manifest.json').write_bytes(m.r.encoded(manifest)); git('add', '.'); git('commit', '-qm', 'tool'); commit = git('rev-parse', 'HEAD').decode().strip()
     monkeypatch.setattr(m, 'HERE', directory); monkeypatch.setattr(m.r, 'SOURCE_SHA', source); monkeypatch.setattr(m.r, 'FRONTEND', 'f' * 12); monkeypatch.setattr(m.r,'APPLICATION_FREEZE_SHA','d'*64); monkeypatch.chdir(repo)
     return commit, summary(m.r), directory, git
@@ -32,7 +32,7 @@ def carrier(tmp_path, monkeypatch):
 
 def prepared(carrier):
     commit, value, directory, git = carrier
-    result = {'stage': 'GOOGLE_PHOTO_PREVIEW_PREPARED_STATIC_VERIFIED', 'source_sha': m.r.SOURCE_SHA, 'frontend_version': m.r.FRONTEND, 'schema_revision': m.r.REVISION, 'manifest_sha256': m.H((directory / 'artifacts/manifest.json').read_bytes()), 'payload_sha256': m.H((directory / 'artifacts/payload.tar.gz').read_bytes()), 'preflight_sha256': value['sha256'], '_canonical_sha256': 'b' * 64}
+    result = {'release_scope': m.r.SCOPE, 'sequence_metadata_compatibility': m.r.SEQUENCE_COMPATIBILITY, 'stage': 'GOOGLE_PHOTO_PREVIEW_PREPARED_STATIC_VERIFIED', 'source_sha': m.r.SOURCE_SHA, 'frontend_version': m.r.FRONTEND, 'schema_revision': m.r.REVISION, 'manifest_sha256': m.H((directory / 'artifacts/manifest.json').read_bytes()), 'payload_sha256': m.H((directory / 'artifacts/payload.tar.gz').read_bytes()), 'preflight_sha256': value['sha256'], '_canonical_sha256': 'b' * 64}
     result.update(table_count=136, database_migration=False, schema_sha256=value['schema_sha256'], existing_image_policies_and_data_preserved=True, callback_and_image_privacy_configuration_preserved=True, content_security_policy_sha256=value['content_security_policy_sha256'], crm=value['crm'])
     for name in ('static_only', 'all_136_rows_and_schema_unchanged', 'runtime_and_backend_unchanged'): result[name] = True
     for name in ('provider_requests', 'business_writes', 'container_changed_or_restarted', 'csp_changed'): result[name] = False
