@@ -1,0 +1,45 @@
+{
+  "component_recovery_regressions": "six transpiled actual-component checks in independent review",
+  "environment": "loopback synthetic SQLite, no production credentials, Google/AI providers replaced by in-memory fakes",
+  "final_build_checks": [
+    "readonly ops12 can inspect assigned task but has no edit/create plan actions",
+    "uninvited ops13 has empty customer filter and empty task list",
+    "390px content calendar and fixed plan-footer layout inspected",
+    "320px content calendar and separate manual versus provider statistics inspected",
+    "final invalid month input shows validation error instead of workspace crash, valid month/statistics remain usable"
+  ],
+  "flows_before_final_callback_patch": [
+    "one shared plan produced independent Google and Instagram drafts with distinct content and preserved assignee/timezone",
+    "private authenticated original converted to fixed image, previewed with hash, saved onto task, submitted and owner approved",
+    "no image public lease or owner policy enabled by prepare or approval"
+  ],
+  "frontend_version": "33047aa593a2",
+  "limitations": [
+    "no real Google fetch of new fixed image or public post",
+    "no real Facebook/Instagram OAuth or automatic provider publication",
+    "synthetic browser roles do not replace prior API attack and actual-main middleware tests"
+  ],
+  "production_or_real_provider_writes": false,
+  "screenshots": [
+    {
+      "path": "outputs/media-workflow-20261031/local-approved-image.png",
+      "sha256": "c43840c33776f9d2dd90634c9329a1b915c49bc858be7ef3333e53b9ce0a6776"
+    },
+    {
+      "path": "outputs/media-workflow-20261031/local-content-plan.png",
+      "sha256": "f47f12fed686ca05c0f78c78a65f0886432396a675706de228f902d8f9d3a383"
+    },
+    {
+      "path": "outputs/media-workflow-20261031/local-mobile-320-calendar.png",
+      "sha256": "750c3f243843f807f1fa495c6c5a996c53276bf28ec6063f88462d8eeae77b9e"
+    },
+    {
+      "path": "outputs/media-workflow-20261031/local-mobile-320-final-statistics.png",
+      "sha256": "ef3127e2ec5dba94966341220bde96ac1fe938b0d1bc8870804a6562b2e03522"
+    },
+    {
+      "path": "outputs/media-workflow-20261031/local-mobile-390-plan-footer.png",
+      "sha256": "d7a0cd4fb937d01fad8875ee4b5a6b0448c77b58e4d66886669c57b7dd67adcb"
+    }
+  ]
+}

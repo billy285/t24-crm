@@ -1,0 +1,81 @@
+{
+  "application_freeze_sha256": "7baccdca74c1d4abb31dd0bc4c0afc4c9ed8de893d55d2f9b2686e1ff0cea7ef",
+  "blocking_findings": [],
+  "files": {
+    "deployments/media-workflow-20261031/artifacts/manifest.json": {
+      "bytes": 136399,
+      "sha256": "4be7574f6fe6cbfee0035e2780d4072a0e45eb3b8663b71529d86ca6dbc3b5c3"
+    },
+    "deployments/media-workflow-20261031/artifacts/payload.tar.gz": {
+      "bytes": 2212626,
+      "sha256": "c8f887114d58e732d14cc86f0e2b0d7b0bf714b37b5624c9a88ab006b61e374b"
+    },
+    "deployments/media-workflow-20261031/build_payload.py": {
+      "bytes": 8755,
+      "sha256": "bfa2ba7ae5776961790e4c69b2a6b8e7e26e95bf96eaaf5dbf92ecda33b23f76"
+    },
+    "deployments/media-workflow-20261031/make_commands.py": {
+      "bytes": 9601,
+      "sha256": "0fee5f372e0d4337d022936ec1e870b43403c670893f12b0d53f67c73dd3606e"
+    },
+    "deployments/media-workflow-20261031/preflight.py": {
+      "bytes": 10835,
+      "sha256": "a776108b6c877d8909fe0e41a5b0fb112d663acc9189e0db7f88883a97c39164"
+    },
+    "deployments/media-workflow-20261031/release.py": {
+      "bytes": 66450,
+      "sha256": "0ca6e6af5a32769740cc6bef4d51c6cf20aa6157d0ef8757f3ba84a9975d9eb3"
+    },
+    "outputs/media-workflow-20261031/actual-preflight-independent-review-v2.json": {
+      "bytes": 2563,
+      "sha256": "9fdd56ef1085cedfc6a2003c3753cc39570f9881e5dcf91310dbeafc7feaddfd"
+    },
+    "outputs/media-workflow-20261031/application-final-independent-review.json": {
+      "bytes": 9163,
+      "sha256": "aafeafe9a94310f5923c847b779fac0e414eb9c481ca5cdce30845636633acb4"
+    },
+    "outputs/media-workflow-20261031/application-freeze.json": {
+      "bytes": 4800,
+      "sha256": "7baccdca74c1d4abb31dd0bc4c0afc4c9ed8de893d55d2f9b2686e1ff0cea7ef"
+    },
+    "outputs/media-workflow-20261031/local-browser-qa.json": {
+      "bytes": 2300,
+      "sha256": "ff638dbe49c180f2885b8ce7846a307bf7115f8b71990e1f07230144585ce678"
+    },
+    "outputs/media-workflow-20261031/tool-package-freeze.json": {
+      "bytes": 3889,
+      "sha256": "f1ccd9b8ff0447e984935e34c5ca5185e07ff1a9df03faba88b0c40dd27d94e4"
+    }
+  },
+  "final_author_tests": {
+    "passed": 154,
+    "receipt_sha256": "f1ccd9b8ff0447e984935e34c5ca5185e07ff1a9df03faba88b0c40dd27d94e4",
+    "reviewer_independent_test_rerun": false
+  },
+  "frontend_version": "33047aa593a2",
+  "limits": [
+    "Actual carrier/rawdownload/prepare wrapper remain to verify before server prepare.",
+    "Actual isolated preparedreceipt and switch wrappers need separate review.",
+    "No real Google image fetch/publicpost, Metaautomaticpublish or Google video acceptance claimed.",
+    "Existing unrelated Finance.tsx5778 type error remains; no scoped new error per root verification."
+  ],
+  "members": {
+    "runtime_backend": 13,
+    "static_assets": 140,
+    "total": 153
+  },
+  "phase": "FINAL_ACTUAL_WORKFLOW_PACKAGE_INDEPENDENT_REVIEW",
+  "preflight_sha256": "37d581b74349708c134e258f3298bd74ea5608e781d45680bce1e6e25a35fe4d",
+  "reviewer_server_browser_or_provider_actions": false,
+  "reviewer_source_edits": false,
+  "source_sha": "c114242205af98c33a7c2ad435409e0c84ebd085",
+  "status": "PASS_FOR_IMMUTABLE_CARRIER_AND_PREPARE_WRAPPER_REVIEW",
+  "verified": [
+    "Only three final source/frontend/freeze constants differ from code-only reviewed release helper; every other reviewed tool/test byte matches prior code review.",
+    "Independent builder rerun reconstructs exact deterministic payload and canonical manifest bytes with committed32source/localsource/freeze/fullprotectedinventory/FEguards.",
+    "All payload members are unique regular canonical644mtime0 runtime/static files, size/hash verified; no credentials/database/tests/originalimages.",
+    "13 runtime files plus compiled static assets; actualGit app delta32, new six-table policyOFF migration shape bound bymanifest.",
+    "Refreshed actual preflight37d581... and committedsource c114... / FE33047aa593a2 bound into package.",
+    "Root browser QA receipt inspected: desktopplan/images flow plus finalbuild phone320/390, readonly/uninvited scopes; no real policy enabled or real public post."
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "app_edits_by_reviewer": [
+    "app/frontend/src/components/MediaPlanningWorkspace.tsx"
+  ],
+  "baseline_source_sha": "6a7c0f7ee8d1b5eb9e24a5f0027cce24930d0667",
+  "blocking_findings": [],
+  "files": {
+    "app/backend/alembic/versions/acd7c9d0e136_media_content_plans.py": "7d7f5265e53d76275ea77e0315ec3f8e6578460059a755ec7bc4a8e49fdcaadc",
+    "app/backend/alembic/versions/fbc6b8c9d025_media_publication_images.py": "0332ed2ac548e83830e1a660701a0bf33564c54fa70c0d91a3719d0e822de821",
+    "app/backend/main.py": "ea256cf1dc2d5366c11b63d0b15830533cf988ec33080a42c4f763cc350cc99f",
+    "app/backend/models/media_planning.py": "8cb44ffa33cd62cd0d5d6936a103e3804f7fe0a4d61c3907459f677dddb14b95",
+    "app/backend/models/media_publication_images.py": "1b40de643a79904ae02341f39f835dc8eb1d20e83c1b7a5589e1794bfe698c50",
+    "app/backend/routers/media_operations.py": "89f13f80a32d099a3f1d978751273398ee2d75ebae1858351a5da1dfbd3cb5e4",
+    "app/backend/routers/media_planning.py": "d15188b0e8cde7b53d11206d4e6a689c7288110b2d663cb9d7f30c99bb93eb43",
+    "app/backend/routers/media_publication_images.py": "a122ada516cb7eed80e002c1fbb0e5a55cd6ad57d534a6c52502208a147f3df8",
+    "app/backend/services/google_business.py": "aee16b8d281be5c88e06d7150882cd0a10ae4e20b89b2521ca4bd24746b8ed8f",
+    "app/backend/services/google_business_management.py": "98c68806871f26cbb3600eba56d99ab145373310dd4e2f3c25cfe38579524fd4",
+    "app/backend/services/media_operations.py": "770a9faec2adc3da198805c5c07521c203c02726f05be6094728cf58d2af3d4c",
+    "app/backend/services/media_planning.py": "94cd0406fad30cc5222180b4bdc2bb4d3e0adb5ae4b104ad3572dcefc0289e88",
+    "app/backend/services/media_publication_images.py": "8e2ea1a8ea6a4d55260936c4d7d2095038f6ab4c092c7ed093a27593a6569ce5",
+    "app/backend/tests/test_media_planning.py": "a8178678cd29bae61f79047f1c533fc8dcf413160512054b3b5ea12f015590d7",
+    "app/backend/tests/test_media_publication_images.py": "3e45e9e1069848f537d8b699bbf4b7a689e87f8becea5ce8a09f735f9c28a641",
+    "app/backend/tests/test_media_publication_images_middleware.py": "82f22fc732aec21c5e9f4f0db6f62acd5fb3eae87ef69964457aec20182ee01c",
+    "app/backend/tests/test_media_publication_images_security.py": "107eb913ee907e184eb21384abff2f06fabac844adeca7feac2d09eec805f28e",
+    "app/frontend/src/components/GoogleBusinessManagement.tsx": "35a1388dbca89a17376d769ec6bdc1fd769ef18918c50ff645b71de5eb795e9d",
+    "app/frontend/src/components/GoogleBusinessWorkspace.tsx": "c44f8ed5dff8897f6e106e8336c732601574075da5cd549c852ffed2a1a7aece",
+    "app/frontend/src/components/MediaPlanningWorkspace.tsx": "69850c797e5a43ef8ef47240d76510678d3469641fedeb87d33fb315608ffb59",
+    "app/frontend/src/components/MediaPublicationImage.tsx": "91bf8ea9f18440bab2c3dc9660870f00ae86ba221049109c347b69053fdc3b57",
+    "app/frontend/src/components/MediaTeamMaterials.tsx": "6cfc8ed027e264aab5fb76472589aa9a32e63f16f6ca110438c7d333a15e6477",
+    "app/frontend/src/components/media-planning.css": "fc5bec99e8bff5cf4af97d995235bd7ca208d87fbcd886f3b95e9d9c8b64d485",
+    "app/frontend/src/components/media-publication-image.css": "ba55bbadfdc2c6f76d7fc2161026ffbf2b2fb62ab8501342ab500ddd709ae69a",
+    "app/frontend/src/components/media-team-materials.css": "8e0170ce405b81d9d8b4ce3386b4687aa021b34a6cedae664869f682284a12d5",
+    "app/frontend/src/lib/google-business-api.ts": "4943123dea27b877ea0fef0d021e946f62b61901348d2ff2a19a26bee5ffe24d",
+    "app/frontend/src/lib/media-operations-api.ts": "63612b2511e65ca37c0a4e6e55dd0555086d93db780cd22d0a2919b019fb28bb",
+    "app/frontend/src/lib/media-planning-api.ts": "50975ccc9b17b8e3d9f8b02aea8cbf03fead227eecd2f3128049341268e7df88",
+    "app/frontend/src/lib/media-publication-images.ts": "8195a3593c54ee6e5aa302b6cb09e788129f4423764a151bf5f4290af5c8e816",
+    "app/frontend/src/pages/MediaOperations.tsx": "68c8dad1ef9de288a05ce6c4ed18c79335d55f240c66bd5c9f9405dc1bb7d565",
+    "app/frontend/src/pages/media-operations.css": "d65616fc18c9bc1fdb6306f7635c4d414e1ea6a324b03b9403310e39cc4cea92",
+    "app/frontend/tests/media-publication-images.test.mjs": "06aa538bb517f1287580292243ba5337195dfceee8b4ac22cf0c5a9b07153e22"
+  },
+  "git_commits_by_reviewer": false,
+  "head_at_review": "4db399f58ee59ffe794b5b614ad8ac388cddffeb",
+  "note": "Current source review and focused reruns supplement prior hash-bound image/security reviews; do not sum overlapping test counts as unique coverage.",
+  "production_or_provider_actions_by_reviewer": false,
+  "remaining_gates": [
+    "Root final production/browser/mobile/readonly acceptance is separate.",
+    "Rebuild after narrow planning frontend fixes and bind resulting FE/source SHA in unified freeze.",
+    "Actual payload, prepared and activation wrappers/receipts require final independent verification.",
+    "No live public Google fixed-image dispatch has been performed. Owner delivery policy remains OFF.",
+    "Meta platform automatic publishing, Google video publication and 95-point global UI acceptance are not claimed."
+  ],
+  "resolved_findings": [
+    {
+      "area": "planning month input",
+      "fix": "Validate planningMonthRange before storing manually entered month; out-of-range input cannot crash render."
+    },
+    {
+      "area": "ambiguous save retry",
+      "fix": "Definitive 4xx on original-request retry preserves pending request identity and navigation hold while prior result is unknown."
+    },
+    {
+      "area": "discard while saving",
+      "fix": "Clear discard prompt when send begins; guard close/discard/save with immediate busy ref, pending request ref and busy/unknown state."
+    },
+    {
+      "area": "rapid repeated save",
+      "fix": "Save guard runs before creating or overwriting pending request, retaining one original idempotency key."
+    }
+  ],
+  "reviewed_evidence_sha256": {
+    "outputs/media-images-20261031/backend-freeze-v2.json": "e0597b1713313422135f6db49688a80443a63e41f272cf3f3beaa4aed235520f",
+    "outputs/media-images-20261031/security-independent-review-v2.json": "3de9492dd5ad91ad9f4d70d9247ebaf0b5b5fa2e00971a0593e6abd54c9fe8de",
+    "outputs/media-images-20261031/security-independent-review.json": "d924849ece8670221d76b67a8a9191c3db3b384358adb2a1d73f5ca9f666e6fb",
+    "outputs/media-publication-images-20261031/frontend-freeze.json": "7ec7e699a97b99e69dcb5ae48b96926f3105b5dfba69a27c29f512a491c0f646",
+    "outputs/media-workflow-20261031/planning-frontend-independent-review-v2.json": "e22e43f071509bd94363fad9cf200b6a32d99f1d2432823c1e106129cc399539"
+  },
+  "scope": {
+    "app_files": 32,
+    "backend_runtime": 13,
+    "frontend_source": 14,
+    "tests": 5
+  },
+  "stage": "FINAL_COMBINED_APPLICATION_LOCAL_REVIEW",
+  "status": "PASS_SOURCE_AND_SYNTHETIC_TESTS_AWAIT_BROWSER_PACKAGE_AND_DEPLOYMENT",
+  "tests": [
+    {
+      "command": "PYTHONPATH=..:. python -m pytest -q tests/test_media_planning.py tests/test_media_publication_images.py tests/test_media_publication_images_security.py tests/test_media_publication_images_middleware.py",
+      "cwd": "app/backend",
+      "failed": 0,
+      "note": "Corrected invocation with required PYTHONPATH. Initial invocation lacked it, causing 11 setup import errors only; no source change for that correction.",
+      "passed": 128
+    },
+    {
+      "command": "node --test tests/media-publication-images.test.mjs",
+      "cwd": "app/frontend",
+      "failed": 0,
+      "passed": 17
+    },
+    {
+      "command": "node outputs/media-workflow-20261031/planning-frontend-runtime-regression.cjs",
+      "failed": 0,
+      "passed_checks": 6,
+      "scope": "Actual transpiled component callbacks with synthetic hooks/API; no browser/network/provider.",
+      "script_sha256": "1169259a186552bffc97d02cf878962b9c20602c8c8308ace46e1e46e9602bd4"
+    },
+    {
+      "command": "git diff --check -- app",
+      "exit_code": 0
+    }
+  ],
+  "verified_boundaries": [
+    "Exact intended app scope is 32 files. No tracked app modification outside publisher SOURCE_FILES.",
+    "Image backend V2 and frontend author freeze hashes match current bytes; prior independent image and ASGI supplement remain hash-bound.",
+    "Planning count/list/calendar/summary scope uses existing active explicit owner-invitation delivery filter and assigned operator before aggregation.",
+    "Plan create uses atomic existing write transaction, strict variants and actor-scoped request idempotency; creates drafts and create events only.",
+    "No implicit content approval, public lease, Google publication, Meta account connection or financial/permission mutation occurs on plan creation.",
+    "Task completion by completed_at, plan statuses by due_at and owner connection-scoped provider confirmation are separate metrics.",
+    "New migrations add six empty tables, no backfill or policy seed; public image delivery remains OFF until explicit owner opt-in.",
+    "Main.py exact diff contains only image-delivery-path no-referrer and logging redaction; Google statistics change only adds immutable submitted-image provenance.",
+    "Company financial calculation, closing conditions, commission attribution, customer permission and private-workspace code are outside changed scope."
+  ]
+}

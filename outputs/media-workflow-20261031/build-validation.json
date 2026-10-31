@@ -1,0 +1,17 @@
+{
+  "financial_source_changed": false,
+  "frontend_version": "33047aa593a2",
+  "git_diff_check_exit_code": 0,
+  "source_sha": "c114242205af98c33a7c2ad435409e0c84ebd085",
+  "typescript_check_exit_code": 2,
+  "typescript_errors": [
+    {
+      "code": "TS2322",
+      "in_media_workflow_scope": false,
+      "line": 5778,
+      "path": "app/frontend/src/pages/Finance.tsx",
+      "preexisting": true
+    }
+  ],
+  "vite_build_exit_code": 0
+}

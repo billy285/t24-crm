@@ -1,0 +1,41 @@
+{
+  "app_scope_count": 32,
+  "application_freeze_sha256": "7baccdca74c1d4abb31dd0bc4c0afc4c9ed8de893d55d2f9b2686e1ff0cea7ef",
+  "blocking_findings": [],
+  "changed_summary_fields": {
+    "path": {
+      "after": "/opt/t24-crm/releases/media-workflow-preflight-37d581b74349.json",
+      "before": "/opt/t24-crm/releases/media-workflow-preflight-e4d01172b9a9.json"
+    },
+    "sha256": {
+      "after": "37d581b74349708c134e258f3298bd74ea5608e781d45680bce1e6e25a35fe4d",
+      "before": "e4d01172b9a9723be2911b0a6ca3461e332225cf39f482ef420a747851a1478f"
+    }
+  },
+  "execution_reference": {
+    "aliyun_command_id": "t-hk071p6e0ccsoao",
+    "beijing_end": "2026-10-31 20:12:39",
+    "beijing_start": "2026-10-31 20:12:36",
+    "exit_code": 0,
+    "provided_by_root": true
+  },
+  "frontend_version": "33047aa593a2",
+  "full_private_proof_locally_opened": false,
+  "limits": "Protected full proof remains server-only. Actual package/carrier/prepare/activate/deployed reviews are separate and not approved by this review.",
+  "phase": "REFRESHED_ACTUAL_PREFLIGHT_AND_COMMITTED_APPLICATION_FREEZE",
+  "prior_summary_file_sha256": "11b8ce06fcb5e6ee6118dc988789da12ccbf0e27ed4d2ffbcec1fad01fcad0cb",
+  "reviewer_server_browser_or_provider_actions": false,
+  "server_proof_path": "/opt/t24-crm/releases/media-workflow-preflight-37d581b74349.json",
+  "server_proof_sha256": "37d581b74349708c134e258f3298bd74ea5608e781d45680bce1e6e25a35fe4d",
+  "source_sha": "c114242205af98c33a7c2ad435409e0c84ebd085",
+  "status": "PASS_FOR_FINAL_PACKAGE_REVIEW_ONLY",
+  "summary_file_sha256": "9ab963e0119a05eb353b44f3bd6790e9ffe48d042832ef04e2b468356e50cf51",
+  "verified": [
+    "Compact summary validates current hash-pinned publisher contract; all summary fields other than protected proof hash/path are identical to the independently reviewed 16:09 capture.",
+    "Current source commit and local bytes match all32 immutable freeze entries; exact baseline-to-source application delta equals13 runtime14 frontend5 tests.",
+    "Baseline13 runtime hashes match baseline Git;8 new runtime files absent before release.",
+    "Production baseline remains130 tables at eaf5a7b8c914 with same aggregate business row, schema, full backend inventory, exact current container/image/config/environment and Nginx hashes.",
+    "Scheduler remains ON at exact cutoff2026-10-30T19:42:04Z; no image delivery Nginx prefix/new tables exist, private/credential contents unread.",
+    "Two migrations remain additive six empty tables with delivery policy OFF; FEbuild marker matches33047aa593a2."
+  ]
+}
