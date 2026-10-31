@@ -245,3 +245,35 @@ button.mo-metric:hover, button.mo-metric:focus-visible, button.mo-metric.active 
 @media (prefers-reduced-motion: reduce) {
   .media-operations *, .mo-dialog * { transition: none !important; }
 }
+
+/* Phase-one guidance stays within the CRM media workspace. */
+.media-operations > .mo-platform-capabilities { grid-column: 1 / -1; min-width: 0; margin: 0 0 16px; border: 1px solid #e0e8f5; border-radius: 10px; background: #f8faff; }
+.mo-platform-capabilities > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 17px; padding: 11px 13px; color: #617ba0; font-size: 11px; line-height: 1.7; cursor: pointer; }
+.mo-platform-capabilities > summary strong { font-size: 11px; color: #3f5d84; }
+.mo-platform-capabilities > summary span { overflow-wrap: anywhere; }
+.mo-platform-capabilities > summary small { margin-left: auto; color: #8d9cb2; font-size: 10px; }
+.mo-platform-capabilities > summary:focus-visible { outline: 2px solid #91b4ff; outline-offset: 2px; }
+.mo-platform-capabilities .mo-platform-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; border-top: 1px solid #e0e8f5; padding: 10px; }
+.mo-platform-grid > div { position: relative; min-width: 0; padding: 6px 7px; }
+.mo-platform-grid strong { display: block; font-size: 12px; color: #324e77; line-height: 1.6; padding-right: 26px; }
+.mo-platform-grid span { display: block; color: #5478ae; font-size: 11px; margin-top: 3px; line-height: 1.65; overflow-wrap: anywhere; }
+.mo-platform-grid small { display: block; color: #8494aa; font-size: 10px; line-height: 1.7; margin-top: 5px; overflow-wrap: anywhere; }
+.mo-platform-grid button { position: absolute; right: 0; top: 0; width: 34px; height: 34px; min-height: 34px; padding: 8px; color: #6887b2; }
+.mo-dialog .mo-platform-note { padding: 10px 12px; border-radius: 8px; background: #f4f7fb; color: #6d819e; font-size: 11px; line-height: 1.8; margin: 0; overflow-wrap: anywhere; }
+.mo-dialog .mo-draft-preview { border-top: 1px solid #e8edf5; padding-top: 12px; min-width: 0; }
+.mo-dialog .mo-draft-preview > summary { color: #446da6; font-size: 12px; font-weight: 600; cursor: pointer; padding: 8px 0; }
+.mo-dialog .mo-draft-preview > summary:focus-visible { outline: 2px solid #91b4ff; outline-offset: 2px; }
+@media (max-width: 640px) {
+  .media-operations > .mo-workspace-switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
+  .media-operations > .mo-workspace-switch button { padding: 10px 4px; font-size: 11px; gap: 4px; min-width: 0; white-space: nowrap; }
+  .media-operations > .mo-workspace-switch button svg { width: 14px; height: 14px; }
+  .media-operations > .mo-platform-capabilities { margin-bottom: 13px; }
+  .mo-platform-capabilities > summary { gap: 3px 10px; min-height: 44px; padding: 9px 11px; font-size: 10px; }
+  .mo-platform-capabilities > summary strong { width: 100%; }
+  .mo-platform-capabilities .mo-platform-grid { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .mo-platform-grid > div { padding: 4px 3px; }
+  .mo-platform-grid strong { font-size: 11px; }
+  .mo-platform-grid span { font-size: 10px; margin-top: 1px; }
+  .mo-platform-grid small { font-size: 10px; margin-top: 3px; }
+  .mo-platform-grid button { width: 44px; height: 44px; min-height: 44px; top: 0; }
+}

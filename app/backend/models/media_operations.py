@@ -59,3 +59,10 @@ class MediaOperationEvent(Base):
     note = Column(Text, nullable=True)
     snapshot = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class MediaOperationPublicationSpec(Base):
+    """Only explicit structured publication settings; legacy tasks need no row."""
+    __tablename__ = "media_operation_publication_specs"
+    task_id = Column(Integer, ForeignKey("media_operation_tasks.id", ondelete="RESTRICT"), primary_key=True)
+    spec = Column(JSON, nullable=False)

@@ -429,9 +429,19 @@ async def _post_payload(db, ctx, binding, task_id, expected_revision=None):
     snapshot = approval.snapshot if approval and isinstance(approval.snapshot, dict) else {}
     if not approval or snapshot.get("content") != task.content or snapshot.get("material_id") != task.material_id:
         raise HTTPException(422, "未找到与当前内容一致的老板审核记录，请退回并重新审核")
+    publication = await media.publication_for_task(db, task)
+    # Legacy approvals predate publication settings: their exact STANDARD
+    # payload remains valid. Explicit settings, including their wall-time zone,
+    # must match the immutable approval snapshot on every dispatch/schedule.
+    if "publication" in snapshot:
+        if snapshot["publication"] != publication or snapshot.get("timezone") != task.timezone:
+            raise HTTPException(422, "发布类型、活动时间、链接或商家时区已变化，请退回并重新审核")
+    elif publication != media.DEFAULT_PUBLICATION:
+        raise HTTPException(422, "当前发布配置尚未审核，请退回并重新审核")
     content = (task.content or "").strip()
     if not content or len(content) > 1500: raise HTTPException(422, "Google 帖子内容需为 1—1500 字，请修改草稿并重新审核")
-    payload = {"languageCode": "en-US", "summary": content, "topicType": "STANDARD"}
+    payload = {"languageCode": "en-US", "summary": content}
+    payload.update(media.publication_payload(publication, task.timezone))
     has_image = False
     if task.material_id is not None:
         material = await media._material(db, ctx, customer, task.material_id, proof=True)
@@ -455,8 +465,9 @@ async def ready_tasks(db, user, binding_id):
     rows = (await db.execute(query.limit(100))).scalars().all()
     output = []
     for task in rows:
-        preview_url = None; material_title = None; blocked = None
+        preview_url = None; material_title = None; blocked = None; publication = None
         try:
+            publication = await media.publication_for_task(db, task)
             _, payload, _ = await _post_payload(db, ctx, binding, task.id, task.revision)
             media_items = payload.get("media") or []
             preview_url = media_items[0]["sourceUrl"] if media_items else None
@@ -464,6 +475,7 @@ async def ready_tasks(db, user, binding_id):
         except HTTPException as exc:
             blocked = str(exc.detail)
         output.append({"id": task.id, "title": task.title, "content": task.content, "revision": task.revision,
+                       "publication": publication, "timezone": task.timezone,
                        "material_id": task.material_id if preview_url else None, "material_title": material_title,
                        "has_public_image": bool(preview_url), "preview_image_url": preview_url, "publish_blocked_reason": blocked, "can_return": ctx.owner})
     return {"items": output, "total": len(output)}

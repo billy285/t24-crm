@@ -2,6 +2,12 @@ import { invokeWithAuth } from './tokenStore';
 
 export type MediaStatus = 'draft' | 'in_review' | 'ready' | 'completed' | 'blocked';
 export type MediaAction = 'submit' | 'approve' | 'return' | 'complete' | 'block' | 'resume';
+export type MediaPublication = {
+  topic_type: 'STANDARD' | 'EVENT' | 'OFFER';
+  event?: { title: string; start_at: string; end_at: string } | null;
+  offer?: { coupon_code?: string | null; redeem_online_url?: string | null; terms_conditions?: string | null } | null;
+  call_to_action?: { action_type: 'BOOK' | 'ORDER' | 'SHOP' | 'LEARN_MORE' | 'SIGN_UP' | 'CALL'; url?: string | null } | null;
+};
 export type MediaMaterial = { id: number; title: string; material_type: string; content_type?: string | null };
 export type MediaCustomer = { id: number; name: string; can_write: boolean; services: { id: number; name: string }[]; materials: MediaMaterial[] };
 export type MediaOptions = { customers: MediaCustomer[]; assignees: { id: number; name: string; eligible_customer_ids?: number[] }[]; platforms: { value: string; label: string }[] };
@@ -10,6 +16,7 @@ export type MediaTask = {
   id: number; customer_id: number; customer_name: string; service_progress_id?: number | null;
   title: string; platform: string; status: MediaStatus; due_at: string; timezone: string;
   assignee_id: number; assignee_name: string; content: string; material_id?: number | null; material_title?: string | null;
+  publication?: MediaPublication | null;
   proof_url?: string | null; proof_material_id?: number | null; review_note?: string | null; block_reason?: string | null;
   revision: number; created_at: string; updated_at: string; completed_at?: string | null; events?: MediaEvent[];
   permissions: { can_edit: boolean; can_submit: boolean; can_review: boolean; can_return?: boolean; can_complete: boolean; can_block: boolean; can_resume: boolean };

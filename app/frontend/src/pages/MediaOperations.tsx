@@ -2,34 +2,40 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, FileText, Globe2, Image, ListChecks, Loader2, LockKeyhole, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { useRole } from '@/lib/role-context';
 import { confirmDiscardAllChanges, useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
+import MediaPublicationFields from '@/components/MediaPublicationFields';
+import MediaPublicationPreview from '@/components/MediaPublicationPreview';
+import MediaTeamMaterials from '@/components/MediaTeamMaterials';
+import MediaPlatformCapabilities from '@/components/MediaPlatformCapabilities';
+import { blankPublicationForm, publicationEquivalent, publicationForm, publicationPayload, type PublicationForm } from '@/components/media-publication';
 import GoogleBusinessManagement from '@/components/GoogleBusinessManagement';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Dialog, DialogTitle, DialogDescription, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
-import { mediaActionLabels, mediaError, mediaErrorStatus, mediaLocalToUtc, mediaOperationsApi, mediaRequestId, mediaSafeProofUrl, mediaScheduleLabel, mediaStatusLabels, mediaTimezones, mediaUtcToLocal, verifiedMediaTask, type MediaAction, type MediaCustomer, type MediaList, type MediaOptions, type MediaStatus, type MediaTask } from '@/lib/media-operations-api';
+import { mediaActionLabels, mediaError, mediaErrorStatus, mediaLocalToUtc, mediaOperationsApi, mediaRequestId, mediaSafeProofUrl, mediaScheduleLabel, mediaStatusLabels, mediaTimezones, mediaUtcToLocal, verifiedMediaTask, type MediaAction, type MediaCustomer, type MediaList, type MediaOptions, type MediaPublication, type MediaStatus, type MediaTask } from '@/lib/media-operations-api';
 import './media-operations.css';
 
-type Form = { customer_id: string; service_progress_id: string; title: string; platform: string; local_time: string; timezone: string; assignee_id: string; content: string; material_id: string };
+type Form = { customer_id: string; service_progress_id: string; title: string; platform: string; local_time: string; timezone: string; assignee_id: string; content: string; material_id: string; publication: PublicationForm };
 type PendingMutation = { path: string; method: 'POST' | 'PUT'; data: unknown; expectedId?: number };
-const blankForm = (): Form => ({ customer_id: '', service_progress_id: '', title: '', platform: 'google_business', local_time: '', timezone: 'Asia/Shanghai', assignee_id: '', content: '', material_id: '' });
+const blankForm = (): Form => ({ customer_id: '', service_progress_id: '', title: '', platform: 'google_business', local_time: '', timezone: 'Asia/Shanghai', assignee_id: '', content: '', material_id: '', publication: blankPublicationForm() });
 const stages: MediaStatus[] = ['draft', 'in_review', 'ready', 'completed', 'blocked'];
 const emptyOptions: MediaOptions = { customers: [], assignees: [], platforms: [] };
 const imageTypes = new Set(['image', 'photo', 'screenshot', 'picture', '图片', '截图']);
 const isProofImage = (kind: string, contentType?: string | null) => imageTypes.has(kind.toLowerCase()) || kind.toLowerCase().startsWith('image/') || Boolean(contentType?.toLowerCase().startsWith('image/'));
-const taskForm = (item: MediaTask): Form => ({ customer_id: String(item.customer_id), service_progress_id: item.service_progress_id ? String(item.service_progress_id) : '', title: item.title, platform: item.platform, local_time: mediaUtcToLocal(item.due_at, item.timezone), timezone: item.timezone, assignee_id: String(item.assignee_id), content: item.content || '', material_id: item.material_id ? String(item.material_id) : '' });
+const taskForm = (item: MediaTask): Form => ({ customer_id: String(item.customer_id), service_progress_id: item.service_progress_id ? String(item.service_progress_id) : '', title: item.title, platform: item.platform, local_time: mediaUtcToLocal(item.due_at, item.timezone), timezone: item.timezone, assignee_id: String(item.assignee_id), content: item.content || '', material_id: item.material_id ? String(item.material_id) : '', publication: publicationForm(item.publication, item.timezone) });
 const timestamp = (value: string) => {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date) : '时间待核对';
 };
+const safePreviewTime = (value: string, zone: string) => { try { return mediaLocalToUtc(value, zone); } catch { return ''; } };
 const isOverdue = (item: MediaTask) => item.status !== 'completed' && new Date(item.due_at).getTime() < Date.now();
 
 export default function MediaOperations() {
   const { employee, systemRole, loading: roleLoading } = useRole();
   const owner = systemRole === 'super_admin';
   const allowed = ['super_admin', 'admin', 'ops'].includes(systemRole || '');
-  const [workspace, setWorkspace] = useState<'tasks' | 'google'>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('google') ? 'google' : 'tasks');
+  const [workspace, setWorkspace] = useState<'tasks' | 'google' | 'materials'>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('google') ? 'google' : 'tasks');
   const scope = `${employee?.id || ''}:${systemRole || ''}`;
   const scopeRef = useRef(scope); scopeRef.current = scope;
   const [resolvedScope, setResolvedScope] = useState(scope);
@@ -177,7 +183,7 @@ export default function MediaOperations() {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
       await navigator.clipboard.writeText(item.content);
       if (scopeRef.current !== identity || activeTaskId.current !== id) return;
-      setCopiedTaskId(id); setCopyError(''); setAnnouncement('发布文案已复制，请到对应平台粘贴并发布。');
+      setCopiedTaskId(id); setCopyError(''); setAnnouncement('正文已复制；活动、优惠条款与按钮请一并核对后再发布。');
     } catch {
       if (scopeRef.current === identity && activeTaskId.current === id) setCopyError('暂时无法自动复制，可以在下方选中文字后手动复制。');
     }
@@ -232,7 +238,7 @@ export default function MediaOperations() {
       const sent = request.data as Record<string, unknown>;
       const matches = Object.entries(sent).filter(([key]) => key !== 'expected_revision').every(([key, value]) => key === 'due_at'
         ? new Date(current.due_at).getTime() === new Date(String(value)).getTime()
-        : (current as unknown as Record<string, unknown>)[key] === value);
+        : key === 'publication' ? publicationEquivalent(current.publication, value) : (current as unknown as Record<string, unknown>)[key] === value);
       if (current.revision > Number(sent.expected_revision) && matches) acceptMutation(current);
       else if (current.revision === Number(sent.expected_revision)) retry = true;
       else {
@@ -254,7 +260,8 @@ export default function MediaOperations() {
       if (!form.title.trim()) throw new Error('请填写任务标题。');
       if (!form.customer_id || !customer?.can_write) throw new Error('请选择有协作授权的客户。');
       const due_at = mediaLocalToUtc(form.local_time, form.timezone);
-      const payload = { title: form.title.trim(), platform: form.platform, due_at, timezone: form.timezone, content: form.content, material_id: form.material_id ? Number(form.material_id) : null };
+      const publication = publicationPayload(form.publication, form.timezone, form.platform);
+      const payload = { ...(publication ? { publication } : {}), title: form.title.trim(), platform: form.platform, due_at, timezone: form.timezone, content: form.content, material_id: form.material_id ? Number(form.material_id) : null };
       if (mode === 'edit' && item) void runMutation({ path: `/${item.id}`, method: 'PUT', expectedId: item.id, data: { ...payload, expected_revision: item.revision, ...(owner && form.assignee_id ? { assignee_id: Number(form.assignee_id) } : {}) } });
       else {
         if (!createId.current) createId.current = mediaRequestId();
@@ -278,7 +285,7 @@ export default function MediaOperations() {
   const modalEditing = mode === 'create' || mode === 'edit';
   const readOnly = busy || unknownResult;
   const optionLabel = (value: string) => options.platforms.find(row => row.value === value)?.label || value;
-  function changeWorkspace(next: 'tasks' | 'google') {
+  function changeWorkspace(next: 'tasks' | 'google' | 'materials') {
     if (next === workspace || busyRef.current || unknownResult || !confirmDiscardAllChanges()) return;
     draftGuard.markSaved(); setMode(null); setItem(null); setAction(null); setLeaveChoice(false); setMutationError('');
     setWorkspace(next);
@@ -289,9 +296,10 @@ export default function MediaOperations() {
 
   return <main className={`media-operations app-page${workspace === 'google' ? ' mo-google-mode' : ''}`} aria-label="代运营中心">
     <header className="mo-page-header"><div><p className="mo-eyebrow">任务与交付 · 代运营</p><h1>代运营中心</h1><p className="mo-subtitle">{workspace === 'google' ? '在授权范围内处理 Google 评论和帖子。' : '准备内容、完成审核、发布后留下凭证。'}</p></div>{workspace === 'tasks' && <div className="mo-header-actions"><Button variant="outline" onClick={() => { void loadList(); void loadOptions(); }} disabled={listLoading || busy} aria-label="刷新运营资料"><RefreshCw className={listLoading ? 'animate-spin' : ''} aria-hidden="true"/><span>刷新</span></Button><Button onClick={openCreate} disabled={!canCreate || busy || unknownResult}><Plus aria-hidden="true"/>新增任务</Button></div>}</header>
-    <div className="mo-workspace-switch" role="group" aria-label="代运营工作区"><button className={workspace === 'tasks' ? 'active' : ''} aria-pressed={workspace === 'tasks'} onClick={() => changeWorkspace('tasks')}><ListChecks aria-hidden="true"/>运营任务</button><button className={workspace === 'google' ? 'active' : ''} aria-pressed={workspace === 'google'} onClick={() => changeWorkspace('google')}><Globe2 aria-hidden="true"/>Google 商家</button></div>
-    {workspace === 'google' ? <GoogleBusinessManagement scope={scope} isOwner={owner} onCreateTask={() => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); openCreate(); }} onOpenTask={(id, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); void readDetail(id, false, nextAction); }}/> : <>
-    <div className="mo-scope"><ShieldCheck aria-hidden="true"/><span>{owner ? '老板视角 · 查看全部运营交付，审核后进入发布' : '我的工作 · 仅显示本人负责且老板已授权的客户任务'}</span><span className="mo-manual-tag">人工发布 · 凭证留痕</span></div>
+    <div className="mo-workspace-switch" role="group" aria-label="代运营工作区"><button className={workspace === 'tasks' ? 'active' : ''} aria-pressed={workspace === 'tasks'} onClick={() => changeWorkspace('tasks')}><ListChecks aria-hidden="true"/>运营任务</button><button className={workspace === 'google' ? 'active' : ''} aria-pressed={workspace === 'google'} onClick={() => changeWorkspace('google')}><Globe2 aria-hidden="true"/>Google 商家</button><button className={workspace === 'materials' ? 'active' : ''} aria-pressed={workspace === 'materials'} onClick={() => changeWorkspace('materials')}><Image aria-hidden="true"/>客户素材</button></div>
+    <MediaPlatformCapabilities key={scope} scope={scope}/>
+    {workspace === 'google' ? <GoogleBusinessManagement scope={scope} isOwner={owner} onCreateTask={() => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); openCreate(); }} onOpenTask={(id, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); void readDetail(id, false, nextAction); }}/> : workspace === 'materials' ? <MediaTeamMaterials key={scope} customers={options.customers} initialCustomerId={customerFilter !== 'all' ? Number(customerFilter) : undefined} onChanged={() => void loadOptions()} loading={optionsLoading} error={optionsError} onRetry={() => void loadOptions()}/> : <>
+    <div className="mo-scope"><ShieldCheck aria-hidden="true"/><span>{owner ? '老板视角 · 查看全部运营交付，审核后进入发布' : '我的工作 · 仅显示本人负责且老板已授权的客户任务'}</span><span className="mo-manual-tag">按平台能力执行 · 凭证留痕</span></div>
     <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
     {unknownResult && <div className="mo-alert mo-alert-warn" role="alert"><AlertCircle aria-hidden="true"/><div><strong>上次操作结果待确认</strong><p>请先确认结果，再继续修改或新增任务。</p></div><Button variant="outline" disabled={busy} onClick={() => void recoverUnknown()}>{busy ? '正在确认…' : '重新确认结果'}</Button></div>}
     {optionsError && <div className="mo-alert" role="alert"><AlertCircle aria-hidden="true"/><span>{optionsError}</span><Button variant="ghost" size="sm" onClick={() => void loadOptions()} disabled={optionsLoading}>重新读取授权资料</Button></div>}
@@ -307,7 +315,7 @@ export default function MediaOperations() {
       <div className="mo-filters"><label className="mo-search"><Search aria-hidden="true"/><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索客户或任务" aria-label="搜索客户或任务"/></label><NativeSelect aria-label="筛选授权客户" value={customerFilter} onChange={value => { setCustomerFilter(value); setPage(1); }} options={filteredOptions}/></div>
       {listError ? <div className="mo-empty" role="alert"><AlertCircle aria-hidden="true"/><h2>运营资料暂时无法读取</h2><p>{listError}</p><Button variant="outline" onClick={() => void loadList(true)}>重新读取</Button></div> : listLoading ? <div className="mo-empty" aria-live="polite"><Loader2 className="animate-spin" aria-hidden="true"/><h2>正在读取运营任务</h2><p>按当前账号和客户授权确认范围。</p></div> : !list?.items.length ? <div className="mo-empty"><FileText aria-hidden="true"/><h2>{query || customerFilter !== 'all' || status !== 'all' ? '这个范围还没有任务' : '从第一项运营任务开始'}</h2><p>{owner ? '选择客户、负责人和计划时间，内容准备后再提交审核。' : '任务分配给你，并获得客户交付授权后，会显示在这里。'}</p>{canCreate && <Button onClick={openCreate} disabled={unknownResult}><Plus aria-hidden="true"/>新增运营任务</Button>}</div> : <><div className="mo-table-head" aria-hidden="true"><span>客户 / 任务</span><span>计划时间</span><span>负责人</span><span>阶段</span><span/></div><div className="mo-task-list">{list.items.map(row => <button key={row.id} className="mo-task-row" onClick={() => void readDetail(row.id)} aria-label={`查看任务：${row.customer_name}，${row.title}`}><span className="mo-task-name"><strong>{row.title}</strong><small>{row.customer_name}<i>·</i>{optionLabel(row.platform)}</small></span><span className={`mo-task-time ${isOverdue(row) ? 'overdue' : ''}`}><CalendarDays aria-hidden="true"/>{mediaUtcToLocal(row.due_at, row.timezone).replace('T', ' ')}<small>{row.timezone}{isOverdue(row) ? ' · 已逾期' : ''}</small></span><span className="mo-task-assignee">{row.assignee_name}</span><span className={`mo-status mo-status-${row.status}`}>{mediaStatusLabels[row.status]}</span><ChevronRight className="mo-row-arrow" aria-hidden="true"/></button>)}</div><footer className="mo-pagination"><span>共 {list.total} 项 · 第 {page} / {Math.max(1, Math.ceil(list.total / limit))} 页</span><div><Button variant="outline" size="sm" onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page <= 1 || listLoading} aria-label="上一页"><ChevronLeft aria-hidden="true"/></Button><Button variant="outline" size="sm" onClick={() => setPage(current => current + 1)} disabled={page * limit >= list.total || listLoading} aria-label="下一页"><ChevronRight aria-hidden="true"/></Button></div></footer></>}
     </section>
-    <p className="mo-boundary"><LockKeyhole aria-hidden="true"/>仅管理运营交付。人工发布后再确认完成，内容审核不会自动发布或记账。</p>
+    <p className="mo-boundary"><LockKeyhole aria-hidden="true"/>仅管理运营交付。人工发布后再确认完成，内容审核不会立即发布或记账；Google 排期仍须有相应授权并明确确认。</p>
 
     <Dialog open={mode !== null} onOpenChange={open => { if (!open) closeDialog(); }}>
       <CrmFormDialogContent className="mo-dialog" onEscapeKeyDown={event => { if (busy || dirty) { event.preventDefault(); if (!busy) setLeaveChoice(true); } }} onPointerDownOutside={event => { if (busy || dirty) { event.preventDefault(); if (!busy) setLeaveChoice(true); } }}>
@@ -321,16 +329,19 @@ export default function MediaOperations() {
             {owner && customer && eligibleAssignees.length === 0 && <p className="mo-help">此客户暂无具备运营协作权限的员工，可由老板负责，或先在客户中心邀请同事。</p>}
             <div className="mo-schedule"><div className="mo-form-grid"><label>商家时区<NativeSelect aria-label="商家时区" value={form.timezone} onChange={value => updateForm('timezone', value)} disabled={readOnly} options={mediaTimezones.some(row => row.value === form.timezone) ? mediaTimezones : [...mediaTimezones, { value: form.timezone, label: form.timezone }]}/></label><label>计划发布时间（必填）<Input aria-label="计划发布时间" type="datetime-local" value={form.local_time} onInput={event => updateForm('local_time', event.currentTarget.value)} onChange={event => updateForm('local_time', event.target.value)} disabled={readOnly}/></label></div><p>{schedulePreview || '按选定的商家时区填写；系统会自动换算北京时间。'}</p></div>
             <label>内容草稿<Textarea aria-label="内容草稿" value={form.content} onChange={event => updateForm('content', event.target.value)} placeholder="可以先保存空草稿；提交审核前请补齐完整发布内容。" rows={7} maxLength={20000} disabled={readOnly}/></label>
-            <label>关联素材<NativeSelect aria-label="关联素材" value={form.material_id} onChange={value => updateForm('material_id', value)} disabled={readOnly || !customer} options={[{ value: '', label: '暂不关联素材' }, ...(customer?.materials || []).map(row => ({ value: String(row.id), label: row.title }))]}/><span className="mo-help">仅列出该客户已授权的共享素材；缺少图片时可先记录异常。</span></label>
+            {form.platform === 'google_business' ? <MediaPublicationFields value={form.publication} onChange={value => updateForm('publication', value)} disabled={readOnly}/> : <p className="mo-platform-note">{optionLabel(form.platform)} 当前只创建人工发布任务，不发送 Google 帖型、优惠或行动按钮字段。</p>}
+            <label>关联素材<NativeSelect aria-label="关联素材" value={form.material_id} onChange={value => updateForm('material_id', value)} disabled={readOnly || !customer} options={[{ value: '', label: '暂不关联素材' }, ...(customer?.materials || []).map(row => ({ value: String(row.id), label: row.title }))]}/><span className="mo-help">仅列出该客户已授权的团队素材。私有上传不能供 Google 无认证读取；审核和发布前须补齐可用的公开图片链接。视频仅准备，不能在此一键发布。</span></label>
+            <details className="mo-draft-preview"><summary>核对完整内容预览</summary><div className="mo-copy">{form.content || '正文尚未填写'}</div>{form.platform === 'google_business' && <MediaPublicationPreview publication={{topic_type:form.publication.topic_type,...(form.publication.topic_type!=='STANDARD'?{event:{title:form.publication.event_title,start_at:safePreviewTime(form.publication.event_start,form.timezone),end_at:safePreviewTime(form.publication.event_end,form.timezone)}}:{}),...(form.publication.topic_type==='OFFER'?{offer:{coupon_code:form.publication.coupon_code,redeem_online_url:form.publication.redeem_online_url,terms_conditions:form.publication.terms_conditions}}:{}),...(form.publication.topic_type!=='OFFER'&&form.publication.action_type?{call_to_action:{action_type:form.publication.action_type as NonNullable<MediaPublication['call_to_action']>['action_type'],url:form.publication.action_url}}:{})}} timezone={form.timezone} heading="草稿结构预览"/>}</details>
           </div> : item && <div className="mo-detail">
             <div className="mo-detail-meta"><span className={`mo-status mo-status-${item.status}`}>{mediaStatusLabels[item.status]}</span><span>{item.assignee_name} 负责</span><span>任务 #{item.id}</span></div>
             <section className="mo-detail-schedule"><CalendarDays aria-hidden="true"/><div><strong>{mediaUtcToLocal(item.due_at, item.timezone).replace('T', ' ')}</strong><small>{item.timezone} · 北京时间 {mediaUtcToLocal(item.due_at, 'Asia/Shanghai').replace('T', ' ')}</small></div>{isOverdue(item) && <span className="mo-overdue-tag">已逾期</span>}</section>
             {item.block_reason && <div className="mo-alert mo-alert-warn"><AlertCircle aria-hidden="true"/><div><strong>当前需要处理</strong><p>{item.block_reason}</p></div></div>}
             {item.review_note && <div className="mo-review-note"><ListChecks aria-hidden="true"/><div><strong>审核说明</strong><p>{item.review_note}</p></div></div>}
             <section><div className="mo-copy-heading"><h3><FileText aria-hidden="true"/>发布内容</h3><Button variant="ghost" size="sm" onClick={() => void copyContent()} disabled={!item.content}><Copy aria-hidden="true"/>{copiedTaskId === item.id ? '已复制' : '复制文案'}</Button></div>{copyError && <p className="mo-help" role="status">{copyError}</p>}<div className={item.content ? 'mo-copy' : 'mo-copy mo-copy-empty'}>{item.content || '还没有填写内容草稿。编辑并补齐内容后，提交审核。'}</div></section>
-            <section className="mo-detail-material"><Image aria-hidden="true"/><div><strong>关联素材</strong><span>{item.material_title || '暂未关联素材'}</span></div></section>
+            {item.platform === 'google_business' && <MediaPublicationPreview publication={item.publication} timezone={item.timezone} heading="审核与发布结构"/>}
+            <section className="mo-detail-material"><Image aria-hidden="true"/><div><strong>关联素材</strong><span>{item.material_title || '暂未关联素材'}</span>{item.platform === 'google_business' && item.material_id && <p className="mo-help">若素材为私有上传，Google 无法无认证读取。审核和发布前须补齐可用的公开图片链接；关联素材不代表已具备发布条件。</p>}</div></section>
             {(item.proof_url || item.proof_material_id || item.completed_at) && <section className="mo-proof"><h3><CheckCircle2 aria-hidden="true"/>发布凭证</h3>{mediaSafeProofUrl(item.proof_url) && <a href={mediaSafeProofUrl(item.proof_url)!} target="_blank" rel="noopener noreferrer">查看发布链接<ExternalLink aria-hidden="true"/></a>}{item.proof_material_id && <p>发布截图：{detailCustomer?.materials.find(row => row.id === item.proof_material_id)?.title || `已关联素材 #${item.proof_material_id}`}</p>}{item.completed_at && <small>确认完成于 {timestamp(item.completed_at)}（北京时间）</small>}</section>}
-            {action && <section className="mo-action-form" aria-label={mediaActionLabels[action]}><h3>{mediaActionLabels[action]}</h3>{action === 'complete' && <><p>请先在对应平台完成发布，再提交真实的链接或截图。</p><label>发布链接<Input aria-label="发布链接" value={proofUrl} onChange={event => setProofUrl(event.target.value)} placeholder="https://…" type="url" disabled={readOnly}/></label><label>或选择发布截图<NativeSelect aria-label="发布截图" value={proofMaterial} onChange={setProofMaterial} disabled={readOnly} options={[{ value: '', label: '不选择截图' }, ...(detailCustomer?.materials || []).filter(row => isProofImage(row.material_type, row.content_type)).map(row => ({ value: String(row.id), label: row.title }))]}/></label></>}{action === 'approve' && <label className="mo-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={event => setReviewConfirmed(event.target.checked)} disabled={readOnly}/><span>我已核对内容事实、品牌语气及素材，确认可以交给发布人员。</span></label>}{action === 'submit' && <p>提交后草稿将锁定，等待老板审核。审核通过后进入人工发布队列。</p>}{action === 'resume' && <p>恢复后回到可继续处理的阶段，需要审核的内容仍会重新审核。</p>}<label>{['block', 'return'].includes(action) ? '原因 / 下一步 *' : '补充说明（选填）'}<Textarea aria-label="操作说明" value={note} onChange={event => setNote(event.target.value)} rows={3} maxLength={2000} disabled={readOnly} placeholder={['block', 'return'].includes(action) ? '说明缺少什么、需要谁协助。' : '为后续交接留下必要说明。'}/></label></section>}
+            {action && <section className="mo-action-form" aria-label={mediaActionLabels[action]}><h3>{mediaActionLabels[action]}</h3>{action === 'complete' && <><p>请先在对应平台完成发布，再提交真实的链接或截图。</p><label>发布链接<Input aria-label="发布链接" value={proofUrl} onChange={event => setProofUrl(event.target.value)} placeholder="https://…" type="url" disabled={readOnly}/></label><label>或选择发布截图<NativeSelect aria-label="发布截图" value={proofMaterial} onChange={setProofMaterial} disabled={readOnly} options={[{ value: '', label: '不选择截图' }, ...(detailCustomer?.materials || []).filter(row => isProofImage(row.material_type, row.content_type)).map(row => ({ value: String(row.id), label: row.title }))]}/></label></>}{action === 'approve' && <label className="mo-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={event => setReviewConfirmed(event.target.checked)} disabled={readOnly}/><span>我已核对正文、活动或优惠起止、条款、按钮去向及素材，确认可以交给发布人员。</span></label>}{action === 'submit' && <p>提交后草稿将锁定，等待老板审核。审核通过后进入对应平台待发布队列；Google 发布仍须另外授权与确认。</p>}{action === 'resume' && <p>恢复后回到可继续处理的阶段，需要审核的内容仍会重新审核。</p>}<label>{['block', 'return'].includes(action) ? '原因 / 下一步 *' : '补充说明（选填）'}<Textarea aria-label="操作说明" value={note} onChange={event => setNote(event.target.value)} rows={3} maxLength={2000} disabled={readOnly} placeholder={['block', 'return'].includes(action) ? '说明缺少什么、需要谁协助。' : '为后续交接留下必要说明。'}/></label></section>}
             {!action && Array.isArray(item.events) && item.events.length > 0 && <section className="mo-history"><h3>处理记录</h3><ol>{[...item.events].reverse().map(event => <li key={event.id}><span className="mo-history-dot"/><div><strong>{mediaActionLabels[event.action as keyof typeof mediaActionLabels] || '更新任务'}<small>{event.actor_name} · {timestamp(event.created_at)}</small></strong>{event.note && <p>{event.note}</p>}</div></li>)}</ol></section>}
           </div>}
           {mutationError && <div className="mo-alert mo-alert-warn" role="alert"><AlertCircle aria-hidden="true"/><span>{mutationError}</span></div>}

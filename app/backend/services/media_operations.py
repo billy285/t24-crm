@@ -1,4 +1,4 @@
-"""Native content operations. Writes are confined to the two media tables.
+"""Native content operations. Writes are confined to content, audit and opt-in publication tables.
 
 There is deliberately no scheduler, platform publisher, billing hook, permission
 repair, AI call or external URL fetching in this first phase.
@@ -10,8 +10,10 @@ from datetime import datetime, timezone
 import hashlib
 import ipaddress
 import json
+import re
+import unicodedata
 from types import SimpleNamespace
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, unquote
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -23,14 +25,14 @@ from models.customer_access_grants import CustomerAccessGrant
 from models.customer_materials import Customer_materials
 from models.customers import Customers
 from models.employees import Employees
-from models.media_operations import MediaOperationTask, MediaOperationEvent
+from models.media_operations import MediaOperationTask, MediaOperationEvent, MediaOperationPublicationSpec
 from models.service_progresses import Service_progresses
 from services.customer_permissions import customer_permissions_for_rows, _role_config
 from services.customers import CustomersService
 from services.role_permissions import load_role_permission_config, normalized_role
 from services.schema_readiness import require_tables, tables_available
 
-TABLES = {"media_operation_tasks", "media_operation_events"}
+TABLES = {"media_operation_tasks", "media_operation_events", "media_operation_publication_specs"}
 PLATFORMS = (("google_business", "Google Business"), ("facebook", "Facebook"), ("instagram", "Instagram"),
              ("tiktok", "TikTok"), ("xiaohongshu", "小红书"), ("other", "其他"))
 STATUSES = ("draft", "in_review", "ready", "completed", "blocked")
@@ -175,6 +177,152 @@ def _validate_content_fields(value):
     return {"title": title, "platform": platform, "due_at": due, "timezone": zone, "content": content}
 
 
+DEFAULT_PUBLICATION = {"topic_type": "STANDARD"}
+
+
+def _publication_object(value, allowed, message):
+    if type(value) is not dict or set(value) - set(allowed): raise HTTPException(422, message)
+    return value
+
+
+def _publication_text(value, maximum, *, required=False, multiline=False):
+    if not isinstance(value, str): raise HTTPException(422, "发布配置文字格式不正确")
+    if any(unicodedata.category(c).startswith("C") and (not multiline or c not in "\n\t") for c in value):
+        raise HTTPException(422, "发布配置不能包含隐藏控制字符")
+    result = value.strip()
+    if len(result) > maximum or (required and not result): raise HTTPException(422, "发布配置文字长度不正确")
+    return result
+
+
+def _publication_url(value):
+    if not isinstance(value, str) or not value or len(value) > 2048 or any(c.isspace() or unicodedata.category(c).startswith("C") or c == "\\" for c in value):
+        raise HTTPException(422, "请填写不含凭据或控制字符的公开 HTTPS 链接")
+    try:
+        parsed = urlsplit(value); host = (parsed.hostname or "").lower()
+        if parsed.scheme != "https" or not host or parsed.username is not None or parsed.password is not None or "#" in value or parsed.port not in {None, 443}: raise ValueError()
+        if parsed.port is not None and not parsed.netloc.endswith(":443"): raise ValueError()
+        if host.endswith((".localhost", ".local", ".internal", ".test", ".invalid", ".example", ".lan", ".home", ".arpa", ".onion")) or "." not in host or len(host) > 253: raise ValueError()
+        try: ipaddress.ip_address(host)
+        except ValueError: pass
+        else: raise ValueError()
+        if all(re.fullmatch(r"(?:0x[0-9a-f]+|[0-9]+)", part) for part in host.split(".")): raise ValueError()
+        if not re.search(r"[a-z]", host.rsplit(".", 1)[-1]) or not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", part) for part in host.split(".")): raise ValueError()
+        decoded = value
+        for _ in range(3):
+            decoded = unquote(decoded)
+            if any(ord(c) < 32 or ord(c) == 127 or c == "\\" for c in decoded): raise ValueError()
+    except (ValueError, TypeError, UnicodeError):
+        raise HTTPException(422, "请填写公开域名的 HTTPS 链接，不允许内网、IP、凭据、片段或非443端口")
+    # Preserve normal query parameters verbatim. Never fetch, resolve, rewrite,
+    # append tracking, or treat this as a source-image authorization.
+    return value
+
+
+def _publication_instant(value, zone):
+    if not isinstance(value, str) or len(value) > 80 or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{1,6})?)?(?:Z|[+-][0-9]{2}:[0-9]{2})", value) or value.endswith("-00:00"):
+        raise HTTPException(422, "活动起止时间必须包含明确时区偏移，精确到分钟")
+    try:
+        if not value.endswith("Z") and (int(value[-5:-3]) > 23 or int(value[-2:]) > 59): raise ValueError()
+        supplied = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if supplied.second or supplied.microsecond: raise ValueError()
+        utc = supplied.astimezone(timezone.utc); local = utc.astimezone(ZoneInfo(zone))
+        if not 2000 <= local.year <= 2100: raise ValueError()
+        if supplied.utcoffset().total_seconds() != 0 and (supplied.replace(tzinfo=None) != local.replace(tzinfo=None) or supplied.utcoffset() != local.utcoffset()):
+            raise HTTPException(422, "活动时间偏移与商家时区不一致，请重新选择当地时间")
+        wall = local.replace(tzinfo=None); tz = ZoneInfo(zone)
+        first, second = wall.replace(tzinfo=tz, fold=0), wall.replace(tzinfo=tz, fold=1)
+        if first.utcoffset() != second.utcoffset() and all(x.astimezone(timezone.utc).astimezone(tz).replace(tzinfo=None) == wall for x in (first, second)):
+            raise HTTPException(422, "活动时间落在夏令时重复时段，Google活动无法表达此偏移，请选择明确时刻")
+        return utc, local
+    except (ValueError, TypeError, OverflowError, ZoneInfoNotFoundError):
+        raise HTTPException(422, "活动起止时间无效或不是完整分钟")
+
+
+def normalize_publication(value, platform, zone):
+    if platform != "google_business":
+        if value is not None: raise HTTPException(422, "此发布配置仅用于 Google，其他平台仍为手工交付")
+        return None
+    if value is None: return dict(DEFAULT_PUBLICATION)
+    value = _publication_object(value, {"topic_type", "event", "offer", "call_to_action"}, "存在不支持的 Google 发布配置")
+    kind = value.get("topic_type")
+    if not isinstance(kind, str) or kind not in {"STANDARD", "EVENT", "OFFER"}: raise HTTPException(422, "请选择普通图文、活动或优惠")
+    result = {"topic_type": kind}; event = value.get("event"); offer = value.get("offer"); cta = value.get("call_to_action")
+    if kind == "STANDARD" and (event is not None or offer is not None): raise HTTPException(422, "普通图文不能包含活动或优惠配置")
+    if kind in {"EVENT", "OFFER"}:
+        event = _publication_object(event, {"title", "start_at", "end_at"}, "活动与优惠必须填写完整的标题及起止时间")
+        title = _publication_text(event.get("title"), 200, required=True)
+        start, local_start = _publication_instant(event.get("start_at"), zone); end, local_end = _publication_instant(event.get("end_at"), zone)
+        if end <= start or local_end.replace(tzinfo=None) <= local_start.replace(tzinfo=None): raise HTTPException(422, "活动结束时间必须晚于开始时间")
+        result["event"] = {"title": title, "start_at": start.isoformat().replace("+00:00", "Z"), "end_at": end.isoformat().replace("+00:00", "Z")}
+    if kind == "OFFER":
+        offer = _publication_object(offer, {"coupon_code", "redeem_online_url", "terms_conditions"}, "优惠必须包含有效的优惠配置对象")
+        if cta is not None: raise HTTPException(422, "Google优惠不使用行动按钮，请填写优惠兑换链接")
+        result["offer"] = {}
+        for key, maximum in (("coupon_code", 100), ("terms_conditions", 5000)):
+            if offer.get(key) is not None:
+                text = _publication_text(offer[key], maximum, multiline=key == "terms_conditions")
+                if text: result["offer"][key] = text
+        if offer.get("redeem_online_url") is not None: result["offer"]["redeem_online_url"] = _publication_url(offer["redeem_online_url"])
+    elif offer is not None: raise HTTPException(422, "只有优惠类型可以包含优惠配置")
+    if cta is not None:
+        cta = _publication_object(cta, {"action_type", "url"}, "行动按钮配置不正确")
+        action = cta.get("action_type")
+        if not isinstance(action, str) or action not in {"BOOK", "ORDER", "SHOP", "LEARN_MORE", "SIGN_UP", "CALL"}: raise HTTPException(422, "请选择支持的行动按钮")
+        result["call_to_action"] = {"action_type": action}
+        if action == "CALL":
+            if cta.get("url") is not None: raise HTTPException(422, "拨打电话按钮使用Google商家电话，不允许自填电话或链接")
+        else: result["call_to_action"]["url"] = _publication_url(cta.get("url"))
+    return result
+
+
+def publication_payload(publication, zone):
+    spec = normalize_publication(publication, "google_business", zone)
+    result = {"topicType": spec["topic_type"]}
+    if "event" in spec:
+        event = spec["event"]; schedule = {}
+        for prefix, key in (("start", "start_at"), ("end", "end_at")):
+            _, local = _publication_instant(event[key], zone)
+            schedule[prefix + "Date"] = {"year": local.year, "month": local.month, "day": local.day}
+            schedule[prefix + "Time"] = {"hours": local.hour, "minutes": local.minute, "seconds": 0, "nanos": 0}
+        result["event"] = {"title": event["title"], "schedule": schedule}
+    if "offer" in spec:
+        result["offer"] = {target: spec["offer"][key] for key, target in (("coupon_code", "couponCode"), ("redeem_online_url", "redeemOnlineUrl"), ("terms_conditions", "termsConditions")) if key in spec["offer"]}
+    if "call_to_action" in spec:
+        cta = spec["call_to_action"]; result["callToAction"] = {"actionType": cta["action_type"]}
+        if "url" in cta: result["callToAction"]["url"] = cta["url"]
+    return result
+
+
+async def publication_for_task(db, task):
+    row = await db.get(MediaOperationPublicationSpec, task.id, populate_existing=True)
+    if row is None: return normalize_publication(None, task.platform, task.timezone)
+    if type(row.spec) is not dict: raise HTTPException(422, "发布配置记录无效，请退回后重新保存")
+    result = normalize_publication(row.spec, task.platform, task.timezone)
+    if result != row.spec: raise HTTPException(422, "发布配置已变化，请退回后重新审核")
+    return result
+
+
+async def _save_publication(db, task, value):
+    row = await db.get(MediaOperationPublicationSpec, task.id, populate_existing=True)
+    if value is None or value == DEFAULT_PUBLICATION:
+        if row is not None: await db.delete(row)
+    elif row is None: db.add(MediaOperationPublicationSpec(task_id=task.id, spec=value))
+    else: row.spec = value
+    await db.flush()
+
+
+async def _add_publications(db, rows):
+    if not rows: return
+    specs = (await db.scalars(select(MediaOperationPublicationSpec).where(MediaOperationPublicationSpec.task_id.in_([row["id"] for row in rows])))).all()
+    by_id = {row.task_id: row.spec for row in specs}
+    for row in rows:
+        stored = by_id.get(row["id"])
+        if row["id"] in by_id and type(stored) is not dict: raise HTTPException(422, "发布配置记录无效，请重新核对")
+        publication = normalize_publication(stored, row["platform"], row["timezone"])
+        if row["id"] in by_id and stored != publication: raise HTTPException(422, "发布配置记录无效，请重新核对")
+        row["publication"] = publication
+
+
 def _proof_url(value):
     if not value or not value.strip():
         return None
@@ -256,6 +404,7 @@ async def _google_return_permissions(db, rows):
 
 async def _detail(db, ctx, task, permissions):
     data = _data(task, ctx, permissions)
+    data["publication"] = await publication_for_task(db, task)
     await _google_return_permissions(db, [data])
     await _redact_material_references(db, [data])
     events = (await db.execute(select(MediaOperationEvent).where(MediaOperationEvent.task_id == task.id)
@@ -352,6 +501,7 @@ async def list_tasks(db, user, *, status=None, customer_id=None, q=None, skip=0,
     customer_rows = (await db.execute(select(Customers).where(Customers.id.in_({r.customer_id for r in rows})))).scalars().all() if rows else []
     perms = await customer_permissions_for_rows(db, user, customer_rows, config=ctx.config)
     items = [_data(row, ctx, perms[row.customer_id]) for row in rows]
+    await _add_publications(db, items)
     await _google_return_permissions(db, items)
     await _redact_material_references(db, items)
     return {"items": items, "total": total, "skip": skip, "limit": limit,
@@ -388,7 +538,8 @@ async def _write(db):
 async def _event(db, ctx, task, action, before_status, *, request_id=None, fingerprint=None, note=None):
     snapshot = {"title": task.title, "platform": task.platform, "content": task.content, "material_id": task.material_id,
                 "assignee_id": task.assignee_id, "due_at": _iso(task.due_at), "timezone": task.timezone,
-                "proof_url": task.proof_url, "proof_material_id": task.proof_material_id}
+                "proof_url": task.proof_url, "proof_material_id": task.proof_material_id,
+                "publication": await publication_for_task(db, task)}
     if action == "approve" and task.platform == "google_business" and task.material_id is not None:
         # Freeze the approved asset reference, not its remote bytes. Google
         # publishing must refuse a changed reference and require re-approval.
@@ -421,8 +572,11 @@ async def create_task(db, user, *, client_request_id, customer_id, service_progr
         raise HTTPException(403, "运营新建功能尚未授权")
     key = _key(client_request_id)
     values = _validate_content_fields(fields)
-    fingerprint = _hash({**values, "customer_id": customer_id, "service_progress_id": service_progress_id,
-                         "assignee_id": assignee_id or ctx.identity, "material_id": material_id})
+    publication = normalize_publication(fields.get("publication"), values["platform"], values["timezone"])
+    fingerprint_values = {**values, "customer_id": customer_id, "service_progress_id": service_progress_id,
+                         "assignee_id": assignee_id or ctx.identity, "material_id": material_id}
+    if publication not in (None, DEFAULT_PUBLICATION): fingerprint_values["publication"] = publication
+    fingerprint = _hash(fingerprint_values)
     async with _write(db):
         existing = (await db.execute(select(MediaOperationTask).where(MediaOperationTask.created_by_id == ctx.identity,
                     MediaOperationTask.client_request_id == key))).scalar_one_or_none()
@@ -446,6 +600,7 @@ async def create_task(db, user, *, client_request_id, customer_id, service_progr
                    status="draft", revision=1, created_at=now(), updated_at=now(), **values)
             db.add(task)
             await db.flush()
+            await _save_publication(db, task, publication)
             await _event(db, ctx, task, "create", None)
             result = await _detail(db, ctx, task, permissions)
     return result
@@ -464,6 +619,8 @@ async def edit_task(db, user, task_id, *, expected_revision, **fields):
             # during a partial edit must not reinterpret it as local time.
             merged["due_at"] = _iso(task.due_at)
         values = _validate_content_fields(merged)
+        prior_publication = await publication_for_task(db, task)
+        publication = normalize_publication(fields.get("publication", prior_publication), values["platform"], values["timezone"])
         if "material_id" in fields:
             material = await _material(db, ctx, customer, fields["material_id"])
             values.update(material_id=fields["material_id"], material_title=material.title if material else None)
@@ -473,6 +630,7 @@ async def edit_task(db, user, task_id, *, expected_revision, **fields):
             identity, name = await _assignee(db, ctx, customer, fields["assignee_id"])
             values.update(assignee_id=identity, assignee_name=name)
         await _cas(db, task, expected_revision, values)
+        await _save_publication(db, task, publication)
         await _event(db, ctx, task, "edit", "draft")
         result = await _detail(db, ctx, task, permissions)
     return result

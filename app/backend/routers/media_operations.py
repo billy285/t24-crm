@@ -23,6 +23,34 @@ class StrictInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class PublicationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class PublicationEvent(PublicationInput):
+    title: str = Field(min_length=1, max_length=200)
+    start_at: str = Field(min_length=10, max_length=80)
+    end_at: str = Field(min_length=10, max_length=80)
+
+
+class PublicationOffer(PublicationInput):
+    coupon_code: str | None = Field(None, max_length=100)
+    redeem_online_url: str | None = Field(None, max_length=2048)
+    terms_conditions: str | None = Field(None, max_length=5000)
+
+
+class PublicationCallToAction(PublicationInput):
+    action_type: Literal["BOOK", "ORDER", "SHOP", "LEARN_MORE", "SIGN_UP", "CALL"]
+    url: str | None = Field(None, max_length=2048)
+
+
+class Publication(PublicationInput):
+    topic_type: Literal["STANDARD", "EVENT", "OFFER"]
+    event: PublicationEvent | None = None
+    offer: PublicationOffer | None = None
+    call_to_action: PublicationCallToAction | None = None
+
+
 class CreateTask(StrictInput):
     client_request_id: str = Field(min_length=36, max_length=36)
     customer_id: int = Field(ge=1, strict=True)
@@ -34,6 +62,7 @@ class CreateTask(StrictInput):
     assignee_id: int | None = Field(None, ge=1, strict=True)
     content: str = Field("", max_length=20000)
     material_id: int | None = Field(None, ge=1, strict=True)
+    publication: Publication | None = None
 
 
 class EditTask(StrictInput):
@@ -44,6 +73,7 @@ class EditTask(StrictInput):
     timezone: str | None = Field(None, min_length=1, max_length=80)
     content: str | None = Field(None, max_length=20000)
     material_id: int | None = Field(None, ge=1, strict=True)
+    publication: Publication | None = None
     assignee_id: int | None = Field(None, ge=1, strict=True)
 
 
