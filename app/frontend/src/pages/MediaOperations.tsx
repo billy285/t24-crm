@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, FileText, Globe2, Image, ListChecks, Loader2, LockKeyhole, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, FileText, Globe2, Image, Link2, ListChecks, Loader2, LockKeyhole, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { useRole } from '@/lib/role-context';
 import { confirmDiscardAllChanges, useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import MediaPublicationFields from '@/components/MediaPublicationFields';
@@ -11,6 +11,7 @@ import MediaPlatformCapabilities from '@/components/MediaPlatformCapabilities';
 import MediaPlanningWorkspace from '@/components/MediaPlanningWorkspace';
 import { blankPublicationForm, publicationEquivalent, publicationForm, publicationPayload, type PublicationForm } from '@/components/media-publication';
 import GoogleBusinessManagement from '@/components/GoogleBusinessManagement';
+import MetaBusinessWorkspace from '@/components/MetaBusinessWorkspace';
 import type { GbpPublicationEntry } from '@/lib/google-readiness';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,7 +40,8 @@ export default function MediaOperations() {
   const { employee, systemRole, loading: roleLoading } = useRole();
   const owner = systemRole === 'super_admin';
   const allowed = ['super_admin', 'admin', 'ops'].includes(systemRole || '');
-  const [workspace, setWorkspace] = useState<'tasks' | 'planning' | 'google' | 'materials'>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('google') ? 'google' : 'tasks');
+  const [workspace, setWorkspace] = useState<'tasks' | 'planning' | 'google' | 'meta' | 'materials'>(() => typeof window === 'undefined' ? 'tasks' : new URLSearchParams(window.location.search).has('meta') ? 'meta' : new URLSearchParams(window.location.search).has('google') ? 'google' : 'tasks');
+  const [metaRefresh, setMetaRefresh] = useState(0);
   const scope = `${employee?.id || ''}:${systemRole || ''}`;
   const scopeRef = useRef(scope); scopeRef.current = scope;
   const [resolvedScope, setResolvedScope] = useState(scope);
@@ -297,7 +299,7 @@ export default function MediaOperations() {
   const modalEditing = mode === 'create' || mode === 'edit';
   const readOnly = busy || unknownResult || imageHold;
   const optionLabel = (value: string) => options.platforms.find(row => row.value === value)?.label || value;
-  function changeWorkspace(next: 'tasks' | 'planning' | 'google' | 'materials') {
+  function changeWorkspace(next: 'tasks' | 'planning' | 'google' | 'meta' | 'materials') {
     if (next === workspace || busyRef.current || unknownResult || imageHoldRef.current || !confirmDiscardAllChanges()) return;
     draftGuard.markSaved(); setMode(null); setItem(null); setAction(null); setLeaveChoice(false); setMutationError('');
     setGooglePublicationEntry(undefined); setWorkspace(next);
@@ -313,9 +315,9 @@ export default function MediaOperations() {
 
   return <main className={`media-operations app-page${workspace === 'google' ? ' mo-google-mode' : ''}`} aria-label="代运营中心">
     <header className="mo-page-header"><div><p className="mo-eyebrow">任务与交付 · 代运营</p><h1>代运营中心</h1><p className="mo-subtitle">{workspace === 'google' ? '在授权范围内处理 Google 评论和帖子。' : '准备内容、完成审核、发布后留下凭证。'}</p></div>{workspace === 'tasks' && <div className="mo-header-actions"><Button variant="outline" onClick={() => { void loadList(); void loadOptions(); }} disabled={listLoading || busy} aria-label="刷新运营资料"><RefreshCw className={listLoading ? 'animate-spin' : ''} aria-hidden="true"/><span>刷新</span></Button><Button onClick={openCreate} disabled={!canCreate || busy || unknownResult}><Plus aria-hidden="true"/>新增任务</Button></div>}</header>
-    <div className="mo-workspace-switch" role="group" aria-label="代运营工作区"><button className={workspace === 'tasks' ? 'active' : ''} aria-pressed={workspace === 'tasks'} onClick={() => changeWorkspace('tasks')}><ListChecks aria-hidden="true"/>运营任务</button><button className={workspace === 'planning' ? 'active' : ''} aria-pressed={workspace === 'planning'} onClick={() => changeWorkspace('planning')}><CalendarDays aria-hidden="true"/>内容编排</button><button className={workspace === 'google' ? 'active' : ''} aria-pressed={workspace === 'google'} onClick={() => changeWorkspace('google')}><Globe2 aria-hidden="true"/>Google 商家</button><button className={workspace === 'materials' ? 'active' : ''} aria-pressed={workspace === 'materials'} onClick={() => changeWorkspace('materials')}><Image aria-hidden="true"/>客户素材</button></div>
-    <MediaPlatformCapabilities key={scope} scope={scope}/>
-    {workspace === 'google' ? <GoogleBusinessManagement scope={scope} isOwner={owner} publicationEntry={googlePublicationEntry} onCreateTask={() => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); openCreate(); }} onOpenTask={(id, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); void readDetail(id, false, nextAction); }}/> : workspace === 'materials' ? <MediaTeamMaterials key={scope} scope={scope} customers={options.customers} initialCustomerId={customerFilter !== 'all' ? Number(customerFilter) : undefined} onChanged={() => void loadOptions()} loading={optionsLoading} error={optionsError} onRetry={() => void loadOptions()}/> : workspace === 'planning' ? <MediaPlanningWorkspace key={scope} scope={scope} customers={options.customers} assignees={options.assignees} onOpenTask={id=>{if(busyRef.current||unknownResult||!confirmDiscardAllChanges())return;setWorkspace('tasks');void readDetail(id);}} onCreateTask={()=>{if(busyRef.current||unknownResult||!confirmDiscardAllChanges())return;setWorkspace('tasks');openCreate();}} onChanged={()=>{void loadList();void loadOptions();}}/> : <>
+    <div className="mo-workspace-switch" role="group" aria-label="代运营工作区"><button className={workspace === 'tasks' ? 'active' : ''} aria-pressed={workspace === 'tasks'} onClick={() => changeWorkspace('tasks')}><ListChecks aria-hidden="true"/>运营任务</button><button className={workspace === 'planning' ? 'active' : ''} aria-pressed={workspace === 'planning'} onClick={() => changeWorkspace('planning')}><CalendarDays aria-hidden="true"/>内容编排</button><button className={workspace === 'google' ? 'active' : ''} aria-pressed={workspace === 'google'} onClick={() => changeWorkspace('google')}><Globe2 aria-hidden="true"/>Google 商家</button>{owner && <button className={`mo-meta-switch ${workspace === 'meta' ? 'active' : ''}`} aria-pressed={workspace === 'meta'} onClick={() => changeWorkspace('meta')}><Link2 aria-hidden="true"/>Facebook / Instagram</button>}<button className={workspace === 'materials' ? 'active' : ''} aria-pressed={workspace === 'materials'} onClick={() => changeWorkspace('materials')}><Image aria-hidden="true"/>客户素材</button></div>
+    <MediaPlatformCapabilities key={scope} scope={scope} isOwner={owner} metaRefreshKey={metaRefresh} onOpenMeta={() => changeWorkspace('meta')}/>
+    {workspace === 'meta' ? <MetaBusinessWorkspace key={scope} scope={scope} isOwner={owner} onChanged={() => setMetaRefresh(value => value + 1)}/> : workspace === 'google' ? <GoogleBusinessManagement scope={scope} isOwner={owner} publicationEntry={googlePublicationEntry} onCreateTask={() => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); openCreate(); }} onOpenTask={(id, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); void readDetail(id, false, nextAction); }}/> : workspace === 'materials' ? <MediaTeamMaterials key={scope} scope={scope} customers={options.customers} initialCustomerId={customerFilter !== 'all' ? Number(customerFilter) : undefined} onChanged={() => void loadOptions()} loading={optionsLoading} error={optionsError} onRetry={() => void loadOptions()}/> : workspace === 'planning' ? <MediaPlanningWorkspace key={scope} scope={scope} customers={options.customers} assignees={options.assignees} onOpenTask={id=>{if(busyRef.current||unknownResult||!confirmDiscardAllChanges())return;setWorkspace('tasks');void readDetail(id);}} onCreateTask={()=>{if(busyRef.current||unknownResult||!confirmDiscardAllChanges())return;setWorkspace('tasks');openCreate();}} onChanged={()=>{void loadList();void loadOptions();}}/> : <>
     <div className="mo-scope"><ShieldCheck aria-hidden="true"/><span>{owner ? '老板视角 · 查看全部运营交付，审核后进入发布' : '我的工作 · 仅显示本人负责且老板已授权的客户任务'}</span><span className="mo-manual-tag">按平台能力执行 · 凭证留痕</span></div>
     <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
     {unknownResult && <div className="mo-alert mo-alert-warn" role="alert"><AlertCircle aria-hidden="true"/><div><strong>上次操作结果待确认</strong><p>请先确认结果，再继续修改或新增任务。</p></div><Button variant="outline" disabled={busy} onClick={() => void recoverUnknown()}>{busy ? '正在确认…' : '重新确认结果'}</Button></div>}
