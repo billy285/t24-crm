@@ -14,6 +14,7 @@ export const publicationRights = [
 ];
 export const MAX_IMAGE_SOURCE_BYTES = 20 * 1024 * 1024;
 export const MAX_IMAGE_SIDE = 2048;
+export const MAX_IMAGE_PREVIEW_BYTES = 8 * 1024 * 1024;
 /** A late A response stays stale even if navigation goes A → B → A. */
 export function imageRequestScope(initial: string) {
   let key = initial, generation = 0, active = true;
@@ -53,6 +54,17 @@ export async function verifiedPreviewBlob(image: PublicationImage, value: unknow
   verifiedPublicationImage(image);
   if (!(value instanceof Blob) || value.size !== image.byte_size || value.size > 8 * 1024 * 1024 || await sha256Blob(value) !== image.image_sha256) throw new Error('图片内容与保存版本不一致，请刷新后核对。');
   return new Blob([value], {type: 'image/png'});
+}
+
+/** In-memory PNG only. Compatible with the existing img-src data: policy; never persist this value. */
+export async function publicationImagePreviewDataUrl(value: Blob): Promise<string> {
+  if (!(value instanceof Blob) || !value.size || value.size > MAX_IMAGE_PREVIEW_BYTES) throw new Error('发布配图预览需为不超过 8MB 的 PNG 图片。');
+  const bytes = new Uint8Array(await value.arrayBuffer()), checked = sourceImageDimensions(bytes);
+  if (checked.kind !== 'png' || checked.width > MAX_IMAGE_SIDE || checked.height > MAX_IMAGE_SIDE) throw new Error('发布配图预览不是有效的固定 PNG 图片。');
+  // Avoid the argument-count limit and do not put source metadata or credential URLs in img.src.
+  const chunks: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)));
+  return `data:image/png;base64,${btoa(chunks.join(''))}`;
 }
 
 /** Check dimensions before asking the browser decoder to allocate a bitmap. */

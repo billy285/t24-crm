@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ImagePlus, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { mediaError, mediaErrorStatus, mediaRequestId } from '@/lib/media-operations-api';
-import { imagePreviewPath, imageRequestScope, prepareBrowserImage, publicationImages, publicationRights, verifiedPreviewBlob, verifiedPublicationImage, type PublicationImage, type PublicationImageList } from '@/lib/media-publication-images';
+import { imagePreviewPath, imageRequestScope, prepareBrowserImage, publicationImagePreviewDataUrl, publicationImages, publicationRights, verifiedPreviewBlob, verifiedPublicationImage, type PublicationImage, type PublicationImageList } from '@/lib/media-publication-images';
 import { useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import { Button } from './ui/button';
 import { NativeSelect } from './ui/native-select';
@@ -39,14 +39,14 @@ export function MediaImageDeliveryPolicy({customerId, scope = '', onChanged}: {c
   return <section className="mpi-policy" aria-label="发布图片投递设置"><strong><ShieldCheck size={15}/> {policy?.enabled?'发布图片投递已启用':'发布图片投递尚未启用'}</strong><p>{policy?.notice||'设置暂未读取，固定图片仍按私有素材处理。'}</p><p>此设置作用于当前 Google 连接所属老板账号。启用不会公开现有素材；仅本账号下经过审核、并明确提交发布的固定副本可在投递有效期内读取。</p>{error&&<p className="mpi-notice warning" role="alert">{error}</p>}{uncertain?<Button variant="outline" disabled={busy||loading} onClick={()=>void read(true)}>读取当前设置并核对</Button>:policy?.can_manage?<><label className="mpi-check"><input type="checkbox" checked={confirmed} disabled={busy||loading} onChange={event=>setConfirmed(event.target.checked)}/>{policy.enabled?'我确认暂停本老板账号的图片投递；可能影响 Google 尚未完成抓取的图片。已公开帖子须在平台单独处理。':'我确认允许 Google 在本账号经审核并明确提交发布时，获取对应固定图片副本；持有投递地址者在有效期内也可能读取。原文件仍保持私有。'}</label><div className="mpi-actions"><Button variant="outline" disabled={busy||loading} onClick={()=>void read()}>刷新设置</Button><Button disabled={busy||loading||!confirmed} onClick={()=>void save()}>{busy?'正在保存…':policy.enabled?'确认暂停图片投递':'确认启用图片投递'}</Button></div></>:<p>只有此 Google 连接所属老板可以调整投递设置。</p>}</section>;
 }
 
-/** Authenticated, hash-verified preview. No credential or delivery URL enters img.src. */
+/** Authenticated, hash-verified in-memory PNG preview. No credential or delivery URL enters img.src. */
 export function PublicationImagePreview({ image, scope = '', title = '审核使用的最终配图', onStateChange }: { image: PublicationImage; scope?: string; title?: string; onStateChange?: (state: PreviewState) => void }) {
   const identity = `${scope}:${image?.id}:${image?.image_sha256}:${image?.byte_size}:${image?.preview_path}`, fence=useRef(imageRequestScope(identity));fence.current.update(identity);
   const [resolvedPreview,setResolvedPreview]=useState(identity);
   const [view,setView]=useState<{url:string;identity:string;current:()=>boolean}|null>(null), [state, setState] = useState<PreviewState>('loading'), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const listener = useRef(onStateChange); listener.current = onStateChange;
   useEffect(() => {
-    fence.current.activate();setResolvedPreview(identity);const current=fence.current.capture();let currentUrl = '';
+    fence.current.activate();setResolvedPreview(identity);const current=fence.current.capture();let currentDataUrl = '';
     const publish = (next: PreviewState) => { if (current()) { setState(next); listener.current?.(next); } };
     setView(null); setError(''); publish('loading');
     void (async () => {
@@ -57,10 +57,12 @@ export function PublicationImagePreview({ image, scope = '', title = '审核使�
         if (!current()) return;
         const blob = await verifiedPreviewBlob(image, response.data);
         if (!current()) return;
-        currentUrl = URL.createObjectURL(blob); setView({url:currentUrl,identity,current});
+        const dataUrl = await publicationImagePreviewDataUrl(blob);
+        if (!current()) return;
+        currentDataUrl = dataUrl; setView({url:currentDataUrl,identity,current});
       } catch (cause) { if (current()) { setError(mediaError(cause, cause instanceof Error ? cause.message : '图片暂时无法核对，请重试。')); publish('failed'); } }
     })();
-    return () => { fence.current.invalidate(); if (currentUrl) URL.revokeObjectURL(currentUrl); };
+    return () => { fence.current.invalidate(); currentDataUrl = ''; };
   }, [identity, retry]);
   const display=view&&view.identity===identity&&view.current()?view:null;
   const displayState=resolvedPreview!==identity?'loading':state;
@@ -84,7 +86,7 @@ export default function MediaPublicationImage({ customerId, materialId, value, o
   const selected = list?.items.find(row => row.id === value);
   const canMake = canPrepare && !disabled && list?.can_prepare === true;
   const blocked = busy || unknown || disabled;
-  function clearCandidate() { if (candidateRef.current) URL.revokeObjectURL(candidateRef.current.preview); candidateRef.current = null; setCandidate(null); setRights(''); setConfirmed(false); guard.markSaved(); }
+  function clearCandidate() { candidateRef.current = null; setCandidate(null); setRights(''); setConfirmed(false); guard.markSaved(); }
   async function load() {
     const current=fence.current.capture(),seq = ++sequence.current; setLoading(true); setError('');
     try { const data = await publicationImages(customerId, materialId); if (current() && seq === sequence.current) setList(data); }
@@ -93,7 +95,7 @@ export default function MediaPublicationImage({ customerId, materialId, value, o
   }
   useEffect(() => {
     fence.current.activate();setResolvedIdentity(identity);setList(null);setCandidate(null);setRights('');setConfirmed(false);setBusy(false);setUnknown(false);setNotFound(false);setRevokeConfirmed(false);setError('');setNotice('');pending.current=null;busyRef.current=false;candidateRef.current=null;guard.markSaved();hold.release();void load();
-    return () => { fence.current.invalidate();sequence.current++;if(candidateRef.current)URL.revokeObjectURL(candidateRef.current.preview);candidateRef.current=null;holdListener.current?.(false);draftListener.current?.(false); };
+    return () => { fence.current.invalidate();sequence.current++;candidateRef.current=null;holdListener.current?.(false);draftListener.current?.(false); };
   }, [identity]);
   useEffect(() => { holdListener.current?.(blocked); return () => holdListener.current?.(false); }, [blocked]);
   useEffect(() => { draftListener.current?.(Boolean(candidate)); return () => draftListener.current?.(false); }, [candidate]);
@@ -106,7 +108,9 @@ export default function MediaPublicationImage({ customerId, materialId, value, o
       if (!(response.data instanceof Blob)) throw new Error('原图片返回不完整，请重新读取素材。');
       const result = await prepareBrowserImage(response.data);
       if (!current()) return;
-      clearCandidate(); const next = { ...result, preview: URL.createObjectURL(result.file) }; candidateRef.current = next; setCandidate(next);
+      const preview = await publicationImagePreviewDataUrl(result.file);
+      if (!current()) return;
+      clearCandidate(); const next = { ...result, preview }; candidateRef.current = next; setCandidate(next);
     } catch (cause) { if (current()) setError(mediaError(cause, cause instanceof Error ? cause.message : '图片准备失败，请核对原文件。')); }
     finally { if (current()) { busyRef.current = false; setBusy(false); hold.release(); } }
   }
