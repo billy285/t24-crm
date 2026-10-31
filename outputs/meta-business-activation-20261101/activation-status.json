@@ -1,0 +1,19 @@
+{
+  "activation_receipt_sha256": "cdbeb6bdd5e0a29c39fe4c53eb9b8508901841c38afbd94cafdd5be81b73dee8",
+  "activation_tools_staged": true,
+  "actual_app_secret_read": true,
+  "aliyun_authenticated": true,
+  "carrier_sha": "66eb7aa5ea0323ea4daced45a58ca8ac9518088c",
+  "credential_receipt_sha256": "c4814e82750849bd13f85747a2fe0e9b92ada0f5f610aa4311b78b3811a43dc7",
+  "credentials_installed": true,
+  "existing_business_logic_changed": false,
+  "next": "Read connection after actual same-browser OAuth return, then live assets and explicitly confirmed CRM customer binding; keep read scope guard.",
+  "public_transfer_expires_at": 1793472336,
+  "public_transfer_id": "147b22a0e93590e6b7dfd18a022556d2",
+  "real_meta_oauth_verified": false,
+  "runtime_changed": true,
+  "stage": "RUNTIME_ACTIVATED_AWAIT_OWNER_META_ASSET_SELECTION",
+  "tests_passed": 120,
+  "transport_tools_installed": true,
+  "waiting_on": "Owner selection of Meta authorized business assets"
+}

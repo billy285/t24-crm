@@ -1,0 +1,45 @@
+{
+  "actual_carrier_application_tree_and_committed_members_checked": true,
+  "app_source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "ast_parsed_all": true,
+  "baseline_sha256": "20be9f4367c65b7a00882dbcd789a5867d00a4bfa8a57bf611bc2b3c3ad0c823",
+  "carrier": "66eb7aa5ea0323ea4daced45a58ca8ac9518088c",
+  "commands": {
+    "activate-command.sh": {
+      "bytes": 3290,
+      "sha256": "034fa3a2f69aa89b6bc4761af126c43e2dcdc9e716ce6acc1586eead91a1c078"
+    },
+    "recover-command.sh": {
+      "bytes": 3289,
+      "sha256": "883ca8dc51586266a65e48ecd1436e9a7bf963968c347a6239b53523f5ea4f5f"
+    },
+    "stage-command.sh": {
+      "bytes": 4463,
+      "sha256": "754d209a18c5fa91fcb7dedabfe71162d962f7f2873c84250638542f70780e2f"
+    }
+  },
+  "configuration_freeze_sha256": "8629373834b3563a90ec3c8b00d3d52bb1a17af18d882aad9d57254dac66d831",
+  "independent_regeneration_exact": true,
+  "members": {
+    "activation.py": {
+      "bytes": 16791,
+      "sha256": "5bd8f623fb149cfec60c2c65e3f68468f02329db93501009f9a8182835dd5963"
+    },
+    "baseline.py": {
+      "bytes": 8881,
+      "sha256": "0884eca1646e0891b9d2106282688bcb1fa9186807f470d8754f7f0fbf5655fb"
+    },
+    "core.py": {
+      "bytes": 7395,
+      "sha256": "4df1106fd1bbcafeb895896ace72b7d285b92a955d618b11ed88ef05da108576"
+    },
+    "transport.py": {
+      "bytes": 7723,
+      "sha256": "7b87b16d709d257a5ab8e1f0cf9e16c21957e218d725ea883fee695a244bce34"
+    }
+  },
+  "no_secret_values_in_wrappers": true,
+  "production_executed_by_reviewer": false,
+  "protected_same_image_env_activation_namespace_separate": true,
+  "stage": "META_ACTIVATION_ACTUAL_WRAPPERS_INDEPENDENT_REVIEW_PASS"
+}

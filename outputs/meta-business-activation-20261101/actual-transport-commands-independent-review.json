@@ -1,0 +1,47 @@
+{
+  "baseline_sha256": "20be9f4367c65b7a00882dbcd789a5867d00a4bfa8a57bf611bc2b3c3ad0c823",
+  "both_actual_python_asts_parsed": true,
+  "carrier": "66eb7aa5ea0323ea4daced45a58ca8ac9518088c",
+  "command_sha256": {
+    "transport-prepare-command.sh": "5070f2da0990afba9a6d9091a4bd2055b7bb4ebefe07b2050b40db067bf3d44b",
+    "transport-tools-install-command.sh": "379655944a4dd9e14fbd57f6973d41ea1c299f1dcb284b69a7972bdc20d7d2f7"
+  },
+  "findings": [],
+  "independent_regeneration_exact": true,
+  "initial_namespace": "tools-transport-v1",
+  "installed_receipt_sha256": "0a38453b229ef8ab2b0d46a0d6c850231f96628dcaf46713b61b6fb0563c81f1",
+  "plain_credentials_or_provider_or_runtime_operations": false,
+  "prepare_hashloads_final_three_tools_and_checks_live_baseline": true,
+  "production_executed_by_reviewer": false,
+  "result": "PASS",
+  "reviewer": "workflow_actual_release_review",
+  "root0600_exclusive_tools_preserve_proof": true,
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_ACTUAL_TRANSPORT_WRAPPERS_INDEPENDENT_REVIEW",
+  "three_remote_immutable_members": [
+    {
+      "bytes": 7395,
+      "exact_local_and_frozen_bytes": true,
+      "file": "core.py",
+      "http_status": 200,
+      "redirect_or_proxy": false,
+      "sha256": "4df1106fd1bbcafeb895896ace72b7d285b92a955d618b11ed88ef05da108576"
+    },
+    {
+      "bytes": 8881,
+      "exact_local_and_frozen_bytes": true,
+      "file": "baseline.py",
+      "http_status": 200,
+      "redirect_or_proxy": false,
+      "sha256": "0884eca1646e0891b9d2106282688bcb1fa9186807f470d8754f7f0fbf5655fb"
+    },
+    {
+      "bytes": 7723,
+      "exact_local_and_frozen_bytes": true,
+      "file": "transport.py",
+      "http_status": 200,
+      "redirect_or_proxy": false,
+      "sha256": "7b87b16d709d257a5ab8e1f0cf9e16c21957e218d725ea883fee695a244bce34"
+    }
+  ]
+}

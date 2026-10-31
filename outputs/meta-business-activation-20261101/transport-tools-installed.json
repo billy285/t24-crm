@@ -1,0 +1,9 @@
+{
+  "business_writes": false,
+  "carrier": "66eb7aa5ea0323ea4daced45a58ca8ac9518088c",
+  "credential_content_read": false,
+  "receipt_sha256": "0a38453b229ef8ab2b0d46a0d6c850231f96628dcaf46713b61b6fb0563c81f1",
+  "runtime_changed": false,
+  "stage": "META_TRANSPORT_TOOLS_INSTALLED",
+  "tool_root": "/opt/t24-crm/releases/meta-business-activation-6cf69fbe4cbe-20261101/tools-transport-v1"
+}
