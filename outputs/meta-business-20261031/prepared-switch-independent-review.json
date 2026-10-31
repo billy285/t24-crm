@@ -1,0 +1,43 @@
+{
+  "actual_prepared_sha256": "c31ada6e5febf06251e242066236ba47cc4bbdc2b32f032987e9267bb1872382",
+  "candidate_image": "sha256:98ae650db11bc425d35204442e0444f2d421a56594507ec75f8aae97853cf084",
+  "candidate_inventory_sha256": "2b74ae71ad34405c4dcfec6cbe80e783e8dd34aac1fcc44ea18a03dfc4e3e464",
+  "canonical_prepared_matches_server_receipt_and_envelope": true,
+  "carrier": "de741ea14613c489704f4c3db5db5c6e6018de3e",
+  "constraints": [
+    "Root may execute this exact activate wrapper once",
+    "Recovery wrapper execution is not preapproved absent a failure and review",
+    "No Meta credentials/config/provider activation or public operations included",
+    "Actual deployed receipt and live public checks still required"
+  ],
+  "exact_actual_python310_routes_network_none_credentials_absent_workers_off": true,
+  "existing_google_on_cutoff_private_and_runtime_boundary_preserved": true,
+  "five_new_meta_tables_empty_and_exact_shapes": true,
+  "frontend_version": "58d2c585210f",
+  "meta_disabled_and_all_environment_keys_absent": true,
+  "nginx_next_sha256": "45c81a27b84f76ef89dfd27ddd771e402369e8e228ab8f5fff48a207a5fc6daa",
+  "old_schema_revision": "acd7c9d0e136",
+  "original_136_rows_schema_and_metadata_preserved_offline": true,
+  "preflight_sha256": "8f4995bb3e8a100869ba01a26c59f5d8f49ba78127cd82066279539adb20f71e",
+  "production_executed_by_reviewer": false,
+  "production_migration_not_yet_performed": true,
+  "public_inventory_sha256": "9f170883c749951167995b45c8057fc6ee47ae433c4a825f47a02da77b301426",
+  "release": "/opt/t24-crm/releases/meta-business-6cf69fbe4cbe-20261031",
+  "result": "PASS_FOR_ONE_ACTIVATION_ONLY",
+  "schema_after_sha256": "c2de8e8629adabdcda4d86a2f3683c0703f93c69640c6b79ab470efff4218035",
+  "schema_revision": "bde8da01f247",
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_BUSINESS_ACTUAL_PREPARED_AND_SWITCH_COMMANDS_INDEPENDENT_REVIEW",
+  "wrappers": {
+    "activate-command.sh": {
+      "bytes": 2194,
+      "regenerated_exact": true,
+      "sha256": "d84d550c22ee97b88a674a24830a4637165cb046aaed4a7a3c9647435efdd8d0"
+    },
+    "recover-command.sh": {
+      "bytes": 2193,
+      "regenerated_exact": true,
+      "sha256": "371787136a3101c5ad1d2faa15fc73d159bd5ac0db0db48b2e04d1b0e0633447"
+    }
+  }
+}

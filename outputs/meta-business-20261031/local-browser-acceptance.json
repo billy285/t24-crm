@@ -1,0 +1,22 @@
+{
+  "stage": "LOCAL_SYNTHETIC_META_COMPONENT_BROWSER_QA",
+  "desktop": {
+    "authorization_copy_scope_callback_and_disabled_confirmation": "PASS"
+  },
+  "mobile_390x844": {
+    "authorization_modal_readable_and_footer_visible": "PASS",
+    "instagram_customer_binding_preview": "PASS",
+    "consent_then_bind_saved_actual_state": "PASS",
+    "staff_owner_connections_hidden": "PASS"
+  },
+  "actual_meta_oauth": "NOT_RUN_PERSONAL_LOGIN_PENDING",
+  "production_mutations": "NONE_FROM_QA",
+  "provider_calls": "NONE",
+  "broad_ui_redesign": "NOT_INCLUDED",
+  "screenshots": [
+    "local-desktop-authorization.png",
+    "local-mobile-authorization.png",
+    "local-mobile-binding-preview.png",
+    "local-mobile-staff-denied.png"
+  ]
+}

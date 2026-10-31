@@ -1,0 +1,30 @@
+{
+  "actual_meta_oauth": "NOT_RUN_PERSONAL_LOGIN_PENDING",
+  "application_tests": {
+    "frontend_workflow": 56,
+    "meta_backend": 58,
+    "protected_baseline_regression": 185,
+    "release": 143
+  },
+  "configuration_missing_count": 9,
+  "configuration_pending": true,
+  "connect_and_bind_disabled_before_configuration": true,
+  "deployed_receipt_sha256": "fd8cbf5fcc42b942206c6ea4b627ef345c2d25272900973a12344d67e8764eeb",
+  "existing_google_bindings_displayed": 5,
+  "frontend_version": "58d2c585210f",
+  "meta_publication_or_comment_api": "NOT_IMPLEMENTED_PHASE1",
+  "mobile_390x844_navigation_and_state": "PASS",
+  "owner_page": "PASS",
+  "pending_user_action": "Complete personal Meta login in preserved Facebook tab; do not send password or verification code.",
+  "provider_actions": "NONE_FROM_THIS_TASK",
+  "real_connections": 0,
+  "real_customer_bindings": 0,
+  "screenshots": [
+    "production-meta-setup.png",
+    "production-meta-mobile.png"
+  ],
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_BUSINESS_PRODUCTION_BROWSER_ACCEPTED_CONFIGURATION_PENDING",
+  "url": "https://t24-crm.com/media-ops?meta=setup",
+  "viewport_reset": true
+}

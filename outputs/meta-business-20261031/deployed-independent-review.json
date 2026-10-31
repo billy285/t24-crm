@@ -1,0 +1,48 @@
+{
+  "actual_deployed_sha256": "fd8cbf5fcc42b942206c6ea4b627ef345c2d25272900973a12344d67e8764eeb",
+  "actual_prepared_sha256": "c31ada6e5febf06251e242066236ba47cc4bbdc2b32f032987e9267bb1872382",
+  "callback_and_image_loopback_header_log_sentinels_passed_no_provider_or_rows_written": true,
+  "candidate_id": "922d63af2e831e32ec3bda157fb71c6d19e528105903b152edc1c7bc17bb9035",
+  "candidate_image": "sha256:98ae650db11bc425d35204442e0444f2d421a56594507ec75f8aae97853cf084",
+  "candidate_restart_count": 0,
+  "canonical_matches_server_receipt_and_envelope": true,
+  "checked_at_utc": "2026-10-31T16:15:42.017056+00:00",
+  "exact_reviewed_preflight_package_source_candidate_and_nginx_binding": true,
+  "five_meta_tables_empty_total_141": true,
+  "frontend_version": "58d2c585210f",
+  "google_worker_on_cutoff_and_existing_data_preserved": true,
+  "independent_public_checks": [
+    {
+      "content_security_policy_sha256": "2b194e47b6ce14dbf475afea0192b06f0e93d000811af1a29c8e5f78646250fa",
+      "http_status": 200,
+      "json": {
+        "version": "58d2c585210f"
+      },
+      "no_proxy_or_redirect": true,
+      "path": "/app-version.json"
+    },
+    {
+      "content_security_policy_sha256": "2b194e47b6ce14dbf475afea0192b06f0e93d000811af1a29c8e5f78646250fa",
+      "http_status": 200,
+      "json": {
+        "service": "t24-crm",
+        "status": "ready"
+      },
+      "no_proxy_or_redirect": true,
+      "path": "/ready"
+    }
+  ],
+  "limits": [
+    "Authenticated production UI acceptance is performed separately by root",
+    "This deployment does not connect an actual Facebook/Instagram account; application configuration and personal OAuth remain pending",
+    "No Meta post/comment endpoints or capabilities enabled, and no real provider call made by deployment/reviewer"
+  ],
+  "meta_environment_keys_absent_credentials_absent_feature_disabled": true,
+  "no_database_restore_sequence_rewrite_or_container_deletion": true,
+  "original_136_rows_schema_and_protected_boundaries_preserved_except_schema_head": true,
+  "result": "PASS_DISABLED_CONNECTION_INFRASTRUCTURE_DEPLOYMENT",
+  "schema_revision": "bde8da01f247",
+  "schema_sha256": "c2de8e8629adabdcda4d86a2f3683c0703f93c69640c6b79ab470efff4218035",
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_BUSINESS_ACTUAL_DEPLOYED_INDEPENDENT_REVIEW"
+}

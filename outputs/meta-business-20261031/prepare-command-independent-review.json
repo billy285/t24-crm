@@ -1,0 +1,54 @@
+{
+  "carrier": "de741ea14613c489704f4c3db5db5c6e6018de3e",
+  "carrier_app_tree_and_four_committed_members_exact": true,
+  "exact_regeneration_and_pins": true,
+  "frontend_version": "58d2c585210f",
+  "limits": [
+    "Only prepare phase; no activation or recovery authorized",
+    "No production migration/env/provider changes; isolated migration copy and static stage only",
+    "Actual prepared receipt must be independently reviewed before switch wrapper generation/execution"
+  ],
+  "preflight_sha256": "8f4995bb3e8a100869ba01a26c59f5d8f49ba78127cd82066279539adb20f71e",
+  "production_executed_by_reviewer": false,
+  "raw_members": [
+    {
+      "bytes": 137627,
+      "exact_local_and_pinned": true,
+      "http_status": 200,
+      "member": "artifacts/manifest.json",
+      "no_redirect_or_proxy": true,
+      "sha256": "9d8f26821cd42cd2816af4bcb7a1805e1b9879d103453445f0580da64002869d"
+    },
+    {
+      "bytes": 2190442,
+      "exact_local_and_pinned": true,
+      "http_status": 200,
+      "member": "artifacts/payload.tar.gz",
+      "no_redirect_or_proxy": true,
+      "sha256": "2d499a18199822e807a67bf96cf4425fa36f7e6fedcfc701cabc0213c4b1948a"
+    },
+    {
+      "bytes": 13574,
+      "exact_local_and_pinned": true,
+      "http_status": 200,
+      "member": "preflight.py",
+      "no_redirect_or_proxy": true,
+      "sha256": "b4f672ed78d5743027ad99dce0a95b222c3059bd8868866a8314bff7734a1483"
+    },
+    {
+      "bytes": 71910,
+      "exact_local_and_pinned": true,
+      "http_status": 200,
+      "member": "release.py",
+      "no_redirect_or_proxy": true,
+      "sha256": "a14f6d41eb6089e1a124c8326a27031280af4dbc9f58c5a73e797565d0135c98"
+    }
+  ],
+  "release": "/opt/t24-crm/releases/meta-business-6cf69fbe4cbe-20261031",
+  "result": "PASS_FOR_ONE_ISOLATED_PREPARE_ONLY",
+  "reviewed_package_sha256": "73c9356cf02e124b18ae814434335afe2f100abde628551adb9f88e8102bb08a",
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_BUSINESS_PREPARE_COMMAND_INDEPENDENT_REVIEW",
+  "wrapper_bytes": 3165,
+  "wrapper_sha256": "a9b049185ec7292a17420935cc4b595c03ed8c991a631ddd05b4abd720e5eb18"
+}
