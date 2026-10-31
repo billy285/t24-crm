@@ -1,0 +1,391 @@
+--- released/app/backend/services/meta_business_provider.py
++++ candidate/app/backend/services/meta_business_provider.py
+@@ -5,6 +5,7 @@
+ Graph version and the reviewed user-token configuration are explicit settings.
+ """
+ import hashlib
++from contextlib import contextmanager
+ from contextvars import ContextVar
+ import json
+ import logging
+@@ -23,6 +24,58 @@
+ READ_SCOPES = frozenset({"pages_show_list", "pages_read_engagement", "instagram_basic"})
+ ID = re.compile(r"[0-9]{1,80}\Z")
+ META_NETWORK_ACTIVE = ContextVar("t24_meta_network_active", default=False)
++_CALLBACK_DIAGNOSTICS = ContextVar("t24_meta_callback_diagnostics", default=None)
++_CALLBACK_STAGES = frozenset({"code_exchange", "short_token_validation", "long_lived_exchange", "long_token_validation",
++    "token_inspection", "inspection_validation", "identity_read", "permissions_read", "grants_validation",
++    "scope_validation", "expiry_validation", "configuration_validation"})
++_CALLBACK_CODES = frozenset({"reconnect_required", "access_denied", "quota_limited", "invalid_response", "provider_unavailable", "listing_too_large"})
++_CALLBACK_REASONS = frozenset({"missing_read", "unexpected_scope", "missing_read_and_unexpected_scope", "invalid_scope_shape"})
++
++
++@contextmanager
++def callback_diagnostics():
++    # Request-local, bounded primitives only. No request, exception or provider
++    # response object is retained in this context.
++    marker = _CALLBACK_DIAGNOSTICS.set({"claimed": False})
++    try: yield
++    finally: _CALLBACK_DIAGNOSTICS.reset(marker)
++
++
++def _callback_stage(stage, *, claimed=False):
++    current = _CALLBACK_DIAGNOSTICS.get()
++    if current is None: return
++    committed = current.get("claimed") is True or claimed
++    current.clear(); current.update(claimed=committed, stage=stage if stage in _CALLBACK_STAGES else None)
++
++
++def _callback_request_started():
++    current = _CALLBACK_DIAGNOSTICS.get()
++    if current is not None:
++        for key in ("http_status", "graph_code", "graph_subcode"): current.pop(key, None)
++
++
++def _callback_response_failure(status, data=None):
++    current = _CALLBACK_DIAGNOSTICS.get()
++    if current is None or current.get("claimed") is not True: return
++    if type(status) is int and 100 <= status <= 599: current["http_status"] = status
++    error = data.get("error") if isinstance(data, dict) else None
++    if isinstance(error, dict):
++        for source, target in (("code", "graph_code"), ("error_subcode", "graph_subcode")):
++            value = error.get(source)
++            if type(value) is int and 0 <= value <= 2147483647: current[target] = value
++
++
++def callback_failure_fields(error):
++    current = _CALLBACK_DIAGNOSTICS.get()
++    if current is None or current.get("claimed") is not True or current.get("stage") not in _CALLBACK_STAGES: return None
++    code = error.code
++    result = {"stage": current["stage"], "code": code if isinstance(code, str) and code in _CALLBACK_CODES else "provider_unavailable"}
++    for key in ("http_status", "graph_code", "graph_subcode"):
++        value = current.get(key)
++        if type(value) is int and (100 if key == "http_status" else 0) <= value <= (599 if key == "http_status" else 2147483647): result[key] = value
++    reason = current.get("reason")
++    if isinstance(reason, str) and reason in _CALLBACK_REASONS: result["reason"] = reason
++    return result
+ 
+ 
+ class ProviderError(Exception):
+@@ -139,6 +192,7 @@
+         self.expected_configuration = None
+ 
+     async def _raw(self, path, *, params=None, token=None):
++        _callback_request_started()
+         values = require_config()
+         if self.expected_configuration is not None and configuration_fingerprint() != self.expected_configuration:
+             raise ProviderError("reconnect_required")
+@@ -152,32 +206,51 @@
+                         body = bytearray()
+                         async for chunk in response.aiter_bytes(chunk_size=65536):
+                             body.extend(chunk)
+-                            if len(body) > 2_000_000: raise ProviderError("invalid_response")
++                            if len(body) > 2_000_000:
++                                _callback_response_failure(response.status_code)
++                                raise ProviderError("invalid_response")
+             finally: META_NETWORK_ACTIVE.reset(marker)
+             try: data = json.loads(body)
+-            except (ValueError, UnicodeError, RecursionError): raise ProviderError("invalid_response") from None
+-            if not isinstance(data, dict): raise ProviderError("invalid_response")
+-            if not 200 <= response.status_code < 300 or "error" in data: raise _error(response, data)
++            except (ValueError, UnicodeError, RecursionError):
++                _callback_response_failure(response.status_code)
++                raise ProviderError("invalid_response") from None
++            if not isinstance(data, dict):
++                _callback_response_failure(response.status_code)
++                raise ProviderError("invalid_response")
++            if not 200 <= response.status_code < 300 or "error" in data:
++                _callback_response_failure(response.status_code, data)
++                raise _error(response, data)
+             return data
+         except httpx.RequestError: raise ProviderError("provider_unavailable") from None
+ 
+     async def exchange(self, code):
++        # The sole production callback callsite enters here only after its
++        # valid state has been durably claimed in the first write transaction.
++        _callback_stage("code_exchange", claimed=True)
+         values = require_config()
+         self.expected_configuration = configuration_fingerprint()
+         short = await self._raw("oauth/access_token", params={"client_id": values["APP_ID"], "client_secret": values["APP_SECRET"], "redirect_uri": CALLBACK, "code": code})
++        _callback_stage("short_token_validation")
+         short_token, _ = self._tokens(short)
++        _callback_stage("long_lived_exchange")
+         long = await self._raw("oauth/access_token", params={"grant_type": "fb_exchange_token", "client_id": values["APP_ID"],
+             "client_secret": values["APP_SECRET"], "fb_exchange_token": short_token})
++        _callback_stage("long_token_validation")
+         token, expiry = self._tokens(long)
+         # The documented app-admin token may inspect a token from the same app.
++        _callback_stage("token_inspection")
+         debug = await self._raw("debug_token", params={"input_token": token}, token=values["APP_ID"] + "|" + values["APP_SECRET"])
++        _callback_stage("inspection_validation")
+         details = debug.get("data")
+         if not isinstance(details, dict) or details.get("is_valid") is not True or details.get("app_id") != values["APP_ID"] or details.get("type") != "USER":
+             raise ProviderError("access_denied")
+         identity = details.get("user_id")
+         if not isinstance(identity, str) or not ID.fullmatch(identity): raise ProviderError("invalid_response")
++        _callback_stage("identity_read")
+         me = await self._raw("me", params={"fields": "id"}, token=token)
++        _callback_stage("permissions_read")
+         permissions = await self._raw("me/permissions", token=token)
++        _callback_stage("grants_validation")
+         entries = permissions.get("data")
+         if me.get("id") != identity or not isinstance(entries, list) or len(entries) > 100: raise ProviderError("access_denied")
+         if not all(isinstance(x, dict) and isinstance(x.get("permission"), str) and re.fullmatch(r"[a-z_]{1,100}", x["permission"]) and x.get("status") in {"granted", "declined", "expired"} for x in entries):
+@@ -186,17 +259,29 @@
+         granted = {x["permission"] for x in entries if x["status"] == "granted"}
+         inspected_scopes = details.get("scopes")
+         allowed = READ_SCOPES | {"public_profile"}
++        _callback_stage("scope_validation")
+         if (not isinstance(inspected_scopes, list) or len(inspected_scopes) > 100 or not all(isinstance(x, str) for x in inspected_scopes)
+                 or not READ_SCOPES <= set(inspected_scopes) or not READ_SCOPES <= granted
+                 or not set(inspected_scopes) <= allowed or not granted <= allowed):
++            current = _CALLBACK_DIAGNOSTICS.get()
++            if current is not None:
++                reason = "invalid_scope_shape"
++                if isinstance(inspected_scopes, list) and len(inspected_scopes) <= 100 and all(isinstance(x, str) for x in inspected_scopes):
++                    missing = not READ_SCOPES <= set(inspected_scopes) or not READ_SCOPES <= granted
++                    unexpected = not set(inspected_scopes) <= allowed or not granted <= allowed
++                    reason = "missing_read_and_unexpected_scope" if missing and unexpected else "missing_read" if missing else "unexpected_scope"
++                current["reason"] = reason
+             raise ProviderError("access_denied")
++        _callback_stage("expiry_validation")
+         expires = details.get("expires_at")
+         if type(expires) is not int or expires <= time.time() + 30: raise ProviderError("reconnect_required")
+         expiry = min(time.time() + expiry, expires)
+         data_expiry = details.get("data_access_expires_at")
+         if type(data_expiry) is int and data_expiry > 0: expiry = min(expiry, data_expiry)
+         if expiry <= time.time() + 30: raise ProviderError("reconnect_required")
++        _callback_stage("configuration_validation")
+         if configuration_fingerprint() != self.expected_configuration: raise ProviderError("reconnect_required")
++        _callback_stage(None)
+         return {"access_token": token, "expires_at": expiry, "user_id": identity,
+                 "granted_read_scopes": sorted(READ_SCOPES), "observed_scopes": sorted(granted), "configuration": self.expected_configuration}
+ 
+--- released/app/backend/routers/meta_business.py
++++ candidate/app/backend/routers/meta_business.py
+@@ -1,5 +1,6 @@
+ """Meta connection and client binding only; no publish or comment endpoints."""
+ import logging
++import json
+ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
+ from fastapi.exceptions import RequestValidationError
+ from fastapi.responses import RedirectResponse
+@@ -12,6 +13,8 @@
+ from schemas.auth import UserResponse
+ from services import meta_business as service
+ from services import meta_business_provider as provider
++
++_callback_logger = logging.getLogger("meta_business.oauth")
+ 
+ 
+ class MetaOAuthAccessLogFilter(logging.Filter):
+@@ -104,11 +107,17 @@
+ @router.get("/oauth/callback")
+ async def oauth_callback(request: Request, state: str | None = Query(None, max_length=200), code: str | None = Query(None, max_length=4096), db: AsyncSession = Depends(get_db)):
+     outcome = "failed"
+-    try:
+-        await service.oauth_callback(db, state, request.cookies.get(service.COOKIE), code)
+-        outcome = "connected"
+-    except (HTTPException, provider.ProviderError):
+-        await db.rollback()
++    with provider.callback_diagnostics():
++        try:
++            await service.oauth_callback(db, state, request.cookies.get(service.COOKIE), code)
++            outcome = "connected"
++        except (HTTPException, provider.ProviderError) as error:
++            if isinstance(error, provider.ProviderError):
++                fields = provider.callback_failure_fields(error)
++                if fields is not None:
++                    _callback_logger.warning("META_OAUTH_CALLBACK_PROVIDER_FAILURE " + json.dumps(fields, sort_keys=True, separators=(",", ":")),
++                                             exc_info=None, stack_info=False)
++            await db.rollback()
+     response = RedirectResponse("/media-ops?meta=" + outcome, status_code=303)
+     response.delete_cookie(service.COOKIE, path="/api/v1/meta-business/oauth", secure=True, httponly=True, samesite="lax")
+     return response
+--- released/app/backend/tests/test_meta_business_callback_diagnostics.py
++++ candidate/app/backend/tests/test_meta_business_callback_diagnostics.py
+@@ -0,0 +1,184 @@
++"""Prospective callback diagnostics: synthetic HTTP/SQLite only, no credentials."""
++import asyncio
++from datetime import timedelta
++import json
++import logging
++
++import httpx
++import pytest
++from sqlalchemy import select
++
++from services import meta_business as service, meta_business_provider as provider
++from test_meta_business import meta_env, gbp_env, start, protected_snapshot, State
++from test_meta_business_provider import transport, valid_reply
++
++PREFIX = "/api/v1/meta-business"
++LOGGER = "meta_business.oauth"
++EVENT = "META_OAUTH_CALLBACK_PROVIDER_FAILURE "
++CANARY = "SYNTHETIC-SECRET-DO-NOT-LOG"
++
++
++def events(caplog):
++    records = [record for record in caplog.records if record.name == LOGGER]
++    output = []
++    for record in records:
++        assert record.args == () and record.exc_info is None and record.stack_info is None
++        assert record.getMessage().startswith(EVENT)
++        fields = json.loads(record.getMessage()[len(EVENT):])
++        assert set(fields) <= {"stage", "code", "reason", "http_status", "graph_code", "graph_subcode"}
++        output.append(fields)
++    return output
++
++
++def safe_output(caplog, response, env, state):
++    assert response.status_code == 303 and response.headers["location"] == "/media-ops?meta=failed"
++    assert response.headers["referrer-policy"] == "no-referrer" and "no-store" in response.headers["cache-control"]
++    for secret in (CANARY, state, "SYNTHETIC-META-APP-SECRET", "SYNTHETIC-LONG-USER-TOKEN", "SYNTHETIC-SHORT-USER-TOKEN"):
++        assert secret not in caplog.text and secret not in response.text and all(secret not in value for value in response.headers.values())
++    assert provider._CALLBACK_DIAGNOSTICS.get() is None and provider.META_NETWORK_ACTIVE.get() is False
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("stage", ["code_exchange", "long_lived_exchange", "token_inspection", "identity_read", "permissions_read"])
++async def test_valid_claim_is_committed_before_numeric_provider_failure_is_logged(meta_env, monkeypatch, caplog, stage):
++    env = meta_env; before = await protected_snapshot(env)
++    monkeypatch.setattr(provider, "MetaClient", env.meta_real_client)
++    _, body, state = await start(env)
++    async def handle(request):
++        async with env.sessions() as db:
++            claimed = await db.scalar(select(State).where(State.request_id == body["request_id"]))
++            assert claimed.consumed is True and claimed.flow_encrypted == ""
++        path = request.url.path
++        current = ("long_lived_exchange" if request.url.params.get("grant_type") else "code_exchange") if path.endswith("/oauth/access_token") else "token_inspection" if path.endswith("/debug_token") else "permissions_read" if path.endswith("/me/permissions") else "identity_read"
++        if current == stage:
++            return httpx.Response(400, json={"error": {"message": CANARY + str(request.url), "code": 190,
++                "error_subcode": 460, "type": CANARY, "access_token": CANARY, "headers": {"Authorization": CANARY}}})
++        return httpx.Response(200, json=valid_reply(request))
++    transport(monkeypatch, handle); caplog.set_level(logging.WARNING, logger=LOGGER)
++    response = await env.meta_client.get(PREFIX + "/oauth/callback", params={"state": state, "code": CANARY})
++    safe_output(caplog, response, env, state)
++    assert events(caplog) == [{"stage": stage, "code": "provider_unavailable", "http_status": 400, "graph_code": 190, "graph_subcode": 460}]
++    assert await protected_snapshot(env) == before
++    # A replay never reaches the exchange or creates another diagnostic event.
++    response = await env.meta_client.get(PREFIX + "/oauth/callback", params={"state": state, "code": CANARY})
++    assert response.headers["location"].endswith("failed") and len(events(caplog)) == 1
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("attack", ["anonymous", "missing_cookie", "expired", "owner_disabled"])
++async def test_preclaim_rejections_never_emit_callback_provider_diagnostics(meta_env, monkeypatch, caplog, attack):
++    env = meta_env; monkeypatch.setattr(provider, "MetaClient", env.meta_real_client)
++    _, body, state = await start(env)
++    if attack == "anonymous": state = CANARY; env.meta_client.cookies.clear()
++    elif attack == "missing_cookie": env.meta_client.cookies.clear()
++    else:
++        async with env.sessions() as db:
++            row = await db.scalar(select(State).where(State.request_id == body["request_id"]))
++            if attack == "expired": row.expires_at = service.now() - timedelta(seconds=1)
++            else:
++                owner = await db.get(service.Employees, 1); owner.status = "inactive"
++            await db.commit()
++    transport(monkeypatch, lambda request: pytest.fail("Preclaim rejection must not contact Meta"))
++    caplog.set_level(logging.WARNING, logger=LOGGER)
++    response = await env.meta_client.get(PREFIX + "/oauth/callback", params={"state": state, "code": CANARY})
++    safe_output(caplog, response, env, state); assert events(caplog) == []
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("mutation,stage,reason", [
++    ("short_shape", "short_token_validation", None), ("long_shape", "long_token_validation", None),
++    ("inspection", "inspection_validation", None), ("identity", "grants_validation", None),
++    ("extra", "scope_validation", "unexpected_scope"), ("missing", "scope_validation", "missing_read"),
++    ("both", "scope_validation", "missing_read_and_unexpected_scope"),
++    ("scope_shape", "scope_validation", "invalid_scope_shape"), ("expiry", "expiry_validation", None)])
++async def test_validation_stages_have_no_stale_http_details_or_scope_names(meta_env, monkeypatch, caplog, mutation, stage, reason):
++    env = meta_env; monkeypatch.setattr(provider, "MetaClient", env.meta_real_client); _, _, state = await start(env)
++    def handle(request):
++        value = valid_reply(request); path = request.url.path
++        if path.endswith("/oauth/access_token"):
++            long = request.url.params.get("grant_type") == "fb_exchange_token"
++            if mutation == ("long_shape" if long else "short_shape"): value.pop("expires_in")
++        if path.endswith("/debug_token"):
++            if mutation == "inspection": value["data"]["type"] = "SYSTEM_USER"
++            if mutation in {"extra", "both"}: value["data"]["scopes"].append("pages_manage_posts")
++            if mutation in {"missing", "both"}: value["data"]["scopes"].remove("instagram_basic")
++            if mutation == "scope_shape": value["data"]["scopes"] = CANARY
++            if mutation == "expiry": value["data"]["expires_at"] = 0
++        if path.endswith("/me") and mutation == "identity": value["id"] = "999"
++        return httpx.Response(200, json=value)
++    transport(monkeypatch, handle); caplog.set_level(logging.WARNING, logger=LOGGER)
++    response = await env.meta_client.get(PREFIX + "/oauth/callback", params={"state": state, "code": CANARY})
++    safe_output(caplog, response, env, state)
++    result = events(caplog); assert len(result) == 1 and result[0]["stage"] == stage
++    assert result[0].get("reason") == reason and not set(result[0]) & {"http_status", "graph_code", "graph_subcode"}
++    assert "pages_manage_posts" not in caplog.text and "instagram_basic" not in caplog.text
++
++
++@pytest.mark.asyncio
++async def test_success_and_asset_failures_do_not_emit_callback_diagnostics(meta_env, monkeypatch, caplog):
++    env = meta_env; monkeypatch.setattr(provider, "MetaClient", env.meta_real_client); _, _, state = await start(env)
++    def handle(request):
++        return httpx.Response(400, json={"error": {"code": 190, "message": CANARY}}) if request.url.path.endswith("/me/accounts") else httpx.Response(200, json=valid_reply(request))
++    transport(monkeypatch, handle)
++    caplog.set_level(logging.WARNING, logger=LOGGER)
++    response = await env.meta_client.get(PREFIX + "/oauth/callback", params={"state": state, "code": CANARY})
++    assert response.headers["location"].endswith("connected") and events(caplog) == []
++    assert provider._CALLBACK_DIAGNOSTICS.get() is None
++    response = await env.meta_client.get(PREFIX + "/connections/1/assets")
++    assert response.status_code == 503 and events(caplog) == [] and CANARY not in caplog.text
++
++
++@pytest.mark.asyncio
++async def test_transport_exception_context_never_reaches_callback_log(meta_env, monkeypatch, caplog):
++    env = meta_env; monkeypatch.setattr(provider, "MetaClient", env.meta_real_client); _, _, state = await start(env)
++    def handle(request):
++        raise httpx.ConnectError(CANARY + str(request.url), request=request)
++    transport(monkeypatch, handle); caplog.set_level(logging.WARNING, logger=LOGGER)
++    response = await env.meta_client.get(PREFIX + "/oauth/callback", params={"state": state, "code": CANARY})
++    safe_output(caplog, response, env, state)
++    assert events(caplog) == [{"stage": "code_exchange", "code": "provider_unavailable"}]
++    rendered = "\n".join(logging.Formatter().format(record) for record in caplog.records if record.name == LOGGER)
++    assert "Traceback" not in rendered and CANARY not in rendered and "graph.facebook.com" not in rendered
++
++
++@pytest.mark.parametrize("status,code,subcode", [(True, True, False), (99, -1, 2147483648), (600, CANARY, CANARY), (400, 190, 460)])
++def test_callback_metadata_only_accepts_bounded_integer_fields(status, code, subcode):
++    assert provider._CALLBACK_DIAGNOSTICS.get() is None
++    with provider.callback_diagnostics():
++        provider._callback_stage("code_exchange", claimed=True)
++        provider._callback_response_failure(status, {"error": {"code": code, "error_subcode": subcode, "message": CANARY}})
++        result = provider.callback_failure_fields(provider.ProviderError(CANARY))
++        assert result["code"] == "provider_unavailable" and CANARY not in json.dumps(result)
++        assert result == ({"stage": "code_exchange", "code": "provider_unavailable", "http_status": 400, "graph_code": 190, "graph_subcode": 460}
++                          if status == 400 else {"stage": "code_exchange", "code": "provider_unavailable"})
++        provider._callback_stage("scope_validation")
++        assert not set(provider.callback_failure_fields(provider.ProviderError("access_denied"))) & {"http_status", "graph_code", "graph_subcode"}
++    assert provider._CALLBACK_DIAGNOSTICS.get() is None
++
++
++@pytest.mark.asyncio
++async def test_concurrent_callback_contexts_reset_without_cross_request_fields(meta_env, monkeypatch, caplog):
++    env = meta_env; gate = asyncio.Event(); arrived = 0
++    async def callback(db, state, cookie, code):
++        nonlocal arrived
++        if code == "preclaim": raise provider.ProviderError(CANARY)
++        provider._callback_stage("code_exchange", claimed=True)
++        provider._callback_response_failure(400, {"error": {"code": 190 if code == "first" else 191}})
++        arrived += 1
++        if arrived == 2: gate.set()
++        await gate.wait()
++        raise provider.ProviderError("provider_unavailable")
++    monkeypatch.setattr(service, "oauth_callback", callback); caplog.set_level(logging.WARNING, logger=LOGGER)
++    responses = await asyncio.gather(*(env.meta_client.get(PREFIX + "/oauth/callback", params={"state": CANARY, "code": code}) for code in ("first", "second")))
++    assert all(r.headers["location"].endswith("failed") for r in responses)
++    assert sorted(x["graph_code"] for x in events(caplog)) == [190, 191]
++    await env.meta_client.get(PREFIX + "/oauth/callback", params={"state": CANARY, "code": "preclaim"})
++    assert len(events(caplog)) == 2 and CANARY not in caplog.text and provider._CALLBACK_DIAGNOSTICS.get() is None
++
++
++def test_callback_context_resets_even_for_cancellation():
++    with pytest.raises(asyncio.CancelledError):
++        with provider.callback_diagnostics():
++            provider._callback_stage("code_exchange", claimed=True)
++            raise asyncio.CancelledError()
++    assert provider._CALLBACK_DIAGNOSTICS.get() is None

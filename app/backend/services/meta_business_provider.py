@@ -5,6 +5,7 @@ flow. Asset discovery follows Meta's verified Instagram Postman collection.
 Graph version and the reviewed user-token configuration are explicit settings.
 """
 import hashlib
+from contextlib import contextmanager
 from contextvars import ContextVar
 import json
 import logging
@@ -23,6 +24,58 @@ CALLBACK = "https://t24-crm.com" + CALLBACK_PATH
 READ_SCOPES = frozenset({"pages_show_list", "pages_read_engagement", "instagram_basic"})
 ID = re.compile(r"[0-9]{1,80}\Z")
 META_NETWORK_ACTIVE = ContextVar("t24_meta_network_active", default=False)
+_CALLBACK_DIAGNOSTICS = ContextVar("t24_meta_callback_diagnostics", default=None)
+_CALLBACK_STAGES = frozenset({"code_exchange", "short_token_validation", "long_lived_exchange", "long_token_validation",
+    "token_inspection", "inspection_validation", "identity_read", "permissions_read", "grants_validation",
+    "scope_validation", "expiry_validation", "configuration_validation"})
+_CALLBACK_CODES = frozenset({"reconnect_required", "access_denied", "quota_limited", "invalid_response", "provider_unavailable", "listing_too_large"})
+_CALLBACK_REASONS = frozenset({"missing_read", "unexpected_scope", "missing_read_and_unexpected_scope", "invalid_scope_shape"})
+
+
+@contextmanager
+def callback_diagnostics():
+    # Request-local, bounded primitives only. No request, exception or provider
+    # response object is retained in this context.
+    marker = _CALLBACK_DIAGNOSTICS.set({"claimed": False})
+    try: yield
+    finally: _CALLBACK_DIAGNOSTICS.reset(marker)
+
+
+def _callback_stage(stage, *, claimed=False):
+    current = _CALLBACK_DIAGNOSTICS.get()
+    if current is None: return
+    committed = current.get("claimed") is True or claimed
+    current.clear(); current.update(claimed=committed, stage=stage if stage in _CALLBACK_STAGES else None)
+
+
+def _callback_request_started():
+    current = _CALLBACK_DIAGNOSTICS.get()
+    if current is not None:
+        for key in ("http_status", "graph_code", "graph_subcode"): current.pop(key, None)
+
+
+def _callback_response_failure(status, data=None):
+    current = _CALLBACK_DIAGNOSTICS.get()
+    if current is None or current.get("claimed") is not True: return
+    if type(status) is int and 100 <= status <= 599: current["http_status"] = status
+    error = data.get("error") if isinstance(data, dict) else None
+    if isinstance(error, dict):
+        for source, target in (("code", "graph_code"), ("error_subcode", "graph_subcode")):
+            value = error.get(source)
+            if type(value) is int and 0 <= value <= 2147483647: current[target] = value
+
+
+def callback_failure_fields(error):
+    current = _CALLBACK_DIAGNOSTICS.get()
+    if current is None or current.get("claimed") is not True or current.get("stage") not in _CALLBACK_STAGES: return None
+    code = error.code
+    result = {"stage": current["stage"], "code": code if isinstance(code, str) and code in _CALLBACK_CODES else "provider_unavailable"}
+    for key in ("http_status", "graph_code", "graph_subcode"):
+        value = current.get(key)
+        if type(value) is int and (100 if key == "http_status" else 0) <= value <= (599 if key == "http_status" else 2147483647): result[key] = value
+    reason = current.get("reason")
+    if isinstance(reason, str) and reason in _CALLBACK_REASONS: result["reason"] = reason
+    return result
 
 
 class ProviderError(Exception):
@@ -139,6 +192,7 @@ class MetaClient:
         self.expected_configuration = None
 
     async def _raw(self, path, *, params=None, token=None):
+        _callback_request_started()
         values = require_config()
         if self.expected_configuration is not None and configuration_fingerprint() != self.expected_configuration:
             raise ProviderError("reconnect_required")
@@ -152,32 +206,51 @@ class MetaClient:
                         body = bytearray()
                         async for chunk in response.aiter_bytes(chunk_size=65536):
                             body.extend(chunk)
-                            if len(body) > 2_000_000: raise ProviderError("invalid_response")
+                            if len(body) > 2_000_000:
+                                _callback_response_failure(response.status_code)
+                                raise ProviderError("invalid_response")
             finally: META_NETWORK_ACTIVE.reset(marker)
             try: data = json.loads(body)
-            except (ValueError, UnicodeError, RecursionError): raise ProviderError("invalid_response") from None
-            if not isinstance(data, dict): raise ProviderError("invalid_response")
-            if not 200 <= response.status_code < 300 or "error" in data: raise _error(response, data)
+            except (ValueError, UnicodeError, RecursionError):
+                _callback_response_failure(response.status_code)
+                raise ProviderError("invalid_response") from None
+            if not isinstance(data, dict):
+                _callback_response_failure(response.status_code)
+                raise ProviderError("invalid_response")
+            if not 200 <= response.status_code < 300 or "error" in data:
+                _callback_response_failure(response.status_code, data)
+                raise _error(response, data)
             return data
         except httpx.RequestError: raise ProviderError("provider_unavailable") from None
 
     async def exchange(self, code):
+        # The sole production callback callsite enters here only after its
+        # valid state has been durably claimed in the first write transaction.
+        _callback_stage("code_exchange", claimed=True)
         values = require_config()
         self.expected_configuration = configuration_fingerprint()
         short = await self._raw("oauth/access_token", params={"client_id": values["APP_ID"], "client_secret": values["APP_SECRET"], "redirect_uri": CALLBACK, "code": code})
+        _callback_stage("short_token_validation")
         short_token, _ = self._tokens(short)
+        _callback_stage("long_lived_exchange")
         long = await self._raw("oauth/access_token", params={"grant_type": "fb_exchange_token", "client_id": values["APP_ID"],
             "client_secret": values["APP_SECRET"], "fb_exchange_token": short_token})
+        _callback_stage("long_token_validation")
         token, expiry = self._tokens(long)
         # The documented app-admin token may inspect a token from the same app.
+        _callback_stage("token_inspection")
         debug = await self._raw("debug_token", params={"input_token": token}, token=values["APP_ID"] + "|" + values["APP_SECRET"])
+        _callback_stage("inspection_validation")
         details = debug.get("data")
         if not isinstance(details, dict) or details.get("is_valid") is not True or details.get("app_id") != values["APP_ID"] or details.get("type") != "USER":
             raise ProviderError("access_denied")
         identity = details.get("user_id")
         if not isinstance(identity, str) or not ID.fullmatch(identity): raise ProviderError("invalid_response")
+        _callback_stage("identity_read")
         me = await self._raw("me", params={"fields": "id"}, token=token)
+        _callback_stage("permissions_read")
         permissions = await self._raw("me/permissions", token=token)
+        _callback_stage("grants_validation")
         entries = permissions.get("data")
         if me.get("id") != identity or not isinstance(entries, list) or len(entries) > 100: raise ProviderError("access_denied")
         if not all(isinstance(x, dict) and isinstance(x.get("permission"), str) and re.fullmatch(r"[a-z_]{1,100}", x["permission"]) and x.get("status") in {"granted", "declined", "expired"} for x in entries):
@@ -186,17 +259,29 @@ class MetaClient:
         granted = {x["permission"] for x in entries if x["status"] == "granted"}
         inspected_scopes = details.get("scopes")
         allowed = READ_SCOPES | {"public_profile"}
+        _callback_stage("scope_validation")
         if (not isinstance(inspected_scopes, list) or len(inspected_scopes) > 100 or not all(isinstance(x, str) for x in inspected_scopes)
                 or not READ_SCOPES <= set(inspected_scopes) or not READ_SCOPES <= granted
                 or not set(inspected_scopes) <= allowed or not granted <= allowed):
+            current = _CALLBACK_DIAGNOSTICS.get()
+            if current is not None:
+                reason = "invalid_scope_shape"
+                if isinstance(inspected_scopes, list) and len(inspected_scopes) <= 100 and all(isinstance(x, str) for x in inspected_scopes):
+                    missing = not READ_SCOPES <= set(inspected_scopes) or not READ_SCOPES <= granted
+                    unexpected = not set(inspected_scopes) <= allowed or not granted <= allowed
+                    reason = "missing_read_and_unexpected_scope" if missing and unexpected else "missing_read" if missing else "unexpected_scope"
+                current["reason"] = reason
             raise ProviderError("access_denied")
+        _callback_stage("expiry_validation")
         expires = details.get("expires_at")
         if type(expires) is not int or expires <= time.time() + 30: raise ProviderError("reconnect_required")
         expiry = min(time.time() + expiry, expires)
         data_expiry = details.get("data_access_expires_at")
         if type(data_expiry) is int and data_expiry > 0: expiry = min(expiry, data_expiry)
         if expiry <= time.time() + 30: raise ProviderError("reconnect_required")
+        _callback_stage("configuration_validation")
         if configuration_fingerprint() != self.expected_configuration: raise ProviderError("reconnect_required")
+        _callback_stage(None)
         return {"access_token": token, "expires_at": expiry, "user_id": identity,
                 "granted_read_scopes": sorted(READ_SCOPES), "observed_scopes": sorted(granted), "configuration": self.expected_configuration}
 

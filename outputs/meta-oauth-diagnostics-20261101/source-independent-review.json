@@ -1,0 +1,71 @@
+{
+  "allowed_log_fields": [
+    "stage",
+    "code",
+    "reason",
+    "http_status",
+    "graph_code",
+    "graph_subcode"
+  ],
+  "allowed_scope_reasons": [
+    "missing_read",
+    "unexpected_scope",
+    "missing_read_and_unexpected_scope",
+    "invalid_scope_shape"
+  ],
+  "allowed_stage_count": 12,
+  "exact_members_verified": {
+    "app/backend/routers/meta_business.py": {
+      "bytes": 6701,
+      "sha256": "ad33d86155cd325c28d4fedb98e4795b88180ec63b134ca03edcd1c8a3fd5404"
+    },
+    "app/backend/services/meta_business_provider.py": {
+      "bytes": 20022,
+      "sha256": "0fc0fafd5ce906f962457e16a6458b50acefa5e33a156c372c1f9c9dfe7c3112"
+    },
+    "app/backend/tests/test_meta_business_callback_diagnostics.py": {
+      "bytes": 11863,
+      "sha256": "b1363ef85ed013a5050c43dbe31bbc9932b4790f9b04d1d8278b321f4e7f2838"
+    }
+  },
+  "existing_meta_tests": 58,
+  "existing_test_fixture_unchanged": true,
+  "findings": [],
+  "limitations": [
+    "Prospective only: does not reconstruct earlier callback failures.",
+    "Only ProviderError during the validated exchange is logged; preclaim HTTP errors and post-exchange HTTP/final-save failures stay silent and retain generic UI behavior."
+  ],
+  "new_diagnostic_tests": 26,
+  "production_provider_browser_git_actions": false,
+  "result": "PASS",
+  "reviewed": [
+    "Only two runtime files plus one new test; no auth,scope,token,asset,DB,schema,ACL,financial,Google,private or frontend behavior change",
+    "Sole production exchange call occurs after committed valid flow claim; real service tests prove persisted consumed/cleared flow before provider IO",
+    "Anonymous,wrong cookie,expired,owner-disabled and replayed callback failures cannot emit provider diagnostic logs",
+    "Request-local ContextVar reset in finally; concurrent requests and cancellation do not mix or leak metadata",
+    "Per-stage clearing removes stale HTTP/Graph fields; scope reason is one of four root-approved fixed values, never grant names",
+    "Logger has fixed event prefix and JSON allowlist; no exception repr,traceback,URL,token,state,cookie,hash,provider messages or payloads",
+    "Provider assets and successful callbacks emit no callback failure event"
+  ],
+  "reviewer": "workflow_actual_release_review",
+  "source_freeze_sha256": "35c80bb0d036d9954709e4fe557102cae2d0f27be9ecf06960add0162a691bfa",
+  "stage": "META_SAFE_OAUTH_DIAGNOSTIC_SOURCE_INDEPENDENT_REVIEW",
+  "strict_numeric_limits": {
+    "boolean_rejected": true,
+    "graph_code": [
+      0,
+      2147483647
+    ],
+    "graph_subcode": [
+      0,
+      2147483647
+    ],
+    "http_status": [
+      100,
+      599
+    ]
+  },
+  "tests_independently_passed": 84,
+  "two_original_runtime_hashes_independently_matched_released_tar": true,
+  "warnings": 28
+}

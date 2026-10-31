@@ -1,5 +1,6 @@
 """Meta connection and client binding only; no publish or comment endpoints."""
 import logging
+import json
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse
@@ -12,6 +13,8 @@ from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
 from services import meta_business as service
 from services import meta_business_provider as provider
+
+_callback_logger = logging.getLogger("meta_business.oauth")
 
 
 class MetaOAuthAccessLogFilter(logging.Filter):
@@ -104,11 +107,17 @@ async def oauth_request(response: Response, request_id: str = Path(min_length=36
 @router.get("/oauth/callback")
 async def oauth_callback(request: Request, state: str | None = Query(None, max_length=200), code: str | None = Query(None, max_length=4096), db: AsyncSession = Depends(get_db)):
     outcome = "failed"
-    try:
-        await service.oauth_callback(db, state, request.cookies.get(service.COOKIE), code)
-        outcome = "connected"
-    except (HTTPException, provider.ProviderError):
-        await db.rollback()
+    with provider.callback_diagnostics():
+        try:
+            await service.oauth_callback(db, state, request.cookies.get(service.COOKIE), code)
+            outcome = "connected"
+        except (HTTPException, provider.ProviderError) as error:
+            if isinstance(error, provider.ProviderError):
+                fields = provider.callback_failure_fields(error)
+                if fields is not None:
+                    _callback_logger.warning("META_OAUTH_CALLBACK_PROVIDER_FAILURE " + json.dumps(fields, sort_keys=True, separators=(",", ":")),
+                                             exc_info=None, stack_info=False)
+            await db.rollback()
     response = RedirectResponse("/media-ops?meta=" + outcome, status_code=303)
     response.delete_cookie(service.COOKIE, path="/api/v1/meta-business/oauth", secure=True, httponly=True, samesite="lax")
     return response
