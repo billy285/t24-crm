@@ -1,0 +1,40 @@
+{
+  "application_freeze_sha256": "3c96413522b2f36e930093bd586fe85ad746bf68497b7aed66a16fd4cd4c8843",
+  "blocking_findings": [],
+  "final_author_tests": {
+    "passed": 73,
+    "receipt_sha256": "efaa1df54f40d54ed12808c661d9116de13f00feb94cd7041570de1db31698e4",
+    "reviewer_independent_publisher_tests_before_final3pins": 73
+  },
+  "frontend_version": "8cc54170ca26",
+  "limits": [
+    "Immutablecarrier/rawmembers/actualpreparewrapper nextreview; no serverphase approved.",
+    "Rootmobileevidence includesbuttonwidth/height checks, not globalallpagesUIacceptance.",
+    "RealGoogleimagefetch/publicpost/userapprovedcontent acceptance remains pending; Metaautomaticpublication outofscope."
+  ],
+  "local_browser_qa_sha256": "c93727200510f80c42fcad14d425db829158f74c17f7fb2391e634840274079c",
+  "manifest_sha256": "2ff48d4ddcc1d41be834c51be366b704bfb9b60016885aa5f8759646984373e0",
+  "members": {
+    "backend_runtime": 2,
+    "protected_application_source_files": 972,
+    "static": 140,
+    "total": 142
+  },
+  "payload_bytes": 2167737,
+  "payload_sha256": "0f64197803acc012bae70e14839dc566bfe0dde6b1432d81db4286570743c65d",
+  "preflight_sha256": "2dbf5a151a65eab00214d24c725825d8ba4f59c3db6df7f2a05ee0c7701095f0",
+  "release_helper_sha256": "6ae2f3fd6ee93c93bbf840ae50fa4b7098aff18a808bdbf5a46cd7f9b75375d1",
+  "reviewer_server_browser_network_provider_actions": false,
+  "reviewer_source_or_tool_edits": false,
+  "source_sha": "5931e430e629fb633f846ebc068a8fc12d4b9a0a",
+  "stage": "ACTUAL_GOOGLE_PILOT_PACKAGE_INDEPENDENT_REVIEW",
+  "status": "PASS_FOR_IMMUTABLE_CARRIER_AND_EXACT_PREPARE_WRAPPER_REVIEW",
+  "tool_package_freeze_sha256": "efaa1df54f40d54ed12808c661d9116de13f00feb94cd7041570de1db31698e4",
+  "verified": [
+    "Currentfinalrelease differs from priorcode-reviewedhelperonly3source/FE/freezepins; allotherreviewedtool/testbytesexact.",
+    "Independentbuilder reconstruction byte-identical toactualpayload andcanonicalmanifest; fullcommitted11appsource/localbytes/untrackedFE/buildversion/protectedsource guards passed.",
+    "All archivepaths unique/canonical/regular644mtime0;2backendruntime+compiledstatic only, no tests/DB/env/credentials/privateoriginals.",
+    "Exactsource5931/FE8cc541/freeze3c964/current136tableproof2dbf5 hashbound. Schemaacd7 unchanged, no migration/seed/runtimeenvchange; existingONpolicy/data retained.",
+    "RootbrowserQA andscreenshots exacthash verified: handoff/draft/blockedpreview/checkclear/synthetic1POST+LIVE/no realprovider; ownerfirsttrial, realimagepending."
+  ]
+}

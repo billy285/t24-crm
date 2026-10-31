@@ -1,0 +1,84 @@
+{
+  "application_scope": {
+    "backend_runtime": 2,
+    "frontend_source": 7,
+    "tests": 2,
+    "total": 11
+  },
+  "blocking_findings": [],
+  "files": {
+    "deployments/google-pilot-workflow-20261031/README.md": {
+      "bytes": 4817,
+      "sha256": "4434c2789d09740cb252d4a13e55d8ebe79b95e339f1622b5b1bf783575419e3"
+    },
+    "deployments/google-pilot-workflow-20261031/build_payload.py": {
+      "bytes": 7607,
+      "sha256": "7873a648a0aa034371acc8b1be0e1671e9c03ce3a00c32f0110c1633994b40f8"
+    },
+    "deployments/google-pilot-workflow-20261031/generate_preflight_command.py": {
+      "bytes": 1775,
+      "sha256": "f01914b3cac0d30042b6e8fcfcfc7b211fd7ec8dd4f7d5d20d479523cb9e3629"
+    },
+    "deployments/google-pilot-workflow-20261031/make_commands.py": {
+      "bytes": 9472,
+      "sha256": "9167650ac72d4b222f14be7123ed4e84413090d5173c75a255bbabc57ebb24b5"
+    },
+    "deployments/google-pilot-workflow-20261031/preflight.py": {
+      "bytes": 10466,
+      "sha256": "23c630bd73abfe6a5f4862e9285856e4bd4bfcb74b7adec79d124ae2424fe22e"
+    },
+    "deployments/google-pilot-workflow-20261031/release.py": {
+      "bytes": 32017,
+      "sha256": "052d278b627805fc868d94c5470887926339c72fe91a220ee1fa40fa88176151"
+    },
+    "deployments/google-pilot-workflow-20261031/test_commands.py": {
+      "bytes": 6709,
+      "sha256": "e0385cbbe84828fc3a5643bbf9b1e289a826040e55a2540968584f969c7b0c03"
+    },
+    "deployments/google-pilot-workflow-20261031/test_package.py": {
+      "bytes": 6362,
+      "sha256": "c9d0801d291e021276c47656d47637dac71310559404bb7249b94f0b403d88c3"
+    },
+    "deployments/google-pilot-workflow-20261031/test_preflight.py": {
+      "bytes": 8550,
+      "sha256": "80e51cc088f95029db0c0edfa8d793017e91be12e64e184e5ca0559c4570b422"
+    },
+    "deployments/google-pilot-workflow-20261031/test_release.py": {
+      "bytes": 16740,
+      "sha256": "90a253d9cbb6b3826cd50102973d6876efdcf1affa0aa4a8a7d411f3a9184262"
+    }
+  },
+  "limits": [
+    "No code-onlyreview approvesanyserverprepare/activate/recover",
+    "No policyenable,realpublicimagelease/post,MetaOAuth/provider action approved",
+    "Loggingproofscope remains observedNginxappendchannels and exactcandidateboundedstdoutstderr,notexternallogcollectors"
+  ],
+  "publisher_code_freeze_sha256": "d9d7c9d7b70f5ede9d0e0cfa1e2f5216cac49032115ce82cd5d653291b55b819",
+  "remaining_gates": [
+    "Actualfreshpreflight compactsummary",
+    "Finalsourcecommit/FE/applicationfreeze and actualpayloadmembers",
+    "Immutablepushedcarrier/raw4memberbytes and exactpreparewrapper",
+    "Actualisolatedpreparedreceipt and exactswitchwrappers",
+    "Actualdeploymentreceipt/publicready/version/authenticatedUI"
+  ],
+  "reviewer_app_or_publisher_edits": false,
+  "reviewer_server_browser_network_provider_actions": false,
+  "stage": "GOOGLE_PILOT_NO_MIGRATION_PUBLISHER_CODE_INDEPENDENT_REVIEW",
+  "status": "PASS_CODE_ONLY_AWAIT_ACTUAL_SOURCE_PACKAGE_WRAPPERS",
+  "tests": {
+    "command": "python -m pytest deployments/google-pilot-workflow-20261031 -q",
+    "duration_seconds": 2.38,
+    "independent_publisher_passed": 73
+  },
+  "verified": [
+    "Finalsource/FE/freezepinsNonefailclosed beforehelper/source/package access. Exactapplicationdelta11 and fullprotectedsource/localcanonicalbytes/buildversion/sourcecommit guards.",
+    "DeterministicgzipUSTARpayload only2runtime+boundedcompiledstatic; tests/DB/env/secret/originalmedia disallowed; manifestbindsfresh136tableproof/freeze/sourceFE.",
+    "Serverloads exactretainedpreflight23c/oldworkflow0ca6+baselinec114; all136existingtable row/schema/metadata,includinglegitimateONpolicy/image/taskrecords preserved, noempty/OFFconstraint,noDBmigration/writes/sequencewrites.",
+    "Prepareproductioncopy only; oldactualPython3.10/routes plusnewGETreadiness and hiddenimageGETHEAD checked;networknone/no credentials/workersOFF and exactownschema/rows/counters/PRAGMA beforeafterstartup.",
+    "Candidateidentityreviewimageboundfile andparentfsync persist beforeoldstop; exactsource/env/credential/private/network/ONcutoff/Nginx guards beforeandafterswitch.",
+    "All136rowshashes andschema unchanged inactivation; newreadinessisreadonly and existingdispatchsame. PolicyON anddraftrows notseeded/reset/replaced.",
+    "Failurecontains onlyknowncandidate then resumes knowncompatibleoriginalsame-schema runtime afterprotectionchecks; preservesindependentnewrows, noDBrestore/counterrewrite/containerdelete; unknowncandidate/orphanneverguessed.",
+    "Nginxonlyliteralpublicrootreplacement and reversibilityguard; callback/deliverylocations remainexact; existingboundedloopbacknoncapabilityGETHEAD/privacy/logsentinel reusedandhashpinned.",
+    "Immutablecarriercommands HTTPSrawcommit4members exactsizeSHA no proxy/redirect; root/protectedparents/0700release0600files; onlypreparebeforeactualcanonicalpreparedreview; switchhelperexactSHA/proof/review binding."
+  ]
+}

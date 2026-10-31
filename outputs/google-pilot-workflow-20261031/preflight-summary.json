@@ -1,0 +1,39 @@
+{
+  "active_nginx_config_sha256": "0204d5e228d48b4c02858e97f029f50e5c2bb4dc15f0049413f53890a596f591",
+  "backend_changed_before": {
+    "routers/google_business.py": "dc3767fde9f6c4ba0f9e34a91c33d9b7fbb6354c4b4603a273a2aa8ea8a1fe63",
+    "services/google_business_readiness.py": null
+  },
+  "backend_inventory_sha256": "4121250d1a7c4141e8edc10d7b3d42b773f31c8dee00e57a57ffa9887c635b91",
+  "bytes": 36722,
+  "callback_logging_protection_retained": true,
+  "credential_content_read": false,
+  "crm": {
+    "config": "980fced7d89712743e8d9f523f5d9ceb179de99f79cb40dcfb691c6e68b9cdd4",
+    "id": "e46b65eeb94bf09412841c2bd6a71408d9920def8eb2e33a1a02c3becdf5f45b",
+    "image": "sha256:7d894afd3c3f19a0976a54a0bfd31b05f204cf71c41b2990fd8f0fb5f07558e8",
+    "restart": 0,
+    "started": "2026-10-31T12:20:44.184469195Z"
+  },
+  "deployed_sha256": "5639019ef95f88523eea7dc0548a74c0d7705871d7af834bb0b3b33d24ebd3bc",
+  "environment_sha256": "5e9c23e6d889fee61a48a8ab885ea6d0906617d8c14a1190560418da8f7668b1",
+  "executed_business_writes": false,
+  "existing_image_policies_and_data_preserved": true,
+  "frontend_version": "33047aa593a2",
+  "gbp_feature_enabled": true,
+  "host_docker_timestamp_parser_verified": true,
+  "image_delivery_logging_protection_retained": true,
+  "nginx_sha256": "e76a88e77400bb874abecac46a809eef273d9c71034371cf8dfc43013a0b2d08",
+  "path": "/opt/t24-crm/releases/google-pilot-workflow-preflight-2dbf5a151a65.json",
+  "private_boundary_verified": true,
+  "private_content_read": false,
+  "rows_sha256": "0f91cde37b235f44196e8907202d8e6a5201218064085649aa81e4c9b3c72a48",
+  "scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "scheduler_enabled": true,
+  "schema_revision": "acd7c9d0e136",
+  "schema_sha256": "f86921e63905ea7955b23590d683841dc69dad18dbbbdffd76f1ee0f79c3bc18",
+  "sha256": "2dbf5a151a65eab00214d24c725825d8ba4f59c3db6df7f2a05ee0c7701095f0",
+  "source_sha": "c114242205af98c33a7c2ad435409e0c84ebd085",
+  "stage": "GOOGLE_PILOT_WORKFLOW_PREFLIGHT_CAPTURED",
+  "table_count": 136
+}

@@ -1,0 +1,57 @@
+{
+  "backend_freeze_sha256": "ee2f2615f8f35b9edc436c934d8a552a6b2b608a84e93695fbbefe0b75c857bb",
+  "backend_independent_review_sha256": "64836187b1f4fdd2aa9feff7ab142d6b779b91a47254dfaf6b78de8a261cc526",
+  "baseline_source_sha": "c114242205af98c33a7c2ad435409e0c84ebd085",
+  "blocking_findings": [],
+  "files": {
+    "app/backend/routers/google_business.py": "1372bc0bea47c5b1db66fa8bbb8b6e1d85da542cbf515d4f4fe7fe887a27e3ee",
+    "app/backend/services/google_business_readiness.py": "f00b94067e369b054cabfd7b985096dadfd187452a008cd09c5ea9003a8e5afc",
+    "app/backend/tests/test_google_business_readiness.py": "a55b46904cd2b93384a4475dbb11967385983bd3c7952099f699f21f3db71e1e",
+    "app/frontend/src/components/GoogleBusinessManagement.tsx": "6f2917475668842297ae46f7892f20368ce98ff0051e9dfc5f2eded81f6485aa",
+    "app/frontend/src/components/GoogleBusinessWorkspace.tsx": "8a34eb843effcd1b0b1870d21a764c3c2a107e636a8045b8cb5e8a36e6038db5",
+    "app/frontend/src/components/GoogleReadinessChecklist.tsx": "99e755583eff082b3c7e866cd48e708e2ab9311ccfba51bb1d46f6a036e7ca24",
+    "app/frontend/src/components/MediaPlanningWorkspace.tsx": "01d9bf701c044a5e836104499a7adcd2256525b56c873037154ae36411d1e2a4",
+    "app/frontend/src/components/google-readiness.css": "8bc092743926ee6def5e37661d0fb2370d7ceccda5bd1f75bea0ba2e2a7a2963",
+    "app/frontend/src/lib/google-readiness.ts": "5b2f1f40306de88602577daa19933dcab752c357a05e35250de90c451ef54afb",
+    "app/frontend/src/pages/MediaOperations.tsx": "6b0d9732fdebc1d4dfb09b32c503cfad66e9a7df264efbcfedfcf2636b8b6a13",
+    "app/frontend/tests/google-pilot-workflow.test.mjs": "39979840b64e1a7c9ade3e71d62f6d18368190cc7966f4f2e903aaca00e98279"
+  },
+  "frontend_freeze_sha256": "84478c6b7d9671b673d35f3ff516b5b21295f28e46b8091a623f6f2cd44d192d",
+  "frontend_version": "8cc54170ca26",
+  "limits": [
+    "Rootbrowsermobile/readonly/taskhandoffacceptance and finalsourcecommit/actualpackage/deployment evidence remain separate.",
+    "No realGooglepublicpost/imagefetch acceptance, no Metaautomaticpublish.",
+    "Readiness localconfig/databaseadvisory only; actualGoogleplatform state mustbequeriedthrough existingexplicitflows.",
+    "ExistingunrelatedFinance.tsx5778 TS2322 remains perauthor; no scopederror claimed."
+  ],
+  "reviewer_app_edits": false,
+  "reviewer_server_browser_network_provider_actions": false,
+  "scope": {
+    "backend_runtime": 2,
+    "frontend_runtime": 7,
+    "tests": 2,
+    "total_application_files": 11
+  },
+  "stage": "GOOGLE_PILOT_APPLICATION_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS_FROZEN_ELEVEN_FILE_SOURCE_AND_TARGETED_TESTS",
+  "tests": {
+    "duration_ms": 534.009542,
+    "existing_image_cases": 17,
+    "frontend_command": "node --test tests/google-pilot-workflow.test.mjs tests/media-publication-images.test.mjs",
+    "independent_frontend_passed": 32,
+    "independent_new_backend_passed": 25,
+    "new_actual_callback_cases": 15,
+    "whitespace_diffcheck": "PASS"
+  },
+  "verified": [
+    "Exact11 currentapplicationbytes matchbackend/FEfreezes; no trackedappdelta outside scope; compiledappversion8cc54170ca26.",
+    "Mediaoperationhandoffcopiesexactcustomer/taskid,statusreadydeterminespreview; draft/in_review go readonlychecklist only. Accountscope reset clearsentry before reuse.",
+    "Googlemanagement/workspace resolveauthorizedactivebinding matchingcustomer and requiretaskcustomerbinding match; readyqueue bound tobindingid and latestseq before exacttaskpreview opens.",
+    "Checklist identity includesaccount/binding/customer/revision/task; renderfence+sequence/unmount invalidation prevents lateAtoBtoA/currentaccount responses from restoringeligibility.",
+    "Readyblockedtasks remainpreviewable but publishedsave/forcedsubmit bothrequireexactreadinessbindingcustomer/taskrevision/status/readpermission +realpublishpermission +imagepreviewverification.",
+    "Allpublic confirmation startsfalse and resets onmodalopen/accountscope/readinessrefresh; no checklist/entry auto-checks or submits/publicrequest. Immediatebusyref preventsdoubleclick creatingduplicatePOST.",
+    "ReadonlyreadinessDTO validatedminimumshape and exactscope; no rawcredentials/imagecapabilityURL; backendcurrentACL intersection authoritative, unchangedexistingdispatch endpoint rechecksserializedguards.",
+    "Taskduedates explicitlypreparationtargets; Googleactualschedule displayedseparately, existingunknown/pending/acceptedrequests linktoriginalresult instead of newsubmit.",
+    "ScopedCSSmobilebuttons44px and wrapping; globalfinance/private/permissionsource untouched."
+  ]
+}

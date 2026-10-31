@@ -1,0 +1,26 @@
+{
+  "existing_nonempty_policies_images_tasks_supported": true,
+  "files": {
+    "deployments/google-pilot-workflow-20261031/generate_preflight_command.py": {
+      "bytes": 1775,
+      "sha256": "f01914b3cac0d30042b6e8fcfcfc7b211fd7ec8dd4f7d5d20d479523cb9e3629"
+    },
+    "deployments/google-pilot-workflow-20261031/preflight-command.sh": {
+      "bytes": 6399,
+      "sha256": "02be2906a07b06b9d5f22007ace6edfac8e96e2f6c58bcbb9fb031cf62854a51"
+    },
+    "deployments/google-pilot-workflow-20261031/preflight.py": {
+      "bytes": 10466,
+      "sha256": "23c630bd73abfe6a5f4862e9285856e4bd4bfcb74b7adec79d124ae2424fe22e"
+    },
+    "deployments/google-pilot-workflow-20261031/test_preflight.py": {
+      "bytes": 8550,
+      "sha256": "80e51cc088f95029db0c0edfa8d793017e91be12e64e184e5ca0559c4570b422"
+    }
+  },
+  "production_executed": false,
+  "provider_requests": false,
+  "stage": "GOOGLE_PILOT_PREFLIGHT_CODE_FROZEN_AWAIT_INDEPENDENT_REVIEW",
+  "table_count": 136,
+  "tests_passed": 19
+}

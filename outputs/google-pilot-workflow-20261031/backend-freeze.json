@@ -1,0 +1,44 @@
+{
+  "files": [
+    {
+      "path": "app/backend/services/google_business_readiness.py",
+      "sha256": "f00b94067e369b054cabfd7b985096dadfd187452a008cd09c5ea9003a8e5afc"
+    },
+    {
+      "path": "app/backend/routers/google_business.py",
+      "sha256": "1372bc0bea47c5b1db66fa8bbb8b6e1d85da542cbf515d4f4fe7fe887a27e3ee"
+    },
+    {
+      "path": "app/backend/tests/test_google_business_readiness.py",
+      "sha256": "a55b46904cd2b93384a4475dbb11967385983bd3c7952099f699f21f3db71e1e"
+    }
+  ],
+  "no_production_or_provider_calls": true,
+  "no_schema_migration": true,
+  "no_settings_acl_policy_or_public_delivery_rule_changes": true,
+  "read_only_checks": [
+    "full synthetic database unchanged",
+    "SQLite query_only endpoint",
+    "uninvited/foreign-owner/cross-assignee denial",
+    "policy OFF/ON preserved and account scope explicit",
+    "no image lease/provider read/provider write",
+    "late ACL/revision changes reject stale state",
+    "primary missing blocks scheduling only, owner manual publish retains prior permission",
+    "text-only task unaffected by image policy OFF",
+    "existing pending/unknown/accepted/succeeded action or live schedule prevents duplicate eligibility"
+  ],
+  "routes": [
+    {
+      "endpoint": "readiness",
+      "endpoint_module": "routers.google_business",
+      "method": "GET",
+      "path": "/api/v1/google-business/bindings/{binding_id}/readiness"
+    }
+  ],
+  "stage": "GOOGLE_PILOT_BACKEND_FROZEN",
+  "tests": {
+    "command": "PYTHONPATH=..:. python -m pytest tests/test_google_business_readiness.py tests/test_google_business.py tests/test_google_business_management.py tests/test_media_publication.py tests/test_media_publication_images.py -q",
+    "new_readiness_cases": 25,
+    "passed": 261
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "environment": "loopback 127.0.0.1:8933; disposable synthetic SQLite; Google/AI replaced by in-memory providers",
+  "frontend_version": "8cc54170ca26",
+  "limitations": [
+    "does not prove actual Google fetch or public display of a real image",
+    "real pilot image not supplied yet",
+    "real operator employee session not tested; user selected owner trial; backend isolation tested independently"
+  ],
+  "production_business_writes_by_this_browser_qa": false,
+  "production_preparation_separate": "only approved internal North pilot draft task1 saved; remains draft and no approval/schedule/public dispatch",
+  "real_google_or_other_provider_requests": false,
+  "screenshots": [
+    {
+      "path": "outputs/google-pilot-workflow-20261031/local-blocked-preview.png",
+      "sha256": "49cdcdb8d470e40a70ca5f2ebe19443cf8837a64a5d4d2e9c09705ec135dd5e4"
+    },
+    {
+      "path": "outputs/google-pilot-workflow-20261031/local-mobile-preview.png",
+      "sha256": "3f38f0d27aa9e6561ae7f660b49346f1bd79f9ac93b8138e634da570c4a0f30b"
+    },
+    {
+      "path": "outputs/google-pilot-workflow-20261031/local-narrow-preview.png",
+      "sha256": "9ef11874f725cc8388fcd96fb95efb065e53c1e8827c0b5014c301673ef91589"
+    }
+  ],
+  "stage": "ISOLATED_OWNER_BROWSER_ACCEPTANCE",
+  "synthetic_google_post_requests": 1,
+  "verified": [
+    "draft task 7 handoff selects exact customer Garden Kitchen and shows read-only task-specific checklist without review or publication",
+    "synthetic task 7 submitted and approved; missing private publication image allows full preview while final confirmation checkbox and publish button remain disabled",
+    "ready task 3 handoff selects exact Harbor Noodles/task3",
+    "refreshing preparation checks clears old public confirmation",
+    "pure text synthetic task3 publishes once through fake Google and provider-confirmed result is shown",
+    "published task3 removed from ready publication queue",
+    "offer preview shows complete dates, timezone, terms and destination link",
+    "390px and320px preview has fixed footer; 320px publish button height44 and scrollWidth equals clientWidth129",
+    "viewport restored"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "base_application_source": "c114242205af98c33a7c2ad435409e0c84ebd085",
+  "business_logic_acl_finance_private_space_changed": false,
+  "features": [
+    "blocked ready tasks remain previewable; explicit submit rechecks exact task+binding/readiness/image version",
+    "read-only authoritative single-store/task checklist with async scope fencing and no provider writes",
+    "draft and in_review tasks navigate to readiness only; ready tasks navigate to exact customer binding and task preview",
+    "task due dates labelled as preparation targets, Google actual schedules separate"
+  ],
+  "frontend_version": "8cc54170ca26",
+  "limits": [
+    "root browser acceptance pending",
+    "no actual production provider writes or owner-policy changes by this agent",
+    "final public publish remains explicit user confirmation"
+  ],
+  "runtime_files": {
+    "app/frontend/src/components/GoogleBusinessManagement.tsx": "6f2917475668842297ae46f7892f20368ce98ff0051e9dfc5f2eded81f6485aa",
+    "app/frontend/src/components/GoogleBusinessWorkspace.tsx": "8a34eb843effcd1b0b1870d21a764c3c2a107e636a8045b8cb5e8a36e6038db5",
+    "app/frontend/src/components/GoogleReadinessChecklist.tsx": "99e755583eff082b3c7e866cd48e708e2ab9311ccfba51bb1d46f6a036e7ca24",
+    "app/frontend/src/components/MediaPlanningWorkspace.tsx": "01d9bf701c044a5e836104499a7adcd2256525b56c873037154ae36411d1e2a4",
+    "app/frontend/src/components/google-readiness.css": "8bc092743926ee6def5e37661d0fb2370d7ceccda5bd1f75bea0ba2e2a7a2963",
+    "app/frontend/src/lib/google-readiness.ts": "5b2f1f40306de88602577daa19933dcab752c357a05e35250de90c451ef54afb",
+    "app/frontend/src/pages/MediaOperations.tsx": "6b0d9732fdebc1d4dfb09b32c503cfad66e9a7df264efbcfedfcf2636b8b6a13"
+  },
+  "stage": "GOOGLE_PILOT_FRONTEND_FREEZE",
+  "test_files": {
+    "app/frontend/tests/google-pilot-workflow.test.mjs": "39979840b64e1a7c9ade3e71d62f6d18368190cc7966f4f2e903aaca00e98279"
+  },
+  "verification": {
+    "targeted_tests": {
+      "command": "node --test tests/google-pilot-workflow.test.mjs tests/media-publication-images.test.mjs",
+      "existing_image_tests": 17,
+      "new_pilot_tests": 15,
+      "passed": 32
+    },
+    "typescript_app": "existing Finance.tsx:5778 TS2322 only; no scoped errors",
+    "vite_build": "PASS"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "blocked_other_writes": [],
+  "production_access": false,
+  "provider_calls": false,
+  "real_backend_router": true,
+  "synthetic_only": true,
+  "synthetic_writes": [
+    {
+      "method": "POST",
+      "path": "/api/v1/media-operations/7/transition",
+      "role": "super_admin",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/media-operations/7/transition",
+      "role": "super_admin",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/google-business/bindings/1/posts",
+      "role": "super_admin",
+      "status": 200
+    }
+  ]
+}

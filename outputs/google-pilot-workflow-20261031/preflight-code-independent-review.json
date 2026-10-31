@@ -1,0 +1,54 @@
+{
+  "approved_next_action": "Root may execute only exact02be2906... read-onlypreflight and return compactsummary for separate actualreview. No prepare/activation/policy/publicpost action approved.",
+  "baseline_deployed_receipt_sha256": "5639019ef95f88523eea7dc0548a74c0d7705871d7af834bb0b3b33d24ebd3bc",
+  "baseline_frontend_version": "33047aa593a2",
+  "baseline_source_sha": "c114242205af98c33a7c2ad435409e0c84ebd085",
+  "blocking_findings": [],
+  "files": {
+    "deployments/google-pilot-workflow-20261031/generate_preflight_command.py": {
+      "bytes": 1775,
+      "sha256": "f01914b3cac0d30042b6e8fcfcfc7b211fd7ec8dd4f7d5d20d479523cb9e3629"
+    },
+    "deployments/google-pilot-workflow-20261031/preflight-command.sh": {
+      "bytes": 6399,
+      "sha256": "02be2906a07b06b9d5f22007ace6edfac8e96e2f6c58bcbb9fb031cf62854a51"
+    },
+    "deployments/google-pilot-workflow-20261031/preflight.py": {
+      "bytes": 10466,
+      "sha256": "23c630bd73abfe6a5f4862e9285856e4bd4bfcb74b7adec79d124ae2424fe22e"
+    },
+    "deployments/google-pilot-workflow-20261031/test_preflight.py": {
+      "bytes": 8550,
+      "sha256": "80e51cc088f95029db0c0edfa8d793017e91be12e64e184e5ca0559c4570b422"
+    }
+  },
+  "limits": [
+    "Actualcurrentdatabase rows and newpolicyONstate remain to capture; thiscode reviewdoesnot claimthey match oldemptydeployment.",
+    "Liveproviderstatus not queried; no realpublication or connectionvalidation inpreflight.",
+    "Newpatchpublisher tools/sourcepackage require separatefinalfreeze/review."
+  ],
+  "preflight_module_sha256": "23c630bd73abfe6a5f4862e9285856e4bd4bfcb74b7adec79d124ae2424fe22e",
+  "preflight_tool_freeze_sha256": "7e0796e0d541ebc959cf6f86fde191aaf0fef1f140872a123748864daad54463",
+  "preflight_wrapper_bytes": 6399,
+  "preflight_wrapper_sha256": "02be2906a07b06b9d5f22007ace6edfac8e96e2f6c58bcbb9fb031cf62854a51",
+  "reviewer_server_browser_network_provider_actions": false,
+  "reviewer_source_app_edits": false,
+  "stage": "GOOGLE_PILOT_READONLY_PREFLIGHT_CODE_INDEPENDENT_REVIEW",
+  "status": "PASS_FOR_EXACT_READONLY_PREFLIGHT_ONCE",
+  "tests": {
+    "actual_retained_two_level_dependency_arity": true,
+    "independent_pytest_passed": 19,
+    "independent_pytest_seconds": 0.05,
+    "wrapper_exact_regeneration_compile_decompression": true
+  },
+  "verified": [
+    "6399bytewrapper exactregeneration,Pythoncompile and compressedpayload byte/hash/size match; exactroot/host/noCore/umask077/nobytecode guards precede execution.",
+    "Deployedc114/FE33047/schemaacd7/currentcontainer e46b65/image7d894/runtime/sourceinventory/static/Nginx selected and fullactive hashes bind currentactualreceipt5639019.",
+    "Oldpreflighta776 and oldrelease0ca6e6 hashload; actualretained preflight.dependencies function executed through newseam withonlyinnermostloader synthetic, preserving4tupleprotocol.",
+    "Existing136tablebusinessbaseline including nonemptyownerimagepolicy/tasks/images captured ascount+rowhash+shape; noempty/OFFassumption,backfill,toggle,write,migration or publish.",
+    "Google exactexisting8environmentkeys,ONscheduler and cutoff2026-10-30T19:42:04Z preserved; credential/privatefiles metadata guards and fullbackendinventory required.",
+    "FullactiveNginxSHA exactpriorreceipt and callbackexact/deliveryprefixprivacyblocksaccess_logoff/error_logdevnullcrit explicitly checked; logdestinations parsed read-only.",
+    "Two identicalwholebaselines required before capture; only root0600 serverproof written and file+parentfsynced; localstdoutcompactprojection has hashes/counts only, no rawrecords/credentials.",
+    "Independent19tests attackenvironment,cutoff/runtime/source/schema/tablecount/Nginx/privacylocations and verify nonemptypolicy support; noproduction/provider/network byreviewer."
+  ]
+}

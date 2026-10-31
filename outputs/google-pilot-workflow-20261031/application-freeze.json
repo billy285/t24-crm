@@ -1,0 +1,25 @@
+{
+  "application_independent_review_sha256": "380c3d53aad16a7f675ab2822bf13fba447f133003fcefbf116c2a813f476dbb",
+  "baseline_source_sha": "c114242205af98c33a7c2ad435409e0c84ebd085",
+  "database_migration": false,
+  "existing_image_policies_and_data_preserved": true,
+  "files": {
+    "app/backend/routers/google_business.py": "1372bc0bea47c5b1db66fa8bbb8b6e1d85da542cbf515d4f4fe7fe887a27e3ee",
+    "app/backend/services/google_business_readiness.py": "f00b94067e369b054cabfd7b985096dadfd187452a008cd09c5ea9003a8e5afc",
+    "app/backend/tests/test_google_business_readiness.py": "a55b46904cd2b93384a4475dbb11967385983bd3c7952099f699f21f3db71e1e",
+    "app/frontend/src/components/GoogleBusinessManagement.tsx": "6f2917475668842297ae46f7892f20368ce98ff0051e9dfc5f2eded81f6485aa",
+    "app/frontend/src/components/GoogleBusinessWorkspace.tsx": "8a34eb843effcd1b0b1870d21a764c3c2a107e636a8045b8cb5e8a36e6038db5",
+    "app/frontend/src/components/GoogleReadinessChecklist.tsx": "99e755583eff082b3c7e866cd48e708e2ab9311ccfba51bb1d46f6a036e7ca24",
+    "app/frontend/src/components/MediaPlanningWorkspace.tsx": "01d9bf701c044a5e836104499a7adcd2256525b56c873037154ae36411d1e2a4",
+    "app/frontend/src/components/google-readiness.css": "8bc092743926ee6def5e37661d0fb2370d7ceccda5bd1f75bea0ba2e2a7a2963",
+    "app/frontend/src/lib/google-readiness.ts": "5b2f1f40306de88602577daa19933dcab752c357a05e35250de90c451ef54afb",
+    "app/frontend/src/pages/MediaOperations.tsx": "6b0d9732fdebc1d4dfb09b32c503cfad66e9a7df264efbcfedfcf2636b8b6a13",
+    "app/frontend/tests/google-pilot-workflow.test.mjs": "39979840b64e1a7c9ade3e71d62f6d18368190cc7966f4f2e903aaca00e98279"
+  },
+  "frontend_version": "8cc54170ca26",
+  "local_browser_qa_sha256": "c93727200510f80c42fcad14d425db829158f74c17f7fb2391e634840274079c",
+  "production_seed_rows": false,
+  "schema_revision": "acd7c9d0e136",
+  "source_sha": "5931e430e629fb633f846ebc068a8fc12d4b9a0a",
+  "stage": "GOOGLE_PILOT_APPLICATION_FREEZE"
+}
