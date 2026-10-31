@@ -1,0 +1,43 @@
+{
+  "activation_tools_namespace": "tools-activation-v1",
+  "baseline_sha256": "20be9f4367c65b7a00882dbcd789a5867d00a4bfa8a57bf611bc2b3c3ad0c823",
+  "database_restore_or_writes": false,
+  "existing_capture_v2_wrapper_preserved": true,
+  "focused_tests_passed": 44,
+  "frontend_version": "58d2c585210f",
+  "members": {
+    "activation.py": {
+      "bytes": 16791,
+      "sha256": "5bd8f623fb149cfec60c2c65e3f68468f02329db93501009f9a8182835dd5963"
+    },
+    "baseline.py": {
+      "bytes": 8881,
+      "sha256": "0884eca1646e0891b9d2106282688bcb1fa9186807f470d8754f7f0fbf5655fb"
+    },
+    "make_commands.py": {
+      "bytes": 13560,
+      "sha256": "b66163f33316e600dd07417e55184037dd745222f5115da63780172c2cf5b4cb"
+    },
+    "test_activation.py": {
+      "bytes": 19073,
+      "sha256": "8cf56b4c942084bf89fe7060d31ff15cd0dc4eb1a76d73110ea7b02aae8f1c81"
+    },
+    "test_baseline.py": {
+      "bytes": 4764,
+      "sha256": "0cb1920f430ca648b9a4ae862875b97a3a69c56c4173e5f8c591455b3565c1e0"
+    },
+    "test_commands.py": {
+      "bytes": 3773,
+      "sha256": "68402b26c0f938480f89b700483d50ffd0dd10c0d652fb8a3ef0988d4b8edba6"
+    }
+  },
+  "nginx_or_application_changes": false,
+  "previous_freeze_sha256": "71beabea8d9e8f4347b2086f7b17a0f874b6979f930309185f7ff4e5e8962973",
+  "production_executed": false,
+  "provider_configuration_review_sha256": "8629373834b3563a90ec3c8b00d3d52bb1a17af18d882aad9d57254dac66d831",
+  "provider_requests": false,
+  "review_refinement": "Require Meta credential parent directory exact root0700 before reading environment file or creating candidate.",
+  "same_image_exact_nine_environment_additions": true,
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_ACTIVATION_SWITCH_CODE_FROZEN"
+}

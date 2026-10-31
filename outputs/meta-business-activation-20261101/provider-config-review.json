@@ -1,0 +1,45 @@
+{
+  "app_id": "1625116099132983",
+  "app_name": "T24 Media OS",
+  "app_secret_read": false,
+  "business_id": "1772407487098568",
+  "callback": "https://t24-crm.com/api/v1/meta-business/oauth/callback",
+  "config_id": "941072098875174",
+  "configuration_name": "T24 CRM Read Only",
+  "confirmed_actions": [
+    "create_readonly_user_configuration",
+    "add_exact_crm_callback",
+    "encrypted_app_secret_transfer_to_independent_aliyun_crm_credentials"
+  ],
+  "evidence_screenshots": [
+    "meta-readonly-created.png",
+    "meta-readonly-config-verified.png",
+    "meta-callbacks-persisted.png"
+  ],
+  "existing_application_publishing_mode": "unpublished",
+  "existing_configuration_id": "1786801695686024",
+  "existing_redirect_preserved": true,
+  "existing_system_user_configuration_unchanged": true,
+  "frontend_version": "58d2c585210f",
+  "graph_version": "v26.0",
+  "https_enforced_and_strict_mode_preserved": true,
+  "login_variation": "General",
+  "new_configuration_saved_and_reread": true,
+  "new_publishing_or_comment_permission": false,
+  "owner_action_time_confirmation_received": true,
+  "publishing_mode_changed": false,
+  "read_scopes": [
+    "instagram_basic",
+    "pages_read_engagement",
+    "pages_show_list"
+  ],
+  "real_oauth_completed": false,
+  "redirects_persisted_after_page_reload": [
+    "https://t24-media-ops.billy22679.chatgpt.site/api/meta/oauth/callback",
+    "https://t24-crm.com/api/v1/meta-business/oauth/callback"
+  ],
+  "runtime_configured": false,
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_PROVIDER_CONFIGURATION_REVIEWED",
+  "token_type": "USER"
+}

@@ -1,0 +1,24 @@
+{
+  "business_writes": false,
+  "credential_content_read": false,
+  "frontend_version": "58d2c585210f",
+  "google_scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "google_scheduler_enabled": true,
+  "meta_environment_keys_absent": true,
+  "path": "/opt/t24-crm/releases/meta-business-activation-6cf69fbe4cbe-20261101/baseline.json",
+  "provider_requests": false,
+  "rows_sha256": "d811a7cf64a85399fc182f8243cad6ea287ecdd475870d3e83762a657088306b",
+  "runtime": {
+    "config": "19dd07be850847595374446573c20f830cd4e2de917c0df8419b0b1958c56e8f",
+    "id": "922d63af2e831e32ec3bda157fb71c6d19e528105903b152edc1c7bc17bb9035",
+    "image": "sha256:98ae650db11bc425d35204442e0444f2d421a56594507ec75f8aae97853cf084",
+    "restart": 0,
+    "started": "2026-10-31T16:14:20.125635305Z"
+  },
+  "runtime_changed": false,
+  "schema_revision": "bde8da01f247",
+  "sha256": "20be9f4367c65b7a00882dbcd789a5867d00a4bfa8a57bf611bc2b3c3ad0c823",
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_ACTIVATION_BASELINE_CAPTURED",
+  "table_count": 141
+}

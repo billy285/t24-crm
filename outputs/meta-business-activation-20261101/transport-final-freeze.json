@@ -1,0 +1,52 @@
+{
+  "actual_credential_values_read_or_saved": false,
+  "app_id": "1625116099132983",
+  "business_id": "1772407487098568",
+  "configuration_id": "941072098875174",
+  "configuration_review_sha256": "8629373834b3563a90ec3c8b00d3d52bb1a17af18d882aad9d57254dac66d831",
+  "deltas_since_unset_freeze": [
+    "core CONFIG_ID and CONFIG_FREEZE_SHA actual public pins",
+    "browser APPROVED_CONFIG_ID and APPROVED_CONFIG_FREEZE_SHA same public pins",
+    "credential receipt env_sha256 plus exact protected file readback",
+    "tests explicitly isolate unknown/synthetic pins and assert env hash",
+    "README actual saved configuration and env-hash binding"
+  ],
+  "deployed_receipt_sha256": "fd8cbf5fcc42b942206c6ea4b627ef345c2d25272900973a12344d67e8764eeb",
+  "existing_tools_or_app_changed": false,
+  "forbidden_existing_system_user_configuration": "1786801695686024",
+  "graph_version": "v26.0",
+  "initial_unset_freeze_sha256": "6459268c99abfe3f5f27d468440f38330b754319c510143beaf4d2b7781ad16a",
+  "owned_files": {
+    "deployments/meta-business-activation-20261101/README.md": {
+      "bytes": 6928,
+      "sha256": "3168917af409a9d9d4c8acd7b0f03c5cc41b4bc7131fea89e07fc1a202bc0bc1"
+    },
+    "deployments/meta-business-activation-20261101/core.py": {
+      "bytes": 7395,
+      "sha256": "4df1106fd1bbcafeb895896ace72b7d285b92a955d618b11ed88ef05da108576"
+    },
+    "deployments/meta-business-activation-20261101/encrypt-in-browser.js": {
+      "bytes": 3900,
+      "sha256": "8a0c0b2b7261240119abd126f2df888b4e11c70c78004802f58ff8d4999d9e22"
+    },
+    "deployments/meta-business-activation-20261101/test_core.py": {
+      "bytes": 4722,
+      "sha256": "6a92a94bc16a5c7b3e43ea6e04af9fe9c7cfa4f1c35d9bd1eca49cd3aa90379c"
+    },
+    "deployments/meta-business-activation-20261101/test_transport.py": {
+      "bytes": 8560,
+      "sha256": "afd72b50f21c8363707c3ae11b393b37254fcc00912d4064b1d20dfa929fdf0f"
+    },
+    "deployments/meta-business-activation-20261101/transport.py": {
+      "bytes": 7723,
+      "sha256": "7b87b16d709d257a5ab8e1f0cf9e16c21957e218d725ea883fee695a244bce34"
+    }
+  },
+  "server_or_browser_or_git_actions": false,
+  "source_sha": "6cf69fbe4cbe8f13eb359df0fbae7f4fb7180729",
+  "stage": "META_CREDENTIAL_TRANSPORT_ACTUAL_PUBLIC_PINS_FROZEN",
+  "tests": {
+    "command": "python -m pytest deployments/meta-business-activation-20261101/test_core.py deployments/meta-business-activation-20261101/test_transport.py -q",
+    "passed": 55
+  }
+}

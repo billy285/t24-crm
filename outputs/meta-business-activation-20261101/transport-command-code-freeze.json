@@ -1,0 +1,26 @@
+{
+  "files": {
+    "deployments/meta-business-activation-20261101/make_transport_commands.py": {
+      "bytes": 11819,
+      "sha256": "5472b431b342dc5f39f78c696c984ab270fd69972503872f4e4aefd5cfc10f5d"
+    },
+    "deployments/meta-business-activation-20261101/test_transport_commands.py": {
+      "bytes": 5827,
+      "sha256": "e97384aabd754fd099e1bb91b548b751da70372a09b5260598284ef1c50b06fe"
+    }
+  },
+  "initial_installed_files": [
+    "core.py",
+    "baseline.py",
+    "transport.py"
+  ],
+  "initial_tools_install_only": true,
+  "required_actual_baseline_sha256": "20be9f4367c65b7a00882dbcd789a5867d00a4bfa8a57bf611bc2b3c3ad0c823",
+  "required_baseline_source_sha256": "0884eca1646e0891b9d2106282688bcb1fa9186807f470d8754f7f0fbf5655fb",
+  "required_transport_freeze_sha256": "99808f1061d521a5cd3ae27bd2338ad4e54b82d0c4827e208939cf175399fbac",
+  "server_browser_or_git_operations": false,
+  "stage": "META_TRANSPORT_COMMAND_GENERATOR_FROZEN_AWAIT_INDEPENDENT_REVIEW",
+  "subsequent_hashloaded_prepare_and_ciphertext_install_only": true,
+  "tests_passed": 21,
+  "tool_root": "/opt/t24-crm/releases/meta-business-activation-6cf69fbe4cbe-20261101/tools-transport-v1"
+}

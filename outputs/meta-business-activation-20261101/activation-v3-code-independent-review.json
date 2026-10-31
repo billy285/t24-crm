@@ -1,0 +1,48 @@
+{
+  "actual_invalid_callback_image_sentinel_implementations_exercised_in_tests": true,
+  "credential_env_bound_to_transfer_receipt_hash_and_private_parent_0700": true,
+  "current_image_runtime_source_and_actual_141_baseline_pinned": true,
+  "durable_candidate_identity_before_old_stop": true,
+  "exact_live_rows_schema_pragmas_other_sequences_private_boundaries_preserved": true,
+  "existing_labels_mounts_network_env_and_google_cutoff_preserved": true,
+  "focused_tests_independently_passed": 44,
+  "members": {
+    "activation.py": {
+      "bytes": 16791,
+      "sha256": "5bd8f623fb149cfec60c2c65e3f68468f02329db93501009f9a8182835dd5963"
+    },
+    "baseline.py": {
+      "bytes": 8881,
+      "sha256": "0884eca1646e0891b9d2106282688bcb1fa9186807f470d8754f7f0fbf5655fb"
+    },
+    "make_commands.py": {
+      "bytes": 13560,
+      "sha256": "b66163f33316e600dd07417e55184037dd745222f5115da63780172c2cf5b4cb"
+    },
+    "test_activation.py": {
+      "bytes": 19073,
+      "sha256": "8cf56b4c942084bf89fe7060d31ff15cd0dc4eb1a76d73110ea7b02aae8f1c81"
+    },
+    "test_baseline.py": {
+      "bytes": 4764,
+      "sha256": "0cb1920f430ca648b9a4ae862875b97a3a69c56c4173e5f8c591455b3565c1e0"
+    },
+    "test_commands.py": {
+      "bytes": 3773,
+      "sha256": "68402b26c0f938480f89b700483d50ffd0dd10c0d652fb8a3ef0988d4b8edba6"
+    }
+  },
+  "old_callbacks_image_privacy_and_csp_reused_exactly": true,
+  "only_known_containers_used_no_delete": true,
+  "pending_actual_carrier_wrapper_independent_review": true,
+  "production_executed_by_reviewer": false,
+  "real_oauth_or_provider_assets_verified": false,
+  "recovery_preserves_independent_rows_without_database_restore": true,
+  "requested_refinement_resolved": "Enforce exact Meta credential parent0700 before reading env; chmod0755 regression refuses before Dockercreate.",
+  "restart_rejected_before_stopping_original": true,
+  "reviewed_freeze_sha256": "27b49545fda088ab8c97484d095873fb29693acd3b1901968c9bbc1f860ee2f3",
+  "same_image_only_exact_nine_env_addition": true,
+  "stage": "META_ACTIVATION_V3_CODE_INDEPENDENT_REVIEW_PASS",
+  "tool_namespace_separate_from_transport": true,
+  "unknown_running_candidate_contained_before_role_recovery_checks": true
+}

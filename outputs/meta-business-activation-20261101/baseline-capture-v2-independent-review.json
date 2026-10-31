@@ -1,0 +1,27 @@
+{
+  "all_141_current_business_table_fingerprints_retained": true,
+  "embedded_sources_exact": true,
+  "five_existing_meta_tables_must_be_empty_before_new_key": true,
+  "independent_regeneration_exact": true,
+  "new_meta_secret_subtree_not_content_read": true,
+  "only_protected_fingerprint_proof_written": true,
+  "production_executed_by_reviewer": false,
+  "provider_requests_business_writes_or_credential_values_exported": false,
+  "reviewed_files": {
+    "baseline.py": {
+      "bytes": 8819,
+      "sha256": "a3db89ede5dff34f577ab74dab9871ddc8919d1af245eec6b45ac9007855bf1a"
+    },
+    "core.py": {
+      "bytes": 7320,
+      "sha256": "a970d635693ebc756095a618e4fea340f822fb2e1d109fbdeda724eb9f7a88c7"
+    }
+  },
+  "same_source_image_runtime_env_schema_csp_nginx_google_private_required": true,
+  "scope": "read-only capture only; no credential transport or runtime activation authorization",
+  "stage": "META_ACTIVATION_BASELINE_CAPTURE_V2_INDEPENDENT_REVIEW_PASS",
+  "supersedes_unexecuted_v1_wrapper_sha256": "36bcd2cf9b8160db3634f4199086d47f018097cd0205cf75df29e96ff0a6dc3a",
+  "tests_passed": 8,
+  "wrapper_bytes": 9281,
+  "wrapper_sha256": "eadf6ecf682e6180857b9f88c7c6a6303ae1005e7efc8a306f7371bbeb58db86"
+}
