@@ -1,0 +1,29 @@
+{
+  "access_token_type": "User access token",
+  "app_id": "1139445441758834",
+  "app_name": "T24 CRM Operations",
+  "app_type": "Business",
+  "business_id": "1772407487098568",
+  "business_verification": "Unverified",
+  "callback": "https://t24-crm.com/api/v1/meta-business/oauth/callback",
+  "callback_saved_and_reloaded": true,
+  "configuration_id": "1146714154579519",
+  "external_customer_eligibility": "Not yet established",
+  "graph_version": "v26.0",
+  "login_variation": "General",
+  "mode": "Development",
+  "old_app_preserved": "1625116099132983",
+  "owner_accepted_meta_platform_terms_and_developer_policies": true,
+  "owner_approved_create_secret_storage": true,
+  "owner_trial": "Not yet tested",
+  "public_profile_access": "Standard access",
+  "public_profile_advanced_requirement": "Business verification is required to get advanced access.",
+  "required_scopes": [
+    "instagram_basic",
+    "pages_read_engagement",
+    "pages_show_list"
+  ],
+  "review_scope": "Saved public configuration only; provider authorization remains unverified.",
+  "stage": "INDEPENDENT_CRM_META_SAVED_PUBLIC_CONFIG_REVIEW",
+  "write_scopes_selected": false
+}

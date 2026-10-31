@@ -1,0 +1,32 @@
+{
+  "business_writes": false,
+  "credential_file_content_read": false,
+  "frontend_version": "58d2c585210f",
+  "google_scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "google_scheduler_enabled": true,
+  "key_rotation_eligibility": {
+    "meta_business_assets": 0,
+    "meta_business_bindings": 0,
+    "meta_business_connections": 0,
+    "meta_business_requests": 0,
+    "oauth_flow_count": 3,
+    "safe_to_rotate": true,
+    "unconsumed_or_encrypted_flow_count": 0
+  },
+  "path": "/opt/t24-crm/releases/meta-business-crm-activation-a03766539ef3-20261101/baseline.json",
+  "provider_requests": false,
+  "rows_sha256": "3efdcae3c99eb862e99026284c37fcc4607e2c70ea38225a3ea6510755f36862",
+  "runtime": {
+    "config": "c0ce5025c1e967dd401afa3b0415fe48654b21c95df7cecfd1b364efb5b4698a",
+    "id": "96192b84519f1fa5b6070d4eac6529e44a8f9307833293a5d9db8af0474ea4d1",
+    "image": "sha256:e136fbc267e7bb81d069c597eb2c4ddab7e5f39bf183bbe6cd6cbccc7a19919d",
+    "restart": 0,
+    "started": "2026-10-31T19:10:01.003374212Z"
+  },
+  "runtime_changed": false,
+  "schema_revision": "bde8da01f247",
+  "sha256": "7648d02a0c85a2ea8d094e02337c1edea08c7166d739f16413ab33cc0d3380e5",
+  "source_sha": "a03766539ef3430f350f467652511a43ee3c4abf",
+  "stage": "META_CRM_ROTATION_BASELINE_CAPTURED",
+  "table_count": 141
+}

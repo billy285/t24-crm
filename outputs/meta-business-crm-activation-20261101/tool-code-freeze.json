@@ -1,0 +1,69 @@
+{
+  "app_id": "1139445441758834",
+  "application_changed": false,
+  "baseline_sha256": "7648d02a0c85a2ea8d094e02337c1edea08c7166d739f16413ab33cc0d3380e5",
+  "config_id": "1146714154579519",
+  "files": {
+    "deployments/meta-business-crm-activation-20261101/README.md": {
+      "bytes": 7640,
+      "sha256": "85628ae620db26aa49dbec53b4b2383b2ddeda812f7413bf7bc2e795d7b25e63"
+    },
+    "deployments/meta-business-crm-activation-20261101/activation.py": {
+      "bytes": 17536,
+      "sha256": "5ebf5bc5af2f9c2c5a4b0faa7e079a8299b716f0514b4c91c5916957fbb4e552"
+    },
+    "deployments/meta-business-crm-activation-20261101/baseline.py": {
+      "bytes": 8389,
+      "sha256": "fc7af7f4d91440c9ec9b621c3d9086d3d679dcb94beb52b5b151e32b7ef50362"
+    },
+    "deployments/meta-business-crm-activation-20261101/core.py": {
+      "bytes": 8721,
+      "sha256": "ae765a08c76438a3416ee67f78e3c0d77c71e5240bd77c938aa2476a328d3dc8"
+    },
+    "deployments/meta-business-crm-activation-20261101/encrypt-in-browser.js": {
+      "bytes": 4250,
+      "sha256": "1dfb972d648564c8c30433c128b5bb3c5ac0c4c49d27970c3b4c9db24c8f2686"
+    },
+    "deployments/meta-business-crm-activation-20261101/generate_baseline_command.py": {
+      "bytes": 2153,
+      "sha256": "9a1c92a06a31f04910cb63f86ccf4a907f00cccfe16d1b280c23ba5b93e6d5a8"
+    },
+    "deployments/meta-business-crm-activation-20261101/make_commands.py": {
+      "bytes": 11828,
+      "sha256": "48fe9833b5d252ba356da9075ea9e9b1a087231be7e7ae34ac121c794df497f8"
+    },
+    "deployments/meta-business-crm-activation-20261101/test_activation.py": {
+      "bytes": 22940,
+      "sha256": "1e31768e7b10484abfc0b911aa76c28029e1b7d14d1b517697e457bb126e7bae"
+    },
+    "deployments/meta-business-crm-activation-20261101/test_baseline.py": {
+      "bytes": 6406,
+      "sha256": "ec8cfcbd7395d944ff447615f8f18d2818b0bbd31d8e9099a17465b1e99b9c12"
+    },
+    "deployments/meta-business-crm-activation-20261101/test_commands.py": {
+      "bytes": 6384,
+      "sha256": "bad848d14b2dc466973712bbf4ba8be0d97a5bcdd40a18461d7e6019214f20de"
+    },
+    "deployments/meta-business-crm-activation-20261101/test_core.py": {
+      "bytes": 5886,
+      "sha256": "de3af2407be0cfbf5bccb524b57d5cd6c5a02b00cbdf2825cce766b63c229283"
+    },
+    "deployments/meta-business-crm-activation-20261101/test_transport.py": {
+      "bytes": 8911,
+      "sha256": "a2e6fc4916e98bc4b798c95dfa63fc1fe7e7f40573264d96c1b4b22c550ae3df"
+    },
+    "deployments/meta-business-crm-activation-20261101/transport.py": {
+      "bytes": 7926,
+      "sha256": "8821eb1427b7c4587fca938abf70d00d892063f07142f10016e81cb73f2939dc"
+    }
+  },
+  "frontend_version": "58d2c585210f",
+  "graph_version": "v26.0",
+  "owner_oauth_trial_verified": false,
+  "production_executed_by_tools_author": false,
+  "provider_gate_bypassed": false,
+  "public_configuration_review_sha256": "e60ab18e11e5efb3388a67d6fa4d21738a71d22d57622e555989c7b2b9fd6f5b",
+  "source_sha": "a03766539ef3430f350f467652511a43ee3c4abf",
+  "stage": "META_CRM_ROTATION_FINAL_CODE_FROZEN",
+  "tests_passed": 120
+}

@@ -1,0 +1,37 @@
+{
+  "all_141_rows_and_legacy_key_metadata_preserved": true,
+  "connections_assets_bindings_requests_must_be_zero": true,
+  "current_container": "96192b84519f1fa5b6070d4eac6529e44a8f9307833293a5d9db8af0474ea4d1",
+  "current_deployed_server_receipt_sha256": "a6bde4b7511061fe8a63cadd658f780de23b3e23d7bc163c7c1e9c1811bb7354",
+  "current_source_sha": "a03766539ef3430f350f467652511a43ee3c4abf",
+  "files": {
+    "deployments/meta-business-crm-activation-20261101/baseline.py": {
+      "bytes": 8327,
+      "sha256": "b194285841e34372f8d445e7c9f12e47ea185cbd6c71b325e0603f30a10a0b3e"
+    },
+    "deployments/meta-business-crm-activation-20261101/capture-baseline-command.sh": {
+      "bytes": 9931,
+      "sha256": "c57de60af0a4b8ee7ca7a7059a773140ba406c0af21f5717f0df334bbea7d047"
+    },
+    "deployments/meta-business-crm-activation-20261101/core.py": {
+      "bytes": 8642,
+      "sha256": "31e230402c6172028832e4099adb574c812b88c3e3cb4793b39d60fe44322593"
+    },
+    "deployments/meta-business-crm-activation-20261101/generate_baseline_command.py": {
+      "bytes": 2153,
+      "sha256": "9a1c92a06a31f04910cb63f86ccf4a907f00cccfe16d1b280c23ba5b93e6d5a8"
+    },
+    "deployments/meta-business-crm-activation-20261101/test_baseline.py": {
+      "bytes": 5431,
+      "sha256": "a3587112b4d0aea9f021f682f0339d92ebd26527914e3c3f5c0211b396992100"
+    }
+  },
+  "focused_core_transport_baseline_tests_passed": 70,
+  "initial_gate_exact_three_consumed_empty_flows": true,
+  "known_business_id": "1772407487098568",
+  "known_new_app_id": "1139445441758834",
+  "new_config_version_review_pins_unset": true,
+  "no_credential_file_content_read_provider_or_business_writes": true,
+  "production_executed": false,
+  "stage": "META_CRM_ROTATION_READONLY_BASELINE_FROZEN_AWAIT_REVIEW"
+}

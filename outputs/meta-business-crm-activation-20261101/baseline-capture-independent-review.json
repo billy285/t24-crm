@@ -1,0 +1,20 @@
+{
+  "actual_wrapper_bytes": 9931,
+  "actual_wrapper_sha256": "c57de60af0a4b8ee7ca7a7059a773140ba406c0af21f5717f0df334bbea7d047",
+  "all_five_frozen_members_and_exact_regeneration_ast_verified": true,
+  "captures_only_current_96192_e136_a037_141_table_state": true,
+  "exact_embedded_baseline_sha256": "b194285841e34372f8d445e7c9f12e47ea185cbd6c71b325e0603f30a10a0b3e",
+  "exact_embedded_core_sha256": "31e230402c6172028832e4099adb574c812b88c3e3cb4793b39d60fe44322593",
+  "findings": [],
+  "fixed_readonly_sql_initial_gate_three_consumed_empty_flows_four_meta_tables_zero": true,
+  "freeze_sha256": "b8231a13180112dc252c681744b7136696e499d04bd1f18f7137901012c7e1f0",
+  "no_orm_provider_business_runtime_or_env_changes": true,
+  "old_credential_file_content_not_read_or_overwritten": true,
+  "only_root600_fingerprint_proof_created": true,
+  "original_app_env9_google_cutoff_private_schema_static_nginx_csp_preserved": true,
+  "production_browser_provider_git_actions": false,
+  "result": "PASS",
+  "reviewer": "workflow_actual_release_review",
+  "stage": "META_CRM_ROTATION_BASELINE_CAPTURE_INDEPENDENT_REVIEW",
+  "unknown_new_config_version_review_pins_not_needed_by_capture_and_other_sensitive_paths_failclosed": true
+}
