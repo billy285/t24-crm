@@ -314,7 +314,7 @@ async def statistics(db, user, *, start, end, employee_id=None, binding_id=None)
         field = ('reply_succeeded' if row.kind == 'review_reply' else 'post_succeeded') if row.status == 'succeeded' else row.status
         if field in totals: totals[field] += 1; item[field] += 1
         if row.status == 'succeeded' and row.confirmed_at is None: fallback += 1
-        if len(records) < 100: records.append(g.action_data(row, ctx) | {'customer_name': names[row.binding_id]})
+        if len(records) < 100: records.append((await g.action_data_with_image(db, row, ctx)) | {'customer_name': names[row.binding_id]})
     task_query = select(Task).where(Task.customer_id.in_([row.customer_id for row in bindings if row.id in ids]), Task.platform == 'google_business', Task.due_at >= start, Task.due_at < end)
     if employee_id is not None: task_query = task_query.where(Task.assignee_id == employee_id)
     for task in (await db.scalars(task_query)).all(): totals[task.status] += 1

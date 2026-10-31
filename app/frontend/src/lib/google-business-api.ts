@@ -1,5 +1,6 @@
 import { invokeWithAuth } from './tokenStore';
 import type { MediaPublication } from './media-operations-api';
+import type { PublicationImage } from './media-publication-images';
 
 export type GbpConnection = { id: number; label: string; active: boolean; needs_reconnect: boolean; connected_at: string | null; last_error: string | null };
 export type GbpBinding = {
@@ -19,7 +20,7 @@ export type GbpReview = {
   reply: string | null; reply_updated_at: string | null; reply_state: string | null; version: string; requires_owner_review?: boolean;
 };
 export type GbpReviews = { items: GbpReview[]; next_page_token: string | null; fetched_at: string };
-export type GbpReadyTask = { publication?: MediaPublication | null; timezone?: string; id: number; title: string; content: string; revision: number; material_id: number | null; material_title: string | null; has_public_image: boolean; can_return?: boolean; preview_image_url: string | null; publish_blocked_reason: string | null };
+export type GbpReadyTask = { publication?: MediaPublication | null; timezone?: string; id: number; title: string; content: string; revision: number; material_id: number | null; material_title: string | null; has_public_image: boolean; can_return?: boolean; preview_image_url: string | null; preview_image_path?: string | null; image_version_id?: string | null; image_sha256?: string | null; publication_image?: PublicationImage | null; publish_blocked_reason: string | null };
 export type GbpPublicationPayload = {
   topicType?: 'STANDARD' | 'EVENT' | 'OFFER';
   event?: { title?: string; schedule?: { startDate?: { year?: number; month?: number; day?: number }; startTime?: { hours?: number; minutes?: number; seconds?: number; nanos?: number }; endDate?: { year?: number; month?: number; day?: number }; endTime?: { hours?: number; minutes?: number; seconds?: number; nanos?: number } } };
@@ -29,6 +30,7 @@ export type GbpPublicationPayload = {
 export type GbpActionStatus = 'pending' | 'unknown' | 'accepted' | 'succeeded' | 'rejected' | 'failed';
 export type GbpAction = {
   id: number; request_id: string; binding_id: number; customer_id: number; kind: 'review_reply' | 'post_publish'; task_id: number | null;
+  submitted_image_version_id?: string; submitted_image_sha256?: string; submitted_image_status?: 'ready'|'revoked'|'source_changed'; submitted_image_preview_path?: string|null; submitted_publication_image?: PublicationImage|null;
   status: GbpActionStatus; actor_name: string; created_at: string; updated_at: string;
   publication_payload?: GbpPublicationPayload | null; provider_state: string | null; provider_url: string | null; content: string | null; message: string; can_reconcile: boolean;
 };

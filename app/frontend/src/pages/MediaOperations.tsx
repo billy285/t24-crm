@@ -5,7 +5,10 @@ import { confirmDiscardAllChanges, useHardNavigationBlock, useUnsavedChanges } f
 import MediaPublicationFields from '@/components/MediaPublicationFields';
 import MediaPublicationPreview from '@/components/MediaPublicationPreview';
 import MediaTeamMaterials from '@/components/MediaTeamMaterials';
+import MediaPublicationImage, { PublicationImagePreview } from '@/components/MediaPublicationImage';
+import { imageVersionId } from '@/lib/media-publication-images';
 import MediaPlatformCapabilities from '@/components/MediaPlatformCapabilities';
+import MediaPlanningWorkspace from '@/components/MediaPlanningWorkspace';
 import { blankPublicationForm, publicationEquivalent, publicationForm, publicationPayload, type PublicationForm } from '@/components/media-publication';
 import GoogleBusinessManagement from '@/components/GoogleBusinessManagement';
 import { Button } from '@/components/ui/button';
@@ -16,14 +19,14 @@ import { Dialog, DialogTitle, DialogDescription, CrmFormDialogContent, CrmFormDi
 import { mediaActionLabels, mediaError, mediaErrorStatus, mediaLocalToUtc, mediaOperationsApi, mediaRequestId, mediaSafeProofUrl, mediaScheduleLabel, mediaStatusLabels, mediaTimezones, mediaUtcToLocal, verifiedMediaTask, type MediaAction, type MediaCustomer, type MediaList, type MediaOptions, type MediaPublication, type MediaStatus, type MediaTask } from '@/lib/media-operations-api';
 import './media-operations.css';
 
-type Form = { customer_id: string; service_progress_id: string; title: string; platform: string; local_time: string; timezone: string; assignee_id: string; content: string; material_id: string; publication: PublicationForm };
+type Form = { customer_id: string; service_progress_id: string; title: string; platform: string; local_time: string; timezone: string; assignee_id: string; content: string; material_id: string; image_version_id: string; publication: PublicationForm };
 type PendingMutation = { path: string; method: 'POST' | 'PUT'; data: unknown; expectedId?: number };
-const blankForm = (): Form => ({ customer_id: '', service_progress_id: '', title: '', platform: 'google_business', local_time: '', timezone: 'Asia/Shanghai', assignee_id: '', content: '', material_id: '', publication: blankPublicationForm() });
+const blankForm = (): Form => ({ customer_id: '', service_progress_id: '', title: '', platform: 'google_business', local_time: '', timezone: 'Asia/Shanghai', assignee_id: '', content: '', material_id: '', image_version_id: '', publication: blankPublicationForm() });
 const stages: MediaStatus[] = ['draft', 'in_review', 'ready', 'completed', 'blocked'];
 const emptyOptions: MediaOptions = { customers: [], assignees: [], platforms: [] };
 const imageTypes = new Set(['image', 'photo', 'screenshot', 'picture', '图片', '截图']);
 const isProofImage = (kind: string, contentType?: string | null) => imageTypes.has(kind.toLowerCase()) || kind.toLowerCase().startsWith('image/') || Boolean(contentType?.toLowerCase().startsWith('image/'));
-const taskForm = (item: MediaTask): Form => ({ customer_id: String(item.customer_id), service_progress_id: item.service_progress_id ? String(item.service_progress_id) : '', title: item.title, platform: item.platform, local_time: mediaUtcToLocal(item.due_at, item.timezone), timezone: item.timezone, assignee_id: String(item.assignee_id), content: item.content || '', material_id: item.material_id ? String(item.material_id) : '', publication: publicationForm(item.publication, item.timezone) });
+const taskForm = (item: MediaTask): Form => ({ customer_id: String(item.customer_id), service_progress_id: item.service_progress_id ? String(item.service_progress_id) : '', title: item.title, platform: item.platform, local_time: mediaUtcToLocal(item.due_at, item.timezone), timezone: item.timezone, assignee_id: String(item.assignee_id), content: item.content || '', material_id: item.material_id ? String(item.material_id) : '', image_version_id: item.image_version_id || '', publication: publicationForm(item.publication, item.timezone) });
 const timestamp = (value: string) => {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date) : '时间待核对';
@@ -35,7 +38,7 @@ export default function MediaOperations() {
   const { employee, systemRole, loading: roleLoading } = useRole();
   const owner = systemRole === 'super_admin';
   const allowed = ['super_admin', 'admin', 'ops'].includes(systemRole || '');
-  const [workspace, setWorkspace] = useState<'tasks' | 'google' | 'materials'>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('google') ? 'google' : 'tasks');
+  const [workspace, setWorkspace] = useState<'tasks' | 'planning' | 'google' | 'materials'>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('google') ? 'google' : 'tasks');
   const scope = `${employee?.id || ''}:${systemRole || ''}`;
   const scopeRef = useRef(scope); scopeRef.current = scope;
   const [resolvedScope, setResolvedScope] = useState(scope);
@@ -62,6 +65,8 @@ export default function MediaOperations() {
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [mutationError, setMutationError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [imageHold, setImageHold] = useState(false), [imageDraft, setImageDraft] = useState(false), [imagePreviewReady, setImagePreviewReady] = useState(false);
+  const imageHoldRef = useRef(false);
   const [unknownResult, setUnknownResult] = useState(false);
   const [leaveChoice, setLeaveChoice] = useState(false);
   const [announcement, setAnnouncement] = useState('');
@@ -79,9 +84,9 @@ export default function MediaOperations() {
   const eligibleAssignees = options.assignees.filter(row => !row.eligible_customer_ids || row.eligible_customer_ids.includes(Number(form.customer_id)));
   const formDirty = (mode === 'create' || mode === 'edit') && JSON.stringify(form) !== initialForm.current;
   const actionDirty = mode !== null && Boolean(action && (note.trim() || proofUrl.trim() || proofMaterial || reviewConfirmed));
-  const dirty = formDirty || actionDirty;
+  const dirty = formDirty || actionDirty || imageDraft;
   const draftGuard = useUnsavedChanges(dirty);
-  const navigationHold = useHardNavigationBlock(busy || unknownResult);
+  const navigationHold = useHardNavigationBlock(busy || unknownResult || imageHold);
   const canCreate = list?.capabilities?.can_create === true && !optionsLoading && !optionsError && options.customers.some(row => row.can_write);
 
   const loadList = useCallback(async (clear = false) => {
@@ -123,7 +128,7 @@ export default function MediaOperations() {
     listSeq.current++; optionSeq.current++; detailSeq.current++;
     setList(null); setOptions(emptyOptions); setItem(null); setMode(null); setForm(blankForm());
     setAction(null); setNote(''); setProofUrl(''); setProofMaterial(''); setMutationError(''); setDetailError('');
-    setUnknownResult(false); pending.current = null; activeTaskId.current = null; createId.current = ''; busyRef.current = false; setBusy(false);
+    setUnknownResult(false); setImageHold(false); setImageDraft(false); imageHoldRef.current=false; setImagePreviewReady(false); pending.current = null; activeTaskId.current = null; createId.current = ''; busyRef.current = false; setBusy(false);
     draftGuard.markSaved(); navigationHold.release();
     setSearch(''); setQuery(''); setStatus('all'); setCustomerFilter('all'); setPage(1); setAnnouncement(''); setCopyError(''); setCopiedTaskId(null); setResolvedScope(scope);
     return () => { listSeq.current++; optionSeq.current++; detailSeq.current++; };
@@ -141,7 +146,7 @@ export default function MediaOperations() {
     try {
       const result = verifiedMediaTask(await mediaOperationsApi<MediaTask>(`/${id}`), id);
       if (sequence !== detailSeq.current || scopeRef.current !== identity) return;
-      setItem(result);
+      setItem(result); setImagePreviewReady(false);
       if (nextAction === 'return' && (result.permissions.can_return || result.permissions.can_review)) { setAction('return'); setNote(''); setProofUrl(''); setProofMaterial(''); setReviewConfirmed(false); }
     } catch (error) {
       if (sequence !== detailSeq.current || scopeRef.current !== identity) return;
@@ -150,10 +155,11 @@ export default function MediaOperations() {
     } finally { if (sequence === detailSeq.current && scopeRef.current === identity) setDetailLoading(false); }
   }
 
-  function updateForm<K extends keyof Form>(key: K, value: Form[K]) { setForm(current => ({ ...current, [key]: value })); setMutationError(''); }
+  function updateForm<K extends keyof Form>(key: K, value: Form[K]) { if(imageDraft && ['material_id','platform'].includes(key)){setMutationError('请先保存或放弃正在准备的配图，再更换素材或平台。');return;} setForm(current => ({ ...current, [key]: value, ...(key === 'material_id' || key === 'platform' && value !== 'google_business' ? {image_version_id: ''} : {}) })); setMutationError(''); }
   function chooseCustomer(value: string) {
+    if(imageDraft){setMutationError('请先保存或放弃正在准备的配图，再更换客户。');return;}
     const eligible = options.assignees.filter(row => !row.eligible_customer_ids || row.eligible_customer_ids.includes(Number(value)));
-    setForm(current => ({ ...current, customer_id: value, service_progress_id: '', material_id: '', assignee_id: eligible.some(row => row.id === Number(employee?.id)) ? String(employee?.id) : eligible.length === 1 ? String(eligible[0].id) : '' }));
+    setForm(current => ({ ...current, customer_id: value, service_progress_id: '', material_id: '', image_version_id: '', assignee_id: eligible.some(row => row.id === Number(employee?.id)) ? String(employee?.id) : eligible.length === 1 ? String(eligible[0].id) : '' }));
   }
   function openCreate() {
     if (busyRef.current || unknownResult || !canCreate) return;
@@ -168,7 +174,7 @@ export default function MediaOperations() {
     const next = taskForm(item); setForm(next); initialForm.current = JSON.stringify(next); setMode('edit'); setAction(null); setMutationError('');
   }
   function closeDialog() {
-    if (busyRef.current) return;
+    if (busyRef.current || imageHoldRef.current) return;
     if (dirty && !unknownResult && !leaveChoice) { setLeaveChoice(true); return; }
     detailSeq.current++; setMode(null); setItem(null); setAction(null); setNote(''); setProofUrl(''); setProofMaterial(''); setReviewConfirmed(false); setLeaveChoice(false); setMutationError(''); setDetailError(''); draftGuard.markSaved();
   }
@@ -255,13 +261,15 @@ export default function MediaOperations() {
   }
 
   function saveForm() {
-    if (busyRef.current || unknownResult) return;
+    if (busyRef.current || unknownResult || imageHoldRef.current) return;
     try {
+      if(imageDraft) throw new Error('请先保存或放弃当前配图准备，再保存任务草稿。');
+      if (form.image_version_id && !imageVersionId(form.image_version_id)) throw new Error('请选择有效的固定图片版本。');
       if (!form.title.trim()) throw new Error('请填写任务标题。');
       if (!form.customer_id || !customer?.can_write) throw new Error('请选择有协作授权的客户。');
       const due_at = mediaLocalToUtc(form.local_time, form.timezone);
       const publication = publicationPayload(form.publication, form.timezone, form.platform);
-      const payload = { ...(publication ? { publication } : {}), title: form.title.trim(), platform: form.platform, due_at, timezone: form.timezone, content: form.content, material_id: form.material_id ? Number(form.material_id) : null };
+      const payload = { ...(publication ? { publication } : {}), title: form.title.trim(), platform: form.platform, due_at, timezone: form.timezone, content: form.content, material_id: form.material_id ? Number(form.material_id) : null, image_version_id: form.platform === 'google_business' && form.image_version_id ? form.image_version_id : null };
       if (mode === 'edit' && item) void runMutation({ path: `/${item.id}`, method: 'PUT', expectedId: item.id, data: { ...payload, expected_revision: item.revision, ...(owner && form.assignee_id ? { assignee_id: Number(form.assignee_id) } : {}) } });
       else {
         if (!createId.current) createId.current = mediaRequestId();
@@ -273,6 +281,7 @@ export default function MediaOperations() {
   function performAction() {
     if (!action || !item || busyRef.current || unknownResult) return;
     if (['return', 'block'].includes(action) && note.trim().length < 3) { setMutationError('请填写至少 3 个字的原因，方便下一位同事继续处理。'); return; }
+    if (action === 'approve' && item.image_version_id && !imagePreviewReady) { setMutationError('请先成功读取并核对服务器保存的最终配图，再确认审核。'); return; }
     if (action === 'approve' && !reviewConfirmed) { setMutationError('请先确认内容事实、品牌语气和素材已核对。'); return; }
     if (action === 'complete' && !proofUrl.trim() && !proofMaterial) { setMutationError('请填写发布链接，或选择该客户已授权的发布截图。'); return; }
     if (action === 'complete' && proofUrl.trim() && !mediaSafeProofUrl(proofUrl.trim())) { setMutationError('发布链接需要是有效的 HTTPS 地址。'); return; }
@@ -283,10 +292,10 @@ export default function MediaOperations() {
   const schedulePreview = useMemo(() => { if (!form.local_time) return ''; try { return `${mediaUtcToLocal(mediaLocalToUtc(form.local_time, form.timezone), 'Asia/Shanghai').replace('T', ' ')} 北京时间`; } catch (error) { return error instanceof Error ? error.message : ''; } }, [form.local_time, form.timezone]);
   const priority = list?.items.find(row => row.status === 'blocked') || list?.items.find(row => isOverdue(row)) || list?.items.find(row => owner ? row.status === 'in_review' : row.status === 'ready') || list?.items.find(row => row.status !== 'completed');
   const modalEditing = mode === 'create' || mode === 'edit';
-  const readOnly = busy || unknownResult;
+  const readOnly = busy || unknownResult || imageHold;
   const optionLabel = (value: string) => options.platforms.find(row => row.value === value)?.label || value;
-  function changeWorkspace(next: 'tasks' | 'google' | 'materials') {
-    if (next === workspace || busyRef.current || unknownResult || !confirmDiscardAllChanges()) return;
+  function changeWorkspace(next: 'tasks' | 'planning' | 'google' | 'materials') {
+    if (next === workspace || busyRef.current || unknownResult || imageHoldRef.current || !confirmDiscardAllChanges()) return;
     draftGuard.markSaved(); setMode(null); setItem(null); setAction(null); setLeaveChoice(false); setMutationError('');
     setWorkspace(next);
   }
@@ -296,9 +305,9 @@ export default function MediaOperations() {
 
   return <main className={`media-operations app-page${workspace === 'google' ? ' mo-google-mode' : ''}`} aria-label="代运营中心">
     <header className="mo-page-header"><div><p className="mo-eyebrow">任务与交付 · 代运营</p><h1>代运营中心</h1><p className="mo-subtitle">{workspace === 'google' ? '在授权范围内处理 Google 评论和帖子。' : '准备内容、完成审核、发布后留下凭证。'}</p></div>{workspace === 'tasks' && <div className="mo-header-actions"><Button variant="outline" onClick={() => { void loadList(); void loadOptions(); }} disabled={listLoading || busy} aria-label="刷新运营资料"><RefreshCw className={listLoading ? 'animate-spin' : ''} aria-hidden="true"/><span>刷新</span></Button><Button onClick={openCreate} disabled={!canCreate || busy || unknownResult}><Plus aria-hidden="true"/>新增任务</Button></div>}</header>
-    <div className="mo-workspace-switch" role="group" aria-label="代运营工作区"><button className={workspace === 'tasks' ? 'active' : ''} aria-pressed={workspace === 'tasks'} onClick={() => changeWorkspace('tasks')}><ListChecks aria-hidden="true"/>运营任务</button><button className={workspace === 'google' ? 'active' : ''} aria-pressed={workspace === 'google'} onClick={() => changeWorkspace('google')}><Globe2 aria-hidden="true"/>Google 商家</button><button className={workspace === 'materials' ? 'active' : ''} aria-pressed={workspace === 'materials'} onClick={() => changeWorkspace('materials')}><Image aria-hidden="true"/>客户素材</button></div>
+    <div className="mo-workspace-switch" role="group" aria-label="代运营工作区"><button className={workspace === 'tasks' ? 'active' : ''} aria-pressed={workspace === 'tasks'} onClick={() => changeWorkspace('tasks')}><ListChecks aria-hidden="true"/>运营任务</button><button className={workspace === 'planning' ? 'active' : ''} aria-pressed={workspace === 'planning'} onClick={() => changeWorkspace('planning')}><CalendarDays aria-hidden="true"/>内容编排</button><button className={workspace === 'google' ? 'active' : ''} aria-pressed={workspace === 'google'} onClick={() => changeWorkspace('google')}><Globe2 aria-hidden="true"/>Google 商家</button><button className={workspace === 'materials' ? 'active' : ''} aria-pressed={workspace === 'materials'} onClick={() => changeWorkspace('materials')}><Image aria-hidden="true"/>客户素材</button></div>
     <MediaPlatformCapabilities key={scope} scope={scope}/>
-    {workspace === 'google' ? <GoogleBusinessManagement scope={scope} isOwner={owner} onCreateTask={() => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); openCreate(); }} onOpenTask={(id, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); void readDetail(id, false, nextAction); }}/> : workspace === 'materials' ? <MediaTeamMaterials key={scope} customers={options.customers} initialCustomerId={customerFilter !== 'all' ? Number(customerFilter) : undefined} onChanged={() => void loadOptions()} loading={optionsLoading} error={optionsError} onRetry={() => void loadOptions()}/> : <>
+    {workspace === 'google' ? <GoogleBusinessManagement scope={scope} isOwner={owner} onCreateTask={() => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); openCreate(); }} onOpenTask={(id, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); void readDetail(id, false, nextAction); }}/> : workspace === 'materials' ? <MediaTeamMaterials key={scope} scope={scope} customers={options.customers} initialCustomerId={customerFilter !== 'all' ? Number(customerFilter) : undefined} onChanged={() => void loadOptions()} loading={optionsLoading} error={optionsError} onRetry={() => void loadOptions()}/> : workspace === 'planning' ? <MediaPlanningWorkspace key={scope} scope={scope} customers={options.customers} assignees={options.assignees} onOpenTask={id=>{if(busyRef.current||unknownResult||!confirmDiscardAllChanges())return;setWorkspace('tasks');void readDetail(id);}} onCreateTask={()=>{if(busyRef.current||unknownResult||!confirmDiscardAllChanges())return;setWorkspace('tasks');openCreate();}} onChanged={()=>{void loadList();void loadOptions();}}/> : <>
     <div className="mo-scope"><ShieldCheck aria-hidden="true"/><span>{owner ? '老板视角 · 查看全部运营交付，审核后进入发布' : '我的工作 · 仅显示本人负责且老板已授权的客户任务'}</span><span className="mo-manual-tag">按平台能力执行 · 凭证留痕</span></div>
     <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
     {unknownResult && <div className="mo-alert mo-alert-warn" role="alert"><AlertCircle aria-hidden="true"/><div><strong>上次操作结果待确认</strong><p>请先确认结果，再继续修改或新增任务。</p></div><Button variant="outline" disabled={busy} onClick={() => void recoverUnknown()}>{busy ? '正在确认…' : '重新确认结果'}</Button></div>}
@@ -330,7 +339,8 @@ export default function MediaOperations() {
             <div className="mo-schedule"><div className="mo-form-grid"><label>商家时区<NativeSelect aria-label="商家时区" value={form.timezone} onChange={value => updateForm('timezone', value)} disabled={readOnly} options={mediaTimezones.some(row => row.value === form.timezone) ? mediaTimezones : [...mediaTimezones, { value: form.timezone, label: form.timezone }]}/></label><label>计划发布时间（必填）<Input aria-label="计划发布时间" type="datetime-local" value={form.local_time} onInput={event => updateForm('local_time', event.currentTarget.value)} onChange={event => updateForm('local_time', event.target.value)} disabled={readOnly}/></label></div><p>{schedulePreview || '按选定的商家时区填写；系统会自动换算北京时间。'}</p></div>
             <label>内容草稿<Textarea aria-label="内容草稿" value={form.content} onChange={event => updateForm('content', event.target.value)} placeholder="可以先保存空草稿；提交审核前请补齐完整发布内容。" rows={7} maxLength={20000} disabled={readOnly}/></label>
             {form.platform === 'google_business' ? <MediaPublicationFields value={form.publication} onChange={value => updateForm('publication', value)} disabled={readOnly}/> : <p className="mo-platform-note">{optionLabel(form.platform)} 当前只创建人工发布任务，不发送 Google 帖型、优惠或行动按钮字段。</p>}
-            <label>关联素材<NativeSelect aria-label="关联素材" value={form.material_id} onChange={value => updateForm('material_id', value)} disabled={readOnly || !customer} options={[{ value: '', label: '暂不关联素材' }, ...(customer?.materials || []).map(row => ({ value: String(row.id), label: row.title }))]}/><span className="mo-help">仅列出该客户已授权的团队素材。私有上传不能供 Google 无认证读取；审核和发布前须补齐可用的公开图片链接。视频仅准备，不能在此一键发布。</span></label>
+            <label>关联素材<NativeSelect aria-label="关联素材" value={form.material_id} onChange={value => updateForm('material_id', value)} disabled={readOnly || !customer} options={[{ value: '', label: '暂不关联素材' }, ...(customer?.materials || []).map(row => ({ value: String(row.id), label: row.title }))]}/><span className="mo-help">仅列出该客户已授权的团队素材。私有 JPEG／PNG 图片可在下方准备固定发布版本；外部图片链接保留原方式。视频仅准备。</span></label>
+            {form.platform === 'google_business' && customer && form.material_id && (customer.materials.find(row => row.id === Number(form.material_id))?.has_private_file || form.image_version_id) && <MediaPublicationImage key={`${scope}:${customer.id}:${form.material_id}`} scope={scope} customerId={customer.id} materialId={Number(form.material_id)} value={form.image_version_id} canPrepare={customer.can_prepare_images === true} disabled={busy || unknownResult} onChange={value => updateForm('image_version_id', value)} onHoldChange={active => {imageHoldRef.current=active;setImageHold(active);}} onDraftChange={setImageDraft} onChanged={() => void loadOptions()}/>}
             <details className="mo-draft-preview"><summary>核对完整内容预览</summary><div className="mo-copy">{form.content || '正文尚未填写'}</div>{form.platform === 'google_business' && <MediaPublicationPreview publication={{topic_type:form.publication.topic_type,...(form.publication.topic_type!=='STANDARD'?{event:{title:form.publication.event_title,start_at:safePreviewTime(form.publication.event_start,form.timezone),end_at:safePreviewTime(form.publication.event_end,form.timezone)}}:{}),...(form.publication.topic_type==='OFFER'?{offer:{coupon_code:form.publication.coupon_code,redeem_online_url:form.publication.redeem_online_url,terms_conditions:form.publication.terms_conditions}}:{}),...(form.publication.topic_type!=='OFFER'&&form.publication.action_type?{call_to_action:{action_type:form.publication.action_type as NonNullable<MediaPublication['call_to_action']>['action_type'],url:form.publication.action_url}}:{})}} timezone={form.timezone} heading="草稿结构预览"/>}</details>
           </div> : item && <div className="mo-detail">
             <div className="mo-detail-meta"><span className={`mo-status mo-status-${item.status}`}>{mediaStatusLabels[item.status]}</span><span>{item.assignee_name} 负责</span><span>任务 #{item.id}</span></div>
@@ -339,15 +349,18 @@ export default function MediaOperations() {
             {item.review_note && <div className="mo-review-note"><ListChecks aria-hidden="true"/><div><strong>审核说明</strong><p>{item.review_note}</p></div></div>}
             <section><div className="mo-copy-heading"><h3><FileText aria-hidden="true"/>发布内容</h3><Button variant="ghost" size="sm" onClick={() => void copyContent()} disabled={!item.content}><Copy aria-hidden="true"/>{copiedTaskId === item.id ? '已复制' : '复制文案'}</Button></div>{copyError && <p className="mo-help" role="status">{copyError}</p>}<div className={item.content ? 'mo-copy' : 'mo-copy mo-copy-empty'}>{item.content || '还没有填写内容草稿。编辑并补齐内容后，提交审核。'}</div></section>
             {item.platform === 'google_business' && <MediaPublicationPreview publication={item.publication} timezone={item.timezone} heading="审核与发布结构"/>}
-            <section className="mo-detail-material"><Image aria-hidden="true"/><div><strong>关联素材</strong><span>{item.material_title || '暂未关联素材'}</span>{item.platform === 'google_business' && item.material_id && <p className="mo-help">若素材为私有上传，Google 无法无认证读取。审核和发布前须补齐可用的公开图片链接；关联素材不代表已具备发布条件。</p>}</div></section>
+            <section className="mo-detail-material"><Image aria-hidden="true"/><div><strong>关联素材</strong><span>{item.material_title || '暂未关联素材'}</span>{item.platform === 'google_business' && item.material_id && !item.publication_image && <p className="mo-help">私有图片需先准备固定发布版本。若使用外部公开图片链接，请在审核时核对实际图片；关联素材不代表已经满足发布条件。</p>}</div></section>
+            {item.publication_image && <PublicationImagePreview key={`${scope}:${item.publication_image.id}`} scope={scope} image={item.publication_image} title="本次审核和发布使用的固定配图" onStateChange={state => setImagePreviewReady(state === 'ready' && item.publication_image?.status === 'ready')}/>}
+            {item.publication_image && item.publication_image.status !== 'ready' && <p className="mo-alert mo-alert-warn">固定配图的原素材或使用状态已变化，请退回草稿并重新准备、审核。</p>}
+            {item.image_version_id && !item.publication_image && <p className="mo-alert mo-alert-warn">当前固定图片版本或独立素材授权不可用，请重新核对；暂不能确认图片审核。</p>}
             {(item.proof_url || item.proof_material_id || item.completed_at) && <section className="mo-proof"><h3><CheckCircle2 aria-hidden="true"/>发布凭证</h3>{mediaSafeProofUrl(item.proof_url) && <a href={mediaSafeProofUrl(item.proof_url)!} target="_blank" rel="noopener noreferrer">查看发布链接<ExternalLink aria-hidden="true"/></a>}{item.proof_material_id && <p>发布截图：{detailCustomer?.materials.find(row => row.id === item.proof_material_id)?.title || `已关联素材 #${item.proof_material_id}`}</p>}{item.completed_at && <small>确认完成于 {timestamp(item.completed_at)}（北京时间）</small>}</section>}
-            {action && <section className="mo-action-form" aria-label={mediaActionLabels[action]}><h3>{mediaActionLabels[action]}</h3>{action === 'complete' && <><p>请先在对应平台完成发布，再提交真实的链接或截图。</p><label>发布链接<Input aria-label="发布链接" value={proofUrl} onChange={event => setProofUrl(event.target.value)} placeholder="https://…" type="url" disabled={readOnly}/></label><label>或选择发布截图<NativeSelect aria-label="发布截图" value={proofMaterial} onChange={setProofMaterial} disabled={readOnly} options={[{ value: '', label: '不选择截图' }, ...(detailCustomer?.materials || []).filter(row => isProofImage(row.material_type, row.content_type)).map(row => ({ value: String(row.id), label: row.title }))]}/></label></>}{action === 'approve' && <label className="mo-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={event => setReviewConfirmed(event.target.checked)} disabled={readOnly}/><span>我已核对正文、活动或优惠起止、条款、按钮去向及素材，确认可以交给发布人员。</span></label>}{action === 'submit' && <p>提交后草稿将锁定，等待老板审核。审核通过后进入对应平台待发布队列；Google 发布仍须另外授权与确认。</p>}{action === 'resume' && <p>恢复后回到可继续处理的阶段，需要审核的内容仍会重新审核。</p>}<label>{['block', 'return'].includes(action) ? '原因 / 下一步 *' : '补充说明（选填）'}<Textarea aria-label="操作说明" value={note} onChange={event => setNote(event.target.value)} rows={3} maxLength={2000} disabled={readOnly} placeholder={['block', 'return'].includes(action) ? '说明缺少什么、需要谁协助。' : '为后续交接留下必要说明。'}/></label></section>}
+            {action && <section className="mo-action-form" aria-label={mediaActionLabels[action]}><h3>{mediaActionLabels[action]}</h3>{action === 'complete' && <><p>请先在对应平台完成发布，再提交真实的链接或截图。</p><label>发布链接<Input aria-label="发布链接" value={proofUrl} onChange={event => setProofUrl(event.target.value)} placeholder="https://…" type="url" disabled={readOnly}/></label><label>或选择发布截图<NativeSelect aria-label="发布截图" value={proofMaterial} onChange={setProofMaterial} disabled={readOnly} options={[{ value: '', label: '不选择截图' }, ...(detailCustomer?.materials || []).filter(row => isProofImage(row.material_type, row.content_type)).map(row => ({ value: String(row.id), label: row.title }))]}/></label></>}{action === 'approve' && <label className="mo-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={event => setReviewConfirmed(event.target.checked)} disabled={readOnly}/><span>我已核对正文、活动或优惠起止、条款、按钮去向及素材，确认可以交给发布人员。固定配图将按此版本公开使用，原文件保持私有。</span></label>}{action === 'submit' && <p>提交后草稿将锁定，等待老板审核。审核通过后进入对应平台待发布队列；Google 发布仍须另外授权与确认。</p>}{action === 'resume' && <p>恢复后回到可继续处理的阶段，需要审核的内容仍会重新审核。</p>}<label>{['block', 'return'].includes(action) ? '原因 / 下一步 *' : '补充说明（选填）'}<Textarea aria-label="操作说明" value={note} onChange={event => setNote(event.target.value)} rows={3} maxLength={2000} disabled={readOnly} placeholder={['block', 'return'].includes(action) ? '说明缺少什么、需要谁协助。' : '为后续交接留下必要说明。'}/></label></section>}
             {!action && Array.isArray(item.events) && item.events.length > 0 && <section className="mo-history"><h3>处理记录</h3><ol>{[...item.events].reverse().map(event => <li key={event.id}><span className="mo-history-dot"/><div><strong>{mediaActionLabels[event.action as keyof typeof mediaActionLabels] || '更新任务'}<small>{event.actor_name} · {timestamp(event.created_at)}</small></strong>{event.note && <p>{event.note}</p>}</div></li>)}</ol></section>}
           </div>}
           {mutationError && <div className="mo-alert mo-alert-warn" role="alert"><AlertCircle aria-hidden="true"/><span>{mutationError}</span></div>}
         </CrmFormDialogBody>
         <CrmFormDialogFooter>
-          {unknownResult ? <><Button variant="outline" onClick={closeDialog} disabled={busy}>收起</Button><Button onClick={() => void recoverUnknown()} disabled={busy}>{busy && <Loader2 className="animate-spin" aria-hidden="true"/>}重新确认结果</Button></> : modalEditing ? <><Button variant="outline" onClick={closeDialog} disabled={busy}>取消</Button><Button onClick={saveForm} disabled={busy || detailLoading || optionsLoading || Boolean(optionsError)}>{busy ? <Loader2 className="animate-spin" aria-hidden="true"/> : <Check aria-hidden="true"/>}{busy ? '正在保存…' : '保存草稿'}</Button></> : action ? <><Button variant="outline" onClick={() => { setAction(null); setMutationError(''); }} disabled={busy}>取消</Button><Button onClick={performAction} disabled={busy || action === 'approve' && !reviewConfirmed}>{busy && <Loader2 className="animate-spin" aria-hidden="true"/>}{busy ? '正在保存…' : mediaActionLabels[action]}</Button></> : item ? <div className="mo-detail-actions">{item.permissions.can_block && <Button variant="ghost" onClick={() => beginAction('block')} disabled={busy}>记录异常</Button>}{item.permissions.can_edit && <Button variant="outline" onClick={openEdit} disabled={busy || Boolean(optionsError)}>编辑草稿</Button>}{(item.permissions.can_review || item.permissions.can_return) && <Button variant="outline" onClick={() => beginAction('return')} disabled={busy}>退回修改</Button>}{item.permissions.can_review && <Button onClick={() => beginAction('approve')} disabled={busy}><Check aria-hidden="true"/>审核通过</Button>}{item.permissions.can_submit && <Button onClick={() => beginAction('submit')} disabled={busy}>提交审核<ArrowRight aria-hidden="true"/></Button>}{item.permissions.can_complete && <Button onClick={() => beginAction('complete')} disabled={busy}>提交发布凭证<ArrowRight aria-hidden="true"/></Button>}{item.permissions.can_resume && <Button onClick={() => beginAction('resume')} disabled={busy}>恢复处理</Button>}{!Object.values(item.permissions).some(Boolean) && <span className="mo-readonly"><LockKeyhole aria-hidden="true"/>当前为只读资料</span>}</div> : <Button variant="outline" onClick={closeDialog}>关闭</Button>}
+          {unknownResult ? <><Button variant="outline" onClick={closeDialog} disabled={busy}>收起</Button><Button onClick={() => void recoverUnknown()} disabled={busy}>{busy && <Loader2 className="animate-spin" aria-hidden="true"/>}重新确认结果</Button></> : modalEditing ? <><Button variant="outline" onClick={closeDialog} disabled={busy}>取消</Button><Button onClick={saveForm} disabled={busy || imageHold || imageDraft || detailLoading || optionsLoading || Boolean(optionsError)}>{busy ? <Loader2 className="animate-spin" aria-hidden="true"/> : <Check aria-hidden="true"/>}{busy ? '正在保存…' : '保存草稿'}</Button></> : action ? <><Button variant="outline" onClick={() => { setAction(null); setMutationError(''); }} disabled={busy}>取消</Button><Button onClick={performAction} disabled={busy || imageHold || action === 'approve' && (!reviewConfirmed || Boolean(item?.image_version_id && !imagePreviewReady))}>{busy && <Loader2 className="animate-spin" aria-hidden="true"/>}{busy ? '正在保存…' : mediaActionLabels[action]}</Button></> : item ? <div className="mo-detail-actions">{item.permissions.can_block && <Button variant="ghost" onClick={() => beginAction('block')} disabled={busy}>记录异常</Button>}{item.permissions.can_edit && <Button variant="outline" onClick={openEdit} disabled={busy || Boolean(optionsError)}>编辑草稿</Button>}{(item.permissions.can_review || item.permissions.can_return) && <Button variant="outline" onClick={() => beginAction('return')} disabled={busy}>退回修改</Button>}{item.permissions.can_review && <Button onClick={() => beginAction('approve')} disabled={busy}><Check aria-hidden="true"/>审核通过</Button>}{item.permissions.can_submit && <Button onClick={() => beginAction('submit')} disabled={busy}>提交审核<ArrowRight aria-hidden="true"/></Button>}{item.permissions.can_complete && <Button onClick={() => beginAction('complete')} disabled={busy}>提交发布凭证<ArrowRight aria-hidden="true"/></Button>}{item.permissions.can_resume && <Button onClick={() => beginAction('resume')} disabled={busy}>恢复处理</Button>}{!Object.values(item.permissions).some(Boolean) && <span className="mo-readonly"><LockKeyhole aria-hidden="true"/>当前为只读资料</span>}</div> : <Button variant="outline" onClick={closeDialog}>关闭</Button>}
         </CrmFormDialogFooter>
       </CrmFormDialogContent>
     </Dialog>

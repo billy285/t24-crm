@@ -166,6 +166,11 @@ def action_data(action, ctx):
             "publication_payload": _public_post_configuration(action.payload) if retained and action.kind == "post_publish" else None}
 
 
+async def action_data_with_image(db, action, ctx):
+    from services import media_publication_images as images
+    return {**action_data(action, ctx), **(await images.submitted_image_data(db, ctx, action))}
+
+
 async def _audit(db, ctx, binding, kind, payload):
     db.add(Action(binding_id=binding.id, customer_id=binding.customer_id, kind=kind, request_id=str(uuid4()), fingerprint=digest(payload),
                   actor_id=ctx.identity, actor_name=ctx.user.name or str(ctx.identity), payload=payload, status="succeeded", message="授权配置已更新", created_at=now(), updated_at=now()))
@@ -475,7 +480,12 @@ async def _post_payload(db, ctx, binding, task_id, expected_revision=None):
     payload = {"languageCode": "en-US", "summary": content}
     payload.update(media.publication_payload(publication, task.timezone))
     has_image = False
-    if task.material_id is not None:
+    from services import media_publication_images as images
+    prepared_image = await images.approved_image(db, ctx, binding, task, snapshot)
+    if prepared_image is not None:
+        payload["media"] = [{"mediaFormat": "PHOTO", "sourceUrl": images.delivery_url(prepared_image)}]
+        has_image = True
+    elif task.material_id is not None:
         material = await media._material(db, ctx, customer, task.material_id, proof=True)
         await db.refresh(material)
         reference_hash = media._hash({"id": material.id, "customer_id": material.customer_id, "file_url": material.file_url,
@@ -496,20 +506,29 @@ async def ready_tasks(db, user, binding_id):
     if not ctx.owner: query = query.where(MediaOperationTask.assignee_id == ctx.identity)
     rows = (await db.execute(query.limit(100))).scalars().all()
     output = []
+    _, customer_permissions = await media._customer(db, ctx, binding.customer_id)
+    from services import media_publication_images as images
+    task_images = await images.task_images_data(db, ctx, rows, {binding.customer_id: customer_permissions})
     for task in rows:
         preview_url = None; material_title = None; blocked = None; publication = None
+        publication_image = task_images[task.id]
         try:
             publication = await media.publication_for_task(db, task)
             _, payload, _ = await _post_payload(db, ctx, binding, task.id, task.revision)
             media_items = payload.get("media") or []
-            preview_url = media_items[0]["sourceUrl"] if media_items else None
-            material_title = task.material_title if preview_url else None
+            # The capability URL is never a browser preview or a task DTO.
+            preview_url = media_items[0]["sourceUrl"] if media_items and publication_image is None else None
+            material_title = task.material_title if preview_url or publication_image else None
         except HTTPException as exc:
             blocked = str(exc.detail)
         output.append({"id": task.id, "title": task.title, "content": task.content, "revision": task.revision,
                        "publication": publication, "timezone": task.timezone,
-                       "material_id": task.material_id if preview_url else None, "material_title": material_title,
-                       "has_public_image": bool(preview_url), "preview_image_url": preview_url, "publish_blocked_reason": blocked, "can_return": ctx.owner})
+                       "material_id": task.material_id if preview_url or publication_image else None, "material_title": material_title,
+                       "has_public_image": bool(preview_url or publication_image and not blocked), "preview_image_url": preview_url,
+                       "preview_image_path": publication_image["preview_path"] if publication_image else None,
+                       "image_version_id": publication_image["id"] if publication_image else None,
+                       "image_sha256": publication_image["image_sha256"] if publication_image else None,
+                       "publication_image": publication_image, "publish_blocked_reason": blocked, "can_return": ctx.owner})
     return {"items": output, "total": len(output)}
 
 
@@ -605,7 +624,7 @@ async def _dispatch(db, user, action_id, *, expected_revision=None, expected_ver
             denial = exc
         if denial is None:
             if row.status != "pending" or row.dispatch_started_at is not None:
-                output = action_data(row, ctx)
+                output = await action_data_with_image(db, row, ctx)
             else:
                 try:
                     if row.kind == "review_reply":
@@ -622,12 +641,18 @@ async def _dispatch(db, user, action_id, *, expected_revision=None, expected_ver
                             if (not scheduled or scheduled.status != "dispatching" or scheduled.action_id != row.id or scheduled.operator_id != ctx.identity or
                                     binding.primary_operator_id != ctx.identity or scheduled.task_id != row.task_id or scheduled.task_revision != expected_revision or scheduled.payload_fingerprint != digest(row.payload)):
                                 raise HTTPException(409, "排期、主运营或内容版本已变化，本次不会发布")
-                        _, current_payload, _ = await _post_payload(db, ctx, binding, row.task_id, expected_revision)
+                        dispatch_task, current_payload, _ = await _post_payload(db, ctx, binding, row.task_id, expected_revision)
                         if current_payload != row.payload: raise HTTPException(409, "运营任务素材已更新，请重新审核")
                     # This short committed point defines an already-dispatched
                     # request. Revocation after it cannot retract external HTTP,
                     # but it fences all later requests and all response access.
                     row.dispatch_started_at = now(); row.updated_at = row.dispatch_started_at
+                    if row.kind == "post_publish":
+                        from services import media_publication_images as images
+                        approval = await db.scalar(select(MediaOperationEvent).where(MediaOperationEvent.task_id == dispatch_task.id,
+                            MediaOperationEvent.action == "approve", MediaOperationEvent.after_status == "ready")
+                            .order_by(MediaOperationEvent.revision.desc()).limit(1))
+                        await images.activate_delivery(db, ctx, binding, dispatch_task, approval.snapshot if approval else {}, row)
                     row.message = "已开始向 Google 提交；如需撤销，请先核对本次实际结果"
                     snapshot = {"id": row.id, "marker": iso(row.dispatch_started_at), "fingerprint": row.fingerprint, "kind": row.kind,
                                 "payload": dict(row.payload), "target_name": row.target_name, "location_name": binding.location_name,
@@ -635,7 +660,7 @@ async def _dispatch(db, user, action_id, *, expected_revision=None, expected_ver
                                 "connection": SimpleNamespace(active=connection.active, needs_reconnect=connection.needs_reconnect, token_encrypted=connection.token_encrypted)}
                 except HTTPException as exc:
                     row.status = "failed"; row.message = str(exc.detail); row.updated_at = now()
-                    output = action_data(row, ctx)
+                    output = await action_data_with_image(db, row, ctx)
     if denial is not None: raise denial
     if snapshot is None: return output
     # Never hold an application DB transaction while awaiting Google. An
@@ -680,7 +705,7 @@ async def _dispatch(db, user, action_id, *, expected_revision=None, expected_ver
         try:
             ctx = await context(db, user)
             await _binding(db, ctx, row.binding_id, action="reply" if row.kind == "review_reply" else "publish", lock=True)
-            output = action_data(row, ctx)
+            output = await action_data_with_image(db, row, ctx)
         except HTTPException as exc:
             # Keep the real platform result for the owner, but never reveal it
             # through an invitation that was revoked while HTTP was in flight.
@@ -714,7 +739,7 @@ async def action(db, user, action_id):
     row = await db.get(Action, action_id)
     if not row or row.kind not in {"review_reply", "post_publish"}: raise HTTPException(404, "Google 操作记录不存在")
     await _binding(db, ctx, row.binding_id)
-    return action_data(row, ctx)
+    return await action_data_with_image(db, row, ctx)
 
 
 async def request_action(db, user, request_id):
@@ -722,14 +747,14 @@ async def request_action(db, user, request_id):
     row = await db.scalar(select(Action).where(Action.actor_id == ctx.identity, Action.request_id == request_id, Action.kind.in_(("review_reply", "post_publish"))))
     if not row: raise HTTPException(404, "尚未查到此请求，请保留原请求编号并稍后再查")
     await _binding(db, ctx, row.binding_id)
-    return action_data(row, ctx)
+    return await action_data_with_image(db, row, ctx)
 
 
 async def actions(db, user, binding_id):
     ctx = await context(db, user)
     await _binding(db, ctx, binding_id)
     rows = (await db.execute(select(Action).where(Action.binding_id == binding_id, Action.kind.in_(("review_reply", "post_publish"))).order_by(Action.id.desc()).limit(50))).scalars().all()
-    return {"items": [action_data(row, ctx) for row in rows]}
+    return {"items": [await action_data_with_image(db, row, ctx) for row in rows]}
 
 
 async def reconcile(db, user, action_id):
@@ -737,7 +762,7 @@ async def reconcile(db, user, action_id):
     row = await db.get(Action, action_id)
     if not row or row.kind not in {"review_reply", "post_publish"}: raise HTTPException(404, "Google 操作记录不存在")
     binding, connection, _ = await _binding(db, ctx, row.binding_id, action="reply" if row.kind == "review_reply" else "publish")
-    if row.status not in {"pending", "unknown", "accepted"}: return action_data(row, ctx)
+    if row.status not in {"pending", "unknown", "accepted"}: return await action_data_with_image(db, row, ctx)
     snapshot = {"kind": row.kind, "status": row.status, "provider_name": row.provider_name, "target_name": row.target_name,
                 "updated_at": iso(row.updated_at), "created_at": iso(row.created_at), "payload": dict(row.payload or {}), "binding_id": row.binding_id,
                 "connection_id": connection.id, "location_name": binding.location_name}
@@ -758,7 +783,7 @@ async def reconcile(db, user, action_id):
         if connection.id != snapshot["connection_id"]: raise HTTPException(409, "门店连接已变更，请重新查询")
         # A late read must not downgrade a newer terminal or reconciled result.
         if row.status not in {"pending", "unknown", "accepted"} or (row.status, row.provider_name, iso(row.updated_at)) != (snapshot["status"], snapshot["provider_name"], snapshot["updated_at"]):
-            return action_data(row, ctx)
+            return await action_data_with_image(db, row, ctx)
         if not snapshot["payload"]:
             row.status = "unknown"; row.message = "操作已超过内容保留期，请老板到 Google 后台人工核对"
         elif read_error:
@@ -784,5 +809,5 @@ async def reconcile(db, user, action_id):
         row.updated_at = now()
         if row.status == "succeeded" and row.confirmed_at is None: row.confirmed_at = now()
         await _sync_schedule_result(db, row)
-        output = action_data(row, ctx)
+        output = await action_data_with_image(db, row, ctx)
     return output

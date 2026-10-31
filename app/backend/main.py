@@ -287,6 +287,7 @@ async def isolate_phone_sales_access(request: Request, call_next):
 @app.middleware("http")
 async def add_security_and_observability_headers(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    image_delivery = request.url.path.startswith("/api/v1/media-publication-images/delivery/")
     started_at = time.perf_counter()
     response = await call_next(request)
     elapsed = time.perf_counter() - started_at
@@ -294,7 +295,7 @@ async def add_security_and_observability_headers(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Referrer-Policy"] = "no-referrer" if image_delivery else "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=(self)"
     response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     response.headers["Server-Timing"] = f"app;dur={elapsed * 1000:.1f}"
@@ -305,7 +306,7 @@ async def add_security_and_observability_headers(request: Request, call_next):
         logging.getLogger("performance").warning(
             "Slow request method=%s path=%s status=%s duration=%.3fs request_id=%s",
             request.method,
-            request.url.path,
+            "/api/v1/media-publication-images/delivery/[image].png" if image_delivery else request.url.path,
             response.status_code,
             elapsed,
             request_id,

@@ -62,6 +62,7 @@ class CreateTask(StrictInput):
     assignee_id: int | None = Field(None, ge=1, strict=True)
     content: str = Field("", max_length=20000)
     material_id: int | None = Field(None, ge=1, strict=True)
+    image_version_id: str | None = Field(None, pattern=r"^[a-f0-9]{32}$", strict=True)
     publication: Publication | None = None
 
 
@@ -73,6 +74,7 @@ class EditTask(StrictInput):
     timezone: str | None = Field(None, min_length=1, max_length=80)
     content: str | None = Field(None, max_length=20000)
     material_id: int | None = Field(None, ge=1, strict=True)
+    image_version_id: str | None = Field(None, pattern=r"^[a-f0-9]{32}$", strict=True)
     publication: Publication | None = None
     assignee_id: int | None = Field(None, ge=1, strict=True)
 

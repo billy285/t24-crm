@@ -141,7 +141,7 @@ async def _material(db, ctx, customer, material_id, *, proof=False):
         raise HTTPException(403, "此客户的素材资料尚未授权")
     material = (await db.execute(select(Customer_materials).where(Customer_materials.id == material_id,
                    Customer_materials.customer_id == customer.id,
-                   Customer_materials.visibility == "team"))).scalar_one_or_none()
+                   Customer_materials.visibility == "team").execution_options(populate_existing=True))).scalar_one_or_none()
     if not material:
         raise HTTPException(422, "请选择该客户已共享的运营素材")
     if proof and not (str(material.content_type or "").startswith("image/") or material.material_type in {"image", "photo", "screenshot"}):
@@ -405,6 +405,9 @@ async def _google_return_permissions(db, rows):
 async def _detail(db, ctx, task, permissions):
     data = _data(task, ctx, permissions)
     data["publication"] = await publication_for_task(db, task)
+    from services import media_publication_images as images
+    data["publication_image"] = await images.task_image_data(db, ctx, task, permissions)
+    data["image_version_id"] = data["publication_image"]["id"] if data["publication_image"] else None
     await _google_return_permissions(db, [data])
     await _redact_material_references(db, [data])
     events = (await db.execute(select(MediaOperationEvent).where(MediaOperationEvent.task_id == task.id)
@@ -446,11 +449,13 @@ async def options(db, user):
     services = (await db.execute(select(Service_progresses).where(Service_progresses.customer_id.in_(ids)))).scalars().all() if ids else []
     material_customers = [c.id for c in customers if permissions[c.id]["modules"]["materials"]["read"]]
     materials = (await db.execute(select(Customer_materials.id, Customer_materials.customer_id, Customer_materials.title,
-                  Customer_materials.material_type, Customer_materials.content_type).where(Customer_materials.customer_id.in_(material_customers),
+                  Customer_materials.material_type, Customer_materials.content_type, Customer_materials.source_type, Customer_materials.file_path).where(Customer_materials.customer_id.in_(material_customers),
                   Customer_materials.visibility == "team"))).all() if material_customers else []
     items = [{"id": c.id, "name": c.business_name, "can_write": bool(permissions[c.id]["modules"]["delivery"]["write"] and ctx.can_edit),
+              "can_prepare_images": bool(ctx.can_edit and permissions[c.id]["modules"]["delivery"]["write"] and permissions[c.id]["modules"]["materials"]["write"]),
               "services": [{"id": s.id, "name": s.package_name or s.service_type or "服务项目"} for s in services if s.customer_id == c.id],
-              "materials": [{"id": m.id, "title": m.title, "material_type": m.material_type, "content_type": m.content_type} for m in materials if m.customer_id == c.id]} for c in customers]
+              "materials": [{"id": m.id, "title": m.title, "material_type": m.material_type, "content_type": m.content_type,
+                  "source_type": m.source_type, "has_private_file": bool(m.file_path)} for m in materials if m.customer_id == c.id]} for c in customers]
     assignees = [{"id": ctx.identity, "name": user.name or "当前员工", "eligible_customer_ids": [c["id"] for c in items if c["can_write"]]}]
     if ctx.owner:
         assignees = []
@@ -501,6 +506,11 @@ async def list_tasks(db, user, *, status=None, customer_id=None, q=None, skip=0,
     customer_rows = (await db.execute(select(Customers).where(Customers.id.in_({r.customer_id for r in rows})))).scalars().all() if rows else []
     perms = await customer_permissions_for_rows(db, user, customer_rows, config=ctx.config)
     items = [_data(row, ctx, perms[row.customer_id]) for row in rows]
+    from services import media_publication_images as images
+    task_images = await images.task_images_data(db, ctx, rows, perms)
+    for task, item in zip(rows, items):
+        item["publication_image"] = task_images[task.id]
+        item["image_version_id"] = item["publication_image"]["id"] if item["publication_image"] else None
     await _add_publications(db, items)
     await _google_return_permissions(db, items)
     await _redact_material_references(db, items)
@@ -540,6 +550,11 @@ async def _event(db, ctx, task, action, before_status, *, request_id=None, finge
                 "assignee_id": task.assignee_id, "due_at": _iso(task.due_at), "timezone": task.timezone,
                 "proof_url": task.proof_url, "proof_material_id": task.proof_material_id,
                 "publication": await publication_for_task(db, task)}
+    from services import media_publication_images as images
+    selected_image = await images.selection_for_task(db, task)
+    if selected_image is not None:
+        snapshot["image_version_id"] = selected_image.id
+        if action == "approve": snapshot["publication_image"] = await images.approval_snapshot(db, ctx, task)
     if action == "approve" and task.platform == "google_business" and task.material_id is not None:
         # Freeze the approved asset reference, not its remote bytes. Google
         # publishing must refuse a changed reference and require re-approval.
@@ -566,7 +581,7 @@ async def _cas(db, task, expected_revision, values):
 
 
 async def create_task(db, user, *, client_request_id, customer_id, service_progress_id=None, assignee_id=None,
-                      material_id=None, **fields):
+                      material_id=None, image_version_id=None, **fields):
     ctx = await context(db, user)
     if not ctx.can_create:
         raise HTTPException(403, "运营新建功能尚未授权")
@@ -576,6 +591,7 @@ async def create_task(db, user, *, client_request_id, customer_id, service_progr
     fingerprint_values = {**values, "customer_id": customer_id, "service_progress_id": service_progress_id,
                          "assignee_id": assignee_id or ctx.identity, "material_id": material_id}
     if publication not in (None, DEFAULT_PUBLICATION): fingerprint_values["publication"] = publication
+    if image_version_id is not None: fingerprint_values["image_version_id"] = image_version_id
     fingerprint = _hash(fingerprint_values)
     async with _write(db):
         existing = (await db.execute(select(MediaOperationTask).where(MediaOperationTask.created_by_id == ctx.identity,
@@ -601,6 +617,9 @@ async def create_task(db, user, *, client_request_id, customer_id, service_progr
             db.add(task)
             await db.flush()
             await _save_publication(db, task, publication)
+            if image_version_id is not None:
+                from services import media_publication_images as images
+                await images.save_selection(db, ctx, task, image_version_id)
             await _event(db, ctx, task, "create", None)
             result = await _detail(db, ctx, task, permissions)
     return result
@@ -631,6 +650,9 @@ async def edit_task(db, user, task_id, *, expected_revision, **fields):
             values.update(assignee_id=identity, assignee_name=name)
         await _cas(db, task, expected_revision, values)
         await _save_publication(db, task, publication)
+        if "image_version_id" in fields or "material_id" in fields or values["platform"] != "google_business":
+            from services import media_publication_images as images
+            await images.save_selection(db, ctx, task, fields.get("image_version_id") if task.platform == "google_business" else None)
         await _event(db, ctx, task, "edit", "draft")
         result = await _detail(db, ctx, task, permissions)
     return result

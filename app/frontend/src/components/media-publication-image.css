@@ -1,0 +1,32 @@
+.mpi-panel { display:grid;gap:14px;padding:18px;border:1px solid #dbe6f5;border-radius:14px;background:#f9fbff;min-width:0; }
+.mpi-panel>header { display:flex;align-items:center;justify-content:space-between;gap:12px; }
+.mpi-panel>header>div { display:flex;align-items:center;gap:9px;color:#245ce5; }
+.mpi-panel h3 { margin:0;font-size:14px;font-weight:650;color:#192d4d; }
+.mpi-panel label { display:grid;gap:7px;font-size:13px;color:#425777; }
+.mpi-help { display:flex;align-items:flex-start;gap:7px;margin:0;font-size:12px;line-height:1.7;color:#6c7f9e;overflow-wrap:anywhere; }
+.mpi-notice { display:flex;align-items:flex-start;gap:8px;padding:12px 14px;border-radius:10px;background:#edf4ff;color:#3d5f91;font-size:12px;line-height:1.7;overflow-wrap:anywhere; }
+.mpi-notice.warning { background:#fff7e7;color:#946014; }
+.mpi-notice>svg { flex:none;margin-top:2px; }
+.mpi-preview { display:grid;gap:10px;margin:0;min-width:0;border:1px solid #e0e7f1;border-radius:12px;background:white;overflow:hidden; }
+.mpi-preview>img,.mpi-candidate>img { display:block;object-fit:contain;max-width:100%;width:100%;max-height:320px;background:repeating-conic-gradient(#f1f4f8 0% 25%,#fff 0% 50%) 50% / 16px 16px; }
+.mpi-preview-loading { display:flex;justify-content:center;align-items:center;gap:9px;min-height:120px;color:#6d7d95;font-size:12px; }
+.mpi-preview figcaption { display:grid;gap:4px;padding:0 14px 14px;font-size:12px;line-height:1.6;overflow-wrap:anywhere; }
+.mpi-preview figcaption strong { color:#263b58; }
+.mpi-preview figcaption span { color:#657b9b; }
+.mpi-preview figcaption small { font-size:11px;color:#8190a6; }
+.mpi-preview .mpi-notice { margin:10px;flex-wrap:wrap; }
+.mpi-candidate { display:grid;gap:14px;border-top:1px solid #dde6f3;padding-top:16px; }
+.mpi-candidate>strong { font-size:13px;color:#263b58; }
+.mpi-candidate>p { margin:0;font-size:12px;line-height:1.7;color:#687d9a; }
+.mpi-panel .mpi-check { display:flex;flex-direction:row;align-items:flex-start;gap:9px;font-size:12px;line-height:1.8;color:#516581; }
+.mpi-panel .mpi-check input,.mpi-policy .mpi-check input { flex:none;margin:5px 0 0;width:16px;height:16px;min-height:16px;min-width:16px;accent-color:#2c5fe7; }
+.mpi-actions { display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px; }
+.mpi-revoke { border-top:1px solid #e1e8f1;padding-top:10px; }
+.mpi-revoke summary { cursor:pointer;color:#8a6380;font-size:12px;padding:6px 0; }
+.mpi-revoke .mpi-check { margin:9px 0; }
+.mpi-policy { margin-bottom:18px;padding:16px 18px;border:1px solid #dce6f3;background:#f7faff;border-radius:13px;display:grid;gap:10px; }
+.mpi-policy strong { color:#254367;font-size:13px; }
+.mpi-policy p { margin:0;color:#647c9c;font-size:12px;line-height:1.7; }
+.mpi-policy .mpi-check { display:flex;flex-direction:row;align-items:flex-start;gap:9px;font-size:12px;line-height:1.8; }
+.mpi-policy .mpi-actions { align-items:center; }
+@media(max-width:640px) { .mpi-panel { padding:14px;gap:12px; }.mpi-preview>img,.mpi-candidate>img { max-height:260px; }.mpi-actions>button { min-height:44px;flex:1;white-space:normal; }.mpi-panel .mpi-check,.mpi-policy .mpi-check { line-height:1.85; }.mpi-policy { padding:14px; }.mpi-preview figcaption small { font-size:11px; } }
