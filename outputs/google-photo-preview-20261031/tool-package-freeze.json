@@ -1,0 +1,94 @@
+{
+  "activation_executed": false,
+  "actual_preflight_path": "/opt/t24-crm/releases/google-photo-preview-preflight-f5d4a2b49070.json",
+  "actual_preflight_sha256": "f5d4a2b49070ec4dd50b90db3d24a8a956d8272a64147ec10d6addaeb1838b68",
+  "application_delta_files": 3,
+  "application_freeze_sha256": "8928e4e59b3a65ac48731e39019fcf6f36bd33a912d1bf771fd0315616c6b2a5",
+  "backend_runtime_members": 0,
+  "carrier_frozen": false,
+  "container_changed_or_restarted": false,
+  "csp_changed": false,
+  "database_migration": false,
+  "deterministic_identical_builds": 3,
+  "existing_image_policies_and_data_preserved": true,
+  "files": {
+    "deployments/google-photo-preview-20261031/README.md": {
+      "bytes": 4199,
+      "sha256": "5e7dcabb9d6775f9c15987601825de2653eff8299fa13125848209591128f79b"
+    },
+    "deployments/google-photo-preview-20261031/artifacts/manifest.json": {
+      "bytes": 135054,
+      "sha256": "0684397d20a269d493ef8c683410493aea9dfb9facaaecd1e0e583592e25b2e5"
+    },
+    "deployments/google-photo-preview-20261031/artifacts/payload.tar.gz": {
+      "bytes": 2161318,
+      "sha256": "a258ff93b585f212c093c84d89eb875827cade850d636b37dc4f68d92614c42e"
+    },
+    "deployments/google-photo-preview-20261031/build_payload.py": {
+      "bytes": 7341,
+      "sha256": "3d707e43f245967406bb53240532ca61b4221b49f754a1f052f64715d29ba840"
+    },
+    "deployments/google-photo-preview-20261031/generate_preflight_command.py": {
+      "bytes": 1773,
+      "sha256": "0087a73ac252fbf38bf212b87017fb8e6f78d8711906e7d89d256f9014b247b9"
+    },
+    "deployments/google-photo-preview-20261031/make_commands.py": {
+      "bytes": 9542,
+      "sha256": "2bb83a34e98300abdd8f3e25c81105fe5882f768c54e0d1d3ebc55ce1e51f823"
+    },
+    "deployments/google-photo-preview-20261031/preflight.py": {
+      "bytes": 11110,
+      "sha256": "a37a2a742ab97fac3194fb902b0e687bd847d2166ec82b09608947d437eccfbb"
+    },
+    "deployments/google-photo-preview-20261031/release.py": {
+      "bytes": 18802,
+      "sha256": "43c4d09c2923ae5363af40d416497fa0345569b83a15ad66a2c63b8af7d91624"
+    },
+    "deployments/google-photo-preview-20261031/test_commands.py": {
+      "bytes": 6754,
+      "sha256": "807b33eb80de2291ee132a9dd38dd5bdda8bc3f2f31091181ded9ee76965b7e1"
+    },
+    "deployments/google-photo-preview-20261031/test_package.py": {
+      "bytes": 6375,
+      "sha256": "daa9785531242f3196f69f252727d59f4715b84764a4df20ff60836ae97895fb"
+    },
+    "deployments/google-photo-preview-20261031/test_preflight.py": {
+      "bytes": 9721,
+      "sha256": "28780f764c29113dd5a70bd894b2d7196585e114aba04096af190b3c847904fe"
+    },
+    "deployments/google-photo-preview-20261031/test_release.py": {
+      "bytes": 9280,
+      "sha256": "56cefcd2d4bcae3f06da84ecbcdf924f8424dd6b1cb9d6c637feabc53e05b667"
+    }
+  },
+  "frontend_source_files": 2,
+  "frontend_version": "f3e9e6f7bfa0",
+  "only_three_final_identity_pins_changed_from_reviewed_code": true,
+  "payload_bytes": 2161318,
+  "payload_members": 140,
+  "preflight_summary_sha256": "a8da076fdd1530f825c8f2c77246b5a4f68d37cecd61bc9c18e48152d7c95c95",
+  "prepare_executed": false,
+  "production_executed": false,
+  "production_seed_rows": false,
+  "protected_application_source_files": 980,
+  "provider_requests": false,
+  "publisher_code_freeze_sha256": "d3dcc5cb54624d3f8036c7bf2da74815e40582bdcf31091dc5d6d0ef8511d5c9",
+  "required_carrier_members": [
+    "deployments/google-photo-preview-20261031/release.py",
+    "deployments/google-photo-preview-20261031/preflight.py",
+    "deployments/google-photo-preview-20261031/artifacts/manifest.json",
+    "deployments/google-photo-preview-20261031/artifacts/payload.tar.gz"
+  ],
+  "runtime_environment_changed": false,
+  "schema_revision": "acd7c9d0e136",
+  "source_sha": "04a42942ce128f74c77db9250f2e7a28485b5c32",
+  "stage": "GOOGLE_PHOTO_PREVIEW_STATIC_PACKAGE_FROZEN_AWAIT_INDEPENDENT_REVIEW",
+  "static_only": true,
+  "table_count": 136,
+  "test_source_files": 1,
+  "tests": {
+    "command": "python -m pytest deployments/google-photo-preview-20261031 -q",
+    "final_pins_active": true,
+    "passed": 75
+  }
+}

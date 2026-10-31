@@ -1,0 +1,32 @@
+{
+  "blob_scheme_not_allowed": true,
+  "candidate_image": {
+    "loaded": true,
+    "natural_height": 312,
+    "natural_width": 289,
+    "src_is_png_data_url": true
+  },
+  "frontend_version": "f3e9e6f7bfa0",
+  "google_post_or_schedule_requests": 0,
+  "original_pixels_changed_or_upscaled": false,
+  "production_access": false,
+  "production_csp_header_exact_match": true,
+  "real_provider_requests": false,
+  "screenshot_sha256": "f93b29d14ef2eec0e3f917835f2e786554e83bc4d8be8beca907a9bcaee3e0cf",
+  "server_verified_final_image": {
+    "image_sha256_prefix": "ff69818fe15b",
+    "loaded": true,
+    "natural_height": 312,
+    "natural_width": 289,
+    "src_is_png_data_url": true
+  },
+  "stage": "PRODUCTION_CSP_REAL_PIXELS_LOOPBACK_BROWSER_QA",
+  "synthetic_writes": [
+    {
+      "method": "POST",
+      "path": "/api/v1/media-publication-images/prepare",
+      "role": "super_admin",
+      "status": 201
+    }
+  ]
+}

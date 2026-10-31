@@ -1,0 +1,40 @@
+{
+  "application_freeze_sha256": "8928e4e59b3a65ac48731e39019fcf6f36bd33a912d1bf771fd0315616c6b2a5",
+  "blocking_findings": [],
+  "content_security_policy_sha256": "2b194e47b6ce14dbf475afea0192b06f0e93d000811af1a29c8e5f78646250fa",
+  "current_crm": {
+    "config": "636cfe2cf473dfcddd634dc52da8ba58c8f5ffbab6d5537d7ef937dc84237aee",
+    "id": "987ff7a2f5dffcc72efdedc58e915c5efd75ef46c1b80266ede7c6f805aca153",
+    "image": "sha256:222b2dd5e48e358ec4ec80a4caf8acc05209d9f6b16ab1a09150622b88864b70",
+    "restart": 0,
+    "started": "2026-10-31T12:49:02.504936623Z"
+  },
+  "execution_reference": {
+    "aliyun_command_id": "t-hk071pb93oimfi8",
+    "beijing_end": "2026-10-31 21:07:10",
+    "beijing_start": "2026-10-31 21:07:07",
+    "exit_code": 0,
+    "provided_by_root": true
+  },
+  "frontend_version": "f3e9e6f7bfa0",
+  "limits": [
+    "Fullprotected136tableproof remainsserveronly; per-materialdetails are rootauthorizedreportedstate, notrawdataexportedbyreviewer.",
+    "Actualpackage/wrappers/staticprepare/deployed/runtime+CSPbrowseracceptance remainseparate.",
+    "No realGooglepublicpost oruserimagepublicleaseapproved."
+  ],
+  "reviewer_server_browser_network_provider_actions": false,
+  "reviewer_source_edits": false,
+  "server_proof_path": "/opt/t24-crm/releases/google-photo-preview-preflight-f5d4a2b49070.json",
+  "server_proof_sha256": "f5d4a2b49070ec4dd50b90db3d24a8a956d8272a64147ec10d6addaeb1838b68",
+  "source_sha": "04a42942ce128f74c77db9250f2e7a28485b5c32",
+  "stage": "ACTUAL_PHOTO_STATIC_PREFLIGHT_AND_COMMITTED_SOURCE_REVIEW",
+  "status": "PASS_FOR_STATIC_PACKAGE_BINDING_ONLY",
+  "summary_file_sha256": "a8da076fdd1530f825c8f2c77246b5a4f68d37cecd61bc9c18e48152d7c95c95",
+  "verified": [
+    "Actualcompactsummary validatesstaticpublishercontract; currentbackend5931/FE8cc5/runtime987ff/image222/config/schemaf869/Nginx0b2d+fullactived543/env5e9 exactprioractualdeploymentc053.",
+    "136freshrows87a1e0... capturelegalownerassignment/North3materials/fixedimage/draftselection/policy records; notassumedunchangedsinceoldrelease orOFF/empty.",
+    "Hash-pinnedserverpreflight validatesallbackendruntime/currentstatic/privatecredentialmetadata/ONscheduleroriginalcutoff andtwo identicalsnapshots; no backend/Docker/API/data change.",
+    "Loopback/media-ops headeronly200 yieldedoneCSP hash2b194...; sourceCSP unchanged, rawcredentials/privatepayload notexported.",
+    "Committedsource04a429/FEf3e9/freeeze8928 exact3files/currentbytes andGitdiff verified; allbackendbytes unchanged."
+  ]
+}

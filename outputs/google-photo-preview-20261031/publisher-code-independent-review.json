@@ -1,0 +1,72 @@
+{
+  "blocking_findings": [],
+  "final_release_sha256": "43c4d09c2923ae5363af40d416497fa0345569b83a15ad66a2c63b8af7d91624",
+  "independent_tests": {
+    "duration_seconds": 2.26,
+    "passed": 75
+  },
+  "limits": [
+    "Code-onlyreview doesnotapproveanyserverphase.",
+    "Actualpackage/sourcefreeze/rawcarrier/wrappers/prepared/deployedreviewseparate.",
+    "No realpublicGoogleimagefetch/post accepted."
+  ],
+  "original_code_freeze_sha256": "d3dcc5cb54624d3f8036c7bf2da74815e40582bdcf31091dc5d6d0ef8511d5c9",
+  "original_files": {
+    "deployments/google-photo-preview-20261031/README.md": {
+      "bytes": 4199,
+      "sha256": "5e7dcabb9d6775f9c15987601825de2653eff8299fa13125848209591128f79b"
+    },
+    "deployments/google-photo-preview-20261031/build_payload.py": {
+      "bytes": 7341,
+      "sha256": "3d707e43f245967406bb53240532ca61b4221b49f754a1f052f64715d29ba840"
+    },
+    "deployments/google-photo-preview-20261031/generate_preflight_command.py": {
+      "bytes": 1773,
+      "sha256": "0087a73ac252fbf38bf212b87017fb8e6f78d8711906e7d89d256f9014b247b9"
+    },
+    "deployments/google-photo-preview-20261031/make_commands.py": {
+      "bytes": 9542,
+      "sha256": "2bb83a34e98300abdd8f3e25c81105fe5882f768c54e0d1d3ebc55ce1e51f823"
+    },
+    "deployments/google-photo-preview-20261031/preflight.py": {
+      "bytes": 11110,
+      "sha256": "a37a2a742ab97fac3194fb902b0e687bd847d2166ec82b09608947d437eccfbb"
+    },
+    "deployments/google-photo-preview-20261031/release.py": {
+      "bytes": 18692,
+      "sha256": "ffbae47ee70826322799669f0d2be0af85f4e850952235427ffec7e666313de1"
+    },
+    "deployments/google-photo-preview-20261031/test_commands.py": {
+      "bytes": 6754,
+      "sha256": "807b33eb80de2291ee132a9dd38dd5bdda8bc3f2f31091181ded9ee76965b7e1"
+    },
+    "deployments/google-photo-preview-20261031/test_package.py": {
+      "bytes": 6375,
+      "sha256": "daa9785531242f3196f69f252727d59f4715b84764a4df20ff60836ae97895fb"
+    },
+    "deployments/google-photo-preview-20261031/test_preflight.py": {
+      "bytes": 9721,
+      "sha256": "28780f764c29113dd5a70bd894b2d7196585e114aba04096af190b3c847904fe"
+    },
+    "deployments/google-photo-preview-20261031/test_release.py": {
+      "bytes": 9280,
+      "sha256": "56cefcd2d4bcae3f06da84ecbcdf924f8424dd6b1cb9d6c637feabc53e05b667"
+    }
+  },
+  "reviewer_server_browser_network_provider_actions": false,
+  "reviewer_source_or_tool_edits": false,
+  "source_pins_only_delta": true,
+  "stage": "PHOTO_PREVIEW_STATIC_ONLY_PUBLISHER_CODE_REVIEW",
+  "status": "PASS_CODE_ONLY_AWAIT_ACTUAL_PACKAGE_CARRIER_AND_RECEIPTS",
+  "verified": [
+    "Exact3appsource=2FE+1test; no backendpatch inmanifest/archive; source/FE/freezepins failclosed whenNone.",
+    "Staticprepareextracts onlyboundedcanonicalcompiledstatic andstagesnewroot whilefullruntime/backend/private/credentials/136tabledata/schema/sequence/CSP remainexact. NoDockercreate/stop/start/rename/update orDBmigrationcode inpublisher.",
+    "Activatepersistentlyfsyncs reviewedintent/originalNginx beforeliteralrootreplacement andreload; beforeaftereachphase runtimeid/image/config/restart/starttime/backend/env exact.",
+    "All136table rows/privateimagepolicy/taskselection/materialrecords preserved; nooldempty/OFFassumption, no policy/post/lease/schedule/ACL mutation.",
+    "Nginxselected+fullactive reversibility guards recoveralloriginalbytes exceptsinglepublicroot; originalcallback/deliveryprivacy andCSPheaderhash untouched.",
+    "CSPonlyloopbackheaderread no credentials/body/provider; staticpublicready/versionchecks; noimagelease/logsentinelcreatingrequest neededasprivacyblocksunchanged.",
+    "Failureonlyrestoresknownold/newrootNginx, refusesunknownindependentNginx state, leavesruntimeandindependentlegitrows intact; noDBrestore.",
+    "Immutable4membercarrier downloader rootsizeSHA/no redirect/no proxy; actualpreparedcanonicalreceipt mandatory beforeexactactivate/recovergeneration.",
+    "Actualretainedm cleanup_nginx_temp/replace_nginx primitives exist inhash-pinnedlegacydaily-scan helper; no new180s runtimeagecheck isappliedtounrestartedcontainer."
+  ]
+}

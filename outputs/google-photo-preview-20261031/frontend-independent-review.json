@@ -1,0 +1,44 @@
+{
+  "baseline_source_sha": "5931e430e629fb633f846ebc068a8fc12d4b9a0a",
+  "blocking_findings": [],
+  "files": {
+    "app/frontend/src/components/MediaPublicationImage.tsx": "5b61f15251554290df8e028b55e266f2e1bad9070e54f5b42bcb8fdb9d238443",
+    "app/frontend/src/lib/media-publication-images.ts": "c7552130cb976f988c239c8fefa96e63b63066a8ef0a6371cd7fc7259d50cdf4",
+    "app/frontend/tests/media-publication-images.test.mjs": "4f1fafbebf10667ee34be5aa6d7a302ed1dd5e4ba8ace5c9ed5572890c42a175"
+  },
+  "frontend_freeze_sha256": "38e78e7a4c1683c93c27202243721858c82c1de73a16472f3b1b646da42f7bce",
+  "frontend_version": "f3e9e6f7bfa0",
+  "limits": [
+    "sourceImageDimensions is boundedrasterheadercheck, notfullPNGparser; finalbytes alreadyservercanonical/SHAverified and actualbrowseronLoad remainsnecessaryforready.",
+    "RootactualbrowserwithproductionCSP enforcement andrealNorthphoto mustconfirmnaturalWidth>0/renderedbeforeacceptance.",
+    "Actualstaticpackage/preflight/wrappers andliveversion/CSP/runtime/database preservation still separate.",
+    "No realGoogleimagefetch/publicpost approved bythisreview; user suppliedphotoonly.",
+    "ExistingFinance.tsx5778TS2322 remains perauthor andoutsidechange."
+  ],
+  "reviewer_app_edits": false,
+  "reviewer_server_browser_network_provider_actions": false,
+  "scope": {
+    "backend": 0,
+    "frontend_runtime": 2,
+    "tests": 1
+  },
+  "stage": "AUTHENTICATED_PRIVATE_PNG_DATA_PREVIEW_INDEPENDENT_REVIEW",
+  "status": "PASS_FROZEN_THREE_FILE_FRONTEND_AND_TARGETED_TESTS",
+  "tests": {
+    "command": "node --test tests/media-publication-images.test.mjs tests/google-pilot-workflow.test.mjs",
+    "duration_ms": 579.104458,
+    "existing_image": 17,
+    "existing_pilot": 15,
+    "independent_passed": 39,
+    "new_data_preview": 7
+  },
+  "verified": [
+    "Exact3currentfiles matchfreeze38e78... andcurrentFEf3e9e6f7bfa0; no app/backend/CSP/permission/finance/private sourcechanges.",
+    "Finalprivatepreview stillusesauthenticatedexactderivativepath/DTO scope,size/dimension andSHA validation beforePNGdataencoding. No credential/deliveryURL inimg.src.",
+    "Dataencodingrequiresnonempty<=8MBBlob, independentlyreadsPNGsignature/dimensions<=2048, fixeddata:image/png;base64 MIME andchunked32KBbinaryencoding; SVG/HTML/JPEG andoversizedinput refused.",
+    "OnlyURL.createObjectURL/revoke plumbing removed; AtoBtoA/account/version/retry/unmount fences preserved beforeafterawaitconversion andonLoad/onError.",
+    "Actualcomponenttest forbidsobjectURLconstruction and verifies exactPNGbytes/data source afterauthSHA; changedbytes produce noimg, latecallbacksneverrestore ready.",
+    "Candidatepreviewusescanvas-producedPNGdataURL in-memory; save sendsBlob/FormData only, no dataURI/policy/post/schedule request.",
+    "CSPremains existingimg-srcdata policy; no publiclease orsourcefile exposure, no backend/schema/Google dispatch mutation."
+  ]
+}

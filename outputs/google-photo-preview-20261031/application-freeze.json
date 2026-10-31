@@ -1,0 +1,19 @@
+{
+  "backend_changes": false,
+  "baseline_source_sha": "5931e430e629fb633f846ebc068a8fc12d4b9a0a",
+  "csp_changed": false,
+  "database_migration": false,
+  "existing_image_policies_and_data_preserved": true,
+  "files": {
+    "app/frontend/src/components/MediaPublicationImage.tsx": "5b61f15251554290df8e028b55e266f2e1bad9070e54f5b42bcb8fdb9d238443",
+    "app/frontend/src/lib/media-publication-images.ts": "c7552130cb976f988c239c8fefa96e63b63066a8ef0a6371cd7fc7259d50cdf4",
+    "app/frontend/tests/media-publication-images.test.mjs": "4f1fafbebf10667ee34be5aa6d7a302ed1dd5e4ba8ace5c9ed5572890c42a175"
+  },
+  "frontend_independent_review_sha256": "f0bcac15ed8ff9c70ef2b2e9a790befe052e2b493bdbdeace631f66e8a0f0fae",
+  "frontend_version": "f3e9e6f7bfa0",
+  "local_browser_qa_sha256": "0b12d631e07fc3fac38e0d420dcc3a11d920b6359084bd8408a1cc1ed3977b45",
+  "production_seed_rows": false,
+  "schema_revision": "acd7c9d0e136",
+  "source_sha": "04a42942ce128f74c77db9250f2e7a28485b5c32",
+  "static_only": true
+}

@@ -1,0 +1,45 @@
+{
+  "base_application_source": "5931e430e629fb633f846ebc068a8fc12d4b9a0a",
+  "base_carrier": "75d8ee77ca2d783a1c6fad731cd0de694a3de09b",
+  "bounds": {
+    "data_url_persisted_or_sent_to_api": false,
+    "height": 2048,
+    "preview_bytes": 8388608,
+    "source_format": "PNG bytes verified independent of supplied MIME",
+    "width": 2048
+  },
+  "frontend_version": "f3e9e6f7bfa0",
+  "production_browser_provider_actions": false,
+  "runtime_files": {
+    "app/frontend/src/components/MediaPublicationImage.tsx": "5b61f15251554290df8e028b55e266f2e1bad9070e54f5b42bcb8fdb9d238443",
+    "app/frontend/src/lib/media-publication-images.ts": "c7552130cb976f988c239c8fefa96e63b63066a8ef0a6371cd7fc7259d50cdf4"
+  },
+  "stage": "GOOGLE_PRIVATE_PNG_PREVIEW_CSP_FIX_FRONTEND_FREEZE",
+  "test_files": {
+    "app/frontend/tests/media-publication-images.test.mjs": "4f1fafbebf10667ee34be5aa6d7a302ed1dd5e4ba8ace5c9ed5572890c42a175"
+  },
+  "unchanged": [
+    "CSP/header policy",
+    "backend source and schema",
+    "financial calculations/closing/commissions/customer ACL/private workspace",
+    "Google dispatch/review/image delivery policy",
+    "bitmap decode requires createImageBitmap; no Image/blob fallback exists"
+  ],
+  "verification": {
+    "actual_component_checks": [
+      "authenticated SHA-verified fixed image emits exact data:image/png;base64 bytes",
+      "existing img-src data: compatibility asserted; no blob URL constructed",
+      "changed SHA bytes refuse img output",
+      "A-to-B-to-A and late onLoad/unmount results remain fenced",
+      "candidate preview uses PNG data source while prepare API receives Blob/FormData only"
+    ],
+    "browser_csp_enforcement_qa": "pending root actual-browser validation",
+    "build": "PASS vite build",
+    "existing_image_tests": 17,
+    "existing_pilot_tests": 15,
+    "new_image_preview_tests": 7,
+    "test_command": "node --test tests/media-publication-images.test.mjs tests/google-pilot-workflow.test.mjs",
+    "tests_passed": 39,
+    "typescript_app": "existing Finance.tsx:5778 TS2322 only; no scoped errors"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "approved_next_action": "Root mayexecute only exactf9d29f... readonlypreflight afterauthorizeddraftselectionsave settles,returncompactsummary for actualreview.",
+  "baseline_deployed_receipt_sha256": "c05397479169846fd2c5c62eccffb3880d4cb6d2b90c60e929ce9b9370340d4a",
+  "baseline_frontend_version": "8cc54170ca26",
+  "baseline_source_sha": "5931e430e629fb633f846ebc068a8fc12d4b9a0a",
+  "blocking_findings": [],
+  "files": {
+    "deployments/google-photo-preview-20261031/generate_preflight_command.py": {
+      "bytes": 1773,
+      "sha256": "0087a73ac252fbf38bf212b87017fb8e6f78d8711906e7d89d256f9014b247b9"
+    },
+    "deployments/google-photo-preview-20261031/preflight-command.sh": {
+      "bytes": 6693,
+      "sha256": "f9d29f4f2a482baf704347b7170c90ca980c3b85a50242a4ae5a1c5ea7d40059"
+    },
+    "deployments/google-photo-preview-20261031/preflight.py": {
+      "bytes": 11110,
+      "sha256": "a37a2a742ab97fac3194fb902b0e687bd847d2166ec82b09608947d437eccfbb"
+    },
+    "deployments/google-photo-preview-20261031/test_preflight.py": {
+      "bytes": 9721,
+      "sha256": "28780f764c29113dd5a70bd894b2d7196585e114aba04096af190b3c847904fe"
+    }
+  },
+  "limits": [
+    "No staticprepare/activate orrealGooglepublicpost approved yet.",
+    "Actualfreshdata/CSPfingerprint notclaimeduntilservercapture."
+  ],
+  "preflight_module_sha256": "a37a2a742ab97fac3194fb902b0e687bd847d2166ec82b09608947d437eccfbb",
+  "preflight_tool_freeze_sha256": "c1b6457cb25d40021ad239b8c7c5763e5149c3eec0170509955baf23e550fdd6",
+  "preflight_wrapper_bytes": 6693,
+  "preflight_wrapper_sha256": "f9d29f4f2a482baf704347b7170c90ca980c3b85a50242a4ae5a1c5ea7d40059",
+  "reviewer_app_or_publisher_edits": false,
+  "reviewer_server_browser_network_provider_actions": false,
+  "stage": "GOOGLE_PHOTO_STATIC_PREVIEW_READONLY_PREFLIGHT_CODE_REVIEW",
+  "status": "PASS_FOR_EXACT_READONLY_PREFLIGHT_ONCE",
+  "tests": {
+    "actual_three_level_dependency_seam": true,
+    "duration_seconds": 0.15,
+    "independent_pytest_passed": 24,
+    "wrapper_compile_exact_generation_decode": true
+  },
+  "verified": [
+    "6693bytewrapper exactgeneration/compile/decompressedbody/SHA/size withroot+host+noCore+umask077 guards.",
+    "Exactcurrent5931/FE8cc5/schemaacd7/container987ff/image222/deployedc053 source/runtime/static/schema/Nginx andprivate/credentialmetadata guards.",
+    "Captureall136currentrows asfingerprints includingauthorizedNorthprivateimage/task/selection/ownerpolicy/primaryauditdata; noempty/OFFassumption ormutation.",
+    "NewloopbackHTTPSGET /media-ops onlyheaders200, max5seconds/boundedheaders/oneCSP/nonemptyimg-src/noredirect/noproxy/nocookie orresponsebody; onlyCSPdigest leavesprocess.",
+    "Existingcallbackanddeliveryprivacyblocks +fullactiveNginxhash checked; noCSP/Nginx/config change bypreflight.",
+    "Actualretained3-leveldependencyfunctions checked withonlyinnermostload synthetic, preservingnew6/old4tuplearity.",
+    "Twoidenticalwholebaselines beforeproof write; root0600 protectedproof file+directoryfsync; compactsummary no rawrecords/credentials.",
+    "Independent24tests includeCSPduplicate/absent/status failures andexactloopback/no credentials; parserprobe purelysynthetic, no containersrestarted/created."
+  ]
+}

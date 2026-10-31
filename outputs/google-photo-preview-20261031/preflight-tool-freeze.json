@@ -1,0 +1,28 @@
+{
+  "captures_existing_csp_hash": true,
+  "existing_nonempty_policies_images_tasks_supported": true,
+  "files": {
+    "deployments/google-photo-preview-20261031/generate_preflight_command.py": {
+      "bytes": 1773,
+      "sha256": "0087a73ac252fbf38bf212b87017fb8e6f78d8711906e7d89d256f9014b247b9"
+    },
+    "deployments/google-photo-preview-20261031/preflight-command.sh": {
+      "bytes": 6693,
+      "sha256": "f9d29f4f2a482baf704347b7170c90ca980c3b85a50242a4ae5a1c5ea7d40059"
+    },
+    "deployments/google-photo-preview-20261031/preflight.py": {
+      "bytes": 11110,
+      "sha256": "a37a2a742ab97fac3194fb902b0e687bd847d2166ec82b09608947d437eccfbb"
+    },
+    "deployments/google-photo-preview-20261031/test_preflight.py": {
+      "bytes": 9721,
+      "sha256": "28780f764c29113dd5a70bd894b2d7196585e114aba04096af190b3c847904fe"
+    }
+  },
+  "no_container_changes": true,
+  "production_executed": false,
+  "provider_requests": false,
+  "stage": "GOOGLE_PHOTO_PREVIEW_PREFLIGHT_CODE_FROZEN_AWAIT_INDEPENDENT_REVIEW",
+  "table_count": 136,
+  "tests_passed": 24
+}

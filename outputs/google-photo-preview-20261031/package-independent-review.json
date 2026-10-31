@@ -1,0 +1,37 @@
+{
+  "application_freeze_sha256": "8928e4e59b3a65ac48731e39019fcf6f36bd33a912d1bf771fd0315616c6b2a5",
+  "backend_source_sha": "5931e430e629fb633f846ebc068a8fc12d4b9a0a",
+  "blocking_findings": [],
+  "final_release_helper_sha256": "43c4d09c2923ae5363af40d416497fa0345569b83a15ad66a2c63b8af7d91624",
+  "frontend_version": "f3e9e6f7bfa0",
+  "limits": [
+    "Liveproductionpreviewmuststillconfirm afterstaticactivate.",
+    "No authenticated/private API calls or realGooglepublication byreviewer.",
+    "Carrier/actualpreparewrapper and prepared/deployed receipts remainseparategates."
+  ],
+  "manifest_sha256": "0684397d20a269d493ef8c683410493aea9dfb9facaaecd1e0e583592e25b2e5",
+  "members": {
+    "backend": 0,
+    "protected_app_source": 980,
+    "total": 140,
+    "unchanged_noncompiled_static_assets": 17
+  },
+  "payload_bytes": 2161318,
+  "payload_sha256": "a258ff93b585f212c093c84d89eb875827cade850d636b37dc4f68d92614c42e",
+  "preflight_sha256": "f5d4a2b49070ec4dd50b90db3d24a8a956d8272a64147ec10d6addaeb1838b68",
+  "publisher_code_review_sha256": "46d213fe82005ac3166764386983ee32267e2468ed21f37701909fb9ca4c32d9",
+  "reviewer_server_browser_network_provider_actions": false,
+  "reviewer_source_or_tool_edits": false,
+  "root_browser_qa_sha256": "0b12d631e07fc3fac38e0d420dcc3a11d920b6359084bd8408a1cc1ed3977b45",
+  "source_sha": "04a42942ce128f74c77db9250f2e7a28485b5c32",
+  "stage": "ACTUAL_PHOTO_PREVIEW_PURE_STATIC_PACKAGE_REVIEW",
+  "status": "PASS_FOR_IMMUTABLE_CARRIER_AND_EXACT_PREPARE_WRAPPER_REVIEW",
+  "tool_package_freeze_sha256": "62240da465af7285a225d2db9bee8d38be761d37ac71ca094b247716b1f0cdad",
+  "verified": [
+    "Independentdeterministicbuilder reconstructedactualpayload andcanonicalmanifest exactly; fullcommitted3source/localbytes/FEbuild/freeze/scopeprotectedinventoryguardspassed.",
+    "140canonicalregularstaticmembers only, zerobackend/DB/env/tests/originalphotos/secrets; everymemberhashsize checked.",
+    "Allnoncompiledstaticassets matchpriorapprovedpackage; no realNorthuserimageadded topublicbundle.",
+    "Currentfull136table/CSPproof f5d4.../source04a429/FEf3e9/freeze8928 exact; backendremains5931/runtimeunchanged.",
+    "RootrealpixelandexactproductionCSP(no blob)fixtureQA recordedcandidate+serververified289x312dataPNGload with0Googlepost/schedule; reviewerdidnotoperatebrowser."
+  ]
+}
