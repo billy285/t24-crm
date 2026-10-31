@@ -1,0 +1,113 @@
+{
+  "passed": 27,
+  "tests": [
+    {
+      "name": "legacy null is ordinary post",
+      "pass": true
+    },
+    {
+      "name": "ordinary post does not accidentally carry event or offer",
+      "pass": true
+    },
+    {
+      "name": "event wall times convert using customer timezone across DST",
+      "pass": true
+    },
+    {
+      "name": "invalid end, repeated hour and daylight gap reject",
+      "pass": true
+    },
+    {
+      "name": "offer keeps complete conditions and removes stale CTA",
+      "pass": true
+    },
+    {
+      "name": "Meta tasks never submit stale Google publication",
+      "pass": true
+    },
+    {
+      "name": "CTA URL required except CALL, unsafe links reject",
+      "pass": true
+    },
+    {
+      "name": "unknown PUT comparison accepts timezone formatting but never altered terms",
+      "pass": true
+    },
+    {
+      "name": "CTA and redeem retain normal query parameters",
+      "pass": true
+    },
+    {
+      "name": "datetime input events persist through subsequent field edits and controlled rerenders",
+      "pass": true
+    },
+    {
+      "name": "review preview visibly includes offer details, dates, conditions and customer zone",
+      "pass": true
+    },
+    {
+      "name": "history renders original provider wall-clock payload fully without timezone inference",
+      "pass": true
+    },
+    {
+      "name": "history never invents midnight from missing, partial or invalid provider clock fields",
+      "pass": true
+    },
+    {
+      "name": "event preview contains CTA destination without publishing it",
+      "pass": true
+    },
+    {
+      "name": "publication included only through Google payload helper; unknown compare is structural",
+      "pass": true
+    },
+    {
+      "name": "ready posts, publish confirmation, action and schedule show complete structured preview",
+      "pass": true
+    },
+    {
+      "name": "Google publish POST payload remains original four fields",
+      "pass": true
+    },
+    {
+      "name": "all pre-existing Media/Google API argument expressions unchanged",
+      "pass": true
+    },
+    {
+      "name": "all old nested handlers unchanged except exact reviewed recovery/comparison functions",
+      "pass": true
+    },
+    {
+      "name": "publish cancel closing frame immediately unmounts dialog content without disconnect fallback",
+      "pass": true
+    },
+    {
+      "name": "team list requests explicit scope and filters owner/finance/foreign rows",
+      "pass": true
+    },
+    {
+      "name": "team link create uses existing authorized API with pending classification",
+      "pass": true
+    },
+    {
+      "name": "unknown material save blocks another POST and requires current list confirmation",
+      "pass": true
+    },
+    {
+      "name": "historical record-only materials have honest label and no download control",
+      "pass": true
+    },
+    {
+      "name": "file presence and safe URL determine material access independent of legacy source type",
+      "pass": true
+    },
+    {
+      "name": "read only materials do not expose create control",
+      "pass": true
+    },
+    {
+      "name": "uninvited material scope does not render previously loaded files",
+      "pass": true
+    }
+  ]
+}

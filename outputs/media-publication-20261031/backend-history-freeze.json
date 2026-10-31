@@ -1,0 +1,33 @@
+{
+  "stage": "MEDIA_PUBLICATION_HISTORY_DTO_FROZEN",
+  "base_commit": "323745a50c17763201de21accd7264030a02c3d0",
+  "members": [
+    {
+      "path": "app/backend/services/google_business.py",
+      "sha256": "4754f9793e4bc7a5603a898ac38e4b489255778e961c5e50396295b8fc181e65",
+      "bytes": 56525
+    },
+    {
+      "path": "app/backend/tests/test_media_publication.py",
+      "sha256": "ffe279ace3a82572015f4355c503d5eca3cc90f7de7efcd8906ccc9ada8190f9",
+      "bytes": 7496
+    }
+  ],
+  "checks": {
+    "new_history_dto_cases": 5,
+    "focus_tests_passed": 214,
+    "focus_test_files": [
+      "tests/test_media_publication.py",
+      "tests/test_media_publication_security.py",
+      "tests/test_google_business.py"
+    ]
+  },
+  "boundaries": {
+    "schema_changed": false,
+    "dispatch_changed": false,
+    "fingerprint_changed": false,
+    "payload_retention_policy_changed": false,
+    "raw_google_local_time_preserved": true,
+    "history_source": "frozen Action.payload only"
+  }
+}

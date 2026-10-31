@@ -1,0 +1,41 @@
+{
+  "active_nginx_config_sha256": "dbc968db6e5f42313075b5ce8f65b8606ddee8c7a5c10a1690afb717d845b428",
+  "backend_changed_before": {
+    "alembic/versions/eaf5a7b8c914_media_publication_specs.py": null,
+    "models/media_operations.py": "d4e3ae466bc5e351e1eab2cb0d56ecbf2d87e2b33adce14f103e3c075a1c4723",
+    "routers/media_operations.py": "dbb7c197aede1c1a893b74d36ff10d36f744aefd2425fc6f92c6578986e4a2dd",
+    "services/google_business.py": "e9f4f27c8d08792dfce0f246a89cc147c39b811c8508e38c9691777e76d9b42a",
+    "services/media_operations.py": "4e7cf123e69efbfac188182f5fc7e2cdd830b8d20aa484ed4b7816d02feb402e"
+  },
+  "backend_inventory_sha256": "805b560acc5f13dea5f57a3094c65d32e354122a71b54f04cfdfc3bd5475daa1",
+  "bytes": 77198,
+  "callback_logging_protection_retained": true,
+  "credential_content_read": false,
+  "crm": {
+    "config": "92edfec8932fddaed7c251f98e580622765699d4ce88f38ceb14a50a416f0616",
+    "id": "213d3b7a490d2208d6a4329d1569355ceb1caf41527ea76d735ff0ae31d314bd",
+    "image": "sha256:f6a39af2ecad2ae561595560313a95ff1d87de38141880e2340bbfbe6c8c7ecb",
+    "restart": 0,
+    "started": "2026-10-30T19:40:12.644333025Z"
+  },
+  "deployed_sha256": "e9790ac0c05b14a79f0e72d7a6d11d2547d5bf9d8892c29b3d9703295f866c80",
+  "environment_sha256": "5e9c23e6d889fee61a48a8ab885ea6d0906617d8c14a1190560418da8f7668b1",
+  "executed_business_writes": false,
+  "frontend_version": "50347ba2c9da",
+  "gbp_feature_enabled": true,
+  "host_docker_timestamp_parser_verified": true,
+  "nginx_sha256": "303d4fad3c829fc8faf5c53c13ba3429d4911bd99c339c2edb7c62a1f3046362",
+  "path": "/opt/t24-crm/releases/media-publication-preflight-af666ca67bd0.json",
+  "private_boundary_verified": true,
+  "private_content_read": false,
+  "rows_sha256": "1423ee2301a601127bf66d5b95cd52fd73c5a8084a790a8e2f80ec4d66e68c28",
+  "scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "scheduler_enabled": true,
+  "scheduler_enabled_receipt_sha256": "b7b1f50e0d5b306bc46ea415f4a160ab8cbeccfae879d6604a6d8607b9f83f29",
+  "schema_revision": "d9e4f6a7b803",
+  "schema_sha256": "df55a5f87e5ebcb1246adfcd35e648acfb7f796f983a90cb12bd74007f6000da",
+  "sha256": "af666ca67bd061a8eec573134acb3f8d575a14811458793ada0e2071ef2a5c2e",
+  "source_sha": "5a52cdcf8e9560fcf5ec6e2b27f264f6f0fe1087",
+  "stage": "MEDIA_PUBLICATION_PREFLIGHT_CAPTURED",
+  "table_count": 129
+}

@@ -1,0 +1,24 @@
+{
+  "blocking_findings": [],
+  "credential_files_opened": false,
+  "entrypoint": "module.capture()",
+  "generator_reproduces_exact_command": true,
+  "inline_source_exact": true,
+  "limits": [
+    "No prepare, activation, migration, provider or account operation authorized by this review.",
+    "Production Docker environment is inspected in memory for hashes; credential-file content and private DB content are not opened."
+  ],
+  "preflight_sha256": "7d1452c8bdd1f493f23ce6fcec6cbd702f3dc0495bc19adca53aca051dd8411a",
+  "provider_calls_by_reviewer": false,
+  "raw_records_exported": false,
+  "root_host_guard_before_loading": true,
+  "scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "scheduler_on_receipt": "b7b1f50e0d5b306bc46ea415f4a160ab8cbeccfae879d6604a6d8607b9f83f29",
+  "scope": "READ_ONLY_PREFLIGHT_CAPTURE_ONLY",
+  "server_execution_by_reviewer": false,
+  "stage": "MEDIA_PUBLICATION_PREFLIGHT_INDEPENDENT_REVIEW",
+  "status": "PASS",
+  "synthetic_tests_passed": 16,
+  "wrapper_bytes": 6039,
+  "wrapper_sha256": "c6991c4d8bfd274ab686c5c54d1c275b524a709dc89a70661b92eb692ea1f3d3"
+}

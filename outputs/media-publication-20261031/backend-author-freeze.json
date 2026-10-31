@@ -1,0 +1,67 @@
+{
+  "stage": "MEDIA_PUBLICATION_BACKEND_FROZEN",
+  "base_commit": "35f31a64851b0c2ad336d829dcbda04b9c164c6c",
+  "members": [
+    {
+      "path": "app/backend/models/media_operations.py",
+      "sha256": "a8ab28a836155c8f87a7c8b3d8f3d1ff94385afe1ff1e8d8eba5747d78a50c98",
+      "bytes": 3729
+    },
+    {
+      "path": "app/backend/routers/media_operations.py",
+      "sha256": "255fb02385880d762634e7003b4454291b952097d062f82500e4c65213d71dc3",
+      "bytes": 4981
+    },
+    {
+      "path": "app/backend/services/media_operations.py",
+      "sha256": "b96c473874be16488f6f0cd61bdb71c016de67bdc2b4cf7e4750d75462a63971",
+      "bytes": 42847
+    },
+    {
+      "path": "app/backend/services/google_business.py",
+      "sha256": "e41e4202b07683c5c0bfe48ebb81964f82a12447830eec8dd46144819e905615",
+      "bytes": 54834
+    },
+    {
+      "path": "app/backend/alembic/versions/eaf5a7b8c914_media_publication_specs.py",
+      "sha256": "18fd4db511a9c563b230328e02981bb5eeed398d5332391eb5a3b236a7f68e72",
+      "bytes": 594
+    },
+    {
+      "path": "app/backend/tests/test_media_publication.py",
+      "sha256": "37f34549adf1d8d49c05d74811c8189693f3214be273c6f2bdd68ad4ed75b3fe",
+      "bytes": 2642
+    },
+    {
+      "path": "app/backend/tests/test_media_publication_security.py",
+      "sha256": "8291a36384e6f30280182c644e29c0fe81b582053b70bdd9fa4b757803fd5280",
+      "bytes": 25690
+    }
+  ],
+  "runtime_files": [
+    "app/backend/models/media_operations.py",
+    "app/backend/routers/media_operations.py",
+    "app/backend/services/media_operations.py",
+    "app/backend/services/google_business.py",
+    "app/backend/alembic/versions/eaf5a7b8c914_media_publication_specs.py"
+  ],
+  "new_tables": [
+    "media_operation_publication_specs"
+  ],
+  "migration_revision": "eaf5a7b8c914",
+  "migration_down_revision": "d9e4f6a7b803",
+  "tests": {
+    "author_conversion": 13,
+    "independent_publication": 78,
+    "independent_old_regressions": 284,
+    "distinct_total": 375
+  },
+  "boundaries": {
+    "provider_calls_real": false,
+    "production_actions": false,
+    "customer_acl_changed": false,
+    "finance_changed": false,
+    "private_changed": false,
+    "scheduler_config_changed": false
+  }
+}

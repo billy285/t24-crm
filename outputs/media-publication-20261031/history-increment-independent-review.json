@@ -1,0 +1,44 @@
+{
+  "author_new_dto_unit_cases": 5,
+  "blocking_findings": [],
+  "checks": {
+    "date_time_exact_integer_and_scalar_bounds": true,
+    "dispatch_fingerprint_schema_and_retention_policy_unchanged": true,
+    "frozen_action_payload_only_no_current_task_reconstruction": true,
+    "google_local_wall_parts_not_reinterpreted_as_utc_or_iana_zone": true,
+    "history_http_still_checks_store_acl": true,
+    "missing_invalid_clock_parts_not_invented_as_midnight": true,
+    "no_provider_read_or_write_during_history_query": true,
+    "old_expired_payload_has_explicit_fallback": true,
+    "post_kind_and_30_day_retention_gate": true,
+    "recursive_public_scalar_whitelist_no_media_or_extra_json": true
+  },
+  "deployment_approved_by_this_receipt": false,
+  "files_sha256": {
+    "app/backend/services/google_business.py": "4754f9793e4bc7a5603a898ac38e4b489255778e961c5e50396295b8fc181e65",
+    "app/backend/tests/test_media_publication.py": "ffe279ace3a82572015f4355c503d5eca3cc90f7de7efcd8906ccc9ada8190f9",
+    "app/backend/tests/test_media_publication_security.py": "83fdbee9490199005f5c65c6e87960883b32e2d6f03902aed653da7c3e9837ae",
+    "app/frontend/src/components/GoogleBusinessWorkspace.tsx": "c1964b334626a6db648bc85bb50bf9a747ee95d80e7c854ae44499e3f7bc87df",
+    "app/frontend/src/components/MediaPublicationPreview.tsx": "c27da79b66c5af24c5b1169a82fe4380f51c21bd00bbc9de8c7c6e870c4316cc",
+    "app/frontend/src/lib/google-business-api.ts": "5eacd48eddb08cfc625648da131814c366cdebcec7a76e77b80f0539481dd7e1"
+  },
+  "fixed_findings": [
+    {
+      "finding": "Missing or filtered-out clock fields originally defaulted to 00:00.",
+      "resolution": "History presentation now requires valid integer hours and minutes; otherwise displays time not retained.",
+      "verification": "Actual frontend test script covers missing/partial/invalid fields and explicit valid midnight."
+    }
+  ],
+  "frontend_actual_local_test_script_passed": 27,
+  "independent_new_http_tests_passed": 5,
+  "limits": [
+    "This is a scoped source/test review before the final commit and package pins.",
+    "No real Google public content was sent; historical display tests use synthetic frozen Actions."
+  ],
+  "previous_publication_cases_not_repeated": 78,
+  "real_platform_or_production_operation_performed": false,
+  "runtime_modified_by_reviewer": false,
+  "scope": "HISTORY_DTO_AND_PRESENTATION_INCREMENT_ONLY",
+  "stage": "MEDIA_PUBLICATION_HISTORY_INCREMENT_INDEPENDENT_REVIEW",
+  "status": "PASS"
+}

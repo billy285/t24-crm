@@ -1,0 +1,57 @@
+{
+  "source_sha": "6a7c0f7ee8d1b5eb9e24a5f0027cce24930d0667",
+  "frontend_version": "5af8aec0193c",
+  "method": "CUA native UI and DOM reads; local synthetic router with fake provider only",
+  "checks": [
+    {
+      "check": "event_datetime_persists_after_other_fields",
+      "result": "passed",
+      "frontend": "06a7b7a7dc13"
+    },
+    {
+      "check": "google_offer_publish_confirmation_full_spec",
+      "result": "passed",
+      "public_send": false
+    },
+    {
+      "check": "mobile_320_tasks_visual",
+      "result": "passed",
+      "method": "screenshot",
+      "width": 320
+    },
+    {
+      "canAdd": false,
+      "check": "readonly_team_materials",
+      "customer": true,
+      "text": "客户团队素材\n\n复用客户素材库；这里只处理团队素材，老板和财务私密素材不进入运营内容。\n\n选择已授权客户\n演示美业 · Blossom Studio\n演示餐厅 · Garden Kitchen\n演示餐厅 · Harbor Noodles\n1 份团队素材（最多读取最新 200 份）\n刷新素材\n已确认门店图片 · 合成\n图片 · 已审核\n仅素材资料 · 尚无文件或链接"
+    },
+    {
+      "check": "uninvited_materials",
+      "customerOptions": [
+        ""
+      ],
+      "hasSavedCustomerContent": false
+    },
+    {
+      "check": "mobile_430_form_header_footer",
+      "result": "passed",
+      "method": "screenshots",
+      "width": 430
+    },
+    {
+      "check": "mobile_390_offer_detail",
+      "result": "passed",
+      "method": "screenshots_and_AX",
+      "width": 390,
+      "full_offer_fields": true
+    }
+  ],
+  "real_platform_publication_tested": false,
+  "production_mutated_by_qa": false,
+  "physical_phone_tested": false,
+  "initial_source_sha": "323745a50c17763201de21accd7264030a02c3d0",
+  "initial_frontend_version": "934f7928059a",
+  "history_delta_independent_review": "3f4f17d5ad14a8f47a1efd58dc9b9e26ac5b32e3d09110757346e24db1214e84",
+  "history_delta_browser_retested": false,
+  "history_delta_validation": "27 focused frontend checks and 5 independent HTTP history cases; unrelated UI unchanged"
+}

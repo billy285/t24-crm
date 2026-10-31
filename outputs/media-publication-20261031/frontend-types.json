@@ -1,0 +1,13 @@
+{
+  "entry_files": [
+    "src/vite-env.d.ts",
+    "src/pages/MediaOperations.tsx",
+    "src/components/MediaPublicationFields.tsx",
+    "src/components/MediaPublicationPreview.tsx",
+    "src/components/MediaPlatformCapabilities.tsx",
+    "src/components/MediaTeamMaterials.tsx",
+    "src/components/GoogleBusinessWorkspace.tsx",
+    "src/components/GoogleBusinessManagement.tsx"
+  ],
+  "diagnostics": []
+}

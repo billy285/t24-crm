@@ -1,0 +1,11 @@
+const ts=require('../../app/frontend/node_modules/typescript');
+const path=require('path'),fs=require('fs');
+const root=path.resolve(__dirname,'../../app/frontend');
+const config=ts.readConfigFile(path.join(root,'tsconfig.app.json'),ts.sys.readFile);
+const parsed=ts.parseJsonConfigFileContent(config.config,ts.sys,root);
+const files=['src/vite-env.d.ts','src/pages/MediaOperations.tsx','src/components/MediaPublicationFields.tsx','src/components/MediaPublicationPreview.tsx','src/components/MediaPlatformCapabilities.tsx','src/components/MediaTeamMaterials.tsx','src/components/GoogleBusinessWorkspace.tsx','src/components/GoogleBusinessManagement.tsx'];
+const program=ts.createProgram(files.map(f=>path.join(root,f)),{...parsed.options,noEmit:true,target:ts.ScriptTarget.ES2022,lib:['lib.es2022.d.ts','lib.dom.d.ts','lib.dom.iterable.d.ts']});
+const diagnostics=ts.getPreEmitDiagnostics(program).map(d=>{const pos=d.file&&d.file.getLineAndCharacterOfPosition(d.start||0);return {file:d.file?path.relative(root,d.file.fileName):null,line:pos?pos.line+1:null,code:d.code,message:ts.flattenDiagnosticMessageText(d.messageText,'\n')}});
+fs.writeFileSync(path.join(__dirname,'frontend-types.json'),JSON.stringify({entry_files:files,diagnostics},null,2)+'\n');
+console.log(JSON.stringify({count:diagnostics.length,diagnostics:diagnostics.slice(0,20)}));
+process.exitCode=diagnostics.length?1:0;

@@ -1,0 +1,60 @@
+{
+  "blocking_findings": [],
+  "checks": {
+    "callback_nonroot_nginx_bytes_preserved": true,
+    "candidate_id_directory_durable_before_old_stop": true,
+    "existing_scheduler_on_and_cutoff_preserved": true,
+    "full_original_environment_and_configuration_compared": true,
+    "immutable_carrier_exact_bytes_no_redirect_or_proxy": true,
+    "independent_post_switch_rows_preserved_in_recovery": true,
+    "local_special_or_link_inputs_rejected_before_open": true,
+    "migration_container_id_recorded_before_start": true,
+    "migration_timeout_must_settle_before_schema_decision": true,
+    "new_schema_only_forward_recovery_to_known_candidate": true,
+    "offline_network_none_workers_off_credentials_absent_cutoff_empty": true,
+    "old_rows_shapes_indexes_and_pragma_preserved_except_schema_head": true,
+    "old_schema_only_retained_original_resume": true,
+    "one_empty_additive_spec_table_only": true,
+    "private_db_and_credential_files_metadata_only": true,
+    "sequence_progress_preserved_without_tool_write": true,
+    "server_complete_proof_not_exported": true,
+    "source_and_frontend_zero_pins_fail_closed": true,
+    "unknown_primary_not_mutated": true
+  },
+  "execution_approved": false,
+  "fixed_findings": [
+    {
+      "finding": "Retained migration identity writer fsynced file but not parent directory before starting the created migration container.",
+      "resolution": "New-tool-only exact identity write wrapper fsyncs its parent before retained helper can start, and restores m.write in finally.",
+      "verification": "Actual retained create/settle/start seam with real temporary file+directory fsync: order verified and directory fsync failure never starts the process."
+    }
+  ],
+  "independent_preflight_tests_passed": 16,
+  "independent_release_fault_tests_passed": 22,
+  "limits": [
+    "Only new local tooling and synthetic tests were exercised; this is not deployment acceptance.",
+    "No real Google post/reply or schedule was sent.",
+    "Private boundary checks inspect known container configuration in memory and file metadata; private database and credential-file content are not opened."
+  ],
+  "pending_before_prepare": [
+    "Bind actual final application source, frontend build version and final application freeze hashes.",
+    "Freeze all tool files and audit actual immutable Git carrier and packaged manifest/payload against af666 captured baseline.",
+    "Audit the exact generated prepare wrapper; no switch command before actual prepared receipt is reviewed."
+  ],
+  "production_or_account_mutation_by_reviewer": false,
+  "scope": "OFFLINE_CODE_REVIEW_ONLY_UNPINNED_DRAFT",
+  "server_or_provider_execution_by_reviewer": false,
+  "stage": "MEDIA_PUBLICATION_PUBLISHER_CODE_INDEPENDENT_REVIEW",
+  "status": "PASS",
+  "tool_files_sha256": {
+    "build_payload.py": "1f1e60ed8b1f5b035570aa4710521a9d8131ffe97b10245f5bc0058b02fd0b7a",
+    "generate_preflight_command.py": "edbab6e4f9f30018c5d25f475e49b75aa09d20499c4c554cdc519204200fbec8",
+    "make_commands.py": "5362a203d5e355b491319381976b6b5c7b30cd518567c3e64983aac28c96ab6a",
+    "preflight.py": "7d1452c8bdd1f493f23ce6fcec6cbd702f3dc0495bc19adca53aca051dd8411a",
+    "release.py": "ad29561d5a52ba8fc235a4f4646acb6eb721d30d71fc796582cd5eaadadc3fc0",
+    "test_package_independent.py": "b08f0527ec33eb6471a1f45f037853fd2b3214dd3887a0e7930de2b6e168c1af",
+    "test_preflight.py": "6f8b4f360d06fd7e7dbaae11a731004c872668a8329bd609ec308d553c6ef443",
+    "test_release_independent.py": "7058c88bbb17a13d239cb520d674b1eecfc32c4c5015430452e7e9392f31343d"
+  },
+  "whole_new_tool_directory_tests_passed": 146
+}

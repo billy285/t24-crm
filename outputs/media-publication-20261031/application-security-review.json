@@ -1,0 +1,56 @@
+{
+  "blocking_findings": [],
+  "checks": {
+    "additive_empty_table_only_no_old_rows_or_sequence_rewrite": true,
+    "datetime_offset_dst_and_precision_checked": true,
+    "financial_and_private_canaries_unchanged": true,
+    "legacy_standard_payload_and_schedule_fingerprint_compatible": true,
+    "material_scope_and_reference_preserved": true,
+    "non_google_isolation": true,
+    "normal_query_allowed_and_approval_bound": true,
+    "offer_and_event_google_payload_exact": true,
+    "owner_approval_includes_publication_and_timezone": true,
+    "ready_task_preview_shows_structure_and_blocks_stale_approval": true,
+    "slow_network_does_not_lock_financial_writer": true,
+    "strict_nested_json_and_incompatible_topic_rejected": true,
+    "task_cas_and_creation_idempotency": true,
+    "unknown_result_not_resent_with_new_uuid_or_restart": true,
+    "unsafe_url_rejected_without_fetch": true
+  },
+  "deployment_performed": false,
+  "files_sha256": {
+    "app/backend/alembic/versions/eaf5a7b8c914_media_publication_specs.py": "18fd4db511a9c563b230328e02981bb5eeed398d5332391eb5a3b236a7f68e72",
+    "app/backend/models/media_operations.py": "a8ab28a836155c8f87a7c8b3d8f3d1ff94385afe1ff1e8d8eba5747d78a50c98",
+    "app/backend/routers/media_operations.py": "255fb02385880d762634e7003b4454291b952097d062f82500e4c65213d71dc3",
+    "app/backend/services/google_business.py": "e41e4202b07683c5c0bfe48ebb81964f82a12447830eec8dd46144819e905615",
+    "app/backend/services/media_operations.py": "b96c473874be16488f6f0cd61bdb71c016de67bdc2b4cf7e4750d75462a63971",
+    "app/backend/tests/test_media_publication_security.py": "8291a36384e6f30280182c644e29c0fe81b582053b70bdd9fa4b757803fd5280"
+  },
+  "independent_distinct_test_cases": 362,
+  "limits": [
+    "This receipt verifies the listed worktree hashes and local fake-provider behavior, not a deployed source commit.",
+    "No actual Google public post, offer, event, image visibility or scheduler delivery has been tested.",
+    "Meta account setup, permissions, app review and publishing remain outside this implementation acceptance.",
+    "Asset approval freezes its reference and metadata; remote bytes are not claimed immutable."
+  ],
+  "official_schema_reference": "https://developers.google.com/my-business/reference/rest/v4/accounts.locations.localPosts",
+  "phase": "LOCAL_IMPLEMENTATION_SNAPSHOT",
+  "production_file_or_account_access_performed": false,
+  "provider_or_llm_requests_performed": false,
+  "public_reply_or_post_performed": false,
+  "source_commit_finalized": false,
+  "stage": "MEDIA_PUBLICATION_APPLICATION_SECURITY_REVIEW",
+  "status": "PASS",
+  "tests": [
+    {
+      "command": "python -m pytest tests/test_media_publication_security.py -q",
+      "cwd": "app/backend",
+      "passed": 78
+    },
+    {
+      "command": "python -m pytest tests/test_google_business.py tests/test_google_business_management.py tests/test_google_business_review_refresh.py tests/test_media_operations.py -q",
+      "cwd": "app/backend",
+      "passed": 284
+    }
+  ]
+}

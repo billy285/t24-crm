@@ -1,0 +1,111 @@
+{
+  "baseline": "35f31a64851b0c2ad336d829dcbda04b9c164c6c",
+  "source_files": [
+    {
+      "file": "app/frontend/src/pages/MediaOperations.tsx",
+      "sha256": "e6bcd8cfba36ba07a9624c29aae8b7a6fe03d4e4bffcc46ab6c9b6339c92c4a3"
+    },
+    {
+      "file": "app/frontend/src/pages/media-operations.css",
+      "sha256": "60163b44eb7d716ea94fc1cc318140267da88fb0b76e50a42d8bd2dd0271c728"
+    },
+    {
+      "file": "app/frontend/src/lib/media-operations-api.ts",
+      "sha256": "22cf653618f37d3e9f66981f5f0a64a09cfa0a011dac3924f64a789bb3b4c197"
+    },
+    {
+      "file": "app/frontend/src/lib/google-business-api.ts",
+      "sha256": "5eacd48eddb08cfc625648da131814c366cdebcec7a76e77b80f0539481dd7e1"
+    },
+    {
+      "file": "app/frontend/src/components/GoogleBusinessWorkspace.tsx",
+      "sha256": "c1964b334626a6db648bc85bb50bf9a747ee95d80e7c854ae44499e3f7bc87df"
+    },
+    {
+      "file": "app/frontend/src/components/GoogleBusinessManagement.tsx",
+      "sha256": "119ab8e84ef27afbd63d193cda1f192ee690ac09742bf759c557fa3f79f97c7e"
+    },
+    {
+      "file": "app/frontend/src/components/MediaPlatformCapabilities.tsx",
+      "sha256": "5170798dc00baff70a9abec96f47b5c895e355c706230698e0e753c5d539ecc9"
+    },
+    {
+      "file": "app/frontend/src/components/MediaPublicationFields.tsx",
+      "sha256": "816513cd700fa70c5ce3dee55255266059519112f99da8b2ff27c809efb8cdb1"
+    },
+    {
+      "file": "app/frontend/src/components/MediaPublicationPreview.tsx",
+      "sha256": "c27da79b66c5af24c5b1169a82fe4380f51c21bd00bbc9de8c7c6e870c4316cc"
+    },
+    {
+      "file": "app/frontend/src/components/MediaTeamMaterials.tsx",
+      "sha256": "b14a891843115f99808c1802a9dd84002b2a55fa8c627ad3dbeca2b03ffc6074"
+    },
+    {
+      "file": "app/frontend/src/components/media-publication.css",
+      "sha256": "d5e535f7730a2b01a6cae6b0218cae182ef9497111a8184dea86a92f600d2849"
+    },
+    {
+      "file": "app/frontend/src/components/media-publication.ts",
+      "sha256": "6a0a59a59dc6e41ab4397ed230834ed32b315298b6dbc3c1b5de170da7ca4b65"
+    },
+    {
+      "file": "app/frontend/src/components/media-team-materials.css",
+      "sha256": "53cce6676798b7dae3970cdf57851921f67ca48e138c14fbd875b3b0b4767edf"
+    }
+  ],
+  "validation": {
+    "typescript_diagnostics": 0,
+    "synthetic_tests": 27,
+    "browser": "root datetime CUA passed; close guard/material record-only UI root recheck pending",
+    "build": "not run by frontend agent"
+  },
+  "unchanged_existing_requests": true,
+  "exact_reviewed_nested_handler_changes": [
+    "MediaOperations.copyContent: clarify body-only copy",
+    "MediaOperations.recoverUnknown: include structured publication equivalence",
+    "MediaOperations.saveForm: include Google-only publication",
+    "GoogleBusinessManagement.loadScheduleDetail: compare same-revision structured publication"
+  ],
+  "boundary": [
+    "No backend edits",
+    "No production/account operations",
+    "No private-space/auth/finance edits",
+    "Meta manual only",
+    "Private materials never converted to public URLs",
+    "Google video API unverified; preparation only"
+  ],
+  "datetime_input_fix": {
+    "file": "app/frontend/src/components/MediaPublicationFields.tsx",
+    "fields": [
+      "event_start",
+      "event_end"
+    ],
+    "change": "match existing plan datetime input with onInput + onChange; title maxLength 200"
+  },
+  "modal_close_fix": {
+    "file": "app/frontend/src/components/GoogleBusinessWorkspace.tsx",
+    "change": "only mount dialog content when modal exists; handlers and requests unchanged",
+    "test": "publish frame -> null closing frame has no dialog content/disconnect fallback"
+  },
+  "material_availability_fix": {
+    "file": "app/frontend/src/components/MediaTeamMaterials.tsx",
+    "change": "file_path takes private download precedence; otherwise safe file_url opens external; record-only shows no button and download returns before request",
+    "tests": "record-only actual JSX; handler 0 requests; legacy blank source_type safe URL; private precedence; unsafe URL refused"
+  },
+  "history_payload_fix": {
+    "base_commit": "323745a50c17763201de21accd7264030a02c3d0",
+    "files": [
+      "app/frontend/src/lib/google-business-api.ts",
+      "app/frontend/src/components/MediaPublicationPreview.tsx",
+      "app/frontend/src/components/GoogleBusinessWorkspace.tsx"
+    ],
+    "change": "read immutable original Google publication_payload; display raw provider wall-clock fields without inferred timezone; expired/old field absence shows explicit fallback",
+    "api_or_handler_changes": false
+  },
+  "history_clock_boundary_fix": {
+    "file": "app/frontend/src/components/MediaPublicationPreview.tsx",
+    "change": "require explicitly stored integer hours and minutes in range; missing/invalid returns time not retained; explicit 0/0 remains midnight",
+    "tests": "12 invalid/missing/partial/wrongtype/bool/range cases plus explicit midnight and 09:05"
+  }
+}

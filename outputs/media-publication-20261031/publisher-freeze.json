@@ -1,0 +1,116 @@
+{
+  "stage": "MEDIA_PUBLICATION_LOCAL_PACKAGE_FROZEN",
+  "source_sha": "6a7c0f7ee8d1b5eb9e24a5f0027cce24930d0667",
+  "frontend_version": "5af8aec0193c",
+  "frontend_freeze_sha256": "3e4c03aebf856ac3bcb95a890b6c49a41b14b365424718fa1f95e17149b5538e",
+  "backend_freeze_sha256": "2c32158584c693043536cf1b13e16250c764f96ce35cb03774cbee7c765fc473",
+  "preflight_sha256": "af666ca67bd061a8eec573134acb3f8d575a14811458793ada0e2071ef2a5c2e",
+  "old_schema_revision": "d9e4f6a7b803",
+  "schema_revision": "eaf5a7b8c914",
+  "new_empty_tables": [
+    "media_operation_publication_specs"
+  ],
+  "tests": {
+    "publisher_directory_passed": 146
+  },
+  "tools": {
+    "deployments/media-publication-20261031/README.md": {
+      "sha256": "ea9e7ef24e3cbfcfb2b5baf880ecf33e2861dbf263d2c7443a0ee4a4be0f0ea1",
+      "bytes": 4768
+    },
+    "deployments/media-publication-20261031/build_payload.py": {
+      "sha256": "1f1e60ed8b1f5b035570aa4710521a9d8131ffe97b10245f5bc0058b02fd0b7a",
+      "bytes": 7841
+    },
+    "deployments/media-publication-20261031/generate_preflight_command.py": {
+      "sha256": "edbab6e4f9f30018c5d25f475e49b75aa09d20499c4c554cdc519204200fbec8",
+      "bytes": 1767
+    },
+    "deployments/media-publication-20261031/make_commands.py": {
+      "sha256": "5362a203d5e355b491319381976b6b5c7b30cd518567c3e64983aac28c96ab6a",
+      "bytes": 9255
+    },
+    "deployments/media-publication-20261031/preflight.py": {
+      "sha256": "7d1452c8bdd1f493f23ce6fcec6cbd702f3dc0495bc19adca53aca051dd8411a",
+      "bytes": 10078
+    },
+    "deployments/media-publication-20261031/release.py": {
+      "sha256": "bc37baed707fe234c563872f9c2fcd1c616146e0598eed29e741e454506d3cb6",
+      "bytes": 47923
+    },
+    "deployments/media-publication-20261031/test_commands.py": {
+      "sha256": "c7acf0be3bb517a94c00af31682cbfe729b3d1003dca35c95eaa06a8b8f9dd2a",
+      "bytes": 6484
+    },
+    "deployments/media-publication-20261031/test_package.py": {
+      "sha256": "d83b26bf474a5e11ef1ebb96630fd9645711bed532a699eef534e17b12350088",
+      "bytes": 6573
+    },
+    "deployments/media-publication-20261031/test_package_independent.py": {
+      "sha256": "b08f0527ec33eb6471a1f45f037853fd2b3214dd3887a0e7930de2b6e168c1af",
+      "bytes": 13875
+    },
+    "deployments/media-publication-20261031/test_preflight.py": {
+      "sha256": "6f8b4f360d06fd7e7dbaae11a731004c872668a8329bd609ec308d553c6ef443",
+      "bytes": 9099
+    },
+    "deployments/media-publication-20261031/test_release.py": {
+      "sha256": "bb397318347998202512c22669e001348aac45b9cefe299ec9244ad101d4b1ec",
+      "bytes": 21340
+    },
+    "deployments/media-publication-20261031/test_release_independent.py": {
+      "sha256": "7058c88bbb17a13d239cb520d674b1eecfc32c4c5015430452e7e9392f31343d",
+      "bytes": 12345
+    }
+  },
+  "artifacts": {
+    "manifest.json": {
+      "sha256": "3635dfa1aa42ae3d1097821395b374849a38770b75d794034fd58ac5c2bf4580",
+      "bytes": 132452
+    },
+    "payload.tar.gz": {
+      "sha256": "671b4cf63cc22a3563de286cc55f1dd742affe7e5a65fb37dfef9e8782fcc613",
+      "bytes": 2167852
+    }
+  },
+  "payload_backend_members": [
+    "backend/alembic/versions/eaf5a7b8c914_media_publication_specs.py",
+    "backend/models/media_operations.py",
+    "backend/routers/media_operations.py",
+    "backend/services/google_business.py",
+    "backend/services/media_operations.py"
+  ],
+  "payload_static_count": 140,
+  "payload_total_count": 145,
+  "changed_source_files": [
+    "app/backend/alembic/versions/eaf5a7b8c914_media_publication_specs.py",
+    "app/backend/models/media_operations.py",
+    "app/backend/routers/media_operations.py",
+    "app/backend/services/google_business.py",
+    "app/backend/services/media_operations.py",
+    "app/backend/tests/test_media_publication.py",
+    "app/backend/tests/test_media_publication_security.py",
+    "app/frontend/src/components/GoogleBusinessManagement.tsx",
+    "app/frontend/src/components/GoogleBusinessWorkspace.tsx",
+    "app/frontend/src/components/MediaPlatformCapabilities.tsx",
+    "app/frontend/src/components/MediaPublicationFields.tsx",
+    "app/frontend/src/components/MediaPublicationPreview.tsx",
+    "app/frontend/src/components/MediaTeamMaterials.tsx",
+    "app/frontend/src/components/media-publication.css",
+    "app/frontend/src/components/media-publication.ts",
+    "app/frontend/src/components/media-team-materials.css",
+    "app/frontend/src/lib/google-business-api.ts",
+    "app/frontend/src/lib/media-operations-api.ts",
+    "app/frontend/src/pages/MediaOperations.tsx",
+    "app/frontend/src/pages/media-operations.css"
+  ],
+  "preserved_scheduler_enabled": true,
+  "preserved_scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "server_commands_generated": false,
+  "server_commands_executed": false,
+  "committed_by_agent": false,
+  "provider_requests": false,
+  "production_writes": false,
+  "execution_approved": false,
+  "notes": "Local package and pins only; actual carrier and command review still required."
+}

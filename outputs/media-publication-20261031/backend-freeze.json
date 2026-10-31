@@ -1,0 +1,69 @@
+{
+  "stage": "MEDIA_PUBLICATION_BACKEND_FINAL_FROZEN",
+  "base_commit": "35f31a64851b0c2ad336d829dcbda04b9c164c6c",
+  "members": [
+    {
+      "path": "app/backend/models/media_operations.py",
+      "sha256": "a8ab28a836155c8f87a7c8b3d8f3d1ff94385afe1ff1e8d8eba5747d78a50c98",
+      "bytes": 3729
+    },
+    {
+      "path": "app/backend/routers/media_operations.py",
+      "sha256": "255fb02385880d762634e7003b4454291b952097d062f82500e4c65213d71dc3",
+      "bytes": 4981
+    },
+    {
+      "path": "app/backend/services/media_operations.py",
+      "sha256": "b96c473874be16488f6f0cd61bdb71c016de67bdc2b4cf7e4750d75462a63971",
+      "bytes": 42847
+    },
+    {
+      "path": "app/backend/services/google_business.py",
+      "sha256": "4754f9793e4bc7a5603a898ac38e4b489255778e961c5e50396295b8fc181e65",
+      "bytes": 56525
+    },
+    {
+      "path": "app/backend/alembic/versions/eaf5a7b8c914_media_publication_specs.py",
+      "sha256": "18fd4db511a9c563b230328e02981bb5eeed398d5332391eb5a3b236a7f68e72",
+      "bytes": 594
+    },
+    {
+      "path": "app/backend/tests/test_media_publication.py",
+      "sha256": "ffe279ace3a82572015f4355c503d5eca3cc90f7de7efcd8906ccc9ada8190f9",
+      "bytes": 7496
+    },
+    {
+      "path": "app/backend/tests/test_media_publication_security.py",
+      "sha256": "83fdbee9490199005f5c65c6e87960883b32e2d6f03902aed653da7c3e9837ae",
+      "bytes": 28931
+    }
+  ],
+  "runtime_files": [
+    "app/backend/models/media_operations.py",
+    "app/backend/routers/media_operations.py",
+    "app/backend/services/media_operations.py",
+    "app/backend/services/google_business.py",
+    "app/backend/alembic/versions/eaf5a7b8c914_media_publication_specs.py"
+  ],
+  "new_tables": [
+    "media_operation_publication_specs"
+  ],
+  "migration_revision": "eaf5a7b8c914",
+  "migration_down_revision": "d9e4f6a7b803",
+  "tests": {
+    "author_conversion_and_history": 18,
+    "independent_publication_and_history": 83,
+    "independent_old_regressions": 284,
+    "distinct_total": 385
+  },
+  "boundaries": {
+    "provider_calls_real": false,
+    "production_actions": false,
+    "customer_acl_changed": false,
+    "finance_changed": false,
+    "private_changed": false,
+    "scheduler_config_changed": false
+  },
+  "history_delta_review_sha256": "3f4f17d5ad14a8f47a1efd58dc9b9e26ac5b32e3d09110757346e24db1214e84",
+  "original_author_freeze_sha256": "cb3a376011048ebfd395d49ceecfb5c826636cd57e65f89b855cf35d5cbdf011"
+}

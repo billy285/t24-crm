@@ -1,0 +1,34 @@
+{
+  "baseline_source": "5a52cdcf8e9560fcf5ec6e2b27f264f6f0fe1087",
+  "blocking_findings": [],
+  "callback_logging_protection_retained": true,
+  "crm": {
+    "config": "92edfec8932fddaed7c251f98e580622765699d4ce88f38ceb14a50a416f0616",
+    "id": "213d3b7a490d2208d6a4329d1569355ceb1caf41527ea76d735ff0ae31d314bd",
+    "image": "sha256:f6a39af2ecad2ae561595560313a95ff1d87de38141880e2340bbfbe6c8c7ecb",
+    "restart": 0,
+    "started": "2026-10-30T19:40:12.644333025Z"
+  },
+  "frontend_version": "50347ba2c9da",
+  "limits": [
+    "Protected complete proof remains on server; this review verifies the collector and its compact pinned facts, not an independent second server data read.",
+    "Fresh rows aggregate is the current baseline and is not claimed equal to a historical business snapshot.",
+    "No prepare or activation permission is granted by this receipt."
+  ],
+  "old_runtime_backend_hashes_match_local_git": true,
+  "private_boundary_metadata_only": true,
+  "protected_full_proof_bytes": 77198,
+  "protected_full_proof_path": "/opt/t24-crm/releases/media-publication-preflight-af666ca67bd0.json",
+  "protected_full_proof_sha256": "af666ca67bd061a8eec573134acb3f8d575a14811458793ada0e2071ef2a5c2e",
+  "raw_records_or_environment_values_exported": false,
+  "reviewer_executed_server_or_provider_request": false,
+  "reviewer_read_protected_server_proof": false,
+  "scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "scheduler_enabled": true,
+  "schema_revision": "d9e4f6a7b803",
+  "scope": "ACTUAL_CAPTURED_COMPACT_SUMMARY_AND_PINNED_READONLY_COLLECTOR",
+  "stage": "MEDIA_PUBLICATION_ACTUAL_PREFLIGHT_INDEPENDENT_REVIEW",
+  "status": "PASS",
+  "summary_file_sha256": "57118128c5cf1bb0ba811a2ce8cb3175f71130dc10bbc0af1734215d590d270d",
+  "table_count": 129
+}
