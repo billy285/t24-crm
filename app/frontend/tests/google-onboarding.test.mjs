@@ -165,6 +165,6 @@ test('integration adds only owner onboarding entries without changing merchant s
   assert.match(merchant, /isOwner && view === 'merchants' && customerId === null/); assert.match(merchant, /GoogleOnboardingWorkspace scope=\{scope\} isOwner=\{isOwner\}/);
   assert.match(googleWorkspace, /entry.kind === 'bind'.*setOnboardingTarget\(customerId \?\? entry.customerId\)/);
   assert.match(googleWorkspace, /onboardingTarget \?\? undefined/);
-  assert.match(merchant, /merchant.platforms.map\(platform => <span/);
+  assert.match(read('../src/components/MediaPortfolioPanels.tsx'), /merchant.platforms.map\(platform => <span/);
   assert.ok(!componentSource.includes('/grants') && !componentSource.includes('/publish') && !componentSource.includes('/schedule') && !componentSource.includes('beforeunload'));
 });
