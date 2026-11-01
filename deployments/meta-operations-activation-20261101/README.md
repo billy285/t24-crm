@@ -6,7 +6,7 @@
 
 独立 App `3037236509957803`、USER 配置 `2328579691236435`、八项权限及唯一回调已审核；功能 OFF 部署的版本、镜像、容器、发布工具及上线回执也已核实并固定。原 Meta 应用保持原状。新应用当前为 Development 模式，尚未在本阶段完成真实 OAuth 或任何发布。
 
-仍需从不可变 carrier 捕获一份新的 150 表基线，`baseline.py.BASELINE_SHA` 因此继续为 `None`。基线命令可以在 carrier 核实后生成；传输、切换命令在准确基线返回前继续拒绝。不得用测试值补齐该字段。
+150 表基线已从不可变 carrier 成功捕获，准确 SHA 为 `1bb4774655a7fd87664c591ef7463979cccdc26e362fa2c562c8ff668cc09522`，对应运行身份与 OFF 部署回执一致；捕获前保存的未审核 Facebook 草稿也已纳入基线。`baseline.py.BASELINE_SHA` 现已固定为该实际值。后续仍须先提交不可变 carrier，才能生成工具暂存、传输及启用预检命令；执行切换仍要求预检回执的准确哈希。
 
 初始增加的配置固定为：`T24_META_OPS_ENABLED=true`、`T24_META_OPS_EXECUTION_ENABLED=false`、`T24_META_OPS_SCHEDULER_ENABLED=false`。其余八项为独立 App、密钥、USER 配置、Graph 版本、CRM 域名、准确八项权限和配置已审核标志。原环境变量顺序和值完整保留，追加总计 11 项。
 

@@ -6,7 +6,7 @@ import re
 from types import ModuleType, SimpleNamespace
 
 c = None
-BASELINE_SHA = None
+BASELINE_SHA = '1bb4774655a7fd87664c591ef7463979cccdc26e362fa2c562c8ff668cc09522'
 _CACHE = None
 
 

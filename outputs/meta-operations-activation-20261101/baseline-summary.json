@@ -1,0 +1,24 @@
+{
+  "all_existing_meta_and_ops_rows_preserved": true,
+  "business_writes": false,
+  "credential_file_content_read": false,
+  "frontend_version": "d2dbd67fa15d",
+  "google_scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "google_scheduler_enabled": true,
+  "path": "/opt/t24-crm/releases/meta-operations-activation-20261101/baseline.json",
+  "provider_requests": false,
+  "rows_sha256": "87141e986d67888664d3de01eab2fead2759dd1861396210d968a6216eaab8ec",
+  "runtime": {
+    "config": "67e90865973a03cc50207898b71067c9becf3fb04217043088061a8471f4a17c",
+    "id": "8df71750e65a06114286eb146aef3374ce368681a689655c16a85058fc6b82f2",
+    "image": "sha256:4797556daa7b98dbeeae6c31364d4f3411645c324902e0f8b922cf1180a7af53",
+    "restart": 0,
+    "started": "2026-11-01T00:44:28.629528353Z"
+  },
+  "runtime_changed": false,
+  "schema_revision": "cefa9b12a358",
+  "sha256": "1bb4774655a7fd87664c591ef7463979cccdc26e362fa2c562c8ff668cc09522",
+  "source_sha": "95588aa2e630784a419704bb4ce3da89965586e6",
+  "stage": "META_OPERATIONS_ACTIVATION_BASELINE_CAPTURED",
+  "table_count": 150
+}

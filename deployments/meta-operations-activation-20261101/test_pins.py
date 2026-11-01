@@ -45,8 +45,20 @@ def test_browser_encryptor_has_same_public_identity_pins_as_receiver():
         assert re.search(r"const APPROVED_"+key+r" = '([^']+)';", script).group(1) == value
 
 
-def test_real_identity_pins_do_not_bypass_pending_fresh_baseline():
+def test_real_identity_pins_require_exact_captured_fresh_baseline(monkeypatch):
     g = load('publisher_actual_pending_baseline', HERE/'make_commands.py')
-    c, b = g.identities(runtime_only=True)
-    assert b.BASELINE_SHA is None and c.APP_ID == '3037236509957803'
+    c, b = g.identities()
+    summary = json.loads((ROOT/'outputs/meta-operations-activation-20261101/baseline-summary.json').read_bytes())
+    deployed = json.loads((ROOT/'outputs/meta-operations-20261101/deployed.json').read_bytes())
+    assert b.BASELINE_SHA == summary['sha256'] == '1bb4774655a7fd87664c591ef7463979cccdc26e362fa2c562c8ff668cc09522'
+    assert summary['runtime'] == deployed['crm'] and c.APP_ID == '3037236509957803'
+    g.validate_summary(summary, c, b)
+    original = g.importlib.util.spec_from_file_location
+    def missing(name, path):
+        spec = original(name, path); execute = spec.loader.exec_module
+        def module(value):
+            execute(value)
+            if str(path).endswith('/baseline.py'): value.BASELINE_SHA = None
+        spec.loader.exec_module = module; return spec
+    monkeypatch.setattr(g.importlib.util, 'spec_from_file_location', missing)
     with pytest.raises(RuntimeError, match='ACTUAL_REVIEWED_BASELINE_REQUIRED'): g.identities()
