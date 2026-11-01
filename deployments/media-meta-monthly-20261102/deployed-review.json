@@ -1,0 +1,26 @@
+{
+  "actual_python310_meta_monthly_owner_profile_platform_canary_passed": true,
+  "all162_rows_and_schema_preserved": true,
+  "canonical_deployed_sha256": "41ab8e9a87761901e16cce56102de6040d80476aa1b9e43c9f422cea1e3d3aa0",
+  "canonical_prepared_sha256": "09ec24d26f267137bf5dcc6e5e9e563224da99fe553a4d7b9b986804afae2ac3",
+  "credentials_private_full_environment_cutoffs_preserved": true,
+  "crm": {
+    "config": "5038d2dcddb9b0215926f5d45411c25b56542c678a082a8b05774054b1d9c94e",
+    "id": "1ee579193b73048fb1120f516d53d2400191c2499cfad5284184ca0506ed698e",
+    "image": "sha256:05dc7e8e8ce620e0d92e07e95d304537250d17beb14dbeb63713e06d2319bf41",
+    "restart": 0,
+    "started": "2026-11-01T22:06:12.469255563Z"
+  },
+  "database_restored": false,
+  "frontend_version": "1d94d63752de",
+  "meta_execution_enabled": false,
+  "meta_scheduler_enabled": false,
+  "privacy_sentinels_passed": true,
+  "production_containers_deleted": false,
+  "production_ui_acceptance_pending": false,
+  "production_ui_acceptance_sha256": "76ba34bd34d1abf3e0f5f74e3bfd7f5235a2681bc3e3226b2f540871b9dc39a4",
+  "provider_requests": false,
+  "real_meta_post_or_reply_or_schedule_armed": false,
+  "source_sha": "5fd379d625d6c18abdec1b98d388494d0900c780",
+  "stage": "MEDIA_META_MONTHLY_CANONICAL_DEPLOYED_REVIEW_PASSED"
+}

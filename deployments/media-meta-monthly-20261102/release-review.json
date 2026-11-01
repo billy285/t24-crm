@@ -1,9 +1,15 @@
 {
-  "actual_python310_pending_isolated_candidate": true,
+  "actual_python310_canaries_verified": true,
+  "actual_python310_pending_isolated_candidate": false,
   "application_delta_count": 31,
   "application_freeze_sha256": "e8b9e48e36ae4b2bcf75cb54daa62cdb6b1e72ff950d4c98b4fe2d44fade5744",
   "baseline_application_source": "e0f39295a912ac6f7518d523a860ee9ca649d54e",
   "candidate_runtime_backend_file_count": 420,
+  "canonical_deployed_sha256": "41ab8e9a87761901e16cce56102de6040d80476aa1b9e43c9f422cea1e3d3aa0",
+  "canonical_prepared_sha256": "09ec24d26f267137bf5dcc6e5e9e563224da99fe553a4d7b9b986804afae2ac3",
+  "final_frontend_regressions_passed": 269,
+  "final_frontend_source": "eec3d1d02a97a5b52a1483e0c93f094242aade56",
+  "final_frontend_version": "8c3b5e1302ac",
   "fresh_readonly_preflight_sha256": "6199dc87be59bb86693f2e1b0a06278624b1faac112db5598e43aee78464a7d2",
   "frontend_version": "1d94d63752de",
   "independent_meta_monthly_test_warnings": 2,
@@ -18,13 +24,37 @@
   "local_canaries_python_version": "3.12 substitute only",
   "local_release_guards_passed": 127,
   "new_runtime_file_count": 1,
+  "production_runtime": {
+    "config": "5038d2dcddb9b0215926f5d45411c25b56542c678a082a8b05774054b1d9c94e",
+    "id": "1ee579193b73048fb1120f516d53d2400191c2499cfad5284184ca0506ed698e",
+    "image": "sha256:05dc7e8e8ce620e0d92e07e95d304537250d17beb14dbeb63713e06d2319bf41",
+    "restart": 0,
+    "started": "2026-11-01T22:06:12.469255563Z"
+  },
+  "production_ui_acceptance_verified": true,
   "protected_application_source_unchanged": true,
   "remaining_boundaries": [
     "Meta execution and scheduler remain disabled",
     "Public publication is untested and requires separate owner confirmation",
-    "Existing new-grant OAuth target setup remains PokeCo pilot only; no permissions expanded",
-    "Actual server Python3.10 isolated candidate, prepared review, activation and public UI acceptance pending"
+    "Existing new-grant OAuth target setup remains PokeCo pilot only; no permissions expanded"
   ],
+  "root_reported_validation": {
+    "backend_core_seconds": 259.06,
+    "backend_core_suite_passed": 970,
+    "backend_core_suite_pending": false,
+    "backend_core_warnings": 29,
+    "backend_total_passed": 1401,
+    "frontend_full_suite_pending_serial_rerun": false,
+    "frontend_serial_seconds": 12.03,
+    "frontend_serial_suite_passed": 268,
+    "full_typescript_pass": false,
+    "known_20ms_asset_studio_async_flake_isolated_passed": true,
+    "protected_seconds": 84.84,
+    "protected_suite_passed": 431,
+    "protected_warnings": 51,
+    "scoped_media_typescript_errors": 0,
+    "unchanged_typescript_baseline_error": "Finance.tsx:5778 TS2322"
+  },
   "runtime_backend_delta_count": 10,
   "security_review": {
     "business_database_writes": false,
@@ -51,6 +81,7 @@
     "unknown_results_use_original_receipt": true
   },
   "source_sha": "5fd379d625d6c18abdec1b98d388494d0900c780",
-  "stage": "MEDIA_META_MONTHLY_INDEPENDENT_REVIEW_PENDING_RUNTIME",
+  "stage": "MEDIA_META_MONTHLY_DEPLOYED_ACCEPTED_WITH_STATIC_LAYOUT_FOLLOWUP",
+  "static_layout_deployed_sha256": "2354bb6e48c86423250df592434cc5d020020ac397b44f92cd7fef31df836c4d",
   "synthetic_ui_acceptance_sha256": "65a20e39fb74210bed64edb7eee07146deb9e826cfd9690c16efda1969ccdb59"
 }

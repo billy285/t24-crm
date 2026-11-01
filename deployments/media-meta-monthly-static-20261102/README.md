@@ -11,3 +11,7 @@ Freeze requires the exact committed three-path frontend / test delta, every othe
 Prepare only stages a new public directory. Activation substitutes exactly one Nginx static-root byte sequence, reloads Nginx and checks public version / CSP and all preserved boundaries. On failure it restores only that root. There is no Docker lifecycle, backend image change, migration, database restore, permission / credential / environment change, public content publication or provider request. The original Meta execution / scheduler switches and cutoffs remain unchanged.
 
 Production UI acceptance is required after the static switch; synthetic layout tests do not substitute for checking the actual desktop screenshot.
+
+## Accepted production state
+
+Canonical deployed receipt: `2354bb6e48c86423250df592434cc5d020020ac397b44f92cd7fef31df836c4d`; current public frontend: `8c3b5e1302ac`. The exact backend runtime and all 162 table hashes remained unchanged. Actual authenticated UI measured desktop action width 122 / scroll width 122, mobile 390 action 224 / 224, and mobile 320 action 162 / 162 with page widths 390 / 320. The authenticated owner session was visually inspected; actions are readable without the duplicated platform prefix. No production data or public content was submitted.

@@ -1,0 +1,34 @@
+{
+  "carrier": "7d850032243ffec7f19f6263b421ca8ccbae075d",
+  "command_sha256": {
+    "prepare-command.sh": "406e5e5a1f223f2dd52228943da623ebbe432000a79cd64e921ce6390129429b"
+  },
+  "executed": false,
+  "frontend_version": "1d94d63752de",
+  "members": {
+    "artifacts/manifest.json": [
+      "manifest.json",
+      "7a94c774a72a8402559b97d49e3693c8e7a6e72b20d45da10b4389b6ef5e3abc",
+      148594
+    ],
+    "artifacts/payload.tar.gz": [
+      "payload.tar.gz",
+      "55a2d2e5c6447c15cc33f83bb1a9af69f0bcb14f39bca5fa821d707f94b7b704",
+      2342050
+    ],
+    "preflight.py": [
+      "preflight.py",
+      "4ccf6f34fcf117b7477204bdfd1e5cdd1ef2a981bb6e545ac1b695768386687a",
+      10054
+    ],
+    "release.py": [
+      "release.py",
+      "b11362093b66d5bbefc62d0907f8217f389735b7ffa5da7d091ad4e132bc2247",
+      47746
+    ]
+  },
+  "preflight_sha256": "6199dc87be59bb86693f2e1b0a06278624b1faac112db5598e43aee78464a7d2",
+  "prepared_sha256": null,
+  "release": "/opt/t24-crm/releases/media-meta-monthly-5fd379d625d6-20261102",
+  "source_sha": "5fd379d625d6c18abdec1b98d388494d0900c780"
+}

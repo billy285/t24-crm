@@ -1,0 +1,43 @@
+{
+  "backend_runtime": {
+    "config": "5038d2dcddb9b0215926f5d45411c25b56542c678a082a8b05774054b1d9c94e",
+    "id": "1ee579193b73048fb1120f516d53d2400191c2499cfad5284184ca0506ed698e",
+    "image": "sha256:05dc7e8e8ce620e0d92e07e95d304537250d17beb14dbeb63713e06d2319bf41",
+    "restart": 0,
+    "started": "2026-11-01T22:06:12.469255563Z"
+  },
+  "backend_runtime_file_count": 420,
+  "backend_source_sha": "5fd379d625d6c18abdec1b98d388494d0900c780",
+  "backend_tests_passed": 1401,
+  "business_mutations_submitted": false,
+  "environment_sha256": "3d414fb4b9b5b1ae9bb5ecc1ce503be3c788f8bee27d0806de9d72fd3df0e223",
+  "frontend_source_sha": "eec3d1d02a97a5b52a1483e0c93f094242aade56",
+  "frontend_tests_passed": 269,
+  "frontend_version": "8c3b5e1302ac",
+  "full_typescript_pass": false,
+  "main_canonical_deployed_sha256": "41ab8e9a87761901e16cce56102de6040d80476aa1b9e43c9f422cea1e3d3aa0",
+  "main_helper_carrier": "7d850032243ffec7f19f6263b421ca8ccbae075d",
+  "meta_execution_enabled": false,
+  "meta_scheduler_enabled": false,
+  "nginx_sha256": "0184a613c95d04fb74f6d674213b1d787c000af33c5add5c90eb02637302ba40",
+  "ops_environment_sha256": "f334ac086b4f8eef3d92cc4b6444558f500590a2bd4020ce07d9d13f1947dfb2",
+  "original_google_scheduler_cutoff_preserved": true,
+  "private_finance_acl_commission_boundaries_preserved": true,
+  "production_ui_acceptance_verified": true,
+  "public_inventory_sha256": "a8def10330366b13cabcb1fe1155f681f849a70a590252d1e7eafb8b18f58a3e",
+  "public_provider_publication_submitted": false,
+  "public_root": "/var/www/t24-crm-public/media-meta-monthly-static-eec3d1d02a97-20261102",
+  "release_guards_passed_by_scope": {
+    "main": 127,
+    "static": 99
+  },
+  "rows_sha256": "295ee0d3ad8135eb4a38404f9f579eca2b364b45a2de51ec1a1138d3a795a187",
+  "schema_revision": "g32ed456e792",
+  "schema_sha256": "c111f3fc3154eab704a25536280bf02dfd00d120867da7ed9727ec2c85ac4a7f",
+  "stage": "MEDIA_META_MONTHLY_FINAL_ACCEPTED_STATE",
+  "static_canonical_deployed_sha256": "2354bb6e48c86423250df592434cc5d020020ac397b44f92cd7fef31df836c4d",
+  "static_helper_carrier": "7d3f9e1e762099e3d5db1d15e545ba87f985a925",
+  "static_helper_sha256": "cd277633fd751576d85ec8d9bd49685df7e4bb98ddfffebbf8ceae508d3e4284",
+  "table_count": 162,
+  "unchanged_typescript_baseline": "Finance.tsx:5778 TS2322; no media errors"
+}

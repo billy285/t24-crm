@@ -1,0 +1,26 @@
+{
+  "all162_rows_unchanged": true,
+  "backend_files_unchanged": 420,
+  "backend_restart_or_image_change": false,
+  "backend_source_sha": "5fd379d625d6c18abdec1b98d388494d0900c780",
+  "canonical_deployed_sha256": "2354bb6e48c86423250df592434cc5d020020ac397b44f92cd7fef31df836c4d",
+  "canonical_prepared_sha256": "eedb0a0bd08bd7d46cf2bf206b9c50aae8d2487dcf93a5619b23a8eb6b44f285",
+  "database_write_or_restore": false,
+  "frontend_version": "8c3b5e1302ac",
+  "old_hashed_assets_preserved": true,
+  "only_nginx_public_root_changed": true,
+  "private_credentials_environment_schema_csp_unchanged": true,
+  "production_ui_acceptance_pending": false,
+  "production_ui_acceptance_sha256": "2b31ee2d30f5463fbf3fe4281cfb6fcc0f81fe94efe9aa85e0a4971f59343ec4",
+  "provider_or_publication_action": false,
+  "source_delta_frontend_only_paths": 3,
+  "source_sha": "eec3d1d02a97a5b52a1483e0c93f094242aade56",
+  "stage": "META_MONTHLY_STATIC_CANONICAL_DEPLOYED_REVIEW_PASSED",
+  "unchanged_runtime": {
+    "config": "5038d2dcddb9b0215926f5d45411c25b56542c678a082a8b05774054b1d9c94e",
+    "id": "1ee579193b73048fb1120f516d53d2400191c2499cfad5284184ca0506ed698e",
+    "image": "sha256:05dc7e8e8ce620e0d92e07e95d304537250d17beb14dbeb63713e06d2319bf41",
+    "restart": 0,
+    "started": "2026-11-01T22:06:12.469255563Z"
+  }
+}

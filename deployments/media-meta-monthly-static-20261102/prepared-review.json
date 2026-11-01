@@ -1,0 +1,23 @@
+{
+  "all162_rows_unchanged": true,
+  "backend_files_unchanged": 420,
+  "backend_restart_or_image_change": false,
+  "backend_source_sha": "5fd379d625d6c18abdec1b98d388494d0900c780",
+  "canonical_prepared_sha256": "eedb0a0bd08bd7d46cf2bf206b9c50aae8d2487dcf93a5619b23a8eb6b44f285",
+  "database_write_or_restore": false,
+  "frontend_version": "8c3b5e1302ac",
+  "only_nginx_public_root_change_pending": true,
+  "private_credentials_environment_schema_csp_unchanged": true,
+  "provider_or_publication_action": false,
+  "ready_for_separate_activation": true,
+  "source_delta_frontend_only_paths": 3,
+  "source_sha": "eec3d1d02a97a5b52a1483e0c93f094242aade56",
+  "stage": "META_MONTHLY_STATIC_CANONICAL_PREPARED_REVIEW_PASSED",
+  "unchanged_runtime": {
+    "config": "5038d2dcddb9b0215926f5d45411c25b56542c678a082a8b05774054b1d9c94e",
+    "id": "1ee579193b73048fb1120f516d53d2400191c2499cfad5284184ca0506ed698e",
+    "image": "sha256:05dc7e8e8ce620e0d92e07e95d304537250d17beb14dbeb63713e06d2319bf41",
+    "restart": 0,
+    "started": "2026-11-01T22:06:12.469255563Z"
+  }
+}

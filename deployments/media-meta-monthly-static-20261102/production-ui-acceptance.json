@@ -1,0 +1,36 @@
+{
+  "application_ui_source": "eec3d1d02a97a5b52a1483e0c93f094242aade56",
+  "backend_regressions_passed": 1401,
+  "backend_source": "5fd379d625d6c18abdec1b98d388494d0900c780",
+  "frontend_regressions_passed": 269,
+  "frontend_version": "8c3b5e1302ac",
+  "global_tsc_baseline_limitation": "unchanged Finance.tsx5778 TS2322; no media errors",
+  "google_existing12_month_items_preserved": true,
+  "main_deployed_receipt": "41ab8e9a87761901e16cce56102de6040d80476aa1b9e43c9f422cea1e3d3aa0",
+  "meta_execution_flags_remain_off": true,
+  "monthly_fb_ig_exact_scope_verified": true,
+  "no_actual_provider_publication_submitted": true,
+  "no_business_mutations_submitted": true,
+  "no_generation_or_schedule_submitted": true,
+  "production_desktop_action": {
+    "client_width": 122,
+    "platform": "facebook",
+    "scroll_width": 122,
+    "short_action": "\u51c6\u5907\u6574\u6708",
+    "viewport": 1280
+  },
+  "production_mobile320": {
+    "action_client_width": 162,
+    "action_scroll_width": 162,
+    "page_scroll_width": 320
+  },
+  "production_mobile390": {
+    "action_client_width": 224,
+    "action_scroll_width": 224,
+    "page_scroll_width": 390
+  },
+  "public_version_verified": true,
+  "stage": "MEDIA_META_MONTHLY_FINAL_PRODUCTION_UI_ACCEPTANCE",
+  "static_deployed_receipt": "2354bb6e48c86423250df592434cc5d020020ac397b44f92cd7fef31df836c4d",
+  "synthetic_desktop_102px_cell_passed": true
+}
