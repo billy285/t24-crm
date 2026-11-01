@@ -60,3 +60,20 @@ test('changed input does not offer a second draft for a merchant month with an e
 });
 
 test('selected-month history rejects another editorial month rather than offering a misleading batch',()=>{assert.throws(()=>api.verifiedMonthlyRuns({items:[run()]},20,'2026-12'));assert.equal(api.verifiedMonthlyRuns({items:[run()]},20,'2026-11').items.length,1);});
+
+test('unused drafts archive only after explicit confirmation, preserve every item and recover the original request',async()=>{
+  const h=harness();await preview(h);const trigger=button(h.render(),'归档未采用草案，保留记录');assert.equal(trigger.props.disabled,true);
+  button(check(h,'确认归档当前未采用草案'),'归档未采用草案，保留记录').props.onClick();const original=h.requests.at(-1);
+  assert.equal(original.options.url,'/api/v1/media-monthly/runs/4/archive');assert.equal(original.options.data.expected_revision,1);assert.equal(original.options.data.confirmed,true);
+  original.reject(new Error('network'));await tick();assert.equal(h.held,true);
+  button(h.render(),'读取原结果').props.onClick();assert.equal(h.requests.at(-1).options.url,`/api/v1/media-monthly/requests/${requestId}`);
+  const archived=run({status:'archived',revision:2,archive_receipt:{request_id:requestId,revision:2}});h.requests.at(-1).resolve({data:archived});await tick();
+  assert.equal(h.held,false);assert.match(label(h.render()),/原归档结果/);assert.equal(h.requests.filter(request=>request.options.method==='POST').length,1);
+  assert.equal(nodes(h.render()).some(node=>node.type==='Button'&&label(node)==='修改本篇文字'),false);
+  assert.match(label(h.render()),/当前资料与已归档草案相同/);
+});
+test('an active monthly packet cannot be archived through the legacy draft view',async()=>{
+  const h=harness();await preview(h);find(h.render(),node=>node.type==='MediaMonthlyPipeline').props.onPacketActive(true);
+  assert.equal(nodes(h.render()).some(node=>node.type==='Button'&&label(node)==='归档未采用草案，保留记录'),false);
+  assert.ok(h.requests.every(request=>request.options.method==='GET'));
+});
