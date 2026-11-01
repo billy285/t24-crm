@@ -77,3 +77,12 @@ test('an active monthly packet cannot be archived through the legacy draft view'
   assert.equal(nodes(h.render()).some(node=>node.type==='Button'&&label(node)==='归档未采用草案，保留记录'),false);
   assert.ok(h.requests.every(request=>request.options.method==='GET'));
 });
+
+test('explicitly changing the work month clears the original entry run rather than reopening another month batch',()=>{
+  let selectedMonth,entryRef;const jsx=(type,props,key)=>({type,props,key});const fallback=new Proxy({},{get:(_,key)=>key==='__esModule'?true:String(key)});
+  const imports=new Proxy({react:{useRef:value=>entryRef??=( {current:value}),useState:init=>{selectedMonth??=typeof init==='function'?init():init;return[selectedMonth,value=>selectedMonth=value];}},'react/jsx-runtime':{jsx,jsxs:jsx},'@/lib/media-monthly-api':api,'@/lib/use-unsaved-changes':{confirmDiscardAllChanges:()=>true}},{get:(value,key)=>value[key]||fallback});
+  const entry=compile(componentSource,imports).default({scope:'owner:1',customerId:31,isOwner:true,initialMonth:'2026-11',initialRunId:4});
+  const render=()=>entry.type(entry.props),inner=tree=>find(tree,node=>typeof node.type==='function');
+  assert.equal(inner(render()).props.initialRunId,4);control(render(),'月度工作月份').props.onChange({target:{value:'2026-12'}});
+  assert.equal(inner(render()).props.month,'2026-12');assert.equal(inner(render()).props.initialRunId,undefined);
+});

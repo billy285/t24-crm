@@ -23,11 +23,11 @@ const shownTime = (value: string | null, zone = 'Asia/Shanghai') => value ? medi
 
 export default function MediaMonthlyPipeline(props: Props) {
   if (!props.isOwner || !Number.isSafeInteger(props.run.customer_id) || props.run.customer_id < 1 || props.run.status !== 'generated') return null;
-  return <OwnerMonthlyPipeline key={`${props.scope}:${props.run.id}:${props.run.revision}`} {...props}/>;
+  return <OwnerMonthlyPipeline key={`${props.scope}:${props.run.customer_id}:${props.run.month}:${props.run.id}:${props.run.revision}`} {...props}/>;
 }
 
 function OwnerMonthlyPipeline({ scope, run, isOwner, parentBlocked, onPacketActive, onReloadRun, onOpenTask, onHoldChange, onChanged }: Props) {
-  const identity = `${scope}:${run.customer_id}:${run.id}:${run.revision}:${isOwner}`;
+  const identity = `${scope}:${run.customer_id}:${run.month}:${run.id}:${run.revision}:${isOwner}`;
   const current = useRef(identity); current.current = identity;
   const alive = useRef(true), sequence = useRef(0), busyRef = useRef(false), pending = useRef<Pending | null>(null);
   const packetListener = useRef(onPacketActive); packetListener.current = onPacketActive;
