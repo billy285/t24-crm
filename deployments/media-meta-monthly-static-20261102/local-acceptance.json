@@ -1,0 +1,40 @@
+{
+  "backend_changes": false,
+  "business_mutations": false,
+  "desktop_action_client_scroll_widths": [
+    [
+      122,
+      122
+    ],
+    [
+      102,
+      102
+    ]
+  ],
+  "frontend_version": "8c3b5e1302ac",
+  "mobile320_action_client_scroll_width": [
+    186,
+    186
+  ],
+  "mobile320_viewport_document_width": [
+    320,
+    320
+  ],
+  "mobile390_no_overflow": true,
+  "navigation_action_object_unchanged": true,
+  "no_duplicate_platform_prefix": true,
+  "platforms_checked": [
+    "facebook",
+    "instagram"
+  ],
+  "production_ui_acceptance_pending": true,
+  "public_provider_calls": false,
+  "root_reported_frontend_seconds": 14.223,
+  "root_reported_frontend_serial_passed": 269,
+  "root_reported_vite_seconds": 11.13,
+  "source_protected_outside_exact_three_paths": true,
+  "source_sha": "eec3d1d02a97a5b52a1483e0c93f094242aade56",
+  "stage": "META_MONTHLY_ACTION_LAYOUT_UI_ACCEPTED",
+  "synthetic_only": true,
+  "two_line_action_text_readable": true
+}

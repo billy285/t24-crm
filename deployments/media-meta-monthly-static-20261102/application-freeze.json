@@ -1,0 +1,29 @@
+{
+  "backend_changes": false,
+  "baseline_frontend_version": "1d94d63752de",
+  "baseline_source_sha": "5fd379d625d6c18abdec1b98d388494d0900c780",
+  "container_restarts": false,
+  "content_security_policy_changes": false,
+  "credentials_included": false,
+  "database_migration": false,
+  "database_writes": false,
+  "dependencies_changes": false,
+  "dist_inventory_sha256": "d4b6eaec383efa8801acaee8fcd3537c118d2eca2ad1eb75aa56d867686ee33a",
+  "environment_changes": false,
+  "exact_monthly_action_layout_only": true,
+  "existing_hashed_assets_preserved": true,
+  "files": {
+    "app/frontend/src/components/MediaPortfolioPanels.tsx": "9842b5f124661e10ee6f72a16437f08685b20aa1b4de919fd44213f6fdbb2b22",
+    "app/frontend/src/components/media-merchant-workspace.css": "12c255efa167d02a51a596c3cc1794cdf3b21e3cf1e3db8b2e5a3da2f3f2c3a9",
+    "app/frontend/tests/media-workspace-queue.test.mjs": "d6bf2929c6462a283f2070c1c5afdabfbb4fb6def4a6251c25952e0a7678179f"
+  },
+  "frontend_version": "8c3b5e1302ac",
+  "original162_database_preservation_required": true,
+  "permissions_changes": false,
+  "preflight_sha256": "78bb1249abca9506a9158c88fcbc31edf36c0eef6926c07ddc07f6235e0a9143",
+  "publications_or_provider_writes": false,
+  "runtime_environment_and_private_boundaries_preservation_required": true,
+  "source_sha": "eec3d1d02a97a5b52a1483e0c93f094242aade56",
+  "stage": "MEDIA_META_MONTHLY_UI_APPLICATION_FREEZE",
+  "static_only": true
+}
