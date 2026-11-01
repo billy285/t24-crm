@@ -1,0 +1,59 @@
+{
+  "actual_raw_sha256": "10332b4b7994449f619cfe67eb1dc5b5c5d131fc34f42cf7a07eb5e4758ae7c9",
+  "application_or_R3_source_changes": false,
+  "canonical_postpilot_bytes": 1355,
+  "canonical_postpilot_sha256": "6c5e5e50b0696c4eef620b1a78d8cba3941394085f248843bca84755020e2636",
+  "checker_sha256": "da7cbced1c2a56a8cf6040ae4a3330df3bcd829e277a418dad9afb3f190aa7fc",
+  "checks": {
+    "all_other_sequence_counters_unchanged": true,
+    "catalog_locations": 70,
+    "catalog_truncated": false,
+    "connection_refresh_allowed_columns": [
+      "last_error",
+      "token_encrypted"
+    ],
+    "connection_refresh_columns_changed": true,
+    "crm_customers": 43,
+    "current_tables": 162,
+    "existing_google_bindings": 15,
+    "existing_monthly_rate_counter_forward_only": true,
+    "new_batches": 0,
+    "new_catalogs": 1,
+    "new_discovery_receipts": 1,
+    "new_items": 0,
+    "original158_rows_preserved_except_schema_head_and_explicit_connection_refresh": true,
+    "original158_shapes_preserved": true,
+    "original_tables": 158,
+    "owner_and_connection_scope_verified": true
+  },
+  "connection_old_copy_authenticated_against_production_baseline_hash_before_per_column_compare": true,
+  "connection_refresh_exception_only_selected_connection_encrypted_token_or_cleared_error_other_fields_and_connections_exact": true,
+  "credential_file_content_read": false,
+  "database_writes": 0,
+  "deployed_sha256": "d114e977100f7269816579f5eab96a46fd4efde9b113936a263ca2c4c363ae00",
+  "exact_actual_receipt_and_wrapper_reproduced_without_execution": true,
+  "executed_wrapper_sha256": "fbc669fa940623d4cb1dc8d6f05b8677193e214f2837f6ed1e09feab0147107f",
+  "frontend_version": "b0e161d74fe5",
+  "limits": [
+    "Root executed the exact reviewed wrapper in the server; reviewer independently checked local bytes and actual aggregate receipt.",
+    "This owner pilot performed discovery/reload/comparison only; no preview, batch confirmation or new binding was executed."
+  ],
+  "maker_sha256": "e148e43c4b81e1fb6f1ad4598e4b6e1e76b77e5ebe39c2f53b0bc2b5668fef8c",
+  "original_finance_closing_commission_acl_private_monthly_asset_and_native_binding_rows_not_ignored": true,
+  "prepared_sha256": "ef9ea86c6f12c59c18fc508aaa5028f476ba0187a74f19e06df23b06a188d4ff",
+  "provider_requests": 0,
+  "python310_fraction_comparison_canary_verified_without_changing_raw_runtime_pin": true,
+  "raw_rows_exported": false,
+  "reviewer_server_execution": false,
+  "runtime_pins": {
+    "config": "eeed0663f81bffa9cc9926afde7d203ac84ced2725e0fba0fc7342c136531728",
+    "id": "9b247014d54e57e5f671d3f8378c6b387c5301a87471b823e790b0d4965d072b",
+    "image": "sha256:ed057407d8866958a2966043ddc2457488d77cc00dd7bbabb608bcedc7c0bb09",
+    "restart": 0,
+    "started": "2026-11-01T19:00:56.90391494Z"
+  },
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "stage": "GOOGLE_ONBOARDING_ACTUAL_POSTPILOT_BACKEND_INDEPENDENT_REVIEW_PASS",
+  "status": "PASS",
+  "strict_auto_removed_probe_or_exact_stopped_probe_and_no_running_copy_writer_verified": true
+}

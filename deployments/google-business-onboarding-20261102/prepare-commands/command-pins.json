@@ -1,0 +1,34 @@
+{
+  "carrier": "6a2f0d1a5607b6c2edc8ff74061f3fd03805efae",
+  "command_sha256": {
+    "prepare-command.sh": "b402a7c25332078f0a4456e18f7ac7577ab348ac460c2d82994b581e9ccb0f06"
+  },
+  "executed": false,
+  "frontend_version": "b0e161d74fe5",
+  "members": {
+    "artifacts/manifest.json": [
+      "manifest.json",
+      "3c714aba0a597b1c46d66d8979bf43ec6464d0d5ff9c219dd0e47dd0ba816ad0",
+      147923
+    ],
+    "artifacts/payload.tar.gz": [
+      "payload.tar.gz",
+      "61cdb231e54302f44a13c59c42ee488f97e892c45bfbee50c2cfcced72db4bb1",
+      2283505
+    ],
+    "preflight.py": [
+      "preflight.py",
+      "9e21360af95953adf9f705c9add9a968c381149e0a57038ac976f9b8fa34dee3",
+      14663
+    ],
+    "release.py": [
+      "release.py",
+      "c07e2041379e5064d50b58d10a93717f6bda376737c4691ac3f7ce1cad6bc01a",
+      58002
+    ]
+  },
+  "preflight_sha256": "2b1a9dde5020023ef33136b45bc54384745aeed30ab5f2c2e3312a59a8ebd485",
+  "prepared_sha256": null,
+  "release": "/opt/t24-crm/releases/google-business-onboarding-8b429dad8a2f-20261102",
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c"
+}

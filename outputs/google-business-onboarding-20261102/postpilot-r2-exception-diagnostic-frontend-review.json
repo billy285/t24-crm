@@ -1,0 +1,12 @@
+{
+  "checker_sha256": "68d9cbbeae515878e9756fdc2ed48d83cd178692448bc7a1e027689ad37994f6",
+  "command_bytes": 11727,
+  "command_sha256": "8edb310dbb0dc97704a21c52034058eb58e8dd947cf51e9163d522d7734a33fd",
+  "no_exception_message_locals_paths_or_raw_values_exported": true,
+  "no_provider_or_database_write_actions": true,
+  "prints_only_validated_exception_class_and_known_checker_function_line_numbers": true,
+  "same_readonly_main_called_inside_redacted_exception_boundary": true,
+  "server_execution": false,
+  "stage": "POSTPILOT_R2_EXCEPTION_DIAGNOSTIC_FRONTEND_REVIEW",
+  "status": "PASS"
+}

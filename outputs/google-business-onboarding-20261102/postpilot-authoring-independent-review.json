@@ -1,0 +1,29 @@
+{
+  "actual_runtime_pins_and_command_bytes_pending": true,
+  "connection_exception_only_same_selected_owner_row_token_encrypted_and_last_error_none": true,
+  "credential_files_not_read_ciphertext_not_decrypted_or_exported": true,
+  "exact_single_owner_catalog_and_discovery_request_only": true,
+  "files": {
+    "make_postpilot.py": {
+      "bytes": 6347,
+      "sha256": "e148e43c4b81e1fb6f1ad4598e4b6e1e76b77e5ebe39c2f53b0bc2b5668fef8c"
+    },
+    "postpilot.py": {
+      "bytes": 17388,
+      "sha256": "694c42889e8bd807d456f69fc6cb9fc81d2b4783e1a0623c985f6b9a3732c6d2"
+    },
+    "test_postpilot.py": {
+      "bytes": 17291,
+      "sha256": "382e201f851bc34a3584fa493997e46f30d02646d5a9fd33fd2585c9fdd5f1f6"
+    }
+  },
+  "frozen_native_snapshot_schema_metadata_semantics_tested": true,
+  "independent_tests_passed": 53,
+  "old_connections_copy_whole_table_hash_bound_to_activation_baseline": true,
+  "provider_requests_or_server_actions": false,
+  "root_private_receipts_open_stability_and_actual_runtime_source_chain": true,
+  "single_production_readonly_transaction": true,
+  "status": "PASS_AUTHORING_ONLY_PENDING_ACTUAL_RECEIPTS",
+  "strict158_original_table_shape_and_row_checks": true,
+  "zero_batch_item_binding_or_financial_mutations": true
+}

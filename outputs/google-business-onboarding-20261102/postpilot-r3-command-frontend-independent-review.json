@@ -1,0 +1,21 @@
+{
+  "checker_bytes": 22481,
+  "checker_sha256": "da7cbced1c2a56a8cf6040ae4a3330df3bcd829e277a418dad9afb3f190aa7fc",
+  "command_bytes": 11568,
+  "command_sha256": "fbc669fa940623d4cb1dc8d6f05b8677193e214f2837f6ed1e09feab0147107f",
+  "database_writes": false,
+  "delta_only_bounded_timestamp_comparison_normalization_pure_canary_call_and_aggregate_flag": true,
+  "exact_in_memory_command_pins_and_embedded_checker_reproduced": true,
+  "independent_tests_passed": 78,
+  "maker_unchanged": true,
+  "old_two_wrappers_unchanged": true,
+  "prior_r2_rm_probe_old_copy_source_schema_metadata_and_ro_guards_preserved": true,
+  "provider_requests": false,
+  "runtime_original_string_hash_and_all158_15binding_guards_unchanged": true,
+  "server_execution": false,
+  "stage": "GOOGLE_ONBOARDING_POSTPILOT_R3_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS",
+  "strict_fractions_and_z_or_offset_canary_runs_before_sql": true,
+  "test_seconds": 1.31,
+  "timestamp_format_1_to_9_fraction_python310_compatible_and_invalid_inputs_rejected": true
+}

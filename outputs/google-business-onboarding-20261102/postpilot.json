@@ -1,0 +1,37 @@
+{
+  "application_source_unchanged": true,
+  "checks": {
+    "all_other_sequence_counters_unchanged": true,
+    "catalog_locations": 70,
+    "catalog_truncated": false,
+    "connection_refresh_allowed_columns": [
+      "last_error",
+      "token_encrypted"
+    ],
+    "connection_refresh_columns_changed": true,
+    "crm_customers": 43,
+    "current_tables": 162,
+    "existing_google_bindings": 15,
+    "existing_monthly_rate_counter_forward_only": true,
+    "new_batches": 0,
+    "new_catalogs": 1,
+    "new_discovery_receipts": 1,
+    "new_items": 0,
+    "original158_rows_preserved_except_schema_head_and_explicit_connection_refresh": true,
+    "original158_shapes_preserved": true,
+    "original_tables": 158,
+    "owner_and_connection_scope_verified": true
+  },
+  "credential_file_content_read": false,
+  "credentials_decrypted": false,
+  "database_writes": 0,
+  "deployed_sha256": "d114e977100f7269816579f5eab96a46fd4efde9b113936a263ca2c4c363ae00",
+  "prepared_sha256": "ef9ea86c6f12c59c18fc508aaa5028f476ba0187a74f19e06df23b06a188d4ff",
+  "private_boundary_unchanged": true,
+  "provider_requests": 0,
+  "raw_rows_exported": false,
+  "runtime_config_unchanged": true,
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "stage": "GOOGLE_ONBOARDING_POSTPILOT_READONLY_VERIFIED",
+  "timestamp_1_to_9_fraction_compatibility_verified": true
+}

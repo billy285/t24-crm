@@ -1,0 +1,18 @@
+{
+  "application_or_R3_release_changes": false,
+  "checker_sha256": "da7cbced1c2a56a8cf6040ae4a3330df3bcd829e277a418dad9afb3f190aa7fc",
+  "confirmed_runtime_root_cause": "Python310 rejects Docker eight digit datetime fraction; safe traceback main/audit/stamp",
+  "maker_sha256": "e148e43c4b81e1fb6f1ad4598e4b6e1e76b77e5ebe39c2f53b0bc2b5668fef8c",
+  "new_command_bytes": 11568,
+  "new_command_sha256": "fbc669fa940623d4cb1dc8d6f05b8677193e214f2837f6ed1e09feab0147107f",
+  "only_new_delta": "strict bounded timestamp comparison normalization and pure pre-SQL timestamp canary; raw runtime exact hash untouched",
+  "original158_rows_finance_acl_private_monthly_asset_and_binding_checks_unchanged": true,
+  "original81cb_preserved": true,
+  "previous9f60_preserved": true,
+  "provider_requests": false,
+  "server_execution_by_author": false,
+  "stage": "GOOGLE_ONBOARDING_POSTPILOT_R3_AUTHORING_TESTED",
+  "synthetic_only": true,
+  "tests_passed": 78,
+  "tests_sha256": "925eccdd961da4d5911f36c676e51507de79b0ca09bcdd7c59aa57463c1a0b6e"
+}

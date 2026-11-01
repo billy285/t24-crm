@@ -1,0 +1,40 @@
+{
+  "actual_create_request_or_provider_calls_not_executed": true,
+  "actual_receipts_and_exact_command_reproduction_still_pending": true,
+  "all158_original_tables_rows_and_shapes_preserved_except_schema_head": true,
+  "application_or_tool_mutations": false,
+  "connection_refresh_default_disallowed_and_explicit_exception_only_selected_id_token_encrypted_last_error": true,
+  "current162_schema_hash_four_table_shapes_runtime_full_config_source_private_csp_checked": true,
+  "current_db_mode_ro_query_only_single_read_transaction": true,
+  "exact_one_ready_owner_discovery_and_original_uuid_receipt_only": true,
+  "existing15_native_binding_rows_unchanged_and_no_new_batches_items": true,
+  "files": {
+    "make_postpilot.py": {
+      "bytes": 6347,
+      "sha256": "e148e43c4b81e1fb6f1ad4598e4b6e1e76b77e5ebe39c2f53b0bc2b5668fef8c"
+    },
+    "postpilot.py": {
+      "bytes": 17388,
+      "sha256": "694c42889e8bd807d456f69fc6cb9fc81d2b4783e1a0623c985f6b9a3732c6d2"
+    },
+    "test_postpilot.py": {
+      "bytes": 17291,
+      "sha256": "382e201f851bc34a3584fa493997e46f30d02646d5a9fd33fd2585c9fdd5f1f6"
+    }
+  },
+  "independent_tests_passed": 53,
+  "limits": [
+    "Framework read-only review using synthetic SQLite and receipts only. Actual deployed receipt pins and emitted wrapper need separate exact-byte review.",
+    "This review neither starts the owner discovery nor performs provider/server actions."
+  ],
+  "no_decrypted_tokens_secrets_or_raw_rows_output_only_aggregate": true,
+  "no_installs_or_publications_or_bindings_in_checker": true,
+  "old_connection_columns_hash_bound_to_protected_stopped_offline_copy": true,
+  "original_sqlite_metadata_and_sequences_preserved_except_existing_forward_only_monthly_counter": true,
+  "other_connection_fields_owner_active_reconnect_marker_and_other_rows_preserved": true,
+  "provider_requests": false,
+  "server_execution": false,
+  "stage": "GOOGLE_ONBOARDING_POSTPILOT_FRAMEWORK_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS_PENDING_ACTUAL_RUNTIME_PINS",
+  "test_seconds": 1.43
+}

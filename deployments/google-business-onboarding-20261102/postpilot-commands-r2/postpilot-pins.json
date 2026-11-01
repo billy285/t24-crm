@@ -1,0 +1,23 @@
+{
+  "allow_connection_refresh": true,
+  "checker_bytes": 21387,
+  "checker_sha256": "68d9cbbeae515878e9756fdc2ed48d83cd178692448bc7a1e027689ad37994f6",
+  "command_bytes": 10964,
+  "command_sha256": "9f60fc670335029aaeae8150551e2ecbe147ecd153a42f9244af3de5d9de68e3",
+  "customer_id": null,
+  "database_writes": false,
+  "deployed_sha256": "d114e977100f7269816579f5eab96a46fd4efde9b113936a263ca2c4c363ae00",
+  "executed": false,
+  "helper_sha256": "0ac3a706567118506831853d425983f119d469451aea32c31f07d6f23a4b69a8",
+  "prepared_sha256": "ef9ea86c6f12c59c18fc508aaa5028f476ba0187a74f19e06df23b06a188d4ff",
+  "provider_requests": false,
+  "release": "/opt/t24-crm/releases/google-business-onboarding-r3-8b429dad8a2f-20261102",
+  "runtime": {
+    "config": "eeed0663f81bffa9cc9926afde7d203ac84ced2725e0fba0fc7342c136531728",
+    "id": "9b247014d54e57e5f671d3f8378c6b387c5301a87471b823e790b0d4965d072b",
+    "image": "sha256:ed057407d8866958a2966043ddc2457488d77cc00dd7bbabb608bcedc7c0bb09",
+    "restart": 0,
+    "started": "2026-11-01T19:00:56.90391494Z"
+  },
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c"
+}

@@ -1,0 +1,37 @@
+{
+  "actual_runtime_receipts_pending": true,
+  "database_writes": false,
+  "executable_command_emitted": false,
+  "files": {
+    "make_postpilot.py": {
+      "bytes": 6347,
+      "sha256": "e148e43c4b81e1fb6f1ad4598e4b6e1e76b77e5ebe39c2f53b0bc2b5668fef8c"
+    },
+    "postpilot.py": {
+      "bytes": 17388,
+      "sha256": "694c42889e8bd807d456f69fc6cb9fc81d2b4783e1a0623c985f6b9a3732c6d2"
+    },
+    "test_postpilot.py": {
+      "bytes": 17291,
+      "sha256": "382e201f851bc34a3584fa493997e46f30d02646d5a9fd33fd2585c9fdd5f1f6"
+    }
+  },
+  "frozen_sql_snapshot_schema_metadata_independent_semantics_verified": true,
+  "guards": [
+    "old158_table_shapes_and_rows_strict_except_reviewed_head",
+    "single_catalog_single_original_discovery_receipt",
+    "no_batch_item_binding_changes",
+    "exact_same_live_owner_and_connection_scope",
+    "protected_old_copy_connection_hash_before_two_column_exception",
+    "connection_refresh_selected_id_only_token_encrypted_and_last_error_none",
+    "existing_monthly_counter_forward_only_exception",
+    "read_only_mode_query_only_single_current_transaction",
+    "runtime_full_config_source_private_boundary_pins",
+    "no_command_before_actual_prepared_and_deployed_receipts"
+  ],
+  "provider_requests": false,
+  "stage": "GOOGLE_ONBOARDING_POSTPILOT_AUTHORING_TESTED",
+  "synthetic_database_only": true,
+  "synthetic_in_memory_command_bytes": 9538,
+  "tests_passed": 53
+}

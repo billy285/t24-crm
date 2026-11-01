@@ -1,0 +1,37 @@
+{
+  "activation_rechecks_current_rows_env_private_source_schema_before_switch": true,
+  "actual_py310_owner_denied_no_sql_idle_queue_readonly_and_generic_crud_canaries_passed": true,
+  "all_required_actual_prepared_flags_match": true,
+  "candidate_image": "sha256:ed057407d8866958a2966043ddc2457488d77cc00dd7bbabb608bcedc7c0bb09",
+  "carrier": "1523699728e5b07064ea325543e9f8b3e07c953d",
+  "command_bytes": {
+    "activate-command.sh": 2256,
+    "prepare-command.sh": 3240,
+    "recover-command.sh": 2255
+  },
+  "command_sha256": {
+    "activate-command.sh": "28200a8a27de2e0181086127768e5c74105863c2a8bae29fe257b1d380894653",
+    "prepare-command.sh": "2c72498e7afc4fa587e8c27483413bb42f618ab575bd771f18473a54cc7c1397",
+    "recover-command.sh": "7d641fc86131048cb945714430bcc65d88eb8175b60ebdd3dfe772b72a8e1841"
+  },
+  "exact_envelope_canonical_matches_server_marker": true,
+  "exact_in_memory_commands_and_pins_reproduced": true,
+  "limits": [
+    "Actual deployment and live UI acceptance remain root actions after this review.",
+    "No server/provider/Git/application or release-tool mutations performed by reviewer."
+  ],
+  "no_provider_publication_schedule_customer_or_financial_seed_actions": true,
+  "offline_network_none_no_credentials_no_workers_and_no_production_db_write": true,
+  "old_runtime_exactly_matches_current158_preflight": true,
+  "original158_rows_metadata_preserved_four_new_tables_empty_in_offline162": true,
+  "prepared_canonical_bytes": 3383,
+  "prepared_sha256": "ef9ea86c6f12c59c18fc508aaa5028f476ba0187a74f19e06df23b06a188d4ff",
+  "provider_requests": false,
+  "recovery_uses_scoped_settlement_and_forward_only_after_schema_commit": true,
+  "retained_real_renderer_result_sha256": "75af239f191c612b32b971c037d54853d1ba477dc94d19eb4a6f145317de46b5",
+  "server_execution": false,
+  "six_existing_csp_directives_unchanged": true,
+  "stage": "GOOGLE_ONBOARDING_R3_SWITCH_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS",
+  "switch_requires_exact_helper_and_actual_canonical_prepared_hash": true
+}

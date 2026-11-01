@@ -1,0 +1,20 @@
+{
+  "actual_task": "t-hk071tsj2i6qnls",
+  "canonical_aggregate_sha256": "6c5e5e50b0696c4eef620b1a78d8cba3941394085f248843bca84755020e2636",
+  "canonical_bytes": 1355,
+  "database_or_provider_writes_by_checker": 0,
+  "discovered_complete_google_locations": 70,
+  "native_original158_shape_and_rows_verified_except_explicit_selected_connection_two_columns": true,
+  "new_batches": 0,
+  "new_catalogs": 1,
+  "new_discovery_receipts": 1,
+  "new_items": 0,
+  "original_customers": 43,
+  "original_google_bindings": 15,
+  "raw_rows_or_credentials_exported": false,
+  "runtime_source_private_and_all_other_counters_preserved": true,
+  "separate_from_deployment_empty4_acceptance": true,
+  "server_actions_by_reviewer": false,
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "status": "ACTUAL_OWNER_TRIAL_POSTPILOT_INDEPENDENT_PASS"
+}

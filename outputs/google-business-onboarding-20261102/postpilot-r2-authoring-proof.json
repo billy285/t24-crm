@@ -1,0 +1,23 @@
+{
+  "application_or_R3_release_changes": false,
+  "checker_sha256": "68d9cbbeae515878e9756fdc2ed48d83cd178692448bc7a1e027689ad37994f6",
+  "maker_sha256": "e148e43c4b81e1fb6f1ad4598e4b6e1e76b77e5ebe39c2f53b0bc2b5668fef8c",
+  "new_command_bytes": 10964,
+  "new_command_sha256": "9f60fc670335029aaeae8150551e2ecbe147ecd153a42f9244af3de5d9de68e3",
+  "new_safety_guards": [
+    "only_expected_authenticated_rm_probe_404_allowed",
+    "present_probe_exact_successfully_stopped_image_command_mount_network_and_frozen_offline_env",
+    "running_container_mount_metadata_rejects_any_copy_rw_writer_or_ancestor",
+    "oldcopy_same_baseline_connections_hash_and_fd_identity",
+    "oldcopy_schema_head_objects_and_sqlite_metadata_pinned"
+  ],
+  "original158_rows_finance_acl_private_monthly_asset_and_binding_checks_unchanged": true,
+  "original_81cb_command_preserved": true,
+  "provider_requests": false,
+  "root_actual_diagnostic_confirmed_expected_probe_auto_removed_and_old_copy_hash": true,
+  "server_execution_by_author": false,
+  "stage": "GOOGLE_ONBOARDING_POSTPILOT_R2_AUTHORING_TESTED",
+  "synthetic_only": true,
+  "tests_passed": 68,
+  "tests_sha256": "2930aa5fc002c1cd37973f6dc3403f35c12466ff30c28e48ce2dd0365a32ca4a"
+}

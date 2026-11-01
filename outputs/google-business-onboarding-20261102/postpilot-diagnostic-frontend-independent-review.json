@@ -1,0 +1,17 @@
+{
+  "calls_only_protected_reads_docker_inspection_and_old_copy_readonly_hash_check": true,
+  "command_bytes": 12031,
+  "command_sha256": "beaee41225f2a5e142afc8a381c6da03209ab3a4358d3e3b2df9087f9a5da4e0",
+  "embedded_checker_not_executed_as_main": true,
+  "embedded_frozen_checker_sha256": "694c42889e8bd807d456f69fc6cb9fc81d2b4783e1a0623c985f6b9a3732c6d2",
+  "existing_probe_auto_remove_flag_inspected_from_frozen_source_without_running": true,
+  "no_container_create_start_stop_or_remove_and_no_provider_requests": true,
+  "no_current_db_or_credentials_raw_export": true,
+  "only_phase_runtime_probe_boolean_aggregate_output": true,
+  "pins_match_previously_reviewed_actual_runtime": true,
+  "provider_requests": false,
+  "server_execution": false,
+  "source_mutations": false,
+  "stage": "GOOGLE_ONBOARDING_POSTPILOT_DIAGNOSTIC_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS"
+}

@@ -1,0 +1,21 @@
+{
+  "artifact_or_tool_source_changes": false,
+  "carrier": "6a2f0d1a5607b6c2edc8ff74061f3fd03805efae",
+  "command_bytes": 3234,
+  "command_sha256": "b402a7c25332078f0a4456e18f7ac7577ab348ac460c2d82994b581e9ccb0f06",
+  "exact_in_memory_command_and_pins_reproduced": true,
+  "frontend_version": "b0e161d74fe5",
+  "immutable_four_members_verified_against_git_carrier": true,
+  "no_redirect_or_proxy_and_immutable_raw_urls": true,
+  "offline_candidate_has_no_production_db_or_credentials_mounts_and_workers_disabled": true,
+  "only_prepare_phase_no_activation_or_recovery_generated": true,
+  "pins_sha256": "74724d33035635d6a283628d34fa175110c0986a72ac0347b9c8684513b75e7c",
+  "prepare_requires_current_populated158_baseline_and_additive162_canaries": true,
+  "prepared_receipt_and_switch_commands_still_pending": true,
+  "provider_requests": false,
+  "root_host_protected_fresh_directory_and_hash_size_checks_reviewed": true,
+  "server_execution": false,
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "stage": "GOOGLE_ONBOARDING_PREPARE_COMMAND_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS"
+}

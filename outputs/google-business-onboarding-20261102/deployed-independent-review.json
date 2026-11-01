@@ -1,0 +1,25 @@
+{
+  "actual_python310_and_renderer_canary_preserved": true,
+  "actual_task": "t-hk071tr86x9b5z4",
+  "all158_original_tables_preserved_before_owner_trial": true,
+  "all_runtime_env_credentials_google_cutoff_meta_disabled_private_csp_guards_passed": true,
+  "database_restored_or_production_containers_deleted": false,
+  "frontend_version": "b0e161d74fe5",
+  "new4_onboarding_tables_empty_at_deployment_acceptance": true,
+  "only_static_root_updated": true,
+  "owner_postdeployment_trial_is_separate": true,
+  "provider_or_publication_actions_by_release": false,
+  "receipt_bytes": 3255,
+  "receipt_sha256": "d114e977100f7269816579f5eab96a46fd4efde9b113936a263ca2c4c363ae00",
+  "runtime": {
+    "config": "eeed0663f81bffa9cc9926afde7d203ac84ced2725e0fba0fc7342c136531728",
+    "id": "9b247014d54e57e5f671d3f8378c6b387c5301a87471b823e790b0d4965d072b",
+    "image": "sha256:ed057407d8866958a2966043ddc2457488d77cc00dd7bbabb608bcedc7c0bb09",
+    "restart": 0,
+    "started": "2026-11-01T19:00:56.90391494Z"
+  },
+  "schema_revision": "g32ed456e792",
+  "server_actions_by_reviewer": false,
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "stage": "ACTUAL_R3_DEPLOYED_INDEPENDENTLY_VERIFIED"
+}

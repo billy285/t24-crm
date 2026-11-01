@@ -1,0 +1,74 @@
+{
+  "actual_prepare_acceptance_pending": true,
+  "app_server_provider_git_mutations": false,
+  "application_delta_files": 17,
+  "archive_regular_members_verified": 148,
+  "checks": [
+    "Prepare applies migration only to an isolated copy; all original158 populated tables and metadata are compared, including15 active bindings, asset pilot and prepared private monthly packet.",
+    "Candidate uses exact existing image and eight backend overlays; no dependency install or credentials in archive. Offline container has network none, credentials absent and all existing/new workers false.",
+    "R2 adapter proves exactly one T24_GBP_ONBOARDING_WORKER_ENABLED=false entry, removes only that known nonsecret flag from a deep copied inspection and reruns frozen credential/worker guard; actual container Env is untouched.",
+    "Actual Python310 main/OpenAPI/itercontexts owner-only8routes, readonly emptyqueue and512 generic-model404/405 attacks are explicitly mandatory canaries.",
+    "Immutable source/migration/table-shape/index allowlists and all148 archive member hashes are pinned. All1050 existing protected source hashes match current files.",
+    "Production migration follows separately reviewed prepared receipt and stopped original; durable baseline/candidate identity are saved first. No old worker restart after committed new schema; recovery remains forward-only.",
+    "Full original Env/private boundary and Google cutoff/MetaOFF are preserved. Nginx changes only one exact static-root byte sequence; CSP and original dependencies remain unchanged."
+  ],
+  "frontend_version": "b0e161d74fe5",
+  "pins": {
+    "deployments/google-business-onboarding-20261102/artifacts/manifest.json": {
+      "bytes": 147923,
+      "sha256": "3c714aba0a597b1c46d66d8979bf43ec6464d0d5ff9c219dd0e47dd0ba816ad0"
+    },
+    "deployments/google-business-onboarding-20261102/artifacts/payload.tar.gz": {
+      "bytes": 2283505,
+      "sha256": "61cdb231e54302f44a13c59c42ee488f97e892c45bfbee50c2cfcced72db4bb1"
+    },
+    "deployments/google-business-onboarding-20261102/attempt1-release.py": {
+      "bytes": 58002,
+      "sha256": "c07e2041379e5064d50b58d10a93717f6bda376737c4691ac3f7ce1cad6bc01a"
+    },
+    "deployments/google-business-onboarding-20261102/build_payload.py": {
+      "bytes": 23919,
+      "sha256": "a99e044ed73df4f71dd1ee02ded773d1711b9c4ab9aa03d2501e9e99575d606f"
+    },
+    "deployments/google-business-onboarding-20261102/make_commands.py": {
+      "bytes": 10053,
+      "sha256": "fd32fe47f9e52b974e8beadbdc4b6c39477c50dfef91e02716e641359737ddc6"
+    },
+    "deployments/google-business-onboarding-20261102/preflight.json": {
+      "bytes": 3780,
+      "sha256": "44c26158af97adbb6a21823017a330340c4dee211f88811ef290f8bde9d18d59"
+    },
+    "deployments/google-business-onboarding-20261102/preflight.py": {
+      "bytes": 14663,
+      "sha256": "9e21360af95953adf9f705c9add9a968c381149e0a57038ac976f9b8fa34dee3"
+    },
+    "deployments/google-business-onboarding-20261102/release.py": {
+      "bytes": 58819,
+      "sha256": "e926a51afafa913e9aec7bcc48cf099cb123fa49ca43346a647dcc3fc2ec8c43"
+    },
+    "deployments/google-business-onboarding-20261102/test_commands.py": {
+      "bytes": 8979,
+      "sha256": "4e5db6dc422a35e71137d8957c5300374425df5104fca1f80c9e965d20de4726"
+    },
+    "deployments/google-business-onboarding-20261102/test_offline_flag_adapter.py": {
+      "bytes": 3659,
+      "sha256": "04c7ba44711d04f6ac7ec0014280bc8288d9a0b984d59f9b082f25771f58f477"
+    },
+    "outputs/google-business-onboarding-20261102/application-file-freeze.json": {
+      "bytes": 3428,
+      "sha256": "e63f0128f58c287a6cc4b123fc620cfe8080914d8b6c59ab4519649a6d1829bd"
+    },
+    "outputs/google-business-onboarding-20261102/schema-freeze.json": {
+      "bytes": 992,
+      "sha256": "06a57118fefe64475e301d07582a8d21a4835d7329e2a90130a0f60f33ce877e"
+    }
+  },
+  "protected_source_file_hashes_verified": 1050,
+  "reported_new_backend_tests_passed": 36,
+  "reported_release_tests_passed": 122,
+  "runtime_backend_members": 8,
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "stage": "GOOGLE_ONBOARDING_R2_BACKEND_PACKAGE_INDEPENDENT_REVIEW_PASS",
+  "tests_rerun": false,
+  "unresolved_blockers": []
+}

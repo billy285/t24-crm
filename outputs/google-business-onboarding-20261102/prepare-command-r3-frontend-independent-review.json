@@ -1,0 +1,23 @@
+{
+  "actual_native_migration_chain_adapter_and_guards_reviewed": true,
+  "actual_prepared_and_switch_acceptance_pending": true,
+  "application_or_tool_mutations": false,
+  "carrier": "1523699728e5b07064ea325543e9f8b3e07c953d",
+  "command_bytes": 3240,
+  "command_sha256": "2c72498e7afc4fa587e8c27483413bb42f618ab575bd771f18473a54cc7c1397",
+  "current158_populated_baseline_and_offline162_empty4_canaries_required": true,
+  "exact_in_memory_command_and_pins_reproduced": true,
+  "fresh_r3_namespace_preserves_attempt1_attempt2": true,
+  "frontend_version": "b0e161d74fe5",
+  "immutable_four_members_verified_against_carrier": true,
+  "offline_no_production_db_credentials_or_enabled_workers": true,
+  "only_prepare_phase_no_switch_commands_generated": true,
+  "original_two_prepare_wrapper_bytes_unchanged": true,
+  "pins_sha256": "2b2d96132620b4275ca023e9c9f2294dfc27aa5a7565029a515284aae451144f",
+  "provider_requests": false,
+  "release": "/opt/t24-crm/releases/google-business-onboarding-r3-8b429dad8a2f-20261102",
+  "server_execution": false,
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "stage": "GOOGLE_ONBOARDING_R3_PREPARE_COMMAND_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS"
+}

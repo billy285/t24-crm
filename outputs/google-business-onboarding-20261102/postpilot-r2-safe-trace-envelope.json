@@ -1,0 +1,1 @@
+{"checker_frames": [{"function": "main", "line": 208}, {"function": "audit", "line": 155}, {"function": "stamp", "line": 42}], "checker_sha256": "68d9cbbeae515878e9756fdc2ed48d83cd178692448bc7a1e027689ad37994f6", "database_writes": 0, "exception_type": "ValueError", "locals_or_values_exported": false, "provider_requests": 0, "stage": "POSTPILOT_R2_EXCEPTION_DIAGNOSTIC"}

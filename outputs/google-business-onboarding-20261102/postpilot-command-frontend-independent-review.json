@@ -1,0 +1,31 @@
+{
+  "actual_deployed158_preserved_four_new_tables_empty162_and_env_private_csp_protections_verified": true,
+  "allow_connection_refresh": true,
+  "checker_readonly_aggregate_no_provider_or_decryption": true,
+  "checker_sha256": "694c42889e8bd807d456f69fc6cb9fc81d2b4783e1a0623c985f6b9a3732c6d2",
+  "command_bytes": 9536,
+  "command_sha256": "81cbddf411b2cfe53c40c848df1ba7e55fb4232dda2b6a20fbc28bcbf15cc204",
+  "customer_id": null,
+  "deployed_sha256": "d114e977100f7269816579f5eab96a46fd4efde9b113936a263ca2c4c363ae00",
+  "embedded_checker_and_actual_runtime_pins_recovered_and_verified": true,
+  "exact_actual_envelopes_canonical_match": true,
+  "exact_in_memory_command_and_pins_reproduced": true,
+  "independent_framework_tests_passed": 53,
+  "limits": [
+    "Run only after root completes the authorized single owner discovery; checker must still reject extra catalogs/batches/items or any native binding change.",
+    "No server/provider/Git actions or source/artifact mutations by reviewer."
+  ],
+  "prepared_sha256": "ef9ea86c6f12c59c18fc508aaa5028f476ba0187a74f19e06df23b06a188d4ff",
+  "provider_requests": false,
+  "runtime": {
+    "config": "eeed0663f81bffa9cc9926afde7d203ac84ced2725e0fba0fc7342c136531728",
+    "id": "9b247014d54e57e5f671d3f8378c6b387c5301a87471b823e790b0d4965d072b",
+    "image": "sha256:ed057407d8866958a2966043ddc2457488d77cc00dd7bbabb608bcedc7c0bb09",
+    "restart": 0,
+    "started": "2026-11-01T19:00:56.90391494Z"
+  },
+  "selected_connection_only_two_column_exception_with_hash_bound_old_copy": true,
+  "server_execution": false,
+  "stage": "GOOGLE_ONBOARDING_POSTPILOT_COMMAND_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS_READY_AFTER_SINGLE_DISCOVERY"
+}
