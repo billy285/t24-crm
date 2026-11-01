@@ -1,0 +1,51 @@
+{
+  "status": "PASS",
+  "url": "https://t24-crm.com/media-ops",
+  "backend_source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "frontend_source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78",
+  "frontend_version": "c814db9f574f",
+  "entry": "代运营中心 > 商家 > 批量接入 Google 门店",
+  "owner_entry_verified": true,
+  "first_catalog_original_request_recovered_after_reload": true,
+  "catalog_locations": 70,
+  "catalog_groups": {
+    "eligible": 0,
+    "review_needed": 2,
+    "already_bound": 15,
+    "unmatched": 13,
+    "inactive": 13
+  },
+  "selected_pairs": 0,
+  "production_previews_or_confirmations_submitted": 0,
+  "merchant_publications_submitted": 0,
+  "mobile": {
+    "width": 390,
+    "height": 844,
+    "actionbarAfterAllCards": true,
+    "bottom": "auto",
+    "cards": 2,
+    "documentWidth": 390,
+    "position": "static",
+    "viewport": 390,
+    "actionbar_end_visible": true
+  },
+  "desktop": {
+    "width": 1280,
+    "height": 720,
+    "actionbar_position": "sticky",
+    "bottom": "12px",
+    "no_horizontal_overflow": true
+  },
+  "viewport_override_reset": true,
+  "second_catalog_read": {
+    "reason": "Original ten-minute catalog expired before final CSS acceptance.",
+    "performed_after_static_database_acceptance": true,
+    "operation": "explicit refresh discovery only",
+    "new_binding_submissions": 0
+  },
+  "protected_data_proofs": {
+    "main_postpilot_sha256": "6c5e5e50b0696c4eef620b1a78d8cba3941394085f248843bca84755020e2636",
+    "mobile_deployed_sha256": "2a863c960b22d1392ede19a39ace1af18e1526508cf711e778d05fa763290947"
+  },
+  "screenshots_and_raw_merchant_documents_private_not_committed": true
+}

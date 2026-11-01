@@ -1,0 +1,34 @@
+{
+  "carrier": "f80b958a2cae933c10f1ec5daa7e974a67890fe2",
+  "command_sha256": {
+    "prepare-command.sh": "da54a7cac0c47a5a1c14f3d330278f1a40cdc5715cd528aaab373de8f7ef885d"
+  },
+  "executed": false,
+  "frontend_version": "c814db9f574f",
+  "members": {
+    "artifacts/manifest.json": [
+      "manifest.json",
+      "a08a1c922981b0fe0fa91436b4061e5143f6769bfd9e0e03b89f6c852444a51b",
+      146199
+    ],
+    "artifacts/payload.tar.gz": [
+      "payload.tar.gz",
+      "ff601095511c4e1573c49360b4e6833f46c0aa4a15ecb5c49b98fa5e6330e9f4",
+      2245573
+    ],
+    "preflight.py": [
+      "preflight.py",
+      "edeff00ba7088c9a04081b2e397680ce39021e1e7ce11fea974188dc7e73e416",
+      11327
+    ],
+    "release.py": [
+      "release.py",
+      "fb017adf5eaa00e7c873bc26471693cb54030494631390c7a85ad24891171b0c",
+      18040
+    ]
+  },
+  "preflight_sha256": "b847750a7e816361fa13a166f4f24e4f23a97008e108f33da486d54239bece5b",
+  "prepared_sha256": null,
+  "release": "/opt/t24-crm/releases/google-business-onboarding-mobile-adb948da237f-20261102",
+  "source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78"
+}

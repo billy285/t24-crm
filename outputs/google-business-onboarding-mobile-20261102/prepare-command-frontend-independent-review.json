@@ -1,0 +1,19 @@
+{
+  "actual_current162_preflight_b847_pinned": true,
+  "artifact_or_source_mutations": false,
+  "carrier": "f80b958a2cae933c10f1ec5daa7e974a67890fe2",
+  "command_bytes": 3290,
+  "command_sha256": "da54a7cac0c47a5a1c14f3d330278f1a40cdc5715cd528aaab373de8f7ef885d",
+  "exact_in_memory_command_and_pins_reproduced": true,
+  "four_immutable_carrier_members_and_application_tree_verified": true,
+  "frontend_version": "c814db9f574f",
+  "new_mobile_fresh_scope_and_only_static_prepare": true,
+  "no_activation_or_recovery_without_actual_canonical_receipt": true,
+  "no_db_backend_container_or_env_mutation_in_prepare": true,
+  "provider_requests": false,
+  "release": "/opt/t24-crm/releases/google-business-onboarding-mobile-adb948da237f-20261102",
+  "server_execution": false,
+  "source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78",
+  "stage": "GOOGLE_ONBOARDING_MOBILE_PREPARE_COMMAND_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS"
+}

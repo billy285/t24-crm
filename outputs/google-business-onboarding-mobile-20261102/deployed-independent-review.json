@@ -1,0 +1,18 @@
+{
+  "actual_task": "t-hk071tt00f9p24g",
+  "all162_rows_and_schema_unchanged_at_static_acceptance": true,
+  "backend_source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "database_or_container_or_permission_mutations": false,
+  "existing_hashed_assets_retained": true,
+  "frontend_version": "c814db9f574f",
+  "no_new_patch_or_scope": true,
+  "normal_owner_second_directory_read_after_acceptance_is_separate": true,
+  "receipt_bytes": 2202,
+  "receipt_sha256": "2a863c960b22d1392ede19a39ace1af18e1526508cf711e778d05fa763290947",
+  "runtime9b_source419_fullenv_private_credentials_csp_unchanged": true,
+  "server_actions_by_reviewer": false,
+  "source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78",
+  "static_acceptance_baseline_catalogs": 1,
+  "static_acceptance_baseline_requests": 1,
+  "status": "ACTUAL_MOBILE_STATIC_DEPLOYED_INDEPENDENT_PASS"
+}

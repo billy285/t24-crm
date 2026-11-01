@@ -1,0 +1,88 @@
+{
+  "all162_rows_preserved_at_static_acceptance": true,
+  "backend_source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "deployed_receipt": "2a863c960b22d1392ede19a39ace1af18e1526508cf711e778d05fa763290947",
+  "files": {
+    "deployments/google-business-onboarding-mobile-20261102/prepare-commands/command-pins.json": {
+      "bytes": 1102,
+      "sha256": "d81be054d8931a82664c9b4d6519f316933aef3f611281a0f472c5337390f6ff"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/prepare-commands/prepare-command.sh": {
+      "bytes": 3290,
+      "sha256": "da54a7cac0c47a5a1c14f3d330278f1a40cdc5715cd528aaab373de8f7ef885d"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/switch-commands/activate-command.sh": {
+      "bytes": 2299,
+      "sha256": "d97ccee560baf01231c0ec605519d038e042e792f3e911ea8d202758da7feda5"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/switch-commands/command-pins.json": {
+      "bytes": 1353,
+      "sha256": "60e72e8b6bdc5ad58920dcc3091926d2aaabb190cd7ad1f8e7ba30e0d161264d"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/switch-commands/prepare-command.sh": {
+      "bytes": 3290,
+      "sha256": "da54a7cac0c47a5a1c14f3d330278f1a40cdc5715cd528aaab373de8f7ef885d"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/switch-commands/recover-command.sh": {
+      "bytes": 2298,
+      "sha256": "0e58a4f885da81f8d77c2737b6ca351e4eb67d1251a132f8c201bf3f7a8e2e4b"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/backend-static-release-independent-review.json": {
+      "bytes": 2110,
+      "sha256": "058a2f3fba1966f67ba23392cf09dba7787568f0a6f66407047484c98835b772"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/deployed-independent-review.json": {
+      "bytes": 856,
+      "sha256": "2b1b63cb3ca4cd3a4c8b007bebeedf36ff3218cc47383623b31c72ebdcba8306"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/deployed.json": {
+      "bytes": 2202,
+      "sha256": "2a863c960b22d1392ede19a39ace1af18e1526508cf711e778d05fa763290947"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/prepare-command-frontend-independent-review.json": {
+      "bytes": 936,
+      "sha256": "eebe36e213d06fd070536af83517699fce3f8a0bcb615d46b61b24a1f2d82a79"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/prepared-independent-review.json": {
+      "bytes": 836,
+      "sha256": "293025ddb194b3358472c62a32d567d796255ee8f182a0bac49ea2851f767d7b"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/prepared.json": {
+      "bytes": 1899,
+      "sha256": "648f59c27576e06164b9a2db4d295606ed340e710591965d12b201db24e86cd8"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/switch-command-frontend-independent-review.json": {
+      "bytes": 1485,
+      "sha256": "1813c541235e342eb67edb3ded455c8d89309422729b64d114276fdaad90c66a"
+    }
+  },
+  "frontend_version": "c814db9f574f",
+  "git_staging_performed": false,
+  "no_need_to_restage_original_main_feature_evidence": true,
+  "normal_owner_second_discovery_after_static_acceptance_is_separate": true,
+  "not_included": [
+    "production merchant screenshots",
+    "raw catalog/customer data",
+    "protected full proof or databases",
+    "credentials or private content",
+    "Python caches"
+  ],
+  "paths": [
+    "deployments/google-business-onboarding-mobile-20261102/prepare-commands/prepare-command.sh",
+    "deployments/google-business-onboarding-mobile-20261102/prepare-commands/command-pins.json",
+    "deployments/google-business-onboarding-mobile-20261102/switch-commands/prepare-command.sh",
+    "deployments/google-business-onboarding-mobile-20261102/switch-commands/activate-command.sh",
+    "deployments/google-business-onboarding-mobile-20261102/switch-commands/recover-command.sh",
+    "deployments/google-business-onboarding-mobile-20261102/switch-commands/command-pins.json",
+    "outputs/google-business-onboarding-mobile-20261102/prepared.json",
+    "outputs/google-business-onboarding-mobile-20261102/prepared-independent-review.json",
+    "outputs/google-business-onboarding-mobile-20261102/deployed.json",
+    "outputs/google-business-onboarding-mobile-20261102/deployed-independent-review.json",
+    "outputs/google-business-onboarding-mobile-20261102/prepare-command-frontend-independent-review.json",
+    "outputs/google-business-onboarding-mobile-20261102/switch-command-frontend-independent-review.json",
+    "outputs/google-business-onboarding-mobile-20261102/backend-static-release-independent-review.json"
+  ],
+  "sanitized_final_ui_acceptance_may_be_added_after_root_review": true,
+  "source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78",
+  "status": "MOBILE_STATIC_DEPLOYED_FINAL_EVIDENCE_RECOMMENDATION"
+}

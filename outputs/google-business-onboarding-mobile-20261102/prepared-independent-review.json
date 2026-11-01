@@ -1,0 +1,17 @@
+{
+  "actual_activation_still_separate": true,
+  "actual_task": "t-hk071tsuybyo000",
+  "all_current162_rows_schema_and_metadata_preserved": true,
+  "backend_source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "csp_private_credentials_unchanged": true,
+  "database_migrations_writes_or_container_restarts": false,
+  "frontend_version": "c814db9f574f",
+  "nginx_next_sha256": "ba8f79517f7f8f3286fd0d28333301ec98b5418cf1b399a4758be1bea05fd43e",
+  "only_new_static_root_staged_with_old_hashed_assets_kept": true,
+  "receipt_bytes": 1899,
+  "receipt_sha256": "648f59c27576e06164b9a2db4d295606ed340e710591965d12b201db24e86cd8",
+  "runtime9b419sources_and_fullenv_unchanged": true,
+  "server_actions_by_reviewer": false,
+  "source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78",
+  "status": "ACTUAL_STATIC_PREPARED_INDEPENDENT_PASS"
+}

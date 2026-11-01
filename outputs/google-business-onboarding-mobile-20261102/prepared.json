@@ -1,0 +1,36 @@
+{
+  "backend_source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "boundary": {
+    "backend_source_unchanged": true,
+    "content_security_policy_unchanged": true,
+    "credentials_preserved": true,
+    "environment_sha256": "3d414fb4b9b5b1ae9bb5ecc1ce503be3c788f8bee27d0806de9d72fd3df0e223",
+    "ops_environment_sha256": "f334ac086b4f8eef3d92cc4b6444558f500590a2bd4020ce07d9d13f1947dfb2",
+    "original162_rows_preserved": true,
+    "private_boundary_preserved": true,
+    "rows_sha256": "faa2991c9c36f882eb060e54793ac6290cdb73c29763edbd2ee2fc67a47577e8",
+    "runtime": {
+      "config": "eeed0663f81bffa9cc9926afde7d203ac84ced2725e0fba0fc7342c136531728",
+      "id": "9b247014d54e57e5f671d3f8378c6b387c5301a87471b823e790b0d4965d072b",
+      "image": "sha256:ed057407d8866958a2966043ddc2457488d77cc00dd7bbabb608bcedc7c0bb09",
+      "restart": 0,
+      "started": "2026-11-01T19:00:56.90391494Z"
+    },
+    "schema_sha256": "c111f3fc3154eab704a25536280bf02dfd00d120867da7ed9727ec2c85ac4a7f"
+  },
+  "container_restarts": false,
+  "database_writes": false,
+  "frontend_version": "c814db9f574f",
+  "manifest_sha256": "a08a1c922981b0fe0fa91436b4061e5143f6769bfd9e0e03b89f6c852444a51b",
+  "nginx_next_sha256": "ba8f79517f7f8f3286fd0d28333301ec98b5418cf1b399a4758be1bea05fd43e",
+  "payload_sha256": "ff601095511c4e1573c49360b4e6833f46c0aa4a15ecb5c49b98fa5e6330e9f4",
+  "permissions_changes": false,
+  "preflight_sha256": "b847750a7e816361fa13a166f4f24e4f23a97008e108f33da486d54239bece5b",
+  "provider_or_publication_actions": false,
+  "public_inventory_sha256": "dca5187c18622d586ff05d67fc21ccc2bac8e9f1dde28d4272af5fdb65112cf8",
+  "public_root": "/var/www/t24-crm-public/google-business-onboarding-mobile-adb948da237f-20261102",
+  "schema_changes": false,
+  "source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78",
+  "stage": "GOOGLE_ONBOARDING_MOBILE_STATIC_PREPARED",
+  "static_only": true
+}

@@ -1,0 +1,31 @@
+{
+  "activation_rechecks_all162_before_after_known_root_only_change": true,
+  "actual162_rows_schema_runtime_env_private_credentials_csp_match_fresh_baseline": true,
+  "actual_envelope_marker_canonical_verified": true,
+  "artifact_or_source_mutations": false,
+  "carrier": "f80b958a2cae933c10f1ec5daa7e974a67890fe2",
+  "command_bytes": {
+    "activate-command.sh": 2299,
+    "prepare-command.sh": 3290,
+    "recover-command.sh": 2298
+  },
+  "command_sha256": {
+    "activate-command.sh": "d97ccee560baf01231c0ec605519d038e042e792f3e911ea8d202758da7feda5",
+    "prepare-command.sh": "da54a7cac0c47a5a1c14f3d330278f1a40cdc5715cd528aaab373de8f7ef885d",
+    "recover-command.sh": "0e58a4f885da81f8d77c2737b6ca351e4eb67d1251a132f8c201bf3f7a8e2e4b"
+  },
+  "exact_in_memory_commands_and_pins_reproduced": true,
+  "limits": [
+    "Actual static activation and mobile UI visual acceptance remain root actions."
+  ],
+  "no_db_writes_container_restarts_permissions_or_schema_changes_in_prepare": true,
+  "prepared_canonical_bytes": 1899,
+  "prepared_sha256": "648f59c27576e06164b9a2db4d295606ed340e710591965d12b201db24e86cd8",
+  "provider_requests": false,
+  "recovery_restores_only_known_original_root_no_database_or_container_actions": true,
+  "server_execution": false,
+  "stage": "GOOGLE_ONBOARDING_MOBILE_SWITCH_FRONTEND_INDEPENDENT_REVIEW",
+  "static_only_new_root_and_all_old_hashed_assets_staged": true,
+  "status": "PASS",
+  "switch_pins_immutable_helper_and_actual_review_hash": true
+}
