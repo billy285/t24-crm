@@ -1,0 +1,16 @@
+{
+  "all150_schema_environment_credentials_private_preserved": true,
+  "deployed_sha256": "d6ddf91f01160fe88dc48c362082edebdc40309d5e9f730cdd9b47b4398f786e",
+  "execution_enabled": false,
+  "frontend_version": "866ebc073a31",
+  "image": "sha256:6c3dfc8647e4d6dc6b7c5f710219548933dc9d8111f70553f2c4b45b2adba820",
+  "live_requests": false,
+  "preflight_sha256": "4792c2350a251e545ec2da15fb95d24dc2261fab002f2a63f5f5b76e974f8088",
+  "prepared_sha256": "cd1937919b184d24df8bf2a4ebfa70f53642f74658dea7926de9333b799779e2",
+  "real_publish_reply_not_performed_by_release": true,
+  "review_only": true,
+  "runtime_id": "2901ff5b7ff74a4746070400d802d27da7dbaf517b3e98282c826d5bb9cff1d2",
+  "scheduler_enabled": false,
+  "source_sha": "1db2a91e6d9ba1ee61b35dc9732f0fee4575aacc",
+  "verdict": "PASS"
+}

@@ -1,0 +1,34 @@
+{
+  "carrier": "68ca98d6ff519ea7f57fc5117c1d6de47f3c3c1c",
+  "command_sha256": {
+    "prepare-command.sh": "e54ca34d72f2c7d857f90a0ab1460f302c5710892b4ae9726da9570c9cdc31bb"
+  },
+  "executed": false,
+  "frontend_version": "866ebc073a31",
+  "members": {
+    "artifacts/manifest.json": [
+      "manifest.json",
+      "9c2a7b7075f373fb75aa53bc7a5d09632d46ff373dd9430d479f347465e27dbc",
+      138941
+    ],
+    "artifacts/payload.tar.gz": [
+      "payload.tar.gz",
+      "bd3039b962fd7fc515762cb9e59422ea864142dcaa5e824db2c61dd533aa9f91",
+      2194129
+    ],
+    "preflight.py": [
+      "preflight.py",
+      "6e12f110a6cf02172e41cdb91305fb2dc2c5b80fb4e64b545ccf7829556d0814",
+      9189
+    ],
+    "release.py": [
+      "release.py",
+      "5f0d006aa0a469863b05aa01d3a497ef11a85655ced8f92f61d68d0495a50ad4",
+      30137
+    ]
+  },
+  "preflight_sha256": "4792c2350a251e545ec2da15fb95d24dc2261fab002f2a63f5f5b76e974f8088",
+  "prepared_sha256": null,
+  "release": "/opt/t24-crm/releases/meta-operations-read-polish-1db2a91e6d9b-20261101",
+  "source_sha": "1db2a91e6d9ba1ee61b35dc9732f0fee4575aacc"
+}

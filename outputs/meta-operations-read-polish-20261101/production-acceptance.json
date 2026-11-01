@@ -1,0 +1,40 @@
+{
+  "observed_at_utc": "2026-11-01T01:23:32.968841+00:00",
+  "environment": "https://t24-crm.com/media-ops",
+  "source_sha": "1db2a91e6d9ba1ee61b35dc9732f0fee4575aacc",
+  "frontend_version": "866ebc073a31",
+  "deployed_receipt_sha256": "d6ddf91f01160fe88dc48c362082edebdc40309d5e9f730cdd9b47b4398f786e",
+  "customer_id": 38,
+  "customer_name": "Pokeco",
+  "pilot_operator": "owner only",
+  "oauth_authorization": "independent operations authority persisted for selected PokeCo Page and pokeco8 Instagram account",
+  "facebook_posts": {
+    "returned": 50,
+    "missing_dates": 0,
+    "first_displayed_at_beijing": "2026/10/30 10:32",
+    "selected_latest_comments": "successful read; zero comments returned"
+  },
+  "instagram_posts": {
+    "returned": 50,
+    "missing_dates": 0,
+    "first_displayed_at_beijing": "2026/10/21 19:29",
+    "selected_latest_comments": "successful read; zero comments returned"
+  },
+  "callback_notice_corrected_and_verified": true,
+  "execution_gate_labels_corrected_and_verified": true,
+  "existing_draft_preserved": {
+    "id": 1,
+    "revision": 1,
+    "status": "draft",
+    "media": null,
+    "title": "招牌推荐｜日常高性价比（待确认）"
+  },
+  "operations_execution_enabled": false,
+  "operations_scheduler_enabled": false,
+  "real_public_post_or_reply_sent": false,
+  "real_instagram_container_or_public_image_lease_created": false,
+  "real_public_write_end_to_end_verified": false,
+  "all150_business_rows_and_schema_preserved_during_deployment": true,
+  "existing_permissions_financial_logic_private_workspace_preserved": true,
+  "remaining_owner_review": "Confirm exact first-post copy and supply/approve a real PokeCo product photo before any public dispatch"
+}
