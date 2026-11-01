@@ -1,0 +1,16 @@
+{
+  "stage": "LOCAL_REVIEW_MONTH_AND_PRIORITY_ACCEPTANCE",
+  "source_sha": "196781fbf68c3640f4af1c89e3c81f96d6872da8",
+  "frontend_version": "18d102381fef",
+  "backend_regressions_passed": 421,
+  "frontend_regressions_passed": 233,
+  "release_guards_passed": 111,
+  "review_month_source": "Exact owner/customer/run-bound persisted month; never UTC query fallback",
+  "exception_priority": "Critical first, then review/overdue, then setup; immutable source array",
+  "runtime_delta": [
+    "services/media_workspace.py"
+  ],
+  "schema_migration": false,
+  "financial_or_permission_or_private_source_changes": false,
+  "real_publication_performed": false
+}

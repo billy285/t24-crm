@@ -1,0 +1,6 @@
+{
+  "stage": "PREPARED_ONLY_NOT_ACTIVATED",
+  "prepared_sha256": "277ffe03c24080b0f8715306598651f62cb0ccff4bb80391ddd54c7d3ea55dbb",
+  "reason": "Superseded by combined priority and month-group correction",
+  "source_sha": "da940a8edf73ed57f901cd9b805a7a24d653c15a"
+}

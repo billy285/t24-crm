@@ -1,0 +1,37 @@
+{
+  "backend_source_sha": "7697e1adc61f72cf6b13896a3a41389d8a31b09d",
+  "boundary": {
+    "backend_source_unchanged": true,
+    "content_security_policy_unchanged": true,
+    "credentials_preserved": true,
+    "environment_sha256": "3d414fb4b9b5b1ae9bb5ecc1ce503be3c788f8bee27d0806de9d72fd3df0e223",
+    "ops_environment_sha256": "f334ac086b4f8eef3d92cc4b6444558f500590a2bd4020ce07d9d13f1947dfb2",
+    "original162_rows_preserved": true,
+    "private_boundary_preserved": true,
+    "rows_sha256": "295ee0d3ad8135eb4a38404f9f579eca2b364b45a2de51ec1a1138d3a795a187",
+    "runtime": {
+      "config": "0cd4bf78fd38571c2d7e0a2eef189c16deac96446e16eef0898fee584531b12b",
+      "id": "816bed67221f995ad018133081d9b29a79552283edc2dc0292de4f5a94b3b10c",
+      "image": "sha256:de11857dbfaa52db8604022e2beddb7ea443dcaf8b764abf8ec0d602b8769b68",
+      "restart": 0,
+      "started": "2026-11-01T20:21:30.806615842Z"
+    },
+    "schema_sha256": "c111f3fc3154eab704a25536280bf02dfd00d120867da7ed9727ec2c85ac4a7f"
+  },
+  "container_restarts": false,
+  "database_writes": false,
+  "frontend_version": "18d102381fef",
+  "manifest_sha256": "c89676a41730edcd8f5c41d95a9392c7383b30dcbe27abe9dedd93f70a95de14",
+  "nginx_next_sha256": "0c00837aa40e0dd8985566fd78f68efc586d44585a9c6f5ad49d52435ce4f9b4",
+  "payload_sha256": "1d5a610d220c9b98e416b1b704859ab82c3c975e9e8f719f89bcbb35b826918f",
+  "permissions_changes": false,
+  "preflight_sha256": "cd201ac67a0b070a5190c171de277dd21933da1a9df7ebb1f7b9187c54df1b7a",
+  "provider_or_publication_actions": false,
+  "public_inventory_sha256": "8d31be52dc226ee513f34c1fdb96aeb1b6cf7f5f817e2fad14daa8588a6b420a",
+  "public_root": "/var/www/t24-crm-public/media-workspace-priority-da940a8edf73-20261102",
+  "receipt_sha256": "277ffe03c24080b0f8715306598651f62cb0ccff4bb80391ddd54c7d3ea55dbb",
+  "schema_changes": false,
+  "source_sha": "da940a8edf73ed57f901cd9b805a7a24d653c15a",
+  "stage": "MEDIA_WORKSPACE_PRIORITY_STATIC_PREPARED",
+  "static_only": true
+}

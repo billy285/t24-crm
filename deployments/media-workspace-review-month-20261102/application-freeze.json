@@ -1,0 +1,31 @@
+{
+  "all162_populated_tables_preserved": true,
+  "baseline_frontend_version": "6a8a9ac27c6c",
+  "baseline_source_sha": "7697e1adc61f72cf6b13896a3a41389d8a31b09d",
+  "baseline_static_source_sha": "7697e1adc61f72cf6b13896a3a41389d8a31b09d",
+  "credentials_included": false,
+  "database_migration": false,
+  "dependencies_changed": false,
+  "dist_inventory_sha256": "bf999dd0e94db0e95f10c8cc393ddd232e3e5a5a9a0b8c783f6d6416dfe47c2f",
+  "existing_full_environment_preserved": true,
+  "existing_ops_credentials_preserved": true,
+  "files": {
+    "app/backend/services/media_workspace.py": "09e89d8b4bd1890e5424418955f44bc80bcc9f0bee867efc511c83260e0ab0ba",
+    "app/backend/tests/test_media_workspace_scale.py": "a0f17f3d3e7b1edbfc82a03a7d0edae2f82fe147eccaa742869d52149e93608c",
+    "app/frontend/src/components/MediaPortfolioPanels.tsx": "5ffc5155b2ec6e6923349694ab3d76b3b429922707eaeb794e77d9bc7b75cb7e",
+    "app/frontend/tests/media-workspace-scale.test.mjs": "4c52fc523cf3a3508a22c59f10615f4ba2a129ea0a4549303943e8b855bdd893"
+  },
+  "frontend_changed": true,
+  "frontend_version": "18d102381fef",
+  "old_schema_revision": "g32ed456e792",
+  "operations_execution_enabled": false,
+  "operations_scheduler_enabled": false,
+  "preflight_sha256": "cd201ac67a0b070a5190c171de277dd21933da1a9df7ebb1f7b9187c54df1b7a",
+  "production_seed_rows": false,
+  "provider_requests": false,
+  "runtime_environment_changed": false,
+  "schema_changed": false,
+  "schema_revision": "g32ed456e792",
+  "source_sha": "196781fbf68c3640f4af1c89e3c81f96d6872da8",
+  "stage": "MEDIA_WORKSPACE_REVIEW_MONTH_APPLICATION_FREEZE"
+}
