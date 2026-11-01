@@ -61,6 +61,8 @@ async def run_tick(*, sessions=None, clock=None):
                 binding, connection, _ = await g._binding(db, ctx, row.binding_id, action='publish', lock=True)
                 if connection.owner_id != row.owner_id or binding.primary_operator_id != row.operator_id: raise HTTPException(409, '商家主运营或连接归属已变更')
                 task, payload, _ = await g._post_payload(db, ctx, binding, row.task_id, row.task_revision)
+                from services.media_monthly_workflow import authorize_schedule
+                await authorize_schedule(db, schedule=row, task=task)
                 if task.assignee_id != row.operator_id or g.digest(payload) != row.payload_fingerprint: raise HTTPException(409, '审核内容、素材或任务负责人已变化')
                 row.status = 'dispatching'; row.revision += 1; row.updated_at = at; row.message = '调度已登记，正在再次核查发布条件'
                 job = {'id': row.id, 'binding_id': row.binding_id, 'task_id': row.task_id, 'task_revision': row.task_revision,

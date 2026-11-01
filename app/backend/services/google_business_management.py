@@ -192,52 +192,69 @@ def schedule_data(row):
 
 
 async def schedule(db, user, binding_id, *, request_id, task_id, expected_revision, planned_at, timezone):
-    ctx = await g.context(db, user); request_id = g.media._key(request_id); at = instant(planned_at)
+    ctx = await g.context(db, user)
+    async with g.write(db):
+        return await schedule_locked(db, ctx, binding_id, request_id=request_id, task_id=task_id, expected_revision=expected_revision, planned_at=planned_at, timezone=timezone)
+
+
+async def schedule_locked(db, ctx, binding_id, *, request_id, task_id, expected_revision, planned_at, timezone, _monthly=False):
+    request_id = g.media._key(request_id); at = instant(planned_at)
     try: ZoneInfo(timezone)
     except (ZoneInfoNotFoundError, ValueError): raise HTTPException(422, '请选择有效商家时区')
-    async with g.write(db):
-        binding, connection, _ = await g._binding(db, ctx, binding_id, action='publish', lock=True)
-        task, payload, _ = await g._post_payload(db, ctx, binding, task_id, expected_revision)
-        operator = binding.primary_operator_id
-        if operator is None or task.assignee_id != operator: raise HTTPException(409, '请先分配主运营，并确保任务由该运营负责')
-        if not ctx.owner and ctx.identity != operator: raise HTTPException(403, '仅主运营可管理此排期')
-        employee = await db.get(Employees, operator, populate_existing=True)
-        operator_user = SimpleNamespace(id=str(operator), name=employee.name, role=employee.role) if employee else None
-        if not operator_user: raise HTTPException(409, '主运营账号已失效')
-        operator_ctx = await g.context(db, operator_user)
-        await g._binding(db, operator_ctx, binding_id, action='publish', lock=True)
-        fingerprint = g.digest(payload)
-        old = await db.scalar(select(Schedule).where(Schedule.request_id == request_id))
-        if old:
-            if (old.binding_id, old.task_id, old.task_revision, old.payload_fingerprint, g.aware(old.planned_at), old.timezone, old.created_by_id) != (binding_id, task_id, expected_revision, fingerprint, at, timezone, ctx.identity):
-                raise HTTPException(409, '相同请求编号对应不同排期')
-            return schedule_data(old)
-        if at <= g.now() or at > g.now() + timedelta(days=366): raise HTTPException(422, '排期须为未来一年内的时间，不能自动补发历史内容')
-        duplicate = await db.scalar(select(Schedule.id).where(Schedule.task_id == task_id, Schedule.status.in_(LIVE_SCHEDULES)))
-        existing_action = await db.scalar(select(Action.id).where(Action.task_id == task_id, Action.kind == 'post_publish', Action.status.in_(('pending', 'unknown', 'accepted', 'succeeded'))))
-        if duplicate or existing_action: raise HTTPException(409, '此任务已有排期或发布请求，请先查询原结果')
-        row = Schedule(binding_id=binding_id, task_id=task_id, task_revision=expected_revision, payload_fingerprint=fingerprint,
-            operator_id=operator, owner_id=connection.owner_id, request_id=request_id, planned_at=at, timezone=timezone, status='scheduled',
-            revision=1, message='已保存CRM排期；实际自动发布取决于独立调度开关', created_by_id=ctx.identity, created_at=g.now(), updated_at=g.now())
-        db.add(row); await db.flush()
-        await g._audit(db, ctx, binding, 'schedule_created', {'schedule_id': row.id, 'planned_at': g.iso(at), 'task_id': task_id})
-        result = schedule_data(row)
+    binding, connection, _ = await g._binding(db, ctx, binding_id, action='publish', lock=True)
+    task, payload, _ = await g._post_payload(db, ctx, binding, task_id, expected_revision)
+    from services.media_monthly_workflow import TASK_PREFIX
+    if str(task.client_request_id).startswith(TASK_PREFIX) and not _monthly:
+        raise HTTPException(409, '此月度任务请在整月流程统一确认排期，避免重复或错位安排')
+    operator = binding.primary_operator_id
+    if operator is None or task.assignee_id != operator: raise HTTPException(409, '请先分配主运营，并确保任务由该运营负责')
+    if not ctx.owner and ctx.identity != operator: raise HTTPException(403, '仅主运营可管理此排期')
+    employee = await db.get(Employees, operator, populate_existing=True)
+    operator_user = SimpleNamespace(id=str(operator), name=employee.name, role=employee.role) if employee else None
+    if not operator_user: raise HTTPException(409, '主运营账号已失效')
+    operator_ctx = await g.context(db, operator_user)
+    await g._binding(db, operator_ctx, binding_id, action='publish', lock=True)
+    fingerprint = g.digest(payload)
+    old = await db.scalar(select(Schedule).where(Schedule.request_id == request_id))
+    if old:
+        if (old.binding_id, old.task_id, old.task_revision, old.payload_fingerprint, g.aware(old.planned_at), old.timezone, old.created_by_id) != (binding_id, task_id, expected_revision, fingerprint, at, timezone, ctx.identity):
+            raise HTTPException(409, '相同请求编号对应不同排期')
+        return schedule_data(old)
+    if at <= g.now() or at > g.now() + timedelta(days=366): raise HTTPException(422, '排期须为未来一年内的时间，不能自动补发历史内容')
+    duplicate = await db.scalar(select(Schedule.id).where(Schedule.task_id == task_id, Schedule.status.in_(LIVE_SCHEDULES)))
+    existing_action = await db.scalar(select(Action.id).where(Action.task_id == task_id, Action.kind == 'post_publish', Action.status.in_(('pending', 'unknown', 'accepted', 'succeeded'))))
+    if duplicate or existing_action: raise HTTPException(409, '此任务已有排期或发布请求，请先查询原结果')
+    row = Schedule(binding_id=binding_id, task_id=task_id, task_revision=expected_revision, payload_fingerprint=fingerprint,
+        operator_id=operator, owner_id=connection.owner_id, request_id=request_id, planned_at=at, timezone=timezone, status='scheduled',
+        revision=1, message='已保存CRM排期；实际自动发布取决于独立调度开关', created_by_id=ctx.identity, created_at=g.now(), updated_at=g.now())
+    db.add(row); await db.flush()
+    await g._audit(db, ctx, binding, 'schedule_created', {'schedule_id': row.id, 'planned_at': g.iso(at), 'task_id': task_id})
+    result = schedule_data(row)
     return result
 
 
 async def cancel_schedule(db, user, identity, expected_revision):
     ctx = await g.context(db, user)
     async with g.write(db):
-        row = await db.get(Schedule, identity, populate_existing=True)
-        if not row: raise HTTPException(404, '排期不存在')
+        return await cancel_schedule_locked(db, ctx, identity, expected_revision)
+
+
+async def cancel_schedule_locked(db, ctx, identity, expected_revision, *, _allow_stopped=False):
+    row = await db.get(Schedule, identity, populate_existing=True)
+    if not row: raise HTTPException(404, '排期不存在')
+    if _allow_stopped and ctx.owner and row.owner_id == ctx.identity:
+        # Monthly revocation may stop unsent work after the owner has already
+        # stopped cooperation. It never grants access or restarts a binding.
+        binding = await owned_binding(db, ctx, row.binding_id, lock=True)
+    else:
         binding, _, _ = await g._binding(db, ctx, row.binding_id)
-        if not ctx.owner and (row.operator_id != ctx.identity or binding.primary_operator_id != ctx.identity): raise HTTPException(403, '仅老板或当前主运营可取消')
-        if row.status == 'cancelled': return schedule_data(row)
-        if row.revision != expected_revision: raise HTTPException(409, '排期已更新，请重新读取')
-        if row.status not in {'scheduled', 'blocked', 'missed'} or row.action_id is not None: raise HTTPException(409, '排期已提交或结果待确认，请查询原发布结果')
-        row.status = 'cancelled'; row.revision += 1; row.updated_at = g.now(); row.message = '已取消，恢复商家不会自动恢复本排期'
-        await g._audit(db, ctx, binding, 'schedule_cancelled', {'schedule_id': row.id})
-        return schedule_data(row)
+    if not ctx.owner and (row.operator_id != ctx.identity or binding.primary_operator_id != ctx.identity): raise HTTPException(403, '仅老板或当前主运营可取消')
+    if row.status == 'cancelled': return schedule_data(row)
+    if row.revision != expected_revision: raise HTTPException(409, '排期已更新，请重新读取')
+    if row.status not in {'scheduled', 'blocked', 'missed'} or row.action_id is not None: raise HTTPException(409, '排期已提交或结果待确认，请查询原发布结果')
+    row.status = 'cancelled'; row.revision += 1; row.updated_at = g.now(); row.message = '已取消，恢复商家不会自动恢复本排期'
+    await g._audit(db, ctx, binding, 'schedule_cancelled', {'schedule_id': row.id})
+    return schedule_data(row)
 
 
 async def calendar(db, user, *, start, end, binding_id=None):

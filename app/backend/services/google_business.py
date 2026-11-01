@@ -565,7 +565,12 @@ async def _reserve(db, ctx, binding_id, kind, request_id, payload, *, target_nam
             return old.id, False
         await _expire_payloads(db)
         if kind == "post_publish":
-            await _post_payload(db, ctx, binding, task_id, expected_revision)
+            reserved_task, _, _ = await _post_payload(db, ctx, binding, task_id, expected_revision)
+            from services.media_monthly_workflow import authorize_schedule, TASK_PREFIX
+            if str(reserved_task.client_request_id).startswith(TASK_PREFIX):
+                from models.google_business import GoogleBusinessSchedule as Schedule
+                monthly_schedule = await db.scalar(select(Schedule).where(Schedule.request_id == request_id))
+                await authorize_schedule(db, schedule=monthly_schedule, task=reserved_task)
             duplicate = await db.scalar(select(Action).where(Action.task_id == task_id, Action.kind == kind, Action.status.in_(("pending", "unknown", "accepted", "succeeded"))).limit(1))
             if duplicate: raise HTTPException(409, "此任务已有发布请求，请先查询原发布结果，避免重复发帖")
         else:
@@ -643,6 +648,8 @@ async def _dispatch(db, user, action_id, *, expected_revision=None, expected_ver
                                 raise HTTPException(409, "排期、主运营或内容版本已变化，本次不会发布")
                         dispatch_task, current_payload, _ = await _post_payload(db, ctx, binding, row.task_id, expected_revision)
                         if current_payload != row.payload: raise HTTPException(409, "运营任务素材已更新，请重新审核")
+                        from services.media_monthly_workflow import authorize_schedule
+                        await authorize_schedule(db, schedule=scheduled if schedule_id is not None else None, task=dispatch_task)
                     # This short committed point defines an already-dispatched
                     # request. Revocation after it cannot retract external HTTP,
                     # but it fences all later requests and all response access.

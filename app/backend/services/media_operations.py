@@ -628,98 +628,106 @@ async def create_task(db, user, *, client_request_id, customer_id, service_progr
 async def edit_task(db, user, task_id, *, expected_revision, **fields):
     ctx = await context(db, user)
     async with _write(db):
-        task, customer, permissions = await _get_task(db, ctx, task_id, write=True)
-        if task.status != "draft":
-            raise HTTPException(409, "仅待准备或已退回的内容可以修改")
-        merged = {name: fields.get(name, getattr(task, name)) for name in ("title", "platform", "due_at", "timezone", "content")}
-        if "due_at" not in fields:
-            # SQLite stores UTC DateTime values without their timezone marker.
-            # User input remains offset-required; preserving an existing deadline
-            # during a partial edit must not reinterpret it as local time.
-            merged["due_at"] = _iso(task.due_at)
-        values = _validate_content_fields(merged)
-        prior_publication = await publication_for_task(db, task)
-        publication = normalize_publication(fields.get("publication", prior_publication), values["platform"], values["timezone"])
-        if "material_id" in fields:
-            material = await _material(db, ctx, customer, fields["material_id"])
-            values.update(material_id=fields["material_id"], material_title=material.title if material else None)
-        if "assignee_id" in fields and fields["assignee_id"] != task.assignee_id:
-            if not ctx.owner:
-                raise HTTPException(403, "仅老板可以转派运营负责人")
-            identity, name = await _assignee(db, ctx, customer, fields["assignee_id"])
-            values.update(assignee_id=identity, assignee_name=name)
-        await _cas(db, task, expected_revision, values)
-        await _save_publication(db, task, publication)
-        if "image_version_id" in fields or "material_id" in fields or values["platform"] != "google_business":
-            from services import media_publication_images as images
-            await images.save_selection(db, ctx, task, fields.get("image_version_id") if task.platform == "google_business" else None)
-        await _event(db, ctx, task, "edit", "draft")
-        result = await _detail(db, ctx, task, permissions)
+        return await edit_task_locked(db, ctx, task_id, expected_revision=expected_revision, **fields)
+
+
+async def edit_task_locked(db, ctx, task_id, *, expected_revision, **fields):
+    task, customer, permissions = await _get_task(db, ctx, task_id, write=True)
+    if task.status != "draft":
+        raise HTTPException(409, "仅待准备或已退回的内容可以修改")
+    merged = {name: fields.get(name, getattr(task, name)) for name in ("title", "platform", "due_at", "timezone", "content")}
+    if "due_at" not in fields:
+        # SQLite stores UTC DateTime values without their timezone marker.
+        # User input remains offset-required; preserving an existing deadline
+        # during a partial edit must not reinterpret it as local time.
+        merged["due_at"] = _iso(task.due_at)
+    values = _validate_content_fields(merged)
+    prior_publication = await publication_for_task(db, task)
+    publication = normalize_publication(fields.get("publication", prior_publication), values["platform"], values["timezone"])
+    if "material_id" in fields:
+        material = await _material(db, ctx, customer, fields["material_id"])
+        values.update(material_id=fields["material_id"], material_title=material.title if material else None)
+    if "assignee_id" in fields and fields["assignee_id"] != task.assignee_id:
+        if not ctx.owner:
+            raise HTTPException(403, "仅老板可以转派运营负责人")
+        identity, name = await _assignee(db, ctx, customer, fields["assignee_id"])
+        values.update(assignee_id=identity, assignee_name=name)
+    await _cas(db, task, expected_revision, values)
+    await _save_publication(db, task, publication)
+    if "image_version_id" in fields or "material_id" in fields or values["platform"] != "google_business":
+        from services import media_publication_images as images
+        await images.save_selection(db, ctx, task, fields.get("image_version_id") if task.platform == "google_business" else None)
+    await _event(db, ctx, task, "edit", "draft")
+    result = await _detail(db, ctx, task, permissions)
     return result
 
 
 async def transition_task(db, user, task_id, *, expected_revision, request_id, action, note=None, proof_url=None, proof_material_id=None):
     ctx = await context(db, user)
+    async with _write(db):
+        return await transition_task_locked(db, ctx, task_id, expected_revision=expected_revision, request_id=request_id, action=action, note=note, proof_url=proof_url, proof_material_id=proof_material_id)
+
+
+async def transition_task_locked(db, ctx, task_id, *, expected_revision, request_id, action, note=None, proof_url=None, proof_material_id=None):
     key = _key(request_id)
     note = note.strip() if note else None
     fingerprint = _hash({"action": action, "expected_revision": expected_revision, "note": note,
                          "proof_url": proof_url, "proof_material_id": proof_material_id})
-    async with _write(db):
-        task, customer, permissions = await _get_task(db, ctx, task_id, write=True)
-        previous = (await db.execute(select(MediaOperationEvent).where(MediaOperationEvent.task_id == task.id,
-                          MediaOperationEvent.request_id == key))).scalar_one_or_none()
-        if previous:
-            if previous.actor_id != ctx.identity or previous.request_fingerprint != fingerprint:
-                raise HTTPException(409, "相同请求编号对应的操作不一致")
-            result = await _detail(db, ctx, task, permissions)
-        else:
-            before = task.status
-            values = {}
-            if action == "submit" and before == "draft":
-                if not task.content.strip():
-                    raise HTTPException(422, "请先填写内容草稿再提交审核")
-                # Revalidate referenced assets at the moment content enters review.
-                await _material(db, ctx, customer, task.material_id)
-                values = {"status": "in_review", "review_note": None}
-            elif action in {"approve", "return"} and (before == "in_review" or (action == "return" and before == "ready" and task.platform == "google_business")):
-                if not ctx.owner:
-                    raise HTTPException(403, "第一阶段由老板审核内容")
-                if action == "return" and (not note or len(note) < 3):
-                    raise HTTPException(422, "请填写至少 3 字的退回原因")
-                if before == "ready":
-                    # Serialize against GBP reservation/dispatch before checking
-                    # active publication. A sent/unknown task must never reopen.
-                    await db.execute(select(MediaOperationTask).where(MediaOperationTask.id == task.id).with_for_update())
-                    await db.refresh(task)
-                    if task.status != "ready" or task.revision != expected_revision:
-                        raise HTTPException(409, "任务状态已变化，请刷新后重试")
-                    await require_tables(db, {"google_business_actions"})
-                    from models.google_business import GoogleBusinessAction
-                    pending_publication = await db.scalar(select(GoogleBusinessAction.id).where(
-                        GoogleBusinessAction.task_id == task.id, GoogleBusinessAction.kind == "post_publish",
-                        GoogleBusinessAction.status.in_(("pending", "unknown", "accepted", "succeeded"))).limit(1))
-                    if pending_publication:
-                        raise HTTPException(409, "此任务已有 Google 发布请求，请先核对原结果；已发送或结果未明的任务不能退回重发")
-                else:
-                    await _material(db, ctx, customer, task.material_id)
-                values = {"status": "ready" if action == "approve" else "draft", "review_note": note}
-            elif action == "complete" and before == "ready":
-                url = _proof_url(proof_url)
-                await _material(db, ctx, customer, proof_material_id, proof=True)
-                if not url and proof_material_id is None:
-                    raise HTTPException(422, "请提交公开发布链接或该客户已共享的截图凭证")
-                values = {"status": "completed", "proof_url": url, "proof_material_id": proof_material_id, "completed_at": now()}
-            elif action == "block" and before in {"draft", "in_review", "ready"}:
-                if not note or len(note) < 3:
-                    raise HTTPException(422, "请填写至少 3 字的阻塞原因")
-                values = {"status": "blocked", "block_reason": note, "blocked_from_status": before}
-            elif action == "resume" and before == "blocked":
-                values = {"status": "ready" if task.blocked_from_status == "ready" else "draft", "block_reason": None, "blocked_from_status": None}
+    task, customer, permissions = await _get_task(db, ctx, task_id, write=True)
+    previous = (await db.execute(select(MediaOperationEvent).where(MediaOperationEvent.task_id == task.id,
+                      MediaOperationEvent.request_id == key))).scalar_one_or_none()
+    if previous:
+        if previous.actor_id != ctx.identity or previous.request_fingerprint != fingerprint:
+            raise HTTPException(409, "相同请求编号对应的操作不一致")
+        result = await _detail(db, ctx, task, permissions)
+    else:
+        before = task.status
+        values = {}
+        if action == "submit" and before == "draft":
+            if not task.content.strip():
+                raise HTTPException(422, "请先填写内容草稿再提交审核")
+            # Revalidate referenced assets at the moment content enters review.
+            await _material(db, ctx, customer, task.material_id)
+            values = {"status": "in_review", "review_note": None}
+        elif action in {"approve", "return"} and (before == "in_review" or (action == "return" and before == "ready" and task.platform == "google_business")):
+            if not ctx.owner:
+                raise HTTPException(403, "第一阶段由老板审核内容")
+            if action == "return" and (not note or len(note) < 3):
+                raise HTTPException(422, "请填写至少 3 字的退回原因")
+            if before == "ready":
+                # Serialize against GBP reservation/dispatch before checking
+                # active publication. A sent/unknown task must never reopen.
+                await db.execute(select(MediaOperationTask).where(MediaOperationTask.id == task.id).with_for_update())
+                await db.refresh(task)
+                if task.status != "ready" or task.revision != expected_revision:
+                    raise HTTPException(409, "任务状态已变化，请刷新后重试")
+                await require_tables(db, {"google_business_actions"})
+                from models.google_business import GoogleBusinessAction
+                pending_publication = await db.scalar(select(GoogleBusinessAction.id).where(
+                    GoogleBusinessAction.task_id == task.id, GoogleBusinessAction.kind == "post_publish",
+                    GoogleBusinessAction.status.in_(("pending", "unknown", "accepted", "succeeded"))).limit(1))
+                if pending_publication:
+                    raise HTTPException(409, "此任务已有 Google 发布请求，请先核对原结果；已发送或结果未明的任务不能退回重发")
             else:
-                raise HTTPException(409, "当前状态不能执行此操作，请刷新任务")
-            if action != "complete" and (proof_url is not None or proof_material_id is not None):
-                raise HTTPException(422, "仅完成发布时可以提交凭证")
-            await _cas(db, task, expected_revision, values)
-            await _event(db, ctx, task, action, before, request_id=key, fingerprint=fingerprint, note=note)
-            result = await _detail(db, ctx, task, permissions)
+                await _material(db, ctx, customer, task.material_id)
+            values = {"status": "ready" if action == "approve" else "draft", "review_note": note}
+        elif action == "complete" and before == "ready":
+            url = _proof_url(proof_url)
+            await _material(db, ctx, customer, proof_material_id, proof=True)
+            if not url and proof_material_id is None:
+                raise HTTPException(422, "请提交公开发布链接或该客户已共享的截图凭证")
+            values = {"status": "completed", "proof_url": url, "proof_material_id": proof_material_id, "completed_at": now()}
+        elif action == "block" and before in {"draft", "in_review", "ready"}:
+            if not note or len(note) < 3:
+                raise HTTPException(422, "请填写至少 3 字的阻塞原因")
+            values = {"status": "blocked", "block_reason": note, "blocked_from_status": before}
+        elif action == "resume" and before == "blocked":
+            values = {"status": "ready" if task.blocked_from_status == "ready" else "draft", "block_reason": None, "blocked_from_status": None}
+        else:
+            raise HTTPException(409, "当前状态不能执行此操作，请刷新任务")
+        if action != "complete" and (proof_url is not None or proof_material_id is not None):
+            raise HTTPException(422, "仅完成发布时可以提交凭证")
+        await _cas(db, task, expected_revision, values)
+        await _event(db, ctx, task, action, before, request_id=key, fingerprint=fingerprint, note=note)
+        result = await _detail(db, ctx, task, permissions)
     return result
