@@ -23,7 +23,7 @@ import time
 import types
 
 HOST='iZj6c4cj7edgnhdimts4l7Z'
-SCOPE = 'google-business-onboarding'
+SCOPE = 'google-business-onboarding-r2'
 SOURCE_SHA = '8b429dad8a2f144ea27527717d4811fb7ddc9b3c'
 FRONTEND = 'b0e161d74fe5'
 APPLICATION_FREEZE_SHA = 'e63f0128f58c287a6cc4b123fc620cfe8080914d8b6c59ab4519649a6d1829bd'
@@ -395,6 +395,19 @@ asyncio.run(check())
 print('EXACT_PY310_TWO_GET_PROJECTION_ROUTES_ROLE_DENIED')
 """
 
+    def verify_offline_environment(self,info):
+        # The frozen validator predates this one explicit non-secret flag.
+        # Prove its sole value first, then validate an inspection-only copy;
+        # the real container Env and every credential guard remain unchanged.
+        key='T24_GBP_ONBOARDING_WORKER_ENABLED'
+        rows=info['Config']['Env']
+        need(isinstance(rows,list) and all(isinstance(row,str) for row in rows),'EXACT_OFFLINE_ENV_INSPECTION_REQUIRED')
+        selected=[row for row in rows if row.split('=',1)[0]==key]
+        need(selected==[key+'=false'],'EXACT_OFFLINE_ONBOARDING_WORKER_DISABLED_REQUIRED')
+        projected=copy.deepcopy(info)
+        projected['Config']['Env']=[row for row in rows if row.split('=',1)[0]!=key]
+        self.base.verify_disabled_environment(projected)
+
     def offline_args(self,data,image):
         command=self.ctx.module.OperationsMethods.offline_args(self,data,image)
         command[-1:-1]=['-e','T24_MEDIA_ASSET_WORKER_ENABLED=false','-e','T24_GBP_ONBOARDING_WORKER_ENABLED=false']
@@ -469,7 +482,7 @@ print('EXACT_ASSET_ROUTES_OWNER_ONLY_OFFLINE_WORKER_DISABLED')
         self.retained.additive_objects(objects,self.retained.objects(data/'crm_prod.db'));self.retained.compare_original(rows,migrated);self.retained.sequence_boundary(metadata,self.metadata(data/'crm_prod.db'))
         need(not m.inspect_optional(self.offline_name),'FRESH_OFFLINE_NAME_REQUIRED');command=self.offline_args(data,image);command[2:2]=['--name',self.offline_name,'-d'];m.run(command,'OFFLINE_START_FAILED')
         try:
-            m.ready(self.offline_name);self.base.verify_disabled_environment(m.inspect(self.offline_name));need(m.inventory(self.offline_name)==expected,'EXACT_OFFLINE_SOURCE_REQUIRED')
+            m.ready(self.offline_name);self.verify_offline_environment(m.inspect(self.offline_name));need(m.inventory(self.offline_name)==expected,'EXACT_OFFLINE_SOURCE_REQUIRED')
             checks=[(self.onboarding_probe(),b'EXACT_ONBOARDING_ROUTES_OWNER_IDLE_READONLY'),(self.asset_probe(),b'EXACT_ASSET_ROUTES_OWNER_ONLY_OFFLINE_WORKER_DISABLED'),(self.monthly_probe(),b'EXACT_PY310_MONTHLY_ROUTES_OWNER_ONLY_NO_NETWORK'),(self.projection_probe(),b'EXACT_PY310_TWO_GET_PROJECTION_ROUTES_ROLE_DENIED'),(self.timestamp_probe(),b'EXACT_PYTHON310_COMPACT_TIMEZONE_CANARY'),(self.existing_routes_probe(),b'EXACT_OPERATIONS_AND_EXISTING_ROUTES'),(self.base.gbp_disabled_probe(),b'EXACT_GBP_DISABLED_UNCONFIGURED_NO_NETWORK'),(self.ctx.workflow.meta_disabled_probe(),b'EXACT_META_ABSENT_DISABLED_NO_NETWORK'),(self.ctx.workflow.operations_disabled_probe(),b'EXACT_OPERATIONS_UNCONFIGURED_OFF_NO_NETWORK'),(self.ctx.workflow.owner_denied_probe(),b'EXACT_NONOWNER_ROLE_READ_DENIED_NO_SQL_OR_NETWORK')]
             for code,marker in checks:need(marker in m.run(['docker','exec',self.offline_name,'python','-B','-c',code],'OFFLINE_CANARY_FAILED'),'EXACT_OFFLINE_CANARY_MARKER_REQUIRED')
             code=protected_read(RETAINED_RENDERER_PATH,RENDERER_CANARY_SHA)

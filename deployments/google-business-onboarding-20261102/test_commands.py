@@ -82,7 +82,7 @@ def test_prepare_downloads_only_four_exact_members_and_emits_no_switch_without_r
     assert set(pins['members']) == {'release.py','preflight.py','artifacts/manifest.json','artifacts/payload.tar.gz'}
     text = commands['prepare-command.sh']; ast.parse(python_body(text))
     assert len(text.encode()) < 11000 and 'ProxyHandler({})' in text and 'CARRIER_REDIRECT_REJECTED' in text
-    assert "'/opt/t24-crm/releases/google-business-onboarding-bbbbbbbbbbbb-20261102'" in text
+    assert repr("/opt/t24-crm/releases/"+c.r.SCOPE+"-bbbbbbbbbbbb-20261102") in text
     assert "'--phase','prepare'" in text and 'APP_SECRET=' not in text and 'TOKEN_KEY=' not in text
     assert 'files.pythonhosted.org' not in text and 'pip install' not in text
     assert pins['members']['artifacts/payload.tar.gz'][1] == c.H(values['artifacts/payload.tar.gz'])

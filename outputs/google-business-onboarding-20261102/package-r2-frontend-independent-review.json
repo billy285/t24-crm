@@ -1,0 +1,35 @@
+{
+  "actual_container_env_not_modified_by_adapter": true,
+  "application_or_tool_mutations": false,
+  "application_payload_manifest_freeze_dist_and_17_source_delta_unchanged": true,
+  "changes": [
+    "fresh r2 namespace preserves failed staging",
+    "require exactly one explicit T24_GBP_ONBOARDING_WORKER_ENABLED=false before projecting only that flag from deep-copied inspection",
+    "single offline validator call uses strict adapter"
+  ],
+  "exact_in_memory_payload_manifest_reproduced": true,
+  "exact_three_delta_reverse_proof_to_attempt1": true,
+  "existing_secret_ai_key_network_mount_and_other_worker_checks_retained": true,
+  "frontend_version": "b0e161d74fe5",
+  "independent_release_tests": {
+    "exit_code": 0,
+    "passed": 122,
+    "seconds": 4.43
+  },
+  "limits": [
+    "Actual r2 prepare and its canonical candidate receipt are still required before any activation review.",
+    "No application source, emitted artifacts, release tools, Git, server or provider actions by this reviewer."
+  ],
+  "manifest_sha256": "3c714aba0a597b1c46d66d8979bf43ec6464d0d5ff9c219dd0e47dd0ba816ad0",
+  "missing_true_empty_malformed_duplicate_near_name_and_secret_injections_rejected": true,
+  "package_freeze_r2_sha256": "ce71e9349da0f7f3e0dcfa9a7f63e5e07a86568d604ce95a6f611a952028a5d4",
+  "payload_sha256": "61cdb231e54302f44a13c59c42ee488f97e892c45bfbee50c2cfcced72db4bb1",
+  "provider_requests": false,
+  "release_scope": "google-business-onboarding-r2",
+  "release_sha256": "e926a51afafa913e9aec7bcc48cf099cb123fa49ca43346a647dcc3fc2ec8c43",
+  "server_execution": false,
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "stage": "GOOGLE_ONBOARDING_R2_PACKAGE_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS",
+  "superseded_attempt1_release_sha256": "c07e2041379e5064d50b58d10a93717f6bda376737c4691ac3f7ce1cad6bc01a"
+}

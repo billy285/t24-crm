@@ -1,0 +1,15 @@
+{
+  "application_source_unchanged": true,
+  "cause": "frozen offline GBP validator predates explicit onboarding-worker=false flag",
+  "error_code": "OFFLINE_GOOGLE_SECRETS_REJECTED",
+  "exit_code": 1,
+  "failed_release_tool_sha256": "c07e2041379e5064d50b58d10a93717f6bda376737c4691ac3f7ce1cad6bc01a",
+  "failed_scope": "google-business-onboarding",
+  "failed_server_staging_preserved": true,
+  "fix_scope": "strict one-value proof then inspection-only copy projection before unchanged credential validator",
+  "manifest_and_payload_unchanged": true,
+  "new_scope": "google-business-onboarding-r2",
+  "server_actions_by_release_agent": false,
+  "status": "FAILED_PREPARE_PRESERVED_NO_PRODUCTION_SWITCH",
+  "task_id": "t-hk071tq0f4taby8"
+}

@@ -1,0 +1,44 @@
+{
+  "files": {
+    "deployments/google-business-onboarding-20261102/attempt1-release.py": {
+      "bytes": 58002,
+      "sha256": "c07e2041379e5064d50b58d10a93717f6bda376737c4691ac3f7ce1cad6bc01a"
+    },
+    "deployments/google-business-onboarding-20261102/release.py": {
+      "bytes": 58819,
+      "sha256": "e926a51afafa913e9aec7bcc48cf099cb123fa49ca43346a647dcc3fc2ec8c43"
+    },
+    "deployments/google-business-onboarding-20261102/test_commands.py": {
+      "bytes": 8979,
+      "sha256": "4e5db6dc422a35e71137d8957c5300374425df5104fca1f80c9e965d20de4726"
+    },
+    "deployments/google-business-onboarding-20261102/test_offline_flag_adapter.py": {
+      "bytes": 3659,
+      "sha256": "04c7ba44711d04f6ac7ec0014280bc8288d9a0b984d59f9b082f25771f58f477"
+    },
+    "outputs/google-business-onboarding-20261102/package-freeze-attempt1.json": {
+      "bytes": 2328,
+      "sha256": "49970a9a371d42f85030952491ed85bd9b39f4163bda78b60229b63c7ee10b94"
+    },
+    "outputs/google-business-onboarding-20261102/package-freeze-r2.json": {
+      "bytes": 3154,
+      "sha256": "ce71e9349da0f7f3e0dcfa9a7f63e5e07a86568d604ce95a6f611a952028a5d4"
+    },
+    "outputs/google-business-onboarding-20261102/prepare-attempt1-failure-review.json": {
+      "bytes": 738,
+      "sha256": "5344ca22727fc2bc5085936b881e7be1202916ea7a21de7c7f1214efaea7788c"
+    }
+  },
+  "manifest_payload_application_unchanged": true,
+  "paths": [
+    "deployments/google-business-onboarding-20261102/release.py",
+    "deployments/google-business-onboarding-20261102/attempt1-release.py",
+    "deployments/google-business-onboarding-20261102/test_offline_flag_adapter.py",
+    "deployments/google-business-onboarding-20261102/test_commands.py",
+    "outputs/google-business-onboarding-20261102/package-freeze-r2.json",
+    "outputs/google-business-onboarding-20261102/package-freeze-attempt1.json",
+    "outputs/google-business-onboarding-20261102/prepare-attempt1-failure-review.json"
+  ],
+  "server_actions": false,
+  "status": "RETRY2_CARRIER_RECOMMENDATION_ONLY"
+}
