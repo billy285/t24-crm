@@ -1,0 +1,24 @@
+{
+  "stage": "INDEPENDENT_MONTHLY_PREPARE_COMMAND_PASS",
+  "carrier": "c760b9c7a39c50acd239406bf6b120093303bea1",
+  "source_sha": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "frontend_version": "628bd059a499",
+  "prepare_command_sha256": "0427addcddb25ed6935196d3250bb1183547582f8e8e9f5a22d6ec42731ee276",
+  "prepare_command_bytes": 3197,
+  "preflight_sha256": "d2129acab27861e9b6270a47aee2b9258f9b77f1d9a72db1cee477f962ebe9a5",
+  "manifest_sha256": "3891c1776653d2456ea2c3c1871f70571be621dff2578556fa3101ab6821b0f4",
+  "payload_sha256": "9d19a52e6bc838870146bd81e38c682fcf8ffb1a2b802cd19a4a5cfd30bf92fa",
+  "release_helper_sha256": "7619cff40c9c7fa856fa9a8318cb544382aced8a08b95c8b5fb4b0f76be9e560",
+  "preflight_helper_sha256": "e7df079112d11603114c4acb7dc1917b59983b25af0544c583d5a39c0686445f",
+  "exact_members": [
+    "artifacts/manifest.json",
+    "artifacts/payload.tar.gz",
+    "preflight.py",
+    "release.py"
+  ],
+  "byte_reproduction": true,
+  "only_prepare_phase": true,
+  "switch_emitted": false,
+  "executed": false,
+  "server_actions": false
+}

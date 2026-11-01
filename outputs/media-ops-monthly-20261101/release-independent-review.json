@@ -1,0 +1,40 @@
+{
+  "actual_carrier_commands_reviewed": false,
+  "all_old150_except_reviewed_alembic_head_preserved": true,
+  "application_freeze_sha256": "2196fcdb66246691141206b121099e7e0a8f67f91099cec1264b7feea1aa8547",
+  "backend_after": {
+    "alembic/versions/df0ba123b469_media_monthly.py": "c42e71383a1dfc68cd290db612429f5fcae20ff82f2c442dadbcc9555158da36",
+    "models/media_monthly.py": "9a9df045ae0ce840d145a235a3e6cde20ac7f2f0d9882b39da0672e6b99434f7",
+    "routers/media_monthly.py": "006105d08609e4c93bf63d6aff705a7010938bd755cdf99eb314b969b7f020ac",
+    "schemas/media_monthly.py": "061aafc8b067c1433cba4e2089ff57fdeacc824f3aa571d4ad45e520feb256ce",
+    "services/media_monthly.py": "12d1e7a43e811ff49608efaf1265aaa8047e52cc7296d759f936d5e48d952a90",
+    "services/media_workspace.py": "14e031977f8db04f16bc40b7818416279eac52222e6352d39976bee848471bf9"
+  },
+  "deployment_transport_actual_migration_tests_passed": 126,
+  "exact_owner_only_python310_routes_canaries": true,
+  "forward_only_after_new_head": true,
+  "frontend_version": "628bd059a499",
+  "full_environment_current_credentials_google_on_ops_execution_off_preserved": true,
+  "guarded_transaction_durable_migration_settlement": true,
+  "live_or_git_mutations": false,
+  "new_independent_rows_preserved_no_database_restore": true,
+  "new_indexes": [
+    "ix_media_monthly_items_run_id",
+    "ix_media_monthly_runs_customer_id"
+  ],
+  "new_revision": "df0ba123b469",
+  "new_table_shapes": {
+    "media_monthly_items": "d6d15f21b8b3ab3d7af1ae5088520ff90b17b5558159ea19d2b85f39ec0cc07f",
+    "media_monthly_profiles": "c4ae7f6cce537b81ee774e2f85e1b2de79f382f26392cbb6c327971e52a94dfe",
+    "media_monthly_runs": "d04c1ce1c4d49dd598f63af86d4c696f7df153e1de4ba33c3307c70905ca6678"
+  },
+  "new_three_empty_153_total": true,
+  "observed_at": "2026-11-01T03:39:07.448956+00:00",
+  "old_revision": "cefa9b12a358",
+  "preflight_sha256": "d2129acab27861e9b6270a47aee2b9258f9b77f1d9a72db1cee477f962ebe9a5",
+  "release_sha256": "7619cff40c9c7fa856fa9a8318cb544382aced8a08b95c8b5fb4b0f76be9e560",
+  "result": "PASS",
+  "source_sha": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "stage": "MONTHLY_FINAL_GUARDED_RELEASE_INDEPENDENT_REVIEW",
+  "static_csp_callback_media_privacy_preserved": true
+}

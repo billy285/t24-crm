@@ -1,0 +1,36 @@
+{
+  "stage": "INDEPENDENT_MONTHLY_ACTUAL_PREPARED_AND_SWITCH_COMMANDS_PASS",
+  "source_sha": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "frontend_version": "628bd059a499",
+  "carrier": "c760b9c7a39c50acd239406bf6b120093303bea1",
+  "canonical_prepared_sha256": "a7642ea2a7827af7523e1adfe599eabd12888447b1567b0c7b3cfa37714d0f4b",
+  "transport_envelope_sha256": "92bf95f46b49ead38542cba35bf2cda91209a44bf495e9a2d9c42e880b7f6cce",
+  "old_crm_matches_current_preflight": true,
+  "original_table_count": 150,
+  "new_table_count": 153,
+  "additive_tables": [
+    "media_monthly_items",
+    "media_monthly_profiles",
+    "media_monthly_runs"
+  ],
+  "schema_after_sha256": "cbb2c1c58f512f28130aa7cf420a1337ef06201f2cbfe2c25f8548f6bdf8b308",
+  "candidate_image": "sha256:2377c980b99e56a0637fd0c7c90b9a90f97432c5ee8bd3e30c05a21dbb5edc9d",
+  "offline_acceptance_flags": true,
+  "production_database_written": false,
+  "provider_requests": false,
+  "publications_or_ai_generation_executed": false,
+  "commands": {
+    "activate-command.sh": {
+      "sha256": "5d9d4e8a38b490d35905708f1d3f1e531f2c83cb6c101ec06388e868bcce71f6",
+      "bytes": 2223,
+      "byte_reproduction": true
+    },
+    "recover-command.sh": {
+      "sha256": "34b822620857b27b9d1477766e0082b42a18d09a2354a25163b46b1f2aac214f",
+      "bytes": 2222,
+      "byte_reproduction": true
+    }
+  },
+  "executed": false,
+  "server_actions": false
+}

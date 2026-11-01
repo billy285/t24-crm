@@ -1,0 +1,23 @@
+{
+  "additive_tables": [
+    "media_monthly_items",
+    "media_monthly_profiles",
+    "media_monthly_runs"
+  ],
+  "all_acceptance_flags_verified": true,
+  "candidate_image": "sha256:2377c980b99e56a0637fd0c7c90b9a90f97432c5ee8bd3e30c05a21dbb5edc9d",
+  "canonical_prepared_sha256": "a7642ea2a7827af7523e1adfe599eabd12888447b1567b0c7b3cfa37714d0f4b",
+  "envelope_sha256": "92bf95f46b49ead38542cba35bf2cda91209a44bf495e9a2d9c42e880b7f6cce",
+  "frontend_version": "628bd059a499",
+  "manifest_sha256": "3891c1776653d2456ea2c3c1871f70571be621dff2578556fa3101ab6821b0f4",
+  "new_table_count": 153,
+  "old_runtime_exact": true,
+  "original_table_count": 150,
+  "payload_sha256": "9d19a52e6bc838870146bd81e38c682fcf8ffb1a2b802cd19a4a5cfd30bf92fa",
+  "preflight_sha256": "d2129acab27861e9b6270a47aee2b9258f9b77f1d9a72db1cee477f962ebe9a5",
+  "result": "PASS",
+  "reviewer_server_actions": false,
+  "schema_after_sha256": "cbb2c1c58f512f28130aa7cf420a1337ef06201f2cbfe2c25f8548f6bdf8b308",
+  "source_sha": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "stage": "MONTHLY_ACTUAL_PREPARED_INDEPENDENT_REVIEW"
+}

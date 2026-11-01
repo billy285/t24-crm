@@ -1,0 +1,32 @@
+{
+  "actual_additive_migration_tests_passed": 2,
+  "checks": [
+    "current_active_owner_and_pilot20_only_before_SQL",
+    "purpose_scoped_runtime_and_input_hash_explicit_consent",
+    "public_text_whitelist_no_image_bytes_links_private_notes_or_finance",
+    "single_bounded_no_retry_no_redirect_no_proxy_HTTPX_request",
+    "identity_encoding_and_prebody_advertised_size_guard",
+    "missing_key_no_credential_fallback",
+    "sanitized_failures_no_raw_provider_or_secret_logs",
+    "all12_slots_exact_response_and_owner_summary",
+    "source_profile_runtime_revalidated_after_external_response",
+    "native_task_adoption_atomic_draft_only_no_public_action_schedule_lease_or_approval",
+    "semantic_run_idempotency_and_native_task_UUIDs",
+    "owner_only_monthly_projection_staff_locked"
+  ],
+  "independent_transport_attacks_passed": 32,
+  "production_or_provider_actions": false,
+  "result": "PASS",
+  "reviewer_application_edits": false,
+  "runtime_file_sha256": {
+    "app/backend/alembic/versions/df0ba123b469_media_monthly.py": "c42e71383a1dfc68cd290db612429f5fcae20ff82f2c442dadbcc9555158da36",
+    "app/backend/models/media_monthly.py": "9a9df045ae0ce840d145a235a3e6cde20ac7f2f0d9882b39da0672e6b99434f7",
+    "app/backend/routers/media_monthly.py": "006105d08609e4c93bf63d6aff705a7010938bd755cdf99eb314b969b7f020ac",
+    "app/backend/schemas/media_monthly.py": "061aafc8b067c1433cba4e2089ff57fdeacc824f3aa571d4ad45e520feb256ce",
+    "app/backend/services/media_monthly.py": "12d1e7a43e811ff49608efaf1265aaa8047e52cc7296d759f936d5e48d952a90",
+    "app/backend/services/media_workspace.py": "14e031977f8db04f16bc40b7818416279eac52222e6352d39976bee848471bf9"
+  },
+  "source_sha": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "stage": "MONTHLY_BACKEND_AI_SECURITY_INDEPENDENT_REVIEW",
+  "workflow_tests_passed": 36
+}

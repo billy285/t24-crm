@@ -1,0 +1,35 @@
+{
+  "additive_tables": [
+    "media_monthly_items",
+    "media_monthly_profiles",
+    "media_monthly_runs"
+  ],
+  "all150_original_business_rows_objects_preserved_except_reviewed_head_at_deployment": true,
+  "canonical_deployed_sha256": "2c4fb51553aa0f3fc8c86032a8e1ffc29ce8fa94dbeee3fe9397e59d16a865a5",
+  "canonical_prepared_sha256": "a7642ea2a7827af7523e1adfe599eabd12888447b1567b0c7b3cfa37714d0f4b",
+  "crm": {
+    "config": "01e708ba2e4c29d3029dbb4981cd452b086fe2ca301d19b2f8b47e43aedaded0",
+    "id": "1bb27a7b759a8195968e5891fc124bd6efdffece985db8759954af3054e97027",
+    "image": "sha256:2377c980b99e56a0637fd0c7c90b9a90f97432c5ee8bd3e30c05a21dbb5edc9d",
+    "restart": 0,
+    "started": "2026-11-01T03:42:26.485641774Z"
+  },
+  "database_restored": false,
+  "envelope_sha256": "afe1a724a94aa56a3cdb363ee8abd11764bd33ffa7d95c29db7177c8923b1bb8",
+  "frontend_version": "628bd059a499",
+  "full_environment_credentials_private_google_cutoff_preserved": true,
+  "meta_execution_scheduler_off": true,
+  "new3_empty_at_deployment_acceptance_only": true,
+  "new_table_count": 153,
+  "no_ai_generation_or_public_actions_by_deployment": true,
+  "original_table_count": 150,
+  "preflight_sha256": "d2129acab27861e9b6270a47aee2b9258f9b77f1d9a72db1cee477f962ebe9a5",
+  "python310_owner_only_and_privacy_canaries_verified": true,
+  "result": "PASS",
+  "reviewer_server_actions": false,
+  "schema_revision": "df0ba123b469",
+  "schema_sha256": "cbb2c1c58f512f28130aa7cf420a1337ef06201f2cbfe2c25f8548f6bdf8b308",
+  "source_sha": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "stage": "MONTHLY_ACTUAL_DEPLOYED_INDEPENDENT_ACCEPTANCE",
+  "subsequent_authorized_owner_draft_generation_not_audited_by_this_receipt": true
+}
